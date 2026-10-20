@@ -1,0 +1,258 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// OAuth 应用管理（/admin/oauth）
+//
+// 页面由两张 `.admin-panel` 组成（创建表单 + 已注册应用），行卡 `.admin-app-row`
+// 用内容底色 + 20px 圆角 —— 这就是「卡中卡」那笔债的正解：组件根不再复用页面级
+// 容器类（见 docs/frontend-styles.md §12）。
+//
+// ⚠️ `oauth-modal-overlay` / `oauth-modal` 是**公开授权页**（pages/_oauth.scss）
+// 共用的类，这里只做 `.admin-content` 作用域内的覆写，绝不改那份公共样式。
+// ─────────────────────────────────────────────────────────────────────────────
+
+// ---- 创建表单 ----
+// 两列（名称 / 说明 / 主页各占一格，回调 URI 整行）；窄屏单列。
+.admin-oauth-create {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  min-width: 0;
+}
+
+.admin-oauth-create__full {
+  grid-column: 1 / -1;
+}
+
+.admin-oauth-create__mono {
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+}
+
+.admin-oauth-create__actions {
+  display: flex;
+  grid-column: 1 / -1;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 2px;
+}
+
+.admin-oauth-required {
+  color: var(--color-warning-primary);
+}
+
+.admin-oauth-hint {
+  color: var(--color-text-secondary);
+  font-size: 0.78rem;
+  line-height: 1.5;
+}
+
+// ---- 应用列表 ----
+.admin-apps-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.admin-app-row {
+  padding: 16px 18px;
+  border-radius: 20px;
+  background: var(--color-background-content);
+  animation: admin-rise 0.42s cubic-bezier(0.22, 1, 0.36, 1) backwards;
+}
+
+.admin-app-row__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 14px;
+}
+
+.admin-app-row__title-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.admin-app-row__title {
+  margin: 0;
+  color: var(--color-text-primary);
+  font-size: 0.98rem;
+  font-weight: 600;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+// 行内动作按钮：紧凑化的次级胶囊（同栏目行的口径）。
+.admin-app-row__toggle {
+  flex: none;
+  min-height: 34px;
+  padding: 5px 14px;
+  font-size: 0.78rem;
+}
+
+.admin-app-row__body {
+  margin-top: 12px;
+  min-width: 0;
+}
+
+.admin-app-row__desc {
+  margin: 0 0 8px;
+  color: var(--color-text-secondary);
+  font-size: 0.88rem;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
+.admin-app-row__homepage {
+  margin: 0 0 8px;
+  color: var(--color-text-secondary);
+  font-size: 0.82rem;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+
+  a {
+    color: var(--color-brand-primary);
+
+    &:hover {
+      text-decoration: underline;
+    }
+  }
+}
+
+// client_id 行 / 回调 URI 行：标签 + 可换行的等宽值 + 复制按钮。
+.admin-app-row__field {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+  min-width: 0;
+}
+
+.admin-app-row__field--top {
+  align-items: flex-start;
+}
+
+.admin-app-row__label {
+  flex: none;
+  min-width: 64px;
+  color: var(--color-text-secondary);
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+// 等宽值必须可断行：client_id / 回调地址都可能是很长的无空格串，
+// 不写 word-break 会把整张卡片顶宽、在窄屏上捅出横向滚动条。
+.admin-app-row__code {
+  flex: 1 1 0;
+  min-width: 0;
+  padding: 3px 8px;
+  border-radius: 8px;
+  background: var(--color-background-subtle);
+  color: var(--color-text-primary);
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+  word-break: break-all;
+}
+
+.admin-app-row__uris {
+  display: flex;
+  flex: 1 1 0;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+
+  .admin-app-row__code {
+    display: inline-block;
+    max-width: 100%;
+  }
+}
+
+.admin-oauth-copy {
+  flex: none;
+  min-height: 30px;
+  padding: 4px 12px;
+  font-size: 0.76rem;
+}
+
+.admin-app-row__error {
+  margin: 10px 0 0;
+}
+
+// ---- 创建成功弹窗（公共 oauth-modal 的管理端覆写）----
+.admin-content {
+  .oauth-modal__row code {
+    overflow-wrap: anywhere;
+    word-break: break-all;
+  }
+
+  @media (max-width: 560px) {
+    .oauth-modal {
+      padding: 20px;
+      border-radius: 24px;
+    }
+  }
+}
+
+.admin-oauth-modal__note {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin: 0 0 16px;
+  color: var(--color-text-secondary);
+}
+
+.admin-oauth-modal__warn {
+  color: var(--color-warning-primary);
+  flex: none;
+}
+
+// 同一个类同时挂在图标 <svg> 与 <strong> 上：尺寸只对图标生效。
+svg.admin-oauth-modal__warn {
+  width: 16px;
+  height: 16px;
+  margin-top: 2px;
+}
+
+.admin-oauth-modal__secret {
+  word-break: break-all;
+  overflow-wrap: anywhere;
+}
+
+.admin-oauth-modal__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 20px;
+}
+
+// ---- 响应式 ----
+@media (max-width: 640px) {
+  .admin-oauth-create {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .admin-app-row__field {
+    flex-wrap: wrap;
+  }
+
+  .admin-app-row__label {
+    min-width: 0;
+  }
+
+  .admin-app-row__toggle {
+    width: 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .admin-app-row {
+    animation: none;
+  }
+}

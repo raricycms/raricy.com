@@ -1,0 +1,150 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// 申诉管理页（/admin/appeals）
+//
+// 页面骨架走 pages/admin/_common.scss 的共享原语：
+//   · 抬头 → AdminPageHeader（.admin-hero）
+//   · 状态筛选 → .admin-seg 的切页档胶囊（.admin-seg__btn + .is-active）
+//   · 空态 → AdminEmpty、分页 → AdminPager
+// 这里只放「一条申诉」这张行卡与它的分区。
+//
+// 层级：页面底 → 申诉卡（卡片色）→ 申诉正文（内容色，圆角 16）→ 裁决行（弱底色）。
+// 与全站卡片总则一致：不描边、常态不托阴影，层级靠底色深浅（docs/frontend-styles.md §6.2）。
+// 整卡不可点（操作按钮在卡内），所以没有 hover 光晕。
+// ─────────────────────────────────────────────────────────────────────────────
+
+// ---- 状态筛选 ----
+// 窄屏下 .admin-seg 自己会换行；这层只负责与下方列表拉开距离。
+// 不用 overflow-x: auto —— 那会把按钮的聚焦光晕裁掉一圈，换行已经够用。
+.admin-appeal-filters {
+  display: flex;
+  margin-bottom: 16px;
+
+  .admin-seg {
+    max-width: 100%;
+  }
+}
+
+// ---- 单条申诉 ----
+.admin-appeal {
+  padding: 16px 18px;
+  background: var(--color-background-card);
+  border-radius: 22px;
+  animation: admin-rise 0.42s cubic-bezier(0.22, 1, 0.36, 1) backwards;
+  // 逐条错开入场；--i 由页面按列表下标给（与 .admin-row 同一节奏）。
+  animation-delay: calc(var(--i, 0) * 26ms);
+
+  + .admin-appeal {
+    margin-top: 10px;
+  }
+}
+
+// 头部：左边状态徽标，右边「申诉人 / 针对 / 时间」。放不下时两组各自换行。
+.admin-appeal__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+  margin-bottom: 10px;
+}
+
+.admin-appeal__chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.admin-appeal__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 14px;
+  margin-left: auto;
+  color: var(--color-text-secondary);
+  font-size: 0.82rem;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+// 申诉正文：内容色小卡。pre-wrap 保留用户自己敲的换行 —— 申诉是自由文本，
+// 折成一行会把「分条写的理由」糊成一段。
+.admin-appeal__content {
+  margin: 0;
+  padding: 12px 14px;
+  border-radius: 16px;
+  background: var(--color-background-content);
+  color: var(--color-text-primary);
+  font-size: 0.9rem;
+  line-height: 1.7;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+// 原操作理由（可选）：附注，不单独做卡。
+.admin-appeal__note {
+  margin: 10px 0 0;
+  color: var(--color-text-secondary);
+  font-size: 0.84rem;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
+// 待处理申诉的裁决区（AdminAppealActions）。组件根自带 mt-2 的 8px 上间距，
+// 这里只把它的两颗按钮收成同一排的紧凑胶囊。
+// ⚠️ 不在这里改字号/内距以外的表面 —— 「通过 / 驳回」的红绿语义来自 .btn-success
+// 与 .btn-outline-danger 两个档，别用更具体的选择器把它们的配色压平。
+.admin-appeal__actions {
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 34px;
+    padding: 5px 14px;
+    border-radius: 999px;
+    font-size: 0.8rem;
+  }
+}
+
+// 已裁决信息行：压一档弱底，和上面的正文卡分开。
+.admin-appeal__decision {
+  margin: 12px 0 0;
+  padding: 10px 14px;
+  border-radius: 14px;
+  background: var(--color-background-subtle);
+  color: var(--color-text-secondary);
+  font-size: 0.84rem;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
+// ---- 响应式 ----
+@media (max-width: 768px) {
+  .admin-appeal {
+    padding: 14px;
+    border-radius: 20px;
+  }
+
+  // 头部两组在窄屏各占一行：徽标一行、meta 紧跟其下左对齐（不再推到右边缘）。
+  .admin-appeal__meta {
+    margin-left: 0;
+  }
+
+  .admin-appeal-filters .admin-seg {
+    width: 100%;
+  }
+
+  // 四档平分整宽：390px 下每颗都够大，不用横向滚动。
+  .admin-appeal-filters .admin-seg__btn {
+    flex: 1 1 auto;
+  }
+
+  .admin-appeal__actions .btn {
+    flex: 1 1 auto;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .admin-appeal {
+    animation: none;
+  }
+}

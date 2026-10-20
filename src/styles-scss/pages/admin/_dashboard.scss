@@ -1,2 +1,187 @@
-// Admin dashboard — currently only uses _admin-common stats cards.
-// Placeholder for future dashboard-specific styles.
+// 管理概览 —— KPI 卡与快捷入口。
+//
+// KPI 卡沿用全站卡片口径：常态不描边、不托阴影，层级靠背景色阶。只有给了 href
+// 的那几张（整卡可点）才在 hover 亮 --shadow-card-brand —— 这条判据来自
+// docs/frontend-styles.md §2.3 / §6.2，别给不可点的卡也加光晕。
+
+.admin-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.admin-kpi {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+  padding: 18px;
+  border-radius: 24px;
+  background: var(--color-background-card);
+  color: inherit;
+  text-decoration: none;
+  transition: box-shadow 0.25s ease, background-color 0.25s ease;
+  animation: admin-rise 0.42s cubic-bezier(0.22, 1, 0.36, 1) backwards;
+  animation-delay: calc(var(--i, 0) * 45ms);
+
+  &:hover {
+    text-decoration: none;
+  }
+
+  &:focus-visible {
+    outline: none;
+    box-shadow: var(--shadow-focus-brand);
+  }
+
+  &--blue {
+    --admin-kpi-color: var(--color-accent-blue);
+    --admin-kpi-soft: var(--color-accent-blue-soft);
+  }
+
+  &--amber {
+    --admin-kpi-color: var(--color-accent-amber);
+    --admin-kpi-soft: var(--color-accent-amber-soft);
+  }
+
+  &--cyan {
+    --admin-kpi-color: var(--color-accent-cyan);
+    --admin-kpi-soft: var(--color-accent-cyan-soft);
+  }
+
+  &--violet {
+    --admin-kpi-color: var(--color-accent-violet);
+    --admin-kpi-soft: var(--color-accent-violet-soft);
+  }
+
+  &--success {
+    --admin-kpi-color: var(--color-success-primary);
+    --admin-kpi-soft: var(--color-success-secondary);
+  }
+}
+
+// 只有「整卡可点」的那几张才允许 hover 光晕（判据见文件头）。
+a.admin-kpi:hover {
+  box-shadow: var(--shadow-card-brand);
+}
+
+.admin-kpi__icon {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 14px;
+  background: var(--admin-kpi-soft);
+  color: var(--admin-kpi-color);
+
+  svg {
+    width: 18px;
+    height: 18px;
+  }
+}
+
+.admin-kpi__number {
+  color: var(--admin-kpi-color);
+  font-size: clamp(1.7rem, 2.6vw, 2.2rem);
+  font-weight: 700;
+  line-height: 1;
+}
+
+.admin-kpi__label {
+  color: var(--color-text-secondary);
+  font-size: 0.84rem;
+  font-weight: 500;
+}
+
+// ---- 快捷入口 ----
+.admin-quick-panel {
+  margin-top: 16px;
+}
+
+.admin-quick-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(148px, 1fr));
+  gap: 8px;
+}
+
+.admin-quick {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  border-radius: 999px;
+  background: var(--color-background-content);
+  color: var(--color-text-primary);
+  font-size: 0.9rem;
+  font-weight: 600;
+  text-decoration: none;
+  transition: background-color 0.2s ease, color 0.2s ease;
+
+  svg {
+    width: 16px;
+    height: 16px;
+    flex: none;
+    color: var(--color-brand-primary);
+    transition: color 0.2s ease;
+  }
+
+  &:hover {
+    background: var(--color-brand-secondary);
+    color: var(--color-brand-primary);
+    text-decoration: none;
+
+    svg {
+      color: var(--color-brand-primary);
+    }
+  }
+
+  &:focus-visible {
+    outline: none;
+    box-shadow: var(--shadow-focus-brand);
+  }
+}
+
+@media (max-width: 1200px) {
+  .admin-kpi-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 768px) {
+  .admin-kpi-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  .admin-kpi {
+    padding: 14px;
+    border-radius: 20px;
+  }
+
+  .admin-kpi__icon {
+    width: 32px;
+    height: 32px;
+    border-radius: 11px;
+
+    svg {
+      width: 16px;
+      height: 16px;
+    }
+  }
+}
+
+@media (max-width: 420px) {
+  .admin-quick-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .admin-quick {
+    padding: 10px 12px;
+    font-size: 0.82rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .admin-kpi {
+    animation: none;
+  }
+}

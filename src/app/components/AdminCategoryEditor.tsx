@@ -2,13 +2,26 @@
 
 // ─────────────────────────────────────────────────────────────────────────────
 // AdminCategoryEditor — 栏目管理交互组件
-//   • 层级列表（一级 + 子级），每行显示文章/子栏目计数
-//   • 创建 / 编辑（弹出表单）/ 删除（阻断有子栏目或文章的）/ 启用切换
-//   • 所有写操作走 /api/admin/categories[...]，成功后 router.refresh() 重新拉服务端数据
+//   • 抬头（AdminPageHeader）+「+ 新建栏目」：按钮与编辑弹窗共享同一份状态，
+//     所以抬头住在这里（页面只提供 .admin-container 外壳）。
+//   • 层级列表（一级 + 子级），每行显示图标/名称/slug/规则徽标/文章与子栏目计数。
+//   • 创建 / 编辑（弹出表单）/ 删除（阻断有子栏目或文章的）/ 启用切换。
+//   • 所有写操作走 /api/admin/categories[...]，成功后 router.refresh() 重新拉服务端数据。
+//
+// 【钉死的结构】栏目行根节点必须保留 `.article-card`，标题是 `.article-card__title`，
+// slug 用 `<code>` —— tests/e2e/admin-categories.spec.ts 按这三个选择器断言。
+// 编辑弹窗必须是 .modal-overlay.show > .modal-dialog > .modal-content > .modal-header /
+// .modal-body / .modal-footer，且字段顺序 名称 → slug → 父栏目 → 图标 → 排序权重 → 描述
+// （表单里 input.form-control 的第 0 / 1 个分别是名称与 slug）—— admin-categories.spec 与
+// ios-app.spec 的长弹窗安全区用例都按它取元素。
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { useState } from 'react';
+import { Fragment, useState, type CSSProperties } from 'react';
 import { useRouter } from 'next/navigation';
+import { FolderOpen } from 'lucide-react';
+import AdminEmpty from './AdminEmpty';
+import AdminPageHeader from './AdminPageHeader';
+import AdminPick from './AdminPick';
 
 export interface CategoryNode {
   id: number;
@@ -89,6 +102,16 @@ function toForm(c: CategoryNode): FormState {
     notifyAdminOnPost: c.notify_admin_on_post,
     focusHidden: c.focus_hidden,
   };
+}
+
+/** 行内规则徽标：已停用单独一档（warning），其余是中性弱化档。 */
+function flagTags(c: CategoryNode): string[] {
+  const tags: string[] = [];
+  if (c.exclude_from_all) tags.push('不进全部');
+  if (c.admin_only_posting) tags.push('仅管理员发文');
+  if (c.notify_admin_on_post) tags.push('发文通知管理员');
+  if (c.focus_hidden) tags.push('专注隐藏');
+  return tags;
 }
 
 export default function AdminCategoryEditor({ initialCategories, initialParents }: Props) {
@@ -210,53 +233,72 @@ export default function AdminCategoryEditor({ initialCategories, initialParents 
     }
   }
 
-  const flags = (c: CategoryNode) => {
-    const tags: string[] = [];
-    if (c.exclude_from_all) tags.push('不进全部');
-    if (c.admin_only_posting) tags.push('仅管理员发文');
-    if (c.notify_admin_on_post) tags.push('发文通知管理员');
-    if (c.focus_hidden) tags.push('专注隐藏');
-    return tags;
-  };
-
-  const renderRow = (c: CategoryNode, child: boolean) => (
-    <div
-      key={c.id}
-      className="article-card"
-      style={{ opacity: c.is_active ? 1 : 0.55, marginLeft: child ? 28 : 0 }}
-    >
-      <div className="article-card__header">
-        <div className="article-card__info">
-          <div className="d-flex align-items-center gap-2 mb-1" style={{ flexWrap: 'wrap' }}>
-            <span className="article-card__title" style={{ marginBottom: 0 }}>
-              {child ? '└ ' : ''}
-              {c.icon ? `${c.icon} ` : ''}
+  const renderRow = (c: CategoryNode, child: boolean, index: number) => {
+    const tags = flagTags(c);
+    return (
+      <article
+        key={c.id}
+        className={`article-card admin-category-row${child ? ' admin-category-row--child' : ''}${
+          c.is_active ? '' : ' is-inactive'
+        }`}
+        data-category-id={c.id}
+        style={{ '--i': index } as CSSProperties}
+      >
+        <div className="admin-category-row__main">
+          <div className="admin-category-row__headline">
+            <h2 className="article-card__title admin-category-row__title">
+              {c.icon ? (
+                <span className="admin-category-row__glyph" aria-hidden="true">
+                  {c.icon}
+                </span>
+              ) : null}
               {c.name}
-            </span>
-            <code className="mono" style={{ fontSize: '.8rem', color: 'var(--fd-ink-3)' }}>{c.slug}</code>
-            {!c.is_active && <span className="badge-danger">已停用</span>}
-            {flags(c).map((t) => (
-              <span key={t} className="badge-secondary">
-                {t}
-              </span>
-            ))}
+            </h2>
+            <code className="admin-category-row__code">{c.slug}</code>
+            <div className="admin-category-row__chips">
+              {!c.is_active && <span className="admin-chip admin-chip--warning">已停用</span>}
+              {tags.map((t) => (
+                <span key={t} className="admin-chip">
+                  {t}
+                </span>
+              ))}
+            </div>
           </div>
-          <div className="article-card__meta">
-            <span className="numeric">{c.blog_count} 篇文章</span>
-            {!child && <span className="numeric">{c.child_count} 个子栏目</span>}
-            {c.description && <span>{c.description}</span>}
+
+          <div className="admin-category-row__meta">
+            <span className="admin-category-row__stat">
+              <span className="numeric">{c.blog_count}</span> 篇文章
+            </span>
+            {!child && (
+              <span className="admin-category-row__stat">
+                <span className="numeric">{c.child_count}</span> 个子栏目
+              </span>
+            )}
+            {c.description && <span className="admin-category-row__desc">{c.description}</span>}
           </div>
         </div>
-        <div className="article-card__actions">
-          <div className="d-flex gap-1" style={{ flexWrap: 'wrap' }}>
-            <button className="btn btn-sm btn-outline-secondary" disabled={busy} onClick={() => setForm(toForm(c))}>
+
+        <div className="admin-category-row__actions">
+          <div className="admin-category-row__buttons">
+            <button
+              type="button"
+              className="admin-category-row__btn"
+              disabled={busy}
+              onClick={() => setForm(toForm(c))}
+            >
               编辑
             </button>
-            <button className="btn btn-sm btn-outline-secondary" disabled={busy} onClick={() => toggleActive(c)}>
+            <button
+              type="button"
+              className="admin-category-row__btn"
+              disabled={busy}
+              onClick={() => toggleActive(c)}
+            >
               {c.is_active ? '停用' : '启用'}
             </button>
             <button
-              className="btn btn-sm btn-outline-danger"
+              type="button"
+              className="admin-category-row__btn admin-category-row__btn--danger"
               disabled={busy || c.blog_count > 0 || c.child_count > 0}
               title={
                 c.blog_count > 0 ? '该栏目下仍有文章' : c.child_count > 0 ? '该栏目下仍有子栏目' : ''
@@ -267,27 +309,67 @@ export default function AdminCategoryEditor({ initialCategories, initialParents 
             </button>
           </div>
         </div>
-      </div>
+      </article>
+    );
+  };
+
+  // 五个规则开关：标签文案与旧版逐字一致（规则是产品文案，不是样式的一部分）。
+  const renderPickRow = (
+    checked: boolean,
+    onChange: (next: boolean) => void,
+    label: string
+  ) => (
+    <div
+      className="admin-pick-row"
+      onClick={(e) => {
+        // 点在圆点本身时交给 AdminPick 的 input 处理，否则会切换两次。
+        if ((e.target as HTMLElement).closest('.admin-pick')) return;
+        onChange(!checked);
+      }}
+    >
+      <AdminPick checked={checked} onChange={onChange} label={label} />
+      <span className="admin-pick-row__label">{label}</span>
     </div>
   );
 
   return (
-    <div>
-      <div className="d-flex justify-content-end mb-3">
-        <button className="btn btn-primary" disabled={busy} onClick={() => setForm(emptyForm())}>
-          + 新建栏目
-        </button>
-      </div>
+    <>
+      <AdminPageHeader
+        eyebrow={
+          <>
+            <FolderOpen aria-hidden="true" />
+            内容结构
+          </>
+        }
+        title="栏目管理"
+        subtitle="管理二级分类层级、启用状态与发文规则。删除前需清空该栏目下的文章与子栏目。"
+        actions={
+          <button
+            type="button"
+            className="btn btn-primary"
+            disabled={busy}
+            onClick={() => setForm(emptyForm())}
+          >
+            + 新建栏目
+          </button>
+        }
+      />
 
-      {initialCategories.length === 0 && (
-        <div className="text-center text-muted py-5">暂无栏目</div>
-      )}
-      {initialCategories.map((root) => (
-        <div key={root.id}>
-          {renderRow(root, false)}
-          {(root.children ?? []).map((c) => renderRow(c, true))}
-        </div>
-      ))}
+      <div className="admin-category-list">
+        {initialCategories.length === 0 && (
+          <AdminEmpty
+            icon={FolderOpen}
+            title="暂无栏目"
+            description="创建第一个栏目，用它组织文章与子栏目。"
+          />
+        )}
+        {initialCategories.map((root, i) => (
+          <Fragment key={root.id}>
+            {renderRow(root, false, i)}
+            {(root.children ?? []).map((c) => renderRow(c, true, i))}
+          </Fragment>
+        ))}
+      </div>
 
       {form && (
         <div className="modal-overlay show" onClick={() => !busy && setForm(null)}>
@@ -295,126 +377,110 @@ export default function AdminCategoryEditor({ initialCategories, initialParents 
             <div className="modal-content">
               <div className="modal-header">
                 <h3 className="modal-title">{form.id == null ? '新建栏目' : '编辑栏目'}</h3>
-                <button type="button" className="btn-close" disabled={busy} onClick={() => setForm(null)}>
-                  ×
-                </button>
+                <button
+                  type="button"
+                  className="btn-close"
+                  aria-label="关闭"
+                  disabled={busy}
+                  onClick={() => setForm(null)}
+                />
               </div>
               <div className="modal-body">
-                <div className="form-group">
-                  <label className="form-label">名称</label>
-                  <input
-                    className="form-control"
-                    value={form.name}
-                    onChange={(e) => setForm({ ...form, name: e.target.value })}
-                  />
+                <div className="admin-cat-form">
+                  <div className="form-group">
+                    <label className="form-label">名称</label>
+                    <input
+                      className="form-control"
+                      value={form.name}
+                      onChange={(e) => setForm({ ...form, name: e.target.value })}
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">slug（唯一）</label>
+                    <input
+                      className="form-control"
+                      value={form.slug}
+                      disabled={form.slugLocked}
+                      onChange={(e) => setForm({ ...form, slug: e.target.value })}
+                    />
+                    {form.slugLocked && (
+                      <small className="admin-cat-hint">
+                        该栏目已有文章或子栏目，slug 不可修改（URL 标识，改名会断链）
+                      </small>
+                    )}
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">父栏目</label>
+                    {/* 父栏目仅可选一级栏目（二级层级，子栏目不可再作父级），
+                        选项文案与文章管理的栏目下拉同一格式，即「图标 名称」前缀；
+                        因无可选子级，不出现「　└ 名称」子项。 */}
+                    <select
+                      className="form-select"
+                      value={form.parentId}
+                      onChange={(e) => setForm({ ...form, parentId: e.target.value })}
+                    >
+                      <option value="">（一级栏目）</option>
+                      {initialParents
+                        .filter((p) => p.id !== form.id)
+                        .map((p) => (
+                          <option key={p.id} value={p.id}>
+                            {p.icon ? `${p.icon} ${p.name}` : p.name}
+                          </option>
+                        ))}
+                    </select>
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">图标（可选）</label>
+                    <input
+                      className="form-control"
+                      value={form.icon}
+                      onChange={(e) => setForm({ ...form, icon: e.target.value })}
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">排序权重</label>
+                    <input
+                      type="number"
+                      className="form-control"
+                      value={form.sortOrder}
+                      onChange={(e) => setForm({ ...form, sortOrder: e.target.value })}
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">描述（可选）</label>
+                    <input
+                      className="form-control"
+                      value={form.description}
+                      onChange={(e) => setForm({ ...form, description: e.target.value })}
+                    />
+                  </div>
                 </div>
-                <div className="form-group">
-                  <label className="form-label">slug（唯一）</label>
-                  <input
-                    className="form-control"
-                    value={form.slug}
-                    disabled={form.slugLocked}
-                    onChange={(e) => setForm({ ...form, slug: e.target.value })}
-                  />
-                  {form.slugLocked && (
-                    <small className="text-muted d-block mt-1">
-                      该栏目已有文章或子栏目，slug 不可修改（URL 标识，改名会断链）
-                    </small>
+
+                <div className="admin-cat-picks">
+                  {renderPickRow(form.isActive, (v) => setForm({ ...form, isActive: v }), '启用')}
+                  {renderPickRow(
+                    form.excludeFromAll,
+                    (v) => setForm({ ...form, excludeFromAll: v }),
+                    '从“全部文章”中排除'
+                  )}
+                  {renderPickRow(
+                    form.adminOnlyPosting,
+                    (v) => setForm({ ...form, adminOnlyPosting: v }),
+                    '仅管理员可发文'
+                  )}
+                  {renderPickRow(
+                    form.notifyAdminOnPost,
+                    (v) => setForm({ ...form, notifyAdminOnPost: v }),
+                    '发文时通知管理员'
+                  )}
+                  {renderPickRow(
+                    form.focusHidden,
+                    (v) => setForm({ ...form, focusHidden: v }),
+                    '专注模式隐藏（开启专注模式的用户看不到此栏目与子栏目）'
                   )}
                 </div>
-                <div className="form-group">
-                  <label className="form-label">父栏目</label>
-                  {/* 父栏目仅可选一级栏目（二级层级，子栏目不可再作父级），
-                      选项文案与文章管理的栏目下拉同一格式，即「图标 名称」前缀；
-                      因无可选子级，不出现「　└ 名称」子项。 */}
-                  <select
-                    className="form-select"
-                    value={form.parentId}
-                    onChange={(e) => setForm({ ...form, parentId: e.target.value })}
-                  >
-                    <option value="">（一级栏目）</option>
-                    {initialParents
-                      .filter((p) => p.id !== form.id)
-                      .map((p) => (
-                        <option key={p.id} value={p.id}>
-                          {p.icon ? `${p.icon} ${p.name}` : p.name}
-                        </option>
-                      ))}
-                  </select>
-                </div>
-                <div className="form-group">
-                  <label className="form-label">图标（可选）</label>
-                  <input
-                    className="form-control"
-                    value={form.icon}
-                    onChange={(e) => setForm({ ...form, icon: e.target.value })}
-                  />
-                </div>
-                <div className="form-group">
-                  <label className="form-label">排序权重</label>
-                  <input
-                    type="number"
-                    className="form-control"
-                    value={form.sortOrder}
-                    onChange={(e) => setForm({ ...form, sortOrder: e.target.value })}
-                  />
-                </div>
-                <div className="form-group">
-                  <label className="form-label">描述（可选）</label>
-                  <input
-                    className="form-control"
-                    value={form.description}
-                    onChange={(e) => setForm({ ...form, description: e.target.value })}
-                  />
-                </div>
 
-                <label className="d-flex align-items-center gap-2 mb-2">
-                  <input
-                    type="checkbox"
-                    className="form-check-input"
-                    checked={form.isActive}
-                    onChange={(e) => setForm({ ...form, isActive: e.target.checked })}
-                  />
-                  启用
-                </label>
-                <label className="d-flex align-items-center gap-2 mb-2">
-                  <input
-                    type="checkbox"
-                    className="form-check-input"
-                    checked={form.excludeFromAll}
-                    onChange={(e) => setForm({ ...form, excludeFromAll: e.target.checked })}
-                  />
-                  从“全部文章”中排除
-                </label>
-                <label className="d-flex align-items-center gap-2 mb-2">
-                  <input
-                    type="checkbox"
-                    className="form-check-input"
-                    checked={form.adminOnlyPosting}
-                    onChange={(e) => setForm({ ...form, adminOnlyPosting: e.target.checked })}
-                  />
-                  仅管理员可发文
-                </label>
-                <label className="d-flex align-items-center gap-2 mb-2">
-                  <input
-                    type="checkbox"
-                    className="form-check-input"
-                    checked={form.notifyAdminOnPost}
-                    onChange={(e) => setForm({ ...form, notifyAdminOnPost: e.target.checked })}
-                  />
-                  发文时通知管理员
-                </label>
-                <label className="d-flex align-items-center gap-2">
-                  <input
-                    type="checkbox"
-                    className="form-check-input"
-                    checked={form.focusHidden}
-                    onChange={(e) => setForm({ ...form, focusHidden: e.target.checked })}
-                  />
-                  专注模式隐藏（开启专注模式的用户看不到此栏目与子栏目）
-                </label>
-
-                {error && <p className="text-danger mt-3" style={{ fontSize: '.85rem' }}>{error}</p>}
+                {error && <p className="admin-cat-error">{error}</p>}
               </div>
               <div className="modal-footer">
                 <button type="button" className="btn btn-secondary" disabled={busy} onClick={() => setForm(null)}>
@@ -428,6 +494,6 @@ export default function AdminCategoryEditor({ initialCategories, initialParents 
           </div>
         </div>
       )}
-    </div>
+    </>
   );
 }

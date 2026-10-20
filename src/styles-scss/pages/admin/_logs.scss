@@ -1,0 +1,233 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// 日志检索（/admin/logs）与操作公示（/audit）共用的筛选面板 + 日志表几何。
+//
+// 两页都复用 pages/admin/_common.scss 的原语（.admin-filter-bar / .admin-field /
+// .admin-table / .admin-panel / .admin-empty / .admin-pager）。这里只补三块：
+//   · 筛选面板的两段式排布：主行（搜索 + 操作 + 总数）在上，带标签的字段网格在下；
+//   · 日志表的列宽与窄屏折卡细节（把行折成卡片本身由 .admin-table 的 data-label
+//     规则做，这里只解决「折完之后每格怎么排」）；
+//   · .admin-chip--muted —— _common.scss 的几档徽标之外，再补一档「无状态」占位。
+//
+// 断点只有两处（1099px / 360px），与下面的字段网格三档一一对应：
+//   ≥1100 → 3 列，768–1099 → 2 列，≤360 → 1 列。改一处记得两处一起改。
+// ─────────────────────────────────────────────────────────────────────────────
+
+// ---- 筛选面板：主行 ----
+.admin-filter__primary {
+  display: flex;
+  flex: 1 1 100%;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+
+  // 搜索框是这一行里唯一「越长越好」的控件，让它吃掉剩余宽度。
+  .admin-search {
+    flex: 1 1 260px;
+  }
+
+  // 按钮与搜索框同高（44px），否则主行里三者高矮不齐。
+  .btn {
+    min-height: 44px;
+    padding-inline: 22px;
+  }
+}
+
+// ---- 筛选面板：带标签的字段网格 ----
+.admin-filter__grid {
+  display: grid;
+  flex: 1 1 100%;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px 14px;
+  min-width: 0;
+}
+
+// ---- 结果总数 ----
+.admin-filter__total {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+  min-height: 34px;
+  padding: 4px 14px;
+  border-radius: 999px;
+  background: var(--color-background-subtle);
+  color: var(--color-text-secondary);
+  font-size: 0.82rem;
+  white-space: nowrap;
+
+  .numeric {
+    color: var(--color-text-primary);
+    font-weight: 700;
+  }
+}
+
+// ---- 日志表 ----
+// 宽屏是一张卡里的标准表格；窄屏由 .admin-table 把每行折成独立卡片，那时面板
+// 自己必须退出（见文件末尾的 media）—— 白卡叠白卡会让行与行的边界整个消失。
+.admin-log-panel {
+  padding: 8px 8px 0;
+  overflow: clip;
+}
+
+// 八列要挤进 1140px 的内容列：横向内距收一档（纵向沿用 .admin-table 的 12px）。
+// 只在宽屏生效 —— 窄屏折卡后每格是一整行，收内距只会让文字贴边。
+@media (min-width: 769px) {
+  .admin-log-table th,
+  .admin-log-table td {
+    padding-inline: 10px;
+  }
+}
+
+.admin-log-table__time {
+  // 日期时间折成两行会让整列高矮不一，扫读时容易串行。
+  white-space: nowrap;
+}
+
+// 每个单元格的内容都包一层。宽屏按块级流排（类型列的 chip 与细节因此在两行，
+// 列宽取较宽的那一行而不是两者之和）；窄屏折卡后由 media 切成 inline-flex 的
+// 一条右对齐值 —— 那一档要求「chip + 细节」同处一行。
+.admin-log-table__cell {
+  display: block;
+  min-width: 0;
+  max-width: 100%;
+}
+
+// 类型列的第二行（metadata 的说法，如「禁言 24 小时」）。
+.admin-log-table__detail {
+  display: block;
+  margin-top: 2px;
+  color: var(--color-text-secondary);
+  font-size: 0.8rem;
+  line-height: 1.5;
+}
+
+// 原因是自由文本（可含换行与长串）。只给上限、超出换行 —— 不限宽会把其余列挤成一条缝。
+.admin-log-table__reason {
+  max-width: 240px;
+  overflow-wrap: anywhere;
+  line-height: 1.55;
+}
+
+.admin-log-table__detail-link {
+  color: var(--color-brand-primary);
+  font-weight: 600;
+  white-space: nowrap;
+
+  &:focus-visible {
+    outline: none;
+    border-radius: 6px;
+    box-shadow: var(--shadow-focus-brand);
+  }
+}
+
+// ObjId 的 <details> 展开后是一整串 UUID —— 不 break 就会把窄屏卡片顶出横向滚动。
+.admin-log-table .obj-id {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.admin-log-table .obj-id details {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.admin-log-table .obj-id code {
+  display: inline-block;
+  max-width: 100%;
+  word-break: break-all;
+}
+
+// ---- 无状态占位 ----
+// 表格里「没有申诉 / 没有状态」那格写「—」。做成一枚透明底的弱化 chip 而不是
+// 一块灰药丸：一列里大半是它，有底色反而像「每条都有状态」。
+.admin-chip--muted {
+  padding-inline: 0;
+  background: transparent;
+  color: var(--color-text-secondary);
+  font-weight: 500;
+}
+
+// ---- 字段网格断点 ----
+@media (max-width: 1099px) {
+  .admin-filter__grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 768px) {
+  .admin-filter-bar {
+    padding: 14px;
+    border-radius: 22px;
+  }
+
+  // 面板退出：行卡自己带卡片底与 20px 圆角（_common.scss 的 .admin-table 规则），
+  // 这里再铺一层卡底只会让两者糊成一片。
+  .admin-log-panel {
+    padding: 0;
+    background: transparent;
+    border-radius: 0;
+    overflow: visible;
+  }
+
+  .admin-log-table {
+    td {
+      gap: 12px;
+      overflow-wrap: anywhere;
+    }
+
+    // 折卡后每行是「标签 + 值」两列。值统一靠右且允许收缩，长用户名 / 长原因
+    // 才不会把标签顶出屏幕（标签由 td::before 给，不受这段影响）。
+    td > span {
+      min-width: 0;
+      max-width: 76%;
+      text-align: right;
+    }
+
+    .admin-log-table__cell {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+      gap: 4px 8px;
+      max-width: 76%;
+    }
+
+    // 类型列在窄屏把「动作 chip + 内部标记 + 细节」收在同一行里（放不下时换行）：
+    // 宽屏那条 width:100% 在这里放开。
+    .admin-log-table__detail {
+      width: auto;
+      font-size: 0.78rem;
+    }
+
+    // 详情列没有标签，所以单独靠右；给个淡底胶囊，点起来的落点更明确。
+    td[data-label=''] {
+      justify-content: flex-end;
+    }
+
+    .admin-log-table__detail-link {
+      display: inline-flex;
+      align-items: center;
+      min-height: 34px;
+      padding-inline: 14px;
+      border-radius: 999px;
+      background: var(--color-brand-secondary);
+
+      &:hover {
+        background: var(--color-background-highlight);
+      }
+    }
+  }
+}
+
+@media (max-width: 360px) {
+  .admin-filter__grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .admin-filter__primary .btn {
+    flex: 1 1 auto;
+  }
+}
+
+// 这个文件没有自己的动画：筛选面板与表格面板的入场都来自 _common.scss 的
+// .admin-rise（那里已在 prefers-reduced-motion 下整体关掉）。

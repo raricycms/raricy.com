@@ -1,173 +1,940 @@
-// Shared admin layout styles
-// Hero, container, stats, filter bar, message container, batch actions
+@use '../../abstracts/mixins' as m;
+@use '../../abstracts/variables' as v;
 
+// ─────────────────────────────────────────────────────────────────────────────
+// 管理端共享视觉层（/admin/* 与 /audit 共用）
+//
+// 语言取自博客目录页：**胶囊 + 大圆角 + 一层层淡底**。具体约定：
+//   · 抬头 (.admin-hero) 不再是一条整幅色带，而是内容列顶部的一段「标题 + 说明 +
+//     操作」；檐沟只由外壳给（见 layout/_admin-sidebar.scss），所以抬头与下面的
+//     卡片左边缘天然对齐（page-gutter e2e 量的是 20px）。
+//   · 面板 (.admin-panel) 常态不描边、不托阴影，层级靠背景色阶。
+//   · 只有整块可点的卡才允许 hover 亮 --shadow-card-brand；这里的行卡不是整块
+//     可点的，选中态一律用品牌淡底，不画左侧竖条、不描边。
+//   · 所有动效统一 0.42s cubic-bezier(.22, 1, .36, 1)，与博客目录的展开节奏同源；
+//     prefers-reduced-motion 下整体关掉。
+// ─────────────────────────────────────────────────────────────────────────────
+
+// ---- 抬头 ----
 .admin-hero {
-  /* 横向 20px 与 .admin-container 的檐沟同值 —— 抬头与它下面那张内容列左边缘对齐。
-     ⚠️ 此前只有纵向内边距（`40px 0 28px`），而 /admin 的七个页面都是
-     `<section class="admin-hero"><h1>…</h1><p>…</p></section>` 直挂 <main> 上，
-     AdminShell 的 .admin-content 又是 padding: 0 —— 窄屏下标题与副标题左右顶到
-     屏幕边缘，而下面的卡片有 20px。这里只补内边距、不给 hero 加宽度上限：
-     hero 是有底色的整幅色带，收窄它等于把色带掐断（同 .story-hero）。 */
-  padding: 40px 20px 28px;
-  text-align: center;
-  background: var(--color-background-subtle);
-  border-bottom: 1px solid var(--color-border);
-
-  h1 {
-    margin-bottom: 6px;
-    font-weight: 700;
-    font-size: 1.6rem;
-    color: var(--color-text-primary);
-  }
-
-  p {
-    color: var(--color-text-secondary);
-    font-size: 0.95rem;
-  }
-}
-
-.admin-container {
-  max-width: 1400px;
-  margin: 32px auto;
-  padding: 0 20px;
-}
-
-// Stats
-.admin-stats {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 16px;
-  margin-bottom: 28px;
-}
-
-/* 统计卡。原先是「1px 描边 + 左侧 4px 彩色竖条」，两者都已按全站规范去掉。
-   现在**常态不描边、也不托阴影**：卡的边界改由卡片色与页面底的明度差分界
-   （与博客首页 .blog-item 同口径）。它是纯数字展示卡、整卡**不可点**，
-   所以连 hover 的阴影变化也一并去掉 —— 「整块可点」才是亮光晕的前提。
-   五个变体的区分改由「卡片淡底 + 数字同色」表达，
-   色值全部走主题令牌（原为写死的 #3b82f6 / #10b981 / #f59e0b / #8b5cf6 / #ef4444）。
-   ⚠️ 站内没有紫色语义令牌，--color-brand-secondary 与 --color-star-secondary
-   是仅有的两对可用暖/冷色，故 purple 与 blue 合并到品牌色系（图标与文案仍能区分）。 */
-.admin-stat-card {
-  background: var(--color-background-card);
-  border-radius: 20px;
-  padding: 20px;
-  border: none;
-  text-align: center;
-
-  &--blue,
-  &--purple {
-    background: var(--color-brand-secondary);
-    .admin-stat-card__number { color: var(--color-brand-primary); }
-  }
-  &--green {
-    background: var(--color-success-secondary);
-    .admin-stat-card__number { color: var(--color-success-primary); }
-  }
-  &--amber {
-    background: var(--color-star-secondary);
-    .admin-stat-card__number { color: var(--color-star-primary); }
-  }
-  &--red {
-    background: var(--color-warning-secondary);
-    .admin-stat-card__number { color: var(--color-warning-primary); }
-  }
-}
-
-.admin-stat-card__number {
-  font-size: 2.2rem;
-  font-weight: 700;
-  margin-bottom: 6px;
-  color: var(--color-brand-primary);
-}
-
-.admin-stat-card__label {
-  font-size: 0.9rem;
-  color: var(--color-text-secondary);
-  font-weight: 500;
   display: flex;
+  flex-direction: column;
+  padding: 4px 0 22px;
+}
+
+.admin-hero__inner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px 20px;
+}
+
+.admin-hero__text {
+  flex: 1 1 260px;
+  min-width: 0;
+  animation: admin-rise 0.42s cubic-bezier(0.22, 1, 0.36, 1) backwards;
+}
+
+.admin-hero__eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 24px;
+  margin-bottom: 10px;
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: var(--color-brand-secondary);
+  color: var(--color-brand-primary);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+
+  svg {
+    width: 13px;
+    height: 13px;
+  }
+}
+
+.admin-hero h1 {
+  margin: 0 0 6px;
+  font-size: clamp(1.55rem, 2.4vw, 2rem);
+  font-weight: 700;
+  line-height: 1.25;
+  letter-spacing: -0.01em;
+  color: var(--color-text-primary);
+}
+
+.admin-hero p {
+  max-width: 72ch;
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: 0.94rem;
+  line-height: 1.6;
+}
+
+.admin-hero__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  animation: admin-rise 0.42s cubic-bezier(0.22, 1, 0.36, 1) 0.06s backwards;
+}
+
+// ---- 内容列 ----
+// 宽度与檐沟归外壳；这里只保留「一列内容」的语义。此前它自带
+// max-width:1400 + margin:32px auto + padding:0 20px，与外壳的檐沟叠加后
+// 抬头与卡片会差 20px（且组件根节点复用它时还会双份内缩）。
+.admin-container {
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  padding: 0;
+
+  + .admin-container {
+    margin-top: 16px;
+  }
+}
+
+// ---- 面板 ----
+.admin-panel {
+  padding: 24px;
+  background: var(--color-background-card);
+  border-radius: 30px;
+  animation: admin-rise 0.42s cubic-bezier(0.22, 1, 0.36, 1) backwards;
+
+  + .admin-panel {
+    margin-top: 16px;
+  }
+}
+
+.admin-panel--flush {
+  padding: 0;
+  overflow: clip;
+}
+
+.admin-section-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 16px;
+  margin-bottom: 18px;
+}
+
+.admin-section-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--color-text-primary);
+}
+
+.admin-section-count {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: var(--color-background-subtle);
+  color: var(--color-text-secondary);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.admin-section-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+// ---- 工具栏（筛选 / 搜索）----
+// 胶囊底座 + 吸顶，几何对齐博客目录的 .blog-filters：控件统一高 44px。
+.admin-toolbar {
+  --admin-control-height: 44px;
+  position: sticky;
+  top: calc(var(--navbar-height) + 12px);
+  z-index: 30;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 18px;
+  padding: 8px;
+  border-radius: 999px;
+  background: var(--color-background-card);
+  animation: admin-rise 0.42s cubic-bezier(0.22, 1, 0.36, 1) backwards;
+}
+
+.admin-toolbar__select {
+  flex: 0 1 210px;
+  min-width: 0;
+  height: var(--admin-control-height);
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
+.admin-toolbar__button {
+  flex: 0 0 auto;
+  min-height: var(--admin-control-height);
+  padding-inline: 22px;
+}
+
+.admin-toolbar__hint {
+  margin-left: auto;
+  padding-inline: 8px;
+  color: var(--color-text-secondary);
+  font-size: 0.85rem;
+  white-space: nowrap;
+}
+
+// 胶囊搜索框：左侧图标 + 内嵌输入。输入框本身与全站 .search-input 同一套
+// 外观（无边框 / 页面底 / 聚焦光晕），这里只补图标位与定高。
+.admin-search {
+  position: relative;
+  display: flex;
+  flex: 1 1 220px;
+  align-items: center;
+  min-width: 0;
+  height: var(--admin-control-height, 44px);
+}
+
+.admin-search__icon {
+  position: absolute;
+  left: 15px;
+  display: grid;
+  place-items: center;
+  color: var(--color-text-secondary);
+  pointer-events: none;
+
+  svg {
+    width: 16px;
+    height: 16px;
+  }
+}
+
+.admin-search__input {
+  width: 100%;
+  height: 100%;
+  padding: 0 16px 0 40px;
+  border: none;
+  border-radius: 999px;
+  background: var(--color-background-page);
+  color: var(--color-text-primary);
+  font-size: 0.92rem;
+  transition: box-shadow 0.2s ease;
+
+  &:focus {
+    outline: none;
+    box-shadow: var(--shadow-focus-brand);
+  }
+
+  &::placeholder {
+    color: var(--color-text-secondary);
+  }
+}
+
+// ---- 分段胶囊（N 选 1 的切页档，不用滑块）----
+.admin-seg {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  padding: 4px;
+  border-radius: 999px;
+  background: var(--color-background-page);
+}
+
+.admin-seg__btn {
+  @include m.btn-tab;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 6px;
+  min-height: 36px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  font-size: 0.85rem;
+  white-space: nowrap;
+
+  .numeric {
+    font-weight: 700;
+  }
 }
 
-// Inline stats bar (used on articles page)
-.admin-stats-bar {
+// ---- 字段（带标签的筛选网格）----
+.admin-field {
   display: flex;
-  gap: 16px;
-  margin-bottom: 20px;
-  flex-wrap: wrap;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
 }
 
-// 同 .admin-stat-card：常态不描边、不托阴影，边界靠卡片色与页面底的明度差。
-.admin-stat-item {
-  background: var(--color-background-card);
-  padding: 14px 20px;
-  border-radius: 8px;
-  text-align: center;
-  min-width: 110px;
-
-  &__number {
-    font-size: 1.4rem;
-    font-weight: 600;
-    color: var(--color-brand-primary);
-  }
-
-  &__label {
-    font-size: 0.85rem;
-    color: var(--color-text-secondary);
-    margin-top: 4px;
-  }
+.admin-field__label {
+  padding-left: 4px;
+  color: var(--color-text-secondary);
+  font-size: 0.76rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
 }
 
-// Filter bar
-// 容器卡：去描边、去常态阴影（全站卡片口径）。框里的 select / input 自带控件
-// 边界，不靠这条外框区分。
+.admin-field__control {
+  width: 100%;
+  min-height: 44px;
+}
+
+// ---- 筛选面板（非吸顶的字段区）----
+// 日志检索 / 操作公示这类字段多、需要标签的页面用它；几何细节由各页覆写。
 .admin-filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 13px;
+  margin-bottom: 16px;
+  padding: 18px;
   background: var(--color-background-card);
-  padding: 20px;
-  border-radius: 8px;
-  margin-bottom: 20px;
+  border-radius: 24px;
+  animation: admin-rise 0.42s cubic-bezier(0.22, 1, 0.36, 1) backwards;
 }
 
-// Fixed message container
-.admin-message-container {
-  position: fixed;
-  top: 20px;
-  right: 20px;
-  z-index: 9999;
-  min-width: 300px;
-}
-
-// Batch actions bar
-// 常驻提示条：info 淡蓝底色已足以把它从页面底上分出来，去掉那条
-// border-highlight 描边 —— 全站卡片一律不描边。
-.admin-batch-actions {
-  background: var(--color-info-secondary);
-  padding: 14px 20px;
-  border-radius: 8px;
-  margin-bottom: 20px;
-  display: none;
-
-  &.is-visible {
-    display: block;
-  }
-}
-
-// Pagination
 .admin-pagination {
   display: flex;
   justify-content: center;
-  margin-top: 28px;
+  margin-top: 24px;
 }
 
-// Responsive
-@media (max-width: 768px) {
-  .admin-stats {
-    grid-template-columns: repeat(2, 1fr);
+// ---- 选择控件（圆形勾选点）----
+// 原生 input 只在可访问性树里（视觉隐藏、仍可聚焦），可见的是一枚圆形指示器：
+// 未选中为内容底色，选中转品牌实底 + 白色对勾，勾的缩放/淡入与卡片底色同步。
+.admin-pick {
+  position: relative;
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  cursor: pointer;
+}
+
+.admin-pick__input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.admin-pick__box {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--color-background-content);
+  color: #fff;
+  transition: background-color 0.25s ease, box-shadow 0.25s ease;
+
+  svg {
+    width: 13px;
+    height: 13px;
+    opacity: 0;
+    transform: scale(0.4);
+    transition: opacity 0.2s ease, transform 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+}
+
+.admin-pick:hover .admin-pick__box {
+  background: var(--color-brand-secondary);
+}
+
+.admin-pick__input:checked + .admin-pick__box {
+  background: var(--color-brand-primary);
+
+  svg {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.admin-pick__input:focus-visible + .admin-pick__box {
+  box-shadow: var(--shadow-focus-brand);
+}
+
+.admin-pick__input:disabled + .admin-pick__box {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+// ---- 行卡（文章 / 栏目 / 申诉等列表的公共骨架）----
+.admin-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 16px 18px;
+  background: var(--color-background-card);
+  border-radius: 22px;
+  transition: background-color 0.25s ease;
+  animation: admin-rise 0.42s cubic-bezier(0.22, 1, 0.36, 1) backwards;
+  // 延迟封顶：一页 20 行时末行不该等到 ~0.9s 才落定。
+  animation-delay: calc(min(var(--i, 0), 8) * 26ms);
+
+  + .admin-row {
+    margin-top: 10px;
   }
 
-  .admin-stats-bar {
-    justify-content: center;
+  &.is-selected {
+    background: var(--color-brand-secondary);
+  }
+}
+
+.admin-row__pick {
+  display: flex;
+  align-items: center;
+  min-height: 26px;
+}
+
+.admin-row__main {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.admin-row__title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  margin-bottom: 6px;
+  font-size: 1.02rem;
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--color-text-primary);
+  overflow-wrap: anywhere;
+}
+
+.admin-row__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 14px;
+  margin-bottom: 6px;
+  color: var(--color-text-secondary);
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+
+.admin-row__stat {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  line-height: 1;
+
+  svg {
+    width: 14px;
+    height: 14px;
+    flex: none;
+  }
+
+  .numeric {
+    font-size: 0.82rem;
+    line-height: 1;
+  }
+}
+
+.admin-row__id {
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--color-background-subtle);
+  color: var(--color-text-secondary);
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  line-height: 1.6;
+}
+
+.admin-row__desc {
+  display: -webkit-box;
+  margin: 0;
+  overflow: hidden;
+  color: var(--color-text-secondary);
+  font-size: 0.86rem;
+  line-height: 1.6;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow-wrap: anywhere;
+}
+
+.admin-row__side {
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+  max-width: 280px;
+}
+
+.admin-row__side-chips {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.admin-row__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+// ---- 徽标 ----
+.admin-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 24px;
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: var(--color-background-subtle);
+  color: var(--color-text-secondary);
+  font-size: 0.74rem;
+  font-weight: 600;
+  line-height: 1.5;
+  white-space: nowrap;
+
+  svg {
+    width: 12px;
+    height: 12px;
+    flex: none;
+  }
+
+  &--brand {
+    background: var(--color-brand-secondary);
+    color: var(--color-brand-primary);
+  }
+
+  &--blue {
+    background: var(--color-accent-blue-soft);
+    color: var(--color-accent-blue);
+  }
+
+  &--amber {
+    background: var(--color-accent-amber-soft);
+    color: var(--color-accent-amber);
+  }
+
+  &--violet {
+    background: var(--color-accent-violet-soft);
+    color: var(--color-accent-violet);
+  }
+
+  &--success {
+    background: var(--color-success-secondary);
+    color: var(--color-success-primary);
+  }
+
+  &--warning {
+    background: var(--color-warning-secondary);
+    color: var(--color-warning-primary);
+  }
+
+  // 「精选」用分类强调色的琥珀，**不借 --color-star-***：那一对是收藏夹五角星的
+  // 专用语义色（docs/frontend-styles §2.1 / §6.7），只该在「已收藏」与 hover 时出现。
+  &--featured {
+    background: var(--color-accent-amber-soft);
+    color: var(--color-accent-amber);
+  }
+}
+
+// ---- 列表头（数量 / 选择）----
+.admin-list-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin: 0 4px 10px;
+  color: var(--color-text-secondary);
+  font-size: 0.85rem;
+}
+
+.admin-list-head__actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+}
+
+.admin-list-head__btn {
+  @include m.btn-secondary;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-size: 0.82rem;
+
+  svg {
+    width: 14px;
+    height: 14px;
+  }
+}
+
+// ---- 空态 ----
+.admin-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 48px 20px;
+  background: var(--color-background-card);
+  border-radius: 24px;
+  text-align: center;
+}
+
+.admin-empty__icon {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  margin-bottom: 2px;
+  border-radius: 50%;
+  background: var(--color-background-subtle);
+  color: var(--color-text-secondary);
+
+  svg {
+    width: 20px;
+    height: 20px;
+  }
+}
+
+.admin-empty__title {
+  margin: 0;
+  color: var(--color-text-primary);
+  font-size: 0.98rem;
+  font-weight: 600;
+}
+
+.admin-empty__desc {
+  max-width: 42ch;
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: 0.86rem;
+  line-height: 1.6;
+}
+
+// ---- 批量操作底座（浮动胶囊）----
+.admin-dock {
+  position: fixed;
+  z-index: 90;
+  left: 50%;
+  bottom: calc(20px + var(--safe-bottom));
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 8px 10px;
+  width: max-content;
+  max-width: min(760px, calc(100vw - 32px));
+  padding: 10px 12px 10px 18px;
+  border-radius: 999px;
+  background: var(--color-background-card);
+  box-shadow: var(--shadow-card-brand);
+  transform: translateX(-50%);
+  animation: admin-dock-in 0.32s cubic-bezier(0.22, 1, 0.36, 1) backwards;
+}
+
+.admin-dock__count {
+  color: var(--color-text-secondary);
+  font-size: 0.86rem;
+  font-weight: 500;
+
+  .numeric {
+    color: var(--color-text-primary);
+    font-weight: 700;
+  }
+}
+
+.admin-dock__select {
+  flex: 0 1 200px;
+  min-width: 0;
+  min-height: 40px;
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
+.admin-dock__btn {
+  flex: 0 0 auto;
+  min-height: 40px;
+  padding-inline: 18px;
+}
+
+// 底座浮在页面之上 —— 列表末尾留出一条空白，避免它压住最后一页的页码。
+.admin-dock-spacer {
+  height: 88px;
+}
+
+// ---- 分页 ----
+.admin-pager {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  margin-top: 26px;
+}
+
+.admin-pager__link {
+  @include m.btn-tab;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 36px;
+  min-height: 36px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  color: var(--color-text-secondary);
+  font-size: 0.85rem;
+  text-decoration: none;
+
+  &:hover {
+    text-decoration: none;
+  }
+
+  &.is-active {
+    background: var(--color-brand-secondary);
+    color: var(--color-brand-primary);
+    font-weight: 700;
+  }
+
+  svg {
+    width: 15px;
+    height: 15px;
+  }
+}
+
+.admin-pager__gap {
+  min-width: 24px;
+  color: var(--color-text-secondary);
+  font-size: 0.85rem;
+  text-align: center;
+}
+
+// ---- 数据表（窄屏整行变成卡片）----
+// 原生 <table> 在 390px 下必然横向溢出；这里不改 DOM，只按 data-label 把每一行
+// 折成一张两列小卡。宽屏仍是标准表。
+.admin-table-scroll {
+  overflow-x: auto;
+}
+
+.admin-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.88rem;
+}
+
+.admin-table th,
+.admin-table td {
+  padding: 12px 14px;
+  text-align: left;
+  vertical-align: top;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.admin-table th {
+  color: var(--color-text-secondary);
+  font-size: 0.74rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+.admin-table tbody tr {
+  transition: background-color 0.2s ease;
+}
+
+.admin-table tbody tr:hover {
+  background: var(--color-background-subtle);
+}
+
+@media (max-width: 768px) {
+  .admin-table-scroll {
+    overflow: visible;
+  }
+
+  .admin-table {
+    display: block;
+    font-size: 0.85rem;
+  }
+
+  .admin-table thead {
+    display: none;
+  }
+
+  .admin-table tbody,
+  .admin-table tr,
+  .admin-table td {
+    display: block;
+  }
+
+  .admin-table tbody tr {
+    margin-bottom: 10px;
+    padding: 10px 14px;
+    background: var(--color-background-card);
+    border-radius: 20px;
+  }
+
+  .admin-table tbody tr:hover {
+    background: var(--color-background-card);
+  }
+
+  .admin-table td {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 14px;
+    padding: 5px 0;
+    border-bottom: none;
+    text-align: right;
+
+    &::before {
+      content: attr(data-label);
+      flex: none;
+      color: var(--color-text-secondary);
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-align: left;
+    }
+
+    &[data-label='']::before {
+      content: none;
+    }
+  }
+}
+
+// ---- 入场动画 ----
+@keyframes admin-rise {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes admin-dock-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 14px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+
+// ---- 响应式 ----
+@media (max-width: 900px) {
+  .admin-hero {
+    padding: 2px 0 18px;
+  }
+
+  .admin-hero__actions {
+    width: 100%;
+  }
+
+  .admin-panel {
+    padding: 18px;
+    border-radius: 24px;
+  }
+
+  // 移动端有两条吸顶：侧栏胶囊标签带（top: navbar，约 51px 高）与筛选工具栏。
+  // 工具栏必须停在标签带**下方**，只差 8px 的话滚动起来会把它盖住，导航等于消失。
+  .admin-toolbar {
+    top: calc(var(--navbar-height) + 58px);
+    border-radius: 26px;
+  }
+}
+
+@media (max-width: 768px) {
+  .admin-search {
+    flex-basis: 100%;
+  }
+
+  .admin-toolbar__select {
+    flex: 1 1 180px;
+  }
+
+  .admin-toolbar__button {
+    flex: 1 1 auto;
+  }
+
+  .admin-toolbar__hint {
+    margin-left: 0;
+  }
+
+  .admin-row {
+    flex-wrap: wrap;
+    padding: 14px;
+    border-radius: 20px;
+  }
+
+  .admin-row__pick {
+    align-self: flex-start;
+  }
+
+  .admin-row__side {
+    align-items: stretch;
+    width: 100%;
+    max-width: none;
+    padding-top: 2px;
+  }
+
+  .admin-row__side-chips,
+  .admin-row__actions {
+    justify-content: flex-start;
+  }
+
+  .admin-dock {
+    left: 16px;
+    right: 16px;
+    width: auto;
+    max-width: none;
+    padding: 12px;
+    border-radius: 24px;
+    transform: none;
+    animation-name: admin-dock-in-mobile;
+  }
+
+  .admin-dock__select {
+    flex: 1 1 100%;
+  }
+
+  .admin-dock__btn {
+    flex: 1 1 auto;
+  }
+}
+
+@keyframes admin-dock-in-mobile {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .admin-hero__text,
+  .admin-hero__actions,
+  .admin-panel,
+  .admin-toolbar,
+  .admin-row,
+  .admin-dock {
+    animation: none;
   }
 }

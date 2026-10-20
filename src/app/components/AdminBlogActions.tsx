@@ -2,14 +2,18 @@
 
 // ─────────────────────────────────────────────────────────────────────────────
 // AdminBlogActions — 文章列表单行的操作簇：
-//   栏目下拉（category-select）+ 查看 + 设为精选/取消精选。
-//   改栏目 / 切精选走 PATCH /api/admin/blogs/:id，成功后 router.refresh() 让服务端重渲染，
-//   效果与就地更新 current-category / featured-flag 相同。
+//   栏目下拉 + 查看 + 编辑 + 设为精选 / 取消精选。
+//   改栏目 / 切精选走 PATCH /api/admin/blogs/:id，成功后 router.refresh() 让服务端
+//   重渲染，效果与就地更新分类徽标 / 精选标记相同。
+//
+// ⚠️ 栏目下拉的「未分类」用 'none' 作值：旧实现里「选择栏目」与「设为未分类」
+//   都是 value=""，受控 select 永远匹配第一条，第二项等于点不到。
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { Eye, Pencil, Star, StarOff } from 'lucide-react';
 
 export interface CategoryOpt {
   id: number;
@@ -17,8 +21,6 @@ export interface CategoryOpt {
 }
 
 // 栏目下拉数据：按父栏目分组的 <optgroup>。
-//   label   = 父栏目「图标 名称」（optgroup 标题）
-//   options = 父栏目自身（图标 名称）+ 其子栏目（　└ 图标 名称）
 export interface CategoryGroup {
   label: string;
   options: CategoryOpt[];
@@ -69,18 +71,19 @@ export default function AdminBlogActions({
   }
 
   return (
-    <>
+    <div className="admin-blog-actions">
       <select
-        className="form-select category-select"
+        className="form-select admin-blog-actions__select"
         data-article-id={blogId}
-        value={initialCategoryId ?? ''}
+        value={initialCategoryId ?? 'none'}
         disabled={busy}
+        aria-label="文章栏目"
         onChange={(e) => {
           const v = e.target.value;
-          patch({ categoryId: v === '' ? null : Number(v) });
+          patch({ categoryId: v === 'none' ? null : Number(v) });
         }}
       >
-        <option value="">选择栏目</option>
+        <option value="none">未分类</option>
         {categoryGroups.map((g) => (
           <optgroup key={g.label} label={g.label}>
             {g.options.map((c) => (
@@ -92,23 +95,31 @@ export default function AdminBlogActions({
         ))}
       </select>
 
-      <div className="d-flex gap-1">
-        <Link href={`/blog/${blogId}`} className="btn btn-sm btn-outline-primary" target="_blank">
+      <div className="admin-blog-actions__buttons">
+        <Link
+          href={`/blog/${blogId}`}
+          className="admin-blog-actions__btn"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          <Eye aria-hidden="true" />
           查看
         </Link>
-        {/* 「编辑」按钮 → /blog/<id>/edit */}
-        <Link href={`/blog/${blogId}/edit`} className="btn btn-sm btn-outline-secondary">
+        <Link href={`/blog/${blogId}/edit`} className="admin-blog-actions__btn">
+          <Pencil aria-hidden="true" />
           编辑
         </Link>
         <button
-          className="btn btn-sm btn-outline-secondary"
+          type="button"
+          className={`admin-blog-actions__btn${initialFeatured ? ' is-active' : ''}`}
           data-article-id={blogId}
           disabled={busy}
           onClick={() => patch({ isFeatured: !initialFeatured })}
         >
+          {initialFeatured ? <StarOff aria-hidden="true" /> : <Star aria-hidden="true" />}
           {initialFeatured ? '取消精选' : '设为精选'}
         </button>
       </div>
-    </>
+    </div>
   );
 }

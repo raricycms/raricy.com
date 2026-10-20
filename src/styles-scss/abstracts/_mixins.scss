@@ -125,6 +125,50 @@
   }
 }
 
+// ── 字段表面 / 展开面板 ─────────────────────────────────────────────────────
+//
+// 单行字段（`input.form-control` / `select.form-select` / 自定义下拉的触发钮）共用
+// 同一套表面：无边框 + 页面底色 + 聚焦光晕。**只统一表面，不统一尺寸与圆角** ——
+// 圆角按「内部元素是否只有一行文字」判（见 components/_form-controls.scss 文件头）。
+@mixin field-surface {
+  border: none;
+  color: var(--color-text-primary);
+  background-color: var(--color-background-page);
+  transition: box-shadow .2s ease;
+
+  // 聚焦反馈只用 box-shadow：border 会参与布局，字段随焦点长高、下方内容位移。
+  &:focus {
+    outline: 0;
+    box-shadow: var(--shadow-focus-brand);
+  }
+
+  &::placeholder {
+    color: var(--color-text-secondary);
+  }
+}
+
+// 「展开面板」的共享动画：grid-template-rows 0fr → 1fr 按**实际内容高度**伸展。
+// 博客目录的栏目下拉（外壳 / 二级子组）与通用下拉 ExpandSelect 共用这一份节奏，
+// 时长与缓动对齐用户菜单（420ms / cubic-bezier(.22, 1, .36, 1)）。
+// 调用方负责给内层 `min-height: 0; overflow: hidden` 的裁剪壳。
+@mixin expand-panel($duration: .42s, $easing: cubic-bezier(.22, 1, .36, 1)) {
+  display: grid;
+  grid-template-rows: 0fr;
+  visibility: hidden;
+  transition: grid-template-rows $duration $easing, visibility 0s $duration;
+
+  @media (prefers-reduced-motion: reduce) {
+    transition: none;
+  }
+}
+
+/// 展开态。`transition-delay: 0s` 让 visibility 立刻切到可见（收起时则等动画走完）。
+@mixin expand-panel-open {
+  grid-template-rows: 1fr;
+  visibility: visible;
+  transition-delay: 0s;
+}
+
 // 容器宽度阶梯。顶栏（.site-container）与正文（.container）共用同一档，
 // 两者的左边缘才会对齐 —— 此前 .container 只在 ≥1200px 才有 max-width，
 // 992–1199px 区间正文是全幅、顶栏是 960px，一眼就能看出错位。

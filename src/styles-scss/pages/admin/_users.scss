@@ -1,67 +1,82 @@
-// Admin user management page
-// Extracted from inline <style> in auth/management.html
+// ─────────────────────────────────────────────────────────────────────────────
+// 用户管理页（/admin/users）
+//
+// 页面骨架交给 pages/admin/_common.scss 的共享原语：
+//   · 抬头 / 副标题 / 站长入口 → AdminPageHeader（.admin-hero）
+//   · 搜索条 → .admin-toolbar + .admin-search（吸顶胶囊，控件统一高 44px）
+//   · 列表外壳 → .admin-panel（卡片色 + 30px 圆角）
+//   · 「用户列表 + 本页数量」那一行 → .admin-section-head
+//   · 空态 → AdminEmpty（.admin-empty）、分页 → AdminPager（.admin-pager）
+// 这里只剩用户卡本身、它的动作簇，以及弹窗里原先写内联样式的两块。
+//
+// 卡片层级：面板是卡片色（--color-background-card），用户卡压深一档用内容色
+// （--color-background-content）—— 与全站「靠底色深浅分层」同一套做法，
+// 不描边、不托阴影（docs/frontend-styles.md §6.2）。整卡不可点，故没有 hover 光晕。
+//
+// 旧的 .management-card / .user-search-form / .user-search-input 已随改版删除：
+// 用户页改用 .admin-panel 与 .admin-toolbar，那三个类在 .tsx 里已无调用点。
+// ─────────────────────────────────────────────────────────────────────────────
 
-/* 后台面板卡（用户管理 / OAuth 应用页共用）。去描边 + 去常态阴影，层级靠卡片色深浅。 */
-.management-card {
-  margin-top: 20px;
-  padding: 30px;
-  border-radius: 8px;
-  background: var(--color-background-card);
-
-  /* ⚠️ 卡中卡：admin/oauth/page.tsx 的 <section class="management-card">（「已注册的
-     应用」那一块）里，渲染的是 ApplicationRow 的根节点 —— 它**自己也挂着
-     management-card**。两层同为卡片色，去掉描边后内层边界会彻底消失（同色叠同色，
-     明度差 0）。这里把内层压深一档，让它能读作「面板里的一张条目卡」。
-     根因是组件根复用了页面级容器类（同类问题见 docs/frontend-styles.md §12），
-     正解是把类名从 ApplicationRow 的根节点摘掉、由页面统一提供外壳 —— 那要动 .tsx，
-     不在本次样式改造范围内；这条规则是那一笔债的兜底，别当成冗余删掉。
-     注：page.tsx 里 `<ApplicationCreateForm />` 是**兄弟节点**不是子节点，
-     不受这条影响（它那层仍是卡片色）。 */
-  .management-card {
-    background: var(--color-background-content);
-  }
-}
-
-// User grid
+// ---- 用户卡网格 ----
+// 300px 起跳：390px 视口下自然是单列，宽屏内容列（约 1140px）能排三到四列还不挤。
 .user-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
-  gap: 16px;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 12px;
 }
 
 .user-card {
   display: flex;
   flex-direction: column;
-  padding: 20px;
-  border-radius: 8px;
-  /* 子卡嵌在卡片色的 .management-card 里：去描边后若仍用 --color-background-page，
-     它与父卡只差 2% 明度、边界就看不见了 —— 改用 --color-background-content 拉开层级。
-     整卡**不可点**，故连带删掉 hover 的黑阴影（全站已无任何黑色阴影）。 */
+  gap: 12px;
+  padding: 16px;
+  border-radius: 20px;
   background: var(--color-background-content);
 }
 
+// 头像 +「名称 / 角色 / 禁言中」那一行：宽度不够时整行自动折行。
+// 长用户名由 .user-card__username 自己 overflow-wrap，不会把卡片撑破。
 .user-card__top {
   display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-bottom: 12px;
   flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 12px;
+  min-width: 0;
+}
+
+.user-card__ident {
+  display: flex;
+  flex: 1 1 140px;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+  min-width: 0;
 }
 
 .user-card__username {
-  font-size: 1.05rem;
-  font-weight: 600;
+  min-width: 0;
   color: var(--color-text-primary);
+  font-size: 1rem;
+  font-weight: 600;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
 }
 
+// 角色档位的软胶囊。修饰类（--owner/--admin/--core/--user）与文字都由页面给，
+// 颜色统一走令牌 —— 原先 owner 与 admin 就是同一个红，这里保持原样，只换令牌。
+// ⚠️ 不要给这里再加「禁言中」：users/page.tsx 的禁言徽标走 .admin-chip--amber，
+// 两枚同类名并存会让 admin-role-buttons.spec.ts 的 `.user-card__role` 定位不再唯一。
 .user-card__role {
-  font-size: 0.8rem;
-  padding: 2px 8px;
-  border-radius: 4px;
-  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 0.74rem;
+  font-weight: 600;
+  line-height: 1.5;
+  white-space: nowrap;
 
-  /* 五个档位的色值全部换成令牌（原为写死的 Bootstrap 色，暗色下不跟着变）。
-     注意 owner 与 admin 在原实现里**是同一个红**，这里保持原样，只是换令牌。 */
   &--owner,
   &--admin {
     color: var(--color-warning-primary);
@@ -77,61 +92,81 @@
     color: var(--color-brand-primary);
     background: var(--color-brand-secondary);
   }
-
-  &--banned {
-    color: var(--color-accent-amber);
-    background: var(--color-accent-amber-soft);
-  }
 }
 
+// 40px（docs/frontend-styles.md §4.1 的落点台账）。这里那条 border-radius: 8%
+// 是冗余，别顺手删 —— 组件一旦被绕过，头像就会静默退回方角。
+// 尺寸写在 img 上是刻意的：.avatar 盒子不设宽高（见 components/_avatar.scss）。
 .user-card__avatar {
-  width: 28px;
-  height: 28px;
+  width: 40px;
+  height: 40px;
   border-radius: 8%;
   object-fit: cover;
 }
 
+// ---- 动作簇：一排紧凑胶囊 ----
+// 直接子选择器（>）是有意的：四个弹窗也渲染在同一个根节点里，选择器一撒开
+// 就会把弹窗底部的「取消 / 确认」一并压成 34px（弹窗按钮该是正常尺寸）。
 .user-card__buttons {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
+  margin-top: auto; // 同一排里的卡片高度不一时，操作区贴底对齐
 }
 
-// Search form
-.user-search-form {
-  margin-bottom: 20px;
-  display: flex;
-  gap: 8px;
-}
-
-/* 单行搜索 → 胶囊，与全站字段同一套外观。原为 4px 圆角 + 描边 + 卡片底色；
-   聚焦环是写死的 rgba(0,123,255,.25)（Bootstrap 蓝，不在主题体系内）。 */
-.user-search-input {
-  flex: 1;
-  max-width: 320px;
-  padding: 10px 16px;
-  border: none;
+.user-card__buttons > .btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-height: 34px;
+  padding: 5px 12px;
   border-radius: 999px;
-  font-size: 0.9rem;
-  background: var(--color-background-page);
-  color: var(--color-text-primary);
-  transition: box-shadow 0.2s ease;
+  font-size: 0.78rem;
+  line-height: 1.3;
+  white-space: nowrap;
 
-  &:focus {
-    outline: none;
-    box-shadow: var(--shadow-focus-brand);
-  }
-
-  &::placeholder {
-    color: var(--color-text-secondary);
+  svg {
+    width: 13px;
+    height: 13px;
+    flex: none;
   }
 }
 
-// Modal overlay (for ban/unban/notification modals)
-//
-// 与 components/_modal.scss 的 .modal 同一套「可滚弹窗」约定：内容比视口高时整层可滚，
-// 垂直定位交给子元素 margin:auto（flex 的 align-items:center 会把超高内容的顶部挤出
-// 可滚区域）。栏目编辑弹窗在 390×664 下高 823px，不加这两条「保存」按钮点不到。
+// ---- 弹窗内部（原先写内联样式的两块）----
+.user-modal-note {
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: 0.86rem;
+  line-height: 1.6;
+}
+
+// 禁言历史：弹窗正文里的一张内容色小卡，超高时自己滚（不把整个弹窗撑长）。
+.user-ban-history {
+  margin-top: 10px;
+  max-height: 400px;
+  padding: 14px;
+  overflow-y: auto;
+  border-radius: 16px;
+  background: var(--color-background-content);
+  font-size: 0.85rem;
+  line-height: 1.7;
+}
+
+.user-ban-history__item + .user-ban-history__item {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--color-border);
+}
+
+// ---- 弹窗外壳 ----
+// ⚠️ 这一段是**全站** .modal-overlay 的定义（components/_modal.scss 只补了安全区，
+// 并管着另一套 .modal）。讨论、图床 / 表情 / 帖子选择器、练手盘、栏目编辑等十来处
+// 都靠这一个类定位遮罩；components/_poster.scss 里还专门注明「定义在
+// pages/admin/_users.scss」。所以用户页改版**不能**顺手删它 ——
+// 删了这些弹窗会退化成页面流里的一块透明 div。
+// 与 .modal 同一套「可滚弹窗」约定：内容比视口高时整层可滚，垂直定位交给子元素
+// margin:auto（flex 的 align-items:center 会把超高内容的顶部挤出可滚区域）。
 .modal-overlay {
   position: fixed;
   top: 0;
@@ -153,22 +188,10 @@
 
 .modal-overlay .modal-dialog { margin: auto; }
 
-// Responsive
+// ---- 响应式 ----
 @media (max-width: 576px) {
-  .management-card {
-    padding: 16px;
-  }
-
-  .user-grid {
-    grid-template-columns: 1fr;
-    gap: 12px;
-  }
-
   .user-card {
     padding: 14px;
-  }
-
-  .user-card__username {
-    font-size: 1rem;
+    border-radius: 18px;
   }
 }

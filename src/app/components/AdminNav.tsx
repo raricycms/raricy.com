@@ -8,6 +8,7 @@ import {
   ClipboardList,
   FilePen,
   FolderOpen,
+  KeyRound,
   Megaphone,
   Scale,
   Users,
@@ -31,6 +32,7 @@ const NAV_ICONS: Record<string, LucideIcon> = {
   folder: FolderOpen,
   scale: Scale,
   list: ClipboardList,
+  key: KeyRound,
 };
 
 // 管理侧边栏导航 — admin-sidebar__nav 列表
@@ -42,16 +44,18 @@ export default function AdminNav({ items }: { items: AdminNavItem[] }) {
     item.exact ? pathname === item.href : pathname.startsWith(item.href);
 
   return (
-    <nav className="admin-sidebar__nav">
+    <nav className="admin-sidebar__nav" aria-label="管理导航">
       {items.map((item) => {
         const Icon = NAV_ICONS[item.icon];
+        const active = isActive(item);
         return (
           <Link
             key={item.href}
             href={item.href}
             className={`admin-sidebar__item${
-              isActive(item) ? ' admin-sidebar__item--active' : ''
+              active ? ' admin-sidebar__item--active' : ''
             }`}
+            aria-current={active ? 'page' : undefined}
           >
             <span className="admin-sidebar__icon" aria-hidden="true">
               {Icon ? <Icon /> : null}

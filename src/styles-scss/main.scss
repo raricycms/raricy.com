@@ -25,6 +25,8 @@
 @use 'components/table';
 @use 'components/alert';
 @use 'components/form-controls';
+// 列表型字段的展开下拉（博客表单 / 管理端筛选共用）。
+@use 'components/expand-select';
 @use 'components/toast';
 @use 'components/pagination';
 @use 'components/segmented';
@@ -81,11 +83,16 @@
 @use 'pages/docs';
 
 // Admin pages
+// 顺序：共享原语在前，各页覆写在後。新增管理页样式文件请登记在这里。
 @use 'pages/admin/common';
 @use 'pages/admin/dashboard';
 @use 'pages/admin/articles';
-@use 'pages/admin/notifications' as admin-notifications;
+@use 'pages/admin/logs';
 @use 'pages/admin/users';
+@use 'pages/admin/appeals';
+@use 'pages/admin/categories';
+@use 'pages/admin/broadcast';
+@use 'pages/admin/oauth-admin';
 @use 'pages/audit-logs';
 @use 'pages/fish';
 @use 'pages/fish-market';

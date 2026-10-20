@@ -1,5 +1,6 @@
 import { isOwner, hasAdminRights, isCoreUser, type SafeUser } from '@/lib/auth';
 import AdminNav, { type AdminNavItem } from '@/app/components/AdminNav';
+import { ShieldCheck } from 'lucide-react';
 
 // 管理端母版 — admin-layout / admin-sidebar / admin-content 三块布局
 //
@@ -34,6 +35,7 @@ export default function AdminShell({
           { href: '/admin/broadcast', label: '通知发送', icon: 'megaphone' },
           { href: '/admin/categories', label: '栏目管理', icon: 'folder' },
           { href: '/admin/appeals', label: '申诉管理', icon: 'scale' },
+          { href: '/admin/oauth', label: 'OAuth 应用', icon: 'key' },
         ] as AdminNavItem[])
       : []),
     ...(isCoreUser(user)
@@ -44,10 +46,21 @@ export default function AdminShell({
   return (
     <div className="admin-layout">
       <aside className="admin-sidebar">
-        <div className="admin-sidebar__brand">管理面板</div>
+        <div className="admin-sidebar__brand">
+          <span className="admin-sidebar__brand-mark" aria-hidden="true">
+            <ShieldCheck />
+          </span>
+          <span className="admin-sidebar__brand-text">
+            <span className="admin-sidebar__brand-title">管理面板</span>
+            <span className="admin-sidebar__brand-sub">Admin Console</span>
+          </span>
+        </div>
         <AdminNav items={items} />
       </aside>
-      <main className="admin-content">{children}</main>
+      {/* ⚠️ 这里不能再写 <main>：根 layout 已经把整页包在 <main> 里，嵌套两个
+          <main> 是无效的文档结构（屏幕阅读器会把地标念两遍）。这个位置只需要
+          「内容列」语义，用 <div>；page-gutter 用例取的 `main h1` 仍由根 main 兜住。 */}
+      <div className="admin-content">{children}</div>
     </div>
   );
 }

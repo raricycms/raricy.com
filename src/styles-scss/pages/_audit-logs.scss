@@ -1,4 +1,8 @@
-// Audit log pages
+// 管理操作日志的共用零件：/audit（公示）、/audit/<id>（详情）、/admin/logs 共用。
+//
+// 版面原语（.admin-filter-bar / .admin-field / .admin-table / .admin-panel …）在
+// pages/admin/_common.scss；筛选面板的两段式排布与日志表列细节在
+// pages/admin/_logs.scss。本文件只放「日志语义」相关的几枚零件。
 
 // 动作 chip：淡底 + 同色字（全站状态表达口径，不用左边框 / 不用描边环）。
 // 四档配色对应 src/lib/audit-actions.ts 的 AuditActionKind —— 惩罚=红 / 恢复=绿 /
@@ -33,107 +37,236 @@
   }
 }
 
-// 类型列里 chip 与「内部」徽标并排时留一点缝。
-.audit-chip + .status-badge {
-  margin-left: 6px;
+// 筛选面板的页面锚点。排布（主行 + 字段网格）由 pages/admin/_logs.scss 的
+// .admin-filter__primary / .admin-filter__grid 提供；旧版给每个控件写过
+// max-width（.form-select 220px / .form-control 240px），那套假设在网格列里
+// 只会留下无意义的空白，已删除。
+.audit-filter-bar {
+  align-items: stretch;
 }
 
-// 类型列的第二行（metadata 的说法，如「禁言 24 小时」）。
-.audit-cell__detail {
-  display: block;
-  font-size: 0.8rem;
-  color: var(--color-text-secondary);
-  margin-top: 2px;
+// /audit 只有四个字段：宽屏排 2×2，而不是沿用三列（3+1 会空出一整格）。
+// 768–1099 本来就是两列（见 _logs.scss 的断点），两边正好接上。
+@media (min-width: 1100px) {
+  .audit-filter-bar .admin-filter__grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
-.audit-cell__time {
+// 「只看我相关的」勾选项 —— 服务端 GET 表单里的原生 <input type="checkbox">。
+//
+// 不能直接用 AdminPick：那是客户端组件（要 onChange），而这里是纯服务端表单。
+// 所以用 appearance:none 把原生勾选框画成一枚圆形指示器：未选中是内容底色，
+// 选中转品牌实底；它仍然是原生 checkbox（键盘可达、随表单提交，不靠 JS）。
+// 焦点光晕挂在圆点上，与全站字段的聚焦反馈一致。
+.admin-filter-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 4px 14px 4px 10px;
+  border-radius: 999px;
+  background: var(--color-background-page);
   color: var(--color-text-secondary);
+  font-size: 0.85rem;
   white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+  transition: background-color 0.2s ease;
+
+  &:hover {
+    background: var(--color-background-subtle);
+  }
+
+  input[type='checkbox'] {
+    appearance: none;
+    flex: none;
+    width: 18px;
+    height: 18px;
+    margin: 0;
+    border-radius: 50%;
+    background: var(--color-background-content);
+    cursor: pointer;
+    transition: background-color 0.25s ease, box-shadow 0.25s ease;
+
+    &:checked {
+      background: var(--color-brand-primary);
+    }
+
+    &:focus-visible {
+      outline: none;
+      box-shadow: var(--shadow-focus-brand);
+    }
+  }
 }
 
-/* 空态。⚠️ `.table td` 是 (0,1,1)，单类修饰符 (0,1,0) 打不过它 ——
-   必须写成 `.table td.audit-table__empty` 才压得住那条 padding/border。 */
+// 空态。⚠️ `.table td` 是 (0,1,1)，单类修饰符 (0,1,0) 打不过它 ——
+// 必须写成 `.table td.audit-table__empty` 才压得住那条 padding/border。
+// 现行页面改用 <AdminEmpty>；这条留着是给其它表格（含旧结构）兜底，别删。
 .table td.audit-table__empty {
   text-align: center;
   padding: 24px;
   color: var(--color-text-secondary);
 }
 
-// 筛选条：排列只在这里，卡底/内边距来自 .admin-filter-bar。
-.audit-filter-bar {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  align-items: center;
-
-  .form-select {
-    max-width: 220px;
-  }
-
-  .form-control {
-    max-width: 240px;
-  }
-}
-
-.audit-filter-check {
+// 状态徽标（申诉管理、日志详情页仍在用；/audit 与 /admin/logs 已改走 .admin-chip）。
+// 全站状态一律「淡底 + 同色字」—— 原先这里还描一圈 --color-border，与无边框的
+// 卡片语言冲突，去掉；底色本身已经能把徽标和背景分开。
+.status-badge {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  font-size: 0.9rem;
-  color: var(--color-text-secondary);
-  cursor: pointer;
-}
-
-.audit-total {
-  margin-left: auto;
-  color: var(--color-text-secondary);
-  font-size: 0.85rem;
-}
-
-.status-badge {
-  display: inline-block;
-  font-size: 0.85rem;
-  padding: 2px 8px;
+  min-height: 24px;
+  padding: 2px 10px;
   border-radius: 999px;
-  border: 1px solid var(--color-border);
+  background: var(--color-background-subtle);
   color: var(--color-text-secondary);
-  line-height: 1.4;
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1.5;
+  white-space: nowrap;
 
-  /* 原为写死的绿 #198754 / 橙 #fd7e14 与各自的浅底 —— 暗色下不跟着变。 */
   &--reverted {
-    color: var(--color-success-primary);
-    border-color: transparent;
     background: var(--color-success-secondary);
+    color: var(--color-success-primary);
   }
 
   &--pending {
-    color: var(--color-accent-amber);
-    border-color: transparent;
     background: var(--color-accent-amber-soft);
+    color: var(--color-accent-amber);
   }
 
   /* 内部日志（CLI 写下的那批，visibility≠public）。只有 /admin/logs 用得上 ——
      公示页只列 public，永远不会出现这一档。 */
   &--internal {
-    color: var(--color-accent-amber);
-    border-color: transparent;
     background: var(--color-accent-amber-soft);
+    color: var(--color-accent-amber);
   }
 }
 
-// Reverted log row
+// 类型列的动作名（/audit/<id> 详情页用这一枚；列表页的动作已由 .audit-chip 承担）。
+.log-row__type {
+  color: var(--color-text-primary);
+  font-weight: 600;
+}
+
+// 已被申诉通过的日志行：整行压暗，状态列另有「已撤回」chip。
 .log-row--reverted {
   td {
     color: var(--color-text-secondary);
   }
+}
 
-  .log-row__type::after {
-    content: "（已撤回）";
-    /* 原为写死的 #198754 —— 深底上发闷（同文件上面的 .status-badge 早已令牌化，
-       只有这条 ::after 漏了）。 */
-    color: var(--color-success-primary);
-    margin-left: 4px;
-    font-weight: 500;
+// ── 详情页（/audit/<id>）────────────────────────────────────────────────────
+// 面板里再套一块「信息卡」是刻意的：.admin-panel 是卡片底色，再用卡片底色套一层
+// 就看不出边界了 —— 按全站色阶，卡内子块用 --color-background-content（见
+// docs/frontend-styles.md §6.2）。
+.audit-detail-card {
+  padding: 18px;
+  border-radius: 20px;
+  background: var(--color-background-content);
+}
+
+.audit-detail-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px 24px;
+  margin: 0;
+}
+
+.audit-detail-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+
+  dt {
+    color: var(--color-text-secondary);
+    font-size: 0.74rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+  }
+
+  dd {
+    margin: 0;
+    color: var(--color-text-primary);
+    font-size: 0.9rem;
+    line-height: 1.55;
+    overflow-wrap: anywhere;
+  }
+}
+
+// 详情里的对象 ID / 动作码：等宽 + 淡底，和 .obj-id 的 code 同一档。
+.audit-detail-list code {
+  padding: 1px 6px;
+  border-radius: 6px;
+  background: var(--color-background-card);
+  color: var(--color-text-primary);
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  overflow-wrap: anywhere;
+}
+
+// 申诉列表：沿用 .list-group 的行分隔与主题令牌，只把圆角与条目内距提到管理端的
+// 一档（默认 8px 圆角、8/12 内距在 30px 圆角的面板里显得碎）。
+.audit-appeal-list {
+  border-radius: 20px;
+}
+
+.audit-appeal-list .list-group-item {
+  padding: 14px 16px;
+}
+
+.audit-appeal__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 12px;
+}
+
+.audit-appeal__content {
+  margin-top: 6px;
+  color: var(--color-text-primary);
+  font-size: 0.9rem;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.audit-appeal__note {
+  margin-top: 6px;
+  color: var(--color-text-secondary);
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+
+.audit-appeal__time {
+  display: block;
+  margin-top: 6px;
+  color: var(--color-text-secondary);
+  font-size: 0.78rem;
+}
+
+// 提交申诉的表单卡：面板里的一块内容底色子块（同 .audit-detail-card）。
+.audit-appeal-form {
+  border-radius: 20px;
+  background: var(--color-background-content);
+}
+
+// 站长专属提示条夹在两个面板之间：面板之间靠 `+ .admin-panel` 的 16px 间隙，
+// 而 .alert 只有下外边距 —— 不给上边距会和上一块面板贴在一起。
+.audit-owner-hint {
+  margin-top: 16px;
+}
+
+@media (max-width: 768px) {
+  .audit-detail-card {
+    padding: 14px;
+  }
+
+  .audit-detail-list {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 12px;
   }
 }
 
@@ -163,5 +296,12 @@
     padding: 2px 6px;
     border-radius: 4px;
     border: 1px solid var(--color-border);
+  }
+}
+
+// 筛选面板在窄屏收一档内距（字段网格的断点本身在 pages/admin/_logs.scss）。
+@media (max-width: 768px) {
+  .admin-filter-check {
+    min-height: 40px;
   }
 }

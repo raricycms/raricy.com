@@ -1,112 +1,126 @@
-// Article management page
+@use '../../abstracts/mixins' as m;
 
-.article-card {
-  background: var(--color-background-card);
-  border-radius: 8px;
-  padding: 20px;
-  margin-bottom: 15px;
-  border: none;
-  /* transition 留给下面 .is-selected 的底色切换。整卡**不可点**：选中态由 JS 挂
-     .is-selected 类表达，不是 hover —— 所以这里没有「整卡可点 hover 亮光晕」那一档。
-     原先的常态 --shadow-xs 与 hover --shadow-sm 都是黑色阴影，已按全站口径退役。 */
-  transition: all 0.3s ease;
+// 文章管理页 —— 行卡骨架与筛选条走 pages/admin/_common.scss，
+// 这里只放「单行动作簇」与栏目管理 / 申诉页暂时还在用的 .article-card 兼容层。
 
-  /* 选中态原先靠左侧竖条变蓝表示；竖条已按全站规范去掉，改由整卡淡底承担
-     （与侧栏、分类栏的选中态同一套语言）。 */
-  &.is-selected {
-    background: var(--color-background-highlight);
-  }
-}
-
-.article-card__header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  margin-bottom: 10px;
-}
-
-.article-card__info {
-  flex: 1;
-  margin-right: 20px;
-}
-
-.article-card__title {
-  font-size: 1.2rem;
-  font-weight: 600;
-  margin-bottom: 5px;
-  color: var(--color-text-primary);
-}
-
-.article-card__meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 15px;
-  margin-bottom: 8px;
-  font-size: 0.9rem;
-  color: var(--color-text-secondary);
-}
-
-.article-card__desc {
-  color: var(--color-text-secondary);
-  font-size: 0.95rem;
-  line-height: 1.4;
-}
-
-.article-card__actions {
+.admin-blog-actions {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  min-width: 200px;
+  align-items: flex-end;
+  gap: 6px;
+  min-width: 0;
 }
 
-// Featured flag（精选标记）—— 走分类强调色的琥珀
-.featured-flag {
-  display: inline-block;
-  padding: 4px 10px;
-  border-radius: 999px;
-  background: var(--color-accent-amber-soft);
-  color: var(--color-accent-amber);
+.admin-blog-actions__select {
+  width: 100%;
+  min-height: 38px;
+  padding-top: 0;
+  padding-bottom: 0;
   font-size: 0.8rem;
-  align-self: flex-start;
 }
 
-// Category display badge
-.current-category {
-  padding: 6px 12px;
-  border-radius: 20px;
-  font-size: 0.85rem;
-  font-weight: 500;
-  white-space: nowrap;
+.admin-blog-actions__buttons {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
 
-  &.is-categorized {
-    background: var(--color-accent-blue-soft);
-    color: var(--color-accent-blue);
+// 行内小按钮：次级档的表面与三态，尺寸比 .btn-sm 更紧凑，一律胶囊。
+.admin-blog-actions__btn {
+  @include m.btn-secondary;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 34px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  text-decoration: none;
+
+  svg {
+    width: 13px;
+    height: 13px;
+    flex: none;
   }
 
-  &.is-uncategorized {
+  &.is-active {
     background: var(--color-accent-amber-soft);
     color: var(--color-accent-amber);
   }
 }
 
-// Category select in article card
-.category-select {
-  width: 100%;
-  font-size: 0.9rem;
+// ── 兼容层：栏目管理仍在用 .article-card 这一族。
+// 新页面的行卡请直接用 .admin-row（见 _common.scss）；这一页重做后本段可删。
+.article-card {
+  padding: 16px 18px;
+  background: var(--color-background-card);
+  border-radius: 22px;
+  animation: admin-rise 0.42s cubic-bezier(0.22, 1, 0.36, 1) backwards;
+
+  + .article-card {
+    margin-top: 10px;
+  }
+}
+
+.article-card__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.article-card__info {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.article-card__title {
+  margin-bottom: 5px;
+  color: var(--color-text-primary);
+  font-size: 1.02rem;
+  font-weight: 600;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.article-card__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 14px;
+  margin-bottom: 8px;
+  color: var(--color-text-secondary);
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+
+.article-card__desc {
+  color: var(--color-text-secondary);
+  font-size: 0.86rem;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
+.article-card__actions {
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+  min-width: 0;
+  max-width: 300px;
 }
 
 @media (max-width: 768px) {
   .article-card__header {
     flex-direction: column;
-    gap: 15px;
+    gap: 12px;
   }
 
   .article-card__actions {
-    min-width: auto;
+    align-items: flex-start;
     width: 100%;
-  }
-
-  .admin-filter-bar .row > div {
-    margin-bottom: 15px;
+    max-width: none;
   }
 }

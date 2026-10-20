@@ -2,8 +2,10 @@ import { requireAdmin } from '@/lib/guard';
 import { listAdminBlogs } from '@/lib/admin-blog-service';
 import { listCategoriesTree } from '@/lib/admin-category-service';
 import { categoryFullPath, ymd } from '@/lib/format';
+import AdminPageHeader from '@/app/components/AdminPageHeader';
 import AdminArticlesManager, { type ArticleRow } from '@/app/components/AdminArticlesManager';
 import type { CategoryGroup } from '@/app/components/AdminBlogActions';
+import { FilePen } from 'lucide-react';
 
 export const dynamic = 'force-dynamic';
 
@@ -32,7 +34,7 @@ type BlogRow = {
   category?: Parameters<typeof categoryFullPath>[0] | null;
 };
 
-// 文章栏目管理 — Fluent Design
+// 文章栏目管理
 //
 // 改栏目 / 精选 / 删文章都是管理动作，core 用户看不了 —— 父 layout 已放宽到 core+
 // （用户管理要用），这一档由页面自己把住。
@@ -90,10 +92,16 @@ export default async function AdminBlogsPage({
 
   return (
     <>
-      <section className="admin-hero">
-        <h1>文章栏目管理</h1>
-        <p>批量管理文章的栏目分配</p>
-      </section>
+      <AdminPageHeader
+        eyebrow={
+          <>
+            <FilePen aria-hidden="true" />
+            内容管理
+          </>
+        }
+        title="文章栏目管理"
+        subtitle="批量调整栏目、设为精选，或单篇查看与编辑"
+      />
 
       <AdminArticlesManager
         articles={articles}

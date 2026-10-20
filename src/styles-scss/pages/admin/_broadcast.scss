@@ -1,0 +1,264 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// 通知发送中心（/admin/broadcast）
+//
+// 一张 `.admin-panel` 装下整页工作台：顶部是 `.admin-seg` 的发送方式切换，
+// 下面是「选人 + 编写」两栏（≥992px 320px + 1fr；窄屏单列）。
+// 视觉口径与 _common.scss 一致：胶囊控件、无描边、层级靠背景色阶、动效走
+// admin-rise 节奏并在 reduced-motion 下关掉。
+// ─────────────────────────────────────────────────────────────────────────────
+
+.admin-broadcast-mode {
+  margin-bottom: 18px;
+}
+
+// ---- 指定用户：两栏 ----
+.admin-broadcast-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 18px;
+  min-width: 0;
+}
+
+.admin-broadcast-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+  padding: 14px;
+  // 面板本身是卡片色，内层子块压深一档（§6.2 的卡内子块档）。
+  background: var(--color-background-content);
+  border-radius: 22px;
+}
+
+.admin-broadcast-picker__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0 2px;
+}
+
+// `.admin-search` 是为**横向**工具栏写的（flex: 1 1 220px 指的是宽度）。
+// 放进这条纵向 flex 列里时，flex-basis 会作用在高度上 —— 搜索框长成 220px 高的
+// 椭圆。这里把它钉回一行高（44px），宽度占满。
+.admin-broadcast-picker .admin-search {
+  flex: 0 0 auto;
+  width: 100%;
+  height: 44px;
+}
+
+.admin-broadcast-picker__title {
+  margin: 0;
+  color: var(--color-text-primary);
+  font-size: 0.92rem;
+  font-weight: 600;
+}
+
+// 用户列表：固定最大高度内滚，不把整页撑高，也不出横向滚动条。
+.admin-user-list {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  max-height: 320px;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+
+.admin-user-list__empty {
+  margin: 0;
+  padding: 18px 8px;
+  color: var(--color-text-secondary);
+  font-size: 0.85rem;
+  text-align: center;
+}
+
+// 用户多到触发加载上限时的诚实说明（列表／搜索都只覆盖已加载的那部分）。
+.admin-user-list__note {
+  margin: 0;
+  padding: 0 2px;
+  color: var(--color-text-secondary);
+  font-size: 0.74rem;
+  line-height: 1.5;
+}
+
+// 单个用户行：整行是一颗按钮（键盘可达），选中用品牌淡底 + 对勾，不画竖条。
+.admin-user-pick {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 9px 10px;
+  border: none;
+  border-radius: 14px;
+  background: transparent;
+  color: var(--color-text-primary);
+  font-family: inherit;
+  font-size: 0.88rem;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+
+  &:hover {
+    background: var(--color-background-subtle);
+  }
+
+  &:focus-visible {
+    outline: none;
+    box-shadow: var(--shadow-focus-brand);
+  }
+
+  &.is-selected {
+    background: var(--color-brand-secondary);
+
+    .admin-user-pick__name {
+      color: var(--color-brand-primary);
+    }
+  }
+}
+
+.admin-user-pick__main {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.admin-user-pick__name {
+  color: var(--color-text-primary);
+  font-weight: 600;
+  line-height: 1.4;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-user-pick__email {
+  color: var(--color-text-secondary);
+  font-size: 0.74rem;
+  line-height: 1.4;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-user-pick__check {
+  display: grid;
+  place-items: center;
+  flex: none;
+  color: var(--color-brand-primary);
+
+  svg {
+    width: 16px;
+    height: 16px;
+  }
+}
+
+// ---- 表单 ----
+.admin-broadcast-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+
+  &--wide {
+    max-width: 760px;
+  }
+}
+
+// 两个字段并排；窄屏落成一列。
+.admin-broadcast-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px 14px;
+  min-width: 0;
+}
+
+.admin-broadcast-hint {
+  color: var(--color-text-secondary);
+  font-size: 0.76rem;
+  line-height: 1.5;
+}
+
+.admin-broadcast-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-top: 2px;
+}
+
+.admin-broadcast-result {
+  font-size: 0.85rem;
+  line-height: 1.5;
+
+  &.is-ok {
+    color: var(--color-success-primary);
+  }
+
+  &.is-error {
+    color: var(--color-warning-primary);
+  }
+}
+
+// ---- 群发预览卡 ----
+.admin-broadcast-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 16px 18px;
+  border-radius: 20px;
+  background: var(--color-background-highlight);
+}
+
+.admin-broadcast-preview__label {
+  color: var(--color-text-secondary);
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.admin-broadcast-preview__count {
+  color: var(--color-brand-primary);
+  font-size: 1.85rem;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.admin-broadcast-preview__caveat {
+  margin: 4px 0 0;
+  color: var(--color-text-secondary);
+  font-size: 0.78rem;
+  line-height: 1.5;
+}
+
+// 加载被截断时的补充说明：分组人数只是估算，不能当成全站口径。
+.admin-broadcast-preview__warn {
+  margin: 4px 0 0;
+  color: var(--color-warning-primary);
+  font-size: 0.74rem;
+  line-height: 1.5;
+}
+
+// ---- 响应式 ----
+@media (min-width: 992px) {
+  .admin-broadcast-grid {
+    grid-template-columns: 320px minmax(0, 1fr);
+    align-items: start;
+  }
+}
+
+@media (max-width: 768px) {
+  .admin-broadcast-fields {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .admin-user-list {
+    max-height: 320px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .admin-user-pick {
+    transition: none;
+  }
+}

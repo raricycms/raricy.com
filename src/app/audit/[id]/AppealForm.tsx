@@ -49,8 +49,8 @@ export default function AppealForm({ logId }: { logId: number }) {
   }
 
   return (
-    <div className="card p-3">
-      <h5 className="mb-2">提交申诉</h5>
+    <div className="card p-3 audit-appeal-form">
+      <h3 className="admin-section-title mb-2">提交申诉</h3>
       <textarea
         className="form-control mb-2"
         rows={3}

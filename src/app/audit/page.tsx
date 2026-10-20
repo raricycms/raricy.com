@@ -1,10 +1,14 @@
 import Link from 'next/link';
+import { Scale, Search, ScrollText } from 'lucide-react';
 import { requireCoreUser } from '@/lib/guard';
 import { listPublicLogs, PUBLIC_RANGE_DAYS } from '@/lib/audit-service';
 import { prisma } from '@/lib/db';
 import { ymdhms } from '@/lib/format';
-import { pageWindow } from '@/lib/page-window';
 import ObjId from '@/app/components/ObjId';
+import AdminPageHeader from '@/app/components/AdminPageHeader';
+import AdminEmpty from '@/app/components/AdminEmpty';
+import AdminPager from '@/app/components/AdminPager';
+import ExpandSelect, { type ExpandSelectGroup } from '@/app/components/ExpandSelect';
 import {
   AUDIT_ACTION_LABEL,
   AUDIT_GROUP_LABEL,
@@ -21,14 +25,21 @@ import {
 
 // 管理员操作公示（core+ 可见）。
 //
-// 筛选走原生 GET 表单（全仓其它筛选页一致），不再用客户端组件 —— 那个组件只为
-// 「动作下拉一改就自动提交」而存在，而筛选现在有六个字段。
+// 筛选走原生 GET 表单：控件是客户端 ExpandSelect（展开动画与博客目录同节奏），
+// 值经隐藏 input 随表单提交 —— 不引入「一改就自动提交」的客户端筛选状态。
 //
 // ⚠️ 两条被 e2e 钉住的东西别动：查询参数名 `?action=`（audit-detail.spec 靠它把
 // 结果集缩小到种子那几条）与每行的 `/audit/<id>` 详情链接。
 //
 // ⚠️ 时间窗上限是 30 天（listPublicLogs 的硬策略）—— 这里只提供「更近」两档，
 // 想翻更早的走 /admin/logs。
+//
+// 「只看我相关的」是**服务端表单里的原生 checkbox**：AdminPick 是客户端组件（要
+// onChange），这里没有交互层可用；样式由 _audit-logs.scss 的 .admin-filter-check
+// 用 appearance:none 画成圆形指示器，但仍随 GET 表单一起提交（name="mine"）。
+//
+// 窄屏时表格按 data-label 折成卡片；行内「已撤回」只由状态 chip 表达，行本身
+// 用 .log-row--reverted 压暗文字（revertedSet 是服务端按 accepted 申诉算出来的）。
 
 export const dynamic = 'force-dynamic';
 
@@ -43,6 +54,38 @@ interface SearchParams {
 }
 
 const GROUPS: AuditActionGroup[] = ['user', 'content', 'system'];
+
+// 与 /admin/logs 同一个形状：动作按 group 分块，其余为普通列表。
+const ACTION_GROUPS: ExpandSelectGroup[] = [
+  { options: [{ value: '', label: '全部动作' }] },
+  ...GROUPS.map((group) => ({
+    label: AUDIT_GROUP_LABEL[group],
+    options: PUBLIC_AUDIT_ACTIONS.filter((action) => actionGroup(action) === group).map(
+      (action) => ({ value: action, label: AUDIT_ACTION_LABEL[action] })
+    ),
+  })),
+];
+
+const TYPE_GROUPS: ExpandSelectGroup[] = [
+  {
+    options: [
+      { value: '', label: '全部对象' },
+      ...PUBLIC_AUDIT_OBJECT_TYPES.map((type) => ({
+        value: type,
+        label: objectTypeLabel(type) ?? type,
+      })),
+    ],
+  },
+];
+
+const RANGE_GROUPS: ExpandSelectGroup[] = [
+  {
+    options: PUBLIC_RANGE_DAYS.map((days) => ({
+      value: String(days),
+      label: `近 ${days} 天`,
+    })),
+  },
+];
 
 export default async function AuditPage({
   searchParams,
@@ -95,81 +138,38 @@ export default async function AuditPage({
 
   return (
     <>
-      <section className="admin-hero">
-        <h1>管理员操作公示</h1>
-        <p>站内管理动作的公开记录（近 30 天）· 被处置者可在此申诉</p>
-      </section>
+      <AdminPageHeader
+        eyebrow={
+          <>
+            <Scale aria-hidden="true" />
+            管理 · 公示
+          </>
+        }
+        title="管理员操作公示"
+        subtitle="站内管理动作的公开记录（近 30 天）· 被处置者可在此申诉"
+      />
 
       <div className="admin-container">
-        <div className="management-card">
-          <form method="GET" className="admin-filter-bar audit-filter-bar">
-            <select
-              name="action"
-              className="form-select"
-              aria-label="按动作筛选"
-              defaultValue={sp.action ?? ''}
-            >
-              <option value="">全部动作</option>
-              {GROUPS.map((g) => (
-                <optgroup key={g} label={AUDIT_GROUP_LABEL[g]}>
-                  {PUBLIC_AUDIT_ACTIONS.filter((a) => actionGroup(a) === g).map((a) => (
-                    <option key={a} value={a}>
-                      {AUDIT_ACTION_LABEL[a]}
-                    </option>
-                  ))}
-                </optgroup>
-              ))}
-            </select>
+        <form method="GET" className="admin-filter-bar audit-filter-bar">
+          <div className="admin-filter__primary">
+            <label className="admin-search">
+              <span className="admin-search__icon" aria-hidden="true">
+                <Search />
+              </span>
+              <input
+                type="search"
+                name="q"
+                className="admin-search__input"
+                placeholder="搜索原因 / 对象 ID…"
+                aria-label="按原因或对象 ID 搜索"
+                defaultValue={sp.q ?? ''}
+              />
+            </label>
 
-            <input
-              type="search"
-              name="q"
-              className="form-control"
-              aria-label="按原因或对象 ID 搜索"
-              placeholder="搜索原因 / 对象 ID…"
-              defaultValue={sp.q ?? ''}
-            />
-
-            <select
-              name="type"
-              className="form-select"
-              aria-label="按对象类型筛选"
-              defaultValue={sp.type ?? ''}
-            >
-              <option value="">全部对象</option>
-              {PUBLIC_AUDIT_OBJECT_TYPES.map((t) => (
-                <option key={t} value={t}>
-                  {objectTypeLabel(t) ?? t}
-                </option>
-              ))}
-            </select>
-
-            <input
-              type="search"
-              name="target"
-              className="form-control"
-              aria-label="按当事人用户名搜索"
-              placeholder="当事人用户名…"
-              defaultValue={sp.target ?? ''}
-            />
-
-            <label className="audit-filter-check">
+            <label className="admin-filter-check">
               <input type="checkbox" name="mine" value="1" defaultChecked={Boolean(sp.mine)} />
               只看我相关的
             </label>
-
-            <select
-              name="range"
-              className="form-select numeric"
-              aria-label="时间范围"
-              defaultValue={String(rangeDays)}
-            >
-              {PUBLIC_RANGE_DAYS.map((d) => (
-                <option key={d} value={d}>
-                  近 {d} 天
-                </option>
-              ))}
-            </select>
 
             <button type="submit" className="btn btn-primary">
               筛选
@@ -180,135 +180,177 @@ export default async function AuditPage({
               </Link>
             )}
 
-            <span className="audit-total numeric">共 {result.total} 条</span>
-          </form>
+            <span className="admin-filter__total">
+              <span className="numeric">{result.total}</span> 条
+            </span>
+          </div>
 
-          <div className="table-responsive">
-            <table className="table">
-              <thead>
-                <tr>
-                  <th>时间</th>
-                  <th>类型</th>
-                  <th>管理员</th>
-                  <th>对象</th>
-                  <th>原因</th>
-                  <th>状态</th>
-                  <th></th>
-                </tr>
-              </thead>
-              <tbody>
-                {result.items.length === 0 ? (
+          <div className="admin-filter__grid">
+            <div className="admin-field">
+              <label className="admin-field__label" htmlFor="audit-action">
+                动作
+              </label>
+              <ExpandSelect
+                id="audit-action"
+                name="action"
+                className="admin-field__control"
+                defaultValue={sp.action ?? ''}
+                groups={ACTION_GROUPS}
+              />
+            </div>
+
+            <div className="admin-field">
+              <label className="admin-field__label" htmlFor="audit-type">
+                对象类型
+              </label>
+              <ExpandSelect
+                id="audit-type"
+                name="type"
+                className="admin-field__control"
+                defaultValue={sp.type ?? ''}
+                groups={TYPE_GROUPS}
+              />
+            </div>
+
+            <div className="admin-field">
+              <label className="admin-field__label" htmlFor="audit-target">
+                当事人
+              </label>
+              <input
+                id="audit-target"
+                type="search"
+                name="target"
+                className="form-control admin-field__control"
+                placeholder="当事人用户名…"
+                defaultValue={sp.target ?? ''}
+              />
+            </div>
+
+            <div className="admin-field">
+              <label className="admin-field__label" htmlFor="audit-range">
+                时间范围
+              </label>
+              <ExpandSelect
+                id="audit-range"
+                name="range"
+                className="admin-field__control numeric"
+                defaultValue={String(rangeDays)}
+                groups={RANGE_GROUPS}
+              />
+            </div>
+          </div>
+        </form>
+
+        {result.items.length === 0 ? (
+          <AdminEmpty
+            icon={ScrollText}
+            title="没有符合条件的记录"
+            description="调整筛选条件后再试。"
+          />
+        ) : (
+          <div className="admin-panel admin-log-panel">
+            {/* data-label 是窄屏折卡的唯一依据（见 _common.scss 的 .admin-table 规则）。 */}
+            <div className="admin-table-scroll">
+              <table className="admin-table admin-log-table">
+                <thead>
                   <tr>
-                    <td colSpan={7} className="audit-table__empty">
-                      没有符合条件的记录
-                    </td>
+                    <th scope="col">时间</th>
+                    <th scope="col">类型</th>
+                    <th scope="col">管理员</th>
+                    <th scope="col">对象</th>
+                    <th scope="col">原因</th>
+                    <th scope="col">状态</th>
+                    <th scope="col">
+                      <span className="visually-hidden">详情</span>
+                    </th>
                   </tr>
-                ) : (
-                  result.items.map((log) => {
+                </thead>
+                <tbody>
+                  {result.items.map((log) => {
                     const objType = log.object?.type ?? null;
                     const oid = log.object?.id;
                     const reverted = revertedSet.has(log.id);
                     const detail = formatActionDetail(log.action, log.extra);
                     return (
                       <tr key={log.id} className={reverted ? 'log-row--reverted' : undefined}>
-                        <td>
-                          <span className="audit-cell__time numeric">
-                            {ymdhms(log.createdAt) ?? '—'}
+                        <td data-label="时间">
+                          <span className="admin-log-table__cell">
+                            <span className="admin-log-table__time numeric">
+                              {ymdhms(log.createdAt) ?? '—'}
+                            </span>
                           </span>
                         </td>
-                        <td className="log-row__type">
-                          <span className={`audit-chip audit-chip--${actionKind(log.action)}`}>
-                            {actionLabel(log.action) ?? log.action}
+                        <td data-label="类型">
+                          <span className="admin-log-table__cell">
+                            <span className={`audit-chip audit-chip--${actionKind(log.action)}`}>
+                              {actionLabel(log.action) ?? log.action}
+                            </span>
+                            {detail ? <span className="admin-log-table__detail">{detail}</span> : null}
                           </span>
-                          {detail ? <span className="audit-cell__detail">{detail}</span> : null}
                         </td>
-                        <td>{log.admin.username ?? log.admin.id}</td>
-                        <td>
-                          {objType === 'blog' ? (
-                            <>
-                              文章
-                              <ObjId oid={oid} />
-                            </>
-                          ) : objType === 'comment' ? (
-                            <>
-                              评论
-                              <ObjId oid={oid} />
-                              {log.targetHidden ? (
-                                <span className="audit-cell__detail">（匿名评论，作者不公开）</span>
-                              ) : null}
-                            </>
-                          ) : objType === 'user' ? (
-                            <>用户 {log.targetUser?.username ?? log.targetUser?.id ?? '—'}</>
-                          ) : objType || oid ? (
-                            <>
-                              {objectTypeLabel(objType ?? '') ?? objType}
-                              <ObjId oid={oid} />
-                            </>
-                          ) : (
-                            '—'
-                          )}
+                        <td data-label="管理员">
+                          <span className="admin-log-table__cell">
+                            {log.admin.username ?? log.admin.id}
+                          </span>
                         </td>
-                        <td>{log.reason ?? ''}</td>
-                        <td>
-                          {reverted ? (
-                            <span className="status-badge status-badge--reverted">已撤回</span>
-                          ) : log.hasPendingAppeal ? (
-                            <span className="status-badge status-badge--pending">申诉中</span>
-                          ) : (
-                            <span className="status-badge">—</span>
-                          )}
+                        <td data-label="对象">
+                          <span className="admin-log-table__cell">
+                            {objType === 'blog' ? (
+                              <>
+                                <span>文章</span>
+                                <ObjId oid={oid} />
+                              </>
+                            ) : objType === 'comment' ? (
+                              <>
+                                <span>评论</span>
+                                <ObjId oid={oid} />
+                                {log.targetHidden ? (
+                                  <span className="admin-log-table__detail">（匿名评论，作者不公开）</span>
+                                ) : null}
+                              </>
+                            ) : objType === 'user' ? (
+                              <span>用户 {log.targetUser?.username ?? log.targetUser?.id ?? '—'}</span>
+                            ) : objType || oid ? (
+                              <>
+                                <span>{objectTypeLabel(objType ?? '') ?? objType}</span>
+                                <ObjId oid={oid} />
+                              </>
+                            ) : (
+                              <span>—</span>
+                            )}
+                          </span>
                         </td>
-                        <td>
-                          <Link href={`/audit/${log.id}`}>详情</Link>
+                        <td data-label="原因">
+                          <span className="admin-log-table__cell admin-log-table__reason">
+                            {log.reason ?? ''}
+                          </span>
+                        </td>
+                        <td data-label="状态">
+                          <span className="admin-log-table__cell">
+                            {reverted ? (
+                              <span className="admin-chip admin-chip--success">已撤回</span>
+                            ) : log.hasPendingAppeal ? (
+                              <span className="admin-chip admin-chip--warning">申诉中</span>
+                            ) : (
+                              <span className="admin-chip admin-chip--muted">—</span>
+                            )}
+                          </span>
+                        </td>
+                        <td data-label="">
+                          <Link className="admin-log-table__detail-link" href={`/audit/${log.id}`}>
+                            详情
+                          </Link>
                         </td>
                       </tr>
                     );
-                  })
-                )}
-              </tbody>
-            </table>
-          </div>
-
-          {result.pages > 1 && (
-            <div className="admin-pagination">
-              <nav>
-                <ul className="pagination">
-                  {result.hasPrev && (
-                    <li className="page-item">
-                      <Link className="page-link" href={qs(result.page - 1)}>
-                        &laquo;
-                      </Link>
-                    </li>
-                  )}
-                  {pageWindow(result.page, result.pages).map((p, i) =>
-                    p === null ? (
-                      <li key={`gap-${i}`} className="page-item disabled">
-                        <span className="page-link">…</span>
-                      </li>
-                    ) : (
-                      <li key={p} className={`page-item ${p === result.page ? 'active' : ''}`}>
-                        {p === result.page ? (
-                          <span className="page-link numeric">{p}</span>
-                        ) : (
-                          <Link className="page-link numeric" href={qs(p)}>
-                            {p}
-                          </Link>
-                        )}
-                      </li>
-                    )
-                  )}
-                  {result.hasNext && (
-                    <li className="page-item">
-                      <Link className="page-link" href={qs(result.page + 1)}>
-                        &raquo;
-                      </Link>
-                    </li>
-                  )}
-                </ul>
-              </nav>
+                  })}
+                </tbody>
+              </table>
             </div>
-          )}
-        </div>
+          </div>
+        )}
+
+        <AdminPager page={result.page} pages={result.pages} href={qs} />
       </div>
     </>
   );

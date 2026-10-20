@@ -2,12 +2,20 @@ import { forbidden, redirect } from 'next/navigation';
 import { getCurrentUser, isOwner } from '@/lib/auth';
 import { loginUrlWithNext } from '@/lib/safe-url';
 import { listOAuthApplications } from '@/lib/oauth';
+import AdminPageHeader from '@/app/components/AdminPageHeader';
+import AdminEmpty from '@/app/components/AdminEmpty';
+import { KeyRound } from 'lucide-react';
 import ApplicationCreateForm from './ApplicationCreateForm';
 import ApplicationRow from './ApplicationRow';
 
 export const dynamic = 'force-dynamic';
 
-// OAuth 应用管理（owner 专属）— Fluent Design
+// OAuth 应用管理（owner 专属）。
+//
+// 版式与 /admin 其它页同构：抬头 → 创建表单 → 已注册应用列表。
+// 两张面板都直接是 `.admin-panel`（`+ .admin-panel` 自带 16px 间距），
+// 行卡由 ApplicationRow 自己提供 —— 页面**不再**套一层管理卡，否则又会长回
+// 「卡中卡」（docs/frontend-styles.md §12 记着那笔债）。
 export default async function AdminOAuthPage() {
   const user = await getCurrentUser();
   if (!user) redirect(loginUrlWithNext('/admin/oauth'));
@@ -30,24 +38,36 @@ export default async function AdminOAuthPage() {
 
   return (
     <>
-      <section className="admin-hero">
-        <h1>OAuth 应用</h1>
-        <p>注册并管理可调用 raricy 身份绑定的第三方应用。</p>
-      </section>
+      <AdminPageHeader
+        eyebrow={
+          <>
+            <KeyRound aria-hidden="true" />
+            开发
+          </>
+        }
+        title="OAuth 应用"
+        subtitle="注册并管理可调用 raricy 身份绑定的第三方应用。"
+      />
 
       <div className="admin-container">
         <ApplicationCreateForm />
 
-        <section className="management-card" style={{ marginTop: 20 }}>
-          <h2 className="numeric" style={{ margin: 0, fontSize: '1.25rem', fontWeight: 600 }}>
-            已注册的应用（{data.length}）
-          </h2>
+        <section className="admin-panel">
+          <div className="admin-section-head">
+            <h2 className="admin-section-title">
+              已注册的应用
+              <span className="admin-section-count numeric">{data.length}</span>
+            </h2>
+          </div>
+
           {data.length === 0 ? (
-            <p className="text-muted" style={{ marginTop: 12 }}>
-              暂无应用，使用上方表单创建第一个。
-            </p>
+            <AdminEmpty
+              icon={KeyRound}
+              title="暂无应用"
+              description="使用上方表单创建第一个 OAuth 应用。"
+            />
           ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 20 }}>
+            <div className="admin-apps-list">
               {data.map((a) => (
                 <ApplicationRow key={a.id} app={a} />
               ))}

@@ -1,0 +1,246 @@
+@use '../../abstracts/mixins' as m;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 栏目管理（/admin/categories）
+//
+// 行卡骨架沿用 `.article-card`（它是被 e2e 钉死的类名，兼容层在 _articles.scss），
+// 这里只补「栏目行」自己的排布：图标 + 名称 + slug + 规则徽标 + 计数 + 动作，
+// 以及编辑弹窗里的两列表单与圆形勾选行。
+//
+// 口径与共享原语（_common.scss）一致：常态不描边/不托阴影，层级靠背景色阶；
+// 选中与徽标用淡底 + 同色字；动画沿用 admin-rise 节奏，reduced-motion 下关掉。
+// ─────────────────────────────────────────────────────────────────────────────
+
+.admin-category-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+
+  // 行与行之间用 list 的 gap 控制；`.article-card + .article-card` 那条相邻
+  // 上距在这里会让「根 → 子」与「子 → 下一根」的间距翻倍。
+  .article-card + .article-card {
+    margin-top: 0;
+  }
+}
+
+.admin-category-row {
+  // 行内两栏：主体可伸缩、动作区不收缩；窄屏时动作区整行落到下面。
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 12px 16px;
+
+  // 与 .admin-row 同一套入场节奏：行序越靠后越晚落定（--i 由组件传入）。
+  animation-delay: calc(var(--i, 0) * 26ms);
+
+  // 停用栏目整行弱化（与改版前 inline opacity 0.55 同义，交给样式表）
+  &.is-inactive {
+    opacity: 0.62;
+  }
+}
+
+// 子栏目缩进：用类名而不是 inline style，窄屏可以单独收窄。
+.admin-category-row--child {
+  margin-left: 28px;
+}
+
+.admin-category-row__main {
+  flex: 1 1 320px;
+  min-width: 0;
+}
+
+.admin-category-row__headline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  margin-bottom: 8px;
+}
+
+.admin-category-row__title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+}
+
+.admin-category-row__glyph {
+  font-size: 1.05em;
+  line-height: 1;
+}
+
+// slug 是 URL 标识：等宽、压深一档的小胶囊，长 slug 允许换行。
+.admin-category-row__code {
+  padding: 2px 9px;
+  border-radius: 999px;
+  background: var(--color-background-content);
+  color: var(--color-text-secondary);
+  font-family: var(--font-mono);
+  font-size: 0.76rem;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
+.admin-category-row__chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.admin-category-row__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 14px;
+  color: var(--color-text-secondary);
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+
+.admin-category-row__stat {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+
+  .numeric {
+    color: var(--color-text-primary);
+    font-weight: 600;
+  }
+}
+
+.admin-category-row__desc {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+// 动作区：一排紧凑胶囊；窄屏整行落到主体下方。
+.admin-category-row__actions {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.admin-category-row__buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+// 行内动作按钮：次级档的三态 + 更紧凑的尺寸（同 .admin-blog-actions__btn 的口径）。
+.admin-category-row__btn {
+  @include m.btn-secondary;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 34px;
+  padding: 5px 12px;
+  border-radius: 999px;
+  font-size: 0.78rem;
+
+  &--danger {
+    color: var(--color-warning-primary);
+
+    &:hover:not(:disabled) {
+      background: var(--color-warning-secondary);
+      color: var(--color-warning-primary);
+    }
+
+    &:active:not(:disabled) {
+      background: var(--color-warning-primary);
+      color: #fff;
+    }
+  }
+}
+
+// ---- 编辑弹窗 ----
+
+// 六个字段两列排（窄屏一列）；DOM 顺序不变 —— e2e 按 input.form-control 的
+// 第 0/1 个取名称与 slug。
+.admin-cat-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px 14px;
+  margin-bottom: 16px;
+
+  // 全站 .form-group 自带 1rem 下距；网格用 gap，留着会翻倍。
+  .form-group {
+    min-width: 0;
+    margin-bottom: 0;
+  }
+}
+
+.admin-cat-hint {
+  display: block;
+  margin-top: 4px;
+  color: var(--color-text-secondary);
+  font-size: 0.78rem;
+  line-height: 1.5;
+}
+
+.admin-cat-picks {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+// 规则开关行：整行可点（圆点本身仍由 AdminPick 的原生 input 承接键盘与状态）。
+.admin-pick-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 16px;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+
+  &:hover {
+    background: var(--color-background-subtle);
+  }
+}
+
+.admin-pick-row__label {
+  color: var(--color-text-primary);
+  font-size: 0.88rem;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.admin-cat-error {
+  margin: 12px 0 0;
+  color: var(--color-warning-primary);
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+
+@media (max-width: 768px) {
+  .admin-category-row--child {
+    margin-left: 14px;
+  }
+
+  .admin-category-row__actions {
+    align-items: flex-start;
+    width: 100%;
+  }
+
+  .admin-category-row__buttons {
+    justify-content: flex-start;
+  }
+}
+
+@media (max-width: 560px) {
+  .admin-cat-form {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .admin-category-row {
+    animation: none;
+  }
+
+  .admin-pick-row {
+    transition: none;
+  }
+}

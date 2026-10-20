@@ -1,4 +1,5 @@
 @use '../abstracts/variables' as v;
+@use '../abstracts/mixins' as m;
 // ── 表单控件（无 Bootstrap 依赖）─────────────────────────────────────────────
 //
 // 全站字段只有一套外观，基准是博客首页的搜索框（见 pages/blog/_menu.scss 的
@@ -25,30 +26,14 @@
 }
 
 .form-control {
+  @include m.field-surface;
   display: block;
   width: 100%;
   padding: 10px 16px;
   font-size: 0.9rem;
   line-height: 1.5;
-  color: var(--color-text-primary);
-  background-color: var(--color-background-page);
   background-clip: padding-box;
-  border: none;
   resize: vertical;
-  transition: box-shadow 0.2s ease;
-
-  // 聚焦环用 box-shadow 而非 border：常态 border:none，若聚焦改成边框，
-  // 字段会随焦点撑高、失焦瞬间塌缩 —— 整张表单下方内容位移，
-  // 点按中的 checkbox/按钮会被「挪走」（注册页 e2e 的勾选失败即此因）。
-  // 光晕不参与布局，所以没有这个问题。
-  &:focus {
-    outline: 0;
-    box-shadow: var(--shadow-focus-brand);
-  }
-
-  &::placeholder {
-    color: var(--color-text-secondary);
-  }
 }
 
 // 单行 → 胶囊
@@ -74,21 +59,13 @@ textarea.form-control {
 // <select> 属于字段而不是按钮：与 .form-control 同一套外观（原先它是
 // 品牌浅底 + 品牌字 + 粗体，那是「最高级按钮」的样子，不是输入框的样子）。
 .form-select {
+  @include m.field-surface;
   display: block;
   padding: 10px 16px;
   font-size: 0.9rem;
   line-height: 1.5;
   border-radius: 999px;
-  border: none;
-  color: var(--color-text-primary);
-  background-color: var(--color-background-page);
   cursor: pointer;
-  transition: box-shadow 0.2s ease;
-
-  &:focus {
-    outline: 0;
-    box-shadow: var(--shadow-focus-brand);
-  }
 }
 
 /* ── 展开后的列表（原生弹出层）必须自己上色 ───────────────────────────────────

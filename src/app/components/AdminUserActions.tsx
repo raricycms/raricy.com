@@ -13,6 +13,17 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import {
+  Ban,
+  BellRing,
+  Eye,
+  History,
+  ShieldCheck,
+  ShieldOff,
+  Unlock,
+  UserCheck,
+  UserMinus,
+} from 'lucide-react';
 import { ymdhms } from '@/lib/format';
 
 export interface AdminUserActionsProps {
@@ -170,9 +181,18 @@ export default function AdminUserActions({
     }
   }
 
+  // 动作簇 = 一排紧凑胶囊（几何在 pages/admin/_users.scss 的
+  // `.user-card__buttons > .btn`：34px 高、999px 圆角、0.78rem）。图标一律
+  // aria-hidden —— 按钮的无障碍名称必须仍然**恰好**是那两个字
+  //（tests/e2e/admin-role-buttons.spec.ts 按 name 精确定位）。
+  //
+  // 四个弹窗仍渲染在这个根节点里（它们 position:fixed，不参与这排按钮的排版）。
+  // 入场动画统一用 `animation-fill-mode: backwards`：播完 transform 回到 none，
+  // 不会给 fixed 后代留下包含块（见 pages/admin/_common.scss 的说明）。
   return (
     <div className="user-card__buttons">
       <Link href={`/u/${user.id}`} className="btn btn-sm btn-info">
+        <Eye aria-hidden="true" />
         查看
       </Link>
 
@@ -187,6 +207,7 @@ export default function AdminUserActions({
             setModal('notify');
           }}
         >
+          <BellRing aria-hidden="true" />
           发通知
         </button>
       )}
@@ -205,6 +226,7 @@ export default function AdminUserActions({
               setModal('unban');
             }}
           >
+            <Unlock aria-hidden="true" />
             解除禁言
           </button>
         ) : (
@@ -218,6 +240,7 @@ export default function AdminUserActions({
               setModal('ban');
             }}
           >
+            <Ban aria-hidden="true" />
             禁言
           </button>
         ))}
@@ -229,6 +252,7 @@ export default function AdminUserActions({
           disabled={busy}
           onClick={openBanHistory}
         >
+          <History aria-hidden="true" />
           禁言历史
         </button>
       )}
@@ -244,6 +268,7 @@ export default function AdminUserActions({
       {isOwner && user.role === 'core' && (
         <>
           <button type="button" className="btn btn-sm btn-warning" disabled={busy} onClick={demote}>
+            <UserMinus aria-hidden="true" />
             取消认证
           </button>
           <button
@@ -252,6 +277,7 @@ export default function AdminUserActions({
             disabled={busy}
             onClick={promoteAdmin}
           >
+            <ShieldCheck aria-hidden="true" />
             提拔管理员
           </button>
         </>
@@ -263,11 +289,13 @@ export default function AdminUserActions({
           disabled={busy}
           onClick={demoteAdmin}
         >
+          <ShieldOff aria-hidden="true" />
           降为核心用户
         </button>
       )}
       {isOwner && user.role !== 'core' && user.role !== 'admin' && user.role !== 'owner' && (
         <button type="button" className="btn btn-sm btn-success" disabled={busy} onClick={promote}>
+          <UserCheck aria-hidden="true" />
           认证
         </button>
       )}
@@ -279,9 +307,15 @@ export default function AdminUserActions({
             <div className="modal-content">
               <div className="modal-header">
                 <h3 className="modal-title">禁言用户</h3>
-                <button type="button" className="btn-close" disabled={busy} onClick={() => setModal(null)}>
-                  ×
-                </button>
+                {/* .btn-close 的「×」由 ::before 画（components/_button.scss），
+                    这里再放一个 × 会显示成「××」。aria-label 给屏幕阅读器一个名字。 */}
+                <button
+                  type="button"
+                  className="btn-close"
+                  aria-label="关闭"
+                  disabled={busy}
+                  onClick={() => setModal(null)}
+                />
               </div>
               <div className="modal-body">
                 <div className="form-group">
@@ -329,9 +363,13 @@ export default function AdminUserActions({
             <div className="modal-content">
               <div className="modal-header">
                 <h3 className="modal-title">解除禁言</h3>
-                <button type="button" className="btn-close" disabled={busy} onClick={() => setModal(null)}>
-                  ×
-                </button>
+                <button
+                  type="button"
+                  className="btn-close"
+                  aria-label="关闭"
+                  disabled={busy}
+                  onClick={() => setModal(null)}
+                />
               </div>
               <div className="modal-body">
                 <div className="form-group">
@@ -369,9 +407,13 @@ export default function AdminUserActions({
             <div className="modal-content">
               <div className="modal-header">
                 <h3 className="modal-title">发送通知</h3>
-                <button type="button" className="btn-close" disabled={busy} onClick={() => setModal(null)}>
-                  ×
-                </button>
+                <button
+                  type="button"
+                  className="btn-close"
+                  aria-label="关闭"
+                  disabled={busy}
+                  onClick={() => setModal(null)}
+                />
               </div>
               <div className="modal-body">
                 <div className="form-group">
@@ -423,33 +465,23 @@ export default function AdminUserActions({
             <div className="modal-content">
               <div className="modal-header">
                 <h3 className="modal-title">禁言历史</h3>
-                <button type="button" className="btn-close" onClick={() => setModal(null)}>
-                  ×
-                </button>
+                <button
+                  type="button"
+                  className="btn-close"
+                  aria-label="关闭"
+                  onClick={() => setModal(null)}
+                />
               </div>
               <div className="modal-body">
-                <p style={{ marginTop: 0 }}>
+                <p className="user-modal-note">
                   用户 &quot;{user.username}&quot; 的禁言历史：
                 </p>
                 {banHistoryLoading ? (
-                  <p className="text-muted" style={{ margin: 0 }}>
-                    加载中…
-                  </p>
+                  <p className="user-modal-note">加载中…</p>
                 ) : banHistory && banHistory.length > 0 ? (
-                  <div
-                    style={{
-                      background: 'var(--color-background-subtle)',
-                      padding: '15px',
-                      borderRadius: '8px',
-                      maxHeight: '400px',
-                      overflowY: 'auto',
-                    }}
-                  >
+                  <div className="user-ban-history">
                     {banHistory.map((ban, index) => (
-                      <div
-                        key={ban.id}
-                        style={{ marginBottom: index === banHistory.length - 1 ? 0 : '1rem' }}
-                      >
+                      <div key={ban.id} className="user-ban-history__item">
                         <div className="numeric">
                           {index + 1}. 禁言时间：{fmtTime(ban.banned_at)}
                         </div>
@@ -467,9 +499,7 @@ export default function AdminUserActions({
                     ))}
                   </div>
                 ) : (
-                  <p className="text-muted" style={{ margin: 0 }}>
-                    暂无禁言记录
-                  </p>
+                  <p className="user-modal-note">暂无禁言记录</p>
                 )}
               </div>
               <div className="modal-footer">
