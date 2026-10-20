@@ -98,11 +98,10 @@
   }
 
   // 与用户菜单相同：同一个外壳按实际内容高度伸展，内容随后淡入。
+  // 0fr → 1fr 的动画本体与通用下拉 ExpandSelect 共用 abstracts/_mixins.scss 的
+  // expand-panel，改节奏只改那一处。
   &__panel {
-    display: grid;
-    grid-template-rows: 0fr;
-    visibility: hidden;
-    transition: grid-template-rows .42s cubic-bezier(.22, 1, .36, 1), visibility 0s .42s;
+    @include m.expand-panel;
   }
 
   &__clip { min-height: 0; overflow: hidden; }
@@ -128,11 +127,8 @@
     &[aria-expanded='true'] svg { transform: rotate(180deg); }
   }
   &__children {
-    display: grid;
-    grid-template-rows: 0fr;
-    visibility: hidden;
-    transition: grid-template-rows .42s cubic-bezier(.22, 1, .36, 1), visibility 0s .42s;
-    &.is-expanded { grid-template-rows: 1fr; visibility: visible; transition-delay: 0s; }
+    @include m.expand-panel;
+    &.is-expanded { @include m.expand-panel-open; }
   }
   &__options {
     max-height: min(420px, calc(100dvh - 240px));
@@ -158,7 +154,7 @@
     z-index: 1;
     width: var(--category-open-width, var(--category-closed-width, 120px));
     .blog-category-select__shell { background: var(--color-background-card); box-shadow: var(--shadow-card-brand); }
-    .blog-category-select__panel { grid-template-rows: 1fr; visibility: visible; transition-delay: 0s; }
+    .blog-category-select__panel { @include m.expand-panel-open; }
     .blog-category-select__options { opacity: 1; transform: translateY(0); transition-delay: 55ms; }
     .blog-category-select__toggle svg { transform: rotate(180deg); }
   }
