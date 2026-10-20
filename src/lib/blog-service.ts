@@ -63,6 +63,7 @@ import {
 } from './blog-visibility';
 import type { BlogVisibility } from './blog-visibility';
 import type { Prisma } from '@prisma/client';
+import type { PersonalBlogScope } from './blog-directory';
 
 // 服务端调用方（route / 页面 / 测试）从这里取就行。**客户端组件例外**：它们必须直接
 // import `./blog-visibility` —— 本模块拖着 prisma，值导出进不了客户端包。
@@ -129,6 +130,8 @@ export interface BlogViewer {
 }
 
 export interface ListParams {
+  /** 用户 id 只能由调用方从当前会话取得，不能接受 URL 里的用户 id。 */
+  personalScope?: { kind: PersonalBlogScope; userId: string };
   page?: number;
   perPage?: number;
   categorySlug?: string | null;
@@ -154,24 +157,25 @@ export interface ListParams {
 
 const DEFAULT_PER_PAGE = 200;
 
-/**
- * **站内**列表：不看 `visibility`。
- *
- * 【对外列表不走这里】本函数的两个调用方（`/blog` 页面、`GET /api/blogs`）都是 core+
- * 档，而 core+ 在博客域是全读的 —— 所以可见性在这里没有意义，返回全量是对的。
- *
- * 对外列表**另起了入口**（`listPublicBlogs`，见文件头不变量【5】），**本函数仍然不看
- * visibility**。**别给本函数加一个可选的 viewer 参数** —— 可选的参数一旦漏传，
- * 方向就是「把全站 internal 文章喂给访客」，而这里没有任何编译期的东西能挡住它。
- * tests/service/blog-service.test.ts 有一条钉现状的用例：存在 internal 文章时本函数
- * **照旧返回它**；谁哪天顺手加了过滤，那条会立刻变红。
- */
-export async function listBlogs(params: ListParams) {
-  const page = Math.max(1, params.page ?? 1);
-  // 每页上限与默认一致（200 篇/页），仍防「?perPage=100000 拖库」
-  const perPage = Math.min(200, Math.max(1, params.perPage ?? DEFAULT_PER_PAGE));
-
+/** 站内列表与范围计数共享过滤规则；个人范围不受「全部文章」的栏目陈列排除影响。 */
+async function blogListWhere(params: ListParams): Promise<Prisma.BlogWhereInput> {
   const where: Prisma.BlogWhereInput = { ignore: false };
+  if (params.personalScope) {
+    const { kind, userId } = params.personalScope;
+    if (kind === 'mine') where.authorId = userId;
+    if (kind === 'liked') where.likes = { some: { userId, deleted: false } };
+    if (kind === 'commented') {
+      // 先按本人评论去重，再与文章筛选取交集。直接用 comments.some 会生成逐篇执行的
+      // 相关 EXISTS；SQLite 缺少统计信息时可能选 is_deleted 索引，反复扫整批未删评论。
+      // 分组只扫描一次，侧栏计数与个人列表都走这里；空集合也必须保留 id in []。
+      const commented = await prisma.blogComment.groupBy({
+        by: ['blogId'],
+        where: { authorId: userId, isDeleted: false, status: 'approved' },
+      });
+      where.id = { in: commented.map((comment) => comment.blogId) };
+    }
+    if (kind === 'fed') where.feeds = { some: { userId, amount: { gt: 0 } } };
+  }
 
   // 精选筛选：**false 也生效**（筛出非精选）。
   // 写成 `if (params.featured)` 会让 featured=false 等同于不传，丢掉「只看非精选」的语义。
@@ -192,7 +196,7 @@ export async function listBlogs(params: ListParams) {
     } else {
       where.categoryId = -1; // 不存在/已停用的栏目 → 空结果
     }
-  } else {
+  } else if (!params.personalScope) {
     // 「全部文章」：排除 exclude_from_all 的栏目**及其子栏目** —— 取启用中的
     // exclude_from_all 栏目，把「它自己 + 它的启用子栏目」的 id 并成一个集合，
     // 再滤掉 category_id 落在这个集合里的文章。
@@ -237,7 +241,7 @@ export async function listBlogs(params: ListParams) {
     }
   }
 
-  // 搜索词在 findMany 之后还要用（补正文片段），所以在函数作用域里留着。
+  // 片段补全在 listBlogs 内也使用相同的 trim 与默认字段口径。
   const q = params.search?.trim() || null;
   // 空数组回退默认 —— 否则 `OR: []` 在 Prisma 里等价于「不过滤」，会静默返回全站文章。
   const fields = params.searchFields?.length ? params.searchFields : DEFAULT_SEARCH_FIELDS;
@@ -258,6 +262,71 @@ export async function listBlogs(params: ListParams) {
     where.AND = Array.isArray(where.AND) ? [...where.AND, searchOr] : [searchOr];
   }
 
+  return where;
+}
+
+/** 侧栏数字不随搜索/栏目变化；范围计数与列表共用同一套栏目、专注模式与软删规则。 */
+export async function getBlogDirectorySummary(userId: string, focusMode: boolean) {
+  const scopes = ['mine', 'liked', 'commented', 'fed'] as const;
+  const [allWhere, ...personalWheres] = await Promise.all([
+    blogListWhere({ focusMode }),
+    ...scopes.map((kind) => blogListWhere({ focusMode, personalScope: { kind, userId } })),
+  ]);
+  const [[all, mine, liked, commented, fed], received] = await Promise.all([
+    Promise.all([allWhere, ...personalWheres].map((where) => prisma.blog.count({ where }))),
+    prisma.blog.aggregate({
+      where: { authorId: userId, ignore: false },
+      _sum: { likesCount: true, commentsCount: true, fishCount: true },
+    }),
+  ]);
+  return {
+    counts: { all, mine, liked, commented, fed },
+    likesReceived: received._sum.likesCount ?? 0,
+    commentsReceived: received._sum.commentsCount ?? 0,
+    fishReceived: received._sum.fishCount ?? 0,
+  };
+}
+
+/** 长 IN 集合会被 Prisma 自动分批，skip/take 不能据此得到全局分页。 */
+async function commentedBlogPage(where: Prisma.BlogWhereInput, sort: BlogSort, page: number, perPage: number) {
+  const ids = typeof where.id === 'object' ? where.id.in : undefined;
+  const batchSize = 500; // 给栏目、专注模式与搜索条件留出 SQLite 参数余量。
+  if (!Array.isArray(ids) || ids.length <= batchSize) return null;
+
+  // 先分批只取排序元数据，合并后统一分页；完整卡片仍只读取当前页。
+  const matching = [];
+  for (let offset = 0; offset < ids.length; offset += batchSize) {
+    matching.push(...await prisma.blog.findMany({
+      where: { ...where, id: { in: ids.slice(offset, offset + batchSize) } },
+      select: { id: true, createdAt: true, content: { select: { updatedAt: true } } },
+    }));
+  }
+  const time = (date: Date | null | undefined) => date?.getTime() ?? Number.NEGATIVE_INFINITY;
+  matching.sort((a, b) =>
+    (sort === 'updated' ? time(b.content?.updatedAt) - time(a.content?.updatedAt) : 0)
+    || time(b.createdAt) - time(a.createdAt)
+    || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)
+  );
+  return {
+    total: matching.length,
+    ids: matching.slice((page - 1) * perPage, page * perPage).map((blog) => blog.id),
+  };
+}
+
+/**
+ * **站内**列表：不看 `visibility`，调用方（`/blog`、`GET /api/blogs`）都由 core+ 守卫保护。
+ * 对外列表另走 listPublicBlogs，不能给这里加一个可选 viewer 来兼做对外读口：漏传就会泄露
+ * internal 文章。tests/service/blog-service.test.ts 钉住站内仍能列出 internal 的契约。
+ */
+export async function listBlogs(params: ListParams) {
+  const page = Math.max(1, params.page ?? 1);
+  // 每页上限与默认一致（200 篇/页），仍防「?perPage=100000 拖库」
+  const perPage = Math.min(200, Math.max(1, params.perPage ?? DEFAULT_PER_PAGE));
+  const where = await blogListWhere(params);
+  const q = params.search?.trim() || null;
+  const fields = params.searchFields?.length ? params.searchFields : DEFAULT_SEARCH_FIELDS;
+  const withContent = fields.includes('content');
+
   // 排序：created=发布时间（默认）；updated=最后编辑时间（BlogContent.updatedAt，1:1 relation
   // orderBy，SQLite 对 NULL 的 DESC 语义是排最后 —— content 行缺失的文章退到最后，属防御分支，
   // 正常写入路径 createBlog/updateBlog 保证行必在）。次键 createdAt 锁同秒 updatedAt 的稳定性。
@@ -266,13 +335,17 @@ export async function listBlogs(params: ListParams) {
       ? [{ content: { updatedAt: 'desc' } }, { createdAt: 'desc' }]
       : [{ createdAt: 'desc' }];
 
+  const commentedPage = params.personalScope?.kind === 'commented'
+    ? await commentedBlogPage(where, params.sort ?? 'created', page, perPage)
+    : null;
+  if (commentedPage) orderBy.push({ id: 'asc' });
+
   const [total, blogs] = await Promise.all([
-    prisma.blog.count({ where }),
+    commentedPage ? commentedPage.total : prisma.blog.count({ where }),
     prisma.blog.findMany({
-      where,
+      where: commentedPage ? { ...where, id: { in: commentedPage.ids } } : where,
       orderBy,
-      skip: (page - 1) * perPage,
-      take: perPage,
+      ...(commentedPage ? {} : { skip: (page - 1) * perPage, take: perPage }),
       select: {
         id: true,
         title: true,

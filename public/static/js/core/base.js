@@ -312,8 +312,55 @@ function applyTheme(themeName) {
     if (tc) tc.setAttribute('content', config['data-theme'] === 'dark' ? '#131517' : '#F8FAFC');
 }
 
-function switchTheme(themeName) {
+// 颜色使用同一条时间线；局部 hover 配方、SVG 着色、没有声明颜色过渡的卡片也同步。
+// 只接管颜色，不取消导航形变、日月旋转或其它正在进行的位置动画。
+const themeColorAnimations = new Set();
+function transitionTheme(themeName) {
+    if (!document.body || !document.body.animate || !window.CSSTransition ||
+        document.documentElement.dataset.theme === themeName) {
+        applyTheme(themeName);
+        return;
+    }
+    const properties = ['color', 'backgroundColor', 'borderTopColor', 'borderRightColor',
+        'borderBottomColor', 'borderLeftColor', 'outlineColor', 'boxShadow', 'fill', 'stroke', 'stopColor'];
+    const cssProperties = new Set(properties.map(name => name.replace(/[A-Z]/g, letter => '-' + letter.toLowerCase())));
+    const snapshots = [];
+    for (const element of document.querySelectorAll('body, body *')) {
+        for (const pseudo of [null, '::before', '::after']) {
+            const style = getComputedStyle(element, pseudo);
+            if (style.display === 'none' || (pseudo && (style.content === 'none' || style.content === 'normal'))) continue;
+            snapshots.push({ element, pseudo, before: Object.fromEntries(properties.map(name => [name, style[name]])) });
+        }
+    }
+    // 快速连续切换时从当前帧续接；先截图样式，再释放上一轮颜色动画。
+    themeColorAnimations.forEach(animation => animation.cancel());
+    themeColorAnimations.clear();
     applyTheme(themeName);
+    for (const animation of document.getAnimations()) {
+        if (animation instanceof CSSTransition && cssProperties.has(animation.transitionProperty)) animation.cancel();
+    }
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    const animations = [];
+    for (const { element, pseudo, before } of snapshots) {
+        const style = getComputedStyle(element, pseudo);
+        const from = {}, to = {};
+        for (const name of properties) {
+            if (before[name] !== style[name]) { from[name] = before[name]; to[name] = style[name]; }
+        }
+        if (!Object.keys(to).length) continue;
+        const effect = new KeyframeEffect(element, [from, to], { duration: 300, easing: 'ease', pseudoElement: pseudo });
+        const animation = new Animation(effect, document.timeline);
+        animation.id = 'theme-colors';
+        animations.push(animation);
+        themeColorAnimations.add(animation);
+        animation.finished.then(() => themeColorAnimations.delete(animation), () => themeColorAnimations.delete(animation));
+    }
+    const start = document.timeline.currentTime;
+    for (const animation of animations) { animation.play(); animation.startTime = start; }
+}
+
+function switchTheme(themeName) {
+    transitionTheme(themeName);
     localStorage.setItem('theme', themeName);
     console.log('切换主题:', themeName);
 }

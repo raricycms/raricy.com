@@ -1,14 +1,20 @@
 import { ATTACK_MS, DIRECTIONS, TILE, TILES, TICK_MS, WORLD_HEIGHT, WORLD_WIDTH, type Player, type Slime, type Snapshot } from '../../../shared/wand2/protocol';
+import spriteLayout from '../../../public/static/games/wand2/sprite-layout.json';
 
-export interface Assets { character: HTMLImageElement; attack: HTMLImageElement; world: HTMLImageElement }
+export interface Assets { character: HTMLImageElement; attack: HTMLImageElement; world: HTMLImageElement; walkDown: HTMLImageElement }
 export interface Frame { previous: Snapshot; current: Snapshot; at: number }
 export interface FloatText { x: number; y: number; text: string; at: number }
 const palette = ['#b8cfaa', '#b5cca7', '#bdd1b0', '#b9cdaa'];
 const noise = (x: number, y: number) => ((x * 73 + y * 137 + x * y * 11) % 101) / 101;
 
-function sprite(ctx: CanvasRenderingContext2D, sheet: HTMLImageElement, col: number, row: number, x: number, y: number, size: number) {
+function playerPosition(player: Player, frame: Frame | null, progress: number) {
+  const previous = frame?.previous.players.find(p => p.id === player.id) ?? player;
+  return { x: previous.x + (player.x - previous.x) * progress, y: previous.y + (player.y - previous.y) * progress };
+}
+
+function sprite(ctx: CanvasRenderingContext2D, sheet: HTMLImageElement, col: number, row: number, x: number, y: number, size: number, rows = 4) {
   if (!sheet.complete || !sheet.naturalWidth) return;
-  const sw = sheet.naturalWidth / 4, sh = sheet.naturalHeight / 4;
+  const sw = sheet.naturalWidth / 4, sh = sheet.naturalHeight / rows;
   ctx.drawImage(sheet, col * sw, row * sh, sw, sh, x - size / 2, y - size * .9, size, size);
 }
 function ellipse(ctx: CanvasRenderingContext2D, x: number, y: number, rx: number, ry: number, color: string) {
@@ -42,12 +48,16 @@ export function makeGround(assets: Assets): HTMLCanvasElement {
 export function render(ctx: CanvasRenderingContext2D, assets: Assets, ground: HTMLCanvasElement, frame: Frame | null, ownId: string, now: number,
   compact: boolean, floating: FloatText[]) {
   const viewW = compact ? 560 : WORLD_WIDTH, viewH = compact ? 420 : WORLD_HEIGHT;
+  // rAF 时间戳可能早于同轮事件循环刚收到的快照，负年龄会把待机算成攻击。
+  const frameAge = frame ? Math.max(0, now - frame.at) : 0;
+  const progress = frame ? Math.min(1, frameAge / TICK_MS) : 1;
   const own = frame?.current.players.find(p => p.id === ownId);
-  const cx = compact ? Math.max(0, Math.min(WORLD_WIDTH - viewW, (own?.x ?? 100) - viewW / 2)) : 0;
-  const cy = compact ? Math.max(0, Math.min(WORLD_HEIGHT - viewH, (own?.y ?? 320) - viewH / 2)) : 0;
+  // 镜头与角色共用插值坐标，避免背景只在收到快照时跳动。
+  const focus = own ? playerPosition(own, frame, progress) : { x: 100, y: 320 };
+  const cx = compact ? Math.max(0, Math.min(WORLD_WIDTH - viewW, focus.x - viewW / 2)) : 0;
+  const cy = compact ? Math.max(0, Math.min(WORLD_HEIGHT - viewH, focus.y - viewH / 2)) : 0;
   ctx.setTransform(ctx.canvas.width / viewW, 0, 0, ctx.canvas.height / viewH, 0, 0); ctx.clearRect(0, 0, viewW, viewH);
   ctx.save(); ctx.translate(-cx, -cy); ctx.drawImage(ground, 0, 0);
-  const progress = frame ? Math.min(1, (now - frame.at) / TICK_MS) : 1;
   const players: Player[] = frame?.current.players ?? [{ id: 'preview', name: '', x: 100, y: 320, facing: 0, moving: false, attack: 0, hurt: 0, catnip: 0 }];
   const monsters: Slime[] = frame?.current.slimes ?? [
     { id: 0, x: 340, y: 230, kind: 0, hp: 2, mood: 'wander', phase: 0 },
@@ -57,20 +67,22 @@ export function render(ctx: CanvasRenderingContext2D, assets: Assets, ground: HT
   const entities = [...players.map(p => ({ type: 'player' as const, p, y: p.y })), ...monsters.map(p => ({ type: 'slime' as const, p, y: p.y }))].sort((a, b) => a.y - b.y);
   for (const entity of entities) {
     if (entity.type === 'player') {
-      const p = entity.p, prev = frame?.previous.players.find(a => a.id === p.id) ?? p;
-      const x = prev.x + (p.x - prev.x) * progress, y = prev.y + (p.y - prev.y) * progress, mine = p.id === ownId;
+      const p = entity.p, { x, y } = playerPosition(p, frame, progress), mine = p.id === ownId;
       ellipse(ctx, x, y + 1, 15, 6, '#344b3b32');
       if (mine) { ctx.strokeStyle = '#fffbe5'; ctx.lineWidth = 2; ctx.beginPath(); ctx.ellipse(x, y, 18, 8, 0, 0, Math.PI * 2); ctx.stroke(); }
       ctx.save();
       if (p.hurt > 0) ctx.globalAlpha = Math.floor(now / 70) % 2 ? .45 : 1;
-      const attack = Math.max(0, p.attack - (frame ? now - frame.at : 0));
+      const attack = Math.max(0, p.attack - frameAge);
       const recoil = p.hurt > 570;
       const walk = Math.floor(now / 130) % 4;
       const col = recoil ? 3 : p.moving ? [0, 1, 0, 2][walk] : 0;
-      // 左右行的第三帧使用反向侧面，翻转同侧步态保持朝向一致。
-      if (!attack && !recoil && (p.facing === 1 || p.facing === 2) && col === 2) {
-        ctx.translate(x, 0); ctx.scale(-1, 1); sprite(ctx, assets.character, 1, p.facing === 1 ? 2 : 1, 0, y + 4, 88);
-      } else sprite(ctx, attack ? assets.attack : assets.character, attack ? Math.min(3, Math.floor((ATTACK_MS - attack) / (ATTACK_MS / 4))) : col, p.facing, x, y + 4, attack ? 96 : 88);
+      // 各方向直接使用对应原绘帧；镜像会把角色的右手持剑翻成左手。
+      if (!attack && !recoil && p.moving && p.facing === 0) {
+        // 向下走使用完整的左右迈步与交错过渡，不在每一步之间插回双脚站定。
+        sprite(ctx, assets.walkDown, Math.floor(now / spriteLayout.walkDown.frameMs) % 4, 0, x, y + 4, 88, 1);
+      } else {
+        sprite(ctx, attack ? assets.attack : assets.character, attack ? Math.min(3, Math.floor((ATTACK_MS - attack) / (ATTACK_MS / 4))) : col, p.facing, x, y + 4, attack ? spriteLayout.attackDrawSize : 88);
+      }
       ctx.restore();
       if (attack > 100 && attack < 280) {
         const dir = DIRECTIONS[p.facing], angle = Math.atan2(dir.y, dir.x);

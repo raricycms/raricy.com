@@ -39,7 +39,7 @@ test.beforeEach(async ({ page }) => {
   await loginViaApi(page, SEED_USERS.core.username);
 });
 
-test('博客列表页渲染文章卡片与栏目侧栏', async ({ page }) => {
+test('博客列表页渲染文章卡片与栏目下拉', async ({ page }) => {
   const res = await page.goto('/blog');
   expect(res?.status()).toBe(200);
 
@@ -52,8 +52,8 @@ test('博客列表页渲染文章卡片与栏目侧栏', async ({ page }) => {
   // <span class="avatar"> 包装层，按 span 顺序取会取到那个空 span。
   await expect(card.locator('.blog-author-link')).toContainText(SEED_USERS.core.username);
 
-  // 侧栏分类（seed 的栏目 excludeFromAll=false，应当出现）
-  await expect(page.locator('.blog-layout')).toContainText(SEED_CATEGORY.name);
+  await page.getByRole('button', { name: '栏目：全部栏目', exact: true }).click();
+  await expect(page.getByRole('button', { name: SEED_CATEGORY.name, exact: true })).toBeVisible();
 });
 
 test('按栏目筛选命中种子文章', async ({ page }) => {
@@ -241,10 +241,6 @@ test('cookie 稳态：无参 /blog 首屏直出 updated 序、不 replace；点�
   expect(new URL(page.url()).searchParams.has('sort')).toBe(false);
   expect(await cardOrder(page, SEED_BLOG.id, SEED_BLOG2.id)).toBe('ba');
 
-  // 等 JS 接管再点：水合之前 React 还没挂上 onClick，点了等于没点（判据沿用下面那条
-  // 用例的 `.sidebar--ready`，BlogSidebar 挂载时补上）。
-  await expect(page.locator('.sidebar')).toHaveClass(/sidebar--ready/);
-
   // 稳态无参页上点「发布时间」：cookie 已删、URL 仍无参 → 走 router.refresh 由服务端重出 created 序。
   //
   // ★ 为什么要重试点击 ★
@@ -272,23 +268,12 @@ test('cookie 稳态：无参 /blog 首屏直出 updated 序、不 replace；点�
   expect(await page.evaluate(() => localStorage.getItem('blog.sort'))).toBe('created');
 });
 
-test('排序回显：updated 态下点侧栏分类，URL 保留 sort（不用二次跳转找回）', async ({ page }) => {
+test('排序回显：updated 态下选栏目，URL 保留 sort（不用二次跳转找回）', async ({ page }) => {
   await page.goto(`/blog?sort=updated`);
   await expect(page.locator(`#id${SEED_BLOG2.id}`)).toBeVisible();
 
-  // 移动端（≤992px）侧栏分类默认折叠 —— 折叠时先点标题展开。
-  // 必须等 JS 接管（--ready）：水合前目录由 CSS 藏起，这时点标题点了个空
-  // （React 还没挂上 onClick）。
-  await expect(page.locator('.sidebar')).toHaveClass(/sidebar--ready/);
-  // 判据取标题的 .collapsed 类，而不是链接的 isVisible()：折叠靠 max-height:0 +
-  // overflow:hidden，链接自身的布局盒还在（Playwright 判「可见」），点下去落在被裁掉的
-  // 区域上，被上面的元素接管 —— 表现为点击重试到超时。
-  const sidebarTitle = page.locator('.sidebar-title');
-  if (await sidebarTitle.evaluate((el) => el.classList.contains('collapsed'))) {
-    await sidebarTitle.click();
-  }
-  const catLink = page.getByRole('link', { name: SEED_CATEGORY.name, exact: true });
-  await catLink.click();
+  await page.getByRole('button', { name: '栏目：全部栏目', exact: true }).click();
+  await page.getByRole('button', { name: SEED_CATEGORY.name, exact: true }).click();
   await expect(page).toHaveURL(new RegExp(`category=${SEED_CATEGORY.slug}`));
   await expect(page).toHaveURL(/sort=updated/);
 
@@ -451,44 +436,44 @@ test('编辑页：保存修改 / 取消 / 返回阅读页 三颗同高、同字�
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 侧栏首帧折叠
-//
-// 小屏（≤992px）的自动折叠发生在 useEffect（水合之后），而 SSR 直出的是展开态。
-// 若 CSS 不接管水合前那一帧，手机上就会「先看到展开的目录，再播放一段折叠动画」。
+// 个人侧栏首帧：窄屏直接是悬浮入口，桌面直接展示信息。
 // 阻断 Next 的 JS chunk = 停在「HTML 已解析、内联脚本已跑、但尚未水合」那一帧，
 // 正是用户看到的第一眼（CSS 在 /_next/static/css/ 下，不受影响）。
 // ─────────────────────────────────────────────────────────────────────────────
 const blockHydration = (page: Page) =>
   page.route(/\/_next\/static\/.*\.js(\?.*)?$/, (route) => route.abort());
 
-test.describe('侧栏首帧折叠', () => {
-  test('手机宽度：水合前目录即折叠（不再先展开再播放折叠动画）', async ({ page }) => {
+test.describe('个人侧栏首帧', () => {
+  test('手机宽度：水合前只显示头像悬浮入口', async ({ page }) => {
     await blockHydration(page);
     await page.setViewportSize({ width: 390, height: 844 });
 
     await page.goto('/blog');
-    await expect(page.locator('.sidebar')).toBeVisible();
-    await expect(page.locator('.category-list')).toBeHidden();
+    await expect(page.locator('.blog-personal__toggle')).toBeVisible();
+    await expect(page.locator('.blog-personal__panel')).toBeHidden();
   });
 
-  test('桌面宽度：水合前目录仍是展开（不能误伤大屏）', async ({ page }) => {
+  test('桌面宽度：水合前已经显示个人信息与范围', async ({ page }) => {
     await blockHydration(page);
     await page.setViewportSize({ width: 1280, height: 800 });
 
     await page.goto('/blog');
-    await expect(page.locator('.category-list')).toBeVisible();
+    await expect(page.locator('.blog-personal__panel')).toBeVisible();
+    await expect(page.getByRole('navigation', { name: '文章范围' })).toBeVisible();
   });
 
-  // 折叠态只是「JS 会接管」的前提下的首帧优化；禁用 JS 时目录必须照旧展开可点，
-  // 否则导航入口在无脚本环境下就没了（渐进增强）。
   test.describe('禁用 JS', () => {
     test.use({ javaScriptEnabled: false });
 
-    test('小屏目录保持展开', async ({ page }) => {
-      await page.setViewportSize({ width: 390, height: 844 });
+    test('桌面个人范围仍可通过原生链接导航', async ({ page }) => {
+      await page.setViewportSize({ width: 1280, height: 800 });
 
       await page.goto('/blog');
-      await expect(page.locator('.category-list')).toBeVisible();
+      const mine = page.getByRole('link', { name: /^我发布的 / });
+      await expect(mine).toBeVisible();
+      await mine.click();
+      await expect(page).toHaveURL(/scope=mine/);
+      await expect(page.getByRole('link', { name: /^我发布的 / })).toHaveAttribute('aria-current', 'page');
     });
   });
 });

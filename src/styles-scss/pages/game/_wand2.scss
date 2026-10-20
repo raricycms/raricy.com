@@ -11,25 +11,35 @@
   &[data-connected='true']::before { background: var(--color-success-primary); } }
 .wand2-error { color: var(--color-warning-primary); margin: 0 0 16px; }
 .wand2-layout { display: grid; grid-template-columns: minmax(0, 1fr) 240px; gap: 24px; }
-.wand2-play { min-width: 0;
+.wand2-play { min-width: 0; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
   &:fullscreen { display: flex; flex-direction: column; height: 100dvh; padding: 16px; background: var(--color-background-card);
     .wand2-stage { flex: 1; min-height: 0; }
     .wand2-canvas { height: 100%; object-fit: contain; }
     .wand2-inputs { flex-shrink: 0; } } }
 .wand2-stage { position: relative; overflow: hidden; border-radius: 20px; background: #b8cfaa; }
-.wand2-canvas { display: block; width: 100%; height: auto; aspect-ratio: 3 / 2; touch-action: none; }
+.wand2-canvas, .wand2-joystick, .wand2-attack { touch-action: none; -webkit-tap-highlight-color: transparent;
+  svg, span { pointer-events: none; } }
+.wand2-canvas { display: block; width: 100%; height: auto; aspect-ratio: 3 / 2; }
 .wand2-hud { position: absolute; left: 14px; top: 14px; display: flex; flex-wrap: wrap; gap: 8px; pointer-events: none;
   > span { display: inline-flex; align-items: center; gap: 5px; padding: 7px 11px; border-radius: 999px; font-size: .72rem; color: #fff9e8; background: #314e3edb; } }
 .wand2-overlay { position: absolute; inset: 0; display: grid; place-items: end center; padding: 24px; pointer-events: none;
   span { padding: 10px 17px; border-radius: 999px; background: #fff9e8ed; color: #36503d; font-size: .85rem; } }
 .wand2-fullscreen { @include m.btn-secondary; position: absolute; right: 10px; bottom: 10px; display: grid; place-items: center; width: 36px; height: 36px; background: var(--color-background-card); }
 .wand2-inputs { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-top: 18px; }
-.wand2-dpad { display: grid; grid-template-columns: repeat(3, 42px); gap: 5px; }
-.wand2-direction { @include m.btn-secondary; display: grid; place-items: center; width: 42px; height: 42px; padding: 0; background: var(--color-background-content); touch-action: none; user-select: none;
-  &:first-child { grid-column: 2; } &:nth-child(2) { grid-column: 1; } }
+.wand2-movement { display: flex; flex-direction: column; align-items: center; gap: 8px; flex-shrink: 0; }
+.wand2-joystick { @include m.btn-secondary($pointer-hover-only: true); position: relative; width: 128px; height: 128px; padding: 0; background: var(--color-background-content);
+  > svg { position: absolute; opacity: .65;
+    &:nth-of-type(1) { top: 7px; left: calc(50% - 8px); }
+    &:nth-of-type(2) { left: 7px; top: calc(50% - 8px); }
+    &:nth-of-type(3) { bottom: 7px; left: calc(50% - 8px); }
+    &:nth-of-type(4) { right: 7px; top: calc(50% - 8px); } }
+  &[data-active='true']:not(:disabled) { background: var(--color-brand-secondary); color: var(--color-brand-primary); }
+  &[data-active='true'] .wand2-joystick-knob { transition: none; } }
+.wand2-joystick-knob { position: absolute; left: 28%; top: 28%; width: 44%; height: 44%; border-radius: 50%; background: var(--color-brand-primary); transition: transform .12s ease-out; }
+.wand2-touchhelp { color: var(--color-text-secondary); font-size: .65rem; white-space: nowrap; }
 .wand2-keyhelp { margin: 0; font-size: .75rem; line-height: 2; color: var(--color-text-secondary);
   kbd { font-family: inherit; font-size: .7rem; display: inline-block; margin-right: 3px; padding: 0 5px; border-radius: 4px; background: var(--color-background-content); color: var(--color-text-primary); } }
-.wand2-attack { @include m.btn-primary; display: flex; flex-direction: column; gap: 5px; align-items: center; justify-content: center; width: 76px; height: 76px; flex-shrink: 0; padding: 0; touch-action: none; user-select: none;
+.wand2-attack { @include m.btn-primary; display: flex; flex-direction: column; gap: 5px; align-items: center; justify-content: center; width: 76px; height: 76px; flex-shrink: 0; padding: 0;
   span { font-size: .75rem; } }
 .wand2-sidebar { display: flex; flex-direction: column; gap: 16px; min-width: 0;
   h2 { display: flex; align-items: center; gap: 8px; color: var(--color-text-primary); font-size: .95rem; margin: 0 0 8px; } }

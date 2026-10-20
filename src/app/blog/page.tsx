@@ -6,18 +6,22 @@ import { rateLimit, RULES } from '@/lib/rate-limit';
 import Avatar from '@/app/components/Avatar';
 import BlogTimestamps from '@/app/components/BlogTimestamps';
 import { COOKIE_NAME } from '@/lib/blog-sort-pref';
-import { listBlogs, parseSortParam, ALL_SEARCH_FIELDS } from '@/lib/blog-service';
+import { listBlogs, getBlogDirectorySummary, parseSortParam, ALL_SEARCH_FIELDS } from '@/lib/blog-service';
+import { BLOG_SCOPES, parseBlogScope } from '@/lib/blog-directory';
+import { frameUrlFor } from '@/lib/frame-service';
 // 客户端与服务端共用同一份短标记文案（零依赖模块）—— 不在 JSX 里写死档名。
 import { VISIBILITY_BADGE } from '@/lib/blog-visibility';
 import { prisma } from '@/lib/db';
 import { categoryFullPath } from '@/lib/format';
-import { getCurrentUser, isCoreUser } from '@/lib/auth';
 // 锚点常量（零依赖模块）—— 设置页那块卡片的 id 就是它，别在 JSX 里再抄一遍字符串
 import { FOCUS_MODE_SETTINGS_HREF } from '@/lib/focus-mode';
-import BlogSidebar from './BlogSidebar';
+import BlogPersonalSidebar from './BlogPersonalSidebar';
+import BlogCategorySelect from './BlogCategorySelect';
+import BlogFilters from './BlogFilters';
 import SearchForm from './SearchForm';
 import BlogSort from './BlogSort';
 import BlogPageJump from './BlogPageJump';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 
 export const dynamic = 'force-dynamic'; // 依赖查询参数，禁用静态化
 
@@ -27,6 +31,7 @@ interface SearchParams {
   featured?: string;
   search?: string;
   sort?: string;
+  scope?: string;
 }
 
 export default async function BlogListPage({
@@ -42,7 +47,8 @@ export default async function BlogListPage({
   // 所以「URL 没带 featured」若算成 false，「全部文章」和栏目目录就只剩非精选 ——
   // 精选文整体消失，只有点侧栏「精选」才看得见（线上发生过的 bug）。
   const featuredFilter = sp.featured === '1' ? true : sp.featured === '0' ? false : undefined;
-  const featured = featuredFilter === true; // 侧栏高亮 / 搜索表单回显用的布尔视图
+  const scope = parseBlogScope(sp.scope);
+  const scopeLabel = BLOG_SCOPES.find((item) => item.value === scope)!.label;
   const currentSlug = sp.category ?? null;
   // 回显只认「URL 里显式且合法」的 sort —— 默认 created 与无参等价，不给 URL 补默认值。
   const rawSort = sp.sort === 'created' || sp.sort === 'updated' ? sp.sort : null;
@@ -55,11 +61,11 @@ export default async function BlogListPage({
   const prefUpdated = (await cookies()).get(COOKIE_NAME)?.value === 'updated';
   const effectiveSort: 'created' | 'updated' = rawSort ?? (prefUpdated ? 'updated' : 'created');
 
-  // 专注模式：查看者开启时，列表与侧栏都隐藏 focusHidden 栏目（根整组隐藏、
+  // 专注模式：查看者开启时，列表与栏目下拉都隐藏 focusHidden 栏目（根整组隐藏、
   // 子项从父组剪掉但父组「全部」入口保留）。本页 requireCoreUser 保证登录，
   // 先取当前用户定 focusOn，再与列表/栏目并行取数。
-  const currentUser = await getCurrentUser();
-  const focusOn = !!currentUser?.focusMode;
+  const focusOn = !!viewer.focusMode;
+  const summary = getBlogDirectorySummary(viewer.id, focusOn);
 
   // ── 正文搜索限频 ──────────────────────────────────────────────────────────
   // 只对**真的会扫正文**的请求计数（search 非空）。不能写成无条件计数 —— 那样光是
@@ -81,7 +87,7 @@ export default async function BlogListPage({
   const result = searchLimited
     ? null
     : listBlogs({
-        page: parseInt(sp.page || '1', 10),
+        page: parseInt(sp.page || '1', 10) || 1,
         perPage: 50, // 目录每页 50 篇（服务默认 200 是 /api/blogs 的契约，不动）
         categorySlug: sp.category ?? null,
         featured: featuredFilter,
@@ -91,6 +97,7 @@ export default async function BlogListPage({
         // 公开目录页搜全部字段（含正文）。其余调用方（/api/blogs、引用弹窗）走默认的
         // 标题/简介/作者，别顺手放宽（见 ListParams.searchFields 的注释）。
         searchFields: ALL_SEARCH_FIELDS,
+        personalScope: scope === 'all' ? undefined : { kind: scope, userId: viewer.id },
       });
 
   const categories = await prisma.category.findMany({
@@ -117,10 +124,9 @@ export default async function BlogListPage({
       .map((c) => ({ ...c, children: c.children.filter((x) => !x.focusHidden) }));
   }
 
-  const canUpload = isCoreUser(currentUser);
-
   const qs = (page: number) => {
     const p = new URLSearchParams();
+    if (scope !== 'all') p.set('scope', scope);
     if (sp.category) p.set('category', sp.category);
     if (sp.featured) p.set('featured', sp.featured);
     if (sp.search) p.set('search', sp.search);
@@ -131,11 +137,18 @@ export default async function BlogListPage({
 
   const clearHref = (() => {
     const p = new URLSearchParams();
+    if (scope !== 'all') p.set('scope', scope);
     if (sp.category) p.set('category', sp.category);
     if (sp.featured) p.set('featured', sp.featured);
     if (rawSort) p.set('sort', rawSort);
     const s = p.toString();
     return s ? `/blog?${s}` : '/blog';
+  })();
+  const resetFiltersHref = (() => {
+    const p = new URLSearchParams();
+    if (scope !== 'all') p.set('scope', scope);
+    if (rawSort) p.set('sort', rawSort);
+    return p.size ? `/blog?${p}` : '/blog';
   })();
 
   return (
@@ -144,25 +157,6 @@ export default async function BlogListPage({
         <div className="container">
           <h1>博客</h1>
           <p>分享思考与见解</p>
-
-          <div className="blog-search">
-            <SearchForm
-              currentSlug={currentSlug}
-              featured={featured}
-              search={sp.search ?? ''}
-              clearHref={clearHref}
-              sort={rawSort}
-            />
-          </div>
-
-          {canUpload && (
-            <div className="mt-3">
-              <Link href="/blog/upload" className="upload-button">
-                <span className="icon icon-add" aria-hidden="true"></span>
-                创建
-              </Link>
-            </div>
-          )}
         </div>
       </section>
 
@@ -173,17 +167,33 @@ export default async function BlogListPage({
       )}
 
       <div className="container">
-        <div className="blog-layout">
-          <BlogSidebar
-            categories={focusOn ? pruneFocusCategories(categories) : categories}
-            currentSlug={currentSlug}
-            featured={featured}
-            sort={rawSort}
+        <div className="blog-layout blog-directory">
+          <BlogPersonalSidebar
+            user={{ id: viewer.id, username: viewer.username, frameUrl: frameUrlFor(viewer) }}
+            summary={await summary}
+            scope={scope}
           />
 
           <main className="blog-content">
-            {/* 无条件渲染：空结果页也要能执行「LS→cookie 迁移」的恢复 effect */}
-            <BlogSort initialSort={effectiveSort} />
+            <BlogFilters>
+              <SearchForm
+                key={`${scope}:${currentSlug}:${sp.featured}:${sp.search}`}
+                currentSlug={currentSlug}
+                featured={featuredFilter === true}
+                featuredValue={sp.featured === '0' || sp.featured === '1' ? sp.featured : undefined}
+                scope={scope}
+                search={sp.search ?? ''}
+                clearHref={clearHref}
+                sort={rawSort}
+              />
+              <BlogCategorySelect
+                categories={focusOn ? pruneFocusCategories(categories) : categories}
+                currentSlug={currentSlug}
+                featured={sp.featured}
+              />
+              {/* 空结果页也挂载排序偏好的恢复 effect。 */}
+              <BlogSort initialSort={effectiveSort} />
+            </BlogFilters>
             {/* 列表与分页都依赖 result，故连同分页一起放进边界内 ——
                 它们要么一起出现，要么一起等。fallback 用骨架，且**不复用 .blog-item**：
                 专注模式的用例断言 `.blog-item` 计数为 0，骨架顶着同名类出现会污染它。 */}
@@ -193,7 +203,7 @@ export default async function BlogListPage({
               <SearchRateLimited />
             ) : (
               <Suspense fallback={<BlogListSkeleton />}>
-                <BlogListSection result={result} qs={qs} sort={effectiveSort} />
+                <BlogListSection key={`${scope}:${sp.category}:${sp.featured}:${sp.search}:${effectiveSort}:${sp.page}`} result={result} qs={qs} sort={effectiveSort} scopeLabel={scopeLabel} resetFiltersHref={resetFiltersHref} />
               </Suspense>
             )}
           </main>
@@ -214,10 +224,14 @@ async function BlogListSection({
   result: pending,
   qs,
   sort,
+  scopeLabel,
+  resetFiltersHref,
 }: {
   result: ReturnType<typeof listBlogs>;
   qs: (page: number) => string;
   sort: 'created' | 'updated';
+  scopeLabel: string;
+  resetFiltersHref: string;
 }) {
   const result = await pending;
 
@@ -313,15 +327,16 @@ async function BlogListSection({
       {result.blogs.length === 0 && (
         <div className="no-blogs">
           <i className="icon icon-journal-text" aria-hidden="true"></i>
-          <p>暂无博客文章</p>
+          <p>「{scopeLabel}」中没有匹配的文章</p>
+          <Link href={resetFiltersHref} className="button-primary">清掉筛选</Link>
         </div>
       )}
 
       {result.pages > 1 && (
         <nav className="pagination" aria-label="分页">
           {result.hasPrev && (
-            <Link href={qs(result.page - 1)} className="page-link">
-              &laquo;
+            <Link href={qs(result.page - 1)} className="page-link" aria-label="上一页">
+              <ChevronLeft aria-hidden="true" size={16} />
             </Link>
           )}
           {pageItems.map((p, i) =>
@@ -341,8 +356,8 @@ async function BlogListSection({
             )
           )}
           {result.hasNext && (
-            <Link href={qs(result.page + 1)} className="page-link">
-              &raquo;
+            <Link href={qs(result.page + 1)} className="page-link" aria-label="下一页">
+              <ChevronRight aria-hidden="true" size={16} />
             </Link>
           )}
           <BlogPageJump totalPages={result.pages} current={result.page} />

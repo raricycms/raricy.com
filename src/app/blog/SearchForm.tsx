@@ -12,6 +12,8 @@ export default function SearchForm({
   search,
   clearHref,
   sort,
+  scope,
+  featuredValue,
   basePath = '/blog',
 }: {
   currentSlug: string | null;
@@ -20,6 +22,8 @@ export default function SearchForm({
   clearHref: string;
   /** URL 里显式合法的 sort，非空时随搜索请求带回，保住已选的排序 */
   sort: string | null;
+  scope?: string;
+  featuredValue?: string;
   /**
    * 表单提交到哪个列表页（`action` 与空搜索时的回退跳转都用它）。
    * `/explore`（对外公开列表）复用本组件，传它自己的路径；默认 `/blog`。
@@ -38,7 +42,9 @@ export default function SearchForm({
       e.preventDefault();
       const params = new URLSearchParams();
       if (currentSlug) params.set('category', currentSlug);
-      if (featured) params.set('featured', '1');
+      if (featuredValue) params.set('featured', featuredValue);
+      else if (featured) params.set('featured', '1');
+      if (scope && scope !== 'all') params.set('scope', scope);
       if (sort) params.set('sort', sort);
       const s = params.toString();
       router.push(s ? `${basePath}?${s}` : basePath);
@@ -53,12 +59,14 @@ export default function SearchForm({
       onSubmit={onSubmit}
     >
       {currentSlug && <input type="hidden" name="category" value={currentSlug} />}
-      {featured && <input type="hidden" name="featured" value="1" />}
+      {(featuredValue || featured) && <input type="hidden" name="featured" value={featuredValue ?? '1'} />}
+      {scope && scope !== 'all' && <input type="hidden" name="scope" value={scope} />}
       {sort && <input type="hidden" name="sort" value={sort} />}
       {/* 输入框与按钮同一个定位上下文：按钮绝对定位嵌在胶囊内部最右侧 */}
       <div className="search-field">
         <input
           type="search"
+          aria-label="搜索文章"
           name="search"
           defaultValue={search}
           placeholder="搜索标题、作者、简介、正文..."

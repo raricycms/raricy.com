@@ -16,7 +16,10 @@
     padding: 0.4rem 0.7rem;
     font-size: 0.85rem;
     text-decoration: none;
-    display: inline-block;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 34px;
 }
 .page-ellipsis {
     padding: 0.4rem 0.3rem;
@@ -36,7 +39,7 @@
     border-radius: 999px;
     font-size: 0.85rem;
     text-align: center;
-    background: var(--color-background-page);
+    background: var(--color-background-content);
     color: var(--color-text-primary);
     transition: box-shadow 0.2s ease;
     -moz-appearance: textfield;

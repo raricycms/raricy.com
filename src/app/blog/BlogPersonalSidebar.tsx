@@ -1,0 +1,129 @@
+'use client';
+
+import Link from 'next/link';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
+import { X } from 'lucide-react';
+import Avatar from '@/app/components/Avatar';
+import { BLOG_SCOPES, type BlogScope } from '@/lib/blog-directory';
+
+export default function BlogPersonalSidebar({ user, summary, scope }: {
+  user: { id: string; username: string; frameUrl: string | null };
+  summary: { counts: Record<BlogScope, number>; likesReceived: number; commentsReceived: number; fishReceived: number };
+  scope: BlogScope;
+}) {
+  const [open, setOpen] = useState(false);
+  const [narrow, setNarrow] = useState(false);
+  const [settled, setSettled] = useState(false);
+  const host = useRef<HTMLElement>(null);
+  const toggle = useRef<HTMLButtonElement>(null);
+  const params = useSearchParams();
+
+  useLayoutEffect(() => {
+    setSettled(false);
+    if (!open) return;
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) { setSettled(true); return; }
+    const timer = window.setTimeout(() => setSettled(true), 450);
+    return () => window.clearTimeout(timer);
+  }, [open]);
+
+  useEffect(() => {
+    const media = window.matchMedia('(max-width: 992px)');
+    const update = () => { setNarrow(media.matches); setOpen(false); };
+    update();
+    media.addEventListener('change', update);
+    return () => media.removeEventListener('change', update);
+  }, []);
+
+  useEffect(() => {
+    function outside(event: PointerEvent) {
+      if (!host.current?.contains(event.target as Node)) setOpen(false);
+    }
+    function escape(event: KeyboardEvent) {
+      if (event.key === 'Escape' && open) {
+        setOpen(false);
+        toggle.current?.focus();
+      }
+    }
+    document.addEventListener('pointerdown', outside);
+    document.addEventListener('keydown', escape);
+    return () => {
+      document.removeEventListener('pointerdown', outside);
+      document.removeEventListener('keydown', escape);
+    };
+  }, [open]);
+
+  function scopeHref(next: BlogScope) {
+    const p = new URLSearchParams(params.toString());
+    if (next === 'all') p.delete('scope');
+    else p.set('scope', next);
+    p.delete('page');
+    return p.size ? `/blog?${p}` : '/blog';
+  }
+
+  return (
+    <aside
+      ref={host}
+      className={`blog-personal${open ? ' is-open' : ''}${open && settled ? ' is-settled' : ''}`}
+      aria-label="我的博客"
+      onBlur={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setOpen(false);
+      }}
+    >
+      <div className="blog-personal__shell">
+        <Link
+          className="blog-personal__avatar"
+          href={`/u/${user.id}`}
+          aria-label={`${user.username}的主页`}
+          tabIndex={narrow && !open ? -1 : undefined}
+          aria-hidden={narrow && !open}
+        >
+          <Avatar userId={user.id} frameUrl={user.frameUrl} alt="" />
+        </Link>
+        <button
+          ref={toggle}
+          type="button"
+          className="blog-personal__toggle"
+          aria-label={open ? '收起我的博客' : '展开我的博客'}
+          aria-expanded={open}
+          aria-controls="blog-personal-panel"
+          onClick={() => setOpen((value) => !value)}
+        >
+          <X aria-hidden="true" />
+        </button>
+        <div className="blog-personal__panel" id="blog-personal-panel" inert={narrow && !open}>
+          <div className="blog-personal__inner">
+            <Link className="blog-personal__identity" href={`/u/${user.id}`}>
+              <span>{user.username}</span>
+            </Link>
+            <dl className="blog-personal__stats">
+              <div className="blog-likes" title="获赞"><dt><span className="icon icon-heart-fill" aria-hidden="true" /><span className="visually-hidden">获赞</span></dt><dd className="numeric">+{summary.likesReceived}</dd></div>
+              <div className="blog-comments" title="收到评论"><dt><span className="icon icon-chat-dots_new" aria-hidden="true" /><span className="visually-hidden">收到评论</span></dt><dd className="numeric">+{summary.commentsReceived}</dd></div>
+              <div className="blog-fish" title="收获鱼干"><dt><span className="icon icon-fish" aria-hidden="true" /><span className="visually-hidden">收获鱼干</span></dt><dd className="numeric">+{summary.fishReceived}</dd></div>
+            </dl>
+            <nav className="blog-personal__ranges" aria-label="文章范围">
+              {BLOG_SCOPES.map((item) => (
+                <Link
+                  key={item.value}
+                  href={scopeHref(item.value)}
+                  className={`blog-personal__range${scope === item.value ? ' is-active' : ''}`}
+                  aria-current={scope === item.value ? 'page' : undefined}
+                  onClick={() => setOpen(false)}
+                  scroll={false}
+                  prefetch={false}
+                >
+                  <span className={`icon ${item.icon}`} aria-hidden="true" />
+                  <span>{item.label}</span>
+                  <span className="numeric">{summary.counts[item.value]}</span>
+                </Link>
+              ))}
+            </nav>
+            <Link href="/blog/upload" className="upload-button blog-personal__create">
+              <span className="icon icon-add" aria-hidden="true" />创建
+            </Link>
+          </div>
+        </div>
+      </div>
+    </aside>
+  );
+}
