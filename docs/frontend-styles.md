@@ -297,7 +297,7 @@ Kumbh Sans；代码块与编辑器继续使用完整的 JetBrains Mono。
 | 讨论 · 消息作者 | `.chat-msg__avatar`（pages/_chat.scss） | 34px |
 | 新会话弹窗列表 | `.chat-new-item__avatar`（pages/_chat.scss） | 32px |
 | 签到排行榜（含占位） | `.checkin-leaderboard__avatar` / `-placeholder`（pages/_checkin.scss） | 32px |
-| 后台用户卡片 | `.user-card__avatar`（pages/admin/_users.scss） | 28px |
+| 后台用户卡片 | `.user-card__avatar`（pages/admin/_users.scss） | 40px |
 | 博客列表作者 | `.blog-author img`（pages/blog/_menu.scss） | 20px |
 | 博客详情作者 | `.read-hero__avatar`（pages/blog/_blog.scss） | 32px |
 | 博客评论作者 | `.comment-author-avatar`（pages/blog/_blog.scss） | 24px |
@@ -354,7 +354,7 @@ Kumbh Sans；代码块与编辑器继续使用完整的 JetBrains Mono。
   色带自己身上**，那会连色带一起收窄，页面顶部凭空短一截。
   文章页眉 `.read-hero` 位于 `.read-card` 内，由阅读卡承担内距，标题与作者、时间居中。
   外层 `.blog-detail` 保留 **940px 阅读行宽**。
-  `/admin` 那一档的檐沟是 **20px**（= `.admin-container` 的值），抬头与它下面的内容列
+  `/admin` 那一档的檐沟是 **20px**（= AdminShell 的 `.admin-layout` 内距；`.admin-container` 只是内容列，不再自带宽度与檐沟），抬头与它下面的内容列
   左边缘对齐。签到页 `.checkin-page` 只有檐沟、**没有**列宽上限（卡片仍按视口铺开），
   那是现有排版，别顺手「统一」成居中列。
 
@@ -410,7 +410,7 @@ Kumbh Sans；代码块与编辑器继续使用完整的 JetBrains Mono。
   外壳按 **420ms** 非线性缓动伸缩，按钮错开淡入，收起反向播放；
   移出焦点、外部点击、导航与 ESC 收起，隐藏面板 `inert`；减少动态效果偏好下直接切换。
 - **页脚**：`.site-footer`，背景卡片色 + 顶部分隔，内容容器同 1140px 体系。
-- **后台**：`.admin-layout` 左侧 220px 固定侧边栏（移动端折叠成横向标签条）+ 右侧滚动内容区，内容容器最大 1400px。
+- **后台**：`.admin-layout` 是居中的 1440px 列（`padding: 24px 20px 72px`），左 **232px** 吸顶胶囊侧栏 + 右内容列；窄屏（≤900px）侧栏折成顶栏下方的**单行可横向滚动**胶囊标签带。宽度与 20px 檐沟只归外壳，`.admin-container` 只表示「内容列」。详见 §6.12。
 - **栅格**：首页用 flex + `gap` 或 CSS Grid（`repeat(auto-fit, minmax(...))` / 显式 `repeat(3,1fr)`），**不用浮点栅格**。另有 `layout/_grid.scss` 与 `base/_forms.scss` 提供 Bootstrap 风格行/列工具。
 - 页面骨架：`body { display:flex; flex-direction:column; height:100dvh; min-height:100dvh }` + `main { flex:1 0 auto }`，页脚始终贴底。
 
@@ -518,9 +518,11 @@ Kumbh Sans；代码块与编辑器继续使用完整的 JetBrains Mono。
   （那是最高级按钮的 hover 配方）：四张卡的色相里只有蓝压得住白字，琥珀 `#f59e0b`、
   青 `#06b6d4`、绿 `#10b981` 配白字的对比度都不到 2.6:1。同一套 hover 配方要在
   四张卡上都成立，所以统一「加深淡底」而不是「转实底」。
-- 管理后台 `.admin-stat-card`：用**卡片淡底 + 数字同色**区分类型（blue/green/amber/
-  purple/red）。原先靠左侧 4px 彩色竖条，已按「无左侧边框」总则去掉；色值也从写死的
-  hex 换成了令牌（站内没有紫色语义令牌，purple 与 blue 合并到品牌色系）。
+- 管理概览 `.admin-kpi`：五张 KPI 卡用**分类强调色**成对区分（blue / violet / cyan /
+  success / amber：图标底色用 `-soft`、数字用主色）。原先靠左侧 4px 彩色竖条，已按
+  「无左侧边框」总则去掉；「点赞数」不再借 `--color-warning-*`（那是危险语义），
+  「精选」也不再借收藏夹专用的 `--color-star-*`。只有带 `href` 的卡才在 hover 亮
+  `--shadow-card-brand`（判据见 §2.3）。
 
 **专注模式的入口：整段不渲染，没有「禁用态」这一档**（2026-09 改的口径）。
 此前这里有一节「禁用入口」配方 —— 保留元素、置灰、换成不导航的 `<span>` / `<button>`、
@@ -968,6 +970,54 @@ plot / price / volume / time 各占一格）：与 SVG 共用同一个分数，�
 - 窄屏由 `.table-responsive` 横向滚动（两张表都一样），不撑破页面；
   `.tstats-table` 在 ≤575px 给一个 `min-width`，否则列会被挤扁而不是滚动。
 
+### 6.12 管理面板（`/admin/*` 与 `/audit`，`pages/admin/*` + `layout/_admin-sidebar.scss`）
+
+管理端是**同一副外壳下的一组工作台页**：`/admin` 段与 `/audit` 共用 `AdminShell`
+（侧栏 + 内容列），各页只负责抬头、筛选与内容。设计语言与博客目录同源：胶囊 +
+大圆角 + 淡底色阶，动效统一 `0.42s cubic-bezier(.22, 1, .36, 1)`。改任何管理页之前
+先读 `pages/admin/_common.scss` —— 共享原语都在那一份里，各页文件只写自己的差异。
+
+- **外壳几何**：`.admin-layout` 是居中的 1440px 列（`padding: 24px 20px 72px`），
+  左 **232px** 吸顶胶囊侧栏、右内容列；窄屏（≤900px）侧栏折成顶栏下方一条
+  **单行、可横向滚动**的胶囊标签带（图标保留）。侧栏 `position: sticky`，不再随
+  页面内容拉长。`.admin-container` 只是内容列：**宽度与 20px 檐沟都归外壳**，
+  页面里别再给它加 `padding` / `max-width`（`tests/e2e/page-gutter.spec.ts` 量的是 20px 定值）。
+- **抬头**：统一 `<AdminPageHeader>`（`.admin-hero`），结构契约是「根节点里的 `h1` + `p`」。
+  它不是整幅色带、也不吃左右内距 —— 檐沟由外壳给。抬头右侧可放 `actions`
+  （新建 / 通知中心等），窄屏自动落到标题下方。
+- **面板与行卡**：`.admin-panel` = 卡片色 + 30px 圆角（窄屏 24/18），常态不描边、
+  不托阴影；列表项 `.admin-row` = 22px 圆角，选中态 `.is-selected` 用品牌淡底，
+  **不画左侧竖条**。状态与分类色统一走 `.admin-chip`（`--brand` / `-blue` / `-amber` /
+  `-violet` / `-success` / `-warning` / `-featured`）；**「精选」用 `-featured`（分类琥珀），
+  不借 `--color-star-*`** —— 那是收藏夹五角星的专用语义色（§2.1 / §6.7）。
+- **工具栏与字段**：`.admin-toolbar` 是吸顶胶囊（控件统一高 44px），`.admin-search` 是
+  带图标的胶囊搜索框；字段多、需要标签的页用 `.admin-filter-bar` + `.admin-field`
+  （标签 + 控件两行）。移动端有**两条吸顶**（侧栏标签带 + 工具栏），工具栏 `top`
+  必须停在标签带下方（`navbar-height + 58px`）；只差 8px 的话滚动后会把它盖住，
+  导航等于消失。
+- **圆形勾选点**：`.admin-pick`（`AdminPick`）—— 原生 checkbox 视觉隐藏但保留在焦点
+  序列里，可见的是 22px 圆点：未选中内容底色，选中转品牌实底 + 白色对勾（勾的缩放 /
+  淡入与行卡底色同一节奏）。**别把它塞进 `.form-check` 的 `padding-left` 体系** ——
+  旧写法用 `margin-left: -1.5rem` 抵消，少了那层 padding 时勾选点会溢出卡片。
+- **批量操作底座**：选中后从底部浮出 `.admin-dock`（固定定位 + 品牌浮层阴影），
+  列表末尾补 `.admin-dock-spacer` 防遮挡；清空选择后整块**不渲染** —— 旧版的
+  `.admin-batch-actions` 是 `display: none` 等 JS 加 `.is-visible`，而没有任何代码加，
+  于是批量栏永远看不见。
+- **表格折卡**：管理端数据表用 `.admin-table`，每个 `<td>` 必须写 `data-label`
+  （没有标签的那一格写 `data-label=""`）。≤768px 时每行折成卡片，标签由 `td::before`
+  生成，页面与表格都不再横向滚动；>768px 仍是标准表。**漏写 `data-label` 的那一格在
+  手机上会只剩一个没有标题的值**，不报错。
+- **分页 / 空态**：`AdminPager`（`.admin-pager`）与 `AdminEmpty`（`.admin-empty`）是
+  全管理端唯一实现；别各页再抄 `<ul class="pagination">` / `text-center py-5`。
+- **动效**：`.admin-rise` = `admin-rise 0.42s cubic-bezier(.22, 1, .36, 1) backwards`，
+  行卡用 `--i` 错开、延迟封顶 8 格。**fill-mode 必须是 `backwards` 而不是 `both`** ——
+  `both` 会让结束帧留下 `transform: translateY(0)`，给 `position: fixed` 的弹窗建
+  包含块，遮罩就只盖住卡片那一块。`prefers-reduced-motion: reduce` 下全部关掉。
+- 几何契约由 `tests/e2e/admin-ui.spec.ts` 盯着（整页横向溢出、窄屏侧栏单行、日志筛选
+  标签与表格折卡、勾选点不溢出卡片、心形与数字居中、批量底座浮出 / 收起），并登记在
+  `playwright.config.ts` 的 `RESPONSIVE_SPECS`；`admin-logs` / `admin-categories` /
+  `admin-role-buttons` / `page-gutter` / `ios-app` 另有各自的锚点。
+
 ## 7. 图标方案
 
 **不用图标字体**。现有 mask 图标由 `components/_icons.scss` 的 `.icon` 基类引用
@@ -1166,7 +1216,7 @@ Hero 的导航入口为「开始探索」，复用 `btn-primary` 并增加 `back
 
 **同名嵌套（组件根复用了页面级容器类）** —— 与 `.blog-detail` 同一个形状。
 判据：该组件被渲染在任何**已经带同名类**的父节点里时，就会双份内缩 / 双份外边距。
-下列四条目前的状态各不相同，改之前先按判据自己走一遍 DOM：
+下列两条目前的状态各不相同，改之前先按判据自己走一遍 DOM：
 
 - `src/app/clipboard/upload/UploadForm.tsx` 的根节点 = `clipboard-page` + `clipboard-title`，
   而 `clipboard/upload/page.tsx` 与 `clipboard/[id]/edit/page.tsx` **也**各自套了一层
@@ -1174,21 +1224,13 @@ Hero 的导航入口为「开始探索」，复用 `btn-primary` 并增加 `back
   页面与组件各渲染一个 `<h1 class="clipboard-title">上传云剪贴板</h1>`，**同一页两个
   内容相同的主标题**（a11y / SEO 硬伤；edit 页因 `isEdit` 分支不同文案而不重复）。
   修法：组件根去掉这两个类，由两个页面各自提供外壳。
-- `src/app/admin/oauth/ApplicationRow.tsx` 的根节点 = `management-card`，而
-  `admin/oauth/page.tsx` 把它渲染在 `<section className="management-card">` **里面** →
-  卡中卡：双 30px padding、双底色。`pages/_oauth.scss` 的
-  `.management-card + .management-card { margin-top: 0 }` 只是把兄弟行之间的
-  `margin-top: 20px` 压掉，压不住卡壳本身。
-  ⚠️ 2026-09 起这条**已经会肉眼可见**：卡片一律不描边之后，两层同为卡片色 = 明度差 0，
-  内层边界彻底消失。`pages/admin/_users.scss` 里加了一条
-  `.management-card .management-card { background: var(--color-background-content) }`
-  作兜底（内层压深一档）。**那是治标的**：正解仍是把类名从组件根节点摘掉、由页面
-  统一提供外壳 —— 动它时要连这条兜底一起删。
-- `src/app/components/AdminArticlesManager.tsx` 的根节点 = `admin-container`（页面级容器：
-  `max-width: 1400px; margin: 32px auto; padding: 0 20px`）。**当前没爆**，纯属
-  `admin/blogs/page.tsx` 自己没写容器、由组件提供。一旦它被放进任何一个已有
-  `admin-container` 的 admin 页（另外 6 个都写了）立刻复现。这也与 §5 那条「页边距归容器、
-  行宽归内层上限」相悖 —— 容器该上提到 `admin/blogs/page.tsx`。
+> 2026-10 管理端改版已修掉两处同类嵌套，别再按旧描述排查：
+> `admin/oauth/ApplicationRow.tsx` 的根节点不再是 `management-card`（改用
+> `.admin-app-row`，外层由页面的 `.admin-panel` 统一提供）；`AdminArticlesManager.tsx`
+> 的根节点也不再是 `admin-container`（容器上提到 `admin/blogs/page.tsx`）。
+> `_users.scss` 里那条 `.management-card .management-card` 兜底与 `_oauth.scss` 里整套
+> `.management-card__*` 规则已随之删除。
+
 - `src/app/fish/PayError.tsx` 的根节点 = `content-wrapper` + `page-title`（整页外壳）。
   **当前不冲突**：它只出现在 `fish/pay` 与 `fish/collect` 的参数非法 early-return 分支，
   与正常分支的 `content-wrapper` 不会同时渲染。但 `pages/_notifications.scss` 的注释
@@ -1196,11 +1238,9 @@ Hero 的导航入口为「开始探索」，复用 `btn-primary` 并增加 `back
 
 **同名不同义（两处定义指的是两回事）**：
 
-- `pages/admin/_articles.scss` 的 `.current-category`（后台文章表格里的**分类徽章**：
-  `padding` / `radius 20px` / 配 `.is-categorized` 换色）与 `pages/blog/_menu.scss` 的
-  同名类（博客分类栏的**「当前分类」标签**，只写 `margin-top: 12px`）都是根级 0-1-0，
-  互不知情。唯一消费方是 `AdminArticlesManager.tsx`（徽章那份），于是徽章白拿
-  `margin-top: 12px`。另见上面 `.current-category .badge` 那条死规则。
+- `.current-category`（`pages/blog/_menu.scss` 的「当前分类」标签）：2026-10 管理端改版后
+  后台文章页改用 `.admin-chip`，`pages/admin/_articles.scss` 里那份分类徽章已删；
+  博客那份目前也没有消费方。另见 `.current-category .badge` 那条死规则。
 - `.copy-btn`（`pages/blog/_blog.scss` 根级全局 vs `pages/_story.scss` 在
   `.story-reader__content` 下整套重写）：注入点是 `src/lib/blog-renderer.ts`
   拼的内联 HTML 字符串，所以**任何**用了共享渲染管线的页面都会命中 blog 那份。
@@ -1208,18 +1248,14 @@ Hero 的导航入口为「开始探索」，复用 `btn-primary` 并增加 `back
 - `.filter-btn`（`pages/_fish.scss` vs `pages/_notifications.scss`）：**后者一个属性都没
   生效**（`main.scss` 里 notifications 先于 fish 加载，fish 全胜），而通知页压根没有
   筛选栏 —— 唯一消费方是 `fish/transactions`。改 `_notifications.scss` 那份是静默无效的。
-- `.notification-card`（`pages/_notifications.scss` 的 `.content-wrapper .notification-card`
-  vs `pages/admin/_notifications.scss` 的裸 `.notification-card`）：**同名不同义** ——
-  前者是通知中心的一条通知（30px 圆角、无边框、12px 下距），后者是 `/admin/broadcast`
-  的整块面板（32px 内距、1px 描边、10px 圆角），**唯一消费方是 `admin/broadcast/page.tsx`**。
-  通知中心那份靠 0-2-0 压住了它的内距 / 圆角 / 底色，**唯独 `margin-top: 30px` 没人接**
-  ——卡片之间于是隔 30px 而不是 12px（相邻外边距折叠取大者，那条 `margin-bottom` 根本不
-  参与）。通知中心用 `margin-top: 0` 抵消，**不是冗余，别删**。「按博客卡片风格重做」
-  （`276848d`）时把原有的这一行弄丢了；手机端的密度同样被它拦着，一并核过。
+- `.notification-card`：2026-10 管理端改版后 `/admin/broadcast` 改用 `.admin-panel`，
+  `pages/admin/_notifications.scss` 整份已删除 —— 那条「裸 `.notification-card` 压到通知中心
+  条目」的同名冲突不复存在。通知中心仍靠 `.content-wrapper .notification-card` 的 0-2-0
+  权重压过通用 `.card` 类。
 
-- `pages/blog/_menu.scss` 的 `.current-category .badge` 是**死规则**：唯一渲染
-  `.current-category` 的 `src/app/components/AdminArticlesManager.tsx` 里没有 `.badge`
-  子元素。一旦有人把它加回去，浅色主题下就是白字压半透明白底。
+- `pages/blog/_menu.scss` 的 `.current-category .badge` 是**死规则**：管理端改版后
+  `.current-category` 已无任何渲染方。一旦有人把它加回去，浅色主题下就是白字压
+  半透明白底。
 - `pages/_checkin.scss` 的 `@keyframes btnPulse` 光环写死浅色主题品牌蓝
   `rgba(37,99,235,…)`，暗色下与按钮本体（`#23A5FF`）不同色 —— 只在 1s 的脉冲里可见，
   且站内没有「品牌色 + 指定透明度」的令牌可用，暂留。
