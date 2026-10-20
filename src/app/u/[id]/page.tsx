@@ -106,8 +106,9 @@ export default async function PublicProfilePage({
 
           {isOwnProfile && (
             <div className="profile-hero__actions">
-              {/* 默认布局时引导面板里已经有一颗「布置主页」，这里不重复摆第二颗 */}
-              {canEdit && !startEditing && !data.isDefault && (
+              {/* 全页唯一一颗「布置主页」（编辑态隐藏，否则会同时存在「正在布置」与
+                  「去布置」两种入口）。页内的引导面板 / 空态只留文案，不再各放一颗。 */}
+              {canEdit && !startEditing && (
                 <Link
                   href={`/u/${profile.id}?edit=1`}
                   className="profile-actions__btn profile-actions__btn--edit"

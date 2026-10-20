@@ -10,10 +10,13 @@
 // 要复用同一套卡片渲染，拆成两个组件必然漂移（一边能拖、一边不能，样式也会分叉）。
 // 客户端组件在首屏一样会被服务端渲染成 HTML，所以访客拿到的仍是 SSR 内容。
 //
-// 【两种摆放模型，别混】桌面是 4 列自由网格（位置 = x/y，拖动摆放）；手机是两列
-// 流式（忽略 x/y，按**数组顺序**排，存在 profile_blocks.sort 里）。所以手机上换顺序
-// 只改数组下标，**不动桌面坐标** —— 反过来会把桌面精心留的空白一起改掉。
-// 手机端不支持拖动（流式布局里「拖到哪」没有意义），改用选中后的「上移 / 下移」。
+// 【两端是同一份坐标，不是两套布局】桌面 4 列自由网格是唯一真相（位置 = x/y）；
+// 手机的 2 列由 projectMobile 从它**投影**出来（宽 ≥2 通栏，宽 1 看左右半，顺序按
+// 桌面 (y,x) 紧排）。手机上拖动 / 左右移动 / 上下移动改的都是桌面坐标 —— 于是两端
+// 永远显示同一份布局，不会出现「桌面改完手机还是旧的」。
+//
+// 【手机上只有把手能拖】整卡拖拽在触屏上会和页面滚动抢手势，所以手机上只有左上角
+// grip 是把手（touch-action: none + pointer capture），拖到另一张卡上就与它换位。
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -27,6 +30,8 @@ import {
   CalendarCheck,
   Check,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   ChevronUp,
   ExternalLink,
   GripVertical,
@@ -47,11 +52,17 @@ import {
   BLOCK_SIZES,
   GRID_COLUMNS,
   MAX_BLOCKS,
+  MOBILE_HALF,
   findFreeSpot,
+  mobileNeighbors,
+  moveInMobileOrder,
+  moveToOtherHalf,
   normalizeBlocks,
   normalizeConfig,
+  projectMobile,
   rectsOverlap,
   sizeKey,
+  swapBlockPositions,
   type BlockCatalog,
   type BlockKind,
   type BlockView,
@@ -59,7 +70,7 @@ import {
   type StoredBlock,
 } from '@/lib/profile-blocks';
 
-const ROW_H = 132;
+/** 桌面网格 gap。行高 = 列宽（方格），拖拽换算格距时只用这一个常量。 */
 const GAP = 16;
 
 const KIND_ICON: Record<BlockKind, typeof BookOpen> = {
@@ -124,6 +135,12 @@ export default function ProfileBoard({
   const router = useRouter();
   const gridRef = useRef<HTMLDivElement | null>(null);
 
+  // 服务端给的是「上次保存的结果」。保存成功后要**立刻**显示新版，所以本地留一份；
+  // PUT 响应里的 blocks 先写进来，props 一旦更新（router.replace 带回新 RSC）再覆盖。
+  // 少了这一层，保存后得整页刷新才看得见自己的改动。
+  const [boardBlocks, setBoardBlocks] = useState<ProfileBlock[]>(blocks);
+  const [isDefaultLayout, setIsDefaultLayout] = useState(isDefault);
+
   const [editing, setEditing] = useState(startEditing);
   const [draft, setDraft] = useState<Draft[]>(() => blocks.map(stripView));
   const [selected, setSelected] = useState<string | null>(null);
@@ -134,6 +151,11 @@ export default function ProfileBoard({
   const [lightbox, setLightbox] = useState<string | null>(null);
   const [isMobile, setIsMobile] = useState(false);
   const [draggingId, setDraggingId] = useState<string | null>(null);
+  const [dragOverId, setDragOverId] = useState<string | null>(null);
+  /** 点文字块打开的详情层。rect 是源卡片的位置，用来做 FLIP 的起始帧。 */
+  const [detail, setDetail] = useState<{ rect: DOMRect; title: string; text: string } | null>(null);
+  /** 正在播关闭动画：detail 先留着，面板反向 FLIP 回源卡片，动画结束才 unmount。 */
+  const [detailClosing, setDetailClosing] = useState(false);
 
   const dragRef = useRef<{
     id: string;
@@ -145,11 +167,36 @@ export default function ProfileBoard({
     w: number;
     h: number;
   } | null>(null);
+  /** 手机把手拖拽：命中另一张卡的 id 存在 ref 里（state 只负责高亮）。 */
+  const mobileDragRef = useRef<{ id: string; pointerId: number } | null>(null);
+  const dragOverRef = useRef<string | null>(null);
+  const detailPanelRef = useRef<HTMLDivElement | null>(null);
+  const detailCloseRef = useRef<HTMLButtonElement | null>(null);
+  const restoreFocusRef = useRef<HTMLElement | null>(null);
+  /** 关闭动画期间挡住重复关闭（Esc 连按两下、点完背景又点关闭按钮）。 */
+  const closingRef = useRef(false);
+  const closeTimerRef = useRef<number | null>(null);
 
-  // 非编辑态时，服务端刷新（保存后 router.refresh）要把新数据同步进草稿。
+  // ① 编辑态同步。点身份条「布置主页」只是同路由换 search：组件早已挂载，useState
+  //    的初值不会再跑一遍 —— 不把 prop 变化同步进来，编辑栏就永远不出现。
   useEffect(() => {
-    if (!editing) setDraft(blocks.map(stripView));
-  }, [blocks, editing]);
+    setEditing(startEditing);
+    if (startEditing) setError(null);
+  }, [startEditing]);
+
+  // ② 服务端数据更新（保存后的 router.replace、别处导航）覆盖本地乐观副本。
+  useEffect(() => {
+    setBoardBlocks(blocks);
+  }, [blocks]);
+
+  useEffect(() => {
+    setIsDefaultLayout(isDefault);
+  }, [isDefault]);
+
+  // ③ 非编辑态时，草稿跟随服务端数据。
+  useEffect(() => {
+    if (!editing) setDraft(boardBlocks.map(stripView));
+  }, [boardBlocks, editing]);
 
   useEffect(() => {
     const mq = window.matchMedia('(max-width: 768px)');
@@ -174,12 +221,92 @@ export default function ProfileBoard({
     return () => window.clearTimeout(t);
   }, [notice]);
 
+  // 详情层：Esc 关闭、Tab 留在面板内、关闭后把焦点还给打开它的那张卡。
+  useEffect(() => {
+    if (!detail) return;
+    const panel = detailPanelRef.current;
+    restoreFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+
+    // 锁滚动前先量滚动条宽度，并用 padding-right 抵掉 —— 直接 overflow:hidden 会让
+    // 桌面端滚动条消失、正文横向跳一下（详情层是 fixed，跳的是背景）。
+    const prevOverflow = document.body.style.overflow;
+    const prevPaddingRight = document.body.style.paddingRight;
+    const scrollbar = window.innerWidth - document.documentElement.clientWidth;
+    document.body.style.overflow = 'hidden';
+    if (scrollbar > 0) {
+      const current = Number.parseFloat(window.getComputedStyle(document.body).paddingRight) || 0;
+      document.body.style.paddingRight = `${current + scrollbar}px`;
+    }
+    detailCloseRef.current?.focus();
+
+    // FLIP：先把面板缩到源卡片的位置与大小，下一帧再放回自身 —— 用户看到的是
+    // 「这张卡长大并移到屏幕中间」。scale 必须取等比（min），非等比会把文字压扁，
+    // 1×1 卡片尤其明显。首帧面板是 opacity:0（写在 JSX 里），否则会先闪一下终态。
+    let raf = 0;
+    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const target = panel?.getBoundingClientRect() ?? null;
+    if (panel && target && target.width > 0 && target.height > 0 && !reduce) {
+      const sx = detail.rect.width / target.width;
+      const sy = detail.rect.height / target.height;
+      const dx = detail.rect.left + detail.rect.width / 2 - (target.left + target.width / 2);
+      const dy = detail.rect.top + detail.rect.height / 2 - (target.top + target.height / 2);
+      panel.style.transformOrigin = 'center center';
+      panel.style.transform = `translate(${dx}px, ${dy}px) scale(${Math.min(sx, sy)})`;
+      panel.style.opacity = '0.6';
+      void panel.offsetWidth;
+      panel.style.transition = 'transform 0.32s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.22s ease';
+      raf = requestAnimationFrame(() => {
+        panel.style.transform = 'none';
+        panel.style.opacity = '1';
+      });
+    } else if (panel) {
+      panel.style.opacity = '1';
+    }
+
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        // 走同一个关闭函数：Esc 与点背景 / 关闭按钮的收尾必须是同一条路。
+        closeDetail();
+        return;
+      }
+      if (e.key !== 'Tab' || !panel) return;
+      const focusables = Array.from(
+        panel.querySelectorAll<HTMLElement>(
+          'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+        )
+      ).filter((el) => !el.hasAttribute('disabled'));
+      if (focusables.length === 0) return;
+      const first = focusables[0];
+      const last = focusables[focusables.length - 1];
+      if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      } else if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener('keydown', onKey);
+      document.body.style.overflow = prevOverflow;
+      document.body.style.paddingRight = prevPaddingRight;
+      if (closeTimerRef.current !== null) {
+        window.clearTimeout(closeTimerRef.current);
+        closeTimerRef.current = null;
+      }
+      restoreFocusRef.current?.focus();
+    };
+  }, [detail]);
+
   const draftById = useMemo(() => new Map(draft.map((b) => [b.id, b])), [draft]);
 
   // 「有没有还没保存的改动」—— 给工具栏一颗状态，避免用户以为拖完就已经生效了。
   const dirty = useMemo(
-    () => JSON.stringify(draft) !== JSON.stringify(blocks.map(stripView)),
-    [draft, blocks]
+    () => JSON.stringify(draft) !== JSON.stringify(boardBlocks.map(stripView)),
+    [draft, boardBlocks]
   );
 
   // 有未保存改动时离开页面要拦一下（只在编辑态）。beforeunload 是浏览器唯一
@@ -194,27 +321,18 @@ export default function ProfileBoard({
     return () => window.removeEventListener('beforeunload', guard);
   }, [editing, dirty]);
 
-  /**
-   * 只改地址栏、不触发导航。
-   *
-   * ⚠️ **必须把 `window.history.state` 原样传回去**：Next App Router 把当前路由树
-   * 挂在 history.state 里。这里传 `{}` 会把它抹掉，随后 `router.refresh()` 拿不到
-   * 正确的树 —— 症状是「保存成功、刷新回来的却是上一次的数据」（实测过：连存两次，
-   * 页面总落后一版，reload 一下又对了）。
-   */
-  function syncUrl(url: string) {
-    window.history.replaceState(window.history.state, '', url);
-  }
-
   /** 编辑态下的「能画什么」：优先用服务端解析好的 view，新加的块从清单里现拼。 */
   const viewOf = useCallback(
     (b: Draft): BlockView | null => {
-      const existing = blocks.find((x) => x.id === b.id);
+      const existing = boardBlocks.find((x) => x.id === b.id);
       if (existing?.view) return existing.view;
       switch (b.kind) {
         case 'blog': {
           const c = catalog?.blogs.find((x) => x.id === cfgStr(b.config, 'blogId'));
-          return c ? { kind: 'blog', blogId: c.id, title: c.title, description: '', date: null } : null;
+          // 清单里没有正文摘要（那是服务端按当前正文现算的），刚挑中的文章先不显示摘要。
+          return c
+            ? { kind: 'blog', blogId: c.id, title: c.title, description: '', excerpt: '', date: null }
+            : null;
         }
         case 'image': {
           const c = catalog?.images.find((x) => x.id === cfgStr(b.config, 'imageId'));
@@ -257,23 +375,47 @@ export default function ProfileBoard({
           return catalog ? { kind: 'checkin', days: catalog.stats.checkins } : null;
       }
     },
-    [blocks, catalog]
+    [boardBlocks, catalog]
   );
 
-  /** 手机端顺序 = 数组下标（桌面位置仍由 x/y 决定）。只改顺序，不动坐标。 */
-  const visible = useMemo(() => {
-    const list = editing ? draft : blocks.filter((b) => b.view !== null).map(stripView);
-    return list.map((block) => ({
-      block,
-      view: editing ? viewOf(block) : blocks.find((x) => x.id === block.id)?.view ?? null,
-    }));
-  }, [editing, draft, blocks, viewOf]);
+  /** 编辑态画草稿；查看态只画「目标仍可用」的块（view 为 null 的整块不出现）。 */
+  const list = useMemo(
+    () => (editing ? draft : boardBlocks.filter((b) => b.view !== null).map(stripView)),
+    [editing, draft, boardBlocks]
+  );
 
-  // 编辑态的背景格：至少 3 行，并在内容下方再多留一行，让用户看到「还能往哪放」。
-  const guideRows = useMemo(() => {
-    const bottom = draft.reduce((m, b) => Math.max(m, b.y + b.h), 0);
-    return Math.max(3, bottom + 1);
-  }, [draft]);
+  /**
+   * 手机两列的落位。**与桌面同一份坐标投影出来**（见 profile-blocks 文件头）。
+   * 不能交给 CSS 的 grid-auto-flow：浏览器流出来的位置 JS 读不到，网格线与拖拽
+   * 命中就会各算一套，症状是「看着在这、拖到那却换了别的块」。
+   */
+  const projected = useMemo(() => projectMobile(list), [list]);
+  const mobileRectOf = useMemo(() => {
+    const map = new Map<string, { x: number; y: number; w: number; h: number }>();
+    list.forEach((b, i) => map.set(b.id, projected[i]));
+    return map;
+  }, [list, projected]);
+
+  /** 手机端读投影顺序，桌面读 (x,y)；两种都只从 list 来，画与操作共用一份。 */
+  const visible = useMemo(
+    () =>
+      list.map((block) => ({
+        block,
+        mobile: mobileRectOf.get(block.id) ?? { x: 0, y: 0, w: Math.min(block.w, 2), h: block.h },
+        view: editing ? viewOf(block) : boardBlocks.find((x) => x.id === block.id)?.view ?? null,
+      })),
+    [list, mobileRectOf, editing, viewOf, boardBlocks]
+  );
+
+  // 编辑态的背景网格：至少 3 行，并在内容下方再多留一行，让用户看到「还能往哪放」。
+  const guideRows = useMemo(
+    () => Math.max(3, draft.reduce((m, b) => Math.max(m, b.y + b.h), 0) + 1),
+    [draft]
+  );
+  const guideRowsMobile = useMemo(
+    () => Math.max(3, projected.reduce((m, r) => Math.max(m, r.y + r.h), 0) + 1),
+    [projected]
+  );
 
   // ── 拖拽 ──────────────────────────────────────────────────────────────────
   function onPointerDown(e: React.PointerEvent<HTMLElement>, b: Draft) {
@@ -302,7 +444,8 @@ export default function ProfileBoard({
     if (!d || !grid) return;
     const rect = grid.getBoundingClientRect();
     const cellW = (rect.width - GAP * (GRID_COLUMNS - 1)) / GRID_COLUMNS;
-    const cellH = ROW_H + GAP;
+    // 行高 = 列宽（方格），所以竖直方向也用 cellW 换算；写成 ROW_H 会与 CSS 漂开。
+    const cellH = cellW + GAP;
     const dx = Math.round((e.clientX - d.startX) / cellW);
     const dy = Math.round((e.clientY - d.startY) / cellH);
     const x = Math.min(GRID_COLUMNS - d.w, Math.max(0, d.origX + dx));
@@ -319,6 +462,54 @@ export default function ProfileBoard({
   function onPointerUp() {
     dragRef.current = null;
     setDraggingId(null);
+  }
+
+  // ── 手机拖拽：只有左上角 grip 是把手 ──────────────────────────────────────
+  //
+  // 整卡拖在触屏上会和页面滚动抢手势（1×1 卡片又小），所以手机把拖动收进把手：
+  // touch-action: none 让 pointermove 连续到达，pointer capture 让手指移出卡片也不丢；
+  // 落点用 elementFromPoint 命中另一张卡，命中即与它交换位置。交换写的是**桌面坐标**，
+  // 两端因此始终是同一份布局。
+
+  function onGripPointerDown(e: React.PointerEvent<HTMLButtonElement>, id: string) {
+    if (!editing || !isMobile) return;
+    e.preventDefault();
+    e.stopPropagation();
+    setSelected(id);
+    e.currentTarget.setPointerCapture(e.pointerId);
+    mobileDragRef.current = { id, pointerId: e.pointerId };
+    dragOverRef.current = null;
+    setDragOverId(null);
+    setDraggingId(id);
+  }
+
+  function onGripPointerMove(e: React.PointerEvent<HTMLButtonElement>) {
+    const d = mobileDragRef.current;
+    if (!d) return;
+    // 防止拖动过程中浏览器顺带滚动页面（touch-action 只在 CSS 里保证起点）。
+    e.preventDefault();
+    const under = document.elementFromPoint(e.clientX, e.clientY) as HTMLElement | null;
+    const card = under?.closest<HTMLElement>('[data-bento-id]') ?? null;
+    const over = card?.dataset.bentoId ?? null;
+    const next = over && over !== d.id ? over : null;
+    if (dragOverRef.current === next) return;
+    dragOverRef.current = next;
+    setDragOverId(next);
+  }
+
+  function endGripDrag(e?: React.PointerEvent<HTMLButtonElement>) {
+    if (e?.currentTarget.hasPointerCapture(e.pointerId)) {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    }
+    const d = mobileDragRef.current;
+    const over = dragOverRef.current;
+    mobileDragRef.current = null;
+    dragOverRef.current = null;
+    setDraggingId(null);
+    setDragOverId(null);
+    if (!d || !over || over === d.id) return;
+    // 换位会撞到第三块时 helper 返回 null —— 保持原样，别自作主张找空位。
+    setDraft((prev) => swapBlockPositions(prev, d.id, over) ?? prev);
   }
 
   // ── 增删改 ────────────────────────────────────────────────────────────────
@@ -369,22 +560,90 @@ export default function ProfileBoard({
   }
 
   /**
-   * 手机端的上移 / 下移：只交换数组里相邻两项。
-   * 保存时服务端按数组下标写 `sort`，所以这一操作**不会碰任何块的 x/y** ——
-   * 桌面布局保持原样（迁移 32 头部讲了为什么必须是两套）。
+   * 手机端「上移 / 下移」：与**投影顺序**里的相邻块换位。
+   * 两端是同一份坐标，所以换位后桌面位置也跟着变 —— 这是刻意的，不是 bug。
    */
-  function moveInOrder(id: string, dir: -1 | 1) {
-    setDraft((prev) => {
-      const i = prev.findIndex((b) => b.id === id);
-      const j = i + dir;
-      if (i < 0 || j < 0 || j >= prev.length) return prev;
-      const next = [...prev];
-      [next[i], next[j]] = [next[j], next[i]];
-      return next;
-    });
+  function moveInMobile(id: string, dir: -1 | 1) {
+    const next = moveInMobileOrder(draft, id, dir);
+    if (!next) {
+      setNotice('这两块的位置换不开（会压到第三块）');
+      return;
+    }
+    setDraft(next);
   }
 
-  const orderIndex = selected ? draft.findIndex((b) => b.id === selected) : -1;
+  /** 手机端「左移 / 右移」：1 宽的块换到另一半；宽 2 是通栏，调用方把按钮置灰。 */
+  function moveSide(id: string) {
+    const next = moveToOtherHalf(draft, id);
+    if (!next) {
+      setNotice('那一侧没有空位');
+      return;
+    }
+    setDraft(next);
+  }
+
+  // 上下移按钮的置灰判据必须与 moveInMobileOrder 一致（同列邻居 mobileNeighbors）。
+  // 拿行优先序 mobileOrder 判断的话，左列最下面那块「下移」会一直亮着，按下去只弹提示。
+  const mobileNav = useMemo(
+    () => (selected ? mobileNeighbors(draft, selected) : { prev: null, next: null }),
+    [draft, selected]
+  );
+
+  /** 查看态点文字块：从源卡片位置 FLIP 到屏幕中间的详情层。 */
+  function openTextDetail(el: HTMLElement, title: string, text: string) {
+    closingRef.current = false;
+    setDetailClosing(false);
+    const card = el.closest<HTMLElement>('.bento-card') ?? el;
+    setDetail({ rect: card.getBoundingClientRect(), title, text });
+  }
+
+  /**
+   * 关闭详情层：反向 FLIP 回源卡片，动画结束才 unmount。
+   * 直接 setDetail(null) 会让面板原地消失 —— 打开时是「长大并移到中间」，收尾却是
+   * 硬切，看起来像闪一下。Esc / 点背景 / 关闭按钮都走这里。
+   */
+  function closeDetail() {
+    if (!detail || closingRef.current) return;
+    const panel = detailPanelRef.current;
+    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const target = panel?.getBoundingClientRect() ?? null;
+    if (!panel || !target || target.width === 0 || target.height === 0 || reduce) {
+      setDetail(null);
+      return;
+    }
+
+    closingRef.current = true;
+    setDetailClosing(true);
+
+    const source = detail.rect;
+    // 正向是等比放大，反向也必须等比缩小，否则文字会先被压扁再消失。
+    const scale = Math.min(source.width / target.width, source.height / target.height);
+    const dx = source.left + source.width / 2 - (target.left + target.width / 2);
+    const dy = source.top + source.height / 2 - (target.top + target.height / 2);
+    panel.style.transition = 'transform 0.22s cubic-bezier(0.4, 0, 1, 1), opacity 0.22s ease';
+    panel.style.transformOrigin = 'center center';
+    panel.style.transform = `translate(${dx}px, ${dy}px) scale(${scale})`;
+    panel.style.opacity = '0';
+
+    let onEnd: ((ev: TransitionEvent) => void) | null = null;
+    const finish = () => {
+      if (!closingRef.current) return;
+      closingRef.current = false;
+      if (closeTimerRef.current !== null) {
+        window.clearTimeout(closeTimerRef.current);
+        closeTimerRef.current = null;
+      }
+      if (onEnd) panel.removeEventListener('transitionend', onEnd);
+      setDetailClosing(false);
+      setDetail(null);
+    };
+    onEnd = (ev) => {
+      if (ev.target === panel && ev.propertyName === 'transform') finish();
+    };
+    panel.addEventListener('transitionend', onEnd);
+    // 兜底：后台标签页 / 被其他动画打断时 transitionend 可能不来。
+    closeTimerRef.current = window.setTimeout(finish, 340);
+  }
 
   function startAdd(kind: BlockKind) {
     const def = BLOCK_DEFS[kind];
@@ -519,22 +778,34 @@ export default function ProfileBoard({
           blocks: draft.map(({ id, kind, x, y, w, h, config }) => ({ id, kind, x, y, w, h, config })),
         }),
       });
-      const json = (await res.json().catch(() => ({}))) as { code?: number; message?: string };
+      // apiOk 把 data 摊平在顶层（见 src/lib/format.ts）：字段是 json.blocks /
+      // json.isDefault，不是 json.data.blocks。
+      const json = (await res.json().catch(() => ({}))) as {
+        code?: number;
+        message?: string;
+        count?: number;
+        blocks?: ProfileBlock[];
+        isDefault?: boolean;
+      };
       if (!res.ok || json.code !== 200) {
         setError(json.message || '保存失败，请稍后再试');
         setSaving(false);
         return;
       }
+      // 先吃响应里的新版：这一步让页面**不等整页刷新**就换成刚保存的布局。
+      // 响应里没有 blocks（旧接口只回 count）就跳过，router.replace 带回的 RSC 会补上。
+      if (Array.isArray(json.blocks)) {
+        setBoardBlocks(json.blocks);
+        setDraft(json.blocks.map(stripView));
+      }
+      if (typeof json.isDefault === 'boolean') setIsDefaultLayout(json.isDefault);
       setSaving(false);
       setEditing(false);
       setSelected(null);
       setNotice('已保存');
-      // 保存成功后既要把地址栏的 `?edit=1` 去掉，也要让服务端把新布局渲染回来。
-      // **两件事都交给 router.replace**：
-      //   · 先裸 `history.replaceState` 改地址栏、再 `router.refresh()` 的话，
-      //     refresh 会按路由树里的旧 URL 把地址栏写回去（实测：URL 又变回 ?edit=1）；
-      //   · 只 refresh 不 replace 则 `?edit=1` 一直留在地址栏，刷新会重进编辑态。
-      // 同路由、只换 searchParams 的软导航不会丢客户端 state（「已保存」提示还在）。
+      // 地址栏的 `?edit=1` 也要去掉。**交给 router.replace**：裸 history.replaceState
+      // 会让 Next 的路由树与地址栏不一致，之后 refresh 会按旧 URL 把 ?edit=1 写回去
+      // （实测过）。同路由只换 search 的软导航不会丢客户端 state（「已保存」提示还在）。
       router.replace(`/u/${profileId}`, { scroll: false });
     } catch {
       setError('网络异常，请稍后再试');
@@ -543,26 +814,19 @@ export default function ProfileBoard({
   }
 
   function cancel() {
-    setDraft(blocks.map(stripView));
+    setDraft(boardBlocks.map(stripView));
     setEditing(false);
     setSelected(null);
     setError(null);
-    if (window.location.search.includes('edit=1')) {
-      syncUrl(`/u/${profileId}`);
-    }
-  }
-
-  function beginEditing() {
-    setEditing(true);
-    setError(null);
-    syncUrl(`/u/${profileId}?edit=1`);
+    // URL 必须跟着状态走，否则刷新会重新进入编辑态（`?edit=1` 还在地址栏）。
+    router.replace(`/u/${profileId}`, { scroll: false });
   }
 
   const selectedBlock = selected ? draftById.get(selected) ?? null : null;
 
   // ── 空态 / 引导 ───────────────────────────────────────────────────────────
-  // 渲染在正常树里（不是提前 return）：保存成功后 `editing` 先变 false、新的
-  // blocks 还没随 router.refresh 回来，这时如果整块提前 return，刚设的
+  // 渲染在正常树里（不是提前 return）：保存成功后 `editing` 先变 false、新布局
+  // 已经由 PUT 响应写进 boardBlocks，这时如果整块提前 return，刚设的
   // 「已保存」提示会被一起丢掉 —— 用户看到页面闪成空态，以为没存上。
   const emptyState = !editing && visible.length === 0 ? (
     <section className="bento-empty">
@@ -572,14 +836,7 @@ export default function ProfileBoard({
           <p className="bento-empty__text">
             挑几块放上来：文章、图片、文字、链接都可以。摆好后，访客看到的就是这一页。
           </p>
-          {canEdit ? (
-            <button type="button" className="bento-btn bento-btn--primary" onClick={beginEditing}>
-              <Plus size={18} aria-hidden="true" />
-              开始布置
-            </button>
-          ) : (
-            <p className="bento-empty__note">布置主页目前对核心用户开放。</p>
-          )}
+          {!canEdit && <p className="bento-empty__note">布置主页目前对核心用户开放。</p>}
         </>
       ) : (
         <p className="bento-empty__text">这个人还没有布置主页。</p>
@@ -592,9 +849,9 @@ export default function ProfileBoard({
       {editing && (
         <div className="bento-toolbar">
           <div className="bento-toolbar__hint">
-            {isMobile ? <Pencil size={16} aria-hidden="true" /> : <GripVertical size={16} aria-hidden="true" />}
+            <GripVertical size={16} aria-hidden="true" />
             {isMobile
-              ? '点卡片选中后可调尺寸、上下移动、删除；加块在下方工具条。'
+              ? '按住卡片左上角把手拖到另一张卡上可换位；点卡片选中后可调尺寸、左右或上下移动。'
               : '拖动卡片换位置；选中卡片后可调尺寸、改内容。'}
           </div>
           <span className={`bento-toolbar__dirty${dirty ? ' is-dirty' : ''}`}>
@@ -612,7 +869,9 @@ export default function ProfileBoard({
         </div>
       )}
 
-      {isOwner && canEdit && isDefault && !editing && (
+      {/* 默认布局的说明。**按钮只留在身份条那一颗**：同一页两处「布置主页」会让人
+          不知道点哪个，而身份条那颗在编辑态会自己隐藏（page.tsx 的 canEdit && !startEditing）。 */}
+      {isOwner && canEdit && isDefaultLayout && !editing && (
         <section className="bento-guide" aria-label="主页布置引导">
           <div className="bento-guide__text">
             <h2 className="bento-guide__title">这是你的名片</h2>
@@ -622,12 +881,6 @@ export default function ProfileBoard({
               <li>保存后，二维码和链接打开的访客看到的就是这一页</li>
             </ol>
           </div>
-          {canEdit && (
-            <button type="button" className="bento-btn bento-btn--primary" onClick={beginEditing}>
-              <Pencil size={16} aria-hidden="true" />
-              布置主页
-            </button>
-          )}
         </section>
       )}
 
@@ -649,37 +902,49 @@ export default function ProfileBoard({
         <>
       <div
         className="bento-stage"
-        style={{ '--rows': guideRows } as React.CSSProperties}
+        style={{ '--rows': guideRows, '--rows-m': guideRowsMobile } as React.CSSProperties}
         // 点空白处取消选中：手机上卡片操作条是固定在底部的，没有这一下就退不出去。
         onPointerDown={(e) => {
           if (!editing) return;
           if (!(e.target as HTMLElement).closest('.bento-card')) setSelected(null);
         }}
       >
-        {/* 背景格只在桌面画：手机是两列流式，坐标与格位对不上，画出来是误导。 */}
-        {editing && !isMobile && (
+        {/* 网格线画在 gap 中线上（横竖连续），不是每格一圈虚线 —— 后者看起来像一堆
+            独立的小框，反而看不清「跨格」这件事。桌面 3 竖线，手机 1 竖线。 */}
+        {editing && (
           <div className="bento-guides" aria-hidden="true">
-            {Array.from({ length: guideRows * 4 }).map((_, i) => (
-              <span className="bento-guides__cell" key={i} />
+            {Array.from({ length: isMobile ? 1 : GRID_COLUMNS - 1 }).map((_, i) => (
+              <span className="bento-guides__v" key={`v${i}`} style={{ '--i': i } as React.CSSProperties} />
+            ))}
+            {Array.from({ length: (isMobile ? guideRowsMobile : guideRows) - 1 }).map((_, i) => (
+              <span className="bento-guides__h" key={`h${i}`} style={{ '--i': i } as React.CSSProperties} />
             ))}
           </div>
         )}
         <div className={`bento-grid${editing ? ' is-editing' : ''}`} ref={gridRef}>
-          {visible.map(({ block, view }, index) => {
+          {visible.map(({ block, view, mobile }, index) => {
             const Icon = KIND_ICON[block.kind];
             const compact = block.w === 1 && block.h === 1;
             const short = block.h === 1;
+            const tall = block.h >= 2;
+            const wide = block.w === 2;
+            const large = wide && block.h === 2;
             const unavailable = editing && !view;
             return (
               <article
                 key={block.id}
+                data-bento-id={block.id}
                 className={[
                   'bento-card',
                   `bento-card--${block.kind}`,
                   compact ? 'is-compact' : '',
                   short ? 'is-short' : '',
+                  tall ? 'is-tall' : '',
+                  wide ? 'is-wide' : '',
+                  large ? 'is-large' : '',
                   selected === block.id && editing ? 'is-selected' : '',
                   draggingId === block.id ? 'is-dragging' : '',
+                  dragOverId === block.id ? 'is-drop-target' : '',
                   editing ? 'is-draggable' : '',
                 ]
                   .filter(Boolean)
@@ -690,7 +955,10 @@ export default function ProfileBoard({
                     '--gy': block.y,
                     '--gw': block.w,
                     '--gh': block.h,
-                    '--gw-m': Math.min(block.w, 2),
+                    // 手机落位用投影结果显式写死（见顶部注释），不用 grid-auto-flow。
+                    '--mgx': mobile.x,
+                    '--mgy': mobile.y,
+                    '--mgw': mobile.w,
                     '--i': index,
                   } as React.CSSProperties
                 }
@@ -702,19 +970,37 @@ export default function ProfileBoard({
                 onPointerCancel={onPointerUp}
                 onKeyDown={(e) => {
                   if (!editing) return;
-                  if (e.key === 'ArrowLeft') { e.preventDefault(); moveBy(block.id, -1, 0); }
-                  if (e.key === 'ArrowRight') { e.preventDefault(); moveBy(block.id, 1, 0); }
-                  if (e.key === 'ArrowUp') { e.preventDefault(); moveBy(block.id, 0, -1); }
-                  if (e.key === 'ArrowDown') { e.preventDefault(); moveBy(block.id, 0, 1); }
+                  // 方向键只在桌面有意义：手机的位置由投影决定，左右 / 上下走底部工具条。
+                  if (!isMobile) {
+                    if (e.key === 'ArrowLeft') { e.preventDefault(); moveBy(block.id, -1, 0); }
+                    if (e.key === 'ArrowRight') { e.preventDefault(); moveBy(block.id, 1, 0); }
+                    if (e.key === 'ArrowUp') { e.preventDefault(); moveBy(block.id, 0, -1); }
+                    if (e.key === 'ArrowDown') { e.preventDefault(); moveBy(block.id, 0, 1); }
+                  }
                   if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); removeBlock(block.id); }
                 }}
               >
-                {editing && !isMobile && (
-                  <span className="bento-card__grip" aria-hidden="true">
-                    <Icon size={14} />
-                    <GripVertical size={14} />
-                  </span>
-                )}
+                {/* 桌面：徽标只是「这块可拖」的提示，整卡就是把手。
+                    手机：这是**唯一**的拖动把手（整卡拖会和页面滚动抢手势）。 */}
+                {editing &&
+                  (isMobile ? (
+                    <button
+                      type="button"
+                      className="bento-card__grip bento-card__grip--drag"
+                      aria-label="按住拖动，放到另一块上换位"
+                      onPointerDown={(e) => onGripPointerDown(e, block.id)}
+                      onPointerMove={onGripPointerMove}
+                      onPointerUp={endGripDrag}
+                      onPointerCancel={endGripDrag}
+                    >
+                      <GripVertical size={16} aria-hidden="true" />
+                    </button>
+                  ) : (
+                    <span className="bento-card__grip" aria-hidden="true">
+                      <Icon size={14} />
+                      <GripVertical size={14} />
+                    </span>
+                  ))}
 
                 {unavailable ? (
                   <div className="bento-card__missing">
@@ -733,8 +1019,13 @@ export default function ProfileBoard({
                   <BlockBody
                     view={view}
                     compact={compact}
+                    tall={tall}
                     interactive={!editing}
                     onOpenImage={(url) => setLightbox(url)}
+                    onOpenText={(el) => {
+                      // 只有文字块有详情层：它可能是 200 字，卡片里永远看不全。
+                      if (view.kind === 'text') openTextDetail(el, view.title, view.text);
+                    }}
                   />
                 ) : null}
 
@@ -768,7 +1059,20 @@ export default function ProfileBoard({
           })}
 
           {editing && draft.length === 0 && (
-            <div className="bento-card bento-card--ghost" style={{ '--gx': 0, '--gy': 0, '--gw': 2, '--gh': 1, '--gw-m': 2 } as React.CSSProperties}>
+            <div
+              className="bento-card bento-card--ghost"
+              style={
+                {
+                  '--gx': 0,
+                  '--gy': 0,
+                  '--gw': 2,
+                  '--gh': 1,
+                  '--mgx': 0,
+                  '--mgy': 0,
+                  '--mgw': 2,
+                } as React.CSSProperties
+              }
+            >
               <div className="bento-card__missing">
                 <span>{isMobile ? '从下方工具条加一块开始' : '从下面挑一块开始'}</span>
               </div>
@@ -829,11 +1133,33 @@ export default function ProfileBoard({
                   </button>
                 ))}
                 <span className="bento-dock__rowgap" aria-hidden="true" />
+                {/* 左移 / 右移改的是桌面 x（换到另一半），宽 2 的块两头通栏、没有可移的方向。
+                    已经在左半的块不能再「左移」，所以同侧那颗置灰，避免按了没反应。 */}
                 <button
                   type="button"
                   className="bento-size bento-size--lg"
-                  onClick={() => moveInOrder(selectedBlock.id, -1)}
-                  disabled={orderIndex <= 0}
+                  onClick={() => moveSide(selectedBlock.id)}
+                  disabled={selectedBlock.w !== 1 || selectedBlock.x < MOBILE_HALF}
+                  aria-label="移到左边一半"
+                  title="移到左边一半"
+                >
+                  <ChevronLeft size={16} aria-hidden="true" />
+                </button>
+                <button
+                  type="button"
+                  className="bento-size bento-size--lg"
+                  onClick={() => moveSide(selectedBlock.id)}
+                  disabled={selectedBlock.w !== 1 || selectedBlock.x >= MOBILE_HALF}
+                  aria-label="移到右边一半"
+                  title="移到右边一半"
+                >
+                  <ChevronRight size={16} aria-hidden="true" />
+                </button>
+                <button
+                  type="button"
+                  className="bento-size bento-size--lg"
+                  onClick={() => moveInMobile(selectedBlock.id, -1)}
+                  disabled={!mobileNav.prev}
                   aria-label="上移一块"
                 >
                   <ChevronUp size={16} aria-hidden="true" />
@@ -841,8 +1167,8 @@ export default function ProfileBoard({
                 <button
                   type="button"
                   className="bento-size bento-size--lg"
-                  onClick={() => moveInOrder(selectedBlock.id, 1)}
-                  disabled={orderIndex >= draft.length - 1}
+                  onClick={() => moveInMobile(selectedBlock.id, 1)}
+                  disabled={!mobileNav.next}
                   aria-label="下移一块"
                 >
                   <ChevronDown size={16} aria-hidden="true" />
@@ -896,6 +1222,36 @@ export default function ProfileBoard({
       )}
 
       {lightbox && <ImageLightbox src={lightbox} alt="主页图片" onClose={() => setLightbox(null)} />}
+
+      {/* 文字块详情：从源卡片位置 FLIP 到屏幕中间（起始帧在 effect 里写成 inline
+          transform）。role/aria-modal 与焦点管理是必需的 —— 它是盖住整页的模态层。 */}
+      {detail && (
+        <div
+          className={`bento-detail${detailClosing ? ' is-closing' : ''}`}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="bento-detail-title"
+        >
+          <div className="bento-detail__backdrop" aria-hidden="true" onPointerDown={closeDetail} />
+          <div className="bento-detail__panel" ref={detailPanelRef} tabIndex={-1} style={{ opacity: 0 }}>
+            <div className="bento-detail__head">
+              <h2 className="bento-detail__title" id="bento-detail-title">
+                {detail.title || '文字'}
+              </h2>
+              <button
+                type="button"
+                className="bento-mini"
+                ref={detailCloseRef}
+                onClick={closeDetail}
+                aria-label="关闭"
+              >
+                <X size={16} aria-hidden="true" />
+              </button>
+            </div>
+            <p className="bento-detail__text">{detail.text}</p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -948,13 +1304,18 @@ function Palette({
 function BlockBody({
   view,
   compact,
+  tall,
   interactive,
   onOpenImage,
+  onOpenText,
 }: {
   view: BlockView;
   compact: boolean;
+  /** h≥2：纵向有空间，文章显示正文摘要（见 profile-blocks 的 view.excerpt）。 */
+  tall: boolean;
   interactive: boolean;
   onOpenImage: (url: string) => void;
+  onOpenText: (el: HTMLElement) => void;
 }) {
   switch (view.kind) {
     case 'blog': {
@@ -965,7 +1326,12 @@ function BlockBody({
             文章
           </span>
           <span className="bento-blog__title">{view.title}</span>
-          {!compact && view.description && <span className="bento-blog__desc">{view.description}</span>}
+          {/* 描述与摘要都画：有的文章只有描述、正文很短，高卡片只画摘要会剩一大片
+              空白。行数由 CSS 按档位 clamp（高卡描述 2 行、摘要 4/7 行）。 */}
+          {!compact && view.description ? (
+            <span className="bento-blog__desc">{view.description}</span>
+          ) : null}
+          {tall && view.excerpt ? <span className="bento-blog__excerpt">{view.excerpt}</span> : null}
           <span className="bento-blog__meta">
             {view.date && (
               <time className="bento-blog__date numeric" dateTime={view.date}>
@@ -989,7 +1355,15 @@ function BlockBody({
       const inner = (
         <>
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img className="bento-image__img" src={view.url} alt={view.alt} loading="lazy" />
+          <img
+            className="bento-image__img"
+            src={view.url}
+            alt={view.alt}
+            loading="lazy"
+            draggable={false}
+            // 浏览器原生图片拖拽会抢走 pointer 事件，卡片就再也拖不动了。
+            onDragStart={(e) => e.preventDefault()}
+          />
           {!compact && view.caption && <span className="bento-image__caption">{view.caption}</span>}
         </>
       );
@@ -1016,13 +1390,27 @@ function BlockBody({
           )}
         </div>
       );
-    case 'text':
-      return (
-        <div className="bento-card__body bento-text">
+    case 'text': {
+      const inner = (
+        <>
           {view.title && <span className="bento-text__title">{view.title}</span>}
-          <p className="bento-text__body">{view.text}</p>
-        </div>
+          {/* 查看态整块是 <button>，里面只能用 phrasing 内容，所以正文用 span 不用 p。 */}
+          <span className="bento-text__body">{view.text}</span>
+        </>
       );
+      // 查看态点开详情层：卡片里最多 6 行，200 字看不全。编辑态仍是可拖的普通块。
+      return interactive ? (
+        <button
+          type="button"
+          className="bento-card__body bento-text is-tappable"
+          onClick={(e) => onOpenText(e.currentTarget)}
+        >
+          {inner}
+        </button>
+      ) : (
+        <div className="bento-card__body bento-text">{inner}</div>
+      );
+    }
     case 'link': {
       const inner = (
         <>
@@ -1114,7 +1502,13 @@ function PickerDialog({
                   title={i.filename}
                 >
                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={i.url} alt={i.filename} loading="lazy" />
+                  <img
+                    src={i.url}
+                    alt={i.filename}
+                    loading="lazy"
+                    draggable={false}
+                    onDragStart={(e) => e.preventDefault()}
+                  />
                 </button>
               ))}
             </div>

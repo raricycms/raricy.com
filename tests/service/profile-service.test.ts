@@ -9,8 +9,12 @@
 //      否则他会被一句「有一篇文章不可见」锁死。越权指针（别人的 blogId / 块 id）
 //      仍然必须被挡。
 //
-// 另外钉住「手机端顺序 = 保存时的数组顺序（profile_blocks.sort）」——
-// 那是手机上移 / 下移唯一的持久化方式，顺序丢了不会报任何错。
+// 另外钉住两条 2026-10 改版后的口径：
+//   · 读序 = 桌面阅读顺序 (y, x)；迁移 32 的 profile_blocks.sort **不再权威**
+//     （不读、保存也不写），旧值留在库里无害。手机顺序由 (x, y) 投影得出，
+//     不是另一份被持久化的顺序 —— 写错时两端布局悄悄对不上，不报任何错。
+//   · 文章高卡片（h≥2）带一段**读时现算**的正文纯文本摘要；矮卡片恒为空串，
+//     且摘要仍只从「对外可读」的文章里算（internal 正文不外泄）。
 //
 // 跑真实 SQLite（tests/.tmp/test-*；helpers/db.ts 有硬校验）。
 
@@ -185,13 +189,78 @@ describe('解析视图', () => {
   });
 });
 
+describe('文章摘要（只给 h≥2 的块，读时现算）', () => {
+  it('高卡片带 Markdown 清洗后的纯文本摘要；矮卡片为空串；摘要不写回 config', async () => {
+    const u = await makeUser({ role: 'core' });
+    const blog = await makeBlog({
+      authorId: u.id,
+      visibility: 'public',
+      title: '长文',
+      content: '# 标题\n\n正文**强调**\n\n```js\nconst leak = 1;\n```\n\n![封面](/static/a.png)',
+    });
+
+    // 同一篇文章挂成高卡 + 矮卡：只有高卡有第二行空间放摘要。
+    const saved = await saveProfileBlocks(u.id, [
+      block('blog', { blogId: blog.id }, { x: 0, y: 0, w: 2, h: 2 }),
+      block('blog', { blogId: blog.id }, { x: 0, y: 2, w: 2, h: 1 }),
+    ]);
+    expect(saved.ok).toBe(true);
+
+    const data = await getProfilePageData(u.id, { isOwner: true });
+    const tall = data.blocks.find((b) => b.h >= 2)!.view;
+    const short = data.blocks.find((b) => b.h === 1)!.view;
+    // 摘要是一行纯文本：代码块整段丢掉、图片与标记都不出现。
+    expect(tall).toMatchObject({ kind: 'blog', title: '长文', excerpt: '标题 正文强调' });
+    // 矮卡片恒为空串 —— 客户端据此决定画不画第二行。
+    expect(short).toMatchObject({ kind: 'blog', excerpt: '' });
+
+    // 摘要不落库：config 里仍然只有指针（与「存指针不存快照」同一条口径）。
+    const rows = await prisma.profileBlock.findMany({ where: { userId: u.id, deleted: false } });
+    expect(rows).toHaveLength(2);
+    for (const r of rows) expect(JSON.parse(r.config)).toEqual({ blogId: blog.id });
+  });
+
+  it('凭链接可读（link）同样出摘要 —— 它本来就算对外可读', async () => {
+    const u = await makeUser({ role: 'core' });
+    const blog = await makeBlog({
+      authorId: u.id,
+      visibility: 'link',
+      content: '凭链接可读的正文',
+    });
+    expect((await saveProfileBlocks(u.id, [block('blog', { blogId: blog.id }, { x: 0, y: 0, w: 2, h: 2 })])).ok).toBe(true);
+
+    const guest = await getProfilePageData(u.id, { isOwner: false });
+    expect(guest.blocks).toHaveLength(1);
+    expect(guest.blocks[0].view).toMatchObject({ kind: 'blog', excerpt: '凭链接可读的正文' });
+  });
+
+  it('internal 文章的正文不外泄：view 为 null，访客连块都收不到', async () => {
+    const u = await makeUser({ role: 'core' });
+    const secret = '这段正文不该出现在任何响应里';
+    const blog = await makeBlog({ authorId: u.id, visibility: 'internal', content: secret });
+    expect((await saveProfileBlocks(u.id, [block('blog', { blogId: blog.id }, { x: 0, y: 0, w: 2, h: 2 })])).ok).toBe(true);
+
+    // 本人看得到这块（编辑器要显示「已不可用」），但 view 是 null：没有摘要可漏。
+    const own = await getProfilePageData(u.id, { isOwner: true });
+    expect(own.blocks).toHaveLength(1);
+    expect(own.blocks[0].view).toBeNull();
+    expect(JSON.stringify(own.blocks)).not.toContain(secret);
+
+    // 访客视图连指针都不下发。
+    const guest = await getProfilePageData(u.id, { isOwner: false });
+    expect(guest.blocks).toEqual([]);
+    expect(JSON.stringify(guest)).not.toContain(secret);
+  });
+});
+
 describe('保存', () => {
-  it('手机上移 / 下移 = 数组顺序，落成 sort 列；桌面坐标原样保留', async () => {
+  it('读序 = 桌面 (y, x)；profile_blocks.sort 既不读也不写', async () => {
     const u = await makeUser({ role: 'core' });
     const a = await makeBlog({ authorId: u.id, visibility: 'public', title: 'A' });
     const b = await makeBlog({ authorId: u.id, visibility: 'public', title: 'B' });
 
-    // 数组顺序 B、A，但桌面坐标是反的 —— 手机上看到的第一块必须是 B。
+    // 数组顺序 B、A，但 B 的桌面坐标在 A 之后。读口按 (y, x) 排，所以必须是 A、B ——
+    // 客户端数组顺序只是遍历顺序，不再决定任何布局。
     const saved = await saveProfileBlocks(u.id, [
       block('blog', { blogId: b.id }, { x: 2, y: 1, w: 2, h: 1 }),
       block('blog', { blogId: a.id }, { x: 0, y: 0, w: 2, h: 1 }),
@@ -199,14 +268,25 @@ describe('保存', () => {
     expect(saved.ok).toBe(true);
 
     const data = await getProfilePageData(u.id, { isOwner: true });
-    expect(data.blocks.map((x) => (x.view?.kind === 'blog' ? x.view.title : ''))).toEqual(['B', 'A']);
+    expect(data.blocks.map((x) => (x.view?.kind === 'blog' ? x.view.title : ''))).toEqual(['A', 'B']);
     expect(data.blocks.map((x) => [x.x, x.y])).toEqual([
-      [2, 1],
       [0, 0],
+      [2, 1],
     ]);
 
-    const rows = await prisma.profileBlock.findMany({ where: { userId: u.id, deleted: false }, orderBy: { sort: 'asc' } });
-    expect(rows.map((r) => r.sort)).toEqual([0, 1]);
+    // 保存路径不再写 sort：两行都停在列默认值 0。这一列已无任何读取方。
+    const rows = await prisma.profileBlock.findMany({ where: { userId: u.id, deleted: false } });
+    expect(rows.map((r) => r.sort)).toEqual([0, 0]);
+
+    // 就算有人手工把 sort 改成与 (y, x) 相反的值，读序也不受影响 ——
+    // 谁再按 sort 排序，症状是「手机顺序与桌面阅读顺序对不上」，且全程不报错。
+    const rowA = rows.find((r) => JSON.parse(r.config).blogId === a.id)!;
+    const rowB = rows.find((r) => JSON.parse(r.config).blogId === b.id)!;
+    await prisma.profileBlock.update({ where: { id: rowA.id }, data: { sort: 99 } });
+    await prisma.profileBlock.update({ where: { id: rowB.id }, data: { sort: 0 } });
+
+    const again = await getProfilePageData(u.id, { isOwner: false });
+    expect(again.blocks.map((x) => (x.view?.kind === 'blog' ? x.view.title : ''))).toEqual(['A', 'B']);
   });
 
   it('整页替换：少掉的块翻墓碑（不物理删除）', async () => {
@@ -214,7 +294,11 @@ describe('保存', () => {
     const text = (t: string, x: number) => block('text', { title: '', text: t }, { x, y: 0, w: 2, h: 1 });
 
     await saveProfileBlocks(u.id, [text('第一块', 0), text('第二块', 2)]);
-    const first = await prisma.profileBlock.findMany({ where: { userId: u.id }, orderBy: { sort: 'asc' } });
+    // 读序是桌面阅读顺序；这里用同一份判据取行，别再用 sort 列。
+    const first = await prisma.profileBlock.findMany({
+      where: { userId: u.id },
+      orderBy: [{ y: 'asc' }, { x: 'asc' }],
+    });
     expect(first).toHaveLength(2);
 
     // 只留第二块 → 第一块翻墓碑
@@ -222,7 +306,7 @@ describe('保存', () => {
     await saveProfileBlocks(u.id, [
       { id: keep.id, kind: 'text', x: 0, y: 0, w: 2, h: 1, config: { title: '', text: '第二块' } },
     ]);
-    const rows = await prisma.profileBlock.findMany({ where: { userId: u.id }, orderBy: { sort: 'asc' } });
+    const rows = await prisma.profileBlock.findMany({ where: { userId: u.id } });
     expect(rows).toHaveLength(2);
     expect(rows.filter((r) => r.deleted)).toHaveLength(1);
     expect((await getProfilePageData(u.id, { isOwner: true })).blocks).toHaveLength(1);
@@ -255,7 +339,6 @@ describe('保存', () => {
         w: 2,
         h: 1,
         config: JSON.stringify({ title: '', text: '别人的块' }),
-        sort: 0,
         createdAt: nowForDb(),
       },
     });

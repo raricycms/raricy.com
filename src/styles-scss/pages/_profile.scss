@@ -212,24 +212,41 @@
 
 .bento-stage {
   position: relative;
+  /* 行高 = 列宽的换算靠容器查询单位（cqw），它必须挂在格子的祖先上 */
+  container-type: inline-size;
 }
 
-// 编辑态的背景格：让「能放到哪、占几格」看得见。它只是坐标参照，不接收事件。
+// 编辑态的网格线：1px 横竖线画在 gap 的中线上，整片连续 —— 像棋盘，而不是每格
+// 一圈虚线（后者让人看不清「跨格」这件事）。位置全用 cqw 算，两端的线数由组件
+// 决定（桌面 3 竖、手机 1 竖，横向都是 rows-1 条）。
 .bento-guides {
   position: absolute;
   inset: 0;
   z-index: 0;
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  grid-auto-rows: 132px;
-  gap: 16px;
   pointer-events: none;
+  /* 桌面：4 列 / gap 16px / 行高 = 列宽 */
+  --gap: 16px;
+  --cell: calc((100cqw - 3 * 16px) / 4);
 }
 
-.bento-guides__cell {
-  border: 1px dashed var(--color-border);
-  border-radius: 24px;
-  opacity: 0.7;
+.bento-guides__v,
+.bento-guides__h {
+  position: absolute;
+  background: var(--color-border);
+}
+
+.bento-guides__v {
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  left: calc(var(--cell) * (var(--i) + 1) + var(--gap) * var(--i) + var(--gap) / 2 - 0.5px);
+}
+
+.bento-guides__h {
+  right: 0;
+  left: 0;
+  height: 1px;
+  top: calc((var(--cell) + var(--gap)) * (var(--i) + 1) - var(--gap) / 2 - 0.5px);
 }
 
 .bento-grid {
@@ -237,14 +254,19 @@
   z-index: 1;
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
+  /* 132px 是不支持容器查询单位时的兜底；第二行才是真值（行高 = 列宽 = 方格） */
   grid-auto-rows: 132px;
+  grid-auto-rows: calc((100cqw - 3 * 16px) / 4);
   gap: 16px;
 }
 
-// 编辑态多留一行空位（--rows 由组件按当前内容算），让背景格与网格同高，
+// 编辑态多留一行空位（--rows 由组件按当前内容算），让背景网格与内容同高，
 // 否则绝对定位的 .bento-guides 会溢出到页脚上去。
 .bento-grid.is-editing {
-  min-height: calc(var(--rows, 4) * 132px + (var(--rows, 4) - 1) * 16px);
+  min-height: calc(var(--rows, 3) * 132px + (var(--rows, 3) - 1) * 16px);
+  min-height: calc(
+    var(--rows, 3) * ((100cqw - 3 * 16px) / 4) + (var(--rows, 3) - 1) * 16px
+  );
 }
 
 .bento-card {
@@ -258,6 +280,12 @@
   background: var(--color-background-card);
   overflow: hidden;
   transition: box-shadow 0.2s ease, transform 0.2s ease;
+
+  /* 浏览器原生图片拖拽会抢走 pointer 事件（拖卡片变成拖图片），HTML 侧已加
+     draggable={false}，这里再兜一层 WebKit 的默认行为。 */
+  img {
+    -webkit-user-drag: none;
+  }
 
   /* 每类块自己的色相：图标与 hover 光晕都读它（照首页 feature-card 的做法） */
   --bento-accent: var(--color-brand-primary);
@@ -349,6 +377,30 @@
   overflow: hidden;
 }
 
+// 高卡（h≥2）在描述下面接着画正文纯文本摘要：卡片纵向有空间，而正文才是读者
+// 想看的。摘要是服务端按当前正文现算的（不存快照），所以文章改了这里跟着变。
+// 两者都画：有的文章只有描述、正文很短，只画摘要会让高卡剩一大片空白。
+.bento-blog__excerpt {
+  margin: 0;
+  font-size: 0.82rem;
+  line-height: 1.55;
+  color: var(--color-text-secondary);
+  white-space: pre-line;
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.bento-card.is-large .bento-blog__excerpt {
+  -webkit-line-clamp: 7;
+}
+
+// 高卡里描述让位给摘要：描述最多 2 行，摘要才是主体。
+.bento-card.is-tall .bento-blog__desc {
+  -webkit-line-clamp: 2;
+}
+
 .bento-blog__meta {
   margin-top: auto;
   display: flex;
@@ -401,10 +453,17 @@
   }
 }
 
-// 单行高的卡片（h=1）：空间只够标题 + 日期，描述与长正文一律不渲染。
-// 这不是「截断」而是**排版档位** —— 让同一份数据在四档尺寸下都不溢出。
-.bento-card.is-short .bento-blog__desc {
+// 单行高的卡片（h=1）不是统一处理：
+//   · 1×1（is-compact）空间只够标题 + 日期，描述不画；
+//   · 2×1（is-wide）宽了一倍，行高 = 列宽之后纵向也有两三百像素，2 行描述放得下 ——
+//     不画的话卡片正中会空出一大块（改版前只有 132px 行高，「h=1 一律不画」是在
+//     那个几何下成立的规则）。
+.bento-card.is-short:not(.is-wide) .bento-blog__desc {
   display: none;
+}
+
+.bento-card.is-short.is-wide .bento-blog__desc {
+  -webkit-line-clamp: 2;
 }
 
 .bento-card.is-short .bento-text__body {
@@ -478,6 +537,20 @@
   }
 }
 
+// 查看态的文字块是 <button>（点开详情层）：清掉按钮默认外观，仍像一张卡。
+.bento-text.is-tappable {
+  width: 100%;
+  border: none;
+  background: transparent;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+
+  &:hover {
+    background: var(--color-background-subtle);
+  }
+}
+
 // --- 链接卡 ---
 
 .bento-link {
@@ -533,6 +606,31 @@
   }
 }
 
+// 1×2（竖高、非宽）：三个数字上下排布，每个数字与标签同一行。
+// 横向排会挤成三根窄柱 —— 窄卡里正好相反。
+.bento-card--stats.is-tall:not(.is-wide) .bento-stats {
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: space-around;
+  gap: $space-2;
+
+  .bento-stats__item {
+    flex-direction: row;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: $space-2;
+  }
+
+  .bento-stats__num {
+    font-size: 1.35rem;
+  }
+}
+
+// 2×2 有富裕空间，数字放大一档，否则大卡看起来跟 2×1 没区别。
+.bento-card--stats.is-large .bento-stats__num {
+  font-size: 2rem;
+}
+
 .bento-checkin {
   align-items: center;
   justify-content: center;
@@ -549,6 +647,26 @@
   &__label {
     font-size: 0.8rem;
     color: var(--color-text-secondary);
+  }
+}
+
+// 签到块的 1×1 与 2×2 字号必须明显不同：大卡里还是小字号，看起来像尺寸没生效。
+.bento-card--checkin.is-compact .bento-checkin__num {
+  font-size: 1.85rem;
+}
+
+.bento-card--checkin.is-large {
+  .bento-checkin__num {
+    font-size: 3.25rem;
+  }
+
+  .bento-checkin__label {
+    font-size: 0.95rem;
+  }
+
+  svg {
+    width: 24px;
+    height: 24px;
   }
 }
 
@@ -585,8 +703,15 @@
     box-shadow: var(--shadow-card-brand);
   }
 
-  /* 左上角的拖拽徽标不能压住正文：给非图片卡多留一条头距。
-     只在桌面——手机不画拖拽徽标（顺序靠底部工具条的上下移）。 */
+  /* 手机拖拽的落点：松手就与这一块换位（命中的是把手下方的那张卡） */
+  .bento-card.is-drop-target {
+    outline: 2px dashed var(--color-brand-primary);
+    outline-offset: -3px;
+    box-shadow: var(--shadow-card-brand);
+  }
+
+  /* 左上角徽标 / 手机把手不能压住正文：给非图片卡多留一条头距。
+     桌面是装饰徽标，手机是可拖的把手，两边都要让位。 */
   @media (min-width: 769px) {
     .bento-card:not(.bento-card--image) .bento-card__body {
       padding-top: 34px;
@@ -614,6 +739,25 @@
   color: var(--color-text-secondary);
   z-index: 2;
   pointer-events: none;
+}
+
+// 手机上的把手：唯一可拖的区域。touch-action: none 是必须的 —— 否则手指一动
+// 浏览器先滚页面，pointermove 直接断掉，表现为「把手拖不动」。
+.bento-card__grip--drag {
+  pointer-events: auto;
+  width: 34px;
+  height: 34px;
+  justify-content: center;
+  padding: 0;
+  border: none;
+  background: var(--color-background-card);
+  box-shadow: var(--shadow-card-brand);
+  cursor: grab;
+  touch-action: none;
+
+  &:active {
+    cursor: grabbing;
+  }
 }
 
 .bento-card__tools {
@@ -962,7 +1106,8 @@
 
   .bento-card,
   .bento-modal,
-  .bento-modal__box {
+  .bento-modal__box,
+  .bento-detail {
     animation: none;
   }
 
@@ -970,6 +1115,88 @@
   .bento-card.is-dragging {
     transition: none;
   }
+
+  // FLIP 的起始帧由 JS 写成 inline style，所以这里要 !important 才拦得住。
+  .bento-detail__panel {
+    transition: none !important;
+  }
+
+  // 关闭时 JS 已经直接落在终态，遮罩也不必再淡出。
+  .bento-detail.is-closing .bento-detail__backdrop {
+    transition: none;
+  }
+}
+
+// --- 文字块详情层 -----------------------------------------------------------
+//
+// 面板从源卡片的位置与大小 FLIP 到居中（起始帧在组件 effect 里写成 inline
+// transform）。这里只负责终态与背景。z-index 与全站 .modal 同档（1050）：
+// 要盖住固定顶栏（1030），否则模态的遮罩缺一条、顶栏还能点。
+
+.bento-detail {
+  position: fixed;
+  inset: 0;
+  z-index: 1050;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: $space-4;
+  animation: bento-fade 0.18s ease;
+}
+
+.bento-detail__backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+}
+
+// 关闭：面板在 JS 里反向 FLIP 回源卡片，遮罩必须同步淡出 —— 否则背景会一下子变亮。
+.bento-detail.is-closing {
+  animation: none;
+
+  .bento-detail__backdrop {
+    opacity: 0;
+    transition: opacity 0.22s ease;
+  }
+}
+
+.bento-detail__panel {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  width: min(560px, 100%);
+  max-height: min(80vh, 640px);
+  padding: $space-6;
+  border-radius: 24px;
+  background: var(--color-background-card);
+  box-shadow: var(--shadow-card-brand);
+  overflow: auto;
+}
+
+.bento-detail__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: $space-3;
+  margin-bottom: $space-3;
+}
+
+.bento-detail__title {
+  margin: 0;
+  font-size: 1.15rem;
+  font-weight: 700;
+  line-height: 1.4;
+  color: var(--color-text-primary);
+}
+
+.bento-detail__text {
+  margin: 0;
+  font-size: 0.95rem;
+  line-height: 1.75;
+  color: var(--color-text-secondary);
+  white-space: pre-line;
+  overflow-wrap: anywhere;
 }
 
 // --- 弹窗 ---
@@ -1109,32 +1336,47 @@
 
 // --- 窄屏 ---
 //
-// 手机是**两列流式**：忽略 x/y，按数组顺序（数据库 sort 列）排。所以
-//   1. 绝不能 `grid-auto-flow: dense` —— 它会把后面的 1×1 块填进前面的空洞，
-//      画出来的顺序就与用户刚调好的顺序对不上（而那是保存时唯一被持久化的东西）；
-//   2. 背景格不画（坐标与流式格位对不上）；
-//   3. 卡片操作不进卡片，统一走底部固定工具条（见 .bento-dock）。
+// 手机是两列，但**不是另一套布局**：位置来自 projectMobile 的投影（组件用
+// --mgx / --mgy / --mgw 显式落位），改的就是桌面坐标。所以：
+//   1. 不用 grid-auto-flow —— dense 会把后面的窄块塞进前面的洞，顺序与用户刚
+//      调好的对不上；而且 JS 读不到浏览器流出来的位置，网格线会画错；
+//   2. 网格线照画：1 竖 + rows-1 横；
+//   3. 卡片操作仍走底部固定工具条（见 .bento-dock），卡片内只留左上角拖动把手。
 
 @media (max-width: 768px) {
   .bento-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+    /* 行高 = 列宽；120px 只是不支持容器查询单位时的兜底 */
     grid-auto-rows: 120px;
-    grid-auto-flow: row;
+    grid-auto-rows: calc((100cqw - 12px) / 2);
     gap: 12px;
   }
 
   .bento-grid.is-editing {
-    min-height: calc(var(--rows, 4) * 120px + (var(--rows, 4) - 1) * 12px);
+    min-height: calc(var(--rows-m, 3) * 120px + (var(--rows-m, 3) - 1) * 12px);
+    min-height: calc(
+      var(--rows-m, 3) * ((100cqw - 12px) / 2) + (var(--rows-m, 3) - 1) * 12px
+    );
+  }
+
+  .bento-guides {
+    --gap: 12px;
+    --cell: calc((100cqw - 12px) / 2);
   }
 
   .bento-card {
-    grid-column: span var(--gw-m);
-    grid-row: span var(--gh);
+    grid-column: calc(var(--mgx) + 1) / span var(--mgw);
+    grid-row: calc(var(--mgy) + 1) / span var(--gh);
     border-radius: 18px;
   }
 
   .bento-card__body {
     padding: $space-4;
+  }
+
+  /* 手机编辑态：左上角把手会压住正文，留一条头距（与桌面 34px 同源）。 */
+  .bento.is-editing .bento-card:not(.bento-card--image) .bento-card__body {
+    padding-top: 40px;
   }
 
   /* 底部固定工具条不占文档流，给页面尾部留出它的高度，否则最后一块永远压在它下面。 */

@@ -1,7 +1,7 @@
 import { getCurrentUser, isCoreUser } from '@/lib/auth';
 import { apiErr, apiOk } from '@/lib/format';
 import { rateLimit, RULES } from '@/lib/rate-limit';
-import { saveProfileBlocks } from '@/lib/profile-service';
+import { getProfilePageData, saveProfileBlocks } from '@/lib/profile-service';
 
 // PUT /api/profile/blocks —— 保存整页积木布局（整页替换）
 //
@@ -13,6 +13,14 @@ import { saveProfileBlocks } from '@/lib/profile-service';
 //
 // 【客户端校验不是防线】请求可以被手工构造，saveProfileBlocks 内部会再跑一遍
 // normalizeBlocks + 归属/可见性校验。
+//
+// 【响应回传保存后的整页数据】`{ count, blocks, isDefault }`：
+//   · blocks 是**刚写进库的那份**经 resolveViews 解析后的形状（含 view、含 h≥2 的
+//     excerpt），客户端拿到就能立刻重画，不必等路由缓存刷新 —— 页面是 Server
+//     Component，路由器缓存里那份是旧的，等它回来之前会闪一帧旧布局；
+//   · isDefault 跟着回传，客户端据此决定空态引导显不显示（保存过 = 不再是默认布局）；
+//   · **catalog 不回传**：可挑清单是编辑器打开时那一份，保存不必再背 100 篇标题。
+// 三者在同一个响应里，客户端就不会出现「块是新的、isDefault 是旧的」这种撕裂。
 export async function PUT(req: Request) {
   const user = await getCurrentUser();
   if (!user) return apiErr(401, '未登录');
@@ -32,5 +40,8 @@ export async function PUT(req: Request) {
   const result = await saveProfileBlocks(user.id, body.blocks);
   if (!result.ok) return apiErr(400, result.message);
 
-  return apiOk({ count: result.count }, '主页已保存');
+  // 保存后重读一遍：此时读路径看到的就是刚刚提交的那一页（同一请求内，无并发歧义）。
+  const data = await getProfilePageData(user.id, { isOwner: true });
+
+  return apiOk({ count: result.count, blocks: data.blocks, isDefault: data.isDefault }, '主页已保存');
 }

@@ -23,9 +23,23 @@
 // 【为什么 viewer 只用来决定「要不要给编辑清单」】对外可读的数据对游客 / core+ /
 // 本人是同一份：博客有 external 档、图片音频有 isPublic。主页不再做「core+ 才看
 // 内容」那套分档（那是旧档案页的口径），所以这里没有 canSeeContent。
+//
+// 【顺序：桌面阅读顺序 (y, x)，sort 不再决定任何东西】2026-10 改版后手机端是桌面布局
+// 的**投影**（profile-blocks.ts 的 projectMobile），不再是「另一套按保存顺序流式排」
+// 的布局。所以读路径只按 (y, x) 排 —— **不读 `profile_blocks.sort`**；保存路径也不再
+// 写它。迁移 32 加的那一列还留在库里，旧值**无害**（没有任何读取方），删列要另做迁移，
+// 不值得。⚠️ 谁再按 sort 排序，症状是「手机上看到的顺序与桌面阅读顺序对不上」，而
+// **全程不报错** —— 手机顺序的唯一来源已经是 (x, y)。
+//
+// 【excerpt 是读时现算的，不是又一份快照】文章块在 h≥2（高卡片）时带一段正文纯文本
+// 摘要：只对**这些块指向的文章**额外查一次 blog_contents，且查询仍叠归属与
+// EXTERNAL_VISIBLE_BLOG_WHERE（不漏一档），算完塞进 view，**从不写回 config**。矮卡片
+// 没有第二行放它，excerpt 恒为空串，也就不会为它多查一次库。摘要在库里的唯一形态
+// 仍是 *不存* —— 正文改了下次请求就变。
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { prisma } from './db';
+import { blogExcerpt } from './blog-excerpt';
 import { nowForDb, isoWithOffset } from './db-time';
 import { generateShortId } from './short-id';
 import { EXTERNAL_VISIBLE_BLOG_WHERE } from './blog-service';
@@ -121,10 +135,22 @@ async function resolveViews(
   const imageIds = blocks.filter((b) => b.kind === 'image').map((b) => String(b.config.imageId ?? ''));
   const audioIds = blocks.filter((b) => b.kind === 'audio').map((b) => String(b.config.audioId ?? ''));
 
+  // 摘要只给高卡片（h≥2）：h=1 的卡片（1×1 / 2×1）那一行放标题与日期，没有第二行。
+  // 这里只收集**这些**块的 id —— 正文是大字段，为矮卡片顺带查一遍正文纯属白烧 IO，
+  // 也会让「摘要只给高卡片」这条口径在 code review 里看不出来。
+  const excerptBlogIds = [
+    ...new Set(
+      blocks
+        .filter((b) => b.kind === 'blog' && b.h >= 2)
+        .map((b) => String(b.config.blogId ?? ''))
+        .filter(Boolean)
+    ),
+  ];
+
   const needStats = blocks.some((b) => b.kind === 'stats' || b.kind === 'checkin');
   const resolvedStats = needStats ? stats ?? (await computeStats(userId)) : null;
 
-  const [blogRows, imageRows, audioRows] = await Promise.all([
+  const [blogRows, imageRows, audioRows, excerptRows] = await Promise.all([
     blogIds.length
       ? prisma.blog.findMany({
           where: { id: { in: blogIds }, authorId: userId, ignore: false, ...EXTERNAL_VISIBLE_BLOG_WHERE },
@@ -148,11 +174,23 @@ async function resolveViews(
           select: { id: true, filename: true },
         })
       : Promise.resolve([]),
+    // 正文只从**对外可读且属于本人**的文章里读：把闸门放进 where，而不是先查出来再在
+    // 内存里过滤 —— 值一旦进了内存，就有忘挡的活口（文件头第 1 条）。
+    excerptBlogIds.length
+      ? prisma.blogContent.findMany({
+          where: {
+            blogId: { in: excerptBlogIds },
+            blog: { is: { authorId: userId, ignore: false, ...EXTERNAL_VISIBLE_BLOG_WHERE } },
+          },
+          select: { blogId: true, content: true },
+        })
+      : Promise.resolve([]),
   ]);
 
   const blogMap = new Map(blogRows.map((b) => [b.id, b]));
   const imageMap = new Map(imageRows.map((i) => [i.id, i]));
   const audioMap = new Map(audioRows.map((a) => [a.id, a]));
+  const excerptMap = new Map(excerptRows.map((r) => [r.blogId, r.content]));
 
   return blocks.map((block) => {
     let view: BlockView | null = null;
@@ -165,6 +203,10 @@ async function resolveViews(
             blogId: row.id,
             title: row.title,
             description: row.description ?? '',
+            // 只有高卡片要摘要；其余恒为空串（客户端据此决定画不画第二行）。
+            // 正文没写 / 不在 excerptRows 里（理论上已被可见性挡掉）也回空串，不塞
+            // description 冒充 —— 两者是不同的字段，混用会让「摘要」变成第二个来源。
+            excerpt: block.h >= 2 ? blogExcerpt(excerptMap.get(row.id) ?? '') : '',
             date: ymd(row.createdAt),
           };
         }
@@ -251,8 +293,10 @@ export async function getProfilePageData(
 ): Promise<ProfilePageData> {
   const rows = await prisma.profileBlock.findMany({
     where: { userId, deleted: false },
-    // sort 是手机端顺序（迁移 32）；老行全是 0，于是回落到旧的 (y, x) 顺序。
-    orderBy: [{ sort: 'asc' }, { y: 'asc' }, { x: 'asc' }],
+    // 桌面阅读顺序 (y, x) 是**唯一**的布局顺序：手机端由它投影（projectMobile），
+    // 不再读迁移 32 那一列 sort。旧行里残留的 sort 值不会影响任何东西 —— 刻意不删列、
+    // 不回填（那需要一次迁移，而它已经不参与任何判定）。
+    orderBy: [{ y: 'asc' }, { x: 'asc' }],
     select: { id: true, kind: true, x: true, y: true, w: true, h: true, config: true },
   });
 
@@ -337,6 +381,9 @@ export type SaveResult = { ok: true; count: number } | { ok: false; message: str
  *
  * 写入策略：软删「这次没带的块」，其余按 id 更新（必要时复活墓碑行）。
  * ⚠️ 不要改成「全删再全插」—— 会撞主键，且会留下一堆没必要的墓碑。
+ *
+ * 客户端数组顺序**不再参与布局**（手机顺序由 (x, y) 投影，见文件头）：它现在只是
+ * 这个循环的遍历顺序。别把它再写进数据库当布局用 —— 那会让两种顺序同时存在。
  */
 export async function saveProfileBlocks(userId: string, raw: unknown): Promise<SaveResult> {
   const parsed = normalizeBlocks(raw);
@@ -388,15 +435,17 @@ export async function saveProfileBlocks(userId: string, raw: unknown): Promise<S
       });
     }
 
-    for (const [index, b] of withIds.entries()) {
+    for (const b of withIds) {
       const data = {
         kind: b.kind,
         x: b.x,
         y: b.y,
         w: b.w,
         h: b.h,
-        // 手机端顺序 = 客户端数组下标（迁移 32）。桌面位置仍由 x/y 决定，两者互不干扰。
-        sort: index,
+        // 【刻意不写 sort】2026-10 改版后手机顺序由桌面 (x, y) 投影得出
+        // （profile-blocks.ts 的 projectMobile），没有任何读取方还会看这一列。继续写它
+        // 只会让人以为它还有效（下一个人照着它改手机顺序，静默得到「改不动」）。
+        // 老行里残留的旧值是**无害**的：不读、不回填、也不删列。
         config: JSON.stringify(b.config),
         updatedAt: now,
         deleted: false,
