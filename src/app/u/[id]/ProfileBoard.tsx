@@ -119,6 +119,7 @@ export default function ProfileBoard({
   const [notice, setNotice] = useState<string | null>(null);
   const [lightbox, setLightbox] = useState<string | null>(null);
   const [isMobile, setIsMobile] = useState(false);
+  const [draggingId, setDraggingId] = useState<string | null>(null);
 
   const dragRef = useRef<{
     id: string;
@@ -145,12 +146,27 @@ export default function ProfileBoard({
   }, []);
 
   useEffect(() => {
+    if (!dialog) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setDialog(null);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [dialog]);
+
+  useEffect(() => {
     if (!notice) return;
     const t = window.setTimeout(() => setNotice(null), 3200);
     return () => window.clearTimeout(t);
   }, [notice]);
 
   const draftById = useMemo(() => new Map(draft.map((b) => [b.id, b])), [draft]);
+
+  // 「有没有还没保存的改动」—— 给工具栏一颗状态，避免用户以为拖完就已经生效了。
+  const dirty = useMemo(
+    () => JSON.stringify(draft) !== JSON.stringify(blocks.map(stripView)),
+    [draft, blocks]
+  );
 
   /** 编辑态下的「能画什么」：优先用服务端解析好的 view，新加的块从清单里现拼。 */
   const viewOf = useCallback(
@@ -209,11 +225,11 @@ export default function ProfileBoard({
     }));
   }, [editing, draft, blocks, viewOf]);
 
-  const freeSlot = useMemo(() => {
-    if (!editing) return null;
-    const d = BLOCK_DEFS.text.defaultSize;
-    return findFreeSpot(draft, d.w, d.h);
-  }, [editing, draft]);
+  // 编辑态的背景格：至少 3 行，并在内容下方再多留一行，让用户看到「还能往哪放」。
+  const guideRows = useMemo(() => {
+    const bottom = draft.reduce((m, b) => Math.max(m, b.y + b.h), 0);
+    return Math.max(3, bottom + 1);
+  }, [draft]);
 
   // ── 拖拽 ──────────────────────────────────────────────────────────────────
   function onPointerDown(e: React.PointerEvent<HTMLElement>, b: Draft) {
@@ -223,6 +239,7 @@ export default function ProfileBoard({
     setSelected(b.id);
     if (isMobile) return;
     e.currentTarget.setPointerCapture(e.pointerId);
+    setDraggingId(b.id);
     dragRef.current = {
       id: b.id,
       pointerId: e.pointerId,
@@ -257,6 +274,7 @@ export default function ProfileBoard({
 
   function onPointerUp() {
     dragRef.current = null;
+    setDraggingId(null);
   }
 
   // ── 增删改 ────────────────────────────────────────────────────────────────
@@ -489,6 +507,9 @@ export default function ProfileBoard({
             <GripVertical size={16} aria-hidden="true" />
             {isMobile ? '手机上先用下方按钮加块、调尺寸；拖拽在电脑上更顺手。' : '拖动卡片换位置；选中卡片后可调尺寸、改内容。'}
           </div>
+          <span className={`bento-toolbar__dirty${dirty ? ' is-dirty' : ''}`}>
+            {dirty ? '有未保存的修改' : '已保存'}
+          </span>
           <div className="bento-toolbar__actions">
             <button type="button" className="bento-btn" onClick={cancel} disabled={saving}>
               放弃
@@ -528,104 +549,119 @@ export default function ProfileBoard({
       )}
       {notice && <p className="bento-notice">{notice}</p>}
 
-      <div className="bento-grid" ref={gridRef}>
-        {visible.map(({ block, view }) => {
-          const Icon = KIND_ICON[block.kind];
-          const compact = block.w === 1 && block.h === 1;
-          const short = block.h === 1;
-          const unavailable = editing && !view;
-          return (
-            <article
-              key={block.id}
-              className={[
-                'bento-card',
-                `bento-card--${block.kind}`,
-                compact ? 'is-compact' : '',
-                short ? 'is-short' : '',
-                selected === block.id && editing ? 'is-selected' : '',
-                editing ? 'is-draggable' : '',
-              ]
-                .filter(Boolean)
-                .join(' ')}
-              style={
-                {
-                  '--gx': block.x,
-                  '--gy': block.y,
-                  '--gw': block.w,
-                  '--gh': block.h,
-                  '--gw-m': Math.min(block.w, 2),
-                } as React.CSSProperties
-              }
-              tabIndex={editing ? 0 : -1}
-              onPointerDown={(e) => onPointerDown(e, block)}
-              onPointerMove={onPointerMove}
-              onPointerUp={onPointerUp}
-              onPointerCancel={onPointerUp}
-              onKeyDown={(e) => {
-                if (!editing) return;
-                if (e.key === 'ArrowLeft') { e.preventDefault(); moveBy(block.id, -1, 0); }
-                if (e.key === 'ArrowRight') { e.preventDefault(); moveBy(block.id, 1, 0); }
-                if (e.key === 'ArrowUp') { e.preventDefault(); moveBy(block.id, 0, -1); }
-                if (e.key === 'ArrowDown') { e.preventDefault(); moveBy(block.id, 0, 1); }
-                if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); removeBlock(block.id); }
-              }}
-            >
-              {editing && (
-                <span className="bento-card__grip" aria-hidden="true">
-                  <Icon size={14} />
-                  <GripVertical size={14} />
-                </span>
-              )}
+      <div
+        className="bento-stage"
+        style={{ '--rows': guideRows } as React.CSSProperties}
+      >
+        {editing && (
+          <div className="bento-guides" aria-hidden="true">
+            {Array.from({ length: guideRows * (isMobile ? 2 : 4) }).map((_, i) => (
+              <span className="bento-guides__cell" key={i} />
+            ))}
+          </div>
+        )}
+        <div className={`bento-grid${editing ? ' is-editing' : ''}`} ref={gridRef}>
+          {visible.map(({ block, view }, index) => {
+            const Icon = KIND_ICON[block.kind];
+            const compact = block.w === 1 && block.h === 1;
+            const short = block.h === 1;
+            const unavailable = editing && !view;
+            return (
+              <article
+                key={block.id}
+                className={[
+                  'bento-card',
+                  `bento-card--${block.kind}`,
+                  compact ? 'is-compact' : '',
+                  short ? 'is-short' : '',
+                  selected === block.id && editing ? 'is-selected' : '',
+                  draggingId === block.id ? 'is-dragging' : '',
+                  editing ? 'is-draggable' : '',
+                ]
+                  .filter(Boolean)
+                  .join(' ')}
+                style={
+                  {
+                    '--gx': block.x,
+                    '--gy': block.y,
+                    '--gw': block.w,
+                    '--gh': block.h,
+                    '--gw-m': Math.min(block.w, 2),
+                    '--i': index,
+                  } as React.CSSProperties
+                }
+                tabIndex={editing ? 0 : -1}
+                onPointerDown={(e) => onPointerDown(e, block)}
+                onPointerMove={onPointerMove}
+                onPointerUp={onPointerUp}
+                onPointerCancel={onPointerUp}
+                onKeyDown={(e) => {
+                  if (!editing) return;
+                  if (e.key === 'ArrowLeft') { e.preventDefault(); moveBy(block.id, -1, 0); }
+                  if (e.key === 'ArrowRight') { e.preventDefault(); moveBy(block.id, 1, 0); }
+                  if (e.key === 'ArrowUp') { e.preventDefault(); moveBy(block.id, 0, -1); }
+                  if (e.key === 'ArrowDown') { e.preventDefault(); moveBy(block.id, 0, 1); }
+                  if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); removeBlock(block.id); }
+                }}
+              >
+                {editing && (
+                  <span className="bento-card__grip" aria-hidden="true">
+                    <Icon size={14} />
+                    <GripVertical size={14} />
+                  </span>
+                )}
 
-              {unavailable ? (
-                <div className="bento-card__missing">
-                  <span>{block.kind === 'blog' || block.kind === 'image' || block.kind === 'audio' ? '这块内容已不可用' : '还没填内容'}</span>
-                  <button type="button" className="bento-mini" onClick={() => startEditField(block)}>
-                    编辑
-                  </button>
-                </div>
-              ) : view ? (
-                <BlockBody
-                  view={view}
-                  compact={compact}
-                  onOpenImage={(url) => setLightbox(url)}
-                />
-              ) : null}
-
-              {editing && selected === block.id && (
-                <div className="bento-card__tools">
-                  {BLOCK_SIZES.map((s) => (
-                    <button
-                      key={sizeKey(s.w, s.h)}
-                      type="button"
-                      className={`bento-size${s.w === block.w && s.h === block.h ? ' is-active' : ''}`}
-                      onClick={() => applySize(block.id, s.w, s.h)}
-                      title={`${s.label}（${s.w}×${s.h}）`}
-                    >
-                      {s.w}×{s.h}
-                    </button>
-                  ))}
-                  {(block.kind === 'text' || block.kind === 'link' || block.kind === 'image' || block.kind === 'audio') && (
+                {unavailable ? (
+                  <div className="bento-card__missing">
+                    <span>{block.kind === 'blog' || block.kind === 'image' || block.kind === 'audio' ? '这块内容已不可用' : '还没填内容'}</span>
                     <button type="button" className="bento-mini" onClick={() => startEditField(block)}>
                       编辑
                     </button>
-                  )}
-                  <button type="button" className="bento-mini bento-mini--danger" onClick={() => removeBlock(block.id)} aria-label="删除这块">
-                    <Trash2 size={14} />
-                  </button>
-                </div>
-              )}
-            </article>
-          );
-        })}
+                  </div>
+                ) : view ? (
+                  <BlockBody
+                    view={view}
+                    compact={compact}
+                    interactive={!editing}
+                    onOpenImage={(url) => setLightbox(url)}
+                  />
+                ) : null}
 
-        {editing && draft.length === 0 && (
-          <div className="bento-card bento-card--ghost" style={{ '--gx': 0, '--gy': 0, '--gw': 2, '--gh': 1, '--gw-m': 2 } as React.CSSProperties}>
-            <div className="bento-card__missing">
-              <span>从下面挑一块开始</span>
+                {editing && selected === block.id && (
+                  <div className="bento-card__tools">
+                    {BLOCK_SIZES.map((s) => (
+                      <button
+                        key={sizeKey(s.w, s.h)}
+                        type="button"
+                        className={`bento-size${s.w === block.w && s.h === block.h ? ' is-active' : ''}`}
+                        onClick={() => applySize(block.id, s.w, s.h)}
+                        title={`${s.label}（${s.w}×${s.h}）`}
+                      >
+                        {s.w}×{s.h}
+                      </button>
+                    ))}
+                    {(block.kind === 'text' || block.kind === 'link' || block.kind === 'image' || block.kind === 'audio') && (
+                      <button type="button" className="bento-mini" onClick={() => startEditField(block)}>
+                        编辑
+                      </button>
+                    )}
+                    <button type="button" className="bento-mini bento-mini--danger" onClick={() => removeBlock(block.id)} aria-label="删除这块">
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                )}
+              </article>
+            );
+          })}
+
+          {editing && draft.length === 0 && (
+            <div className="bento-card bento-card--ghost" style={{ '--gx': 0, '--gy': 0, '--gw': 2, '--gh': 1, '--gw-m': 2 } as React.CSSProperties}>
+              <div className="bento-card__missing">
+                <span>从下面挑一块开始</span>
+              </div>
             </div>
-          </div>
-        )}
+          )}
+        </div>
       </div>
 
       {editing && (
@@ -675,7 +711,7 @@ export default function ProfileBoard({
               })}
             </div>
             <span className="bento-palette__free">
-              {freeSlot ? '' : '这一屏已经放满了，先挪出点空位'}
+              {draft.length}/{MAX_BLOCKS} 块
             </span>
           </div>
         </>
@@ -712,16 +748,18 @@ export default function ProfileBoard({
 function BlockBody({
   view,
   compact,
+  interactive,
   onOpenImage,
 }: {
   view: BlockView;
   compact: boolean;
+  interactive: boolean;
   onOpenImage: (url: string) => void;
 }) {
   switch (view.kind) {
-    case 'blog':
-      return (
-        <Link className="bento-card__body bento-blog" href={`/blog/${view.blogId}`}>
+    case 'blog': {
+      const inner = (
+        <>
           <span className="bento-blog__kicker">
             <BookOpen size={14} aria-hidden="true" />
             文章
@@ -736,16 +774,33 @@ function BlockBody({
             )}
             <ArrowUpRight size={14} aria-hidden="true" />
           </span>
-        </Link>
+        </>
       );
-    case 'image':
-      return (
-        <button type="button" className="bento-card__body bento-image" onClick={() => onOpenImage(view.url)}>
+      // ★ 编辑态里不能是 <Link>：点一下会跳去文章详情，用户想选中的那块永远选不中。
+      return interactive ? (
+        <Link className="bento-card__body bento-blog" href={`/blog/${view.blogId}`}>
+          {inner}
+        </Link>
+      ) : (
+        <div className="bento-card__body bento-blog">{inner}</div>
+      );
+    }
+    case 'image': {
+      const inner = (
+        <>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img className="bento-image__img" src={view.url} alt={view.alt} loading="lazy" />
           {!compact && view.caption && <span className="bento-image__caption">{view.caption}</span>}
-        </button>
+        </>
       );
+      return interactive ? (
+        <button type="button" className="bento-card__body bento-image" onClick={() => onOpenImage(view.url)}>
+          {inner}
+        </button>
+      ) : (
+        <div className="bento-card__body bento-image is-static">{inner}</div>
+      );
+    }
     case 'audio':
       return (
         <div className="bento-card__body bento-audio">
@@ -753,7 +808,12 @@ function BlockBody({
             <Music size={14} aria-hidden="true" />
             {view.title}
           </span>
-          <audio className="bento-audio__el" controls preload="none" src={view.url} />
+          {/* 编辑态不给播放器控件：控件会吃掉 pointerdown，卡片就拖不动了 */}
+          {interactive ? (
+            <audio className="bento-audio__el" controls preload="none" src={view.url} />
+          ) : (
+            <span className="bento-audio__placeholder">音频</span>
+          )}
         </div>
       );
     case 'text':
@@ -763,13 +823,21 @@ function BlockBody({
           <p className="bento-text__body">{view.text}</p>
         </div>
       );
-    case 'link':
-      return (
-        <a className="bento-card__body bento-link" href={view.url} target="_blank" rel="noopener noreferrer nofollow">
+    case 'link': {
+      const inner = (
+        <>
           <ExternalLink size={16} aria-hidden="true" />
           <span className="bento-link__label">{view.label}</span>
-        </a>
+        </>
       );
+      return interactive ? (
+        <a className="bento-card__body bento-link" href={view.url} target="_blank" rel="noopener noreferrer nofollow">
+          {inner}
+        </a>
+      ) : (
+        <div className="bento-card__body bento-link is-static">{inner}</div>
+      );
+    }
     case 'stats':
       return (
         <div className="bento-card__body bento-stats">

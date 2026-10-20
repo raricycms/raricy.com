@@ -210,15 +210,47 @@
   position: relative;
 }
 
+.bento-stage {
+  position: relative;
+}
+
+// 编辑态的背景格：让「能放到哪、占几格」看得见。它只是坐标参照，不接收事件。
+.bento-guides {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-auto-rows: 132px;
+  gap: 16px;
+  pointer-events: none;
+}
+
+.bento-guides__cell {
+  border: 1px dashed var(--color-border);
+  border-radius: 24px;
+  opacity: 0.7;
+}
+
 .bento-grid {
+  position: relative;
+  z-index: 1;
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   grid-auto-rows: 132px;
   gap: 16px;
 }
 
+// 编辑态多留一行空位（--rows 由组件按当前内容算），让背景格与网格同高，
+// 否则绝对定位的 .bento-guides 会溢出到页脚上去。
+.bento-grid.is-editing {
+  min-height: calc(var(--rows, 4) * 132px + (var(--rows, 4) - 1) * 16px);
+}
+
 .bento-card {
   position: relative;
+  animation: bento-rise 0.38s cubic-bezier(0.2, 0.8, 0.2, 1) backwards;
+  animation-delay: calc(var(--i, 0) * 45ms);
   grid-column: calc(var(--gx) + 1) / span var(--gw);
   grid-row: calc(var(--gy) + 1) / span var(--gh);
   min-width: 0;
@@ -338,6 +370,10 @@
   position: relative;
   display: block;
 
+  &.is-static {
+    cursor: inherit;
+  }
+
   &__img {
     width: 100%;
     height: 100%;
@@ -399,6 +435,17 @@
     width: 100%;
     height: 36px;
   }
+
+  &__placeholder {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 10px;
+    border-radius: $radius-max;
+    background: var(--color-background-subtle);
+    color: var(--color-text-secondary);
+    font-size: 0.8rem;
+    align-self: flex-start;
+  }
 }
 
 // --- 文字卡 ---
@@ -435,6 +482,10 @@
 
   svg {
     color: var(--bento-accent);
+  }
+
+  &.is-static {
+    cursor: inherit;
   }
 
   &__label {
@@ -506,10 +557,20 @@
 
   .bento-card.is-draggable {
     cursor: grab;
+    user-select: none;
 
     @media (min-width: 769px) {
       touch-action: none;
     }
+  }
+
+  .bento-card.is-dragging {
+    z-index: 5;
+    cursor: grabbing;
+    transform: translateY(-2px) scale(1.012);
+    box-shadow: var(--shadow-card-brand);
+    outline-color: transparent;
+    transition: transform 0.12s ease;
   }
 
   .bento-card.is-selected {
@@ -619,6 +680,9 @@
 // --- 工具栏 / 检查器 / 积木面板 ---
 
 .bento-toolbar {
+  position: sticky;
+  top: 74px;
+  z-index: 15;
   display: flex;
   align-items: center;
   gap: $space-3;
@@ -634,6 +698,16 @@
     gap: $space-2;
     color: var(--color-text-secondary);
     font-size: 0.875rem;
+  }
+
+  &__dirty {
+    font-size: 0.8rem;
+    color: var(--color-text-secondary);
+
+    &.is-dirty {
+      color: var(--color-warning-primary);
+      font-weight: 600;
+    }
   }
 
   &__actions {
@@ -687,6 +761,10 @@
 }
 
 .bento-palette {
+  position: sticky;
+  bottom: 12px;
+  z-index: 15;
+  box-shadow: var(--shadow-card-brand);
   display: flex;
   align-items: center;
   gap: $space-3;
@@ -826,12 +904,50 @@
   }
 }
 
+@keyframes bento-rise {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes bento-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes bento-pop {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .bento-spin {
     animation: none;
   }
 
-  .bento-card {
+  .bento-card,
+  .bento-modal,
+  .bento-modal__box {
+    animation: none;
+  }
+
+  .bento-card,
+  .bento-card.is-dragging {
     transition: none;
   }
 }
@@ -840,6 +956,7 @@
 
 .bento-modal {
   position: fixed;
+  animation: bento-fade 0.18s ease;
   inset: 0;
   z-index: 60;
   display: flex;
@@ -849,6 +966,7 @@
   background: rgba(0, 0, 0, 0.45);
 
   &__box {
+    animation: bento-pop 0.22s cubic-bezier(0.2, 0.8, 0.2, 1);
     display: flex;
     flex-direction: column;
     width: min(560px, 100%);
@@ -979,6 +1097,20 @@
     gap: 12px;
   }
 
+  .bento-grid.is-editing {
+    min-height: calc(var(--rows, 4) * 120px + (var(--rows, 4) - 1) * 12px);
+  }
+
+  .bento-guides {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-auto-rows: 120px;
+    gap: 12px;
+  }
+
+  .bento-guides__cell {
+    border-radius: 18px;
+  }
+
   .bento-card {
     grid-column: span var(--gw-m);
     grid-row: span var(--gh);
@@ -997,5 +1129,15 @@
 
   .bento-pick-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  /* 手机上积木面板不吸底：它本身就有三行高，吸底会长期盖住卡片。 */
+  .bento-palette {
+    position: static;
+    box-shadow: none;
+  }
+
+  .bento-toolbar {
+    top: 68px;
   }
 }
