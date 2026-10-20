@@ -8,6 +8,23 @@ export function uniqueTag(): string {
 }
 
 /**
+ * 在自定义下拉（`ExpandSelect`）里选中一项。
+ *
+ * 站内那些「选择栏目 / 全部动作」已经从原生 <select> 换成带展开动画的自定义控件，
+ * `page.selectOption()` 不再适用。`triggerId` 是触发钮的 id（与 `<label htmlFor>`
+ * 同一个），选项按可见文字精确定位。
+ */
+export async function chooseExpandSelect(
+  page: Page,
+  triggerId: string,
+  optionLabel: string
+): Promise<void> {
+  const host = page.locator('.expand-select', { has: page.locator(`#${triggerId}`) });
+  await host.locator('.expand-select__toggle').click();
+  await host.getByRole('option', { name: optionLabel, exact: true }).click();
+}
+
+/**
  * 服务端认为「当前是谁」。
  *
  * 读的是 root layout 直出的 <meta name="user-authenticated">：它由服务端在渲染每个
