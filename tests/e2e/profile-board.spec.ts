@@ -191,12 +191,14 @@ test('手机：底部工具条随选中切换，上移 / 下移改顺序并持�
   await expect(page.locator('.bento-dock .bento-palette')).toBeVisible();
   await expect(page.locator('.bento-palette:not(.bento-palette--compact)')).toHaveCount(0);
 
-  // 固定工具条贴底（视口底部留 12px + 安全区；Chromium 的 iPhone 模拟安全区为 0）
+  // 固定工具条贴底：`bottom: calc(12px + env(safe-area-inset-bottom))`。
+  // Chromium 的 iPhone 模拟会给出非零安全区（实测 9px），所以只钉「贴近底部」，
+  // 不写死 12 —— 否则这条会在不同模拟档 / 系统安全区下随机变红。
   const dock = (await page.locator('.bento-dock').boundingBox())!;
   const vp = page.viewportSize()!;
   const gap = Math.round(vp.height - (dock.y + dock.height));
   expect(gap).toBeGreaterThanOrEqual(8);
-  expect(gap).toBeLessThanOrEqual(20);
+  expect(gap).toBeLessThanOrEqual(40);
 
   // 选中第三块 → 工具条换成那一块的操作；按钮是能点到的尺寸（≥40px）
   await page.locator('.bento-card--text', { hasText: '第三块' }).click();
