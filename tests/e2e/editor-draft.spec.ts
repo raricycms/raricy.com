@@ -1,6 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
-import { loginViaApi } from './helpers';
-import { SEED_USERS, SEED_BLOG, BLOG_BODY_MARKER } from './seed';
+import { loginViaApi, chooseExpandSelect } from './helpers';
+import { SEED_USERS, SEED_BLOG, SEED_CATEGORY, BLOG_BODY_MARKER } from './seed';
 
 // 本地草稿与「提交读到的是最新正文」。
 //
@@ -66,7 +66,7 @@ test.describe('博客本地草稿', () => {
     // 不是预览那份防抖状态」——读错了这里提交的正文就是空的，会被必填校验拦下
     await page.fill('#title', `草稿用例-${Date.now().toString(36)}`);
     await page.fill('#description', 'e2e 草稿用例');
-    await page.selectOption('#category', { index: 1 });
+    await chooseExpandSelect(page, 'category', SEED_CATEGORY.name);
 
     const created = page.waitForResponse(
       (r) => r.url().endsWith('/api/blogs') && r.request().method() === 'POST'
@@ -103,7 +103,7 @@ test.describe('博客本地草稿', () => {
     await appendToEditor(page, '#editor', 'E2E-SENT-ONE');
     await page.fill('#title', `竞态-${Date.now().toString(36)}`);
     await page.fill('#description', 'e2e 竞态用例');
-    await page.selectOption('#category', { index: 1 });
+    await chooseExpandSelect(page, 'category', SEED_CATEGORY.name);
 
     let release!: () => void;
     const gate = new Promise<void>((r) => {

@@ -1,5 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
-import { registerFreshUser, publishBlog, uniqueTag } from './helpers';
+import { registerFreshUser, publishBlog, uniqueTag, chooseExpandSelect } from './helpers';
+import { SEED_CATEGORY } from './seed';
 
 // 「保存之后这一页归谁」——两张表单（博客 / 云剪贴板）的**跳转与并发提交**。
 //
@@ -67,7 +68,7 @@ test.describe('博客：保存成功后这一页归谁', () => {
     await page.goto('/blog/upload');
     await page.fill('#title', `新建标题-${tag}`);
     await page.fill('#description', 'e2e 摘要');
-    await page.selectOption('#category', { index: 1 });
+    await chooseExpandSelect(page, 'category', SEED_CATEGORY.name);
     await appendToEditor(page, '#editor', `新建正文-${tag}`);
 
     const created = page.waitForResponse(
@@ -119,7 +120,7 @@ test.describe('博客：保存成功后这一页归谁', () => {
     await page.goto('/blog/upload');
     await page.fill('#title', `定时器标题-${tag}`);
     await page.fill('#description', 'e2e 摘要');
-    await page.selectOption('#category', { index: 1 });
+    await chooseExpandSelect(page, 'category', SEED_CATEGORY.name);
     await appendToEditor(page, '#editor', `定时器正文-${tag}`);
 
     const created = page.waitForResponse(

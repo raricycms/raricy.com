@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { test, expect, type Download, type Page } from '@playwright/test';
-import { registerFreshUser, uniqueTag } from './helpers';
+import { registerFreshUser, uniqueTag, chooseExpandSelect } from './helpers';
+import { SEED_CATEGORY } from './seed';
 
 // 编辑器「加固」这几条的**真跑链路**：面板键盘流、对话框焦点锁、Esc→Tab、
 // 导出取的是哪一份正文。
@@ -237,7 +238,7 @@ test.describe('预览里的按钮', () => {
       await page.fill(titleField, `复制标题-${tag}`);
       if (name === '博客新建') {
         await page.fill('#description', '复制用的摘要');
-        await page.selectOption('#category', { index: 1 });
+        await chooseExpandSelect(page, 'category', SEED_CATEGORY.name);
       }
       // ⚠️ 正文**最后**填：上面 fill / selectOption 会把焦点从编辑器挪走。
       // 先点进编辑器打字、再去选分类的话，键盘事件打在 <select> 上，正文一直是空的

@@ -9,8 +9,12 @@
 // 【本文件不管编辑器内部的事】工具条、预览、上传、导出、草稿都由 MarkdownEditor
 // 负责；这里只管**表单语义**：字段校验、长度上限、档位与匿名开关、提交与跳转，
 // 以及「发布成功后清草稿」这一下。
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import MarkdownEditor, { type MarkdownEditorHandle } from './MarkdownEditor';
+import ExpandSelect, {
+  type ExpandSelectGroup,
+  type ExpandSelectOption,
+} from './ExpandSelect';
 import type { CategoryHierarchy } from '@/lib/blog-service';
 // 可见性词汇必须从 ./blog-visibility 取（那个模块零依赖）——**不能**从 blog-service，
 // 它拖着 prisma，值导出会把服务端依赖拉进客户端包。理由见该文件头。
@@ -77,6 +81,49 @@ const FIELD_LABELS: ReadonlyArray<readonly [keyof FormFields, string]> = [
 export default function BlogForm({ categories, blog = null, banInfo = null }: BlogFormProps) {
   const isEdit = !!blog;
   const initialMarkdown = blog?.contentMarkdown ?? '';
+  const categoryValue = String(blog?.categoryId ?? '');
+  const visibilityValue = blog?.visibility ?? 'internal';
+
+  // 下拉选项是**从同一份权威数据推出来的**：栏目来自服务端的层级树，可见性来自
+  // lib/blog-visibility（加第四档时前端会跟着长出来，不会静默少一个选项）。
+  // 原生 select 换成 ExpandSelect 只改展开方式，选项与提交字段名都不变。
+  const categoryGroups = useMemo<ExpandSelectGroup[]>(() => {
+    const options: ExpandSelectOption[] = [{ value: '', label: '选择栏目' }];
+    for (const category of categories) {
+      options.push({
+        value: String(category.id),
+        label: category.icon ? `${category.icon} ${category.name}` : category.name,
+      });
+      for (const child of category.children) {
+        options.push({
+          value: String(child.id),
+          label: child.icon ? `${child.icon} ${child.name}` : child.name,
+          depth: 1,
+        });
+      }
+    }
+    return [{ options }];
+  }, [categories]);
+
+  const visibilityGroups = useMemo<ExpandSelectGroup[]>(
+    () => [
+      {
+        options: BLOG_VISIBILITIES.map((value) => ({
+          value,
+          label: VISIBILITY_LABEL[value],
+        })),
+      },
+    ],
+    []
+  );
+
+  const categoryLabel =
+    categoryGroups[0].options.find((option) => option.value === categoryValue)?.label ??
+    '选择栏目';
+  const visibilityLabel =
+    visibilityGroups[0].options.find((option) => option.value === visibilityValue)?.label ??
+    VISIBILITY_LABEL.internal;
+
 
   const editorRef = useRef<MarkdownEditorHandle>(null);
   const fallbackRef = useRef<HTMLTextAreaElement>(null);
@@ -124,8 +171,8 @@ export default function BlogForm({ categories, blog = null, banInfo = null }: Bl
     return {
       title: (form.elements.namedItem('title') as HTMLInputElement).value,
       description: (form.elements.namedItem('description') as HTMLTextAreaElement).value,
-      categoryId: (form.elements.namedItem('category') as HTMLSelectElement).value,
-      visibility: (form.elements.namedItem('visibility') as HTMLSelectElement).value,
+      categoryId: (form.elements.namedItem('category') as HTMLInputElement).value,
+      visibility: (form.elements.namedItem('visibility') as HTMLInputElement).value,
       allowAnonymousComments: (form.elements.namedItem('allowAnonymous') as HTMLInputElement)
         .checked,
       content: getContent(),
@@ -375,47 +422,30 @@ export default function BlogForm({ categories, blog = null, banInfo = null }: Bl
           <label htmlFor="category" className="form-label">
             栏目
           </label>
-          <select
-            className="form-select"
+          <ExpandSelect
             id="category"
             name="category"
-            defaultValue={blog?.categoryId ?? ''}
-          >
-            <option value="">选择栏目</option>
-            {categories.map((category) => (
-              <optgroup key={category.id} label={`${category.icon ?? ''} ${category.name}`}>
-                <option value={category.id}>
-                  {category.icon} {category.name}
-                </option>
-                {category.children.map((child) => (
-                  <option key={child.id} value={child.id}>
-                    {child.icon} {child.name}
-                  </option>
-                ))}
-              </optgroup>
-            ))}
-          </select>
+            defaultValue={categoryValue}
+            groups={categoryGroups}
+            ariaLabel={`栏目：${categoryLabel}`}
+          />
         </div>
 
-        {/* 可见性：与栏目同构的一个 select（不另造单选组 —— 少一套样式与一条类名守卫）。
-            三档的短语来自 ./blog-visibility 的 VISIBILITY_LABEL，一句话说明只在这里；
-            **不在前端写死档名**：加第四档时前端会跟着长出来，不会静默少一个选项。 */}
+        {/* 可见性：与栏目同构的一个 ExpandSelect（不另造单选组 —— 少一套样式与
+            一条类名守卫）。三档的短语来自 ./blog-visibility 的 VISIBILITY_LABEL，
+            一句话说明只在这里；**不在前端写死档名**：加第四档时前端会跟着长出来，
+            不会静默少一个选项。 */}
         <div className="form-group">
           <label htmlFor="visibility" className="form-label">
             可见范围
           </label>
-          <select
-            className="form-select"
+          <ExpandSelect
             id="visibility"
             name="visibility"
-            defaultValue={blog?.visibility ?? 'internal'}
-          >
-            {BLOG_VISIBILITIES.map((v) => (
-              <option key={v} value={v}>
-                {VISIBILITY_LABEL[v]}
-              </option>
-            ))}
-          </select>
+            defaultValue={visibilityValue}
+            groups={visibilityGroups}
+            ariaLabel={`可见范围：${visibilityLabel}`}
+          />
           <span className="form-hint text-muted">
             仅站内可见：只有站内核心用户读得到（默认）。凭链接可读：拿到链接的任何人
             都能打开，但不会出现在任何列表里、也不会被搜索引擎收录。对外公开：任何人
