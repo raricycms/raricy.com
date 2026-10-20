@@ -149,6 +149,108 @@ test('顶栏逐步收紧：保留横排导航，长用户名让位给头像，�
   }
 });
 
+test('手机端用户名是固定宽度的文本框：名字过长横向滚动，不省略也不换行', async ({ page, isMobile }) => {
+  test.skip(!isMobile, '手机折叠布局');
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  const tag = uniqueTag();
+  // 用户报障的那个长度：八个汉字。
+  const username = '八个汉字的用户名';
+  const registration = await page.request.post('/api/auth/register', {
+    data: { username, email: `${tag}@e2e.local`, password: SEED_PASSWORD },
+  });
+  expect((await registration.json()).code).toBe(200);
+
+  for (const width of [320, 375, 414, 808]) {
+    await test.step(`${width}px`, async () => {
+      await page.setViewportSize({ width, height: 900 });
+      await page.goto('/');
+      await page.evaluate(() => document.fonts.ready);
+      await page.locator('.site-navbar-toggler').click();
+
+      const name = page.locator('.site-user-name');
+      await expect(name).toBeVisible();
+      const box = await name.evaluate(el => {
+        const style = getComputedStyle(el);
+        return {
+          overflowX: style.overflowX,
+          textOverflow: style.textOverflow,
+          whiteSpace: style.whiteSpace,
+          scrollWidth: el.scrollWidth,
+          clientWidth: el.clientWidth,
+        };
+      });
+
+      // ① 不省略号、不折行：名字是一格固定宽度的文本框，溢出靠横向滚动消化。
+      //    上一版这里是 `overflow: hidden` + `text-overflow: ellipsis`，八个汉字
+      //    在 375px 上只剩四个字，且没有任何办法读到剩下的（手机没有 hover/title）。
+      expect(box.overflowX).toBe('auto');
+      expect(box.textOverflow).toBe('clip');
+      expect(box.whiteSpace).toBe('nowrap');
+      // 名字的完整宽度还在内容里，没有被盒子裁掉（否则滚动也读不全）。
+      expect(box.scrollWidth).toBeGreaterThanOrEqual(120);
+
+      // ② 装不下时真的滚得动（scrollLeft 能离开 0）。
+      if (box.scrollWidth > box.clientWidth) {
+        const scrolled = await name.evaluate(el => {
+          el.scrollLeft = 40;
+          return el.scrollLeft;
+        });
+        expect(scrolled, `${width}px 用户名可横向滚动`).toBeGreaterThan(0);
+      } else {
+        // 盒子够宽时八个汉字应当完整可见 —— 320px 的换行档与 808px 的宽档都是这一种。
+        expect(box.clientWidth).toBeGreaterThanOrEqual(box.scrollWidth);
+      }
+
+      const geometry = await page.evaluate(() => {
+        const actions = document.querySelector('.site-actions')!;
+        const items = Array.from(actions.children).map((el) => {
+          const rect = el.getBoundingClientRect();
+          return {
+            className: el.className.slice(0, 30),
+            center: Math.round(rect.top + rect.height / 2),
+            left: +rect.left.toFixed(1),
+            right: +rect.right.toFixed(1),
+          };
+        });
+        const capsule = document.querySelector('.site-user-dropdown')!.getBoundingClientRect();
+        const avatar = document.querySelector('.site-user-avatar')!.getBoundingClientRect();
+        const chevron = document.querySelector('.site-user-dropdown-chevron')!.getBoundingClientRect();
+        const actionsBox = actions.getBoundingClientRect();
+        return {
+          viewport: window.innerWidth,
+          items,
+          capsule: { left: +capsule.left.toFixed(1), right: +capsule.right.toFixed(1), width: +capsule.width.toFixed(1) },
+          avatar: { left: +avatar.left.toFixed(1), right: +avatar.right.toFixed(1) },
+          chevron: { left: +chevron.left.toFixed(1), right: +chevron.right.toFixed(1) },
+          actionsWidth: +actionsBox.width.toFixed(1),
+          pageOverflow: document.documentElement.scrollWidth > window.innerWidth,
+        };
+      });
+
+      // ③ 头像与箭头始终留在胶囊里（名字再长也不把它们挤出去）。
+      expect(geometry.avatar.left).toBeGreaterThanOrEqual(geometry.capsule.left);
+      expect(geometry.chevron.right).toBeLessThanOrEqual(geometry.capsule.right + 0.5);
+      // ④ 整页不出现横向滚动条。
+      expect(geometry.pageOverflow).toBe(false);
+
+      // ⑤ 三个图标与用户名胶囊同一行；只有 320px 极窄屏允许整颗胶囊换行，
+      //    换行时它铺满操作区整行（宽度来自布局，不来自名字长短）。
+      const rows = new Set(geometry.items.map(item => item.center));
+      if (width >= 360) {
+        expect(rows.size, `${width}px 操作区保持一行`).toBe(1);
+        // 胶囊宽度 = 操作区减去三颗图标与间距，与名字长短无关（固定宽度文本框）。
+        const icons = geometry.items.filter(item => !item.className.includes('site-user-dropdown'));
+        const iconWidth = icons.reduce((sum, item) => sum + (item.right - item.left), 0);
+        const gaps = 4 * (geometry.items.length - 1);
+        expect(geometry.capsule.width).toBeCloseTo(geometry.actionsWidth - iconWidth - gaps, 0);
+      } else {
+        expect(rows.size).toBe(2);
+        expect(geometry.capsule.width).toBeCloseTo(geometry.actionsWidth, 0);
+      }
+    });
+  }
+});
+
 test('访客顶栏：中等宽度保留导航和登录入口，手机导航正常收起', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });
   for (const width of [809, 960, 992, 1024, 1199]) {
