@@ -241,6 +241,12 @@ describe('RULES 全站配额（src/lib/rate-limit.ts 即权威，改动即报警
       desc: '画报 / 收款码 PNG 生成 30 次/分/用户（一次请求 = 一次 sharp 光栅化）',
     },
     {
+      name: 'profileSave',
+      limit: 30,
+      windowMs: 60_000,
+      desc: '个人主页布局保存 30 次/分/用户（整页替换 = 一个事务里最多 16 次写）',
+    },
+    {
       name: 'favoriteCreateHourly',
       limit: 20,
       windowMs: HOUR,

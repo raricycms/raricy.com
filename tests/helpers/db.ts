@@ -141,6 +141,9 @@ export async function resetDb() {
     // 头部）。⚠️ 同上：漏登记不报错，只表现为数据残留。
     'user_frames',
     'user_bubbles',
+    // 个人主页积木引用 users（ON DELETE RESTRICT）—— 漏登记时 DELETE users 会撞外键、
+    // 被下面的 catch 吞掉，于是**整张 users 都清不掉**，表现为用例之间互相污染。
+    'profile_blocks',
     'users',
     'account_sync_ledger',
   ];
@@ -235,6 +238,8 @@ export async function makeBlog(opts: Partial<{
   createdAt: Date;
   contentUpdatedAt: Date;
   allowAnonymousComments: boolean;
+  /** 对外可见性（public / link / internal）。不传就用列默认值。 */
+  visibility: 'public' | 'link' | 'internal';
 }> = {}) {
   const id = opts.id ?? uid();
   const author = opts.authorId ?? (await makeUser()).id;
@@ -246,6 +251,8 @@ export async function makeBlog(opts: Partial<{
       description: opts.description ?? 'desc',
       categoryId: opts.categoryId ?? null,
       ignore: opts.ignore ?? false,
+      // 不传就交给列默认值（与真实建文路径一致）
+      ...(opts.visibility !== undefined ? { visibility: opts.visibility } : {}),
       // 不传就交给列默认值（true = 允许匿名评论），与真实建文路径一致
       ...(opts.allowAnonymousComments !== undefined
         ? { allowAnonymousComments: opts.allowAnonymousComments }

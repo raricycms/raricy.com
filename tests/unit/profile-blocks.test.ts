@@ -106,3 +106,17 @@ describe('网格算术', () => {
     expect(mobileSpan(2)).toBe(2);
   });
 });
+
+describe('顺序即数组顺序', () => {
+  // 手机端的显示顺序 = 保存时的数组顺序（服务端按下标写 profile_blocks.sort，
+  // 见迁移 32）。所以 normalizeBlocks **不能**重排数组 —— 重排会让用户刚调好的
+  // 上移 / 下移在保存后静默变回去。
+  it('normalizeBlocks 原样保留输入顺序（哪怕 x/y 是反的）', () => {
+    const r = normalizeBlocks([
+      text({ id: 'aaaaaaaaaaaa', x: 0, y: 5 }),
+      text({ id: 'bbbbbbbbbbbb', x: 2, y: 0 }),
+    ]);
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.blocks.map((b) => b.id)).toEqual(['aaaaaaaaaaaa', 'bbbbbbbbbbbb']);
+  });
+});

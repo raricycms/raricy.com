@@ -211,6 +211,9 @@ const UNSTYLED: [string, string][] = [
   ['.story-cattca__btn--secondary', '同上'],
   ['.pay-quick', '收银台别名钩子：与 .market-quick 成对出现，外观全由后者给（_fish-pay.scss 头部记着这套复用策略）'],
   ['.pay-amount__input', '收银台别名钩子：与 .market-amount__input 成对出现，外观全由后者给'],
+  // 2026-10 的几何计算器索引页：这个 div 是纯语义包装，外观全在两个子块
+  // （.tool-geometry__back / .tool-geometry__empty）上，容器自身没有声明。
+  ['.tool-geometry', '纯语义包装：容器本身无外观，返回链接与空结果各自带样式'],
 ];
 
 /** 刻意无样式，但**必须**在别处以选择器形态被消费 —— 否则这条豁免就是假的。 */
