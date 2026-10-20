@@ -1,8 +1,10 @@
 // 排行榜金银铜奖牌（吊带 + 圆牌，固定配色不随主题）。
 //
-// 原先住在 GameIcons.tsx，与游戏专用的 SuitIcon / AtamasRingIcon 同处一个文件。
-// 玩具区移除后那两个图标一并删除，只剩这一枚 —— 它服务的是签到卡（CheckinCard），
-// 与游戏无关，所以文件也改名以免误导。
+// 原先住在 GameIcons.tsx，与游戏专用的 SuitIcon / AtamasRingIcon 同处一个文件。2026-09
+// 那版棋类玩具区下线时，两个游戏图标随各自的游戏一起离开，只剩这一枚 —— 它服务的是
+// 签到卡（CheckinCard），与游戏无关，所以文件也改名以免误导。2026-10 玩具区以 `/game`
+// 重新上线（ATÅMAS 自带 `src/games/atamas/icons.tsx`），但那两个旧图标没有回来，
+// 所以这个文件仍然只该有奖牌。
 const MEDAL_COLORS: Record<1 | 2 | 3, { ring: string; core: string }> = {
   1: { ring: '#FFD54A', core: '#B8860B' }, // 金
   2: { ring: '#E8ECF1', core: '#8E9BAA' }, // 银
