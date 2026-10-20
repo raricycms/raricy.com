@@ -210,9 +210,14 @@
     .icon { flex: none; width: 18px; height: 18px; }
     .numeric { margin-left: auto; font-size: .8rem; }
   }
+  // 「创建」住在面板外面（收起时它就是窄屏胶囊里的加号，见下方 ≤992px 那一档）；
+  // 桌面与原先一样排在范围下方，所以这里只补一个与内边距对齐的外距。
   &__create {
-    margin: 20px 0 0;
+    margin: 0 20px 20px;
+    &:focus-visible { box-shadow: var(--shadow-focus-brand); }
   }
+  // 纯粹是窄屏给绝对定位的创建按钮留的那一格（见下方 ≤992px 档的说明）。
+  &__create-space { display: none; }
 }
 
 @media (max-width: 992px) {
@@ -246,8 +251,11 @@
     width: auto;
     z-index: 80;
 
+    // 收起态是「圆形加号 + 头像球」的胶囊：122 = 左内距 13 + 加号 44 + 间距 8 +
+    // 头像 44 + 右内距 13。外壳固定在右下角，展开时向左上伸展；头像留在胶囊右端
+    // （right 13），屏幕位置与改版前那颗球完全一致，所以「原来那颗头像球」不会跳。
     &__shell {
-      width: 70px;
+      width: 122px;
       min-height: 70px;
       border-radius: 35px;
       overflow: clip;
@@ -256,24 +264,26 @@
     }
     &__avatar {
       top: 13px;
-      left: 13px;
+      left: 65px; // 13 + 44 + 8：胶囊右端仍留着原来那颗头像球的位置
       width: 44px;
       height: 44px;
       transition: top .42s cubic-bezier(.22, 1, .36, 1), left .42s cubic-bezier(.22, 1, .36, 1), width .42s cubic-bezier(.22, 1, .36, 1), height .42s cubic-bezier(.22, 1, .36, 1);
     }
+    // 收起时它是盖在头像上的「点头像」热区 —— 与展开后右上角的 X 是同一颗按钮，
+    // 只是随外壳移动、换位置。图标在收起态透明，所以看起来就是一颗头像球。
     &__toggle {
       @include m.btn-secondary;
       display: flex;
       position: absolute;
       z-index: 2;
-      top: 0;
-      right: 0;
+      top: 13px;
+      right: 13px;
       align-items: center;
       justify-content: center;
       flex: none;
-      width: 70px;
-      height: 70px;
-      padding: 12px;
+      width: 44px;
+      height: 44px;
+      padding: 0;
       transition: top .42s cubic-bezier(.22, 1, .36, 1), right .42s cubic-bezier(.22, 1, .36, 1), width .42s cubic-bezier(.22, 1, .36, 1), height .42s cubic-bezier(.22, 1, .36, 1), background-color .25s ease;
       svg { width: 18px; height: 18px; opacity: 0; transition: opacity .18s ease; }
     }
@@ -292,9 +302,41 @@
       padding: 0 20px;
     }
     &__identity { margin-top: 24px; padding-right: 28px; }
-    &__create { margin-bottom: 20px; }
+    // 「创建」只有这一个元素：收起态是胶囊左端的圆形加号（透明底 + 品牌色圆加号），
+    // 展开时宽 44→105、底色浮出、文案淡入，落成面板底部的创建按钮。位置钉在
+    // 外壳左下角，随外壳向左展开，所以看起来就是「加号展开成创建按钮」。
+    &__create {
+      position: absolute;
+      z-index: 1;
+      left: 13px;
+      bottom: 13px;
+      width: 44px;
+      height: 44px;
+      margin: 0;
+      padding: 0;
+      gap: 0;
+      justify-content: center;
+      background-color: transparent;
+      transition: left .42s cubic-bezier(.22, 1, .36, 1), bottom .42s cubic-bezier(.22, 1, .36, 1), width .42s cubic-bezier(.22, 1, .36, 1), gap .42s cubic-bezier(.22, 1, .36, 1), background-color .25s ease, color .25s ease;
+    }
+    &__create-label {
+      max-width: 0;
+      opacity: 0;
+      overflow: hidden;
+      white-space: nowrap;
+      transition: opacity .18s ease, max-width .42s cubic-bezier(.22, 1, .36, 1);
+    }
+    // 84 = 创建按钮 44 + 底部 20 + 与范围之间 20。创建按钮是绝对定位的，面板内容
+    // 得自己把这格空出来 —— 但**不能**用 inner 的 padding：padding 不受 min-height: 0
+    // 约束，收起时会把 0fr 的轨道撑到 84px，胶囊就不再是 70px（实测过）。空的占位
+    // 元素是内容，能被收起态裁成 0。
+    &__create-space {
+      display: block;
+      height: 84px;
+    }
     &.is-settled .blog-personal__inner { overflow-y: auto; scrollbar-width: none; &::-webkit-scrollbar { display: none; } }
-    &__identity, &__stats, &__range, &__create {
+    // 加号（创建）不参加入场淡入：它在收起态就是可见的入口，不是面板内容。
+    &__identity, &__stats, &__range {
       opacity: 0;
       transform: translateY(-8px);
       transition: opacity .18s ease, transform .28s cubic-bezier(.22, 1, .36, 1);
@@ -305,7 +347,17 @@
       .blog-personal__avatar { top: 24px; left: 20px; width: 48px; height: 48px; }
       .blog-personal__toggle { top: 28px; right: 12px; width: 36px; height: 36px; padding: 0; svg { opacity: 1; transition-delay: 55ms; } }
       .blog-personal__panel { grid-template-rows: 1fr; visibility: visible; transition-delay: 0s; }
-      .blog-personal__identity, .blog-personal__stats, .blog-personal__range, .blog-personal__create {
+      .blog-personal__create {
+        left: 20px;
+        bottom: 20px;
+        // 105 = `.upload-button` 自己的宽度（pages/blog/_menu.scss）。两边是同一个
+        // 视觉档位，改那一边的尺寸时记得同步这里，否则展开前后会差一截。
+        width: 105px;
+        gap: 10px;
+        background-color: var(--color-brand-secondary);
+      }
+      .blog-personal__create-label { max-width: 60px; opacity: 1; transition-delay: 55ms; }
+      .blog-personal__identity, .blog-personal__stats, .blog-personal__range {
         opacity: 1;
         transform: translateY(0);
         transition-delay: 55ms;
@@ -316,6 +368,11 @@
         }
       }
     }
+
+    // 放在 `.is-open` 之后：同特异性下要压过展开态的底色，否则展开后按钮再也
+    // 给不出 hover / 按下反馈（`.upload-button` 的那两条更早、特异性相同）。
+    &__create:hover:not(:disabled) { background-color: var(--color-brand-primary); color: #fff; }
+    &__create:active:not(:disabled) { filter: brightness(.5); }
   }
 }
 

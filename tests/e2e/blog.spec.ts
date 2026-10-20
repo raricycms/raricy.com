@@ -451,6 +451,11 @@ test.describe('个人侧栏首帧', () => {
     await page.goto('/blog');
     await expect(page.locator('.blog-personal__toggle')).toBeVisible();
     await expect(page.locator('.blog-personal__panel')).toBeHidden();
+    // 收起态胶囊里的加号也是真实链接：水合前就该能直达创建页。
+    const plus = page.locator('.blog-personal__create');
+    await expect(plus).toBeVisible();
+    await expect(plus).toHaveAttribute('href', '/blog/upload');
+    expect((await plus.boundingBox())!.width).toBe(44);
   });
 
   test('桌面宽度：水合前已经显示个人信息与范围', async ({ page }) => {

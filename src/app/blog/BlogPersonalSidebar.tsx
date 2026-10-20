@@ -118,11 +118,22 @@ export default function BlogPersonalSidebar({ user, summary, scope }: {
                 </Link>
               ))}
             </nav>
-            <Link href="/blog/upload" className="upload-button blog-personal__create">
-              <span className="icon icon-add" aria-hidden="true" />创建
-            </Link>
+            {/* 绝对定位的「创建」占位：桌面不占位（CSS 里 display:none），窄屏展开时
+                在范围下方空出按钮那一格，见 _directory.scss 的 __create-space 说明。 */}
+            <span className="blog-personal__create-space" aria-hidden="true" />
           </div>
         </div>
+        {/*
+          「创建」同时是窄屏胶囊里的圆形加号：同一个链接只换形态，不另建一个按钮。
+          收起时它是加号（点一下直达 /blog/upload），展开时它长成面板底部的创建按钮 ——
+          尺寸 / 底色 / 文案都由 CSS 在 `.is-open` 下过渡（见 _directory.scss）。
+          ⚠️ 它必须在 `.blog-personal__panel` **外面**：面板收起时整块 0 高，放进去
+          加号会跟着被裁掉；而它是收起态唯一的创建入口。
+        */}
+        <Link href="/blog/upload" className="upload-button blog-personal__create">
+          <span className="icon icon-add" aria-hidden="true" />
+          <span className="blog-personal__create-label">创建</span>
+        </Link>
       </div>
     </aside>
   );

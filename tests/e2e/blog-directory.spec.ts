@@ -29,7 +29,12 @@ test('筛选条的行数、侧栏的高度和真实吸顶位置', async ({ page,
     expect(category.y).toBeGreaterThanOrEqual(search.y + search.height);
     expect(Math.abs(category.y - sort.y)).toBeLessThan(4);
     await expect(page.locator('.blog-personal__panel')).toBeHidden();
-    expect((await page.locator('.blog-personal').boundingBox())!.width).toBe(70);
+    const capsule = (await page.locator('.blog-personal').boundingBox())!;
+    expect(capsule.width).toBe(122);
+    expect(capsule.height).toBe(70);
+    const plus = (await page.locator('.blog-personal__create').boundingBox())!;
+    expect(plus.width).toBe(44);
+    expect(plus.height).toBe(44);
   } else {
     const filters = page.locator('.blog-filters');
     const radius = await filters.evaluate((el) => parseFloat(getComputedStyle(el).borderRadius));
@@ -103,17 +108,28 @@ test('个人面板使用统计胶囊，窄屏由同一个头像连续移动展�
   if (isMobile) {
     const motion = await page.locator('.blog-personal').evaluate(async (host) => {
       const avatar = host.querySelector('.blog-personal__avatar')!;
+      const create = host.querySelector('.blog-personal__create')!;
+      const createLabel = host.querySelector('.blog-personal__create-label')!;
       const start = avatar.getBoundingClientRect().toJSON();
+      const startCreate = create.getBoundingClientRect().toJSON();
+      const startStyle = { bg: getComputedStyle(create).backgroundColor, label: getComputedStyle(createLabel).opacity };
       (host.querySelector('.blog-personal__toggle') as HTMLButtonElement).click();
       await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
       const animations = host.getAnimations({ subtree: true });
       animations.forEach((animation) => { animation.pause(); animation.currentTime = 210; });
       const middle = avatar.getBoundingClientRect().toJSON();
+      const middleCreate = create.getBoundingClientRect().toJSON();
       const gutter = host.querySelector('.blog-personal__inner')!;
       const scroll = { overflow: getComputedStyle(gutter).overflowY, gutter: gutter.getBoundingClientRect().width - gutter.clientWidth };
       animations.forEach((animation) => animation.finish());
       const end = avatar.getBoundingClientRect().toJSON();
-      return { start, middle, end, scroll, same: avatar === host.querySelector('.blog-personal__avatar'), avatars: host.querySelectorAll('.avatar').length };
+      const endCreate = create.getBoundingClientRect().toJSON();
+      const endStyle = { bg: getComputedStyle(create).backgroundColor, label: getComputedStyle(createLabel).opacity };
+      return {
+        start, middle, end, startCreate, middleCreate, endCreate, startStyle, endStyle,
+        scroll, same: avatar === host.querySelector('.blog-personal__avatar'),
+        avatars: host.querySelectorAll('.avatar').length,
+      };
     });
     expect(motion.same).toBe(true);
     expect(motion.avatars).toBe(1);
@@ -125,6 +141,17 @@ test('个人面板使用统计胶囊，窄屏由同一个头像连续移动展�
     expect(motion.end.width).toBe(48);
     expect(motion.middle.y).toBeLessThan(motion.start.y);
     expect(motion.middle.y).toBeGreaterThan(motion.end.y);
+    // 收起时加号在头像球左侧（胶囊左端），展开后二者在面板左沿对齐。
+    expect(motion.startCreate.left + motion.startCreate.width).toBeLessThan(motion.start.left);
+    expect(Math.abs(motion.end.left - motion.endCreate.left)).toBeLessThan(1);
+    // 同一个「创建」元素从圆形加号长成面板底部的创建按钮。
+    expect(motion.startCreate.width).toBe(44);
+    expect(motion.middleCreate.width).toBeGreaterThan(motion.startCreate.width);
+    expect(motion.middleCreate.width).toBeLessThan(motion.endCreate.width);
+    expect(motion.endCreate.width).toBe(105);
+    expect(motion.startStyle).toEqual({ bg: 'rgba(0, 0, 0, 0)', label: '0' });
+    expect(motion.endStyle.label).toBe('1');
+    expect(motion.endStyle.bg).not.toBe('rgba(0, 0, 0, 0)');
     await expect(page.getByRole('button', { name: '收起我的博客', exact: true })).toBeVisible();
     await page.screenshot({ path: testInfo.outputPath('personal-avatar-expanded.png') });
   }
@@ -154,6 +181,38 @@ test('个人面板使用统计胶囊，窄屏由同一个头像连续移动展�
     expect(closing.overflow).toBe('hidden');
     expect(Math.abs(closing.gutter)).toBeLessThan(1);
   }
+});
+
+test('手机端胶囊：加号直达创建，点头像展开，加号展开成创建按钮', async ({ page, isMobile }) => {
+  test.skip(!isMobile, '胶囊只在 ≤992px 的悬浮入口出现');
+  await page.goto('/blog?scope=mine');
+  const capsule = page.locator('.blog-personal');
+  const plus = page.locator('.blog-personal__create');
+  const shell = (await capsule.boundingBox())!;
+  const create = (await plus.boundingBox())!;
+  const head = (await page.locator('.blog-personal__avatar').boundingBox())!;
+  expect(Math.round(shell.width)).toBe(122);
+  expect(Math.round(shell.height)).toBe(70);
+  expect(Math.round(create.width)).toBe(44);
+  expect(Math.round(create.height)).toBe(44);
+  // 加号在左、头像球在右，同一行，头像右侧留 13px。
+  expect(create.x + create.width).toBeLessThan(head.x);
+  expect(Math.abs(create.y - head.y)).toBeLessThan(1);
+  expect(Math.round(head.x + head.width + 13)).toBe(Math.round(shell.x + shell.width));
+  await expect(plus).toHaveAttribute('href', '/blog/upload');
+  await expect(plus).toHaveAccessibleName('创建');
+
+  // 点头像（收起态的热区就是这颗头像）展开；「创建」原地长成面板底部的按钮。
+  await page.getByRole('button', { name: '展开我的博客', exact: true }).click();
+  await expect(page.locator('.blog-personal__panel')).toBeVisible();
+  await expect(page.getByRole('link', { name: '创建', exact: true })).toBeVisible();
+  await expect.poll(async () => Math.round((await plus.boundingBox())!.width)).toBe(105);
+
+  // 收起后点加号直达创建页，不经过面板。
+  await page.getByRole('button', { name: '收起我的博客', exact: true }).click();
+  await expect(page.locator('.blog-personal__panel')).toBeHidden();
+  await plus.click();
+  await expect(page).toHaveURL('/blog/upload');
 });
 
 test('五个范围使用同一列表，空状态清掉筛选后保留当前范围', async ({ page, isMobile }) => {
