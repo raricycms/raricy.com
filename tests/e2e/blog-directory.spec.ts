@@ -204,8 +204,13 @@ test('手机端胶囊：加号直达创建，点头像展开，加号展开成�
   await expect(plus).toHaveAccessibleName('创建');
 
   // 点头像（收起态的热区就是这颗头像）展开；「创建」原地长成面板底部的按钮。
-  await page.getByRole('button', { name: '展开我的博客', exact: true }).click();
+  // 用 tap 而不是 click：触屏点按留下的模拟 hover 会黏在同一颗按钮上，而它随后正是
+  // 右上角的关闭钮 —— 那样 X 一出现就带着浅底，看着像被悬停过（_directory.scss 的
+  // __toggle 因此只给真实鼠标 hover）。
+  await page.getByRole('button', { name: '展开我的博客', exact: true }).tap();
   await expect(page.locator('.blog-personal__panel')).toBeVisible();
+  await expect(page.locator('.blog-personal')).toHaveClass(/is-settled/);
+  await expect(page.locator('.blog-personal__toggle')).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
   await expect(page.getByRole('link', { name: '创建', exact: true })).toBeVisible();
   await expect.poll(async () => Math.round((await plus.boundingBox())!.width)).toBe(105);
 

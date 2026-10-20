@@ -274,7 +274,10 @@
     // 收起时它是盖在头像上的「点头像」热区 —— 与展开后右上角的 X 是同一颗按钮，
     // 只是随外壳移动、换位置。图标在收起态透明，所以看起来就是一颗头像球。
     &__toggle {
-      @include m.btn-secondary;
+      // hover 只给真实鼠标：触屏点按留下的模拟 hover 会黏在同一颗按钮上，而它随后
+      // 正是展开态右上角的关闭钮 —— 面板一打开，X 就带着浅底亮在那里，像被悬停过。
+      // （状态按钮统一用这个开关，理由见 mixin 注释与 _segmented.scss 那条。）
+      @include m.btn-secondary($pointer-hover-only: true);
       display: flex;
       position: absolute;
       z-index: 2;
