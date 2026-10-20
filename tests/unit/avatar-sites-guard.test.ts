@@ -61,7 +61,7 @@ const AVATAR_SITES = [
   'src/app/blog/page.tsx', // 博客列表作者（20px）
   'src/app/blog/[id]/page.tsx', // 文章详情作者（20px）
   'src/app/explore/page.tsx', // 对外探索页作者（20px，刻意不作链接）
-  'src/app/admin/users/page.tsx', // 后台用户卡片（28px）
+  'src/app/admin/users/page.tsx', // 后台用户卡片（40px）
   'src/app/components/CheckinCard.tsx', // 签到天数榜（32px）
 
   // ── 客户端组件 ──

@@ -46,7 +46,9 @@ test.describe('/admin/categories 页面门控', () => {
   test('管理员的侧栏里没有「栏目管理」入口', async ({ page }) => {
     await loginViaApi(page, SEED_USERS.admin.username);
     await page.goto('/admin');
-    await expect(page.locator('a[href="/admin/categories"]')).toHaveCount(0);
+    // 只量侧栏：管理概览的「快捷入口」在站长下也会给栏目管理一条链接，
+    // 页面上出现两个 a[href] 是设计如此，不能拿全页计数当门控证据。
+    await expect(page.locator('.admin-sidebar a[href="/admin/categories"]')).toHaveCount(0);
   });
 });
 
@@ -54,9 +56,9 @@ test.describe('站长全流程', () => {
   test('侧栏可见「栏目管理」→ 进入页面 → 新建栏目成功', async ({ page }) => {
     await loginViaApi(page, SEED_USERS.owner.username);
 
-    // 入口在站长专属导航组里
+    // 入口在站长专属导航组里（同样限定在侧栏，避开管理概览的快捷入口）
     await page.goto('/admin');
-    const nav = page.locator('a[href="/admin/categories"]');
+    const nav = page.locator('.admin-sidebar a[href="/admin/categories"]');
     await expect(nav).toHaveCount(1);
     await nav.click();
     await expect(page).toHaveURL(/\/admin\/categories$/);

@@ -15,7 +15,7 @@
 
 import { test, expect } from '@playwright/test';
 import { SEED_USERS, SEED_LOG, SEED_LOGS } from './seed';
-import { loginViaApi, registerFreshUser } from './helpers';
+import { loginViaApi, registerFreshUser, chooseExpandSelect } from './helpers';
 
 test.describe('操作详情页', () => {
   test('未登录访问 → 302 去登录页（与 /audit 列表一致的门控）', async ({ request }) => {
@@ -63,6 +63,24 @@ test.describe('操作详情页', () => {
     await expect(page.locator('h2')).toHaveText('操作详情');
     await expect(page.locator('.card').first()).toContainText(SEED_LOG.action);
     await expect(page.locator('.card').first()).toContainText(SEED_LOG.reason);
+  });
+
+  test('动作筛选是展开式下拉，选中后随 GET 表单提交', async ({ page }) => {
+    await loginViaApi(page, SEED_USERS.core.username);
+    await page.goto('/audit');
+
+    const toggle = page.locator('#audit-action');
+    const host = page.locator('.expand-select', { has: toggle });
+    const panel = host.locator('.expand-select__panel');
+    await expect(panel).toHaveAttribute('inert', '');
+    await toggle.click();
+    await expect(panel).not.toHaveAttribute('inert', '');
+    await host.getByRole('option', { name: '删除评论', exact: true }).click();
+    await expect(toggle).toContainText('删除评论');
+
+    await page.locator('form.audit-filter-bar button[type="submit"]').click();
+    await expect(page).toHaveURL(/[?&]action=delete_comment(?:&|$)/);
+    await expect(page.locator('#audit-action')).toContainText('删除评论');
   });
 });
 

@@ -39,9 +39,34 @@ test.describe('/admin/logs 门控', () => {
     await page.goto('/admin/logs');
     await expect(page.locator('.admin-hero h1')).toHaveText('日志检索');
     // 检索入口真的在页面上（动作下拉 + 执行者/当事人两个输入 + 「不限时间」档）。
-    await expect(page.locator('form.audit-filter-bar select[name="action"]')).toBeVisible();
+    await expect(page.locator('form.audit-filter-bar #log-action')).toBeVisible();
     await expect(page.locator('form.audit-filter-bar input[name="admin"]')).toBeVisible();
     await expect(page.locator('form.audit-filter-bar input[name="target"]')).toBeVisible();
-    await expect(page.locator('form.audit-filter-bar select[name="range"]')).toBeVisible();
+    await expect(page.locator('form.audit-filter-bar #log-range')).toBeVisible();
+  });
+
+  test('动作下拉在浮层里展开，选择后随 GET 表单提交', async ({ page }) => {
+    await loginViaApi(page, SEED_USERS.admin.username);
+    await page.goto('/admin/logs');
+
+    const toggle = page.locator('#log-action');
+    const host = page.locator('.expand-select', { has: toggle });
+    const panel = host.locator('.expand-select__panel');
+
+    // 收起时面板 inert（不进入焦点序列）；点开后才可交互。
+    await expect(panel).toHaveAttribute('inert', '');
+    await toggle.click();
+    await expect(panel).not.toHaveAttribute('inert', '');
+    // 展开是动画而不是瞬间出现（减少动态效果偏好在 desktop project 里没有开启）。
+    expect(await panel.evaluate((el) => getComputedStyle(el).transitionDuration)).not.toBe('0s');
+
+    await host.getByRole('option', { name: '禁言用户', exact: true }).click();
+    await expect(toggle).toContainText('禁言用户');
+    await expect(panel).toHaveAttribute('inert', '');
+
+    // 值经隐藏 input 随 GET 表单提交，URL 与服务端回填都要跟上。
+    await page.locator('form.audit-filter-bar button[type="submit"]').click();
+    await expect(page).toHaveURL(/[?&]action=ban_user(?:&|$)/);
+    await expect(page.locator('#log-action')).toContainText('禁言用户');
   });
 });
