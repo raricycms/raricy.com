@@ -15,6 +15,7 @@ import { prisma } from '@/lib/db';
 import { categoryFullPath } from '@/lib/format';
 // 锚点常量（零依赖模块）—— 设置页那块卡片的 id 就是它，别在 JSX 里再抄一遍字符串
 import { FOCUS_MODE_SETTINGS_HREF } from '@/lib/focus-mode';
+import { resolveFocusHiddenCategoryIds } from '@/lib/focus-service';
 import BlogPersonalSidebar from './BlogPersonalSidebar';
 import BlogCategorySelect from './BlogCategorySelect';
 import BlogFilters from './BlogFilters';
@@ -61,11 +62,12 @@ export default async function BlogListPage({
   const prefUpdated = (await cookies()).get(COOKIE_NAME)?.value === 'updated';
   const effectiveSort: 'created' | 'updated' = rawSort ?? (prefUpdated ? 'updated' : 'created');
 
-  // 专注模式：查看者开启时，列表与栏目下拉都隐藏 focusHidden 栏目（根整组隐藏、
-  // 子项从父组剪掉但父组「全部」入口保留）。本页 requireCoreUser 保证登录，
-  // 先取当前用户定 focusOn，再与列表/栏目并行取数。
+  // 专注模式：查看者开启时，列表与栏目下拉都隐藏**查看者自选**的栏目（未自定义
+  // 时用站长标记的默认集合；已展开子栏目）。解析口径只有 focus-service 一处 ——
+  // 别在这里直接读 categories.focusHidden。
   const focusOn = !!viewer.focusMode;
-  const summary = getBlogDirectorySummary(viewer.id, focusOn);
+  const focusHiddenCategoryIds = await resolveFocusHiddenCategoryIds(viewer);
+  const summary = getBlogDirectorySummary(viewer.id, focusHiddenCategoryIds);
 
   // ── 正文搜索限频 ──────────────────────────────────────────────────────────
   // 只对**真的会扫正文**的请求计数（search 非空）。不能写成无条件计数 —— 那样光是
@@ -93,7 +95,7 @@ export default async function BlogListPage({
         featured: featuredFilter,
         search: sp.search ?? null,
         sort: parseSortParam(effectiveSort),
-        focusMode: focusOn,
+        focusHiddenCategoryIds,
         // 公开目录页搜全部字段（含正文）。其余调用方（/api/blogs、引用弹窗）走默认的
         // 标题/简介/作者，别顺手放宽（见 ListParams.searchFields 的注释）。
         searchFields: ALL_SEARCH_FIELDS,
@@ -108,21 +110,27 @@ export default async function BlogListPage({
       name: true,
       slug: true,
       icon: true,
-      focusHidden: true,
       children: {
         where: { isActive: true },
         orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }],
-        select: { id: true, name: true, slug: true, focusHidden: true },
+        select: { id: true, name: true, slug: true },
       },
     },
   });
 
-  /** 专注模式下剪掉被标记栏目：根 focusHidden 整组丢弃；子项从父组过滤（父组保留）。 */
-  function pruneFocusCategories<T extends { focusHidden: boolean | null; children: { focusHidden: boolean | null }[] }>(list: T[]): T[] {
+  /** 专注模式下剪掉被屏蔽栏目：根在集合里 → 整组丢弃；子项在集合里 → 从父组剪掉（父组保留）。 */
+  function pruneFocusCategories<T extends { id: number; children: { id: number }[] }>(
+    list: T[],
+    hidden: ReadonlySet<number>
+  ): T[] {
+    if (!hidden.size) return list;
     return list
-      .filter((c) => !c.focusHidden)
-      .map((c) => ({ ...c, children: c.children.filter((x) => !x.focusHidden) }));
+      .filter((c) => !hidden.has(c.id))
+      .map((c) => ({ ...c, children: c.children.filter((x) => !hidden.has(x.id)) }));
   }
+  // 生效集合已由 focus-service 展开子栏目 —— 选中根栏目时其子项也在集合里，
+  // 所以根整组丢弃、子项逐个过滤这两条判据不会互相漏掉。
+  const focusHiddenSet = new Set(focusHiddenCategoryIds ?? []);
 
   const qs = (page: number) => {
     const p = new URLSearchParams();
@@ -162,7 +170,7 @@ export default async function BlogListPage({
 
       {focusOn && (
         <div className="focus-banner" role="status">
-          您已开启专注模式，点击 <Link href={FOCUS_MODE_SETTINGS_HREF}>此处</Link> 关闭
+          您已开启专注模式，点击 <Link href={FOCUS_MODE_SETTINGS_HREF}>此处</Link> 调整屏蔽范围
         </div>
       )}
 
@@ -187,7 +195,7 @@ export default async function BlogListPage({
                 sort={rawSort}
               />
               <BlogCategorySelect
-                categories={focusOn ? pruneFocusCategories(categories) : categories}
+                categories={pruneFocusCategories(categories, focusHiddenSet)}
                 currentSlug={currentSlug}
                 featured={sp.featured}
               />

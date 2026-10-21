@@ -1,12 +1,13 @@
 import Link from 'next/link';
 import { getCurrentUser, isCoreUser } from '@/lib/auth';
+import { isFocusGamesBlocked } from '@/lib/focus-mode';
 import HomeFooterNote from './components/HomeFooterNote';
 import HeroLandscape from './components/HeroLandscape';
 import { Gamepad2 } from 'lucide-react';
 
 // 首页 — 样式结构：home-container / home-display / feature-card / home-btn
 //
-// 故事 → 玩具 → 博客 → 工具；玩具随专注模式隐藏。
+// 故事 → 玩具 → 博客 → 工具；玩具随「专注模式屏蔽玩具区」隐藏。
 // 博客按档位分流：core+ 去站内 /blog，其余去对外公开列表 /explore。
 export default async function HomePage() {
   // 为分流取一次登录态。⚠️ 首页因此从同步组件变成 async，并比从前多一次
@@ -15,6 +16,7 @@ export default async function HomePage() {
   // cache()，那动的是全站鉴权路径，得单独一批做并单独验。
   const user = await getCurrentUser();
   const blogHref = isCoreUser(user) ? '/blog' : '/explore';
+  const gamesBlocked = isFocusGamesBlocked(user);
 
   return (
     <>
@@ -52,7 +54,7 @@ export default async function HomePage() {
               </Link>
             </div>
 
-            {!user?.focusMode && (
+            {!gamesBlocked && (
               <div className="home-grid-item">
                 <Link className="feature-card card-game" href="/game">
                   <div className="card-body home-text-center">

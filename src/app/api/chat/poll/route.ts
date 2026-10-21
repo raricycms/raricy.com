@@ -1,5 +1,6 @@
 import { listChannelsForUser, listMessages, type ChatMessageDTO } from '@/lib/chat-service';
 import { apiErr, apiOk } from '@/lib/format';
+import { isFocusLobbyBlocked } from '@/lib/focus-mode';
 import { rateLimit, RULES } from '@/lib/rate-limit';
 import { parsePosInt, requireChatUser } from '../_auth';
 
@@ -18,13 +19,14 @@ export async function GET(req: Request) {
   const channelId = url.searchParams.get('channel') ?? '';
   const after = parsePosInt(url.searchParams.get('after'));
 
-  // 专注模式：大区以「不可用的行」返回（无预览无未读，客户端拿它判导航、侧栏不渲染），
-  // 活动频道若正停在大区则拉不到消息（listMessages 那边 403）
-  const channels = await listChannelsForUser(user.id, user.focusMode);
+  // 专注模式屏蔽了大区：大区以「不可用的行」返回（无预览无未读，客户端拿它判导航、
+  // 侧栏不渲染），活动频道若正停在大区则拉不到消息（listMessages 那边 403）
+  const lobbyBlocked = isFocusLobbyBlocked(user);
+  const channels = await listChannelsForUser(user.id, lobbyBlocked);
 
   let messages: ChatMessageDTO[] = [];
   if (channelId && after != null) {
-    const res = await listMessages(channelId, user.id, { after }, user.focusMode);
+    const res = await listMessages(channelId, user.id, { after }, lobbyBlocked);
     if (res.ok) messages = res.messages;
   }
 

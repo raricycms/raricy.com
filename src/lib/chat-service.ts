@@ -29,7 +29,7 @@
 //
 // 【依赖方向】chat-service → admin-user-service → user-service 是单向链，所以后两者
 // **不能 import 本文件**（成环）。它们要动红点时只能：拒绝方向（禁言 / 降级到 user /
-// 专注模式开启）推精确的 `{chatUnread:false}`；放开方向推 `{refresh:true}`，由客户端重拉
+// 专注模式里勾选了「屏蔽讨论大区」）推精确的 `{chatUnread:false}`；放开方向推 `{refresh:true}`，由客户端重拉
 // count 路由。新增红点写路径前先确认自己在这条链的哪一侧。
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -46,6 +46,7 @@ import { hasSubscriber, publishToUser } from './topbar-bus';
 import { avatarUrl } from './avatar-refs';
 import { frameUrlFor } from './frame-service';
 import { bubbleKeyFor } from './bubble-service';
+import { isFocusLobbyBlocked } from './focus-mode';
 import {
   CHAT_LOBBY_ID,
   CHAT_LOBBY_TITLE,
@@ -214,15 +215,15 @@ export async function ensureLobbyMembership(userId: string): Promise<{ lastReadM
 export async function canAccessChannel(
   channelId: string,
   userId: string,
-  /** 专注模式：大区对开启者不可用（拉消息/发消息/已读全走这里拦） */
-  focusMode = false
+  /** 大区是否被专注模式屏蔽（拉消息/发消息/已读全走这里拦）。由调用方的 isFocusLobbyBlocked 传入 */
+  lobbyBlocked = false
 ): Promise<{ allowed: boolean; kind: string | null }> {
   // 大区行在迁移里种子化；测试库空表时兜底建，保证 sendMessage 等直接走大区的路径不炸
   if (channelId === CHAT_LOBBY_ID) await ensureLobbyChannel();
   const ch = await prisma.chatChannel.findUnique({ where: { id: channelId } });
   if (!ch) return { allowed: false, kind: null };
   if (ch.kind === CHAT_KIND_LOBBY) {
-    if (focusMode) return { allowed: false, kind: ch.kind };
+    if (lobbyBlocked) return { allowed: false, kind: ch.kind };
     return { allowed: true, kind: ch.kind };
   }
   const member = await prisma.chatMember.findUnique({
@@ -290,12 +291,12 @@ async function countLobbyMentionsSince(userId: string, cursor: number): Promise<
 export async function listChannelsForUser(
   userId: string,
   /**
-   * 专注模式：大区行**保留在返回值里**（`disabled: true`），只是不带预览/未读、
-   * 不懒建成员基线。⚠️ 别改成「干脆不发这一行」—— `disabled` 是「这行不可用」的
-   * 单一真相源，ChatApp 的选频道 / 防御 / 删会话三处导航逻辑都靠它（行没了那三处会
+   * 专注模式是否屏蔽了大区：大区行**保留在返回值里**（`disabled: true`），只是不带
+   * 预览/未读、不懒建成员基线。⚠️ 别改成「干脆不发这一行」—— `disabled` 是「这行不可用」
+   * 的单一真相源，ChatApp 的选频道 / 防御 / 删会话三处导航逻辑都靠它（行没了那三处会
    * 静默走偏）。网页侧栏不渲染它，见 src/app/chat/ChatSidebar.tsx 文件头。
    */
-  focusMode = false,
+  lobbyBlocked = false,
   /** 显式发起私聊时带上这个频道 id：空会话本不该进侧栏，但发起方要立刻看到它 */
   opts: { includeEmptyChannelId?: string } = {}
 ): Promise<ChatChannelDTO[]> {
@@ -322,9 +323,9 @@ export async function listChannelsForUser(
       .map((m) => [m.channelId, m.hiddenAfterMessageId as number])
   );
 
-  // 大区成员行懒建：基线 = 当时最大消息 id（历史不算未读）。专注模式下**不建**
+  // 大区成员行懒建：基线 = 当时最大消息 id（历史不算未读）。大区被专注屏蔽时**不建**
   // ——那一行对他不可用（发过去也是 disabled），建了反而会把基线写进库。
-  if (!focusMode && !cursorByChannel.has(CHAT_LOBBY_ID)) {
+  if (!lobbyBlocked && !cursorByChannel.has(CHAT_LOBBY_ID)) {
     const { lastReadMessageId } = await ensureLobbyMembership(userId);
     cursorByChannel.set(CHAT_LOBBY_ID, lastReadMessageId);
   }
@@ -348,7 +349,7 @@ export async function listChannelsForUser(
   // 「大区确实有未读」时才查，多数用户每次对账都跳过这一条。
   const lobbyCursor = cursorByChannel.get(CHAT_LOBBY_ID) ?? 0;
   let lobbyMentions = 0;
-  if (!focusMode && (unreadByChannel.get(CHAT_LOBBY_ID) ?? 0) > 0) {
+  if (!lobbyBlocked && (unreadByChannel.get(CHAT_LOBBY_ID) ?? 0) > 0) {
     lobbyMentions = await countLobbyMentionsSince(userId, lobbyCursor);
   }
 
@@ -406,7 +407,7 @@ export async function listChannelsForUser(
   // ── 5) 组装 DTO ──
   const out = channels.map((ch) => {
     const isLobby = ch.kind === CHAT_KIND_LOBBY;
-    if (isLobby && focusMode) {
+    if (isLobby && lobbyBlocked) {
       // 不可用的行：无最近一条（看不到大区最新消息）、无未读、保持置顶。
       // 仍然返回它是一个**契约**（导航逻辑要它），不是「侧栏要画出来」——网页侧栏
       // 把它过滤掉了，见 src/app/chat/ChatSidebar.tsx 文件头。
@@ -520,7 +521,7 @@ export interface ChatUnreadSummary {
  *   • 大区 → 只在未读里有 @ 我时算（dot，普通消息不打扰）；
  *   • 静音会话 → 不计（静音 = 别在顶栏上打扰我；侧栏徽标照常，静音 ≠ 已读）；
  *   • 已隐藏（「删除会话」）且此后没有新消息 → 不计（与侧栏不显示它同一口径）；
- *   • 专注模式 → 大区不计（大区对开启者不可见）。
+ *   • 「屏蔽讨论大区」 → 大区不计（大区对开启者不可见）。
  *
  * 调用方不区分 count / dot：红点只看「有没有」。拆成两个字段是为了保住「私聊计条数、
  * 大区只认 @」这条口径本身（侧栏与测试都在用），不是为了在顶栏显示数字。
@@ -532,7 +533,7 @@ export interface ChatUnreadSummary {
  */
 export async function getChatUnreadSummary(
   userId: string,
-  focusMode = false
+  lobbyBlocked = false
 ): Promise<ChatUnreadSummary> {
   const memberships = await prisma.chatMember.findMany({
     where: { userId, mutedAt: null },
@@ -573,7 +574,7 @@ export async function getChatUnreadSummary(
     if (hiddenAfter != null && (maxIdByChannel.get(m.channelId) ?? 0) <= hiddenAfter) continue;
 
     if (m.channel.kind === CHAT_KIND_LOBBY) {
-      if (!focusMode && (await countLobbyMentionsSince(userId, m.lastReadMessageId)) > 0) {
+      if (!lobbyBlocked && (await countLobbyMentionsSince(userId, m.lastReadMessageId)) > 0) {
         dot = true;
       }
     } else {
@@ -596,12 +597,12 @@ export async function getChatUnreadSummary(
 export async function getChatDotFor(userId: string): Promise<boolean> {
   const u = await prisma.user.findUnique({
     where: { id: userId },
-    select: { role: true, focusMode: true, isBanned: true, banUntil: true },
+    select: { role: true, focusMode: true, focusBlockLobby: true, isBanned: true, banUntil: true },
   });
   // 非 core+ / 禁言中：进不了讨论页，红点自然不该亮（对齐 count 路由的口径）
   if (!isCoreUser(u) || isCurrentlyBanned(u)) return false;
 
-  const summary = await getChatUnreadSummary(userId, u?.focusMode ?? false);
+  const summary = await getChatUnreadSummary(userId, isFocusLobbyBlocked(u));
   return summary.count > 0 || summary.dot;
 }
 
@@ -965,19 +966,19 @@ export async function searchChannelMessages(
   query: string,
   limit = 20,
   offset = 0,
-  focusMode = false
+  lobbyBlocked = false
 ): Promise<SearchMessagesResult> {
   const q = query.trim();
   if (!q) return { ok: false, error: 'empty', message: '请输入搜索关键词' };
 
-  const access = await canAccessChannel(channelId, userId, focusMode);
+  const access = await canAccessChannel(channelId, userId, lobbyBlocked);
   if (!access.kind) return { ok: false, error: 'notFound', message: '频道不存在' };
   if (!access.allowed) {
     return {
       ok: false,
       error: 'forbidden',
       message:
-        focusMode && channelId === CHAT_LOBBY_ID ? CHAT_FOCUS_BLOCKED_TITLE : '无权查看该会话',
+        lobbyBlocked && channelId === CHAT_LOBBY_ID ? CHAT_FOCUS_BLOCKED_TITLE : '无权查看该会话',
     };
   }
 
@@ -1020,16 +1021,16 @@ export async function listMessages(
   channelId: string,
   userId: string,
   params: ListMessagesParams = {},
-  focusMode = false
+  lobbyBlocked = false
 ): Promise<ListMessagesResult> {
-  const access = await canAccessChannel(channelId, userId, focusMode);
+  const access = await canAccessChannel(channelId, userId, lobbyBlocked);
   if (!access.kind) return { ok: false, error: 'notFound', message: '频道不存在' };
   if (!access.allowed) {
     return {
       ok: false,
       error: 'forbidden',
       message:
-        focusMode && channelId === CHAT_LOBBY_ID ? CHAT_FOCUS_BLOCKED_TITLE : '无权查看该会话',
+        lobbyBlocked && channelId === CHAT_LOBBY_ID ? CHAT_FOCUS_BLOCKED_TITLE : '无权查看该会话',
     };
   }
 
@@ -1106,8 +1107,8 @@ export interface SendMessageInput {
   /** 拍一拍目标用户 id；非空即拍一拍消息（正文/附件一律忽略，只校验目标存在） */
   patTargetId?: string | null;
   replyTo?: number | null;
-  /** 专注模式：开启者对讨论大区不可发言（服务端由路由按 user.focusMode 填入） */
-  focusMode?: boolean;
+  /** 专注模式是否屏蔽了大区：屏蔽后对讨论大区不可发言（服务端由路由按 isFocusLobbyBlocked(user) 填入） */
+  lobbyBlocked?: boolean;
 }
 
 export type SendMessageResult =
@@ -1145,7 +1146,7 @@ export const CHAT_MENTION_ACTION = '讨论提及';
  *   • 频道对他可见：
  *       - 私聊：必须是本会话成员 —— 在**别人的私聊**里 @ 一个第三方，对方既看不到
  *         那条消息，通知正文还会把别人私聊的内容漏出去，一律不发；
- *       - 大区：开了专注模式就不发（大区对他不可见，同 canAccessChannel）。
+ *       - 大区：专注模式勾了「屏蔽讨论大区」就不发（大区对他不可见，同 canAccessChannel）。
  *   • 没静音这个会话：静音 =「别在铃铛上打扰我」，与顶栏红点同一口径；
  *   • **没正在看这个会话**：人在这个会话里看着，再给铃铛塞一条纯属白打扰
  *     （判据与失败方向见 chat-presence.ts 文件头）。
@@ -1180,7 +1181,7 @@ async function notifyChannelMentions(params: {
   const candidates = (
     await prisma.user.findMany({
       where: { username: { in: names } },
-      select: { id: true, role: true, focusMode: true, isBanned: true, banUntil: true },
+      select: { id: true, role: true, focusMode: true, focusBlockLobby: true, isBanned: true, banUntil: true },
     })
   ).filter(
     (u) => u.id !== authorId && CORE_ROLES.includes(u.role) && !isCurrentlyBanned(u)
@@ -1205,7 +1206,7 @@ async function notifyChannelMentions(params: {
     // 私聊只有成员能看：非成员 → 在别人的会话里被 @，不发（也挡掉了内容泄露）
     if (!isLobby && !member) continue;
     if (member?.mutedAt) continue; // 静音会话
-    if (isLobby && u.focusMode) continue; // 专注模式：大区不可见
+    if (isLobby && isFocusLobbyBlocked(u)) continue; // 专注模式屏蔽了大区：大区对他不可见
     // 正在看这个会话 → 不进通知列表（他当场就看见了，铃铛闪一下纯属白打扰）。
     // 注意**不能** continue：下面的红点照推 —— 未读就是未读，红点 / 侧栏徽标该亮
     // 还是亮，只是铃铛不响。判不出「在看」时（报到没到 / 流断了 / 多实例）照常发。
@@ -1235,19 +1236,19 @@ async function notifyChannelMentions(params: {
  * 「讨论」链接上的红点（见 getChatUnreadSummary），不占铃铛数字。
  */
 export async function sendMessage(input: SendMessageInput): Promise<SendMessageResult> {
-  const { channelId, authorId, imageId, blogId, patTargetId, replyTo, focusMode } = input;
+  const { channelId, authorId, imageId, blogId, patTargetId, replyTo, lobbyBlocked } = input;
   const content = (input.content ?? '').trim();
   const now = nowForDb();
 
   // 1) 资源校验
-  const access = await canAccessChannel(channelId, authorId, focusMode);
+  const access = await canAccessChannel(channelId, authorId, lobbyBlocked);
   if (!access.kind) return { ok: false, error: 'notFound', message: '频道不存在' };
   if (!access.allowed) {
     return {
       ok: false,
       error: 'forbidden',
       message:
-        focusMode && channelId === CHAT_LOBBY_ID ? CHAT_FOCUS_BLOCKED_TITLE : '无权在该会话发言',
+        lobbyBlocked && channelId === CHAT_LOBBY_ID ? CHAT_FOCUS_BLOCKED_TITLE : '无权在该会话发言',
     };
   }
 
@@ -1376,8 +1377,8 @@ export async function sendMessage(input: SendMessageInput): Promise<SendMessageR
   try {
     const event = { type: 'message' as const, channel_id: channelId, message: dto };
     if (access.kind === CHAT_KIND_LOBBY) {
-      // 大区广播给全部在线连接；专注模式开启者跳过（他们本就看不到大区）
-      publishToAll(event, dto.id, { skipFocusMode: true });
+      // 大区广播给全部在线连接；专注模式屏蔽了大区的连接跳过（他们本就看不到大区）
+      publishToAll(event, dto.id, { skipLobbyBlocked: true });
     } else if (directMemberIds) {
       // 私聊推给全体成员（含发送者自己 → 多标签页同步；客户端按消息 id 去重）
       publishToUsers(directMemberIds, event, dto.id);
@@ -1424,9 +1425,9 @@ export async function markChannelRead(
   channelId: string,
   userId: string,
   messageId?: number,
-  focusMode = false
+  lobbyBlocked = false
 ): Promise<number> {
-  const access = await canAccessChannel(channelId, userId, focusMode);
+  const access = await canAccessChannel(channelId, userId, lobbyBlocked);
   if (!access.allowed || !access.kind) return 0;
 
   let upTo: number | undefined = messageId;

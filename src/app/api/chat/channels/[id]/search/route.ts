@@ -1,5 +1,6 @@
 import { searchChannelMessages } from '@/lib/chat-service';
 import { apiErr, apiOk } from '@/lib/format';
+import { isFocusLobbyBlocked } from '@/lib/focus-mode';
 import { parsePosInt, requireChatUser } from '../../../_auth';
 
 // GET /api/chat/channels/:id/search?q=&page= — 在当前频道内按正文搜消息
@@ -21,7 +22,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
     q,
     PER_PAGE,
     (page - 1) * PER_PAGE,
-    user.focusMode
+    isFocusLobbyBlocked(user)
   );
   if (res.ok) {
     return apiOk({ messages: res.messages, total: res.total, page, per_page: PER_PAGE });

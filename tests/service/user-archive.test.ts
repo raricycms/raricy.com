@@ -142,7 +142,11 @@ describe('CLI 专用账号归档', () => {
     expect(await validateFishToken(token.token)).toBeNull();
     expect((await verifyCredentials(user.username, 'password123')).ok).toBe(false);
     expect(await isStreamSessionCurrent(user)).toBe(false);
-    expect(await isChatStreamSessionCurrent(user)).toBe(false);
+    expect(await isChatStreamSessionCurrent({
+      id: user.id,
+      sessionVersion: user.sessionVersion,
+      lobbyBlocked: false,
+    })).toBe(false);
     expect(await getUnreadCount(reader.id)).toBe(0);
     expect((await runAsBackendOps(() => unarchiveUser({ ...input, reason: '复核后恢复' }))).ok).toBe(true);
     expect((await prisma.user.findUniqueOrThrow({ where: { id: user.id } })).driedFish).toBe(0);

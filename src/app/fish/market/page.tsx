@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { Bot, ReceiptText, TrendingUp } from 'lucide-react';
 import { getCurrentUser } from '@/lib/auth';
+import { isFocusFishTradeBlocked } from '@/lib/focus-mode';
 import { loginUrlWithNext } from '@/lib/safe-url';
 import { getBalance } from '@/lib/fish-service';
 import { listShopItems } from '@/lib/frame-shop-service';
@@ -53,10 +54,10 @@ export default async function FishMarketPage() {
         </Link>
       </p>
 
-      {/* 专注模式下整段不渲染（含它那个 <p>）—— 理由与判据见 CLAUDE.md「档位阶梯」那条，
+      {/* 专注模式屏蔽练手盘时整段不渲染（含它那个 <p>）—— 理由与判据见 CLAUDE.md「档位阶梯」那条，
           以及 /fish 卡片里同一处的注释。⚠️ 连 `<p>` 一起条件渲染：`.market-foot` 自己带
           `margin-top: $space-4`，留个空 `<p>` 会凭空多出一段行距。 */}
-      {!user.focusMode && (
+      {!isFocusFishTradeBlocked(user) && (
         <p className="market-foot">
           <Link className="market-foot__link" href="/fish/trade">
             <TrendingUp aria-hidden="true" /> 鱼干练手盘（做多 / 做空 BTC 与 ETH）

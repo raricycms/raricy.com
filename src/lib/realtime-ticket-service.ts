@@ -1,13 +1,14 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { prisma } from './db';
 import { isCurrentlyBanned } from './auth';
+import { isFocusGamesBlocked } from './focus-mode';
 import { isRealtimeGameId, type RealtimeGameId, type RealtimeIdentity } from '../../shared/realtime/protocol';
 import { frameUrlFor } from './frame-service';
 
 export const REALTIME_TICKET_TTL_MS = 60_000;
 const MAX_PENDING_TICKETS = 1024;
 const MAX_USER_TICKETS = 4;
-type Player = { id: string; username: string; sessionVersion: number; focusMode: boolean; isBanned: boolean | null; banUntil: Date | null };
+type Player = { id: string; username: string; sessionVersion: number; focusMode: boolean; focusBlockGames: boolean; isBanned: boolean | null; banUntil: Date | null };
 interface Ticket { gameId: RealtimeGameId; identity: RealtimeIdentity; expiresAt: number }
 
 // 多条 Next 路由会分别编译模块；瞬时票据必须共用进程级状态。
@@ -17,7 +18,9 @@ const tickets = shared.__raricyRealtimeTickets ??= new Map<string, Ticket>();
 const hash = (ticket: string) => createHash('sha256').update(ticket).digest('hex');
 
 export function canPlayRealtime(player: Player | null): player is Player {
-  return !!player && !player.focusMode && !isCurrentlyBanned(player);
+  // 只认「专注模式 + 屏蔽玩具区」这个组合，不是总开关本身 —— 用户可以开着专注
+  // 模式而保留玩具。判据唯一来源见 focus-mode.isFocusGamesBlocked。
+  return !!player && !isFocusGamesBlocked(player) && !isCurrentlyBanned(player);
 }
 
 export function issueRealtimeTicket(player: Player, gameId: RealtimeGameId) {
@@ -39,7 +42,7 @@ export function issueRealtimeTicket(player: Player, gameId: RealtimeGameId) {
 export async function validateRealtimeIdentity(identity: RealtimeIdentity, gameId?: RealtimeGameId): Promise<RealtimeIdentity | null> {
   const user = await prisma.user.findUnique({
     where: { id: identity.userId },
-    select: { id: true, username: true, sessionVersion: true, focusMode: true, isBanned: true, banUntil: true,
+    select: { id: true, username: true, sessionVersion: true, focusMode: true, focusBlockGames: true, isBanned: true, banUntil: true,
       equippedFrameKey: true, equippedFrameExpiresAt: true },
   });
   if (!canPlayRealtime(user) || user.sessionVersion !== identity.sessionVersion) return null;

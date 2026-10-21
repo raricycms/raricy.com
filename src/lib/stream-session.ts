@@ -1,5 +1,6 @@
 import { prisma } from './db';
 import { isCoreUser, isCurrentlyBanned } from './auth';
+import { isFocusLobbyBlocked } from './focus-mode';
 
 /**
  * 每帧（含心跳）复核数据库，覆盖 CLI 在另一个进程撤权的情形。
@@ -39,15 +40,26 @@ export async function isStreamSessionCurrent(user: { id: string; sessionVersion:
   return current?.sessionVersion === user.sessionVersion;
 }
 
-/** 讨论还受角色与专注模式影响；两者变化不递增会话版本，必须单独复核快照。 */
+/**
+ * 讨论还受角色与「大区屏蔽」影响；两者变化不递增会话版本，必须单独复核快照。
+ * 快照里存的是**连接建立时算好的 lobbyBlocked**（focusMode && focusBlockLobby），
+ * 重连后按新值重新决定收不收大区广播。
+ */
 export async function isChatStreamSessionCurrent(
-  user: { id: string; sessionVersion: number; focusMode: boolean | null }
+  user: { id: string; sessionVersion: number; lobbyBlocked: boolean }
 ): Promise<boolean> {
   const current = await prisma.user.findUnique({
     where: { id: user.id },
-    select: { sessionVersion: true, role: true, isBanned: true, banUntil: true, focusMode: true },
+    select: {
+      sessionVersion: true,
+      role: true,
+      isBanned: true,
+      banUntil: true,
+      focusMode: true,
+      focusBlockLobby: true,
+    },
   });
   return !!current && current.sessionVersion === user.sessionVersion &&
     isCoreUser(current) && !isCurrentlyBanned(current) &&
-    (current.focusMode ?? false) === (user.focusMode ?? false);
+    isFocusLobbyBlocked(current) === user.lobbyBlocked;
 }

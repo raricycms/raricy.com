@@ -16,6 +16,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { resetDb, makeUser, prisma } from '../helpers/db';
 import { nowForDb } from '@/lib/db-time';
+import { isFocusLobbyBlocked } from '@/lib/focus-mode';
 import { __resetRateLimitStore, RULES } from '@/lib/rate-limit';
 import { reportViewing, __resetChatPresence } from '@/lib/chat-presence';
 import { subscribe as subscribeChat, __resetChatBus, type ChatSubscriber } from '@/lib/chat-bus';
@@ -55,7 +56,7 @@ beforeEach(async () => {
 function connectChat(userId: string): () => void {
   const sub: ChatSubscriber = {
     userId,
-    focusMode: false,
+    lobbyBlocked: false,
     write: () => true,
     close: () => {},
   };
@@ -710,6 +711,13 @@ describe('@ 提及通知', () => {
     expect(await mentionCount(b.id)).toBe(0);
   });
 
+  it('★ 专注模式但没屏蔽大区 → 大区 @ 照常发通知（不用总开关判）', async () => {
+    const a = await makeUser({ role: 'core' });
+    const b = await makeUser({ role: 'core', focusMode: true, focusBlockLobby: false });
+    await sendMessage({ channelId: CHAT_LOBBY_ID, authorId: a.id, content: `@${b.username} 在吗` });
+    expect(await mentionCount(b.id)).toBe(1);
+  });
+
   it('静音的会话 → 不发（与顶栏红点同一口径）；未静音照常发', async () => {
     const a = await makeUser({ role: 'core' });
     const b = await makeUser({ role: 'core' });
@@ -1090,13 +1098,15 @@ describe('搜索可私聊用户', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 专注模式：大区禁用（focusMode 参数）
+// 专注模式：大区禁用（lobbyBlocked 参数）
 //    语义：侧栏大区行保留但 disabled（无预览/未读/不懒建成员基线）；
 //    发消息/拉消息对 lobby 一律 forbidden；私聊全程不受影响。
+//    ⚠️ 这里传的是**大区屏蔽**（focusMode && focusBlockLobby），不是总开关：
+//    总开关开着但用户没勾「屏蔽讨论大区」时，大区必须照常可用。
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('专注模式：讨论大区禁用', () => {
-  it('listChannelsForUser(focus)：lobby 行 disabled 且无预览无未读，不建成员行', async () => {
+  it('listChannelsForUser(lobbyBlocked=true)：lobby 行 disabled 且无预览无未读，不建成员行', async () => {
     const a = await makeUser({ role: 'core' });
     // 先在大区留一条历史消息（focus 前）
     await sendMessage({ channelId: CHAT_LOBBY_ID, authorId: a.id, content: '历史消息' });
@@ -1126,7 +1136,7 @@ describe('专注模式：讨论大区禁用', () => {
       channelId: CHAT_LOBBY_ID,
       authorId: a.id,
       content: '想在大区发言',
-      focusMode: true,
+      lobbyBlocked: true,
     });
     expect(blocked.ok).toBe(false);
     if (!blocked.ok) {
@@ -1141,7 +1151,7 @@ describe('专注模式：讨论大区禁用', () => {
       channelId: did,
       authorId: a.id,
       content: '私聊不受影响',
-      focusMode: true,
+      lobbyBlocked: true,
     });
     expect(ok.ok).toBe(true);
   });
@@ -1179,6 +1189,28 @@ describe('专注模式：讨论大区禁用', () => {
     const did = (direct as { channel: { id: string } }).channel.id;
     const directAccess = await canAccessChannel(did, a.id, true);
     expect(directAccess.allowed).toBe(true);
+  });
+
+  it('★ 总开关开着但取消「屏蔽讨论大区」：大区照常可用（只认 lobbyBlocked）', async () => {
+    // 集成判据：用户行 → isFocusLobbyBlocked → 服务层参数。写成 user.focusMode
+    // 会让「专注模式里保留大区」这个新能力整体失效，而所有旧用例仍绿。
+    const a = await makeUser({ role: 'core', focusMode: true, focusBlockLobby: false });
+    expect(isFocusLobbyBlocked(a)).toBe(false);
+
+    const channels = await listChannelsForUser(a.id, isFocusLobbyBlocked(a));
+    const lobby = channels.find((c) => c.id === CHAT_LOBBY_ID);
+    expect(lobby?.disabled).not.toBe(true);
+
+    const sent = await sendMessage({
+      channelId: CHAT_LOBBY_ID,
+      authorId: a.id,
+      content: '专注模式里也保留大区',
+      lobbyBlocked: isFocusLobbyBlocked(a),
+    });
+    expect(sent.ok).toBe(true);
+    expect(await canAccessChannel(CHAT_LOBBY_ID, a.id, isFocusLobbyBlocked(a))).toMatchObject({
+      allowed: true,
+    });
   });
 });
 // ─────────────────────────────────────────────────────────────────────────────

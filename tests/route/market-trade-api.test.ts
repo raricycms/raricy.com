@@ -194,6 +194,27 @@ describe('档位：六处各判一次', () => {
     await expectLedgerConsistent('专注模式被 403 拒后');
   });
 
+  it('★ 专注模式但未勾「屏蔽鱼干练手盘」：四个接口照常可用（只认子项）', async () => {
+    const u = await makeFishUser(100, {
+      role: 'core',
+      focusMode: true,
+      focusBlockFishTrade: false,
+    });
+    session.token = await createSessionToken({ uid: u.id, sv: 0 });
+
+    // 只读两个直接放行；写路径用「参数非法」证明它已经越过了专注闸门
+    // （若专注闸仍然生效，会先拿到 403 + 专注文案）。
+    vi.mocked(getCachedQuotes).mockResolvedValue({ ok: true, quotes: [] });
+    expect((await quote()).status, '看盘不该被专注模式挡住').toBe(200);
+    const chart = await candles(makeReq('/api/fish/trade/candles?symbol=BTCUSDT&interval=1h'));
+    expect(chart.status, 'K 线不该被专注模式挡住').toBe(200);
+    const badBuy = await buy(makeReq('/api/fish/trade/buy', {}));
+    expect(badBuy.status, '越过专注闸后应落到参数校验而非 403').not.toBe(403);
+    const badSell = await sell(makeReq('/api/fish/trade/sell', {}));
+    expect(badSell.status, '越过专注闸后应落到参数校验而非 403').not.toBe(403);
+    expect(await balanceOf(u.id)).toBe(100);
+  });
+
   it('★ 禁言用户：买不了新仓，但**卖得掉**手上的仓位（禁言不是锁仓）', async () => {
     const u = await makeCoreUser(100);
     // 先正常开一仓 —— 模拟「持仓期间被封」。禁言会递增 sessionVersion 废掉旧会话，

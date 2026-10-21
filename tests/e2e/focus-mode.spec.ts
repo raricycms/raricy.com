@@ -1,8 +1,10 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // focus-mode.spec.ts —— 专注模式（账号级浏览偏好）
 //
-// 【功能面】/settings 打开后：博客列表与侧栏隐藏「专注隐藏」栏目及其文章并显示
-// 关闭横幅；讨论大区（lobby）侧栏行禁用、无最近一条预览。
+// 【功能面】/settings 开启专注模式后：博客列表与侧栏隐藏**生效的屏蔽栏目**及其文章并
+// 显示关闭横幅；讨论大区（lobby）侧栏行禁用、无最近一条预览；玩具区与练手盘各自不可用。
+// 设置页还可以分别关闭「屏蔽讨论大区 / 玩具区 / 练手盘」，并自选要屏蔽的博客栏目
+// （未自定义时用站长标记的默认集合，可「恢复默认」）。
 //
 // 【造数纪律 —— 与全库 spec 共存】
 //   • 动态幂等：被标记栏目用 uniqueTag 的 slug 现场建（owner API），文章走
@@ -20,24 +22,45 @@ import { loginViaApi, registerFreshUser, uniqueTag } from './helpers';
 // 而症状是「用例红了，红在等待超时上」，指向的是用例自己而不是文案。（seed.ts 同款）
 import { FOCUS_MODE_BLOCKED_TITLE as FOCUS_TITLE } from '../../src/lib/focus-mode';
 
-/** 开/关当前登录用户的专注模式（走真实 PATCH /api/users/me）。 */
+/**
+ * 开/关当前登录用户的专注模式，并把全部子项与自选栏目**复位成默认**。
+ *
+ * 走真实的 PATCH /api/users/me/focus：e2e 共用一个库，任何一条用例留下
+ * 「只屏蔽玩具」「自选了某个板块」都会让后面的 spec 按错误的前提跑。
+ */
 async function setFocus(page: import('@playwright/test').Page, on: boolean) {
-  const res = await page.request.patch('/api/users/me', { data: { focusMode: on } });
+  const res = await page.request.patch('/api/users/me/focus', {
+    data: {
+      enabled: on,
+      blockLobby: true,
+      blockGames: true,
+      blockFishTrade: true,
+      hiddenCategoryIds: null,
+    },
+  });
   expect(res.status()).toBe(200);
 }
 
-/** 建「专注隐藏」栏目：栏目管理 API 仅站长可用 → 切 owner 会话建，建完换回 core。 */
-async function createFlaggedCategory(page: import('@playwright/test').Page) {
+/** 建栏目：栏目管理 API 仅站长可用 → 切 owner 会话建，建完换回 core。 */
+async function createCategory(
+  page: import('@playwright/test').Page,
+  opts: { name: string; focusHidden: boolean }
+) {
   const tag = uniqueTag();
   const slug = `focus-cat-${tag}`;
   await loginViaApi(page, SEED_USERS.owner.username);
   const res = await page.request.post('/api/admin/categories', {
-    data: { name: `专注水区 ${tag}`, slug, focusHidden: true },
+    data: { name: `${opts.name} ${tag}`, slug, focusHidden: opts.focusHidden },
   });
   await loginViaApi(page, SEED_USERS.core.username);
   expect(res.status(), `建栏目失败: ${JSON.stringify(await res.json().catch(() => ({})))}`).toBe(200);
   const body = (await res.json()) as { category: { id: number } };
-  return { id: body.category.id, slug };
+  return { id: body.category.id, slug, name: `${opts.name} ${tag}` };
+}
+
+/** 建「专注隐藏」栏目（站长默认集合里的一员）。 */
+async function createFlaggedCategory(page: import('@playwright/test').Page) {
+  return createCategory(page, { name: '专注水区', focusHidden: true });
 }
 
 /** 点击专注开关：input 视觉隐藏（opacity:0），要点的其实是包着它的 label。 */
@@ -45,6 +68,20 @@ async function clickFocusToggle(page: import('@playwright/test').Page) {
   await page
     .locator('label.settings-toggle', { has: page.locator('#toggleFocus') })
     .click();
+}
+
+/** 点一个栏目复选框，并等到 PATCH /api/users/me/focus 真的返回（提示条会沿用上一条，不能只等文案）。 */
+async function toggleCategory(
+  page: import('@playwright/test').Page,
+  categoryId: number,
+  checked: boolean
+) {
+  const box = page.locator(`input[data-focus-category="${categoryId}"]`);
+  const wait = page.waitForResponse(
+    (r) => r.url().includes('/api/users/me/focus') && r.request().method() === 'PATCH'
+  );
+  await (checked ? box.check() : box.uncheck());
+  expect((await wait).status(), '保存专注模式设置应成功').toBe(200);
 }
 
 /** core 用户发一篇博客到指定栏目（POST /api/blogs → { blog_id }）。 */
@@ -243,6 +280,97 @@ test.describe('专注模式（设置 → 各处生效）', () => {
       expect(res.status(), `${name} 应 403 —— 漏一处就是专注模式没闸`).toBe(403);
       expect(((await res.json()) as { message: string }).message, name).toBe(FOCUS_TITLE);
     }
+  });
+
+  test('自定义：取消默认屏蔽的栏目、改选另一个；「恢复默认」可还原', async ({ page }) => {
+    await loginViaApi(page, SEED_USERS.core.username);
+
+    // 造数：一个站长标记的默认栏目 + 一个普通栏目，各一篇文章
+    const flaggedCat = await createFlaggedCategory(page);
+    const flaggedBlog = await createBlogIn(page, flaggedCat.id);
+    const normalCat = await createCategory(page, { name: '正常区', focusHidden: false });
+    const normalBlog = await createBlogIn(page, normalCat.id);
+
+    await setFocus(page, true);
+    await page.goto('/settings');
+    // 未自定义 → 站长标记的栏目默认勾选
+    await expect(
+      page.locator(`input[data-focus-category="${flaggedCat.id}"]`)
+    ).toBeChecked();
+    await expect(
+      page.locator(`input[data-focus-category="${normalCat.id}"]`)
+    ).not.toBeChecked();
+
+    // 取消默认栏目、改选正常栏目 —— 每次都等到 PATCH 真的返回，别只看提示条
+    await toggleCategory(page, flaggedCat.id, false);
+    await toggleCategory(page, normalCat.id, true);
+    await expect(page.locator('#focusAlert')).toContainText('已保存');
+
+    await page.goto('/blog');
+    await expect(
+      page.locator(`.blog-item:has-text("${flaggedBlog.title}")`),
+      '取消默认屏蔽后，原被隐藏的文章应出现'
+    ).toHaveCount(1);
+    await expect(
+      page.locator(`.blog-item:has-text("${normalBlog.title}")`),
+      '自选的栏目文章应被隐藏'
+    ).toHaveCount(0);
+    // 栏目下拉同步：自选的正常区整组消失（它没有子栏目）
+    await expect(
+      page.locator(`.blog-category-select__option:has-text("${normalCat.name}")`)
+    ).toHaveCount(0);
+
+    // 恢复默认：回到站长标记的集合
+    await page.goto('/settings');
+    const wait = page.waitForResponse(
+      (r) => r.url().includes('/api/users/me/focus') && r.request().method() === 'PATCH'
+    );
+    await page.getByRole('button', { name: '恢复默认' }).click();
+    expect((await wait).status()).toBe(200);
+    await expect(page.locator('#focusAlert')).toContainText('已恢复默认');
+
+    await page.goto('/blog');
+    await expect(page.locator(`.blog-item:has-text("${flaggedBlog.title}")`)).toHaveCount(0);
+    await expect(page.locator(`.blog-item:has-text("${normalBlog.title}")`)).toHaveCount(1);
+  });
+
+  test('子项：取消「屏蔽玩具区 / 讨论大区 / 练手盘」后各自照常可用', async ({ page }) => {
+    await loginViaApi(page, SEED_USERS.core.username);
+    await setFocus(page, true);
+
+    // 玩具：默认被屏蔽 → 页面是专注提示；取消屏蔽后正常渲染游戏菜单
+    await page.goto('/game');
+    await expect(page.locator('.game-focus-notice')).toHaveCount(1);
+    const gamesOff = await page.request.patch('/api/users/me/focus', {
+      data: { blockGames: false },
+    });
+    expect(gamesOff.status()).toBe(200);
+    await page.goto('/game');
+    await expect(page.locator('.game-focus-notice')).toHaveCount(0);
+
+    // 大区：取消屏蔽后侧栏出现大区行，且能发言
+    const lobbyOff = await page.request.patch('/api/users/me/focus', {
+      data: { blockLobby: false },
+    });
+    expect(lobbyOff.status()).toBe(200);
+    await page.goto('/chat');
+    await expect(page.locator('.chat-chan', { hasText: '讨论大区' })).toHaveCount(1);
+    const send = await page.request.post('/api/chat/channels/lobby/messages', {
+      data: { content: '专注模式下保留大区' },
+    });
+    expect(send.status(), '取消屏蔽后大区应可发言').toBe(200);
+
+    // 练手盘：默认四个接口 403；取消屏蔽后只读口放行
+    const fishOff = await page.request.patch('/api/users/me/focus', {
+      data: { blockFishTrade: false },
+    });
+    expect(fishOff.status()).toBe(200);
+    expect((await page.request.get('/api/fish/trade/quote')).status()).toBe(200);
+    expect(
+      (
+        await page.request.get('/api/fish/trade/candles?symbol=BTCUSDT&interval=1h')
+      ).status()
+    ).toBe(200);
   });
 
   test('关闭后全部恢复', async ({ page }) => {

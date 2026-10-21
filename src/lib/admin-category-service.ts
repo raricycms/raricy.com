@@ -23,7 +23,7 @@ export interface CategoryInput {
   excludeFromAll?: boolean;
   adminOnlyPosting?: boolean;
   notifyAdminOnPost?: boolean;
-  /** 专注模式隐藏：开启专注模式的用户看不到此栏目（勾根栏目时子栏目自动带掉） */
+  /** 专注模式的**默认**屏蔽栏目（用户未自定义时生效；勾根栏目时子栏目自动带掉） */
   focusHidden?: boolean;
 }
 

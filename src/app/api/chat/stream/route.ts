@@ -11,7 +11,7 @@
 //
 // 【断线补齐】浏览器 EventSource 重连时会带 Last-Event-ID（即最后一帧的 id:），
 // 服务端据此把漏掉的消息补发；积压超过窗口则发 resync 让客户端整页重拉。
-// 鉴权在**每次建立连接**时重做（requireChatUser），所以封禁/降权/专注模式变更后
+// 鉴权在**每次建立连接**时重做（requireChatUser），所以封禁/降权/大区屏蔽变更后
 // 只要把旧连接踢掉（chat-bus.kickUser），新连接就会重新判定。
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -19,6 +19,7 @@ import { requireChatUser } from '../_auth';
 import { subscribe, type ChatSubscriber } from '@/lib/chat-bus';
 import { SSE_HEADERS, SSE_QUEUE_LIMIT, SSE_RETRY_MS, sseFrame } from '@/lib/sse';
 import { listMessagesSince } from '@/lib/chat-service';
+import { isFocusLobbyBlocked } from '@/lib/focus-mode';
 import type { ChatStreamEvent } from '@/lib/chat-shared';
 import { isChatStreamSessionCurrent, verifiedStreamWriter } from '@/lib/stream-session';
 
@@ -35,6 +36,15 @@ export async function GET(req: Request) {
   const encoder = new TextEncoder();
   const rawLastEventId = Number(req.headers.get('last-event-id'));
   const lastEventId = Number.isInteger(rawLastEventId) && rawLastEventId > 0 ? rawLastEventId : 0;
+
+  // 连接建立时的大区可见性快照：每帧复核拿它比对（见 isChatStreamSessionCurrent）。
+  // 大区屏蔽变更会由 user-service 踢掉这条连接，重连时再按新值决定收不收广播。
+  const lobbyBlocked = isFocusLobbyBlocked(user);
+  const sessionSnapshot = {
+    id: user.id,
+    sessionVersion: user.sessionVersion,
+    lobbyBlocked,
+  };
 
   let unsubscribe: (() => void) | null = null;
   let closed = false;
@@ -83,7 +93,7 @@ export async function GET(req: Request) {
         };
         const sub: ChatSubscriber = {
           userId: user.id,
-          focusMode: user.focusMode ?? false,
+          lobbyBlocked,
           write: writeForBus,
           close: () => {
             cleanup();
@@ -94,7 +104,7 @@ export async function GET(req: Request) {
             }
           },
         };
-        sub.write = verifiedStreamWriter(() => isChatStreamSessionCurrent(user), writeForBus, sub.close, SSE_QUEUE_LIMIT);
+        sub.write = verifiedStreamWriter(() => isChatStreamSessionCurrent(sessionSnapshot), writeForBus, sub.close, SSE_QUEUE_LIMIT);
         unsubscribe = subscribe(sub);
 
         // 客户端主动断开（关闭标签页 / 网络断）时 Next 会 cancel 流；这里再挂一道
@@ -111,7 +121,7 @@ export async function GET(req: Request) {
         // 断线补齐（不阻塞首帧：上面已经 write 过，浏览器可以先进入 open 状态）
         void (async () => {
           try {
-            if (!(await isChatStreamSessionCurrent(user))) { sub.close(); return; }
+            if (!(await isChatStreamSessionCurrent(sessionSnapshot))) { sub.close(); return; }
             if (closed) return;
             authorized = true;
             for (const chunk of pending) {

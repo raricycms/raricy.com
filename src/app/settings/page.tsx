@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import OAuthConnectionsList from './OAuthConnectionsList';
 import FramePanel from './FramePanel';
 import BubblePanel from './BubblePanel';
+import FocusPanel from './FocusPanel';
 import AddToHomeScreenGuide from '../components/AddToHomeScreenGuide';
 
 interface ProfileState {
@@ -18,7 +19,6 @@ interface ProfileState {
   notifyAdmin: boolean;
   showRecentBlogs: boolean;
   showRecentComments: boolean;
-  focusMode: boolean;
 }
 
 const EMPTY: ProfileState = {
@@ -30,7 +30,6 @@ const EMPTY: ProfileState = {
   notifyAdmin: true,
   showRecentBlogs: true,
   showRecentComments: true,
-  focusMode: false,
 };
 
 interface Alert {
@@ -74,7 +73,6 @@ export default function SettingsPage() {
             notifyAdmin: !!data.profile.notifyAdmin,
             showRecentBlogs: !!data.profile.showRecentBlogs,
             showRecentComments: !!data.profile.showRecentComments,
-            focusMode: !!data.profile.focusMode,
           });
         }
       } catch {
@@ -133,35 +131,6 @@ export default function SettingsPage() {
       setState((s) => ({ ...s, [key]: !value }));
     } finally {
       setTimeout(() => setPrivacyAlert(null), 3000);
-    }
-  }
-
-  async function saveFocus(value: boolean) {
-    setState((s) => ({ ...s, focusMode: value }));
-    try {
-      // 只发单字段：updateOwnProfile 按白名单逐字段打补丁，整包旧 state 反而可能
-      // 携带过期值（PATCH 是幂等的，只传本次变更即可）。
-      const res = await fetch('/api/users/me', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'same-origin',
-        body: JSON.stringify({ focusMode: value }),
-      });
-      const result = await res.json();
-      if (res.ok && result.code === 200) {
-        setFocusAlert({ msg: '专注模式设置已保存', type: 'success' });
-        // 保存后刷新 RSC 树：/blog、/chat 等服务端页面按 users.focus_mode 渲染，
-        // 而软导航不会重跑 root layout。
-        router.refresh();
-      } else {
-        setFocusAlert({ msg: result.message || '保存失败', type: 'danger' });
-        setState((s) => ({ ...s, focusMode: !value }));
-      }
-    } catch {
-      setFocusAlert({ msg: '网络错误，请稍后再试', type: 'danger' });
-      setState((s) => ({ ...s, focusMode: !value }));
-    } finally {
-      setTimeout(() => setFocusAlert(null), 3000);
     }
   }
 
@@ -367,27 +336,17 @@ export default function SettingsPage() {
           <h2 className="settings-card__title">专注模式</h2>
         </div>
         <p className="settings-card__desc">
-          屏蔽干扰源，专心阅读。开启后：博客列表与侧栏将隐藏标记为「专注隐藏」的栏目及其文章；
-          玩具、讨论大区（讨论室）与鱼干练手盘（含统计）不可使用 —— 它们的入口会一并隐藏，
-          私聊与鱼干商城不受影响。随时可在此关闭。
+          屏蔽干扰源，专心阅读。可以分别选择屏蔽讨论大区、玩具区与鱼干练手盘，
+          也可以自选要屏蔽的博客栏目（未自定义时使用站长标记的「专注隐藏」栏目）。
+          私聊、鱼干商城与转账不受影响。随时可在此调整。
         </p>
         <div className={focusAlertClass} id="focusAlert">{focusAlert?.msg ?? ''}</div>
-
-        <div className="settings-toggle-row">
-          <div className="settings-toggle-row__label">
-            <span className="settings-toggle-row__title">专注模式</span>
-            <span className="settings-toggle-row__desc">隐藏「专注隐藏」栏目，禁用玩具、讨论大区与练手盘</span>
-          </div>
-          <label className="settings-toggle">
-            <input
-              type="checkbox"
-              id="toggleFocus"
-              checked={state.focusMode}
-              onChange={(e) => saveFocus(e.target.checked)}
-            />
-            <span className="settings-toggle__slider"></span>
-          </label>
-        </div>
+        <FocusPanel
+          onAlert={(kind, msg) => {
+            setFocusAlert({ msg, type: kind });
+            setTimeout(() => setFocusAlert(null), 3000);
+          }}
+        />
       </div>
 
       {/* ====== Section 3b: 头像框 ====== */}

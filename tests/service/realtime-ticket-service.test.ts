@@ -94,6 +94,15 @@ describe('实时游戏一次性票据', () => {
     const issued = issueRealtimeTicket(expired, 'wand')!;
     expect(await consumeRealtimeTicket(issued.ticket, 'wand')).not.toBeNull();
   });
+
+  it('★ 专注模式但没屏蔽玩具区 → 照常签发与复核（判据是 focusBlockGames）', async () => {
+    const user = await makeUser({ focusMode: true, focusBlockGames: false });
+    const issued = issueRealtimeTicket(user, 'wand')!;
+    expect(issued).toBeTruthy();
+    const identity = await consumeRealtimeTicket(issued.ticket, 'wand');
+    expect(identity).not.toBeNull();
+    expect(await validateRealtimeIdentity(identity!, 'wand')).toEqual(identity);
+  });
 });
 
 describe('主站服务间身份接口', () => {

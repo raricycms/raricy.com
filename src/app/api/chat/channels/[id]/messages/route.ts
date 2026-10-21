@@ -1,5 +1,6 @@
 import { listMessages, sendMessage } from '@/lib/chat-service';
 import { apiErr, apiOk } from '@/lib/format';
+import { isFocusLobbyBlocked } from '@/lib/focus-mode';
 import { parsePosInt, requireChatUser } from '../../../_auth';
 
 // GET /api/chat/channels/:id/messages[?after=&before=&limit=]
@@ -14,7 +15,8 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
   const limitRaw = url.searchParams.get('limit');
   const limit = limitRaw ? parsePosInt(limitRaw) : null;
 
-  const res = await listMessages(id, user.id, { after, before, limit }, user.focusMode);
+  const lobbyBlocked = isFocusLobbyBlocked(user);
+  const res = await listMessages(id, user.id, { after, before, limit }, lobbyBlocked);
   if (res.ok) return apiOk({ messages: res.messages });
   if (res.error === 'forbidden') return apiErr(403, res.message);
   return apiErr(404, res.message);
@@ -51,7 +53,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     blogId,
     patTargetId,
     replyTo,
-    focusMode: user.focusMode,
+    lobbyBlocked: isFocusLobbyBlocked(user),
   });
   if (res.ok) return apiOk({ message: res.message }, '发送成功');
 

@@ -1,6 +1,7 @@
 import { cookies } from 'next/headers';
 import { requireCoreUser } from '@/lib/guard';
 import { hasAdminRights } from '@/lib/auth';
+import { isFocusLobbyBlocked } from '@/lib/focus-mode';
 import { COOKIE_NAME } from '@/lib/chat-sidebar-pref';
 import ChatApp from './ChatApp';
 
@@ -35,7 +36,7 @@ export default async function ChatPage({
       initialChannel={typeof sp.channel === 'string' && sp.channel ? sp.channel : null}
       initialMessage={initialMessage}
       initialSidebarCollapsed={collapsedPref}
-      initialFocusMode={user.focusMode}
+      initialLobbyBlocked={isFocusLobbyBlocked(user)}
     />
   );
 }

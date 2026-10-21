@@ -19,7 +19,7 @@ it.each([chatStream, topbarStream])('鉴权快照刚过期、kick 已发生但�
   expect(text).toContain(': connected');
   expect(text).not.toContain('data:');
 });
-it.each([{ role: 'user' }, { focusMode: true }])('角色/专注模式快照过期时，旧讨论流不投递消息（%j）', async (patch) => {
+it.each([{ role: 'user' }, { focusMode: true }])('角色/大区屏蔽快照过期时，旧讨论流不投递消息（%j）', async (patch) => {
   const user = await makeUser({ role: 'core', focusMode: false });
   auth.user = user;
   // 两种变更不递增 sessionVersion；kick 可能早于这次注册。

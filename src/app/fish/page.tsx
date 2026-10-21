@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { ReceiptText } from 'lucide-react';
 import { getCurrentUser } from '@/lib/auth';
+import { isFocusFishTradeBlocked } from '@/lib/focus-mode';
 import { loginUrlWithNext } from '@/lib/safe-url';
 import { getBalance, getTodayCheckinFish } from '@/lib/fish-service';
 import { fmtFish } from '@/lib/fish-amount';
@@ -69,14 +70,14 @@ export default async function FishPage() {
                 tests/e2e/fish-layout.spec.ts 钉死为「恰好 3 颗」，加进去当场红。
                 ⚠️ 新链接别用 .fish-card__link-label 这个类名 —— 同一个用例钉死了
                 它的数量是 2（那两条带前缀的文案的壳）。 */}
-            {/* 【专注模式下整段不渲染】练手盘被专注模式整个关掉（两页 403、四接口 403），
+            {/* 【专注模式屏蔽练手盘时整段不渲染】两页 403、四接口 403，
                 入口连同它那句引导语一起消失 —— 判据与理由见 CLAUDE.md「档位阶梯」那条：
                 档位不够才留入口，专注模式是**本人一键可关的账号偏好**，留一条点了 403 的
                 灰链只是噪音。
                 ⚠️ 条件必须包住**整段 `<p>`**，不能只让链接自己不渲染：`.fish-card__info`
                 的 `p + p { margin-top }`（_fish.scss）命中的是「有没有那个 `<p>`」，
                 留个空 `<p>` 会在卡片里凭空多出一段行距。 */}
-            {!user.focusMode && (
+            {!isFocusFishTradeBlocked(user) && (
               <>
                 <p>每日签到可获得小鱼干。也可以去练手盘碰碰运气 ——</p>
                 <p>

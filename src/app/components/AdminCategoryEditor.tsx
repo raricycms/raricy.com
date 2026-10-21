@@ -476,7 +476,7 @@ export default function AdminCategoryEditor({ initialCategories, initialParents 
                   {renderPickRow(
                     form.focusHidden,
                     (v) => setForm({ ...form, focusHidden: v }),
-                    '专注模式隐藏（开启专注模式的用户看不到此栏目与子栏目）'
+                    '专注模式默认屏蔽（用户未自定义时看不到此栏目与子栏目）'
                   )}
                 </div>
 

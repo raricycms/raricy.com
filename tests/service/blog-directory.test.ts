@@ -65,12 +65,12 @@ describe('博客目录个人范围', () => {
     await prisma.blogLike.create({ data: { blogId: own.id, userId: me.id } });
     await prisma.blogFeed.create({ data: { blogId: own.id, userId: me.id, amount: fishToUnits(1) } });
     await prisma.blogComment.create({ data: { id: 'focus-comment', blogId: own.id, authorId: me.id, content: '评论' } });
-    const summary = await getBlogDirectorySummary(me.id, true);
+    const summary = await getBlogDirectorySummary(me.id, [hidden.id]);
     expect(summary).toEqual({ counts: { all: 0, mine: 1, liked: 1, commented: 1, fed: 1 }, likesReceived: 7, commentsReceived: 9, fishReceived: 3 });
     for (const kind of ['mine', 'liked', 'commented', 'fed'] as const) {
-      expect((await listBlogs({ focusMode: true, personalScope: { kind, userId: me.id } })).total).toBe(summary.counts[kind]);
+      expect((await listBlogs({ focusHiddenCategoryIds: [hidden.id], personalScope: { kind, userId: me.id } })).total).toBe(summary.counts[kind]);
     }
-    expect((await listBlogs({ focusMode: true })).total).toBe(summary.counts.all);
+    expect((await listBlogs({ focusHiddenCategoryIds: [hidden.id] })).total).toBe(summary.counts.all);
   });
 
   it('评论范围按文章去重，包含本人匿名评论，排除删除、未通过及他人评论，并支持筛选和分页', async () => {
@@ -94,7 +94,7 @@ describe('博客目录个人范围', () => {
     const second = await listBlogs({ ...params, perPage: 1, page: 2 });
     expect(second).toMatchObject({ total: 2, pages: 2, page: 2 });
     expect(second.blogs[0].id).toBe(result.blogs[1].id);
-    expect((await getBlogDirectorySummary(me.id, false)).counts.commented).toBe(2);
+    expect((await getBlogDirectorySummary(me.id, null)).counts.commented).toBe(2);
   });
 
   it('没有有效评论时个人列表与侧栏均为空，不会退回全部文章', async () => {
@@ -109,7 +109,7 @@ describe('博客目录个人范围', () => {
 
     const result = await listBlogs({ personalScope: { kind: 'commented', userId: me.id } });
     expect(result).toMatchObject({ blogs: [], total: 0, pages: 1 });
-    expect((await getBlogDirectorySummary(me.id, false)).counts.commented).toBe(0);
+    expect((await getBlogDirectorySummary(me.id, null)).counts.commented).toBe(0);
   });
 
   it('评论范围超过 SQLite 单批参数数目时，仍按筛选后的全集排序、计数和分页', async () => {
@@ -141,10 +141,10 @@ describe('博客目录个人范围', () => {
       expect(result).toMatchObject({ total: 550, pages: 79, page: 2, hasPrev: true, hasNext: true });
       expect(result.blogs.map((blog) => blog.id)).toEqual(expected.map((i) => ids[i]));
     }
-    expect((await getBlogDirectorySummary(me.id, false)).counts.commented).toBe(ids.length);
+    expect((await getBlogDirectorySummary(me.id, null)).counts.commented).toBe(ids.length);
   });
 
-  it('评论范围排除归档作者的文章，专注模式同时过滤列表与侧栏计数', async () => {
+  it('评论范围排除归档作者的文章，专注屏蔽同时过滤列表与侧栏计数', async () => {
     const me = await makeUser();
     const archived = await makeUser();
     const hidden = await makeCategory({ focusHidden: true });
@@ -158,12 +158,12 @@ describe('博客目录个人范围', () => {
     ] });
     await prisma.user.update({ where: { id: archived.id }, data: { archivedAt: nowForDb() } });
 
-    for (const focusMode of [false, true]) {
-      const expected = focusMode ? [visible.id] : [visible.id, focused.id];
-      const result = await listBlogs({ focusMode, personalScope: { kind: 'commented', userId: me.id } });
+    for (const hiddenIds of [null, [hidden.id]] as (number[] | null)[]) {
+      const expected = hiddenIds ? [visible.id] : [visible.id, focused.id];
+      const result = await listBlogs({ focusHiddenCategoryIds: hiddenIds, personalScope: { kind: 'commented', userId: me.id } });
       expect(new Set(result.blogs.map((blog) => blog.id))).toEqual(new Set(expected));
       expect(result.total).toBe(expected.length);
-      expect((await getBlogDirectorySummary(me.id, focusMode)).counts.commented).toBe(expected.length);
+      expect((await getBlogDirectorySummary(me.id, hiddenIds)).counts.commented).toBe(expected.length);
     }
   });
 });

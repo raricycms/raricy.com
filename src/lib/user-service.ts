@@ -17,6 +17,12 @@ import { hashPassword, verifyPassword } from './password';
 import { allowPasswordAttempt } from './password-budget';
 import { kickUser } from './chat-bus';
 import { publishToUser, kickTopbarUser } from './topbar-bus';
+import {
+  isFocusLobbyBlocked,
+  parseFocusHiddenCategories,
+  parseFocusHiddenCategoriesInput,
+  serializeFocusHiddenCategories,
+} from './focus-mode';
 import type { Prisma } from '@prisma/client';
 
 // ── 输入校验（对齐 verify_username / verify_email）──────────────────────────
@@ -508,8 +514,17 @@ export interface ProfilePatch {
   notifyAdmin?: boolean;
   showRecentBlogs?: boolean;
   showRecentComments?: boolean;
-  /** 专注模式（账号级浏览偏好，见 schema User.focusMode） */
+  /** 专注模式总开关（账号级浏览偏好，见 schema User.focusMode） */
   focusMode?: boolean;
+  /** 专注模式子项：是否屏蔽讨论大区 / 玩具区 / 鱼干练手盘 */
+  focusBlockLobby?: boolean;
+  focusBlockGames?: boolean;
+  focusBlockFishTrade?: boolean;
+  /**
+   * 专注模式要屏蔽的博客栏目 id。
+   * `null` = 恢复站长默认集合；数组（含 `[]`）= 用户显式选择。
+   */
+  focusHideCategories?: number[] | null;
 }
 
 export interface UpdateResult {
@@ -539,6 +554,21 @@ export async function updateOwnProfile(userId: string, patch: ProfilePatch): Pro
     data.showRecentComments = patch.showRecentComments;
   }
   if (typeof patch.focusMode === 'boolean') data.focusMode = patch.focusMode;
+  if (typeof patch.focusBlockLobby === 'boolean') data.focusBlockLobby = patch.focusBlockLobby;
+  if (typeof patch.focusBlockGames === 'boolean') data.focusBlockGames = patch.focusBlockGames;
+  if (typeof patch.focusBlockFishTrade === 'boolean') {
+    data.focusBlockFishTrade = patch.focusBlockFishTrade;
+  }
+  if ('focusHideCategories' in patch) {
+    // 严格解析请求体：非法形状必须报错，不能静默回落成「默认集合」——
+    // 用户点了保存却没生效是静默失效，比 400 难查得多。
+    const parsed = parseFocusHiddenCategoriesInput(patch.focusHideCategories);
+    if (!parsed.ok) {
+      return { ok: false, code: 400, message: '专注模式屏蔽栏目格式错误' };
+    }
+    data.focusHideCategories =
+      parsed.value === null ? null : serializeFocusHiddenCategories(parsed.value);
+  }
 
   if (Object.keys(data).length === 0) {
     return { ok: false, code: 400, message: '没有可更新的字段' };
@@ -561,18 +591,28 @@ export async function updateOwnProfile(userId: string, patch: ProfilePatch): Pro
       showRecentBlogs: true,
       showRecentComments: true,
       focusMode: true,
+      focusHideCategories: true,
+      focusBlockLobby: true,
+      focusBlockGames: true,
+      focusBlockFishTrade: true,
     },
   });
 
-  // 专注模式变更 → 踢掉已建立的 SSE 连接：重连时按新值决定是否接收大区推送
-  // （chat-bus 按连接建立时的 focusMode 过滤大区广播）。
-  if ('focusMode' in data) {
+  // 专注模式变更 → 踢掉已建立的讨论 SSE 连接：重连时按新值决定是否接收大区推送
+  // （chat-bus 按连接建立时的 lobbyBlocked 过滤大区广播）。
+  //
+  // 只有**影响大区可见性**的两列（总开关 / 大区子项）需要踢；改玩具区、练手盘或
+  // 博客栏目不动讨论流 —— 无差别踢一次会让所有人保存任何子项都断流重连。
+  if ('focusMode' in data || 'focusBlockLobby' in data) {
     kickUser(userId);
-    // 顶栏红点同样受专注模式影响（开启后大区不计入汇总）。这里**不踢顶栏流**：
+    // 顶栏红点同样受大区可见性影响（大区被屏蔽时不计入汇总）。这里**不踢顶栏流**：
     // 会话没废，铃铛照常要收推送。推送值分两种（够不着 chat-service，会成环，
-    // 见 topbar-bus 的 TopbarPatch）：开启 → 大区不计 → 必为 false，推精确值；
-    // 关闭 → 大区里可能还压着 @ 我的未读，推「重算」让客户端走 count 路由。
-    publishToUser(userId, updated.focusMode ? { chatUnread: false } : { refresh: true });
+    // 见 topbar-bus 的 TopbarPatch）：大区被屏蔽 → 必为 false，推精确值；
+    // 解除屏蔽 → 大区里可能还压着 @ 我的未读，推「重算」让客户端走 count 路由。
+    publishToUser(
+      userId,
+      isFocusLobbyBlocked(updated) ? { chatUnread: false } : { refresh: true }
+    );
   }
 
   return {
@@ -588,6 +628,10 @@ export async function updateOwnProfile(userId: string, patch: ProfilePatch): Pro
       showRecentBlogs: updated.showRecentBlogs,
       showRecentComments: updated.showRecentComments,
       focusMode: updated.focusMode,
+      focusBlockLobby: updated.focusBlockLobby,
+      focusBlockGames: updated.focusBlockGames,
+      focusBlockFishTrade: updated.focusBlockFishTrade,
+      focusHideCategories: parseFocusHiddenCategories(updated.focusHideCategories),
     },
   };
 }

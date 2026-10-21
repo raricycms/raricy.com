@@ -28,13 +28,13 @@ beforeEach(() => {
 /** 假订阅者：记录收到的帧，可选在第 N 帧后返回背压。 */
 function makeSub(
   userId: string,
-  opts: { focusMode?: boolean; backpressureAfter?: number } = {}
+  opts: { lobbyBlocked?: boolean; backpressureAfter?: number } = {}
 ) {
   const chunks: string[] = [];
   const state = { closed: false };
   const sub: ChatSubscriber = {
     userId,
-    focusMode: opts.focusMode ?? false,
+    lobbyBlocked: opts.lobbyBlocked ?? false,
     write: (chunk) => {
       chunks.push(chunk);
       return opts.backpressureAfter == null || chunks.length <= opts.backpressureAfter;
@@ -93,20 +93,20 @@ describe('chat-bus：投递', () => {
     expect(b.chunks).toHaveLength(1);
   });
 
-  it('skipFocusMode 跳过专注模式连接（大区消息不该推给看不到大区的人）', () => {
+  it('skipLobbyBlocked 跳过「大区被专注屏蔽」的连接（大区消息不该推给看不到大区的人）', () => {
     const normal = makeSub('u-normal');
-    const focused = makeSub('u-focused', { focusMode: true });
+    const focused = makeSub('u-focused', { lobbyBlocked: true });
     subscribe(normal.sub);
     subscribe(focused.sub);
 
-    publishToAll(msgEvent('lobby', 11), 11, { skipFocusMode: true });
+    publishToAll(msgEvent('lobby', 11), 11, { skipLobbyBlocked: true });
 
     expect(normal.chunks).toHaveLength(1);
     expect(focused.chunks).toHaveLength(0);
   });
 
-  it('私聊推送不过滤专注模式（专注模式只禁大区）', () => {
-    const focused = makeSub('u-focused', { focusMode: true });
+  it('私聊推送不过滤大区屏蔽（专注模式只禁大区）', () => {
+    const focused = makeSub('u-focused', { lobbyBlocked: true });
     subscribe(focused.sub);
 
     publishToUsers(['u-focused'], msgEvent('ch-dm', 12), 12);
@@ -170,7 +170,7 @@ describe('chat-bus：背压与踢连接', () => {
     const state = { closed: false };
     subscribe({
       userId: 'u-throw',
-      focusMode: false,
+      lobbyBlocked: false,
       write: () => {
         throw new Error('stream closed');
       },

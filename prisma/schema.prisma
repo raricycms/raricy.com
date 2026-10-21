@@ -60,9 +60,18 @@ model User {
   showRecentBlogs    Boolean @default(true) @map("show_recent_blogs")
   showRecentComments Boolean @default(true) @map("show_recent_comments")
 
-  // 专注模式：账号级浏览偏好（默认关）。开启后博客列表/侧栏隐藏 focusHidden 栏目，
-  // 讨论大区与「玩具」入口禁用。登出/游客不生效（见 docs/architecture.md 偏好约定）。
+  // 专注模式：账号级浏览偏好（默认关）。开启后按下面四个子项分别生效：
+  // 博客列表/侧栏隐藏自选栏目（focusHideCategories）、讨论大区、玩具区、
+  // 鱼干练手盘。登出/游客不生效（见 docs/architecture.md 偏好约定）。
   focusMode Boolean @default(false) @map("focus_mode")
+  /// 专注模式要屏蔽的博客栏目 id，JSON 数组文本（如 "[3,7]"）。
+  /// NULL = 未自定义 → 沿用站长在 categories.focusHidden 标记的默认集合；
+  /// '[]' = 用户明确选择「一个都不屏蔽」。两种状态**不可合并**。
+  focusHideCategories String? @map("focus_hide_categories")
+  /// 专注模式子项：屏蔽讨论大区 / 玩具区 / 鱼干练手盘。默认全开 = 改版前的行为。
+  focusBlockLobby     Boolean @default(true) @map("focus_block_lobby")
+  focusBlockGames     Boolean @default(true) @map("focus_block_games")
+  focusBlockFishTrade Boolean @default(true) @map("focus_block_fish_trade")
 
   isBanned  Boolean?  @default(false) @map("is_banned")
   banUntil  DateTime? @map("ban_until")

@@ -23,7 +23,7 @@ import { subscribe, onlineConnections, __resetChatBus, type ChatSubscriber } fro
 function connect(userId: string): () => void {
   const sub: ChatSubscriber = {
     userId,
-    focusMode: false,
+    lobbyBlocked: false,
     write: () => true,
     close: () => {},
   };

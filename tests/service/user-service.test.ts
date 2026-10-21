@@ -483,9 +483,9 @@ describe('changeOwnPassword：成功路径', () => {
     const chatClose = vi.fn();
     const topbarClose = vi.fn();
     const otherWrite = vi.fn(() => true);
-    subscribeChat({ userId: u.id, focusMode: false, write: chatWrite, close: chatClose });
+    subscribeChat({ userId: u.id, lobbyBlocked: false, write: chatWrite, close: chatClose });
     subscribeTopbar({ userId: u.id, write: topbarWrite, close: topbarClose });
-    subscribeChat({ userId: 'other', focusMode: false, write: otherWrite, close: vi.fn() });
+    subscribeChat({ userId: 'other', lobbyBlocked: false, write: otherWrite, close: vi.fn() });
 
     expect((await changeOwnPassword(u.id, 'oldpassword', 'newpassword1', 'newpassword1')).ok).toBe(true);
     publishToUsers([u.id, 'other'], { type: 'resync' });

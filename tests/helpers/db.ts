@@ -177,6 +177,11 @@ export async function makeUser(opts: Partial<{
   banReason: string | null;
   driedFish: number;
   focusMode: boolean;
+  /** 专注模式自选屏蔽栏目（JSON 数组文本；null = 站长默认集合） */
+  focusHideCategories: string | null;
+  focusBlockLobby: boolean;
+  focusBlockGames: boolean;
+  focusBlockFishTrade: boolean;
 }> = {}) {
   const id = opts.id ?? uid();
   return prisma.user.create({
@@ -192,6 +197,13 @@ export async function makeUser(opts: Partial<{
       banReason: opts.banReason ?? null,
       driedFish: fishToUnits(opts.driedFish ?? 0), // 存储单位 = 0.1 鱼干（fish-units.ts）
       focusMode: opts.focusMode ?? false,
+      // 专注模式子项：默认全开 = 与改版前的行为一致。
+      ...(opts.focusHideCategories !== undefined
+        ? { focusHideCategories: opts.focusHideCategories }
+        : {}),
+      focusBlockLobby: opts.focusBlockLobby ?? true,
+      focusBlockGames: opts.focusBlockGames ?? true,
+      focusBlockFishTrade: opts.focusBlockFishTrade ?? true,
       // 与生产写路径同钟：本库时间戳语义是「UTC+8 墙上时间贴 Z」（db-time.ts），
       // 种子数据也必须走 nowForDb()，否则冻结时钟的用例里两把钟不一致。
       createdAt: nowForDb(),

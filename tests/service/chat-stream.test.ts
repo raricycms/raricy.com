@@ -28,11 +28,11 @@ beforeEach(async () => {
 });
 
 /** 假订阅者：收集推送帧，便于断言「谁收到了」。 */
-function watch(userId: string, focusMode = false) {
+function watch(userId: string, lobbyBlocked = false) {
   const chunks: string[] = [];
   const sub: ChatSubscriber = {
     userId,
-    focusMode,
+    lobbyBlocked,
     write: (c) => {
       chunks.push(c);
       return true;

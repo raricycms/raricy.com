@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import type { SafeUser } from '@/lib/auth';
 import { hasAdminRights, isCoreUser } from '@/lib/auth';
+import { isFocusGamesBlocked } from '@/lib/focus-mode';
 import LogoutLink from './LogoutLink';
 import NavLink from './NavLink';
 import Avatar from './Avatar';
@@ -57,14 +58,14 @@ export default function Navbar({
 
         <div className="site-navbar-collapse" id="siteNavbar">
           <div className="site-navbar-collapse-inner">
-            {/* 主导航与首页内容区对应，玩具随专注模式隐藏。 */}
+            {/* 主导航与首页内容区对应，玩具随「专注模式屏蔽玩具区」隐藏。 */}
             <ul className="site-nav">
               <li>
                 <NavLink className="site-link" href="/story">
                   故事
                 </NavLink>
               </li>
-              {!user?.focusMode && (
+              {!isFocusGamesBlocked(user) && (
                 <li>
                   <NavLink className="site-link" href="/game">玩具</NavLink>
                 </li>

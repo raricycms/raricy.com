@@ -1,5 +1,6 @@
 import { markChannelRead } from '@/lib/chat-service';
 import { apiErr, apiOk } from '@/lib/format';
+import { isFocusLobbyBlocked } from '@/lib/focus-mode';
 import { requireChatUser } from '../../../_auth';
 
 // POST /api/chat/channels/:id/read — 推进读游标 + 清该会话的通知
@@ -15,6 +16,6 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
       ? body.message_id
       : undefined;
 
-  const upTo = await markChannelRead(id, user.id, messageId, user.focusMode);
+  const upTo = await markChannelRead(id, user.id, messageId, isFocusLobbyBlocked(user));
   return apiOk({ message_id: upTo }, '已读');
 }

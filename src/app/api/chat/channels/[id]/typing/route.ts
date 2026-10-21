@@ -12,6 +12,7 @@
 import { canAccessChannel } from '@/lib/chat-service';
 import { prisma } from '@/lib/db';
 import { apiErr, apiOk } from '@/lib/format';
+import { isFocusLobbyBlocked } from '@/lib/focus-mode';
 import { publishToAll, publishToUsers } from '@/lib/chat-bus';
 import { requireChatUser } from '../../../_auth';
 import { CHAT_FOCUS_BLOCKED_TITLE } from '@/lib/chat-shared';
@@ -33,12 +34,13 @@ export async function POST(_req: Request, ctx: { params: Promise<{ id: string }>
   if (user instanceof Response) return user;
 
   const { id } = await ctx.params;
-  const access = await canAccessChannel(id, user.id, user.focusMode);
+  const lobbyBlocked = isFocusLobbyBlocked(user);
+  const access = await canAccessChannel(id, user.id, lobbyBlocked);
   if (!access.kind) return apiErr(404, '频道不存在');
   if (!access.allowed) {
     return apiErr(
       403,
-      user.focusMode && id === 'lobby' ? CHAT_FOCUS_BLOCKED_TITLE : '无权在该会话发言'
+      lobbyBlocked && id === 'lobby' ? CHAT_FOCUS_BLOCKED_TITLE : '无权在该会话发言'
     );
   }
 
@@ -58,8 +60,8 @@ export async function POST(_req: Request, ctx: { params: Promise<{ id: string }>
   };
 
   if (access.kind === 'lobby') {
-    // 大区：广播给所有在线（专注模式开启者本就看不到大区）
-    publishToAll(event, undefined, { skipFocusMode: true });
+    // 大区：广播给所有在线（专注模式屏蔽了大区的连接本就看/收不到大区）
+    publishToAll(event, undefined, { skipLobbyBlocked: true });
   } else {
     const members = await prisma.chatMember.findMany({
       where: { channelId: id, NOT: { userId: user.id } },

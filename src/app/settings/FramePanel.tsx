@@ -15,7 +15,7 @@ import Avatar from '@/app/components/Avatar';
 //
 // 【为什么改完要 router.refresh()】框会显示在**服务端渲染**的页面里（顶栏、博客列表、
 // 讨论侧栏），软导航不会重跑 root layout —— 不 refresh 的话用户会以为没生效。
-// 与专注模式那次保存同款（见 page.tsx 里 saveFocus 的注释）。
+// 与专注模式那块（FocusPanel）保存后同款：它们都改服务端渲染的页面。
 
 interface MyFrame {
   key: string;

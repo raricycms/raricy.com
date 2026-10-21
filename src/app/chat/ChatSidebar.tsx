@@ -6,11 +6,11 @@
 // 纯展示 + 回调：数据与状态都在 ChatApp。侧栏行包了 memo —— 对账每 60 秒整表
 // 替换一次 channels 数组，未变化的行不该重渲染。
 //
-// 【不可用的行不渲染】专注模式下大区对你不可用，`listChannelsForUser` 仍会把它
-// 发过来、带 `disabled: true`（那是「这行不可用」的单一真相源，ChatApp 的选频道 /
-// 防御 / 删会话三处导航逻辑都靠它，别去服务端把行删掉）—— 侧栏这边**只渲染可用的行**。
-// 判据与理由见 CLAUDE.md「档位阶梯」那条：档位不够才留入口，专注模式是本人一键可关的
-// 账号偏好，留一条点不动的灰行只是噪音。
+// 【不可用的行不渲染】专注模式屏蔽了大区时（focusMode + focusBlockLobby），
+// `listChannelsForUser` 仍会把大区行发过来、带 `disabled: true`（那是「这行不可用」
+// 的单一真相源，ChatApp 的选频道 / 防御 / 删会话三处导航逻辑都靠它，别去服务端把行
+// 删掉）—— 侧栏这边**只渲染可用的行**。判据与理由见 CLAUDE.md「档位阶梯」那条：
+// 档位不够才留入口，专注模式是本人一键可关的账号偏好，留一条点不动的灰行只是噪音。
 //
 // 未读角标挂在**图标右上角**（微信式）：私聊显示未读条数，大区只显示红点
 // （大区是公共频道，只有被 @ 才提示 —— 口径见 chat-service.listChannelsForUser）。
@@ -133,8 +133,8 @@ export default function ChatSidebar({
   collapsed: boolean;
   /**
    * 频道列表是否已回来（ChatApp 的 channelsLoaded）。只有它能把「还没有数据」与
-   * 「真的一个会话都没有」分开 —— 专注模式 + 零私聊时列表里只剩被过滤掉的大区行，
-   * 少了这个 prop 就分不清该说「加载中…」还是「暂无会话」，只能永远转圈。
+   * 「真的一个会话都没有」分开 —— 大区被专注模式屏蔽且零私聊时列表里只剩被过滤掉的
+   * 大区行，少了这个 prop 就分不清该说「加载中…」还是「暂无会话」，只能永远转圈。
    */
   loaded: boolean;
   onToggleCollapse: () => void;
@@ -144,7 +144,7 @@ export default function ChatSidebar({
   onHide: (ch: ChatChannelDTO) => void;
 }) {
   const [menu, setMenu] = useState<{ ch: ChatChannelDTO; anchor: ChannelMenuAnchor } | null>(null);
-  // 不可用的行（专注模式下的大区）不渲染，见文件头。⚠️ 只算一次、**列表与空态共用** ——
+  // 不可用的行（专注模式屏蔽了大区时的那个大区行）不渲染，见文件头。⚠️ 只算一次、**列表与空态共用** ——
   // 若只在 SidebarRow 里 return null，下面那句 `channels.length === 0` 仍会把隐藏行数进去，
   // 于是两个空态一个都不出。
   const visible = channels.filter((c) => !c.disabled);

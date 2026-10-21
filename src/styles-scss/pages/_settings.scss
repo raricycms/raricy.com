@@ -401,3 +401,96 @@
 .bubble-panel { display: grid; gap: 16px; }
 .bubble-panel__item { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
 .bubble-panel__state { color: var(--color-text-secondary); font-size: .85rem; }
+
+// --- 专注模式的博客栏目选择（src/app/settings/FocusPanel.tsx）---
+//
+// 只加「清单」这一块：总开关 / 三个子项复用上面的 .settings-toggle-row，
+// 按钮复用 .settings-btn，载体复用 .settings-card（见 docs/frontend-styles.md）。
+// 复选行是**多行内容**，所以用 20px 圆角而不是胶囊；无边框、靠背景与间距分层。
+
+.focus-cats {
+  margin-top: $space-4;
+  padding: $space-4;
+  border-radius: 20px;
+  background: var(--color-background-subtle);
+}
+
+.focus-cats__head {
+  margin-bottom: $space-2;
+}
+
+.focus-cats__hint {
+  margin: $space-1 0 0;
+  font-size: 0.8rem;
+  color: var(--color-text-secondary);
+}
+
+.focus-cats__list {
+  list-style: none;
+  margin: $space-3 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: $space-1;
+  // 栏目多时内部滚动，不把整张设置卡撑到几屏高；键盘仍可 Tab 到每个复选框。
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+// 单个根栏目（名字 + 子栏目）。min-width: 0 让长名字在窄屏能走 ellipsis
+// 而不是把宽度撑破（与 .focus-cats__name 的截断配合）。
+.focus-cats__group {
+  min-width: 0;
+}
+
+.focus-cats__children {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.focus-cats__item {
+  display: flex;
+  align-items: center;
+  gap: $space-2;
+  padding: 4px 0;
+  font-size: 0.88rem;
+  color: var(--color-text-primary);
+  cursor: pointer;
+
+  &--child {
+    padding-left: $space-6;
+  }
+}
+
+.focus-cats__check {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  accent-color: var(--color-brand-primary);
+  cursor: pointer;
+}
+
+.focus-cats__name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.focus-cats__tag {
+  flex-shrink: 0;
+  font-size: 0.75rem;
+  padding: 1px 8px;
+  border-radius: $radius-max;
+  background: var(--color-background-highlight);
+  color: var(--color-text-secondary);
+}
+
+.focus-cats__actions {
+  display: flex;
+  align-items: center;
+  gap: $space-3;
+  margin-top: $space-3;
+  flex-wrap: wrap;
+}

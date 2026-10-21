@@ -1,6 +1,6 @@
 import { apiOk, apiErr } from '@/lib/format';
 import { getCurrentUser, isCoreUser } from '@/lib/auth';
-import { FOCUS_MODE_BLOCKED_TITLE } from '@/lib/focus-mode';
+import { FOCUS_MODE_BLOCKED_TITLE, isFocusFishTradeBlocked } from '@/lib/focus-mode';
 import { getCandles, parseSymbol } from '@/lib/market-price';
 import { displaySymbol } from '@/lib/market-service';
 import { DEFAULT_INTERVAL, parseInterval } from '@/lib/market-candles';
@@ -28,7 +28,7 @@ export const runtime = 'nodejs';
 // 【不判禁言】与 quote / sell 同侧：禁言是「不能说话」，不该顺带变成「不能看盘」
 // —— 他恰恰要靠这张图决定要不要止损。六处判定不对称的完整理由见 sell 路由头部。
 //
-// 【但**判专注模式**】专注是本人一键可关的偏好，不是「被施加、只能等」的状态 ——
+// 【但**判「屏蔽鱼干练手盘」**】专注屏蔽是本人一键可关的偏好，不是「被施加、只能等」的状态 ——
 // 挡掉看盘口不会把人困在仓位里（关掉专注就都回来了）。所以上面那条不对称的铁律
 // 不适用于它，别照着「别挡只读口」把它也放过。见 buy 路由头部。
 //
@@ -42,7 +42,7 @@ export async function GET(req: Request) {
   const user = await getCurrentUser();
   if (!user) return apiErr(401, '请先登录');
   if (!isCoreUser(user)) return apiErr(403, '需要核心用户权限');
-  if (user.focusMode) return apiErr(403, FOCUS_MODE_BLOCKED_TITLE);
+  if (isFocusFishTradeBlocked(user)) return apiErr(403, FOCUS_MODE_BLOCKED_TITLE);
 
   const params = new URL(req.url).searchParams;
   const symbol = parseSymbol(params.get('symbol'));

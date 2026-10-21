@@ -1,5 +1,6 @@
 import { getCurrentUser, isCoreUser, isCurrentlyBanned } from '@/lib/auth';
 import { apiErr, apiOk } from '@/lib/format';
+import { isFocusLobbyBlocked } from '@/lib/focus-mode';
 import { suggestMentionUsers } from '@/lib/mention-service';
 
 // GET /api/mentions/users?kind=comment|chat&id=<文章或会话>&q=<用户名前缀>
@@ -15,7 +16,10 @@ export async function GET(req: Request) {
   if ((kind !== 'comment' && kind !== 'chat') || !id || !/^[\p{L}\p{N}_-]{0,20}$/u.test(query)) {
     return apiErr(400, '无效的提及搜索参数');
   }
-  const users = await suggestMentionUsers({ kind, id }, query, user);
+  const users = await suggestMentionUsers({ kind, id }, query, {
+    id: user.id,
+    lobbyBlocked: isFocusLobbyBlocked(user),
+  });
   if (!users) return apiErr(404, '评论区或会话不可访问');
   return apiOk({ users });
 }

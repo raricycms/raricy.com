@@ -193,7 +193,7 @@ export default function ChatApp({
   initialChannel,
   initialMessage,
   initialSidebarCollapsed = false,
-  initialFocusMode = false,
+  initialLobbyBlocked = false,
 }: {
   currentUserId: string;
   currentUsername: string;
@@ -207,11 +207,12 @@ export default function ChatApp({
   /** SSR 首屏折叠态：/chat 服务端页读 chat_sidebar_collapsed cookie 传入（见 chat-sidebar-pref.ts） */
   initialSidebarCollapsed?: boolean;
   /**
-   * 专注模式的首屏值（服务端按 user.focusMode 传入）：默认不落大区、大区行不可用。
-   * ⚠️ 它是**SSR 冻住的**，另一标签页改了这个开关它不会变 —— 所以只当初始值用，
-   * 要判「现在是不是专注模式」看下面的 `focusMode`。
+   * 大区是否被专注模式屏蔽的首屏值（服务端按 isFocusLobbyBlocked(user) 传入）：
+   * 默认不落大区、大区行不可用。
+   * ⚠️ 它是**SSR 冻住的**，另一标签页改了「屏蔽大区」它不会变 —— 所以只当初始值用，
+   * 要判「现在大区是否可用」看下面的 `lobbyBlocked`。
    */
-  initialFocusMode?: boolean;
+  initialLobbyBlocked?: boolean;
 }) {
   const router = useRouter();
 
@@ -343,12 +344,13 @@ export default function ChatApp({
   );
 
   /**
-   * 当前是不是专注模式：SSR 的首屏值 **或** 频道列表里出现了不可用的行。
-   * 后者才是「现在」的真相 —— poll 每 60 秒整表替换一次，另一标签页打开专注模式时
-   * 这边会随之看到一行 `disabled`。只用 initialFocusMode 的话，主区空态会永远停在
-   * 「加载中…」（与侧栏那句「暂无会话」互相打架），因为它认的是冻住的首屏值。
+   * 当前大区是否不可用：SSR 的首屏值 **或** 频道列表里出现了不可用的行。
+   * 后者才是「现在」的真相 —— poll 每 60 秒整表替换一次，另一标签页打开
+   * 「屏蔽大区」时这边会随之看到一行 `disabled`。只用 initialLobbyBlocked 的话，
+   * 主区空态会永远停在「加载中…」（与侧栏那句「暂无会话」互相打架），因为它认的是
+   * 冻住的首屏值。
    */
-  const focusMode = initialFocusMode || channels.some((c) => c.disabled);
+  const lobbyBlocked = initialLobbyBlocked || channels.some((c) => c.disabled);
 
   /**
    * 任何一个会话有未读提示 → 移动端汉堡按钮上标红点。抽屉拉开时红点隐藏
@@ -1881,13 +1883,13 @@ export default function ChatApp({
           </>
         ) : (
           <div className="chat-main__empty">
-            {channelsLoaded && focusMode ? (
+            {channelsLoaded && lobbyBlocked ? (
               <>
-                已开启专注模式，讨论大区暂不可用。可发起私聊，或{' '}
+                已开启专注模式，讨论大区已被屏蔽。可发起私聊，或{' '}
                 <Link className="chat-main__focus-link" href={FOCUS_MODE_SETTINGS_HREF}>
                   前往设置
                 </Link>{' '}
-                关闭专注模式。
+                调整屏蔽范围。
               </>
             ) : (
               '加载中…'

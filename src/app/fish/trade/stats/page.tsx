@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { redirect, forbidden } from 'next/navigation';
 import { getCurrentUser, isCoreUser } from '@/lib/auth';
+import { isFocusFishTradeBlocked } from '@/lib/focus-mode';
 import { loginUrlWithNext } from '@/lib/safe-url';
 import { getMarketStats } from '@/lib/market-stats-service';
 import {
@@ -57,9 +58,9 @@ export default async function FishTradeStatsPage() {
   const user = await getCurrentUser();
   if (!user) redirect(loginUrlWithNext('/fish/trade/stats'));
   if (!isCoreUser(user)) forbidden();
-  // 专注模式：统计页也在闸内（它是练手盘的一部分，不是另一件事）。文案同上：
+  // 专注模式屏蔽了练手盘：统计页也在闸内（它是练手盘的一部分，不是另一件事）。
   // forbidden() 收不了参数，而入口整段不渲染 —— 解释只剩 /settings 的专注模式说明。
-  if (user.focusMode) forbidden();
+  if (isFocusFishTradeBlocked(user)) forbidden();
 
   const [stats, positions, quoteData] = await Promise.all([
     getMarketStats(user.id),

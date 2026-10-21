@@ -1,6 +1,6 @@
 import { apiOk, apiErr } from '@/lib/format';
 import { getCurrentUser, isCoreUser } from '@/lib/auth';
-import { FOCUS_MODE_BLOCKED_TITLE } from '@/lib/focus-mode';
+import { FOCUS_MODE_BLOCKED_TITLE, isFocusFishTradeBlocked } from '@/lib/focus-mode';
 import { closePosition } from '@/lib/market-service';
 
 // Prisma 与 node:crypto 需 Node 运行时（非 Edge）。
@@ -30,7 +30,7 @@ export const runtime = 'nodejs';
 // 真要断掉一个人的鱼干路，用的是封号，不是把人锁在仓位里。
 // 页面 /fish/trade 照旧不藏入口（点了买入才拿 403），与签到、讨论同款。
 //
-// ⚠️ 上面这张表**只讲禁言**。专注模式不做这种不对称：开启者在六处一律拿不到东西
+// ⚠️ 上面这张表**只讲禁言**。「屏蔽鱼干练手盘」不做这种不对称：开启时四个接口一律拿不到东西
 // （含只读的 quote / candles 与统计页）—— 理由是专注本人一键可关，不会把人困住。
 // 别把这张表当成「新判定该长什么样」的模板。见 buy 路由头部。
 //
@@ -46,9 +46,9 @@ export async function POST(req: Request) {
   const user = await getCurrentUser();
   if (!user) return apiErr(401, '请先登录');
   if (!isCoreUser(user)) return apiErr(403, '需要核心用户权限');
-  // 专注模式挡平仓，这与上面「禁言不挡平仓」不矛盾 —— 别顺着那条推论给这里开个口子：
+  // 专注模式屏蔽了练手盘时挡平仓，这与上面「禁言不挡平仓」不矛盾 —— 别顺着那条推论给这里开个口子：
   // 禁言的活路来自「他只能等，所以必须留出出仓的路」；专注是他自己一键可关的偏好。
-  if (user.focusMode) return apiErr(403, FOCUS_MODE_BLOCKED_TITLE);
+  if (isFocusFishTradeBlocked(user)) return apiErr(403, FOCUS_MODE_BLOCKED_TITLE);
 
   let body: Record<string, unknown>;
   try {

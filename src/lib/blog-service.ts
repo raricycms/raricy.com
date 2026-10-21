@@ -40,9 +40,9 @@
 //   另一条：对外列表的行**不带任何计数**（点赞/评论/鱼干）—— 对外视图没有评论区，
 //   卡片上写「评论 12」却翻不到评论是自相矛盾的。由 select 保证，不靠渲染层自觉。
 //
-// 【6】（第 2 期）`exclude_from_all` 与 `focus_hidden` **不作用于对外列表**。它们分别是
-//   站内「全部文章」的陈列规则与账号级浏览偏好，而对外列表的资格只有一条：
-//   `visibility = public`。混合它们会直接破坏【5】。
+// 【6】（第 2 期）`exclude_from_all` 与专注屏蔽 **不作用于对外列表**。它们分别是
+//   站内「全部文章」的陈列规则与账号级浏览偏好（用户自选栏目，未自定义时用站长标记的
+//   默认集合），而对外列表的资格只有一条：`visibility = public`。混合它们会直接破坏【5】。
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { prisma } from './db';
@@ -138,8 +138,14 @@ export interface ListParams {
   featured?: boolean;
   search?: string | null;
   sort?: BlogSort;
-  /** 查看者开启了专注模式：过滤 focusHidden 栏目（含其子栏目）下的文章。 */
-  focusMode?: boolean;
+  /**
+   * 查看者在专注模式下要屏蔽的栏目 id（**已展开子栏目**，由 focus-service 算好）。
+   * `null` / 空数组 = 不启用栏目过滤。
+   *
+   * 别在这里读 `categories.focusHidden`：那是站长标记的**默认集合**，用户自定义
+   * 之后就不再是真相。解析口径只有 `focus-service.ts` 一处。
+   */
+  focusHiddenCategoryIds?: readonly number[] | null;
   /**
    * 搜索字段。**缺省 = DEFAULT_SEARCH_FIELDS（标题 / 简介 / 作者名）**，与既有行为逐字一致；
    * 传空数组也回退到这个默认值（避免 `OR: []` 静默变成「不过滤」而返回全站文章）。
@@ -219,26 +225,22 @@ async function blogListWhere(params: ListParams): Promise<Prisma.BlogWhereInput>
     }
   }
 
-  // 专注模式（个人视图）：排除 focusHidden 栏目及其子栏目下的文章。
+  // 专注模式（个人视图）：排除查看者自选屏蔽的栏目及其子栏目下的文章。
+  // ids 已由 focus-service.resolveFocusHiddenCategoryIds 展开过子栏目，且已区分
+  // 「未自定义 → 站长默认集合」与「明确一个都不屏蔽（空数组）」。
   // 与 exclude_from_all 的区别：
-  //   • exclude 是全站生效、只认启用的栏目；focusHidden 对「开启专注模式的人」生效，
-  //     含已停用栏目 —— 站长标记的是"栏目范畴"，停用与否不改变"这板子是水区"的语义。
-  //   • categorySlug 指向被标记栏目时，slug 分支的 `in` 与这里的 `notIn` 交集为空，
+  //   • exclude 是全站生效、只认启用的栏目；专注屏蔽对「这个查看者」生效，
+  //     含已停用栏目 —— 屏蔽的是"栏目范畴"，停用与否不改变"这板子是水区"的语义。
+  //   • categorySlug 指向被屏蔽栏目时，slug 分支的 `in` 与这里的 `notIn` 交集为空，
   //     列表自然为空 —— URL 显式点进来也看不到。
-  if (params.focusMode) {
-    const flagged = await prisma.category.findMany({
-      where: { focusHidden: true },
-      select: { id: true, children: { select: { id: true } } },
-    });
-    const focusIds = flagged.flatMap((c) => [c.id, ...c.children.map((x) => x.id)]);
-    if (focusIds.length) {
-      // AND 语义可能与上面的 exclude 分支叠加；AND 类型是 where 对象或数组，
-      // 与 search 分支同一写法（先展开既有元素再并新条件），避免互相覆盖。
-      where.AND = [
-        ...(Array.isArray(where.AND) ? where.AND : where.AND ? [where.AND] : []),
-        { OR: [{ categoryId: null }, { categoryId: { notIn: focusIds } }] },
-      ];
-    }
+  if (params.focusHiddenCategoryIds?.length) {
+    const focusIds = params.focusHiddenCategoryIds;
+    // AND 语义可能与上面的 exclude 分支叠加；AND 类型是 where 对象或数组，
+    // 与 search 分支同一写法（先展开既有元素再并新条件），避免互相覆盖。
+    where.AND = [
+      ...(Array.isArray(where.AND) ? where.AND : where.AND ? [where.AND] : []),
+      { OR: [{ categoryId: null }, { categoryId: { notIn: [...focusIds] } }] },
+    ];
   }
 
   // 片段补全在 listBlogs 内也使用相同的 trim 与默认字段口径。
@@ -265,12 +267,17 @@ async function blogListWhere(params: ListParams): Promise<Prisma.BlogWhereInput>
   return where;
 }
 
-/** 侧栏数字不随搜索/栏目变化；范围计数与列表共用同一套栏目、专注模式与软删规则。 */
-export async function getBlogDirectorySummary(userId: string, focusMode: boolean) {
+/** 侧栏数字不随搜索/栏目变化；范围计数与列表共用同一套栏目、专注屏蔽与软删规则。 */
+export async function getBlogDirectorySummary(
+  userId: string,
+  focusHiddenCategoryIds: readonly number[] | null
+) {
   const scopes = ['mine', 'liked', 'commented', 'fed'] as const;
   const [allWhere, ...personalWheres] = await Promise.all([
-    blogListWhere({ focusMode }),
-    ...scopes.map((kind) => blogListWhere({ focusMode, personalScope: { kind, userId } })),
+    blogListWhere({ focusHiddenCategoryIds }),
+    ...scopes.map((kind) =>
+      blogListWhere({ focusHiddenCategoryIds, personalScope: { kind, userId } })
+    ),
   ]);
   const [[all, mine, liked, commented, fed], received] = await Promise.all([
     Promise.all([allWhere, ...personalWheres].map((where) => prisma.blog.count({ where }))),

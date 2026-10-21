@@ -131,7 +131,7 @@ it('历史、搜索、断线补齐与发送响应都读作者当前气泡，装�
   const sent = await sendMessage({ channelId: 'lobby', authorId: user.id, content: 'bubble-marker' });
   expect(sent.ok).toBe(true);
   const frames: string[] = [];
-  const unsubscribe = subscribe({ userId: user.id, focusMode: false, write: (s) => { frames.push(s); return true; }, close: () => {} });
+  const unsubscribe = subscribe({ userId: user.id, lobbyBlocked: false, write: (s) => { frames.push(s); return true; }, close: () => {} });
   try {
     await grantBubble({ userId: user.id, key: KEY, expiresAt: null, source: 'cli' });
     await equipBubble(user.id, KEY);

@@ -8,7 +8,7 @@ import type { MentionScope, MentionUser } from './mention-shared';
 export async function suggestMentionUsers(
   scope: MentionScope,
   query: string,
-  viewer: { id: string; focusMode: boolean },
+  viewer: { id: string; lobbyBlocked: boolean },
 ): Promise<MentionUser[] | null> {
   const where: Prisma.UserWhereInput = {
     role: { in: ['core', 'admin', 'owner'] },
@@ -22,16 +22,21 @@ export async function suggestMentionUsers(
     });
     if (!blog) return null;
   } else {
-    const access = await canAccessChannel(scope.id, viewer.id, viewer.focusMode);
+    const access = await canAccessChannel(scope.id, viewer.id, viewer.lobbyBlocked);
     if (!access.allowed) return null;
-    // 与讨论提及通知同档：禁言者进不了讨论，大区对专注模式账号不可见。
+    // 与讨论提及通知同档：禁言者进不了讨论，大区对「屏蔽了大区」的账号不可见。
     where.OR = [
       { isBanned: false }, { isBanned: null }, { banUntil: { lt: nowForDb() } },
     ];
     where.chatMembers = access.kind === CHAT_KIND_LOBBY
       ? { none: { channelId: scope.id, mutedAt: { not: null } } }
       : { some: { channelId: scope.id, mutedAt: null } };
-    if (access.kind === CHAT_KIND_LOBBY) where.focusMode = false;
+    // 大区候选人不含「专注模式屏蔽了大区」的账号（他们收不到大区 @ 通知，列出来
+    // 会让发送者以为叫得动）。判据与 chat-service 共用 isFocusLobbyBlocked：
+    // NOT (focusMode AND focusBlockLobby)。
+    if (access.kind === CHAT_KIND_LOBBY) {
+      where.NOT = { focusMode: true, focusBlockLobby: true };
+    }
   }
   return prisma.user.findMany({
     where, select: { id: true, username: true }, orderBy: { username: 'asc' }, take: 8,

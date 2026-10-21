@@ -20,6 +20,7 @@
 import { canAccessChannel } from '@/lib/chat-service';
 import { reportViewing } from '@/lib/chat-presence';
 import { apiOk } from '@/lib/format';
+import { isFocusLobbyBlocked } from '@/lib/focus-mode';
 import { requireChatUser } from '../../../_auth';
 
 export async function POST(_req: Request, ctx: { params: Promise<{ id: string }> }) {
@@ -27,7 +28,7 @@ export async function POST(_req: Request, ctx: { params: Promise<{ id: string }>
   if (user instanceof Response) return user;
 
   const { id } = await ctx.params;
-  const access = await canAccessChannel(id, user.id, user.focusMode);
+  const access = await canAccessChannel(id, user.id, isFocusLobbyBlocked(user));
   if (access.allowed) reportViewing(user.id, id);
 
   return apiOk({});

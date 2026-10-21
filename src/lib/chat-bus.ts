@@ -25,8 +25,8 @@ export { sseFrame };
 
 export interface ChatSubscriber {
   userId: string;
-  /** 连接建立时的专注模式：大区广播要跳过开启者（他进不去大区） */
-  focusMode: boolean;
+  /** 连接建立时大区是否被专注模式屏蔽：大区广播要跳过这类连接（他进不去大区） */
+  lobbyBlocked: boolean;
   /** 写入一帧；返回 false 表示下游背压（调用方会断开该连接） */
   write: (chunk: string) => boolean;
   /** 关闭连接（背压时由 bus 调用） */
@@ -109,27 +109,28 @@ export function publishToUsers(
 
 /**
  * 广播给所有在线连接（大区消息）。
- * skipFocusMode：专注模式开启者看不到大区，不应收到大区消息（对齐服务端访问控制）。
+ * skipLobbyBlocked：专注模式屏蔽了大区的连接看不到大区，不应收到大区消息
+ * （对齐服务端访问控制）。
  */
 export function publishToAll(
   event: ChatStreamEvent,
   id?: number,
-  opts: { skipFocusMode?: boolean } = {}
+  opts: { skipLobbyBlocked?: boolean } = {}
 ): void {
   const chunk = sseFrame(event, id);
   for (const set of state.subs.values()) {
     for (const sub of set) {
-      if (opts.skipFocusMode && sub.focusMode) continue;
+      if (opts.skipLobbyBlocked && sub.lobbyBlocked) continue;
       deliverOne(sub, chunk);
     }
   }
 }
 
 /**
- * 踢掉某用户的全部连接（封禁 / 降权 / 专注模式变更时调用）。
+ * 踢掉某用户的全部连接（封禁 / 降权 / 专注模式的大区屏蔽变更时调用）。
  * 连接断开后浏览器会自动重连 → 新连接重新走 requireChatUser 鉴权：
  *   · 已无权 → 403 → EventSource 按规范「fail the connection」不再重试；
- *   · 只是专注模式变了 → 重连成功并带上新的 focusMode。
+ *   · 只是大区屏蔽变了 → 重连成功并带上新的 lobbyBlocked。
  */
 export function kickUser(userId: string): void {
   const set = state.subs.get(userId);

@@ -1,6 +1,6 @@
 import { apiOk, apiErr } from '@/lib/format';
 import { getCurrentUser, isCoreUser } from '@/lib/auth';
-import { FOCUS_MODE_BLOCKED_TITLE } from '@/lib/focus-mode';
+import { FOCUS_MODE_BLOCKED_TITLE, isFocusFishTradeBlocked } from '@/lib/focus-mode';
 import { getCachedQuotes } from '@/lib/market-price';
 import { MARKET_FEE_RATE, MIN_STAKE_FISH, displaySymbol } from '@/lib/market-service';
 
@@ -21,14 +21,14 @@ export const runtime = 'nodejs';
 // 那一刻（轮询被 403、面板静默丢弃），卖出弹窗里的「预计到手」就是拿一个旧价算的
 // —— 那正是这个功能最不能有的东西。六处判定不对称的理由见 sell 路由头部。
 //
-// 【但**判专注模式**】专注与禁言不是一类：专注是本人一键可关的偏好，挡掉只读口
-// 不会把人困在仓位里（他关掉就都回来了）。所以这条不对称**不适用于专注模式** ——
+// 【但**判「屏蔽鱼干练手盘」**】专注屏蔽与禁言不是一类：它是本人一键可关的偏好，挡掉只读口
+// 不会把人困在仓位里（他取消勾选就都回来了）。所以这条不对称**不适用于专注屏蔽** ——
 // 别照着上面那句「只读展示，别挡」把它也放过。见 buy 路由头部。
 export async function GET() {
   const user = await getCurrentUser();
   if (!user) return apiErr(401, '请先登录');
   if (!isCoreUser(user)) return apiErr(403, '需要核心用户权限');
-  if (user.focusMode) return apiErr(403, FOCUS_MODE_BLOCKED_TITLE);
+  if (isFocusFishTradeBlocked(user)) return apiErr(403, FOCUS_MODE_BLOCKED_TITLE);
 
   const { quotes, ok } = await getCachedQuotes();
 
