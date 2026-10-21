@@ -661,7 +661,7 @@ function initSiteChrome() {
         : { matches: false, addEventListener: function () {}, removeEventListener: function () {} };
     function isMobile() { return mqMobile.matches; }
 
-    // 收起方向现在也有动画（_header.scss：面板 340ms 收回，期间 visibility 仍是
+    // 收起方向现在也有动画（_header.scss：面板 220ms 收回，期间 visibility 仍是
     // visible）—— 但里面的链接要**立即**退出焦点序列，同 .site-user-dropdown-panel
     // 的处理，靠 inert 而不是等 visibility 那一刀。
     // ⚠️ 只在移动端置 inert：桌面端的 collapse 是常显的，误置等于整条顶栏点不动。

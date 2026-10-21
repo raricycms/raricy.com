@@ -118,17 +118,26 @@
   //   挡住；抬到山脊之上就穿帮：两颗天体同时挂在天上（它们只靠不透明度交替）。
   // · y 越靠上（半径越小）弧越短 —— 时长不变时两颗都走得越慢，天体也从山脊后露头越早。
   //   原先压到画幅底部的 800 半径 615，八成多的路程看不见，观感是「点一下 → 等零点几秒
-  //   → 月亮忽然冒出来」；贴到山脊下的 480（半径 295）弧长减半而 0.6s 不变，
-  //   于是移动慢一倍、月亮半程就露头，到位的时刻与改前一样。
+  //   → 月亮忽然冒出来」；贴到山脊下的 480（半径 295）弧长减半而时长不变（300ms），
+  //   于是移动慢一倍、月亮半程就露头。
   // 视差由外层控制；JS 只更新旋转角度，无 JS 时也有正确的日月静态位置。
   &__sun,
   &__moon {
     transform-box: view-box;
     transform-origin: 1375px 480px;
-    // 首尾速度降到零，中段连续加速与减速，避免启动和落定时突然刹停。
-    transition: transform 0.7s cubic-bezier(.45, 0, .55, 1), opacity 0.47s ease;
+    // 300ms 与 public/static/js/core/base.js 的 theme-colors 时间线**同速**
+    // （那里 `new KeyframeEffect(…, { duration: 300, easing: 'ease' })`）：
+    // 日月转过半圈的同时底色/文字/山体也在换色，两边差一截就会出现
+    // 「景已经换完了、天还在转」的割裂。**改一处要改两处。**
+    // 缓动取中段明显加速的非线性曲线：半圈行程短，匀速曲线读起来像「滑过去」，
+    // cubic-bezier(.76, 0, .24, 1) 起步与落定都快收住，读起来是「翻过去」。
+    transition: transform 0.3s cubic-bezier(.76, 0, .24, 1),
+                opacity 0.3s cubic-bezier(.76, 0, .24, 1);
 
-    circle { transition: fill 0.6s ease, stroke 0.6s ease; }
+    // circle 的 fill/stroke 也 300ms（保留 ease）：base.js 那条换色动画同样只跑
+    // 300ms，留长了自己这份过渡会在 WAAPI 动画结束后再拖一截，暗色天体的 fill
+    // 会晚到一步。
+    circle { transition: fill 0.3s ease, stroke 0.3s ease; }
   }
 
   &__sun { transform: rotate(var(--hero-orbit-angle)); opacity: 1; }
