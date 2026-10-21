@@ -16,11 +16,15 @@
 // 【回复是「就地」的】点某条评论的「回复」，表单整块移动到那条评论下方（不是弹窗）。
 // 这是评论与讨论的语义差异：讨论回复是引用一条消息，评论回复是挂到某个父级下面
 // （parent_id 决定楼中楼的位置）。两边的输入区长得一样，语义不混。
+//
+// 【每层一张卡 + 可折叠】每条评论（每一层）都是一张独立卡片，底色按层深交替
+// 一级 / 二级卡片色（根 = 一级）。带子楼的评论在身份行右侧有一颗箭头，点击把
+// 子回复整棵折叠 —— 折叠状态在 CommentSection 的 Set<string> 里，见 collapsedIds。
 // ─────────────────────────────────────────────────────────────────────────────
 
 import Link from 'next/link';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { BookOpenText, CornerUpLeft, Heart, MessageCircle, Trash2 } from 'lucide-react';
+import { BookOpenText, ChevronDown, CornerUpLeft, Heart, MessageCircle, Trash2 } from 'lucide-react';
 import RichComposer, { type ComposerBlogQuote } from './RichComposer';
 import QuoteBlogModal from './QuoteBlogModal';
 import ImageLightbox from './ImageLightbox';
@@ -118,6 +122,17 @@ function countComments(nodes: CommentNode[]): number {
   return nodes.reduce((total, n) => total + 1 + countComments(n.children), 0);
 }
 
+/**
+ * 每一条评论都是一张卡，按层深交替一级 / 二级卡片色（根 = 一级，子 = 二级，
+ * 孙 = 一级 …）。颜色写成 CSS 变量由 SCSS 消费 —— 层深是运行期才知道的，
+ * 为每个深度写一条选择器既不封顶也不好维护（深层楼中楼 e2e 会造 20 层）。
+ * 变量名与消费点在 pages/blog/_comments.scss 的 .comment-item。
+ */
+const COMMENT_CARD_BG = [
+  'var(--color-background-card)',
+  'var(--color-background-content)',
+] as const;
+
 interface Props {
   blogId: string;
   /** 当前登录用户 id；未登录传 null。用于显示删除入口。 */
@@ -190,6 +205,22 @@ export default function CommentSection({
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   /** 正在请求中的评论 id —— 防连点（乐观更新已经把界面改过了，再点一次会来回翻）。 */
   const likeBusyRef = useRef<Set<string>>(new Set());
+  /**
+   * 已折叠子回复的评论 id。状态放在这里而不是每条 CommentItem 自己身上：
+   * 递归组件各自持有时，父级重渲染（点赞 / 删除 / 发新评论触发 load）会把
+   * 子级折叠状态重置成展开 —— 看起来像是「点了没反应」。Set 里只放 id，
+   * 新拉回来的评论天然是展开的。
+   */
+  const [collapsedIds, setCollapsedIds] = useState<Set<string>>(() => new Set());
+
+  const toggleCollapsed = useCallback((id: string) => {
+    setCollapsedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
 
   // 删除确认模态框状态（两步删除：确认之后可能还要填原因）
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
@@ -456,6 +487,7 @@ export default function CommentSection({
               <CommentItem
                 key={c.id}
                 node={c}
+                depth={0}
                 currentUserId={currentUserId}
                 isAdmin={isAdmin}
                 onReply={(n) =>
@@ -467,6 +499,8 @@ export default function CommentSection({
                 canComment={canComment}
                 replyTo={replyTo}
                 replyForm={form}
+                collapsedIds={collapsedIds}
+                onToggleCollapse={toggleCollapsed}
               />
             ))}
           </ul>
@@ -547,6 +581,7 @@ export default function CommentSection({
 
 function CommentItem({
   node,
+  depth,
   currentUserId,
   isAdmin,
   onReply,
@@ -556,8 +591,12 @@ function CommentItem({
   canComment,
   replyTo,
   replyForm,
+  collapsedIds,
+  onToggleCollapse,
 }: {
   node: CommentNode;
+  /** 层深：根评论 0，回复 1，孙回复 2 …（卡片底色按 depth % 2 交替）。 */
+  depth: number;
   currentUserId: string | null;
   isAdmin: boolean;
   onReply: (node: CommentNode) => void;
@@ -567,8 +606,13 @@ function CommentItem({
   canComment: boolean;
   replyTo: ReplyTarget | null;
   replyForm: React.ReactNode;
+  collapsedIds: Set<string>;
+  onToggleCollapse: (id: string) => void;
 }) {
   const authorName = node.author.username ?? '匿名用户';
+  const hasChildren = node.children.length > 0;
+  const childrenId = `comment-children-${node.id}`;
+  const collapsed = collapsedIds.has(node.id);
   // 接口时间仍是库内的 UTC+8 墙上时间，展示时不再按浏览器时区平移。
   const createdAt = node.created_at ? new Date(node.created_at) : null;
   const published = createdAt && !Number.isNaN(createdAt.getTime()) ? createdAt : null;
@@ -591,7 +635,12 @@ function CommentItem({
   );
 
   return (
-    <li className="comment-item">
+    <li
+      className="comment-item"
+      /* 每层一张卡：底色按层深交替（根 = 一级卡，子 = 二级卡，孙 = 一级卡…）。
+         SCSS 只读这个变量，不为任意深度写 N 条选择器。 */
+      style={{ '--comment-card-bg': COMMENT_CARD_BG[depth % 2] } as React.CSSProperties}
+    >
       <div className="comment-meta">
         {node.author.id ? (
           // 有账号的评论者：点击头像/名称跳转个人主页
@@ -620,6 +669,22 @@ function CommentItem({
           >
             {ymdhms(published)}
           </time>
+        )}
+        {/* 折叠子回复：只有带子楼的评论才有这颗箭头。只折 `ul.children`（整棵子树一起
+            隐藏），不动本条正文 / 操作行 / 就地回复表单。aria-expanded 跟着状态走，
+            aria-controls 指向子列表 —— 读屏能知道「这里还能展开」。 */}
+        {hasChildren && (
+          <button
+            type="button"
+            className="comment-collapse"
+            aria-expanded={!collapsed}
+            aria-controls={childrenId}
+            aria-label={collapsed ? '展开回复' : '收起回复'}
+            title={collapsed ? '展开回复' : '收起回复'}
+            onClick={() => onToggleCollapse(node.id)}
+          >
+            <ChevronDown aria-hidden="true" />
+          </button>
         )}
       </div>
 
@@ -699,12 +764,15 @@ function CommentItem({
       {/* 就地回复：表单移动到本条评论下方 */}
       {replyTo?.id === node.id && replyForm}
 
-      {node.children.length > 0 && (
-        <ul className="children comment-list">
+      {hasChildren && (
+        /* hidden 是折叠态的唯一开关：它让整棵子树退出排版（读屏与 Tab 也一起跳过），
+           不需要另加一行「display:none」的样式；展开时属性消失，列表照旧。 */
+        <ul className="children comment-list" id={childrenId} hidden={collapsed}>
           {node.children.map((child) => (
             <CommentItem
               key={child.id}
               node={child}
+              depth={depth + 1}
               currentUserId={currentUserId}
               isAdmin={isAdmin}
               onReply={onReply}
@@ -714,6 +782,8 @@ function CommentItem({
               canComment={canComment}
               replyTo={replyTo}
               replyForm={replyForm}
+              collapsedIds={collapsedIds}
+              onToggleCollapse={onToggleCollapse}
             />
           ))}
         </ul>

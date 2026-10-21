@@ -6,12 +6,19 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // 博客评论区（CommentSection.tsx）
 //
-// 【版式】与博客目录页同一套视觉语言：页面底色上摆一张张**白卡片**（30px 圆角、
-// 不描边、常态不托阴影），层级靠背景色阶（页面底 → 卡片 → 卡内子块）。
+// 【版式】页面底色上摆一张张卡片（不描边、常态不托阴影），层级靠**底色层级 +
+// 缩进**表达，不靠分割线：
 //   · 标题行：品牌淡底方框图标 + 「评论」 + 总数胶囊（数字走 .numeric）；
-//   · 发表评论：一张独立白卡，里面仍是与讨论区共用的 RichComposer；
-//   · 根评论：一张白卡，头像 + 作者 + 时间，正文/附件/操作在下一列；
-//   · 楼中楼：收进根评论卡里的一层淡色「回复槽」，槽内用细分隔线分条，不再画左侧竖条。
+//   · 发表评论：没有外卡 —— RichComposer 的面板本身就是字段（一级卡片色、20px
+//     圆角、聚焦光晕），直接坐在页面底色上；
+//   · 每一条评论（每一层）各自是一张卡：底色按层深交替一级 / 二级卡片色
+//     （根 = --color-background-card，子 = --color-background-content，孙 = 一级…）。
+//     颜色由 TSX 按 depth % 2 写成内联变量 --comment-card-bg，这里只读变量 ——
+//     不为任意深度写 N 条选择器（深层楼中楼 e2e 会造 20 层）；
+//   · 楼中楼：嵌套列表透明、只留左内距表达层级；**同层换卡不换线** —— 同级子评论
+//     之间没有 border-top 分割线，靠卡片间距隔开；
+//   · 带子楼的评论在身份行右侧有一颗折叠箭头（.comment-collapse），折叠时子列表
+//     用 hidden 退出排版。
 //
 // 【两条几何契约】tests/e2e/comment-layout.spec.ts 的用例钉着，改版时一并守住：
 //   ① 深层楼中楼不许把评论挤成「一行一个字」—— `.comment-item` 的 min-width 是**固定
@@ -19,10 +26,12 @@
 //   ② 横向溢出**只由顶层 `.comment-list` 接住**（overflow-x: auto），中间层必须保持
 //      visible，否则每层各画一条横条。页面与 `.blog-detail` 都不许长出横条。
 //
-// 【末尾空白不随层数累加】回复槽 `padding-bottom: 0`、有子楼的嵌套评论
-// `padding-bottom: 0`，最内层叶子自己的 padding 提供收尾留白；根评论卡保留自己的
-// 下内距，于是「最深一条 → 下一条根评论」的间距在任何层数下都是同一个值
-// （根卡下内距 + 根卡间距），不会像旧版那样每深一层多付一次内距 + 外边距。
+// 【末尾空白不随层数累加】嵌套列表没有下外边距；有**可见**子楼的嵌套评论
+// `padding-bottom: 0`（子卡片自己的下内距承担收尾），最内层叶子自己的 padding 提供
+// 收尾留白；根评论卡保留自己的下内距。于是「最深一条 → 下一条根评论」的间距在任何
+// 层数下都是同一个值（根卡下内距 + 根卡间距）。判据是
+// `:has(> .comment-list:not([hidden]))` —— 折叠起来的子列表不参与排版，评论要拿回
+// 自己的下内距。
 // ─────────────────────────────────────────────────────────────────────────────
 
 // ── 标题行 ──────────────────────────────────────────────────────────────────
@@ -81,38 +90,41 @@
     font-weight: 700;
 }
 
-// ── 输入区（与讨论共用 RichComposer，这里只补外面那张卡）──────────────────────
+// ── 输入区（与讨论共用 RichComposer，这里只换面板底色）────────────────────────
 //
 // 与讨论输入区共用同一份样式（components/_composer.scss），只是 BEM 前缀不同。
 // ⚠️ 不要在这里写 `.comment-form textarea { ... }`：那条选择器（0-1-1）会压过
 // `.comment-composer__input`（0-1-0），把面板内的透明输入框重新涂成卡片底色。
 @include composer.rich-composer('comment-composer');
 
+/* 顶部主输入框**没有外卡**：面板自己就是那个字段（多行 → 20px 圆角、聚焦光晕），
+   直接坐在页面底色上。所以 .comment-form 不再有背景 / 内距 / 圆角，只留与下方
+   评论列表的间距。 */
 .comment-form {
     margin: 0 0 16px;
-    padding: 18px 20px;
-    background: var(--color-background-card);
-    border-radius: v.$radius-card;
+    padding: 0;
+    background: transparent;
 }
 
-/* 输入面板的底色在讨论区是「页面底色」（它直接坐在页面底色上）。评论区这里外面多了一张
-   白卡，再用页面底色就只能勉强看出边界 —— 按「卡内子块用 content 一档」的总则换掉。
-   就地回复那张卡本身就是 content 底，面板退回页面底色。 */
+/* 面板在讨论区是页面底色（它直接坐在页面底色上）。评论区把它抬成一级卡片色 ——
+   于是「输入框」与「每条评论卡」是同一档表面，层级只有页面底 → 卡片两层。 */
 .comment-form .comment-composer__panel {
-    background: var(--color-background-content);
+    background: var(--color-background-card);
 }
 
-.comment-form.is-inline .comment-composer__panel {
-    background: var(--color-background-page);
-}
-
-/* 就地回复：表单挂到被回复那条评论下面。它已经在白卡/回复槽里，所以换一档更紧凑的
-   子块表面（内容底色），左侧缩进与正文列对齐（头像宽 + 间距），窄屏归零。 */
+/* 就地回复：表单挂到被回复那条评论下面。它已经坐在一张评论卡上，所以换一档可辨识的
+   表面（页面底色）+ 面板二级卡片色。两种评论卡底色上都分得出来：一级白卡上页面底色
+   更灰一圈，二级 content 卡上页面底色更亮、面板又与卡同色、隔着一圈页面底色。
+   左侧缩进与正文列对齐（头像宽 + 间距），窄屏归零。 */
 .comment-form.is-inline {
     margin: 14px 0 0 calc(var(--comment-avatar-size, 38px) + var(--comment-avatar-gap, 10px));
     padding: 12px;
-    background: var(--color-background-content);
+    background: var(--color-background-page);
     border-radius: v.$radius-field;
+}
+
+.comment-form.is-inline .comment-composer__panel {
+    background: var(--color-background-content);
 }
 
 /* 「匿名」勾选项 —— 只有评论区有（讨论区不传 anonToggle，那一整段根本不渲染）。
@@ -137,9 +149,9 @@
     }
 }
 
-/* 底条提示：共享 composer 用的是 `--color-text-tertiary`，那档在「内容底色」上
-   几乎看不见（浅色 #dde4ee on #eff2f5，暗色 #2b3036 on #21252A）。评论输入区把面板
-   换成了 content 底，所以这里补一档次要文字色 —— 只改评论，讨论区照旧。 */
+/* 底条提示：共享 composer 用的是 `--color-text-tertiary`，那档在卡片底色上
+   几乎看不见（浅色 #dde4ee on #fff，暗色 #2b3036 on #181A1D）。评论输入区把面板
+   抬成了一级卡片色，所以这里补一档次要文字色 —— 只改评论，讨论区照旧。 */
 .comment-composer__hint {
     color: var(--color-text-secondary);
 }
@@ -150,7 +162,7 @@
     width: 100%;
     margin: 0;
     padding: 0;
-    /* 父级已经是页面底色 / 白卡，这里显式 transparent 保持同一观感。 */
+    /* 父级是页面底色 / 评论卡，列表本身显式 transparent 保持同一观感。 */
     background-color: transparent;
     list-style: none;
     overflow-wrap: break-word;
@@ -166,14 +178,13 @@
     }
 }
 
-/* 楼中楼「回复槽」：根评论卡内部的一层淡色子块（内容色阶），承载所有后代回复。
-   缩进由这一层的左右内距承担（不再用 margin，margin 在 border-box 下会逐层向右溢出）。
-   中间层**必须**保持 overflow: visible —— 否则每层各画一条横条（见文件头②）。 */
-.comment-item > .comment-list {
-    margin: 14px 0 0;
-    padding: 14px 14px 0;
-    background: var(--color-background-content);
-    border-radius: 20px;
+/* 楼中楼：嵌套列表只负责「缩进 + 与父级正文的间距」，**不再是回复槽** ——
+   没有底色、圆角、内距。层级由这一层左内距表达（每深一层再缩进 14px），卡片自己
+   承担表面与间距。中间层**必须**保持 overflow: visible —— 否则每层各画一条横条
+   （见文件头②）。嵌套列表也不带下外边距：多一层就多一份下边距，末尾空白会随层数累加。 */
+.comment-item > .children.comment-list {
+    margin: 12px 0 0;
+    padding: 0 0 0 14px;
     overflow: visible;
 }
 
@@ -181,9 +192,15 @@
     /* 头像列宽度走变量：正文/操作区缩进读它，楼中楼自动换小一号。 */
     --comment-avatar-size: 38px;
     --comment-avatar-gap: 10px;
+    /* 每一条评论（每一层）都是独立卡片：底色由 TSX 按 depth % 2 写成
+       --comment-card-bg（一级 / 二级卡片色交替）。 */
     min-width: 240px;
-    padding: 16px 0;
-    border-top: 1px solid var(--color-border);
+    padding: 14px 16px;
+    background: var(--comment-card-bg, var(--color-background-card));
+    border-radius: 20px;
+    /* 同级卡片之间的间距：**换卡不换线** —— 旧的 border-top 分割线已删掉，
+       同层关系由「两张卡之间的留白」表达。 */
+    margin-bottom: 12px;
 
     /* 楼中楼里的评论（含更深层）统一小一号身份区：层级越深，头部越轻。 */
     .comment-item {
@@ -191,38 +208,31 @@
         --comment-avatar-gap: 9px;
     }
 
-    &:first-child {
-        border-top: none;
-    }
-}
-
-/* ★ 根评论卡：白底 30px 圆角，不描边、不托阴影；卡片之间留 14px 呼吸。
-   只有根评论是卡片，楼中楼是卡内子块 —— 否则深层每一层都画一圈卡片边，视觉会碎掉。 */
-.comment-section > .comment-list > .comment-item {
-    padding: 20px 22px;
-    margin-bottom: 14px;
-    background: var(--color-background-card);
-    border-top: none;
-    border-radius: v.$radius-card;
-    /* 根卡内可能既有回复槽又有回复表单，底部的收尾留白归根卡自己；
-       嵌套层则把下内距归零（见下一条），避免逐层累加。 */
+    /* 任何列表的最后一张卡都不留底部间距（间距是「两张卡之间」的属性）。 */
     &:last-child {
         margin-bottom: 0;
     }
 }
 
-/* 有子楼的**嵌套**评论：下内距归零。
-   不归零的话每一层要付两次账：本条 padding-bottom 16 + 回复槽自己的收尾；
-   父级的 padding 挡住外边距折叠、子级的外边距又算进父级高度 —— 两者相加，
-   层数越深末尾空白越大。归零后任何层数都只剩「最内层叶子的 padding + 根卡 padding」。 */
-.comment-item .comment-item:has(> .comment-list) {
-    padding-bottom: 0;
+/* ★ 根评论卡：一级卡片色 + 30px 圆角，卡片之间留 12px 呼吸。
+   根卡保留自己的下内距 —— 它就是「最深一条 → 下一根评论」的收尾留白。 */
+.comment-section > .comment-list > .comment-item {
+    padding: 20px 22px;
+    margin-bottom: 12px;
+    border-radius: v.$radius-card;
+
+    &:last-child {
+        margin-bottom: 0;
+    }
 }
 
-/* 回复槽的第一楼紧跟父楼，不要顶出一条线来断掉从属关系 */
-.comment-item .children .comment-item:first-child {
-    padding-top: 0;
-    border-top: none;
+/* 有**可见**子楼的嵌套评论：下内距归零。
+   不归零的话每一层要付两次账：本条 padding-bottom + 子列表的收尾；父级的 padding
+   挡住外边距折叠、子级的外边距又算进父级高度 —— 两者相加，层数越深末尾空白越大。
+   归零后任何层数都只剩「最内层叶子的 padding + 根卡下内距 + 根卡间距」。
+   判据带 :not([hidden])：折叠起来的子列表退出排版，评论这时要拿回自己的下内距。 */
+.comment-item .comment-item:has(> .comment-list:not([hidden])) {
+    padding-bottom: 0;
 }
 
 // ── 身份行（头像 / 作者 / 匿名标 / 时间）────────────────────────────────────
@@ -280,6 +290,31 @@
     margin-left: auto;
     font-size: 0.75rem;
     white-space: nowrap;
+}
+
+/* 折叠子回复的箭头：次级图标按钮（30px 命中区、不显示文字、不抢视线）。
+   状态只由 aria-expanded 表达（TSX 同步维护），样式跟着它走，不再另加会与 ARIA
+   不同步的类：展开时箭头朝下，收起时旋成朝右（-90°）。 */
+.comment-collapse {
+    @include m.btn-secondary($pointer-hover-only: true);
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    padding: 0;
+    border-radius: 8px;
+
+    svg {
+        width: 16px;
+        height: 16px;
+        transition: transform 0.2s ease;
+    }
+}
+
+.comment-collapse[aria-expanded='false'] svg {
+    transform: rotate(-90deg);
 }
 
 // ── 正文 / 附件 / 操作 ──────────────────────────────────────────────────────
@@ -444,7 +479,8 @@
     margin: 10px 0 0;
     padding: 8px 10px;
     /* 无描边（全站卡片口径）；整卡是 <a>、可点击，故 hover 改亮品牌蓝光晕提示可点。
-       底色用 subtle 而不是 content：后者与楼中楼回复槽同色，卡会「消失」在槽里。 */
+       底色用 subtle 而不是 content：后者是二级评论卡的底色，深层评论里卡会「消失」
+       在同色的正文块中。 */
     border-radius: v.$radius-large;
     background: var(--color-background-subtle);
     color: inherit;
@@ -571,8 +607,7 @@
     }
 
     .comment-form {
-        padding: 12px;
-        border-radius: 20px;
+        margin-bottom: 12px;
     }
 
     .comment-form.is-inline {
@@ -585,12 +620,19 @@
         padding: 16px;
         margin-bottom: 10px;
         border-radius: 20px;
+
+        &:last-child {
+            margin-bottom: 0;
+        }
     }
 
     /* 窄屏空间优先给正文：头像小一号，正文列不再让出缩进（退回卡片左边缘）。 */
     .comment-item {
         --comment-avatar-size: 32px;
         --comment-avatar-gap: 9px;
+        padding: 12px;
+        margin-bottom: 10px;
+        border-radius: 16px;
     }
 
     .comment-item .comment-item {
@@ -602,10 +644,10 @@
         padding-left: 0;
     }
 
-    .comment-item > .comment-list {
+    /* 窄屏层级缩进收窄到 10px（卡片内距也一起收），仍只由左内距表达层级。 */
+    .comment-item > .children.comment-list {
         margin-top: 10px;
-        padding: 10px 10px 0;
-        border-radius: 16px;
+        padding: 0 0 0 10px;
     }
 
     .comment-time {
@@ -633,6 +675,11 @@
 
 @media (prefers-reduced-motion: reduce) {
     .comment-blog {
+        transition: none;
+    }
+
+    /* 箭头方向仍要能看出折叠状态，只是不转那一下。 */
+    .comment-collapse svg {
         transition: none;
     }
 }

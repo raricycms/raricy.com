@@ -21,11 +21,15 @@
 //
 // 【2026-09-19：顶层列表成了**刻意**的横向滚动容器（第二条用例钉着它）】
 // 上面那条「溢出不许冒泡」只对**浅层**楼中楼成立。深层楼中楼另有两条契约：
-//   · 纵向：有子楼的评论下内距归零、嵌套列表下外边距归零，末尾空白不再随层数累加；
+//   · 纵向：有可见子楼的嵌套评论下内距归零、嵌套列表下外边距归零，末尾空白不再随层数累加；
 //   · 横向：`.comment-item` 有 min-width，跌破它时**只由 `.comment-section > .comment-list`
 //     接住**（那里是 overflow-x: auto）—— 中间层必须保持 visible，否则每层各画一条横条。
 // 于是「页面本身不横向滚动」这条老契约照旧，被允许溢出的只有那一个容器。
 // 细节见 pages/blog/_comments.scss 里 .comment-list / .comment-item 两处的整段说明。
+//
+// 【2026-10：楼中楼从「回复槽」改成每层一张卡】嵌套列表透明、只剩左内距表达层级，
+// 同级子评论之间不再有分割线（换卡不换线）。上面那些几何契约与判据**没有变**，
+// 只是「回复槽」这个词在本文件里指的是那条透明缩进列表。
 
 import { test, expect } from '@playwright/test';
 import { registerFreshUser, uniqueTag } from './helpers';
@@ -142,7 +146,7 @@ test('没有评论时显示空态，且列表里没有评论卡片', async ({ pa
 // 挡住外边距折叠、子级的下外边距又算进父级的 auto 高度，两者**相加**（不是取大者）
 // ⇒ 每深一层多付一份，层数越深末尾越大。
 //
-// 现版把「回复槽」的 `padding-bottom` 与「有子楼的嵌套评论」的 `padding-bottom` 归零，
+// 现版把「嵌套列表的下外边距」与「有可见子楼的嵌套评论的下内距」都归零，
 // 只留最内层叶子自己的 padding + 根评论卡下内距 + 卡片间距。于是判据是：
 // **浅链与深链末尾到下一根评论的间距必须一致**（与深度无关）。不写死具体 px ——
 // 那是实现细节（卡片内距 + 间距），改版时不该逼着用例跟着改数。
@@ -205,15 +209,17 @@ test('楼中楼末尾不再逐层累积空白', async ({ page }) => {
 // ── 深层楼中楼：最内层不许被挤成一个字宽，整片评论区共用一条横向滚动条 ──────────────
 //
 // 【为什么必须自己钉视口】两个 project 都跑这个文件，而触发深度取决于可用宽度：
-//   1280 桌面 → 可用约 868、回复槽每层左右各 14px，要二十多层才跌破 min-width；
-//   390 窄屏 → 可用 358、回复槽每层左右各 10px（≤768px 那档），第 12 层起跌破。
-// 不钉视口的话 desktop 那一遍得造二十多条评论，两遍测的还不是同一件事。
-// 固定 390 后两遍量到的几何完全一致，顺带走「窄屏回复槽压到 10px」那条分支。
+//   · 每深一层缩进 = 嵌套列表左内距（桌面 14 / 窄屏 10）+ 子评论卡左右内距
+//     （桌面 16＋16 / 窄屏 12＋12），桌面每层约 46px、窄屏每层约 34px；
+//   · 1280 桌面 → 可用约 868，要十几层才跌破 min-width；
+//   · 390 窄屏 → 可用 358，第 5 层（根算第 1 层）起就跌破。
+// 不钉视口的话 desktop 那一遍得造十几条评论，两遍测的还不是同一件事。
+// 固定 390 后两遍量到的几何完全一致，顺带走「窄屏缩进收窄」那条分支。
 // setViewportSize 必须在 goto **之前**（同 favorite-layout.spec.ts 的 at()）。
 const DEEP_VW = 390;
-// 390 下可用 358、根卡内距 16、回复槽每层 10px：第 12 层起被压到 min-width 以下。取 20 层 ——
-// 最内层左边缘 16 + 10×18 = 196、宽 240 ⇒ 右边缘 436，比 358 多出 78px，远大于 ±1px 容差。
-// 20 条评论远在 commentDaily（8000/天，无分钟档）之下。
+// 390 下可用 358、根卡内距 16、每层缩进 22（列表 10 + 卡片内距 12）：第 5 层起跌破
+// min-width。取 20 层 —— 最内层左边缘约 424、宽 240 ⇒ 右边缘 664，比 358 多出约 306px，
+// 远大于 ±1px 容差。20 条评论远在 commentDaily（8000/天，无分钟档）之下。
 const DEEP_LEVELS = 20;
 
 test('深层楼中楼：最内层不被挤窄，整片评论区共用一个横向滚动条', async ({ page }) => {
@@ -353,4 +359,64 @@ test('匿名勾选项挤进底条后：三样都在行内，且底条没有被�
   expect(geom!.anonInside, '勾选项跑到行外了').toBe(true);
   expect(geom!.sendInside, '提交按钮跑到行外了').toBe(true);
   expect(geom!.sameRow, '提交按钮被挤到下一行了').toBe(true);
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 折叠箭头：收起 / 展开子回复
+//
+// 折叠是纯客户端状态（CommentSection 的 Set<string>），接口层看不到；而「hidden 让
+// 整棵子树退出排版」只有真浏览器说得清。断三件事：
+//   ① 带子楼的评论才有箭头，叶子没有；
+//   ② 点一下：子列表不可见、aria-expanded 变 false，子孙一并被收起；
+//   ③ 再点回来：子列表重新可见、aria-expanded 变 true。
+// 另外钉住「只折本条子树」—— 另一条根评论的子回复不许被连带折叠。
+// ─────────────────────────────────────────────────────────────────────────────
+test('折叠箭头收起并重新展开子回复', async ({ page }) => {
+  await registerFreshUser(page, { core: true });
+  const blogId = await createBlog(page, `评论折叠 ${uniqueTag()}`);
+
+  const tag = uniqueTag();
+  const root = await postComment(page, blogId, `折叠根 ${tag}`);
+  const child = await postComment(page, blogId, `折叠子 ${tag}`, root);
+  await postComment(page, blogId, `折叠孙 ${tag}`, child);
+  const otherRoot = await postComment(page, blogId, `另一根 ${tag}`);
+  await postComment(page, blogId, `另一子 ${tag}`, otherRoot);
+
+  await page.goto(`/blog/${blogId}`);
+  // ⚠️ 必须 .last()：父级 li 的 textContent 包住整棵子树，祖先**都**命中 hasText。
+  await expect(page.locator('.comment-item', { hasText: `折叠孙 ${tag}` }).last()).toBeVisible();
+
+  const rootItem = page.locator('#comment-list > .comment-item', { hasText: `折叠根 ${tag}` });
+  const arrow = rootItem.locator(':scope > .comment-meta .comment-collapse');
+  const children = rootItem.locator(':scope > ul.children');
+
+  // ① 根有子楼 → 有箭头；孙子没有子楼 → 没有箭头
+  await expect(arrow).toHaveAttribute('aria-expanded', 'true');
+  await expect(arrow).toHaveAttribute('aria-label', '收起回复');
+  const childrenId = await children.getAttribute('id');
+  expect(childrenId, '子列表没有 id，aria-controls 就没有落点').toBeTruthy();
+  await expect(arrow).toHaveAttribute('aria-controls', childrenId!);
+  await expect(children).toBeVisible();
+  await expect(
+    page.locator('.comment-item', { hasText: `折叠孙 ${tag}` }).last().locator('.comment-collapse')
+  ).toHaveCount(0);
+
+  // ② 收起：子列表（含孙回复）不可见，ARIA 同步
+  await arrow.click();
+  await expect(arrow).toHaveAttribute('aria-expanded', 'false');
+  await expect(arrow).toHaveAttribute('aria-label', '展开回复');
+  await expect(children).toBeHidden();
+  await expect(
+    page.locator('.comment-item', { hasText: `折叠孙 ${tag}` }).last(),
+    '折叠父级后孙回复还看得见 —— hidden 没盖住整棵子树'
+  ).toBeHidden();
+
+  // 只折本条子树：另一条根评论的子回复照旧
+  await expect(page.locator('.comment-item', { hasText: `另一子 ${tag}` }).last()).toBeVisible();
+
+  // ③ 展开：子列表回来，状态复位
+  await arrow.click();
+  await expect(arrow).toHaveAttribute('aria-expanded', 'true');
+  await expect(children).toBeVisible();
+  await expect(page.locator('.comment-item', { hasText: `折叠孙 ${tag}` }).last()).toBeVisible();
 });
