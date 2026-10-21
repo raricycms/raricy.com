@@ -101,3 +101,61 @@ test('一言加载失败可单独重试，签到奖励已到账', async ({ page 
   await dialog.getByRole('button', { name: '重新加载' }).click();
   await expect(dialog.locator('blockquote')).toHaveText(classics[0].content);
 });
+
+// 弹窗的盒子高度会变两次以上：占位 → 正片（高得多），点「我也要投稿」换成表单，
+// 共鸣/收藏成功后卡片下方多一行反馈。**窄屏必须钉住上沿**：中心固定的话，每次高度
+// 变化都会把整个盒子上下各挪半个高度差（390×664 实测 130px），手机上网络慢、占位帧
+// 停留得久，用户看到的就是「弹窗突然移动又弹回来」。这里用延迟响应把占位帧固定下来，
+// 直接量两次的上沿。
+test('窄屏弹窗上沿固定、遮罩是平铺色', async ({ page, isMobile }) => {
+  await registerFreshUser(page, { core: true }); await publishBlog(page);
+  await page.route('**/api/daily-quotes/today', async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 800));
+    await route.continue();
+  });
+  await page.goto('/checkin'); await page.getByRole('button', { name: '每日签到', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: '每日一言', exact: true });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByRole('status')).toHaveText('正在打开今日一言…');
+  const placeholder = (await dialog.boundingBox())!;
+  await expect(dialog.locator('blockquote')).toBeVisible();
+  const loaded = (await dialog.boundingBox())!;
+
+  // 遮罩走 §3.6 的平铺令牌；全屏 backdrop-filter 在手机上既白烧 GPU，又是
+  // 「打开瞬间整块弹窗被合成到错误偏移」那类闪动的来源。
+  const backdrop = await dialog.evaluate((el) => {
+    const style = getComputedStyle(el, '::backdrop');
+    return { background: style.backgroundColor, filter: style.backdropFilter };
+  });
+  expect(backdrop.background).toBe('rgba(0, 0, 0, 0.5)');
+  expect(backdrop.filter).toBe('none');
+
+  if (isMobile) {
+    // 上沿不动、只向下长 —— 这是本条用例的全部意义
+    expect(loaded.y).toBeCloseTo(placeholder.y, 0);
+    expect(loaded.height).toBeGreaterThan(placeholder.height);
+    expect(loaded.y).toBeLessThan(30);
+  }
+  await page.unroute('**/api/daily-quotes/today');
+});
+
+// 签到成功的粒子环是按钮外的伪元素、再 scale 到 3×：手机上传出视口，整页会多一块
+// 横向可滚区域（修复前 390 宽的手机上 scrollWidth 到 539）。手机上页面能横着滚，
+// 手势/焦点就可能把视口横拖一段、动画结束溢出消失再被夹回 0 —— 表现是「整页连
+// 固定层突然右移半屏又弹回来」。这里按帧采样整段动画，只守「文档不许被撑宽」。
+test('签到粒子动画期间整页不出现横向滚动', async ({ page }) => {
+  await registerFreshUser(page, { core: true }); await publishBlog(page);
+  await page.goto('/checkin');
+  await page.getByRole('button', { name: '每日签到', exact: true }).click();
+  const widest = await page.evaluate(async () => {
+    const doc = document.documentElement;
+    let max = doc.scrollWidth;
+    const until = performance.now() + 900;
+    while (performance.now() < until) {
+      max = Math.max(max, doc.scrollWidth);
+      await new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
+    }
+    return { max, client: doc.clientWidth };
+  });
+  expect(widest.max).toBeLessThanOrEqual(widest.client);
+});

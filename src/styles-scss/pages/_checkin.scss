@@ -67,6 +67,17 @@
   @include m.container-padding;
   @include m.site-width-ladder;
 
+  /* 签到成功那圈「粒子」是 `.checkin-button__particles` 的两个伪元素：`inset: -12px`
+     之后再 scale 到 2.2× / 3×。按钮 260px 宽 ⇒ 外圈甩到约 850px，桌面上还在卡片
+     （约 930px）里面，手机上却整截跑到视口外 —— 于是**整个文档多出一块横向可滚
+     区域**（390 宽的手机实测 docScrollW 539，动画结束又回到 390）。手机上「页面能
+     横着滚」不只是难看：手势或焦点把视口横拖一段，动画一结束溢出消失、滚动位置被
+     夹回 0，「突然右移半屏又弹回来」正是这一类现象。
+     `clip` 只裁这一轴：纵向仍按 `.checkin-button` 的 overflow: visible 照旧溢出，
+     而且它不生成滚动容器（`hidden` 会把另一轴改成 auto，从而凭空多一个纵向滚动容器，
+     别换成 hidden）。 */
+  overflow-x: clip;
+
   @media (max-width: 768px) {
     padding-block: $space-6;
   }

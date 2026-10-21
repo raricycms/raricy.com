@@ -1,17 +1,38 @@
 @use '../abstracts/mixins' as m;
 
+// ── 每日一言弹窗（<dialog> + showModal，全站唯一一个） ──────────────────────
+//
+// 【窄屏为什么钉住上沿，而不是垂直居中】这个弹窗的内容是分两段到达的：先是
+// 「正在打开今日一言…」的占位，读到 `/api/daily-quotes/today` 之后才换成正片。
+// 盒子高度因此会跳一次（390×664 实测：占位 166px → 正片 425px）。用
+// `margin: auto` 垂直居中时，这次变化会让**整个盒子**上下各挪半个高度差（这里是
+// 130px）—— 手机上网络比桌面慢，占位那一帧会停留得足够久，用户看到的就是
+// 「弹窗突然被往下/上拽了半屏，然后又弹回来」。后面还有两次同类变化：点「我也要
+// 投稿」换成表单（高得多），共鸣/收藏成功后卡片下方多一行反馈。
+// 窄屏把上沿钉死（固定上外边距 + 下外边距 auto 吃掉剩余空间），高度只向下长，
+// 标题、「每日一言」和关闭按钮原地不动。宽屏这次加载通常在一帧内就完成（本机实测
+// 几十毫秒，肉眼看不到中间态），保留原来的居中。
+//
+// 【遮罩只用平铺色，不加 backdrop-filter】§3.6 的普通模态遮罩令牌就是
+// `rgba(0,0,0,.5)`。全屏高斯模糊在手机上要按帧重算整页，而遮罩本身是不透明的
+// 纯色层，模糊之后只剩一层脏灰；此外这一幕在手机上出现过「打开瞬间整块弹窗被
+// 合成到错误偏移、一帧后自己回来」的闪动，与这层全屏滤镜的初始化同时发生。
+// 弹窗自己的层级由 `--shadow-card-brand` 交代，够用。
 .daily-quote-dialog {
   border: 0;
   padding: 0;
   margin: auto;
+  /* width 自己带了 500px 上限，这里压掉 UA 的 `max-width: calc(100% - 6px - 2em)`
+     —— 那条会让手机上的左右留白变成 19px（100% - 6 - 32），而 width 算的是 16px。 */
   width: min(500px, calc(100vw - 32px));
+  max-width: none;
   max-height: calc(100dvh - 32px - var(--safe-top) - var(--safe-bottom));
   border-radius: 30px;
   color: var(--color-text-primary);
   background: var(--color-background-card);
   box-shadow: var(--shadow-card-brand);
   overflow-y: auto;
-  &::backdrop { background: rgba(0, 0, 0, .45); backdrop-filter: blur(6px); }
+  &::backdrop { background: rgba(0, 0, 0, .5); }
   &__body { padding: 28px; }
   &__header { display: flex; align-items: center; gap: 12px; margin-bottom: 24px;
     > div { flex: 1; }
@@ -58,6 +79,14 @@
 .daily-quote-submission-text { font-size: 1.125rem; line-height: 1.8; }
 .daily-quote-pagination { display: flex; flex-wrap: wrap; gap: 12px; margin: 20px 0; a[aria-current='page'] { color: var(--color-brand-primary); background: var(--color-brand-secondary); } }
 .checkin-quote-links { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 20px; margin-top: 24px; }
+
+/* 窄屏：上沿钉死（理由见文件头）。`<dialog>` 的 UA 样式是 `height: fit-content`，
+   所以固定上外边距 + `margin-bottom: auto` 只会让它贴顶，不会把盒子拉满视口；
+   内容超过 max-height 时仍然是弹窗内部滚动。 */
+@media (max-width: 768px) {
+  .daily-quote-dialog { margin: calc(12px + var(--safe-top)) auto auto; }
+}
+
 @media (max-width: 576px) {
   .daily-quote-dialog__body, .daily-quote-panel { padding: 20px; }
   .daily-quote-card__action { padding: 10px 12px; }
