@@ -123,7 +123,13 @@ export default function Navbar({
                         aria-label={`用户菜单：${user.username}`}
                         title={user.username}
                       >
-                        <span className="site-user-name">{user.username}</span>
+                        <span className="site-user-name">
+                          {/* 外层是固定宽度的裁剪窗，内层轨道只负责移动：手机端展开顶栏后，
+                              名字装不下时由 _header.scss 的动画让它自动左右往返（减少动态效果
+                              时退回手动横向滚动）。桌面端内层保持 inline，外层那条 ellipsis
+                              才继续生效（换成 inline-block 会让省略号消失）。 */}
+                          <span className="site-user-name__track">{user.username}</span>
+                        </span>
                         <Avatar
                           userId={user.id}
                           frameUrl={frameUrl}

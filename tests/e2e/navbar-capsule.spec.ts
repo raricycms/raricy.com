@@ -251,6 +251,97 @@ test('手机端用户名是固定宽度的文本框：名字过长横向滚动�
   }
 });
 
+test('手机端长用户名在顶栏展开后自动左右往返，减少动态效果时退回手动滚动', async ({ page, isMobile }) => {
+  test.skip(!isMobile, '手机折叠布局');
+  const tag = uniqueTag();
+  // 顶到用户名上限（20 字）：375px 下那一格只放得下四五个汉字，必然溢出。
+  const username = '名'.repeat(12) + tag.slice(-8);
+  const registration = await page.request.post('/api/auth/register', {
+    data: { username, email: `${tag}@e2e.local`, password: SEED_PASSWORD },
+  });
+  expect((await registration.json()).code).toBe(200);
+
+  await page.setViewportSize({ width: 375, height: 900 });
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+  await page.goto('/');
+  await page.evaluate(() => document.fonts.ready);
+
+  const name = page.locator('.site-user-name');
+  const track = page.locator('.site-user-name__track');
+
+  // 顶栏收起时不该启动：动画只挂在 `.site-navbar.open` 下。
+  await expect.poll(() => track.evaluate(el => el.getAnimations().length)).toBe(0);
+
+  await page.locator('.site-navbar-toggler').click();
+  await expect(name).toBeVisible();
+
+  const result = await track.evaluate(async (el) => {
+    const box = el.closest('.site-user-name') as HTMLElement | null;
+    // 用小数宽度算位移：scrollWidth / clientWidth 都是取整值，拿它们和 CSS 动画算出的
+    // 小数位移比会在 375px 这一档差出 0.8px（看着像动画算错了，其实只是取整）。
+    const overflow = box ? el.getBoundingClientRect().width - box.getBoundingClientRect().width : 0;
+    const animations = el.getAnimations();
+    const anim = animations.find(
+      (a): a is CSSAnimation => a instanceof CSSAnimation && a.animationName === 'site-user-name-pingpong'
+    );
+    if (!anim) return { overflow, found: false as const };
+
+    const timing = anim.effect!.getComputedTiming();
+    const duration = Number(timing.duration);
+    const delay = Number(timing.delay);
+    anim.pause();
+    // 把播放头直接放到关键帧的保持段 / 中点，不靠 sleep 等它自己走 —— 与同文件里
+    // 采样顶栏过渡中间帧的做法同源，避免 12s 的循环拖慢用例。
+    const at = async (ratio: number) => {
+      anim.currentTime = delay + duration * ratio;
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+      return getComputedStyle(el).transform;
+    };
+
+    return {
+      overflow,
+      found: true as const,
+      duration,
+      delay,
+      iterations: timing.iterations === Infinity ? 'infinite' : String(timing.iterations),
+      start: await at(0.05),
+      end: await at(0.5),
+      back: await at(0.95),
+    };
+  });
+
+  const translateX = (transform: string) => {
+    if (transform === 'none') return 0;
+    const match = /matrix(3d)?\(([^)]+)\)/.exec(transform);
+    if (!match) throw new Error(`无法解析 transform：${transform}`);
+    const values = match[2].split(',').map(Number);
+    return match[1] ? values[12] : values[4];
+  };
+
+  expect(result.found).toBe(true);
+  if (!result.found) throw new Error('长用户名没有启动往返动画');
+  // 名字比格子宽才有位移；两端的位移都应是 0，中点正好把最后一个字推到右边缘。
+  expect(result.overflow).toBeGreaterThan(0);
+  expect(result.duration).toBe(12000);
+  expect(result.delay).toBeCloseTo(550, 0);
+  expect(result.iterations).toBe('infinite');
+  expect(translateX(result.start)).toBeCloseTo(0, 1);
+  expect(translateX(result.end)).toBeCloseTo(-result.overflow, 1);
+  expect(translateX(result.back)).toBeCloseTo(0, 1);
+
+  // 减少动态效果：自动移动整体关闭，但那一格仍是可手动横向滚动的文本框。
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await expect.poll(() => track.evaluate(el => el.getAnimations().length)).toBe(0);
+  const manual = await name.evaluate(el => ({
+    overflowX: getComputedStyle(el).overflowX,
+    scrollWidth: el.scrollWidth,
+    clientWidth: el.clientWidth,
+  }));
+  expect(manual.overflowX).toBe('auto');
+  expect(manual.scrollWidth).toBeGreaterThan(manual.clientWidth);
+  expect(await name.evaluate(el => { el.scrollLeft = 30; return el.scrollLeft; })).toBeGreaterThan(0);
+});
+
 test('访客顶栏：中等宽度保留导航和登录入口，手机导航正常收起', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });
   for (const width of [809, 960, 992, 1024, 1199]) {

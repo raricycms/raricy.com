@@ -304,6 +304,13 @@ a {
   text-overflow: ellipsis;
 }
 
+// 用户名的内层轨道。桌面端保持普通行内元素 —— 外层 `.site-user-name` 的
+// `text-overflow: ellipsis` 靠它继续生效（换成 inline-block 后溢出的不再是文字本身，
+// 省略号会静默消失）。手机端展开顶栏后才变成可位移的整行，见下面的 808px 区块。
+.site-user-name__track {
+  display: inline;
+}
+
 .site-user-avatar { 
   width: 32px; 
   height: 32px; 
@@ -704,16 +711,16 @@ body {
     max-width: none;
   }
 
-  // ── 用户名是一格**固定宽度的文本框**，名字长到装不下时横向滚动 ───────────────
-  // 用户明确要求「固定文本框长度，太长了就左右滚动」。
+  // ── 用户名是一格**固定宽度的文本框**：装不下时先自动左右往返，减少动态效果时
+  //    退回手动横向滚动 ───────────────────────────────────────────────────────
+  // 用户要求「固定文本框长度，太长了就左右移动」。这里把「移动」做成展开顶栏之后的
+  // 自动往返（名字长到装不下才有位移，见下面动画的 min(0, …)），而不是只靠手滑 ——
+  // 手机上没有 hover 提示、`title` 也看不到，用户本来就没有第二个落点能读到全名。
   //
-  // 为什么不是省略号（上一版）：省略号把名字**永久**吃掉，而这里根本没有别的落点 ——
-  // 手机上没有 hover 提示、`title` 也看不到，用户没法换一个地方读全名。滚动至少
-  // 让人能把它读出来，且盒子宽度仍只由布局决定（不随名字长短伸缩，整行不跳）。
-  //
+  // 为什么不是省略号（上一版）：省略号把名字**永久**吃掉；滚动至少让人能把它读完。
   // 为什么不是换行：三个图标 + 胶囊是**同一行**的既定排布；让名字自己折成两行会
   // 把 48px 的胶囊撑高、顶着 62px 的顶栏。宽度真的不够时由上面那档处理 ——
-  // 整颗胶囊换到自己一行（此时宽度是整行，8 个汉字完全放得下，也不出现滚动）。
+  // 整颗胶囊换到自己一行（此时宽度是整行，8 个汉字完全放得下，也不出现移动）。
   .site-user-name {
     // 覆盖基础样式里的 `overflow: hidden` + `text-overflow: ellipsis`：这里要的是
     // 可横向滚动的格子，不是截断。两轴必须都写（`overflow: hidden` 是简写）。
@@ -725,11 +732,55 @@ body {
     // 胶囊里塞一条可见滚动条既难看又占高（48px 的胶囊里一条 10px 的横条很扎眼）。
     // 可滚动的提示由「字被切掉半个」本身给出；手机上滚动条本来就只在滚动时闪现。
     scrollbar-width: none;
+    // 内层轨道用 cqw 读这一格的宽度（见动画的位移算式）。`container-type` 的
+    // inline-size containment 只影响「宽度是否由内容决定」，而这一格的宽度一直由
+    // flex 布局给（基础样式里的 `flex: 1` + `min-width: 0`），所以几何不变。
+    container-type: inline-size;
 
     &::-webkit-scrollbar {
       display: none;
     }
   }
+
+  // 展开后内层轨道变成一整行：外层负责裁剪，轨道负责移位。减少动态效果时它保持同一
+  // 形状但不移动，手动横向滚动仍落在外层这一格上；未展开时外层本来就不可见。
+  .site-navbar.open .site-user-name__track {
+    display: inline-block;
+    width: max-content;
+  }
+
+  // 自动往返滚动只在允许动态效果时启用；`@supports` 让不认识容器查询单位的旧浏览器
+  // 退回上面的横向滚动，而不是「裁掉 + 不动」。两套偏移不能相加（会把字滑出格子），
+  // 所以自动滚动接管时把外层的 overflow-x 也换成 hidden。
+  @media (prefers-reduced-motion: no-preference) {
+    @supports (container-type: inline-size) {
+      .site-navbar.open .site-user-name {
+        overflow-x: hidden;
+      }
+
+      .site-navbar.open .site-user-name__track {
+        // 0.55s 的延迟 = 顶栏展开（480ms）落定后再起步，读起来是「展开后开始移动」。
+        animation: site-user-name-pingpong 12s ease-in-out .55s infinite;
+      }
+
+      // 胶囊拿到焦点（点开菜单）或鼠标悬停时停住 —— 给用户一个停下来的机会，
+      // 也能先读眼前这一截。触屏没有 hover，但点击会把焦点交给 toggle，两档一起覆盖。
+      .site-navbar.open .site-user-dropdown:focus-within .site-user-name__track,
+      .site-navbar.open .site-user-dropdown:hover .site-user-name__track {
+        animation-play-state: paused;
+      }
+    }
+  }
+}
+
+// 用户名在展开后的顶栏里左右往返：两头各停 1.2s，单程 4.2s（12s 循环）。
+// 目标位移 = min(0, 容器宽 − 轨道宽)：名字装得下时正好是 0（不动），装不下时是
+// 负的溢出量 —— 到达那一端时最后一个字贴着右边缘。轨道宽用 100%（相对自身），
+// 容器宽用 100cqw（相对 `.site-user-name`），所以不需要 JS 去量 scrollWidth。
+@keyframes site-user-name-pingpong {
+  0%, 10% { transform: translateX(0); }
+  45%, 55% { transform: translateX(min(0px, calc(100cqw - 100%))); }
+  90%, 100% { transform: translateX(0); }
 }
 
 @keyframes navbar-unfold-clip {
