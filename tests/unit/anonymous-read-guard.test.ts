@@ -42,6 +42,7 @@ const GUARD_SYMBOLS = [
   'requireChatUser', // src/app/api/chat/_auth.ts
   'requireCoreUser', // src/app/api/favorites/_shared.ts
   'requireMarketActor', // src/app/api/fish/market/_auth.ts
+  'quoteRequest', // src/app/api/daily-quotes/_http.ts（内部 getCurrentUser + core+ 判定）
   // ── per-object 可见性守卫（**不是**会话档位）─────────────────────────────────
   //
   // 上面那些判的是「你有没有资格用这个区」；这一个判的是「**这一篇**是不是对外可见」——
