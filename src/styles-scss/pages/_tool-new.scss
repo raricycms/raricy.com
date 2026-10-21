@@ -101,7 +101,7 @@
   // Tool card
   &-card {
     background: var(--color-background-card);
-    /* 卡片档 30px（`docs/frontend-styles.md` §4：卡片 → `$radius-card`）。工具箱的
+    /* 卡片档 30px（`docs/frontend-styles.md` §3.3：卡片 → `$radius-card`）。工具箱的
        卡片与博客目录的 `.blog-item` 是同一档视觉：圆角、内距、hover 过渡都照它来
        —— 别退回 `$radius-large`（10px 是「次级面板 / 小组件」档，卡片用它会和全站
        30px 卡片混成两套形状语言）。内距取 `.blog-item` 那一档的呼吸感（20px 上、

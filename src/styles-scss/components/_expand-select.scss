@@ -55,7 +55,7 @@
     transition: transform .42s cubic-bezier(.22, 1, .36, 1);
   }
 
-  // 浮层是「另一档」：常驻 --shadow-card-brand，见 docs/frontend-styles.md §6.2。
+  // 浮层是「另一档」：常驻 --shadow-card-brand，见 docs/frontend-styles.md §3.6。
   &__panel {
     @include m.expand-panel;
     position: absolute;

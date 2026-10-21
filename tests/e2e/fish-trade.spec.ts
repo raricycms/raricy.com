@@ -468,7 +468,7 @@ test('★ 杠杆买入：档位选得动，弹窗与持仓行都摊开倍数与�
   await twentyX.click();
   await expect(levField, '20× 的爆仓距离是 5%').toContainText('距现价 -5.0%');
 
-  // 档位是**切页档**（docs/frontend-styles.md §6.9）：点得动、且当前项挂在 aria-pressed 上
+  // 档位是**切页档**（docs/frontend-styles.md §5.1）：点得动、且当前项挂在 aria-pressed 上
   const tenX = page.getByRole('button', { name: '10×', exact: true });
   await expect(tenX).toBeEnabled();
   await tenX.click();
@@ -568,7 +568,7 @@ test('★ 做空：切到做空后下单，持仓行带方向角标、爆仓价�
   await setPrice(request, 'BTCUSDT', 80000);
   await page.goto('/fish/trade');
 
-  // 方向是两枚切页档（同杠杆那排的判据，docs/frontend-styles.md §6.8）。
+  // 方向是两枚切页档（同杠杆那排的判据，docs/frontend-styles.md §5.5）。
   // ⚠️ 必须限定在 .trade-direction 里查 —— 选中做空之后**提交按钮也写着「做空」**，
   //    直接按名字查会撞上 strict mode（那不是产品坏了，是选择器太宽）。
   const short = page

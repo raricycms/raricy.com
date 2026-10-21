@@ -17,7 +17,7 @@
 
 // ── 随 SCSS 拆分（02f6ab5）丢失的那一批 ──────────────────────────────────────
 // ⚠️ 带 `color` 的这几条**刻意不带 `!important`**：本文件开头那几条 `.u-text-muted`
-// 已经因为 `!important` 会盖掉任何组件配色被记在 docs/frontend-styles.md §12，
+// 已经因为 `!important` 会盖掉任何组件配色被记在 docs/frontend-styles.md §8.2，
 // 别再扩大这个面。工具页上它们都用在没有组件配色的裸元素上，普通声明足够。
 .text-center { text-align: center; }
 .text-white { color: #fff; }

@@ -244,7 +244,7 @@
 // ---- Story Reader ----
 .story-reader {
   /* 820px 是**阅读行宽**上限（同 .blog-detail 的 940 / .blog-content-container 的
-     900），页边距归 container-padding 的 16px —— 两者别混（见 docs/frontend-styles.md §5）。
+     900），页边距归 container-padding 的 16px —— 两者别混（见 docs/frontend-styles.md §4.1）。
      ⚠️ 原先是写死的 `padding: 0 20px`：视口窄于 852px 时，这一页的正文卡比全站任何
      一页都窄 8px（左右各多缩 4px），从故事区列表点进来会看到卡片宽一截。
      它与 `.story-cattca`（下面那条）是同一处漂移。 */

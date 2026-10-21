@@ -261,7 +261,7 @@
   //     跟着长到 2.2em 并下移 0.4em，再被盒子的 overflow: hidden 裁掉一截。
   //   · border: 1px solid（文字主色，浅色主题近黑）：头像与框各多一圈黑描边。
   //   · border-radius: 8px：20px 的头像上 8px 已经是个**圆**了（全站规范是 8%，
-  //     见 docs/frontend-styles.md §4.1），框贴图的四角也被削掉。
+  //     见 docs/frontend-styles.md §3.4），框贴图的四角也被削掉。
   //   · cursor: zoom-in：这一张**点不开**（RichContentBody 的点击委托只认
   //     rich-image-ref），点它是跳主页，光标不该那么写。
   //

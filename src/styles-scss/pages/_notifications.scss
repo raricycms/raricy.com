@@ -142,7 +142,7 @@ body {
     margin-left: auto;
 }
 
-/* 批量操作只用次级档的表面（见 docs/frontend-styles.md §6.1），只收尺寸。
+/* 批量操作只用次级档的表面（见 docs/frontend-styles.md §5.1），只收尺寸。
    「删除已读」空闲就带警示色 —— 破坏性操作不能等 hover 才说。 */
 .notifications-bulk__btn {
     @include m.btn-secondary;
@@ -404,7 +404,7 @@ a.notification-actor:hover {
 }
 
 /* 标记已读 / 删除 = 站内既有的「无底色图标钮」那一款（30px 见方、8px 圆角，
-   见 docs/frontend-styles.md §6.9 末尾）。 */
+   见 docs/frontend-styles.md §5.1）。 */
 .notification-action-btn {
     display: grid;
     place-items: center;

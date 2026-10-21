@@ -46,7 +46,7 @@ export interface AvatarProps {
   imgClassName?: string;
   /**
    * 仅给原先用**内联尺寸**的那几处（FeedButton 的弹窗名单）。
-   * 走内联是因为 `docs/frontend-styles.md` §4.1 明确要求「内联样式同样写
+   * 走内联是因为 `docs/frontend-styles.md` §3.4 明确要求「内联样式同样写
    * `border-radius: '8%'`，不要写死 px」。
    */
   size?: number;

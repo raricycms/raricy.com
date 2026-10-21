@@ -29,7 +29,7 @@ type CategoryRow = {
 // 页面本身只负责取数并给出唯一的外层容器（`.admin-container` 的宽度/檐沟已由
 // AdminShell 的 `.admin-layout` 统一给，这里不能再套一层）。
 // 组件根节点**不许**再挂 `admin-container`：那会双份内缩（同 /admin/oauth 的
-// ApplicationRow 卡中卡，见 docs/frontend-styles.md §12）。
+// ApplicationRow 卡中卡，见 docs/frontend-styles.md §8.2）。
 export default async function AdminCategoriesPage() {
   const categories = (await listCategoriesTree()) as CategoryRow[];
   const parents = categories.map((c: CategoryRow) => ({

@@ -8,7 +8,7 @@
 
 // ⚠️ 只写纵向内距，**不要写 padding 简写**：`.docs-page` 与 `.container` 同挂一个
 // 元素，简写会把 container-padding 的两侧檐沟一并覆盖成 0（窄屏下整页贴着屏幕边，
-// 不报错）。同类判据见 docs/frontend-styles.md §5。
+// 不报错）。同类判据见 docs/frontend-styles.md §4.1。
 .docs-page {
   padding-top: 2rem;
   padding-bottom: 3rem;
@@ -59,7 +59,7 @@
     color: var(--color-text-primary);
   }
 
-  // 份数徽标：淡底 + 次要字色（**不留左侧竖条**，见 docs/frontend-styles.md §11 第 8 条）
+  // 份数徽标：淡底 + 次要字色（**不留左侧竖条**，见 docs/frontend-styles.md §5.3）
   &__count {
     font-size: 0.75rem;
     font-weight: 500;

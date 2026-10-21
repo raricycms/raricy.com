@@ -671,13 +671,13 @@ Promise** —— 拿它当「等到了字体」，MathJax 的公式会用回退�
 通知（本子系统完全不碰 `notification-service` / `topbar-bus`）；没有修改 `isPublic`
 的接口（改性质只能靠「复制」，且复制是**快照**）。
 
-**UI 上两个「不算 bug 的临界值」**（细节见 `docs/frontend-styles.md` §6.7，几何由
+**UI 上两个「不算 bug 的临界值」**（细节见 `docs/frontend-styles.md` §7.2，几何由
 `tests/e2e/favorite-layout.spec.ts` 在真视口下断言）：
 
 - 星标**未收藏时不亮**（跟 `currentColor`），只在 hover 与已收藏时变黄 —— 与点赞/投喂同一套
   状态色手法。别再给 `.icon-star-fill` 写死 `background-color`。
-- 窄屏（≤768px）点赞/投喂/收藏**压在同一行**等宽平分；`<360px` 与弹窗里两颗创建按钮
-  都退回「按内容宽度 / 上下堆叠」—— 那是按中文字体度量算出来的，不是拍脑袋的断点。
+- 返回、互动与管理三组外壳全视口同排且等高 48px，互动按钮高 40px、只显示图标与数字；
+  ≤768px 展开管理时互动胶囊暂时收起。收藏选择器的两颗创建按钮并排，`<360px` 才上下堆叠。
 
 **对外文档**：`docs/bot/favorite-bot.md`（自包含，含限频数值 —— 改 `RULES` 要同步）
 与 `docs/guide/收藏夹使用指南.md`。
@@ -930,7 +930,8 @@ URL 请来抓」。（`robots.ts` 的**路径级**规则不需要动 —— `/ex
   - ⚠️ **K 线的 `openTime` 是第三把钟**：交易所给的真实 UTC 毫秒（与 `Date.now()`
     同一把尺子，可以相减），既不是库内那套「UTC+8 墙上时间贴 Z」，**也不能与它相减**。
     图上按本站钟面显示时走「加 `SITE_TZ_OFFSET_MS` 再 `getUTC*`」（同 `nowForDb` 的手法）。
-  - 版式（三栏阶梯、为什么 SVG 里一个字都没有）见 `docs/frontend-styles.md` §6.9。
+  - 工作台与图表设计原则见 `docs/frontend-styles.md` §7.4；三栏阶梯的具体列宽由
+    `src/styles-scss/pages/_fish-trade.scss` 维护。
 - **结算**（含杠杆与方向，见下面「杠杆、方向与爆仓」）：
   `payoutUnits = max(0, floor(投入 + 名义本金 × move − 名义本金 × 平仓价/开仓价 × 费率))`，
   其中 `名义本金 = 投入 × 杠杆`，`move` **多头** = `平仓价/开仓价 − 1`、**空头** = `1 − 平仓价/开仓价`。
@@ -1632,7 +1633,7 @@ bot 接口，私密夹也能**复制成公开**、能导出 JSON —— 它的�
 
 **消息上的入口**在右键 / 长按唤出的操作菜单里（`.chat-menu`，组件 `ChatMessageMenu`）——
 消息上没有常驻按钮，「保存 / 已保存」是菜单项。手势识别与菜单样式见
-`docs/frontend-styles.md` §6.5。
+`docs/frontend-styles.md` §7.4。
 
 每人上限 `1000` 条（只数未取消的）；增删复用 `likeHourly` / `likeDaily` 的数值，但
 **另起键前缀** `chat:saved:h:` / `chat:saved:d:`（`rule` 不参与分桶，复用别的前缀会互相

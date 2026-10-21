@@ -546,7 +546,7 @@ a {
 .blog-author img {
     width: 20px;
     height: 20px;
-    /* 头像统一小圆角 8%（全站规范，见 docs/frontend-styles.md §4.1） */
+    /* 头像统一小圆角 8%（全站规范，见 docs/frontend-styles.md §3.4） */
     border-radius: 8%;
     object-fit: cover;
 }
@@ -563,7 +563,7 @@ a {
 
 /* 对外可见性标记（站内列表卡片上，给作者看「哪几篇已经对外了」）。
  *
- * 【为什么用分类色而不是语义色】见 docs/frontend-styles.md §2.6：语义色（红=危险、
+ * 【为什么用分类色而不是语义色】见 docs/frontend-styles.md §3.1：语义色（红=危险、
  * 绿=成功、蓝=主行动）表达**状态**，而「这篇已经对外」不是状态、是属性 —— 与
  * .blog-category-tag / 精选标记同一类东西，所以走 --color-accent-*。
  *

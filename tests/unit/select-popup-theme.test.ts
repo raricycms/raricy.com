@@ -9,7 +9,7 @@
 // 唯一的解法是在 CSS 里把 `option` / `optgroup` 的底色与字色一起钉成主题令牌
 // （见 `src/styles-scss/components/_form-controls.scss`）。本文件守的就是那两条别被删。
 // 容易被顺手删掉的理由很具体：「color-scheme 不是已经管原生控件了吗」
-// —— 它管的是明暗基准，不足以保证底色与字色配对（`docs/frontend-styles.md` §8）。
+// —— 它管的是明暗基准，不足以保证底色与字色配对（`docs/frontend-styles.md` §5.2）。
 //
 // 【为什么扫 TSX 找类名，而不是写死 .form-select】写死就只能守住那两个类名，
 // 新加一个 select 类（或某个 select 忘了挂类）照样静默溜过去。扫 TSX 是

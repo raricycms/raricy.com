@@ -191,7 +191,7 @@ export default function TradeChartPanel({
           ))}
         </div>
 
-        {/* K线 / 折线：**同一个视图的两种呈现** —— 正是 docs/frontend-styles.md §6.8
+        {/* K线 / 折线：**同一个视图的两种呈现** —— 正是 docs/frontend-styles.md §5.5
             给 `.segmented` 划的那条判据。周期档反过来：6 选 1、且选项还可能变多，
             所以那边走切页档按钮。 */}
         <div

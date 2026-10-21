@@ -3,7 +3,7 @@
 > **状态：仅方案 + P0 概念 demo，产品代码未改。** 校对日期：**2026-10-18**。
 > 本文给出 P0–P2 三层的落点、实现方式、风险与验收；P0 的可交互 demo 是同目录的
 > `docs/plan/page-transition-p0-demo.html`（单文件，无网络依赖，直接打开即可）。
-> 正式落地时，动效数值与适用范围以 `docs/frontend-styles.md` §10「动画」为准，
+> 正式落地时，动效数值与适用范围以 `docs/frontend-styles.md` §6「交互状态与动效」为准，
 > 本文只负责方案与边界。
 
 ## 1. 背景与结论
@@ -223,7 +223,7 @@ IntersectionObserver + 30ms stagger（最多 5 张卡），reduced-motion 下关
 
 | 阶段 | 内容 | 预估 |
 |------|------|------|
-| 0 | 定 token，新增 `abstracts/_motion.scss`，补 `docs/frontend-styles.md` §10「动画」 | 半天 |
+| 0 | 定 token，新增 `abstracts/_motion.scss`，补 `docs/frontend-styles.md` §6「交互状态与动效」 | 半天 |
 | 1 | P0：`PageMain` + SCSS + 跳过规则 | 半天–1 天 |
 | 2 | P1：挑 4–6 个落点（博客列表、通知、文档、弹层、工具结果、鱼干筛选） | 1–2 天 |
 | 3 | 观察一周，再决定 P2 做哪几条 | — |

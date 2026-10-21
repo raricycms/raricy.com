@@ -85,7 +85,7 @@
   }
 
   /* 正文里的引用块 —— `border-left` 是全站「不留装饰性左侧竖条」的**内容语义例外**
-     （Markdown 通行约定），见 docs/frontend-styles.md §11 第 8 条。 */
+     （Markdown 通行约定），见 docs/frontend-styles.md §5.3。 */
   .#{$cls} blockquote {
     border-left: 3px solid var(--color-brand-primary);
     margin: 1rem 0;

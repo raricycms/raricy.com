@@ -49,7 +49,7 @@ const OUT_DIR = process.argv[2]
   : path.join(ROOT, 'public', 'static', 'frames');
 
 const SIZE = 256;
-/** 与全站头像一致的圆角比例（docs/frontend-styles.md §4.1）。**别改这个数**。 */
+/** 与全站头像一致的圆角比例（docs/frontend-styles.md §3.4）。**别改这个数**。 */
 const RADIUS_RATIO = 0.08;
 /** 头像自己的圆角（画布四角上）—— 环的**外缘**必须正好落在它上面。 */
 const OUTER_R = SIZE * RADIUS_RATIO;

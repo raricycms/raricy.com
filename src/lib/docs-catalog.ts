@@ -281,7 +281,7 @@ export const DOC_ENTRIES: readonly DocEntry[] = [
     group: 'dev',
     slug: 'frontend-styles',
     title: '前端样式规范',
-    summary: 'SCSS 目录、设计令牌、组件约定与响应式。',
+    summary: '以博客目录为基准的全站设计标准：视觉、布局、组件、动效与验收。',
   },
   {
     group: 'dev',

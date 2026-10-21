@@ -145,7 +145,7 @@ test.describe('用户名片：渲染', () => {
     expect(geo.imgBg, `头像带了底色：${dump}`).toBe('rgba(0, 0, 0, 0)');
     expect(geo.imgMarginTop, `头像被加了外边距（会撑高头像盒）：${dump}`).toBe('0px');
 
-    // ④ 圆角：规范是**全站头像一律 8%**（docs/frontend-styles.md §4.1），而它由 .avatar
+    // ④ 圆角：规范是**全站头像一律 8%**（docs/frontend-styles.md §3.4），而它由 .avatar
     //    盒子持有、overflow: hidden 裁出来。漏进来的 8px 在 20px 的头像上已经是个圆。
     expect(geo.boxRadius, `头像盒丢了 8% 圆角：${dump}`).toBe('8%');
     expect(geo.imgRadius, `头像图自带圆角（会盖过规范的 8%）：${dump}`).toBe('0px');

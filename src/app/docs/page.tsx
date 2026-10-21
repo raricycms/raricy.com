@@ -28,7 +28,7 @@ export default function DocsIndexPage() {
     /* `.container` 与 `.docs-page` 同挂一个元素，**不要**在 `.docs-page` 里写
        padding 简写：`.container` 的两侧檐沟来自 `container-padding` mixin，
        简写会把它一并覆盖成 0，于是窄屏下这一页贴着屏幕两条边（不报错，只有肉眼
-       看得见）。这里只加纵向的。同类记录见 docs/frontend-styles.md §5。 */
+       看得见）。这里只加纵向的。同类记录见 docs/frontend-styles.md §4.1。 */
     <div className="docs-page container">
       <header className="docs-hero">
         <h1 className="docs-hero__title">文档</h1>

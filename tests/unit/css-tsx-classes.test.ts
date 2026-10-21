@@ -205,7 +205,7 @@ const UNSTYLED: [string, string][] = [
   ['.home-grid-item', '纯语义包装：位置由 .home-grid 的 gap/stretch 给，卡片自己 height:100%'],
   ['.clipboard-markdown-content', 'JS 钩子（挂 MutationObserver）+ 纯包装：子节点 MarkdownRenderer 自带 .blog-content-container 正文卡，剪贴板页由 _clipboard.scss 的 &__content 把那张卡的外观抵消掉'],
   ['.rc-medal', '命名钩子：尺寸由 svg.rc-icon 的 1em × 父级 font-size 决定，奖牌三档的固定色在 svg 的 fill 上'],
-  ['.modal-dialog-centered', 'Bootstrap 残留：居中由 .modal.is-open 的 flex + .modal-dialog{margin:auto} 实现，补了反而会压过现有居中（docs/frontend-styles.md §12 已登记）'],
+  ['.modal-dialog-centered', 'Bootstrap 残留：居中由 .modal.is-open 的 flex + .modal-dialog{margin:auto} 实现，补了反而会压过现有居中（无样式类的台账规则见 docs/frontend-styles.md §8.2）'],
   ['.nf__btn--ghost', '占位修饰类：SCSS 里有规则但体是空的，编译后不产出（源注释：保留类名以备后续差异化）'],
   ['.cattca-tool__btn--secondary', '同上（_tool-cattca.scss 里与 .story-cattca__btn--secondary 并排的空规则）'],
   ['.story-cattca__btn--secondary', '同上'],

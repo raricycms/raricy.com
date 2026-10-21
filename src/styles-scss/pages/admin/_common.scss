@@ -534,7 +534,7 @@
   }
 
   // 「精选」用分类强调色的琥珀，**不借 --color-star-***：那一对是收藏夹五角星的
-  // 专用语义色（docs/frontend-styles §2.1 / §6.7），只该在「已收藏」与 hover 时出现。
+  // 专用语义色（docs/frontend-styles §3.1 / §7.2），只该在「已收藏」与 hover 时出现。
   &--featured {
     background: var(--color-accent-amber-soft);
     color: var(--color-accent-amber);

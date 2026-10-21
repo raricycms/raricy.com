@@ -236,7 +236,7 @@
     font-size: 0.95rem;
     color: var(--color-text-secondary);
 
-    /* 24px 的旧尺寸已随卡片版式放大（全站头像尺寸台账见 docs/frontend-styles.md §4.1）。 */
+    /* 24px 的旧尺寸已随卡片版式放大（全站头像规则与落点入口见 docs/frontend-styles.md §3.4）。 */
     .comment-author-avatar {
         width: var(--comment-avatar-size);
         height: var(--comment-avatar-size);
@@ -435,7 +435,7 @@
 /* 引用博客链接卡（整卡可点 → 博客详情页）。**与讨论里的 .chat-msg__blog 同款**：
    10px 圆角 + 内容底色 + 32px 图标方框。同一个东西在讨论区与评论区长得不一样，
    读者会当成两种卡片。
-   ⚠️ 内部是两行（标题 + 作者），所以走 10px 那档，不是胶囊（见 frontend-styles §4）。 */
+   ⚠️ 内部是两行（标题 + 作者），所以走 10px 那档，不是胶囊（见 frontend-styles §3.3）。 */
 .comment-blog {
     display: inline-flex;
     align-items: center;

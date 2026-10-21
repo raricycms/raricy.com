@@ -5,7 +5,7 @@
 //  鱼干接口（/fish/api）—— 机器人接入的自助配置
 //
 //  卡片外壳沿用 _fish-market.scss 的 market-card / market-field / market-submit
-//  （同一套视觉语言，不另起一套 —— frontend-styles §11.1）。本文件只补
+//  （同一套视觉语言，不另起一套 —— frontend-styles §8.2）。本文件只补
 //  「一行一张凭据」这类 market-* 没有的形状，类块前缀 fish-api-*。
 //
 //  ⚠️ 变量名全部核对过 base/_root.scss —— 这套令牌**没有** --color-bg-* 一族
@@ -84,7 +84,7 @@
 }
 
 // 「有效 / 已吊销 / 已过期」—— 表达状态用**淡底 + 同色字**，
-// 不画左侧竖条（frontend-styles §11 第 8 条：容器已是大圆角，边上压竖条会切掉弧线）。
+// 不画左侧竖条（frontend-styles §5.3：容器已是大圆角，边上压竖条会切掉弧线）。
 // 那两对 -secondary 令牌本身就是半透明底，直接当底色用。
 .fish-api-badge {
   flex-shrink: 0;

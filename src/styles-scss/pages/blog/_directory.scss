@@ -273,7 +273,7 @@
     // 都是 rgba(0, 0, 0, .5)。更深的那几档留给内容本身就是深色场景的查看器
     // （.chat-lightbox 0.8、.feed-modal__backdrop 0.65），面板蒙版不跟它们对齐。
     // 别在这里调深浅，否则同一次会话里打开两个浮层，一个深一个浅。
-    // （docs/frontend-styles.md §2.3 第 3 条：写死的 rgba 只允许作遮罩底色。）
+    // （docs/frontend-styles.md §3.6：写死的 rgba 只允许作遮罩底色。）
     // 它挂在 aside 里面而不是 portal：移动端 aside 自己就是 fixed，蒙版跟着它一起
     // 显隐即可。代价是「点外部收起」那个监听判不出它（它就在 aside 内），收起由
     // 组件自己的 onPointerDown 接（见 BlogPersonalSidebar）。

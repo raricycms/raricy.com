@@ -7,7 +7,7 @@ import { useRouter } from 'next/navigation';
 //
 // 【修掉的债】根节点此前是 `.management-card`，而页面又把它套在另一个
 // `.management-card` 里 —— 卡中卡：双 30px 内距、两层同色，去掉描边后边界彻底
-// 消失（docs/frontend-styles.md §12 登记过）。现在页面给 `.admin-panel` 外壳，
+// 消失（外壳责任规则见 docs/frontend-styles.md §8.2）。现在页面给 `.admin-panel` 外壳，
 // 行自己只用 `.admin-app-row`（内容底色 + 20px 圆角）。
 // 接口调用、`window.confirm` 文案、错误提示与「禁用 / 启用」按钮的文案都照旧
 // —— 无障碍名必须是这两个词本身（安全相关用例按它定位）。

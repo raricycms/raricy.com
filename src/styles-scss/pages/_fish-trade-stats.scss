@@ -5,7 +5,7 @@
 //  练手盘统计（/fish/trade/stats）
 //
 //  类块前缀 **tstats-**：与 trade-* / fish-card__* / market-* 分开 —— 四页各有各的
-//  版式，共用类名会让改一边静默改到另一边（frontend-styles §11.1）。
+//  版式，共用类名会让改一边静默改到另一边（frontend-styles §8.2）。
 //
 //  卡片复用**通用** `.card`（components/_card.scss），不复用页面专属的 `.trade-card`：
 //  后者是练手盘工作台的，改它一处会静默改到这一页（同 §11.1 那条理由）。

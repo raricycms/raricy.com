@@ -513,7 +513,7 @@ export default function TradePanel({
             </div>
 
             {/* 方向。**两个值、固定两枚 → 切页档**（同杠杆那排的判据，
-                docs/frontend-styles.md §6.8）。它是「下一笔」的形状，与已有持仓无关 ——
+                docs/frontend-styles.md §5.5）。它是「下一笔」的形状，与已有持仓无关 ——
                 所以持仓行自己带方向角标，不靠这个开关解释。 */}
             <div className="trade-field">
               <span className="trade-field__label" id="trade-direction-label">

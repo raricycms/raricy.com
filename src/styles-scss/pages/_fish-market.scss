@@ -6,7 +6,7 @@
 //
 //  视觉语言与 /fish 同源：卡片 30px 圆角 + 胶囊按钮 + 全部走 --color-* 令牌
 //  （随 <html data-theme> 自动明暗）。类块前缀 market-*，与 fish-card__* 分开 ——
-//  两页各有各的布局，共用类名会让改一边静默改到另一边（frontend-styles §11.1）。
+//  两页各有各的布局，共用类名会让改一边静默改到另一边（frontend-styles §8.2）。
 //  弹窗外壳（.modal-overlay/.modal-dialog/.modal-content/.modal-header）是
 //  通用组件，直接用，不重写。
 // ═══════════════════════════════════════════════════════
@@ -288,7 +288,7 @@
 }
 
 // 权重：`.market-summary strong` 是 0-1-1，光写 `.market-summary__free`（0-1-0）
-// 会被上面那条盖掉（改样式时最容易踩的坑，见 frontend-styles §11.1）。
+// 会被上面那条盖掉（改样式时最容易踩的坑，见 frontend-styles §8.2）。
 .market-summary strong.market-summary__free {
   color: var(--color-success-primary);
 }

@@ -2,7 +2,7 @@
 //
 // KPI 卡沿用全站卡片口径：常态不描边、不托阴影，层级靠背景色阶。只有给了 href
 // 的那几张（整卡可点）才在 hover 亮 --shadow-card-brand —— 这条判据来自
-// docs/frontend-styles.md §2.3 / §6.2，别给不可点的卡也加光晕。
+// docs/frontend-styles.md §3.6 / §5.3，别给不可点的卡也加光晕。
 
 .admin-kpi-grid {
   display: grid;

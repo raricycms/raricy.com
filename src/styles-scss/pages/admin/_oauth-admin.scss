@@ -3,7 +3,7 @@
 //
 // 页面由两张 `.admin-panel` 组成（创建表单 + 已注册应用），行卡 `.admin-app-row`
 // 用内容底色 + 20px 圆角 —— 这就是「卡中卡」那笔债的正解：组件根不再复用页面级
-// 容器类（见 docs/frontend-styles.md §12）。
+// 容器类（见 docs/frontend-styles.md §8.2）。
 //
 // ⚠️ `oauth-modal-overlay` / `oauth-modal` 是**公开授权页**（pages/_oauth.scss）
 // 共用的类，这里只做 `.admin-content` 作用域内的覆写，绝不改那份公共样式。

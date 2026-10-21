@@ -677,7 +677,7 @@ a {
    与 .container 的 container-padding 同值。此前这里写的是 20px：窄屏下正文比别的页面
    （博客列表、通知、设置……凡走 .container 的）每边多缩进 4px，是「文章页边距看起来
    比别人宽」的来源。`_menu.scss` 的 .focus-banner 踩过同一个坑（20px vs 16px），
-   已按同一判据改掉：**页边距归容器，行宽归内层上限**（docs/frontend-styles.md §5）。 */
+   已按同一判据改掉：**页边距归容器，行宽归内层上限**（docs/frontend-styles.md §4.1）。 */
 .blog-detail {
     max-width: 940px;
     margin: 48px auto 50px;

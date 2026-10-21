@@ -37,7 +37,7 @@ export default async function AdminDashboardPage() {
   ]);
 
   // tone 借用分类强调色（不是语义色）：五张卡彼此区分用。红心那张刻意**不**用
-  // --color-warning-*（那是「危险 / 删除」的语义色，docs/frontend-styles §2.6），
+  // --color-warning-*（那是「危险 / 删除」的语义色，docs/frontend-styles §3.1），
   // 也不借收藏夹专用的 --color-star-*。
   const cards: Array<{
     number: number;

@@ -6,14 +6,14 @@
 //
 //  视觉语言与 /fish 同源：卡片 30px 圆角 + 全部走 --color-* 令牌（随
 //  <html data-theme> 自动明暗）。类块前缀 **trade-** —— 与 fish-card__*、market-*
-//  分开：三页各有各的布局，共用类名会让改一边静默改到另一边（frontend-styles §11.1）。
+//  分开：三页各有各的布局，共用类名会让改一边静默改到另一边（frontend-styles §8.2）。
 //  弹窗外壳（.modal-overlay/.modal-dialog/.modal-content/.modal-header）是通用组件，
 //  直接用，不重写。
 //
 //  【涨跌配色】涨 = --color-success-primary（绿），跌 = --color-warning-primary（红）。
 //  站内没有 --color-danger-*，--fd-danger 就是 warning 的别名，别去新造一个。
 //  mixin `trade-up-down` 住在 abstracts/_mixins.scss —— 统计页（_fish-trade-stats.scss）
-//  也要用它，BEM 前缀却不同，所以它是共享 mixin（frontend-styles §11.1）。
+//  也要用它，BEM 前缀却不同，所以它是共享 mixin（frontend-styles §8.2）。
 //
 //  【图标】走势线是内联 SVG（`.trade-spark`），站内没有图表库也不该为一张曲线引进来。
 // ═══════════════════════════════════════════════════════
@@ -40,7 +40,7 @@
 
 // ── 三栏工作台（自选 | 图表 | 下单 + 持仓）──────────────────────────────────
 //
-// 【四段阶梯，每段的判据都在这】宽度的天花板是容器阶梯（docs/frontend-styles.md §5）：
+// 【四段阶梯，每段的判据都在这】宽度的天花板是容器阶梯（docs/frontend-styles.md §4.1）：
 // ≥1200px 时 `.content-wrapper` 是 1140px、992–1199px 是 960px —— 所以中间那列在
 // 1140 那一档拿到 ~608px，960 那一档只有 ~496px。阶梯跟着它走，不是随手挑的数字。
 //
@@ -157,7 +157,7 @@
 // ── 自选列表（侧栏；窄屏是横向条，同一份 DOM）────────────────────────────────
 //
 // 【选中态只有「整行品牌淡底」这一种表达】不加左侧竖条 —— 容器已经是 30px 的大圆角，
-// 边上再压一条 3px 竖条会把弧线切掉一截（docs/frontend-styles.md §11.8）。
+// 边上再压一条 3px 竖条会把弧线切掉一截（docs/frontend-styles.md §5.3）。
 // 与讨论区侧栏同一套口径。
 
 .trade-watch {
@@ -586,7 +586,7 @@
   color: var(--color-text-secondary);
 }
 
-/* 周期档走「切页档」而不是胶囊滑块 —— docs/frontend-styles.md §6.8 的判据是
+/* 周期档走「切页档」而不是胶囊滑块 —— docs/frontend-styles.md §5.5 的判据是
    「滑块只给 2 选 1 的互斥视图切换」，这里是 6 选 1、选项还可能变多（加周期）。
    与鱼干流水、原来的标的切换同档。 */
 .trade-chart__interval {
@@ -714,7 +714,7 @@
 }
 
 /* 方向：**两个固定值**（做多 / 做空）—— 走切页档，与杠杆那排同一个判据
-   （docs/frontend-styles.md §6.8：胶囊滑块只给「同一个视图的两种呈现」）。
+   （docs/frontend-styles.md §5.5：胶囊滑块只给「同一个视图的两种呈现」）。
    做空那一枚开着时代表「这一笔会反向爆仓」，靠下方那几行危险提示说清楚；
    按钮本身仍是 btn-tab —— **三档之外不自造第四档**。 */
 .trade-direction {
@@ -740,7 +740,7 @@
 
 /* 杠杆快捷档：**N 选 1，但选项可自由填** —— 所以是「一排切页档 + 一个输入框」。
    与周期档（.trade-chart__interval-btn）同档；输入框是一行数字 → 胶囊
-   （frontend-styles §4.2），聚焦一律用 --shadow-focus-brand，**绝不改 border**
+   （frontend-styles §5.2），聚焦一律用 --shadow-focus-brand，**绝不改 border**
    （改 border 会让字段随焦点变高、下方内容位移）。 */
 .trade-leverage {
   display: flex;
@@ -806,7 +806,7 @@
   color: var(--color-warning-primary);
 }
 
-// 金额输入：外壳是胶囊（一行文字 → 胶囊，见 frontend-styles §4.2），
+// 金额输入：外壳是胶囊（一行文字 → 胶囊，见 frontend-styles §5.2），
 // 聚焦一律用 --shadow-focus-brand，**绝不改 border**（那会让字段随焦点变高）。
 .trade-amount {
   display: flex;
@@ -1080,7 +1080,7 @@
    （都是 0-1-0），同特异性下**源码顺序靠后的赢**。第一版把它写在 .trade-position 正下方
    （即基础规则之前），于是 `align-items: flex-start` 被后面的基础规则
    `align-items: flex-end` 盖掉：折行后盈亏照样贴右，与上面的身份块错开一截 ——
-   而这条**不报任何错**，只有截图才看得出来（同 docs/frontend-styles.md §6.1 末尾那条
+   而这条**不报任何错**，只有截图才看得出来（同 docs/frontend-styles.md §8.2 那条
    「先看一眼有没有更具体的选择器会盖掉它」，这里是同一个坑的源码顺序版本）。 */
 @container (max-width: 380px) {
   .trade-position {

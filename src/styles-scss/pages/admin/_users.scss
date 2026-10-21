@@ -11,7 +11,7 @@
 //
 // 卡片层级：面板是卡片色（--color-background-card），用户卡压深一档用内容色
 // （--color-background-content）—— 与全站「靠底色深浅分层」同一套做法，
-// 不描边、不托阴影（docs/frontend-styles.md §6.2）。整卡不可点，故没有 hover 光晕。
+// 不描边、不托阴影（docs/frontend-styles.md §5.3）。整卡不可点，故没有 hover 光晕。
 //
 // 旧的 .management-card / .user-search-form / .user-search-input 已随改版删除：
 // 用户页改用 .admin-panel 与 .admin-toolbar，那三个类在 .tsx 里已无调用点。
@@ -94,7 +94,7 @@
   }
 }
 
-// 40px（docs/frontend-styles.md §4.1 的落点台账）。这里那条 border-radius: 8%
+// 40px（落点见 tests/unit/avatar-sites-guard.test.ts）。这里那条 border-radius: 8%
 // 是冗余，别顺手删 —— 组件一旦被绕过，头像就会静默退回方角。
 // 尺寸写在 img 上是刻意的：.avatar 盒子不设宽高（见 components/_avatar.scss）。
 .user-card__avatar {

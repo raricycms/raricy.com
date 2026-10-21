@@ -159,7 +159,7 @@
 // ── 详情页（/audit/<id>）────────────────────────────────────────────────────
 // 面板里再套一块「信息卡」是刻意的：.admin-panel 是卡片底色，再用卡片底色套一层
 // 就看不出边界了 —— 按全站色阶，卡内子块用 --color-background-content（见
-// docs/frontend-styles.md §6.2）。
+// docs/frontend-styles.md §5.3）。
 .audit-detail-card {
   padding: 18px;
   border-radius: 20px;

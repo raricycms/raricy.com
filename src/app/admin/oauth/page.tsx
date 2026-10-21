@@ -15,7 +15,7 @@ export const dynamic = 'force-dynamic';
 // 版式与 /admin 其它页同构：抬头 → 创建表单 → 已注册应用列表。
 // 两张面板都直接是 `.admin-panel`（`+ .admin-panel` 自带 16px 间距），
 // 行卡由 ApplicationRow 自己提供 —— 页面**不再**套一层管理卡，否则又会长回
-// 「卡中卡」（docs/frontend-styles.md §12 记着那笔债）。
+// 「卡中卡」（外壳责任规则见 docs/frontend-styles.md §8.2）。
 export default async function AdminOAuthPage() {
   const user = await getCurrentUser();
   if (!user) redirect(loginUrlWithNext('/admin/oauth'));

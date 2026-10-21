@@ -264,7 +264,7 @@
 // --- 头像框装备面板（src/app/settings/FramePanel.tsx）---
 //
 // 复用页面既有的卡片与按钮体系（.settings-card / .settings-btn，见
-// docs/frontend-styles.md §2/§3），这里只加网格与徽标。框的**预览**不在这里画 ——
+// docs/frontend-styles.md §3.1/§3.2），这里只加网格与徽标。框的**预览**不在这里画 ——
 // 那是共用组件 <Avatar> 的活（.avatar / .avatar__frame），面板只负责排位置。
 
 .frame-panel {
