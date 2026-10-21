@@ -13,10 +13,21 @@ export interface GameEntry {
   href: string;
   runtime: 'native' | 'embedded' | 'external';
   collectionId: typeof GAME_COLLECTIONS[number]['id'] | null;
-  icon: 'atamas' | 'wand' | 'public-space' | 'quandi';
+  icon: 'atamas' | 'wand' | 'public-space' | 'quandi' | 'twinshade';
 }
 
 export const GAMES = [
+  {
+    id: 'twinshade',
+    title: '双影',
+    description: '一次操作，两个身体：让本体与影子各自踩上一盏灯。三章关卡，逐步引入推石、同纹石块与冰面滑行。',
+    category: 'puzzle',
+    modes: ['solo'],
+    href: '/game/twinshade',
+    runtime: 'native',
+    collectionId: null,
+    icon: 'twinshade',
+  },
   {
     id: 'wand2',
     title: 'Wand demo 2',

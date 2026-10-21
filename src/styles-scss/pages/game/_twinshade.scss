@@ -1,0 +1,1232 @@
+@use '../../abstracts/mixins' as m;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 双影（/game/twinshade）的全部样式
+//
+// 【两套颜色，互不干扰】
+// 外壳（HUD、卡片、浮层、按钮、文字）**跟随站点主题**，全部读 base/_root.scss 的
+// `--color-*` 令牌；棋盘是游戏自己的固定深色台面，读本文件里定义的 `--tw-*`
+// 本地变量。后者刻意不随明暗主题变：暖金 / 冷紫这一对角色色是这款游戏唯一的
+// 视觉语言，如果棋盘在浅色主题下也跟着变亮，「影子」的冷调就会被冲掉。
+//
+// 【为什么填充色都挂在 `:not([fill])` 上】
+// 棋盘由 Board.tsx 产出，它可能会给某些形状直接写 `fill="url(#tw-…)"`（渐变、滤镜）。
+// CSS 的 `fill` 会盖过 SVG 的表现属性，所以只在元素**没有**自带 fill 时兜底，
+// 两边就不会互相踩。同理 stroke 用 `:not([stroke])`。
+//
+// 【动画的接口】全部是纯 CSS keyframes（不做 JS 逐帧），其中三处的参数由 Board 决定：
+//   · `--tw-token-ms`   —— 这一次位移的时长（滑行比走一格长，由 Board 按滑行格数给；
+//                          不给则回落 170ms）；
+//   · `--tw-spark-dx/dy` —— 每个粒子的飞散向量（不给则统一向上飞 22 单位）；
+//   · 位置一律由 Board 用 `style.transform` / cx / cy 给，本文件只补过渡与外观。
+//
+// 【尺寸】触屏可点目标 ≥ 40px（本站 §3.5 的紧凑工具条下限），窄屏 360px 起不横向溢出。
+// ─────────────────────────────────────────────────────────────────────────────
+
+// ── 棋盘配色（游戏自有、固定深色）──────────────────────────────────────────
+// 定义在 `.tw-page` 上 —— 它是外壳的根，HUD、棋盘、三个浮层全是它的后代。
+// ⚠️ 这一组变量**必须**在一层祖先上存在：SVG 的 `fill: var(--tw-body)` 在变量缺失时
+// 是整条声明失效（不是回落黑/透明），图上的圆会直接看不见，而且不报任何错。
+// `.tw-board-wrap` 与三个浮层各自再带一份：浮层是 fixed 的，万一哪天被挪到 `.tw-page`
+// 之外（屏障、portal），颜色也还在。重复定义同一组值不产生层级问题（后代就近取值）。
+@mixin tw-palette {
+  --tw-bg-1: #0b1220;
+  --tw-bg-2: #122036;
+  --tw-floor: rgba(255, 255, 255, .07);
+  /* 墙与石块：**这组值决定玩法可读性**，不是装饰。棋盘是固定深底，若墙体只比地板
+     亮一档，实机上根本看不出哪儿能走（真浏览器截图复核时吃过这个亏：整块棋盘看着
+     是均匀的格子，玩家没法规划路线）。所以墙明显更亮 + 一道亮描边，石块再亮一档。 */
+  --tw-wall-1: #4b6288;
+  --tw-wall-2: #3c5170;
+  --tw-ice-1: #14445c;
+  --tw-ice-2: #14445c;
+  --tw-goal: #7dd3fc;
+  --tw-body: #ffc861;
+  --tw-body-soft: rgba(255, 200, 97, .18);
+  --tw-shade: #a78bfa;
+  --tw-shade-soft: rgba(167, 139, 250, .18);
+  --tw-danger: #ff6b6b;
+}
+
+.tw-page {
+  @include tw-palette;
+}
+
+.tw-board-wrap,
+.tw-levels,
+.tw-result,
+.tw-onboard {
+  @include tw-palette;
+}
+
+// ── 外壳 ────────────────────────────────────────────────────────────────────
+.tw-page {
+  padding: 24px 16px 40px;
+}
+
+.tw-shell {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  width: 100%;
+  max-width: 660px;
+  margin: 0 auto;
+  min-width: 0;
+}
+
+.tw-board-card {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+  padding: 16px;
+  border-radius: 30px;
+  background: var(--color-background-card);
+  color: var(--color-text-primary);
+
+  // 容器在这个节点上绑了滑动手势（pointerdown/up）。`touch-action: none` 把浏览器的
+  // 「先滚页面」抢走：不写它，手机上一滑页面先动，手势永远拿不到完整的位移。
+  // `user-select: none` 避免长按 / 拖动时选中棋盘里的文字与图标。
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+// ── 按钮：只复用站内三档，这里只补尺寸与图标排布 ────────────────────────────
+.tw-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 40px;
+  padding: 0 14px;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--color-text-secondary);
+  font: inherit;
+  font-size: .88rem;
+  line-height: 1;
+  white-space: nowrap;
+  text-decoration: none;
+  cursor: pointer;
+  transition: color .25s ease, background-color .25s ease, filter .15s ease;
+
+  svg {
+    flex: none;
+  }
+
+  // 键盘焦点必须看得见（站点 §6.1）；用 outline 而不是光晕 —— 光晕是字段/浮层的语言。
+  &:focus-visible {
+    outline: 2px solid var(--color-brand-primary);
+    outline-offset: 2px;
+  }
+
+  &:disabled {
+    opacity: .5;
+    cursor: not-allowed;
+  }
+}
+
+.tw-btn--soft {
+  @include m.btn-secondary($pointer-hover-only: true);
+}
+
+.tw-btn--primary {
+  @include m.btn-primary;
+}
+
+// 纯图标按钮：正方形 + 胶囊圆角 = 圆形点击区。40px 是触屏下限，不再往下缩。
+.tw-btn--icon {
+  width: 40px;
+  min-width: 40px;
+  padding: 0;
+}
+
+// ── HUD ─────────────────────────────────────────────────────────────────────
+.tw-hud {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 16px;
+  min-width: 0;
+}
+
+.tw-hud__back {
+  flex: none;
+
+  .tw-btn {
+    padding: 0 14px 0 12px;
+  }
+}
+
+.tw-hud__title {
+  flex: 1 1 200px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+
+  h1 {
+    margin: 0;
+    font-size: 1.3rem;
+    font-weight: 700;
+    line-height: 1.25;
+    letter-spacing: .04em;
+  }
+}
+
+.tw-hud__level {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  color: var(--color-text-secondary);
+  font-size: .82rem;
+  line-height: 1.4;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+
+  // 机制角标（石头 / 同纹 / 冰面）：紫色是站内「并列信息」的分类色，与成功 / 危险无关。
+  em {
+    flex: none;
+    padding: 1px 8px;
+    border-radius: 999px;
+    background: var(--color-accent-violet-soft);
+    color: var(--color-accent-violet);
+    font-size: .72rem;
+    font-style: normal;
+  }
+}
+
+.tw-hud__meta {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-left: auto;
+}
+
+.tw-hud__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  // 按钮组被挤到第二行时也贴右：`margin-left: auto` 在它自己那一行里吃掉剩余空间，
+  // 于是「返回 / 标题」在左、「操作」在右，不会贴着左边悬着。
+  margin-left: auto;
+}
+
+.tw-stat {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  margin: 0;
+}
+
+.tw-stat__label {
+  color: var(--color-text-secondary);
+  font-size: .74rem;
+  white-space: nowrap;
+}
+
+.tw-stat__value {
+  color: var(--color-text-primary);
+  font-family: var(--font-numeric);
+  font-size: 1.5rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.tw-stat--moves .tw-stat__value {
+  color: var(--color-brand-primary);
+}
+
+// ── 星级 ────────────────────────────────────────────────────────────────────
+// 三颗星是「信息」不是「收藏」：这里用分类强调色 amber，不动 --color-star-* ——
+// 那一对令牌按规范只服务于收藏图标的交互状态。
+.tw-stars {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  flex: none;
+  color: var(--color-text-secondary);
+
+  svg {
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.8;
+    opacity: .35;
+    transition: opacity .2s ease, color .2s ease;
+  }
+}
+
+@for $n from 1 through 3 {
+  .tw-stars[data-stars='#{$n}'] svg:nth-child(-n + #{$n}) {
+    color: var(--color-accent-amber);
+    fill: currentColor;
+    opacity: 1;
+  }
+}
+
+// ── 教学气泡 / 状态行 ───────────────────────────────────────────────────────
+.tw-coach {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  padding: 10px 12px 10px 16px;
+  border-radius: 20px;
+  background: var(--color-background-content);
+  animation: tw-coach-in .28s cubic-bezier(.22, 1, .36, 1);
+
+  p {
+    flex: 1 1 200px;
+    margin: 0;
+    color: var(--color-text-secondary);
+    font-size: .86rem;
+    line-height: 1.7;
+  }
+
+  .tw-btn {
+    flex: none;
+  }
+}
+
+.tw-status {
+  margin: 0;
+  // 固定一行高：文案在「走不动了」与空状态之间切换时，棋盘不会上下跳。
+  min-height: 1.6em;
+  color: var(--color-text-secondary);
+  font-size: .85rem;
+  line-height: 1.6;
+  transition: color .2s ease;
+
+  &[data-tone='warn'] {
+    color: var(--color-warning-primary);
+  }
+
+  &[data-tone='good'] {
+    color: var(--color-success-primary);
+  }
+}
+
+// ── 棋盘 ────────────────────────────────────────────────────────────────────
+// 台面是固定的深色渐变：外圈（站点卡片）跟着主题走，棋盘本体不跟着变。
+.tw-board-wrap {
+  position: relative;
+  display: flex;
+  justify-content: center;
+  padding: 12px;
+  overflow: hidden;
+  border-radius: 24px;
+  background:
+    radial-gradient(120% 100% at 50% 0%, rgba(88, 132, 204, .28), transparent 62%),
+    linear-gradient(165deg, var(--tw-bg-2), var(--tw-bg-1));
+}
+
+.tw-board {
+  display: block;
+  width: min(100%, 560px);
+  height: auto;
+  border-radius: 14px;
+  touch-action: none;
+}
+
+.tw-board__bg:not([fill]) {
+  fill: transparent;
+}
+
+// 七个分组（以及单盏灯 / 单块石头的组）都不接手势：棋盘上的滑动由容器绑在
+// `.tw-board-card` 上，方向键与键盘才是操作入口。图形本身吃事件只会让坐标计算更绕。
+.tw-cells,
+.tw-goals,
+.tw-goal,
+.tw-trails,
+.tw-blocks,
+.tw-block,
+.tw-tokens,
+.tw-aims,
+.tw-sparks {
+  pointer-events: none;
+}
+
+.tw-cell:not([fill]) {
+  fill: var(--tw-floor);
+}
+
+.tw-cell--wall:not([fill]) {
+  fill: var(--tw-wall-2);
+}
+
+// 墙的亮描边：让「凸起来的一块」这件事在地板之间一眼成立。
+.tw-cell--wall {
+  stroke: rgba(255, 255, 255, .18);
+  stroke-width: 1.5;
+}
+
+// 最外圈：只当画框，压暗且不描边 —— 否则一圈亮墙会把整个棋盘读成一堆方块。
+.tw-cell--edge:not([fill]) {
+  fill: #151d2b;
+}
+
+.tw-cell--edge {
+  stroke: none;
+}
+
+.tw-cell--ice:not([fill]) {
+  fill: var(--tw-ice-2);
+}
+
+.tw-cell--goal:not([fill]) {
+  fill: var(--tw-floor);
+}
+
+// 通关时目标格跟着灯一起亮（Board 把通关状态写在 `.tw-board[data-solved]` 上）。
+// 只加这一层淡青，格子本身的圆角与尺寸不动 —— 亮的是一整格，不是一条描边。
+.tw-board[data-solved='true'] .tw-cell--goal:not([fill]) {
+  fill: rgba(125, 211, 252, .22);
+  transition: fill .3s ease;
+}
+
+.tw-ice-sheen:not([fill]) {
+  fill: rgba(125, 211, 252, .1);
+}
+
+// 灯：暗着的灯只有一个淡青轮廓；点亮后轮廓变实、光晕呼吸。
+.tw-goal-ring:not([stroke]) {
+  stroke: var(--tw-goal);
+}
+
+.tw-goal-ring {
+  fill: none;
+  stroke-width: 3;
+  stroke-opacity: .85;
+  transition: stroke-opacity .25s ease, stroke-width .25s ease;
+}
+
+.tw-goal-halo:not([fill]) {
+  fill: var(--tw-goal);
+}
+
+.tw-goal-halo {
+  fill-opacity: .2;
+  transition: fill-opacity .25s ease;
+}
+
+.tw-goal--lit {
+  .tw-goal-ring {
+    stroke-opacity: 1;
+    stroke-width: 4;
+  }
+
+  .tw-goal-halo {
+    fill-opacity: .4;
+    animation: tw-goal-breathe 1.8s ease-in-out infinite;
+  }
+}
+
+// 滑行拖尾：画上去就开始淡出（Board 用 serial 换 key 重播，所以不需要 JS 计时）。
+// 淡的是 `fill-opacity` 而不是 `opacity` —— Board 给每个圆的行内 opacity 编了
+// 「起点暗、末端亮」的渐变，动画若动 opacity 会把那层渐变一起盖掉。
+.tw-trail:not([fill]) {
+  fill: var(--tw-goal);
+}
+
+.tw-trail {
+  fill-opacity: .55;
+  animation: tw-trail-fade .5s ease-out forwards;
+}
+
+// 同纹石块之间的虚线：它们是一个整体，这条线就是这个意思。
+.tw-link-line:not([stroke]) {
+  stroke: var(--tw-shade);
+}
+
+.tw-link-line {
+  fill: none;
+  stroke-width: 1.5;
+  stroke-opacity: .45;
+  stroke-dasharray: 5 4;
+}
+
+// 石块：**浅钢灰**。刻意与墙（深蓝灰）拉开明度差 —— 「这块能推」与「这是墙」
+// 是两种完全不同的信息，颜色相近时玩家会把石头当墙，整关的解法就读错。
+.tw-block__face:not([fill]) {
+  fill: #8797b4;
+}
+
+.tw-block__face:not([stroke]) {
+  stroke: rgba(255, 255, 255, .85);
+}
+
+.tw-block__face {
+  stroke-width: 2;
+}
+
+.tw-block--linked .tw-block__face:not([stroke]) {
+  stroke: var(--tw-shade);
+}
+
+.tw-block__mark:not([stroke]) {
+  stroke: rgba(16, 24, 38, .72);
+}
+
+.tw-block__mark {
+  fill: none;
+  stroke-width: 3;
+  stroke-linecap: round;
+}
+
+// 两个身体：暖金 = 本体，冷紫 = 影子。颜色从上面的 `--tw-token-color` 来，
+// 于是 `--a` / `--b` 只需要换两个变量，核心 / 外圈 / 拖尾各处分色不会漂。
+.tw-token {
+  // 位移的长短由 Board 按「走一格 / 滑几格」给（滑行要更长才读得出「滑」）。
+  transition: transform var(--tw-token-ms, 170ms) cubic-bezier(.22, 1, .36, 1);
+}
+
+.tw-token--a {
+  --tw-token-color: var(--tw-body);
+  --tw-token-soft: var(--tw-body-soft);
+}
+
+.tw-token--b {
+  --tw-token-color: var(--tw-shade);
+  --tw-token-soft: var(--tw-shade-soft);
+}
+
+.tw-token__glow:not([fill]) {
+  fill: var(--tw-token-soft, var(--tw-body-soft));
+}
+
+.tw-token__core:not([fill]) {
+  fill: var(--tw-token-color, var(--tw-body));
+}
+
+.tw-token__ring:not([stroke]) {
+  stroke: rgba(11, 18, 32, .55);
+}
+
+.tw-token__ring {
+  fill: none;
+  stroke-width: 1.5;
+}
+
+// 走不动的那一侧原地抖一下。抖的是**内部形状**而不是 `.tw-token` 本身：
+// 后者的位置是 Board 用 transform 给的，动画会把它盖掉（元素会跳到原点）。
+// 320ms 与容器清掉 `blocked` 状态的 `BLOCKED_FLASH_MS` 同值：抖完正好撤类，
+// 两者差一截的话末尾会停住一帧「静止的红」，看着像卡住。
+.tw-token--blocked .tw-token__core,
+.tw-token--blocked .tw-token__glow,
+.tw-token--blocked .tw-token__ring {
+  animation: tw-token-blocked .32s ease-in-out;
+}
+
+// 提示箭头：只动 opacity 与 scale 两个独立属性，不碰 transform（同上）。
+.tw-aim {
+  animation: tw-aim-pulse 1.1s ease-in-out infinite;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.tw-aim:not([fill]) {
+  fill: var(--tw-goal);
+}
+
+// 通关粒子：默认向上飞；Board 给每个粒子写 `--tw-spark-dx/dy` 就有了方向。
+.tw-spark:not([fill]) {
+  fill: var(--tw-goal);
+}
+
+.tw-spark {
+  animation: tw-spark-fly .62s cubic-bezier(.22, 1, .36, 1) forwards;
+}
+
+// ── 方向键 ──────────────────────────────────────────────────────────────────
+// 十字排布用 grid-template-areas（不靠绝对定位），窄屏居中、不参与页面横向布局。
+.tw-dpad {
+  display: grid;
+  grid-template-areas:
+    '. up .'
+    'left . right'
+    '. down .';
+  gap: 6px;
+  justify-content: center;
+  width: 100%;
+}
+
+.tw-dpad__btn {
+  @include m.btn-secondary($pointer-hover-only: true);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 52px;
+  height: 52px;
+  padding: 0;
+  border-radius: 18px;
+  background: var(--color-background-content);
+  color: var(--color-text-primary);
+
+  &:focus-visible {
+    outline: 2px solid var(--color-brand-primary);
+    outline-offset: 2px;
+  }
+}
+
+.tw-dpad__up {
+  grid-area: up;
+}
+
+.tw-dpad__down {
+  grid-area: down;
+}
+
+.tw-dpad__left {
+  grid-area: left;
+}
+
+.tw-dpad__right {
+  grid-area: right;
+}
+
+// 方向键下方的键盘图例（容器给的 `.tw-keys`）。它紧挨着方向键，所以自己压成一行小字；
+// 显式 block + text-align，避免被相邻的 `.tw-hud__meta` / `.tw-dpad` 的 flex 布局带成横排。
+.tw-keys {
+  display: block;
+  margin: 10px 0 0;
+  color: var(--color-text-secondary);
+  font-size: .76rem;
+  line-height: 1.6;
+  text-align: center;
+}
+
+// 键位图例分两档：触屏设备上没有键盘可按。判据是「窄屏 或 没有 hover」，
+// 两者任一成立就换成滑动手势的说明 —— 平板横屏（宽但无 hover）也算触屏。
+.tw-keys__touch {
+  display: none;
+}
+
+@media (max-width: 640px), (hover: none) {
+  .tw-keys__desktop {
+    display: none;
+  }
+
+  .tw-keys__touch {
+    display: inline;
+  }
+}
+
+// ── 关卡选择浮层 ────────────────────────────────────────────────────────────
+// 层级 1050 与站内 `.modal` 同层：游戏浮层是全屏模态，应当盖住顶栏（1030）。
+// 滚动交给面板自己（`overflow-y: auto`），标题行 sticky 在面板顶部 ——
+// 章节多起来时关卡列表会很长，关闭按钮不能滚出视野。
+.tw-levels {
+  position: fixed;
+  inset: 0;
+  z-index: 1050;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: calc(16px + var(--safe-top)) calc(16px + var(--safe-right))
+    calc(16px + var(--safe-bottom)) calc(16px + var(--safe-left));
+  overflow-y: auto;
+  background: rgba(0, 0, 0, .5);
+  animation: tw-fade-in .18s ease;
+}
+
+// 面板（遮罩的下一层）：卡片表面 + 自己滚动。内容再长也不顶出视口 ——
+// 溢出在面板里滚，遮罩始终铺满整屏，背景不会被拉出一条缝。
+// 面板本身不留内距：内距写在各段（标题行 / 每组关卡）身上。原因是标题行要吸顶，
+// 面板的 padding 会把吸顶的起点和内容的起点错开（负边距硬拉回来时，两者会差
+// 一整条 padding 而互相压住）。留白由各段自己给，滚动时也就不会从标题两侧漏内容。
+.tw-levels__panel {
+  width: min(100%, 560px);
+  max-height: min(80vh, 760px);
+  max-height: min(80dvh, 760px);
+  margin: auto;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 0;
+  border-radius: 30px;
+  background: var(--color-background-card);
+  color: var(--color-text-primary);
+  box-shadow: var(--shadow-card-brand);
+  animation: tw-pop-in .22s cubic-bezier(.22, 1, .36, 1);
+}
+
+// 标题行常驻在面板顶部：章节多起来时列表会很长，关闭按钮不能滚出视野。
+.tw-levels__head {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 20px 20px 12px;
+  background: var(--color-background-card);
+
+  h2 {
+    margin: 0;
+    font-size: 1.1rem;
+    font-weight: 600;
+  }
+}
+
+.tw-act {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 8px;
+  padding: 0 20px 20px;
+
+  & + & {
+    margin-top: 4px;
+  }
+
+  h3 {
+    grid-column: 1 / -1;
+    margin: 0;
+    color: var(--color-text-secondary);
+    font-size: .8rem;
+    font-weight: 600;
+
+    span {
+      font-weight: 400;
+      opacity: .8;
+    }
+  }
+}
+
+.tw-level-item {
+  @include m.btn-secondary($pointer-hover-only: true);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    'no stars'
+    'name stars';
+  gap: 2px 8px;
+  min-height: 60px;
+  padding: 8px 12px;
+  border-radius: 18px;
+  background: var(--color-background-content);
+  color: var(--color-text-primary);
+  font: inherit;
+  text-align: left;
+  transition: background-color .25s ease, color .25s ease;
+
+  &:focus-visible {
+    outline: 2px solid var(--color-brand-primary);
+    outline-offset: 2px;
+  }
+
+  .tw-stars {
+    grid-area: stars;
+    align-self: center;
+  }
+}
+
+.tw-level-item__no {
+  grid-area: no;
+  color: var(--color-text-secondary);
+  font-size: .72rem;
+}
+
+.tw-level-item__name {
+  grid-area: name;
+  min-width: 0;
+  overflow: hidden;
+  font-size: .86rem;
+  font-weight: 600;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+// 当前关：品牌淡底 + 品牌字（与 .btn-tab 的选中态同一配方，不另造一种「选中」）。
+.tw-level-item--current {
+  background: var(--color-brand-secondary);
+  color: var(--color-brand-primary);
+
+  .tw-level-item__no {
+    color: var(--color-brand-primary);
+    opacity: .8;
+  }
+}
+
+.tw-level-item--done .tw-level-item__no {
+  color: var(--color-success-primary);
+}
+
+// ── 通关浮层 ────────────────────────────────────────────────────────────────
+.tw-result {
+  position: fixed;
+  inset: 0;
+  z-index: 1050;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: calc(16px + var(--safe-top)) calc(16px + var(--safe-right))
+    calc(16px + var(--safe-bottom)) calc(16px + var(--safe-left));
+  overflow-y: auto;
+  background: rgba(0, 0, 0, .5);
+  animation: tw-fade-in .18s ease;
+}
+
+.tw-result__panel {
+  width: min(100%, 400px);
+  max-height: min(80vh, 760px);
+  max-height: min(80dvh, 760px);
+  margin: auto;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 26px 24px 22px;
+  border-radius: 30px;
+  background: var(--color-background-card);
+  color: var(--color-text-primary);
+  text-align: center;
+  box-shadow: var(--shadow-card-brand);
+  animation: tw-pop-in .22s cubic-bezier(.22, 1, .36, 1);
+}
+
+.tw-result h2 {
+  margin: 0 0 18px;
+  font-size: 1.15rem;
+  font-weight: 600;
+}
+
+.tw-result__stars {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-bottom: 20px;
+  color: var(--color-text-secondary);
+
+  svg {
+    // 每颗星自己的入场延迟：这里只放变量，动画在下面的循环里按星数点亮。
+    --tw-star-delay: 0s;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.6;
+    opacity: .28;
+  }
+
+  svg:nth-child(2) {
+    --tw-star-delay: .12s;
+  }
+
+  svg:nth-child(3) {
+    --tw-star-delay: .24s;
+  }
+}
+
+// 依次点亮：第 n 颗星在前 n 颗里，`backwards` 让它在延迟结束前保持「还没出现」。
+@for $n from 1 through 3 {
+  .tw-result[data-stars='#{$n}'] .tw-result__stars svg:nth-child(-n + #{$n}) {
+    color: var(--color-accent-amber);
+    fill: currentColor;
+    opacity: 1;
+    animation: tw-star-in .42s var(--tw-star-delay, 0s) cubic-bezier(.22, 1, .36, 1) backwards;
+  }
+}
+
+.tw-result__stats {
+  display: flex;
+  justify-content: center;
+  gap: 32px;
+  margin: 0 0 24px;
+
+  > div {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+  }
+
+  dt {
+    color: var(--color-text-secondary);
+    font-size: .75rem;
+  }
+
+  dd {
+    margin: 0;
+    font-family: var(--font-numeric);
+    font-size: 1.5rem;
+    font-variant-numeric: tabular-nums;
+    font-weight: 700;
+    line-height: 1.2;
+  }
+}
+
+.tw-result__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+
+  .tw-btn {
+    min-height: 42px;
+    padding: 0 18px;
+  }
+}
+
+// ── 首屏引导浮层 ────────────────────────────────────────────────────────────
+.tw-onboard {
+  position: fixed;
+  inset: 0;
+  z-index: 1050;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: calc(16px + var(--safe-top)) calc(16px + var(--safe-right))
+    calc(16px + var(--safe-bottom)) calc(16px + var(--safe-left));
+  overflow-y: auto;
+  background: rgba(0, 0, 0, .5);
+  animation: tw-fade-in .18s ease;
+}
+
+.tw-onboard__panel {
+  width: min(100%, 460px);
+  max-height: min(80vh, 760px);
+  max-height: min(80dvh, 760px);
+  margin: auto;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 24px;
+  border-radius: 30px;
+  background: var(--color-background-card);
+  color: var(--color-text-primary);
+  box-shadow: var(--shadow-card-brand);
+  animation: tw-pop-in .22s cubic-bezier(.22, 1, .36, 1);
+}
+
+.tw-onboard h2 {
+  margin: 0 0 8px;
+  font-size: 1.2rem;
+  font-weight: 700;
+}
+
+.tw-onboard__panel > p {
+  margin: 0 0 20px;
+  color: var(--color-text-secondary);
+  font-size: .86rem;
+  line-height: 1.8;
+}
+
+.tw-onboard__rules {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin: 0 0 22px;
+  padding: 0;
+  list-style: none;
+}
+
+.tw-rule {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+
+  // 第二条 / 第三条文字列（第一条是图标）。
+  > span:last-child {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+  }
+
+  strong {
+    font-size: .88rem;
+    font-weight: 600;
+  }
+
+  > span:last-child > span {
+    color: var(--color-text-secondary);
+    font-size: .8rem;
+    line-height: 1.6;
+  }
+}
+
+.tw-rule__icon {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 64px;
+  height: 36px;
+  border-radius: 10px;
+  background: var(--color-background-content);
+  color: var(--tw-goal);
+
+  svg {
+    display: block;
+    width: 56px;
+    height: 28px;
+  }
+}
+
+.tw-onboard footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+// ── keyframes ───────────────────────────────────────────────────────────────
+@keyframes tw-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes tw-pop-in {
+  from {
+    opacity: 0;
+    transform: scale(.97);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes tw-coach-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+// 抖动幅度按「看得见但不晃眼」取 2px：棋盘格子上一个身体直径约 20 单位，
+// 2px 在手机上刚好是一眼的量。
+@keyframes tw-token-blocked {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-2px); }
+  45% { transform: translateX(2px); }
+  70% { transform: translateX(-1px); }
+}
+
+@keyframes tw-trail-fade {
+  from { fill-opacity: .55; }
+  to { fill-opacity: 0; }
+}
+
+@keyframes tw-aim-pulse {
+  0%, 100% {
+    opacity: .45;
+    scale: .9;
+  }
+  50% {
+    opacity: 1;
+    scale: 1.08;
+  }
+}
+
+@keyframes tw-spark-fly {
+  from {
+    opacity: 1;
+    transform: translate(0, 0) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translate(var(--tw-spark-dx, 0px), var(--tw-spark-dy, -22px)) scale(.3);
+  }
+}
+
+@keyframes tw-goal-breathe {
+  0%, 100% { fill-opacity: .3; }
+  50% { fill-opacity: .55; }
+}
+
+@keyframes tw-star-in {
+  from {
+    opacity: 0;
+    transform: scale(.4) rotate(-18deg);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) rotate(0deg);
+  }
+}
+
+// ── 减少动态效果 ────────────────────────────────────────────────────────────
+// 规则：关掉动画与位移，**直接显示终态**，但不改变任何内容 / 焦点 / 可操作性。
+// 拖尾与粒子的终态是「已经消散」，所以这里把它们直接设成透明，而不是留住。
+@media (prefers-reduced-motion: reduce) {
+  .tw-token {
+    transition: none;
+  }
+
+  .tw-coach,
+  .tw-levels,
+  .tw-levels__panel,
+  .tw-result,
+  .tw-result__panel,
+  .tw-onboard,
+  .tw-onboard__panel,
+  .tw-result__stars svg,
+  .tw-goal--lit .tw-goal-halo,
+  .tw-aim,
+  .tw-token--blocked .tw-token__core,
+  .tw-token--blocked .tw-token__glow,
+  .tw-token--blocked .tw-token__ring {
+    animation: none;
+  }
+
+  .tw-aim {
+    opacity: 1;
+    scale: 1;
+  }
+
+  .tw-trail,
+  .tw-spark {
+    animation: none;
+    opacity: 0;
+  }
+}
+
+// ── 响应式 ──────────────────────────────────────────────────────────────────
+@media (max-width: 560px) {
+  .tw-page {
+    padding: 16px 12px 32px;
+  }
+
+  .tw-shell {
+    gap: 12px;
+  }
+
+  .tw-board-card {
+    gap: 12px;
+    padding: 12px;
+    border-radius: 24px;
+  }
+
+  .tw-hud {
+    gap: 8px 12px;
+  }
+
+  .tw-hud__title {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  .tw-hud__title h1 {
+    font-size: 1.15rem;
+  }
+
+  // 统计与按钮各占一整行：窄屏挤在同一行必然溢出（五个按钮 + 步数 + 星级）。
+  .tw-hud__meta {
+    flex: 1 1 100%;
+    margin-left: 0;
+    justify-content: space-between;
+    gap: 10px;
+  }
+
+  .tw-hud__actions {
+    flex: 1 1 100%;
+    justify-content: flex-start;
+    margin-left: 0;
+  }
+
+  // 按钮只留图标（aria-label 仍在，可访问名称不丢），五个按钮才放得下。
+  .tw-hud__actions .tw-btn {
+    width: 42px;
+    min-width: 42px;
+    padding: 0;
+  }
+
+  .tw-hud__actions .tw-btn span {
+    display: none;
+  }
+
+  .tw-stat__value {
+    font-size: 1.35rem;
+  }
+
+  .tw-board-wrap {
+    padding: 8px;
+    border-radius: 20px;
+  }
+
+  .tw-board {
+    border-radius: 12px;
+  }
+
+  .tw-dpad {
+    gap: 8px;
+  }
+
+  .tw-dpad__btn {
+    width: 56px;
+    height: 56px;
+    border-radius: 16px;
+  }
+
+  .tw-levels,
+  .tw-result,
+  .tw-onboard {
+    padding: calc(12px + var(--safe-top)) calc(12px + var(--safe-right))
+      calc(12px + var(--safe-bottom)) calc(12px + var(--safe-left));
+  }
+
+  .tw-levels__panel {
+    max-height: min(88vh, 760px);
+    max-height: min(88dvh, 760px);
+    border-radius: 24px;
+  }
+
+  .tw-levels__head {
+    padding: 16px 16px 10px;
+  }
+
+  .tw-act {
+    grid-template-columns: repeat(auto-fill, minmax(124px, 1fr));
+    padding: 0 16px 16px;
+  }
+
+  .tw-result__panel,
+  .tw-onboard__panel {
+    padding: 20px 16px;
+    border-radius: 24px;
+  }
+
+  .tw-rule__icon {
+    width: 56px;
+    height: 32px;
+  }
+
+  .tw-rule__icon svg {
+    width: 48px;
+    height: 24px;
+  }
+}
+
+// 360px 及以下：再收紧一档，保证「返回 + 标题」与浮层里的双列关卡都不横向溢出。
+@media (max-width: 380px) {
+  .tw-page {
+    padding: 12px 10px 28px;
+  }
+
+  .tw-hud__back .tw-btn {
+    padding: 0 10px;
+  }
+
+  .tw-hud__actions .tw-btn {
+    width: 40px;
+    min-width: 40px;
+  }
+
+  .tw-act {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 6px;
+  }
+
+  .tw-level-item {
+    min-height: 56px;
+    padding: 6px 10px;
+  }
+}
