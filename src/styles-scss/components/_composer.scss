@@ -80,11 +80,30 @@
     text-overflow: ellipsis;
   }
   .#{$p}__reply-close {
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    padding: 0;
     border: none;
+    border-radius: 50%;
     background: transparent;
     color: var(--color-text-secondary);
     cursor: pointer;
     font-size: 1rem;
+    line-height: 1;
+
+    &:hover {
+      background: var(--color-background-card);
+      color: var(--color-brand-primary);
+    }
+
+    &:focus-visible {
+      outline: 2px solid var(--color-brand-primary);
+      outline-offset: 2px;
+    }
   }
 
   // 引用博客草稿 chip（与 __reply 同族，左侧书本图标标识）
@@ -126,6 +145,11 @@
     cursor: pointer;
     font-size: 0.85rem;
     line-height: 1;
+
+    &:focus-visible {
+      outline: 2px solid var(--color-warning-primary);
+      outline-offset: 2px;
+    }
   }
 
   // 输入框整块面板：横向填满；幽灵工具条嵌顶部内侧 → 变高文本框 → 底条（提交按钮右下）
@@ -166,10 +190,20 @@
     align-items: center;
     justify-content: center;
     padding: 0;
+    transition: background-color 0.25s ease, color 0.25s ease;
   }
   .#{$p}__icon-btn:hover:not(:disabled) {
-    background: var(--color-background-subtle);
+    background: var(--color-brand-secondary);
     color: var(--color-brand-primary);
+  }
+  // 按下与其余图标钮同一递进（§5.1 次级档）：品牌实底 + 白字，不做位移。
+  .#{$p}__icon-btn:active:not(:disabled) {
+    background: var(--color-brand-primary);
+    color: #fff;
+  }
+  .#{$p}__icon-btn:focus-visible {
+    outline: 2px solid var(--color-brand-primary);
+    outline-offset: 2px;
   }
   .#{$p}__icon-btn:disabled {
     opacity: 0.5;
@@ -200,6 +234,16 @@
     .#{$p}__input {
       font-size: 1rem;
     }
+
+    // 触屏工具栏：可见图标保持原尺寸，点击区按 §3.5 抬到 36px；提交键抬到 40px。
+    .#{$p}__icon-btn {
+      width: 36px;
+      height: 36px;
+    }
+
+    .#{$p}__send {
+      min-height: 40px;
+    }
   }
 
   // 面板底条：左侧提示文字 + 右下角提交
@@ -211,29 +255,24 @@
     padding: 2px 2px 0;
   }
   .#{$p}__hint {
-    font-size: 0.72rem;
-    color: var(--color-text-tertiary);
+    // 辅助信息的字号下限 0.75rem（frontend-styles §3.2）
+    font-size: 0.75rem;
+    /* 提示是**辅助文字**，走次级色。此前用的是 `--color-text-tertiary`（#dde4ee /
+       #2b3036）—— 那是浅淡背景与分隔色（frontend-styles §3.1），压在页面底色或
+       卡片底色上几乎看不见。评论输入区曾为此单独补过一档次要色，现在共享这一份。 */
+    color: var(--color-text-secondary);
     user-select: none;
   }
 
   .#{$p}__send {
+    @include m.btn-primary;
     flex: none;
-    border: none;
-    border-radius: 999px;
     padding: 6px 20px;
-    background: var(--color-brand-secondary);
-    color: var(--color-brand-primary);
-    font-weight: 700;
     font-size: 0.92rem;
-    cursor: pointer;
-    transition: background 0.15s ease, color 0.15s ease;
-  }
-  .#{$p}__send:hover:not(:disabled) {
-    background: var(--color-brand-primary);
-    color: #fff;
-  }
-  .#{$p}__send:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
+
+    &:focus-visible {
+      outline: 2px solid var(--color-brand-primary);
+      outline-offset: 2px;
+    }
   }
 }

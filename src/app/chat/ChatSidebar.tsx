@@ -21,7 +21,7 @@
 
 import { memo, useState } from 'react';
 import Link from 'next/link';
-import { Bookmark, MessageCircle, MoreHorizontal, VolumeX } from 'lucide-react';
+import { Bookmark, ChevronsLeft, MessageCircle, MoreHorizontal, Plus, VolumeX } from 'lucide-react';
 import { type ChatChannelDTO } from '@/lib/chat-shared';
 import Avatar from '@/app/components/Avatar';
 import ChatChannelMenu, { type ChannelMenuAnchor } from './ChatChannelMenu';
@@ -158,8 +158,11 @@ export default function ChatSidebar({
           className="chat-sidebar__collapse"
           onClick={onToggleCollapse}
           aria-label={collapsed ? '展开侧栏' : '折叠侧栏'}
+          title={collapsed ? '展开侧栏' : '折叠侧栏'}
         >
-          {collapsed ? '»' : '«'}
+          {/* 图标本身随折叠态旋转 180°（见 _chat.scss），桌面「折叠」、折叠后「展开」
+              是同一颗箭头，不在文案里各画一个字符。 */}
+          <ChevronsLeft aria-hidden="true" />
         </button>
       </div>
 
@@ -180,7 +183,7 @@ export default function ChatSidebar({
 
       <div className="chat-sidebar__foot">
         <button type="button" className="chat-new-btn" onClick={onNewChat}>
-          <span aria-hidden="true">＋</span>
+          <Plus aria-hidden="true" />
           {!collapsed && <span>发起私聊</span>}
         </button>
         {/* 「保存的消息」是独立页面（不是收藏夹）：入口放在会话列表底部，

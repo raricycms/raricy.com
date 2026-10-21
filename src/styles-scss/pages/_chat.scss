@@ -1,9 +1,21 @@
+@use '../abstracts/mixins' as m;
 @use '../components/composer' as composer;
 @use '../components/markdown-body' as markdown-body;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 在线讨论区（/chat）— 双栏工作台：会话侧栏（可折叠/移动端抽屉）+ 消息主区。
 // 全部使用 CSS 变量令牌，跟随 data-theme 明暗主题。
+//
+// 版式与控件按 docs/frontend-styles.md 对齐（气泡本体除外 —— 那是 §7.4/§7.5
+// 明确交给消息组件与用户款式处理的专用外观）：
+//   · 按钮只有三档：主行用 btn-primary、辅助行用 btn-secondary、会话/选项行用
+//     btn-tab（§5.1）。尺寸与图标间距由各组件补，表面与状态不再各抄一份。
+//   · 导航项与单选行是胶囊（§3.3）；弹窗 30px；浮层 20px（与 ExpandSelect /
+//     提及面板同一档）。
+//   · 普通卡片不描边、常态不投影；层级由页面底色 / 卡片底色 / 内容底色分开（§2.2）。
+//   · 聚焦一律可见：按钮与行用品牌色外轮廓，字段用 --shadow-focus-brand（§6.1）。
+//   · --color-text-tertiary 是浅淡背景/分隔色，**不当弱化文字用**（§3.1）——
+//     本页辅助文字统一走 --color-text-secondary。
 // ─────────────────────────────────────────────────────────────────────────────
 
 .chat-page {
@@ -40,7 +52,9 @@
   border-right: 1px solid var(--color-border);
   display: flex;
   flex-direction: column;
-  transition: width 0.2s ease, flex-basis 0.2s ease;
+  // 宽度伸缩用展开外壳的公共节奏（§6.2「宽度与网格伸缩」），不另起一条时长。
+  transition: width 0.42s cubic-bezier(0.22, 1, 0.36, 1),
+    flex-basis 0.42s cubic-bezier(0.22, 1, 0.36, 1);
   overflow: hidden;
 }
 
@@ -68,23 +82,38 @@
   max-width: 220px;
   // 折叠时把宽度收到 0 而不是 display: none —— display 不可过渡，标题一消失
   // 折叠按钮就瞬间从最右跳到最左；收宽度能让它随右边界平滑左移。
-  transition: max-width 0.2s ease, opacity 0.2s ease;
+  // 宽度 420ms（外壳节奏），淡出 180ms（展开内容淡入那一档，见 §6.2）。
+  transition: max-width 0.42s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.18s ease;
 }
 
+// 折叠开关：密集桌面工具条里的次要图标钮（§5.1）—— 空闲无底色、悬停品牌淡底、
+// 按下品牌实底白字。移动端它关闭抽屉，尺寸抬到 44px 的触屏点击区域（§3.5）。
 .chat-sidebar__collapse {
-  border: none;
-  background: var(--color-background-content);
-  color: var(--color-text-secondary);
-  border-radius: 999px;
-  width: 28px;
-  height: 28px;
-  cursor: pointer;
-  font-size: 0.85rem;
+  @include m.btn-secondary;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border-radius: 50%;
+  width: 30px;
+  height: 30px;
   flex: none;
+  font-size: 0.85rem;
+
+  svg {
+    width: 16px;
+    height: 16px;
+    // 箭头随折叠方向旋转（§3.7）
+    transition: transform 0.25s ease;
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--color-brand-primary);
+    outline-offset: 2px;
+  }
 }
-.chat-sidebar__collapse:hover {
-  background: var(--color-brand-secondary);
-  color: var(--color-brand-primary);
+.chat-page--collapsed .chat-sidebar__collapse svg {
+  transform: rotate(180deg);
 }
 
 .chat-page--collapsed .chat-sidebar__title {
@@ -108,41 +137,47 @@
   padding: 8px;
 }
 
+// 会话行 = 导航项：胶囊、空闲无底色、悬停/当前项为品牌淡底 + 品牌字
+// （§5.4 默认 btn-tab；参照 .admin-sidebar__item 的同一套状态）。
+// 右边留 40px 给「⋯」按钮：它是行的兄弟节点（button 不能套 button），
+// 少这段内距时标题会从按钮底下穿出来。
 .chat-chan {
   display: flex;
   align-items: center;
   gap: 10px;
   width: 100%;
-  padding: 8px 10px;
+  padding: 8px 40px 8px 12px;
   border: none;
-  border-radius: 12px;
+  border-radius: 999px;
   background: transparent;
   color: var(--color-text-primary);
   cursor: pointer;
   text-align: left;
-  // padding 也参与折叠动画：10px → 5px 与宽度收缩同步，图标不跳
-  transition: background 0.15s ease, padding 0.2s ease;
+  // padding 也参与折叠动画：12px → 5px 与宽度收缩同步，图标不跳
+  transition: background-color 0.25s ease, color 0.25s ease,
+    padding 0.42s cubic-bezier(0.22, 1, 0.36, 1);
+
+  &:focus-visible {
+    outline: 2px solid var(--color-brand-primary);
+    outline-offset: 2px;
+  }
 }
-.chat-chan:hover {
-  background: var(--color-background-subtle);
-}
-// 选中态 = 整行品牌淡底，**没有左侧竖条**。
-// 原先这里有一条 `box-shadow: inset 3px 0 0 品牌色`（等价于 border-left: 3px）——
-// 全站「去掉装饰性左侧边框」时漏掉了它（它是 box-shadow 不是 border，按 border-left
-// 搜是搜不到的）。侧栏这一列现在只剩「底色不同」这一种选中表达，与 .admin-sidebar
-// 的活动项一致。
+// 悬停反馈挂在**包裹层**上：指针移到右侧「⋯」按钮时行走的 :hover 已经结束，
+// 挂在自己身上会让底色闪一下再亮回来。
+.chat-chan-wrap:hover .chat-chan,
 .chat-chan.is-active {
-  background: var(--color-background-highlight);
+  background: var(--color-brand-secondary);
 }
-// 折叠态的行只剩一个头像：整行高亮在 60px 轨道里会被头像占满、读不出底色，
-// 改成头像上一圈粗品牌色描边。用 box-shadow 而非 border —— 不占布局，头像不会被挤小。
-.chat-page--collapsed .chat-chan.is-active {
-  background: transparent;
+.chat-chan-wrap:hover .chat-chan__title,
+.chat-chan.is-active .chat-chan__title {
+  color: var(--color-brand-primary);
 }
-.chat-page--collapsed .chat-chan.is-active .chat-chan__icon,
-.chat-page--collapsed .chat-chan.is-active .chat-chan__avatar {
-  box-shadow: 0 0 0 3px var(--color-brand-primary);
+.chat-chan-wrap:hover .chat-chan__icon,
+.chat-chan.is-active .chat-chan__icon {
+  color: var(--color-brand-primary);
 }
+// 当前项不再用描边环 / 竖条表达（§5.3）：淡底 + 品牌字 + 图标同色就是选中态。
+// 折叠轨道里同理 —— 行宽 44px、头像 34px，四周 5px 的淡底仍读得出「这一行」。
 .chat-chan.has-unread .chat-chan__title {
   color: var(--color-brand-primary);
 }
@@ -151,24 +186,27 @@
 .chat-chan-wrap {
   position: relative;
 }
+// 密集列表里的紧凑图标钮（可见盒子 30px / 8px 圆角，§5.1）。空闲透明：
+// 行本身在悬停时是品牌淡底，按钮再铺一层淡底会分不清；它自己的悬停落在**卡片色**
+// 上（比行底亮一档），指针落在图标上时仍读得出「按的是这一颗」。
 .chat-chan__more {
   position: absolute;
-  right: 6px;
+  right: 8px;
   top: 50%;
   transform: translateY(-50%);
-  width: 26px;
-  height: 26px;
+  width: 30px;
+  height: 30px;
   padding: 0;
   border: none;
-  border-radius: 6px;
-  background: var(--color-background-card);
+  border-radius: 8px;
+  background: transparent;
   color: var(--color-text-secondary);
   display: inline-flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
   opacity: 0;
-  transition: opacity 0.15s ease;
+  transition: opacity 0.18s ease, background-color 0.25s ease, color 0.25s ease;
 }
 .chat-chan__more svg {
   width: 16px;
@@ -178,14 +216,26 @@
 .chat-chan__more:focus-visible {
   opacity: 1;
 }
-.chat-chan__more:hover {
-  background: var(--color-background-highlight);
+.chat-chan__more:hover,
+.chat-chan__more:focus-visible {
+  background: var(--color-background-card);
   color: var(--color-brand-primary);
+}
+.chat-chan__more:focus-visible {
+  outline: 2px solid var(--color-brand-primary);
+  outline-offset: 2px;
 }
 // 触屏没有 hover：常显，否则没法静音/删除会话
 @media (hover: none) {
   .chat-chan__more {
     opacity: 1;
+  }
+  // 可见盒子保持 30px（§5.1 的紧凑钮），但触屏点击区按 §3.5 撑到 44px：
+  // 伪元素不占布局、不推挤行内文字，也不与相邻行重叠（行高 50px）。
+  .chat-chan__more::after {
+    content: '';
+    position: absolute;
+    inset: -7px;
   }
 }
 // 折叠态侧栏只有 60px，放不下
@@ -198,7 +248,8 @@
   height: 12px;
   margin-right: 4px;
   vertical-align: -1px;
-  color: var(--color-text-tertiary);
+  // 图标不是弱化文字，用次级色（tertiary 是背景/分隔色，见 §3.1）
+  color: var(--color-text-secondary);
 }
 
 // 图标 + 未读角标的定位容器：角标压在图标右上角**外侧**，而 __icon/__avatar 有
@@ -311,51 +362,55 @@
   border-top: 1px solid var(--color-border);
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
 }
 
-/* 「保存的消息」入口：与「发起私聊」并列的第二行（它不是收藏夹，见 /chat/saved） */
+/* 「保存的消息」入口：与「发起私聊」并列的第二行（它不是收藏夹，见 /chat/saved）。
+   次级档 —— 空闲无底色，悬停品牌淡底 + 品牌字，按下品牌实底白字（§5.1）。 */
 .chat-saved-link {
+  @include m.btn-secondary;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 6px;
-  padding: 4px;
-  border-radius: 8px;
+  padding: 8px 10px;
   font-size: 0.82rem;
-  color: var(--color-text-secondary);
   text-decoration: none;
   white-space: nowrap;
-}
-.chat-saved-link:hover {
-  color: var(--color-brand-primary);
-  background: var(--color-brand-secondary);
-}
-.chat-saved-link svg {
-  width: 14px;
-  height: 14px;
+
+  svg {
+    width: 14px;
+    height: 14px;
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--color-brand-primary);
+    outline-offset: 2px;
+  }
 }
 
+// 主要行动：最高级档（品牌淡底 → 悬停实底白字 → 按下压暗）。
 .chat-new-btn {
+  @include m.btn-primary;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 6px;
   width: 100%;
   padding: 9px 14px;
-  border: none;
-  border-radius: 999px;
-  background: var(--color-brand-secondary);
-  color: var(--color-brand-primary);
-  font-weight: 600;
   font-size: 0.9rem;
-  cursor: pointer;
-  transition: background 0.15s ease, color 0.15s ease;
   white-space: nowrap;
-}
-.chat-new-btn:hover {
-  background: var(--color-brand-primary);
-  color: #fff;
+
+  svg {
+    width: 16px;
+    height: 16px;
+    flex: none;
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--color-brand-primary);
+    outline-offset: 2px;
+  }
 }
 .chat-page--collapsed .chat-new-btn {
   padding: 9px 0;
@@ -382,17 +437,35 @@
   min-height: 54px;
 }
 
+// 密集桌面工具条里的图标钮（§5.1）：空闲透明，悬停品牌淡底，按下品牌实底。
+// 移动端它是拉开抽屉的**主要入口**，尺寸在 ≤900px 一档抬到 44px 点击区。
 .chat-main__menu {
   display: none;
   position: relative;
+  padding: 0;
   border: none;
-  background: var(--color-background-content);
+  background: transparent;
   color: var(--color-text-secondary);
   border-radius: 8px;
   width: 32px;
   height: 32px;
   cursor: pointer;
   flex: none;
+
+  &:hover {
+    background: var(--color-brand-secondary);
+    color: var(--color-brand-primary);
+  }
+
+  &:active {
+    background: var(--color-brand-primary);
+    color: #fff;
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--color-brand-primary);
+    outline-offset: 2px;
+  }
 }
 // 汉堡红点（移动端抽屉关着时的唯一未读信号，见 ChatApp 的 anyUnreadMark）
 .chat-main__menu-dot {
@@ -437,8 +510,9 @@
 
 .chat-main__search {
   flex: none;
+  padding: 0;
   border: none;
-  background: var(--color-background-content);
+  background: transparent;
   color: var(--color-text-secondary);
   border-radius: 8px;
   width: 30px;
@@ -447,24 +521,51 @@
   align-items: center;
   justify-content: center;
   cursor: pointer;
-}
-.chat-main__search:hover {
-  background: var(--color-brand-secondary);
-  color: var(--color-brand-primary);
-}
-.chat-main__search svg {
-  width: 16px;
-  height: 16px;
+  transition: background-color 0.25s ease, color 0.25s ease;
+
+  &:hover {
+    background: var(--color-brand-secondary);
+    color: var(--color-brand-primary);
+  }
+
+  &:active {
+    background: var(--color-brand-primary);
+    color: #fff;
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--color-brand-primary);
+    outline-offset: 2px;
+  }
+
+  svg {
+    width: 16px;
+    height: 16px;
+  }
 }
 
 .chat-main__profile-link {
   margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   font-size: 0.8rem;
   color: var(--color-brand-primary);
   white-space: nowrap;
-}
-.chat-main__profile-link:hover {
-  text-decoration: underline;
+
+  svg {
+    width: 14px;
+    height: 14px;
+  }
+
+  &:hover {
+    text-decoration: underline;
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--color-brand-primary);
+    outline-offset: 2px;
+  }
 }
 
 .chat-main__empty {
@@ -523,23 +624,24 @@
   }
 }
 
+// 「加载更早 / 展开更早」：列表里的次要行动，走次级档（§5.1）—— 不再自带描边
+// （全站唯一允许有边框的按钮是投票页的 .btn--ghost，不在此列）。
 .chat-list__older {
+  @include m.btn-secondary;
   align-self: center;
-  border: 1px solid var(--color-border);
-  background: var(--color-background-card);
-  color: var(--color-text-secondary);
-  border-radius: 999px;
-  padding: 5px 14px;
+  padding: 6px 16px;
   font-size: 0.8rem;
-  cursor: pointer;
-}
-.chat-list__older:hover {
-  background: var(--color-background-subtle);
+  font-family: inherit;
+
+  &:focus-visible {
+    outline: 2px solid var(--color-brand-primary);
+    outline-offset: 2px;
+  }
 }
 
 .chat-list__empty {
   margin: auto;
-  color: var(--color-text-tertiary);
+  color: var(--color-text-secondary);
   font-size: 0.95rem;
 }
 
@@ -551,7 +653,7 @@
   gap: 10px;
   width: 100%;
   margin: 6px 0 2px;
-  color: var(--color-text-tertiary);
+  color: var(--color-text-secondary);
   font-size: 0.75rem;
 }
 .chat-date-sep::before,
@@ -763,7 +865,8 @@
 
 .chat-msg__receipt {
   font-size: 0.72rem;
-  color: var(--color-text-tertiary);
+  // 回执是辅助文字，走次级色（tertiary 是背景/分隔色，§3.1）
+  color: var(--color-text-secondary);
 }
 .chat-msg__receipt.is-read {
   color: var(--color-brand-primary);
@@ -1138,12 +1241,12 @@
 }
 .chat-msg__blog-author {
   font-size: 0.72rem;
-  color: var(--color-text-tertiary);
+  color: var(--color-text-secondary);
 }
 .chat-msg__blog-arrow {
   flex: none;
   font-size: 0.9rem;
-  color: var(--color-text-tertiary);
+  color: var(--color-text-secondary);
 }
 .chat-msg__blog-missing {
   color: var(--color-text-secondary);
@@ -1181,6 +1284,8 @@
 // （ChatChannelMenu）、消息操作菜单（ChatMessageMenu）。原来是 .chat-avatar-menu，
 // 加第三个使用者时改了名 —— 它本来就不是头像专属的。
 // 位置一律 portal 到 body + position: fixed，由各组件实测后写入 top/left。
+// 圆角 20px 与站内其余下拉面板（ExpandSelect / 提及面板）同档；菜单项圆角
+// 按「外壳圆角 − 内距」配套（§3.3：48px 外壳 / 4px 内距 → 24px 内外圆角一类关系）。
 .chat-menu {
   position: fixed;
   z-index: 60;
@@ -1189,35 +1294,51 @@
   flex-direction: column;
   gap: 2px;
   padding: 4px;
-  border-radius: 12px;
+  border-radius: 20px;
   background: var(--color-background-card);
   // 浮层：去边框、去黑阴影，改用品牌蓝光晕与卡面拉层级。
   box-shadow: var(--shadow-card-brand);
 }
+// 菜单项走次级档的三态（§5.1）：空闲无底色、悬停品牌淡底 + 品牌字、按下品牌实底。
 .chat-menu__item {
-  display: block;
+  @include m.btn-secondary;
+  display: flex;
+  align-items: center;
   width: 100%;
   padding: 7px 12px;
-  border: none;
-  border-radius: 8px;
-  background: transparent;
+  border-radius: 16px;
   color: var(--color-text-primary);
   font-size: 0.85rem;
   font-family: inherit;
   text-align: left;
   text-decoration: none;
-  cursor: pointer;
   white-space: nowrap;
+
+  &:focus-visible {
+    outline: 2px solid var(--color-brand-primary);
+    outline-offset: 2px;
+  }
 }
 .chat-menu__item:hover {
-  background: var(--color-background-subtle);
   color: var(--color-brand-primary);
 }
+// 破坏性操作沿用同一档的递进，只换配色（§5.1「危险操作沿用对应档位的层次」）。
 .chat-menu__item--danger {
   color: var(--color-warning-primary);
+
+  &:hover:not(:disabled) {
+    background-color: var(--color-warning-secondary);
+    color: var(--color-warning-primary);
+  }
+
+  &:active:not(:disabled) {
+    background-color: var(--color-warning-primary);
+    color: #fff;
+  }
 }
 
 .chat-menu__item--cancel {
+  justify-content: center;
   color: var(--color-text-secondary);
   text-align: center;
 }
@@ -1236,20 +1357,23 @@
   font-style: italic;
 }
 
+// 「N 条新消息 / 回到最新」：浮在工作台上方的一次主要行动 → 最高级档（§5.1），
+// 浮层阴影保留（它是叠在列表上的浮层）。位置与粘附几何不变。
 .chat-jump-new {
+  @include m.btn-primary;
   position: sticky;
   bottom: 76px;
   margin: -40px auto 0;
   display: block;
-  border: none;
-  background: var(--color-brand-primary);
-  color: #fff;
-  border-radius: 999px;
   padding: 7px 16px;
   font-size: 0.82rem;
-  cursor: pointer;
   // 浮动胶囊按钮：黑阴影退役，改品牌蓝光晕。
   box-shadow: var(--shadow-card-brand);
+
+  &:focus-visible {
+    outline: 2px solid var(--color-brand-primary);
+    outline-offset: 2px;
+  }
 }
 
 // ── 输入区（QQ 式：附件条在上、整块圆角面板，幽灵工具条嵌在面板顶部内侧）─────
@@ -1275,17 +1399,30 @@
   width: calc(100vw - 40px);
 }
 
+// 弹窗关闭：次要图标钮（圆形点击区，§5.1）。这个类同时被图床选择 / 选人 /
+// 资源面板三个弹窗复用（它们都住在讨论与评论的编辑器里），所以只按三档配，
+// 不跟随任何一个弹窗的私有尺寸。
 .chat-modal-close {
-  border: none;
-  background: transparent;
-  color: var(--color-text-secondary);
+  @include m.btn-secondary;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border-radius: 50%;
   font-size: 1.3rem;
-  cursor: pointer;
   line-height: 1;
+
+  &:focus-visible {
+    outline: 2px solid var(--color-brand-primary);
+    outline-offset: 2px;
+  }
 }
 
 .chat-new-search {
-  margin-bottom: 10px;
+  margin-bottom: 12px;
 }
 
 .chat-new-list {
@@ -1303,25 +1440,24 @@
   font-size: 0.9rem;
 }
 
+// 单选行（选人 / 选博客 / 搜索结果）：站内「导航项 / 当前选择」那一档（§5.4），
+// 单行走胶囊；两行及以上的行（标题 + 摘要）用 10px 的次级内容块圆角（§3.3），
+// 免得两行文字被裹成一颗长胶囊。悬停与按下都是品牌淡底 + 品牌字，不闪实底。
 .chat-new-item {
+  @include m.btn-tab;
   display: flex;
   align-items: center;
   gap: 10px;
   width: 100%;
-  padding: 8px 10px;
-  border: none;
-  border-radius: 10px;
-  background: transparent;
+  padding: 8px 12px;
   color: var(--color-text-primary);
-  cursor: pointer;
+  font-family: inherit;
   text-align: left;
-}
-.chat-new-item:hover:not(:disabled) {
-  background: var(--color-background-subtle);
-}
-.chat-new-item:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
+
+  &:focus-visible {
+    outline: 2px solid var(--color-brand-primary);
+    outline-offset: 2px;
+  }
 }
 
 .chat-new-item__avatar {
@@ -1375,28 +1511,43 @@
   align-items: center;
   gap: 10px;
   width: 100%;
-  padding: 8px 10px;
+  padding: 8px 12px;
   border: none;
   border-radius: 10px;
   background: transparent;
   color: var(--color-text-primary);
   cursor: pointer;
   text-align: left;
-}
-.chat-blog-item:hover:not(:disabled) {
-  background: var(--color-background-subtle);
+  transition: background-color 0.25s ease, color 0.25s ease;
+
+  // 悬停 / 按下都停在品牌淡底（同 btn-tab 的按下语义：不闪成实底，
+  // 两行文字里还有一档次要色，实底会把它压没）。
+  &:hover,
+  &:active {
+    background: var(--color-brand-secondary);
+  }
+
+  &:hover .chat-blog-item__icon {
+    background: var(--color-background-card);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--color-brand-primary);
+    outline-offset: 2px;
+  }
 }
 
 .chat-blog-item__icon {
   flex: none;
   width: 34px;
   height: 34px;
-  border-radius: 8px;
+  border-radius: 12px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   background: var(--color-brand-secondary);
   color: var(--color-brand-primary);
+  transition: background-color 0.25s ease;
 }
 .chat-blog-item__main {
   flex: 1;
@@ -1422,22 +1573,31 @@
 
 // ── 弹窗分页条（发起私聊 / 引用博客共用）────────────────────────────────────
 
-// 搜索结果条目（复用私聊弹窗的列表容器）
+// 搜索结果条目（复用私聊弹窗的列表容器）：两行（作者 + 时间 / 正文摘要），
+// 同样走 10px 次级内容块与品牌淡底的悬停。
 .chat-search-item {
   display: flex;
   flex-direction: column;
   gap: 2px;
   width: 100%;
-  padding: 8px 10px;
+  padding: 8px 12px;
   border: none;
   border-radius: 10px;
   background: transparent;
   text-align: left;
   cursor: pointer;
   color: var(--color-text-primary);
-}
-.chat-search-item:hover {
-  background: var(--color-background-subtle);
+  transition: background-color 0.25s ease, color 0.25s ease;
+
+  &:hover,
+  &:active {
+    background: var(--color-brand-secondary);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--color-brand-primary);
+    outline-offset: 2px;
+  }
 }
 .chat-search-item__head {
   display: flex;
@@ -1471,22 +1631,18 @@
   padding-top: 8px;
   border-top: 1px solid var(--color-border);
 }
+// 前后翻页：次级档（§5.1），不再自带描边 —— 站内只有投票页的 .btn--ghost 允许边框。
+// 当前页信息保持次要文字色 + 数字字体。
 .chat-pager__btn {
-  border: 1px solid var(--color-border);
-  background: var(--color-background-content);
-  color: var(--color-text-primary);
-  border-radius: 8px;
-  padding: 4px 12px;
+  @include m.btn-secondary;
+  padding: 5px 14px;
   font-size: 0.8rem;
-  cursor: pointer;
-}
-.chat-pager__btn:hover:not(:disabled) {
-  border-color: var(--color-brand-primary);
-  color: var(--color-brand-primary);
-}
-.chat-pager__btn:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
+  font-family: inherit;
+
+  &:focus-visible {
+    outline: 2px solid var(--color-brand-primary);
+    outline-offset: 2px;
+  }
 }
 .chat-pager__info {
   font-size: 0.8rem;
@@ -1500,11 +1656,24 @@
     position: relative;
   }
 
+  // 抽屉布局下这是拉开会话列表的唯一入口 → 按触屏主要图标入口给 44px 点击区
+  // （§3.5），头部内距同步收紧，54px 的基高不变。
+  .chat-main__head {
+    padding: 5px 16px;
+  }
+
   .chat-main__menu {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    font-size: 1.25rem;
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+
+    svg {
+      width: 22px;
+      height: 22px;
+    }
   }
 
   // 侧栏变为抽屉
@@ -1517,13 +1686,23 @@
     width: 300px;
     flex-basis: 300px;
     transform: translateX(-100%);
-    transition: transform 0.2s ease;
+    transition: transform 0.25s ease;
     // 移动端抽屉浮起时用品牌蓝光晕（黑阴影退役）。
     // 桌面端 .chat-sidebar 的 border-right 是布局分栏线，不在此列、不动。
     box-shadow: var(--shadow-card-brand);
   }
   .chat-page--drawer-open .chat-sidebar {
     transform: translateX(0);
+  }
+
+  // 抽屉头部：折叠按钮在这里是「关闭抽屉」，同样给 44px 触屏点击区
+  .chat-sidebar__head {
+    min-height: 60px;
+    padding: 8px 12px;
+  }
+  .chat-sidebar__collapse {
+    width: 44px;
+    height: 44px;
   }
 
   // 折叠状态在移动端不生效（抽屉统一 300px）：标题、行内容、行几何全部还原
@@ -1548,15 +1727,7 @@
     opacity: 1;
   }
   .chat-page--collapsed .chat-chan {
-    padding: 8px 10px;
-  }
-  // 抽屉宽度够，选中态走常规的整行高亮，不要折叠态的描边圈
-  .chat-page--collapsed .chat-chan.is-active {
-    background: var(--color-background-highlight);
-  }
-  .chat-page--collapsed .chat-chan.is-active .chat-chan__icon,
-  .chat-page--collapsed .chat-chan.is-active .chat-chan__avatar {
-    box-shadow: none;
+    padding: 8px 40px 8px 12px;
   }
   .chat-page--collapsed .chat-new-btn {
     padding: 9px 14px;
@@ -1574,9 +1745,14 @@
     max-width: 100%;
   }
 
-  // 窄屏：底条只保留发送键，面板内边距收紧
+  // 窄屏：底条只保留发送键，面板内边距收紧。
+  // 提示被藏掉后 space-between 只剩一个子项 = 靠左，发送键会从「右下角」跳到左边；
+  // margin-left: auto 把它钉回右端（与宽屏的位置一致）。
   .chat-composer__hint {
     display: none;
+  }
+  .chat-composer__send {
+    margin-left: auto;
   }
   .chat-composer {
     padding: 8px 8px calc(10px + var(--safe-bottom));
@@ -1599,6 +1775,7 @@
 }
 .saved-page__title {
   font-size: 1.5rem;
+  font-weight: 700;
   margin: 0;
 }
 .saved-page__count {
@@ -1606,17 +1783,16 @@
   color: var(--color-text-secondary);
 }
 .saved-page__hint {
-  font-size: 0.82rem;
+  font-size: 0.85rem;
   color: var(--color-text-secondary);
-  margin: 0 0 18px;
+  margin: 0 0 20px;
 }
+// 空态与正常内容共用容器与间距，不额外套一张整页卡片（§5.8）。
 .saved-page__empty {
   padding: 40px 16px;
   text-align: center;
   color: var(--color-text-secondary);
-  background: var(--color-background-card);
-  border: 1px solid var(--color-border);
-  border-radius: 12px;
+  font-size: 0.9rem;
 }
 .saved-msg-list {
   list-style: none;
@@ -1624,16 +1800,16 @@
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 12px;
 }
+// 一条保存的消息 = 一张卡：卡片底色、30px 固定圆角、无描边、常态无投影（§5.3）。
 .saved-msg {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 12px 14px;
+  padding: 16px 20px;
   background: var(--color-background-card);
-  border: 1px solid var(--color-border);
-  border-radius: 12px;
+  border-radius: 30px;
 }
 .saved-msg__main {
   flex: 1;
@@ -1673,34 +1849,62 @@
   white-space: nowrap;
 }
 .saved-msg__time {
-  font-size: 0.72rem;
-  color: var(--color-text-tertiary);
-}
-.saved-msg__remove {
-  flex: none;
-  border: none;
-  background: transparent;
+  font-size: 0.75rem;
   color: var(--color-text-secondary);
+}
+// 「移除」是这张卡上的次要（且破坏性）操作：次级档尺寸与三态，空闲就带警示色
+// （破坏性操作不能等 hover 才说，同 .btn-outline-danger）。
+.saved-msg__remove {
+  @include m.btn-secondary;
+  flex: none;
+  padding: 6px 12px;
   font-size: 0.78rem;
-  cursor: pointer;
-  padding: 6px 8px;
-  border-radius: 8px;
-}
-.saved-msg__remove:hover {
+  font-family: inherit;
   color: var(--color-warning-primary);
-  background: var(--color-background-highlight);
-}
-.saved-msg__remove:disabled {
-  cursor: default;
-  opacity: 0.6;
+
+  &:hover:not(:disabled) {
+    background-color: var(--color-warning-secondary);
+    color: var(--color-warning-primary);
+  }
+
+  &:active:not(:disabled) {
+    background-color: var(--color-warning-primary);
+    color: #fff;
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--color-brand-primary);
+    outline-offset: 2px;
+  }
 }
 .saved-page__more,
 .saved-page__back {
   margin-top: 16px;
+  font-size: 0.85rem;
 }
 .saved-page__more a,
 .saved-page__back a {
   color: var(--color-brand-primary);
+
+  &:hover {
+    text-decoration: underline;
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--color-brand-primary);
+    outline-offset: 2px;
+  }
+}
+
+// 窄屏紧凑列表卡片收成 18px（§3.3 / §7.1：≤768px 的列表条目）。
+@media (max-width: 768px) {
+  .saved-msg-list {
+    gap: 10px;
+  }
+  .saved-msg {
+    padding: 14px 16px;
+    border-radius: 18px;
+  }
 }
 
 @media (max-width: 560px) {
@@ -1711,5 +1915,50 @@
   }
   .saved-msg__remove {
     align-self: flex-end;
+  }
+}
+
+// ── 触屏点击区域 ────────────────────────────────────────────────────────────
+// 搜索是常驻图标入口，桌面上按紧凑工具栏给 30px；触屏（含宽平板）抬到 40px，
+// 不挤压 54px 的头部基高。
+@media (hover: none) and (pointer: coarse) {
+  .chat-main__search {
+    width: 40px;
+    height: 40px;
+
+    svg {
+      width: 18px;
+      height: 18px;
+    }
+  }
+
+  // 长按唤出的菜单在触屏上要按得中（§3.5）：条目行高抬到 44px。
+  .chat-menu__item {
+    min-height: 44px;
+  }
+
+  // 弹窗关闭与翻页在触屏上同样放大可见盒子（桌面保持紧凑工具栏尺寸）。
+  .chat-modal-close {
+    width: 40px;
+    height: 40px;
+  }
+
+  .chat-pager__btn {
+    min-height: 40px;
+  }
+}
+
+// ── 减少动态效果（§6.5）────────────────────────────────────────────────────
+// 折叠伸缩、标题淡出与列表交叉淡入直接到终态；功能与焦点不依赖动画结束。
+@media (prefers-reduced-motion: reduce) {
+  .chat-sidebar,
+  .chat-sidebar__title,
+  .chat-sidebar__collapse svg,
+  .chat-chan {
+    transition: none;
+  }
+  ::view-transition-old(chat-list),
+  ::view-transition-new(chat-list) {
+    animation: none;
   }
 }
