@@ -17,6 +17,13 @@
 // 里立刻 requestSubmit()（文章管理页的筛选就是这么做的），那时 React 状态还没刷进
 // 隐藏 input，只靠状态更新会提交**上一格的值**，而且页面上看不出任何异常。
 //
+// ⚠️ **读了 `name` 的那个字段，别再用 `form.elements.namedItem(name)` 取**：
+// 那套集合按 name **或 id** 匹配，而本组件的触发钮带 `id`、隐藏 input 带 `name`。
+// 调用方习惯把两者写成同一个字符串（label 的 htmlFor 与字段名同名最自然），于是
+// 集合里有两个匹配项 —— 规范规定此时 namedItem 返回 RadioNodeList（不是元素），
+// 它的 `.value` **恒为空串**。症状是提交上去的空值被服务端当成默认档，回 200、
+// 「保存成功」。改用 `form.querySelector('[name="…"]')`（见 BlogForm.readFields）。
+//
 // 【可访问性】触发钮是 button（aria-haspopup / aria-expanded），面板是 listbox，
 // 选项是 option。打开后方向键在选项间移动、Home / End 到首尾、Enter / 空格选中、
 // Escape 收起并把焦点还给触发钮、Tab 正常离开；收起的面板挂 inert，不会进入焦点序列。

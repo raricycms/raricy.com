@@ -16,7 +16,7 @@
 import { test, expect } from '@playwright/test';
 import type { Page } from '@playwright/test';
 import { SEED_USERS } from './seed';
-import { loginViaApi, uniqueTag } from './helpers';
+import { chooseExpandSelect, loginViaApi, uniqueTag } from './helpers';
 
 /** 正文哨兵串：只有客户端 marked 真的跑完才会出现在 DOM 里。 */
 const BODY_MARKER = 'VISIBILITY-BODY-MARKER-9c41';
@@ -210,6 +210,50 @@ test.describe('文章对外可见性', () => {
     expect(res?.status()).toBe(200);
     await expect(page.locator('#read-controls')).toHaveCount(1);
     await expect(page.locator('#comment-section')).toHaveCount(1);
+  });
+
+  test('编辑页改可见范围：PUT 带的是选中的档，且真的落库（不是只有 toast 说成功）', async ({
+    page,
+  }) => {
+    await loginViaApi(page, SEED_USERS.core.username);
+    const id = await createBlogWith(page, 'internal');
+
+    await page.goto(`/blog/${id}/edit`);
+    await chooseExpandSelect(page, 'visibility', '对外公开');
+
+    const putResponse = page.waitForResponse(
+      (res) =>
+        res.request().method() === 'PUT' && new URL(res.url()).pathname === `/api/blogs/${id}`
+    );
+    await page.getByRole('button', { name: '保存修改', exact: true }).click();
+    const res = await putResponse;
+    expect(res.ok(), `PUT 失败：${res.status()} ${await res.text()}`).toBeTruthy();
+
+    // ★ 这条是那个静默 bug 的探针 ★ 可见范围那一格是 ExpandSelect：触发钮带 id、
+    // 隐藏 input 带 name，两者同名时 `form.elements.namedItem` 返回 RadioNodeList
+    // （`.value` 恒为 ''），于是请求体里是 `visibility: ''` —— 服务端按 internal 落库，
+    // 页面回 200、toast「保存成功」，作者以为改好了。断言**请求体**而不只是页面文案，
+    // 才区分得开「真发出去了」与「碰巧显示对了」。
+    expect(
+      (res.request().postDataJSON() as { visibility?: string }).visibility,
+      'PUT 体里必须是选中的档，不能是空串'
+    ).toBe('public');
+
+    // ① 接口读回来是 public —— 真落库，不是只在浏览器里改了显示
+    const api = await page.request.get(`/api/blogs/${id}`);
+    expect(((await api.json()) as { blog: { visibility: string } }).blog.visibility).toBe('public');
+
+    // 保存成功后会延迟跳回阅读页（BlogForm 的 800ms 定时器）。先让它走完，再回编辑页，
+    // 否则那条定时器可能在 goto 途中把页面抢走（Playwright 会报 navigation interrupted）。
+    await page.waitForURL(new RegExp(`/blog/${id}$`), { timeout: 10_000 });
+
+    // ② 重新打开编辑页，下拉显示的就是这一档（出 bug 时这里会显示「仅站内可见」）
+    await page.goto(`/blog/${id}/edit`);
+    await expect(
+      page
+        .locator('.expand-select', { has: page.locator('#visibility') })
+        .locator('.expand-select__label')
+    ).toHaveText('对外公开');
   });
 });
 

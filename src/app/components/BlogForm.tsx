@@ -166,15 +166,37 @@ export default function BlogForm({ categories, blog = null, banInfo = null }: Bl
     return fallbackRef.current?.value ?? fallbackValue;
   }
 
+  /**
+   * 按**字段名**取表单控件的值。
+   *
+   * ⚠️ 不能用 `form.elements.namedItem(name)`：那套集合按 **name 或 id** 匹配，
+   * 而 ExpandSelect 的触发钮带 `id`、真正承载值的隐藏 input 带 `name`，这里两处
+   * 传的又是同一个字符串。集合里于是有两个匹配项 —— 规范规定这时 `namedItem`
+   * 返回的是 RadioNodeList（不是元素），而它的 `.value` **恒为空串**。
+   *
+   * 后果全是静默的：可见范围提交成 `''`（`parseVisibility('')` → `'internal'`），
+   * 栏目同样成 `''`（服务端当未分类）。页面回 200、toast「保存成功」，作者以为
+   * 改好了 —— 而一篇 public 文章只要从编辑页保存一次，就会被**悄悄收回站内**。
+   * 2026-10 把这两格从原生 `<select>` 换成 ExpandSelect 时就是这么丢的
+   * （原生 select 自己就是那个带 name 的元素，namedItem 读得到）。
+   *
+   * 用 `[name="…"]` 查询：命中的是真正承载值的控件，与触发钮的 id 无关。
+   * 回归用例见 `tests/unit/blog-form-fields.test.ts`。
+   */
+  function formValue(form: HTMLFormElement, name: string): string {
+    const el = form.querySelector<HTMLInputElement | HTMLTextAreaElement>(`[name="${name}"]`);
+    return el?.value ?? '';
+  }
+
   /** 取此刻表单里所有会进请求的字段。 */
   function readFields(form: HTMLFormElement): FormFields {
     return {
-      title: (form.elements.namedItem('title') as HTMLInputElement).value,
-      description: (form.elements.namedItem('description') as HTMLTextAreaElement).value,
-      categoryId: (form.elements.namedItem('category') as HTMLInputElement).value,
-      visibility: (form.elements.namedItem('visibility') as HTMLInputElement).value,
-      allowAnonymousComments: (form.elements.namedItem('allowAnonymous') as HTMLInputElement)
-        .checked,
+      title: formValue(form, 'title'),
+      description: formValue(form, 'description'),
+      categoryId: formValue(form, 'category'),
+      visibility: formValue(form, 'visibility'),
+      allowAnonymousComments:
+        form.querySelector<HTMLInputElement>('[name="allowAnonymous"]')?.checked ?? false,
       content: getContent(),
     };
   }
