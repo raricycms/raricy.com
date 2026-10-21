@@ -13,6 +13,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { expect, test, type Page } from '@playwright/test';
+import { waitCommentSectionReady } from './helpers';
 import { SEED_BLOG, SEED_USERS } from './seed';
 
 const BLOG_URL = `/blog/${SEED_BLOG.id}`;
@@ -51,6 +52,8 @@ test.describe('匿名评论', () => {
   test('★ 走输入区勾上匿名发出：页面显示化名 + 「匿名」标，且点不进个人主页', async ({ page }) => {
     const marker = `e2e-anon-${Date.now().toString(36)}`;
     await page.goto(BLOG_URL);
+    // 等水合再填：早于水合的 fill 会被 React 首次渲染清空，于是「什么都没发出去」
+    await waitCommentSectionReady(page);
     const composer = page.locator('.comment-composer').first();
     await composer.locator('.comment-composer__input').fill(marker);
     await composer.locator('.comment-composer__anon input[type="checkbox"]').check();

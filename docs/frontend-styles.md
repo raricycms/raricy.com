@@ -309,7 +309,7 @@ Kumbh Sans；代码块与编辑器继续使用完整的 JetBrains Mono。
 | 后台用户卡片 | `.user-card__avatar`（pages/admin/_users.scss） | 40px |
 | 博客列表作者 | `.blog-author img`（pages/blog/_menu.scss） | 20px |
 | 博客详情作者 | `.read-hero__avatar`（pages/blog/_blog.scss） | 32px |
-| 博客评论作者 | `.comment-author-avatar`（pages/blog/_blog.scss） | 24px |
+| 博客评论作者 | `.comment-author-avatar`（pages/blog/_comments.scss） | 38px（楼中楼 28px；≤768px 32 / 26） |
 | Feed 弹窗名单（点赞 / 动态） | FeedButton.tsx 内联 style（两处） | 32px |
 | 讨论 / 评论正文里的用户名片 | `.rich-user-ref__avatar`（components/_markdown-body.scss） | 1.4em（随正文字号，两条管线基准字号不同） |
 
@@ -785,29 +785,51 @@ Kumbh Sans；代码块与编辑器继续使用完整的 JetBrains Mono。
 标记了；第三种随「卡片不描边」总则退役。嵌入块现在靠**底色深浅**（比正文卡深一档的
 content 色）+ 形状（圆角 + 内距）与正文分开，不靠色相，也不靠描边。
 
-#### 评论区的两条几何契约
+#### 评论区的版式与两条几何契约
+
+评论区（`pages/blog/_comments.scss`）与博客目录页同一套视觉语言：页面底色上摆**白卡片**
+（30px 圆角、不描边、常态不托阴影），层级只靠背景色阶（页面底 → 卡片 → 卡内子块）。
+
+- **标题行**（`.comment-section__head`）：品牌淡底方框图标 +「评论」+ 总数胶囊。计数含
+  楼中楼（`CommentSection.tsx` 的 `countComments`）—— 只数根节点会让「一条根评论带五条
+  回复」显示成 1。
+- **发表评论**（`.comment-form`）：一张独立白卡，里面仍是与讨论区共用的 `RichComposer`。
+  就地回复时同一份表单挂到被回复的评论下方，改用 `.comment-form.is-inline` 的紧凑子块。
+- **根评论**（`.comment-section > .comment-list > .comment-item`）：一张白卡，身份行
+  （头像 / 用户名 / 匿名标 / 时间）在上，正文、附件与操作行在下一列；桌面正文列缩进到
+  用户名（头像宽 + 间距），≤768px 退回卡片左边缘。
+- **楼中楼**：收进根评论卡内部的一层 `.comment-item > .comment-list`「回复槽」（内容底色
+  子块），槽内用 1px 分隔线分条，不画左侧竖条；越深身份区越小一号（38 → 28px，窄屏
+  32 → 26px）。
+- **操作行**（`.comment-actions`）：点赞 / 回复 / 删除走次级档胶囊（`btn-secondary`），
+  图标 + 短文案。删除空闲就带警示红（破坏性操作不等 hover 才说）；点赞已赞时也用
+  `--color-warning-*` 那一对色（与文章页互动胶囊一致）。**允许换行** —— 深层楼中楼可用
+  宽度会跌到 min-width 附近，不换行会把操作行顶出卡片。
+- **空态 / 加载态**（`.comment-status`）：一张白卡，空态带品牌淡底图标；两者都保留
+  `#comment-list` 这个容器，评论区永远是同一个 DOM 骨架。
 
 楼中楼的缩进是「DOM 嵌套 + 同一条 `.comment-list` 规则重复生效」叠出来的：React 侧
 **完全不知道深度**（`CommentItem` 不收 depth，服务端也没有层数上限），所以纵向与横向各有一条
 必须成立的契约，由 `tests/e2e/comment-layout.spec.ts` 的**两条**用例分别钉住
 （3 层：什么都不许溢出；20 层：只有顶层列表可以溢出且必须能滚）。
 
-- **纵向 —— 末尾空白不许随层数累加。** 有楼中楼的评论 `padding-bottom: 0`、嵌套列表
-  `margin-bottom: 0`（`.comment-item:has(> .comment-list)` / `.comment-item > .comment-list`）。
-  否则每一层要付两次账：父级内距 18 + 内层列表下距 15 —— 父级的 padding 挡住外边距折叠、
-  子级的下外边距又算进父级的 auto 高度，两者是**相加**而非取大者：每深一层多 33px，
-  3 层实测末尾空出 **66px**（与「根评论 → 根评论」的 0 相比就是用户报的那一大段空）。
-  归零后任何层数都只剩最深那一层自己的 18px。
+- **纵向 —— 末尾空白不许随层数累加。** 有子楼的**嵌套**评论 `padding-bottom: 0`、回复槽
+  `padding-bottom: 0`（`.comment-item .comment-item:has(> .comment-list)` /
+  `.comment-item > .comment-list`）。不归零的话每一层要付两次账：本条下内距 + 回复槽的
+  收尾留白 —— 父级的 padding 挡住外边距折叠、子级的外边距又算进父级高度，两者是**相加**
+  而非取大者，层数越深末尾空白越大。归零后任何层数都只剩「最内层叶子自己的 padding +
+  根评论卡的下内距 + 卡片间距」，是一个与深度无关的常数。根评论卡**保留**自己的下内距
+  （它同时是回复槽与卡片底边的留白），所以 `:has` 那条只作用于嵌套层。
   ⚠️ 这是本仓**第一条实际生效的 `:has()`**（§12 里那条 `@supports not (selector(:has(*)))`
   是没了对手的孤儿）；**刻意不写降级规则** —— 不支持时退回的正是改动前的间距，只是没修好
   而已，没有比现状更好的「降级样式」可写。
 - **横向 —— 深层评论不许被挤成一个字宽。** `.comment-item { min-width: 240px }` **必须固定
-  px**（写 `min(240px, 100%)` 会随可用宽度一起缩 = 等于没设），缩进每层 15px、窄屏 8px
-  （窄屏压缩见下面的媒体查询）。可用宽度 = 容器宽 − 缩进 × (层数−1)：不设地板的话 390px
-  手机上第 44 层只剩 14px（一行一个字）；设了之后窄屏第 16 层踩到地板，再深就交给滚动。
-  240 的依据：评论里**不能换行**的最宽一行是 `.actions` 的 flex 行（§6.1，没写 `flex-wrap`
-  ⇒ 点赞胶囊 ≈54 + 间距 10 + 回复 ≈46 + 间距 10 + 删除 ≈46 ≈ 166px，计数三位数时 ≈186px），
-  且必须低于最窄的容器（320px 屏 → 288px），否则根评论自己就会顶出横条。
+  px**（写 `min(240px, 100%)` 会随可用宽度一起缩 = 等于没设）。缩进由回复槽的左右内距
+  承担（桌面 14px、窄屏 10px）：可用宽度 = 该层列表宽 − 左右内距 × (层数−1)。不设地板
+  的话 390px 手机上几十层后只剩十几 px（一行一个字）；设了之后窄屏十几层踩到地板，再深
+  就交给顶端滚动。240 的依据：操作行现在**允许换行**，不再是最宽的一行；这个地板同时
+  兜住身份行（头像 + 名字 + 时间）与正文的可用宽度，且必须低于最窄的容器（320px 屏 →
+  288px），否则根评论自己就会顶出横条。
 - **溢出只许由 `.comment-section > .comment-list` 接住**（`overflow-x: auto`）。中间层必须
   保持 `visible`，否则**每层各画一条横条**；`.blog-detail` 与 `documentElement` 都不许出现
   横向滚动条。⚠️ 那条 `overflow-x` 必须带 `.comment-section >` 限定 —— 嵌套列表复用的是
@@ -1559,7 +1581,7 @@ Hero 的导航入口为「开始探索」，复用 `btn-primary` 并增加 `back
   > `.comment-section > .comment-list` 接住（那里有 `overflow-x: auto`），于是整片评论区
   > 只有一条横条，而页面与 `.blog-detail` 仍然不滚。上面「缩进只保留 `padding-left`」的
   > 判据**不变**：每层再叠一个同值 `margin-left` 会让溢出提前发生、且发生在**每一层**上。
-  > 完整口径（含 240px 的来历与 `:has()` 那条）见 §6.7「评论区的两条几何契约」。
+  > 完整口径（含 240px 的来历与 `:has()` 那条）见 §6.7「评论区的版式与两条几何契约」。
 - **幽灵引用**：`pages/blog/_blog.scss` 的 `.read-hero { background: var(--background-color) }`
   （`--background-color` 从未定义 → 标题带一直是透明的，死声明已删）、
   `src/app/components/AdminCategoryEditor.tsx` 的 `var(--ink-3)` → `--fd-ink-3`。

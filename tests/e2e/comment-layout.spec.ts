@@ -25,7 +25,7 @@
 //   · 横向：`.comment-item` 有 min-width，跌破它时**只由 `.comment-section > .comment-list`
 //     接住**（那里是 overflow-x: auto）—— 中间层必须保持 visible，否则每层各画一条横条。
 // 于是「页面本身不横向滚动」这条老契约照旧，被允许溢出的只有那一个容器。
-// 细节见 pages/blog/_blog.scss 里 .comment-list / .comment-item 两处的整段说明。
+// 细节见 pages/blog/_comments.scss 里 .comment-list / .comment-item 两处的整段说明。
 
 import { test, expect } from '@playwright/test';
 import { registerFreshUser, uniqueTag } from './helpers';
@@ -106,64 +106,113 @@ test('楼中楼不横向溢出：评论区底部不该出现横向滚动条', as
   expect(report.lists, `楼中楼右边界越过了父级：${report.lists.join('、')}`).toEqual([]);
 });
 
+// ── 标题计数 / 空态 ─────────────────────────────────────────────────────────────
+//
+// 这两个都是**只有客户端拉完评论才成立**的状态（首屏 comment 列表是空的），所以必须在
+// 真浏览器里等它落定；接口层看到的是另一份数据，测不到徽标上的数。
+test('标题计数包含楼中楼，不是只数根评论', async ({ page }) => {
+  await registerFreshUser(page, { core: true });
+  const blogId = await createBlog(page, `评论计数 ${uniqueTag()}`);
+
+  const tag = uniqueTag();
+  const root = await postComment(page, blogId, `计数根 ${tag}`);
+  await postComment(page, blogId, `计数回复一 ${tag}`, root);
+  await postComment(page, blogId, `计数回复二 ${tag}`, root);
+
+  await page.goto(`/blog/${blogId}`);
+  await expect(page.locator('.comment-item', { hasText: `计数回复一 ${tag}` }).last()).toBeVisible();
+  // 1 条根 + 2 条回复。只数根节点时这里会是 1，正是要拦的静默错。
+  await expect(page.locator('.comment-section__count')).toHaveText('3');
+});
+
+test('没有评论时显示空态，且列表里没有评论卡片', async ({ page }) => {
+  await registerFreshUser(page, { core: true });
+  const blogId = await createBlog(page, `评论空态 ${uniqueTag()}`);
+
+  await page.goto(`/blog/${blogId}`);
+  await expect(page.locator('.comment-status--empty')).toBeVisible();
+  await expect(page.locator('#comment-list .comment-item')).toHaveCount(0);
+  // 空态也是 #comment-list 的一部分（评论区永远是同一个 DOM 骨架）
+  await expect(page.locator('#comment-list .comment-status--empty')).toHaveCount(1);
+});
+
 // ── 楼中楼末尾不许随层数累积空白 ────────────────────────────────────────────────
 //
-// 成因：每一层都付两次账 —— `.comment-item` 的 padding-bottom 18 与嵌套
-// `.comment-list` 的 margin-bottom 15。父级的 padding 挡住外边距折叠、子级的下外边距
-// 又算进父级的 auto 高度，两者**相加**（不是取大者）⇒ 每深一层多 33px。
-// 归零后每处都是「18 + 1px 分隔线 + 18」。
+// 成因（旧版）：每一层都付两次账 —— 评论的下内距与嵌套列表的下外边距。父级的 padding
+// 挡住外边距折叠、子级的下外边距又算进父级的 auto 高度，两者**相加**（不是取大者）
+// ⇒ 每深一层多付一份，层数越深末尾越大。
 //
-// 表达方式是「深层末尾的盒间距 ≤ 平级之间的盒间距」，而不是写死 37px —— 37 是
-// `.comment-item` 的 padding 凑出来的实现细节，这里要钉的是「不随层数变」这件事。
+// 现版把「回复槽」的 `padding-bottom` 与「有子楼的嵌套评论」的 `padding-bottom` 归零，
+// 只留最内层叶子自己的 padding + 根评论卡下内距 + 卡片间距。于是判据是：
+// **浅链与深链末尾到下一根评论的间距必须一致**（与深度无关）。不写死具体 px ——
+// 那是实现细节（卡片内距 + 间距），改版时不该逼着用例跟着改数。
 test('楼中楼末尾不再逐层累积空白', async ({ page }) => {
   await registerFreshUser(page, { core: true });
   const blogId = await createBlog(page, `楼中楼间距 ${uniqueTag()}`);
 
   const tag = uniqueTag();
-  const top = await postComment(page, blogId, `根一 ${tag}`);
-  const mid = await postComment(page, blogId, `二层 ${tag}`, top);
-  await postComment(page, blogId, `三层 ${tag}`, mid);
-  // 末尾补一条根评论：要量的就是「深层末尾 → 下一条根评论」这段
-  await postComment(page, blogId, `根二 ${tag}`);
+  // 浅链：根一 + 一条回复（两层）
+  const rootA = await postComment(page, blogId, `根一 ${tag}`);
+  const shallowLeaf = `浅链末 ${tag}`;
+  await postComment(page, blogId, shallowLeaf, rootA);
+
+  // 深链：根二 + 四层回复（五层）
+  const rootB = await postComment(page, blogId, `根二 ${tag}`);
+  let parent = rootB;
+  let deepLeaf = '';
+  for (let i = 0; i < 4; i++) {
+    deepLeaf = `深链第${i + 1}层 ${tag}`;
+    parent = await postComment(page, blogId, deepLeaf, parent);
+  }
+
+  // 末尾补一条根评论：量的是「每条链末尾 → 下一条根评论」这段
+  await postComment(page, blogId, `根三 ${tag}`);
 
   await page.goto(`/blog/${blogId}`);
-  await expect(page.locator('.comment-item', { hasText: `二层 ${tag}` }).last()).toBeVisible();
+  // ⚠️ 必须 .last()：父级 li 的 textContent 包住整个子树，祖先**都**命中 hasText。
+  await expect(page.locator('.comment-item', { hasText: deepLeaf }).last()).toBeVisible();
 
-  const gaps = await page.evaluate(() => {
-    // ⚠️ 根评论只认顶层列表的**直接子元素**。按文本找会踩「父级 textContent 包住整棵
-    //    子树」这个坑：`根一` 会把它自己子树里最深的那条也一起命中（comment-rich.spec.ts
-    //    记着同一个坑）。反过来，最内层**只能**靠「最后一个匹配」拿到（文档序最后即最深）。
-    const roots = [...document.querySelectorAll<HTMLElement>('#comment-list > .comment-item')];
-    const deep = [...document.querySelectorAll<HTMLElement>('.comment-item')]
-      .filter((el) => (el.textContent ?? '').includes('三层'))
-      .pop() as HTMLElement | undefined;
-    if (roots.length !== 2 || !deep) return null;
-    const gap = (a: HTMLElement, b: HTMLElement) =>
-      b.getBoundingClientRect().top - a.getBoundingClientRect().bottom;
-    return { sibling: gap(roots[0], roots[1]), afterDeep: gap(deep, roots[1]) };
-  });
+  const gaps = await page.evaluate(
+    ({ shallowLeaf, deepLeaf }) => {
+      // ⚠️ 根评论只认顶层列表的**直接子元素**。按文本找会踩「父级 textContent 包住整棵
+      //    子树」这个坑（comment-rich.spec.ts 记着同一个坑），所以叶子一律取「最后一个匹配」。
+      const roots = [...document.querySelectorAll<HTMLElement>('#comment-list > .comment-item')];
+      const deepest = (marker: string) =>
+        [...document.querySelectorAll<HTMLElement>('.comment-item')]
+          .filter((el) => (el.textContent ?? '').includes(marker))
+          .pop() as HTMLElement | undefined;
+      const shallow = deepest(shallowLeaf);
+      const deep = deepest(deepLeaf);
+      if (roots.length !== 3 || !shallow || !deep) return null;
+      const gap = (a: HTMLElement, b: HTMLElement) =>
+        b.getBoundingClientRect().top - a.getBoundingClientRect().bottom;
+      return { shallowAfter: gap(shallow, roots[1]), deepAfter: gap(deep, roots[2]) };
+    },
+    { shallowLeaf, deepLeaf }
+  );
 
-  expect(gaps, '顶层列表里不是两条根评论，或者找不到最内层那条').not.toBeNull();
-  // 前提：平级两条根评论之间本来就没有盒间距（间距全在各自的 padding 里）
-  expect(gaps!.sibling, '平级之间居然有盒间距，下面的比较就失去意义了').toBeLessThanOrEqual(1);
-  // 改前这里是 33×(3−1) = 66px
+  expect(gaps, '顶层列表里不是三条根评论，或者找不到最深的那条').not.toBeNull();
+  // ★ 不变式：浅链（2 层）与深链（5 层）末尾到下一根评论的间距相同。
+  //   改前这里是「每深一层 +33px」，深浅两条会差出 99px 来。
   expect(
-    gaps!.afterDeep,
-    `深层回复与下一条根评论之间空了 ${gaps!.afterDeep}px —— 每层的下边距/下内距又叠起来了`
+    Math.abs(gaps!.shallowAfter - gaps!.deepAfter),
+    `浅链末尾空 ${gaps!.shallowAfter}px、深链末尾空 ${gaps!.deepAfter}px —— 间距在随层数累加`
   ).toBeLessThanOrEqual(1);
+  // 顺带兜一下量级：正常是「根卡下内距 + 卡片间距」这一档，不该出现旧版那种 66px+ 的空。
+  expect(gaps!.deepAfter, `深链末尾空了 ${gaps!.deepAfter}px，明显不是固定间距`).toBeLessThanOrEqual(60);
 });
 
 // ── 深层楼中楼：最内层不许被挤成一个字宽，整片评论区共用一条横向滚动条 ──────────────
 //
 // 【为什么必须自己钉视口】两个 project 都跑这个文件，而触发深度取决于可用宽度：
-//   1280 桌面 → 可用 868、每层缩进 15px，要 **43 层**才跌破 min-width；
-//   390 窄屏 → 可用 358、每层缩进 8px（≤768px 那档），**16 层**跌破。
-// 不钉视口的话 desktop 那一遍得造 43 条评论，两遍测的还不是同一件事。
-// 固定 390 后两遍量到的几何完全一致，顺带走「窄屏缩进压到 8px」那条分支。
+//   1280 桌面 → 可用约 868、回复槽每层左右各 14px，要二十多层才跌破 min-width；
+//   390 窄屏 → 可用 358、回复槽每层左右各 10px（≤768px 那档），第 12 层起跌破。
+// 不钉视口的话 desktop 那一遍得造二十多条评论，两遍测的还不是同一件事。
+// 固定 390 后两遍量到的几何完全一致，顺带走「窄屏回复槽压到 10px」那条分支。
 // setViewportSize 必须在 goto **之前**（同 favorite-layout.spec.ts 的 at()）。
 const DEEP_VW = 390;
-// 390 下可用 358、每层 8px：第 16 层（238px）起被压倒 min-width 以下。取 20 层 ——
-// 最内层左边缘 8×19 = 152、宽 240 ⇒ 右边缘 392，比 358 多出 34px，远大于 ±1px 容差。
+// 390 下可用 358、根卡内距 16、回复槽每层 10px：第 12 层起被压到 min-width 以下。取 20 层 ——
+// 最内层左边缘 16 + 10×18 = 196、宽 240 ⇒ 右边缘 436，比 358 多出 78px，远大于 ±1px 容差。
 // 20 条评论远在 commentDaily（8000/天，无分钟档）之下。
 const DEEP_LEVELS = 20;
 

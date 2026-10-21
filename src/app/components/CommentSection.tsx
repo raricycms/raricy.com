@@ -20,7 +20,7 @@
 
 import Link from 'next/link';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { BookOpenText, Heart } from 'lucide-react';
+import { BookOpenText, CornerUpLeft, Heart, MessageCircle, Trash2 } from 'lucide-react';
 import RichComposer, { type ComposerBlogQuote } from './RichComposer';
 import QuoteBlogModal from './QuoteBlogModal';
 import ImageLightbox from './ImageLightbox';
@@ -108,6 +108,14 @@ function mapNode(
     if (!n.children.length) return n;
     return { ...n, children: mapNode(n.children, id, fn) };
   });
+}
+
+/**
+ * 评论总数（含楼中楼）。标题旁那个计数徽标用它 —— 只数根节点会让「评论 3」在
+ * 一条根评论带五条回复时显示成 1，读者会以为回复丢了。
+ */
+function countComments(nodes: CommentNode[]): number {
+  return nodes.reduce((total, n) => total + 1 + countComments(n.children), 0);
 }
 
 interface Props {
@@ -343,9 +351,12 @@ export default function CommentSection({
   }, [deleteTarget, deleteRequiresReason, deleteReason, deleteBusy, load]);
 
   const canComment = canCommentProp ?? !!currentUserId;
+  const totalComments = countComments(comments);
 
   const form = canComment ? (
-    <div className="comment-form" id="comment-form">
+    /* 顶层是「发表评论」卡；就地回复时同一份表单挂到那条评论下面（.is-inline 换一层
+       更紧凑的表面）—— 组件是同一个，状态也还是同一份，只是落点不同。 */
+    <div className={`comment-form${replyTo ? ' is-inline' : ''}`} id="comment-form">
       <RichComposer
         className="comment-composer"
         mentionScope={{ kind: 'comment', id: blogId }}
@@ -404,7 +415,21 @@ export default function CommentSection({
        同边距，且檐沟只有一份定义（桌面 20px / 窄屏 0，见 `_blog.scss` 的 768px 档），
        不会 drift —— 别再在这里写死一个 padding。 */
     <div className="blog-content-container-container">
-      <section className="comment-section" id="comment-section">
+      <section className="comment-section" id="comment-section" aria-labelledby="comment-section-title">
+        {/* 标题行：图标 + 「评论」 + 总数。计数含楼中楼 —— 只数根节点会让
+            「评论 3」在一条根评论带五条回复时显示成 1。 */}
+        <header className="comment-section__head">
+          <h2 className="comment-section__title" id="comment-section-title">
+            <span className="comment-section__icon" aria-hidden="true">
+              <MessageCircle />
+            </span>
+            评论
+            <span className="comment-section__count numeric">
+              {loading ? '—' : totalComments}
+            </span>
+          </h2>
+        </header>
+
         {canComment ? (
           // 顶部只在未回复任何评论时渲染表单；回复时表单移动到评论下方
           !replyTo && form
@@ -414,7 +439,16 @@ export default function CommentSection({
 
         {loading ? (
           <ul className="comment-list" id="comment-list">
-            <li className="text-muted">加载评论中…</li>
+            <li className="comment-status">加载评论中…</li>
+          </ul>
+        ) : comments.length === 0 ? (
+          <ul className="comment-list" id="comment-list">
+            <li className="comment-status comment-status--empty">
+              <span className="comment-status__icon" aria-hidden="true">
+                <MessageCircle />
+              </span>
+              <p>{canComment ? '还没有评论，来写第一条吧。' : '还没有评论。'}</p>
+            </li>
           </ul>
         ) : (
           <ul className="comment-list" id="comment-list">
@@ -563,14 +597,14 @@ function CommentItem({
           // 有账号的评论者：点击头像/名称跳转个人主页
           <Link href={`/u/${node.author.id}`} className="comment-author-link" title={authorName}>
             {authorAvatar}
-            <span>{authorName}</span>
+            <span className="comment-author-name">{authorName}</span>
           </Link>
         ) : (
           // 匿名评论（有化名、无 id）与作者已注销（两者都空）都落这条支路 ——
           // 匿名那条会带出 avatar_url，所以头像照常显示，只是不可点。
           <>
             {authorAvatar}
-            <span>{authorName}</span>
+            <span className="comment-author-name">{authorName}</span>
           </>
         )}
         {node.anonymous && (
@@ -589,71 +623,77 @@ function CommentItem({
         )}
       </div>
 
-      {/* 正文：CommentMarkdown 内部走 renderCommentMarkdown 净化（见文件头） */}
-      {node.content ? (
-        <div className="comment-content">
-          <CommentMarkdown content={node.content} />
-        </div>
-      ) : null}
-
-      {/* 附件：图片可点开放大；引用博客整卡可点。均为读时解析，软删的评论服务端不下发 */}
-      {node.image && (
-        <img
-          className="comment-image"
-          src={node.image.url}
-          alt="评论图片"
-          loading="lazy"
-          onClick={() => onImageClick(node.image!.url)}
-        />
-      )}
-      {node.image_missing && <div className="comment-image-missing">[图片已删除]</div>}
-      {node.blog && (
-        <a className="comment-blog" href={`/blog/${node.blog.id}`}>
-          <span className="comment-blog__icon" aria-hidden="true">
-            <BookOpenText />
-          </span>
-          <span className="comment-blog__main">
-            <span className="comment-blog__title">{node.blog.title}</span>
-            {node.blog.author ? <span className="comment-blog__author">@{node.blog.author}</span> : null}
-          </span>
-        </a>
-      )}
-      {node.blog_missing && <div className="comment-blog-missing">[博客已删除]</div>}
-
-      <div className="actions">
-        {/* 点赞：已删除的占位节点不给按钮（服务端对它一律 notFound）。
-            未登录只读展示计数 —— 点不了的东西不该长成能点的样子。 */}
-        {!node.is_deleted && currentUserId ? (
-          <button
-            type="button"
-            className={`comment-like${node.liked ? ' is-liked' : ''}`}
-            onClick={() => onToggleLike(node)}
-            aria-pressed={node.liked}
-            aria-label={node.liked ? '取消点赞' : '点赞'}
-          >
-            <Heart aria-hidden="true" />
-            {node.likes_count > 0 && <span className="numeric">{node.likes_count}</span>}
-          </button>
-        ) : !node.is_deleted && node.likes_count > 0 ? (
-          <span className="comment-like comment-like--static">
-            <Heart aria-hidden="true" />
-            <span className="numeric">{node.likes_count}</span>
-          </span>
+      {/* 正文列与头像列分开缩进：桌面端正文对齐到用户名（头像宽 + 间距），窄屏
+          （≤768px）退回到卡片左边缘 —— 手机上的可用宽度不够再让出这一列。 */}
+      <div className="comment-item__body">
+        {/* 正文：CommentMarkdown 内部走 renderCommentMarkdown 净化（见文件头） */}
+        {node.content ? (
+          <div className="comment-content">
+            <CommentMarkdown content={node.content} />
+          </div>
         ) : null}
-        {canComment && (
-          <button type="button" className="button button-primary-small" onClick={() => onReply(node)}>
-            回复
-          </button>
+
+        {/* 附件：图片可点开放大；引用博客整卡可点。均为读时解析，软删的评论服务端不下发 */}
+        {node.image && (
+          <img
+            className="comment-image"
+            src={node.image.url}
+            alt="评论图片"
+            loading="lazy"
+            onClick={() => onImageClick(node.image!.url)}
+          />
         )}
-        {canDelete && (
-          <button
-            type="button"
-            className="button button-warning-small"
-            onClick={() => onDelete(node.id, requiresReason)}
-          >
-            删除
-          </button>
+        {node.image_missing && <div className="comment-image-missing">[图片已删除]</div>}
+        {node.blog && (
+          <a className="comment-blog" href={`/blog/${node.blog.id}`}>
+            <span className="comment-blog__icon" aria-hidden="true">
+              <BookOpenText />
+            </span>
+            <span className="comment-blog__main">
+              <span className="comment-blog__title">{node.blog.title}</span>
+              {node.blog.author ? <span className="comment-blog__author">@{node.blog.author}</span> : null}
+            </span>
+          </a>
         )}
+        {node.blog_missing && <div className="comment-blog-missing">[博客已删除]</div>}
+
+        <div className="comment-actions">
+          {/* 点赞：已删除的占位节点不给按钮（服务端对它一律 notFound）。
+              未登录只读展示计数 —— 点不了的东西不该长成能点的样子。 */}
+          {!node.is_deleted && currentUserId ? (
+            <button
+              type="button"
+              className={`comment-like${node.liked ? ' is-liked' : ''}`}
+              onClick={() => onToggleLike(node)}
+              aria-pressed={node.liked}
+              aria-label={node.liked ? '取消点赞' : '点赞'}
+            >
+              <Heart aria-hidden="true" />
+              {node.likes_count > 0 && <span className="numeric">{node.likes_count}</span>}
+            </button>
+          ) : !node.is_deleted && node.likes_count > 0 ? (
+            <span className="comment-like comment-like--static">
+              <Heart aria-hidden="true" />
+              <span className="numeric">{node.likes_count}</span>
+            </span>
+          ) : null}
+          {canComment && (
+            <button type="button" className="comment-action" onClick={() => onReply(node)}>
+              <CornerUpLeft aria-hidden="true" />
+              回复
+            </button>
+          )}
+          {canDelete && (
+            <button
+              type="button"
+              className="comment-action comment-action--danger"
+              onClick={() => onDelete(node.id, requiresReason)}
+            >
+              <Trash2 aria-hidden="true" />
+              删除
+            </button>
+          )}
+        </div>
       </div>
 
       {/* 就地回复：表单移动到本条评论下方 */}

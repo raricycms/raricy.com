@@ -20,6 +20,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
+import { waitCommentSectionReady } from './helpers';
 import { SEED_BLOG, SEED_BLOG2, SEED_USERS } from './seed';
 
 const BLOG_URL = `/blog/${SEED_BLOG.id}`;
@@ -143,6 +144,11 @@ test.describe('评论富文本', () => {
     await page.goto(BLOG_URL);
     const row = commentRow(page, marker);
     const thumb = row.locator('.comment-image');
+    // 图片是 loading="lazy"：评论一多、这条落到视口外时浏览器不会立刻加载，
+    // 未加载的 <img> 没有内容盒 —— toBeVisible 会判成 hidden（与图片本身无关）。
+    // 先把它滚进视口，再等字节真的到齐。
+    await row.scrollIntoViewIfNeeded();
+    await expect(thumb).toHaveJSProperty('complete', true);
     await expect(thumb).toBeVisible();
     await expect(thumb).toHaveAttribute('src', `/api/images/${imageId}/raw`);
 
@@ -178,6 +184,8 @@ test.describe('评论输入区（与讨论同源的 RichComposer）', () => {
     expect(res.status()).toBe(200);
 
     await page.goto(BLOG_URL);
+    // 等水合：这里马上要往受控 textarea 里填内容，填早了会被首次渲染清空
+    await waitCommentSectionReady(page);
     const composer = page.locator('.comment-composer').first();
     await expect(composer).toBeVisible();
     // 与讨论同一套结构（只是 BEM 前缀不同）：工具条五个按钮 + 文本域 + 提交
@@ -206,6 +214,7 @@ test.describe('评论输入区（与讨论同源的 RichComposer）', () => {
 
     const marker = `e2e-ui-${Date.now().toString(36)}`;
     await page.goto(BLOG_URL);
+    await waitCommentSectionReady(page);
     const composer = page.locator('.comment-composer').first();
     await composer.locator('.comment-composer__input').fill(`${marker} **来自输入区**`);
     await composer.locator('.comment-composer__send').click();

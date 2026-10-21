@@ -1,0 +1,638 @@
+@use '../../components/composer' as composer;
+@use '../../components/markdown-body' as markdown-body;
+@use '../../abstracts/mixins' as m;
+@use '../../abstracts/variables' as v;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 博客评论区（CommentSection.tsx）
+//
+// 【版式】与博客目录页同一套视觉语言：页面底色上摆一张张**白卡片**（30px 圆角、
+// 不描边、常态不托阴影），层级靠背景色阶（页面底 → 卡片 → 卡内子块）。
+//   · 标题行：品牌淡底方框图标 + 「评论」 + 总数胶囊（数字走 .numeric）；
+//   · 发表评论：一张独立白卡，里面仍是与讨论区共用的 RichComposer；
+//   · 根评论：一张白卡，头像 + 作者 + 时间，正文/附件/操作在下一列；
+//   · 楼中楼：收进根评论卡里的一层淡色「回复槽」，槽内用细分隔线分条，不再画左侧竖条。
+//
+// 【两条几何契约】tests/e2e/comment-layout.spec.ts 的用例钉着，改版时一并守住：
+//   ① 深层楼中楼不许把评论挤成「一行一个字」—— `.comment-item` 的 min-width 是**固定
+//      px**（不能写 min(240px, 100%)，那会随可用宽度一起缩 = 等于没设）；
+//   ② 横向溢出**只由顶层 `.comment-list` 接住**（overflow-x: auto），中间层必须保持
+//      visible，否则每层各画一条横条。页面与 `.blog-detail` 都不许长出横条。
+//
+// 【末尾空白不随层数累加】回复槽 `padding-bottom: 0`、有子楼的嵌套评论
+// `padding-bottom: 0`，最内层叶子自己的 padding 提供收尾留白；根评论卡保留自己的
+// 下内距，于是「最深一条 → 下一条根评论」的间距在任何层数下都是同一个值
+// （根卡下内距 + 根卡间距），不会像旧版那样每深一层多付一次内距 + 外边距。
+// ─────────────────────────────────────────────────────────────────────────────
+
+// ── 标题行 ──────────────────────────────────────────────────────────────────
+
+.comment-section {
+    margin: 0;
+}
+
+.comment-section__head {
+    display: flex;
+    align-items: center;
+    margin: 0 0 16px;
+}
+
+.comment-section__title {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 0;
+    font-size: 1.3rem;
+    font-weight: 700;
+    line-height: 1.2;
+    letter-spacing: -0.01em;
+    color: var(--color-text-primary);
+}
+
+/* 图标方框与 .comment-blog__icon 同一档（卡片底色 + 品牌字色），只是这里用淡底 */
+.comment-section__icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: none;
+    width: 34px;
+    height: 34px;
+    border-radius: 12px;
+    background: var(--color-brand-secondary);
+    color: var(--color-brand-primary);
+
+    svg {
+        width: 18px;
+        height: 18px;
+    }
+}
+
+.comment-section__count {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 26px;
+    height: 22px;
+    padding: 0 8px;
+    border-radius: 999px;
+    background: var(--color-brand-secondary);
+    color: var(--color-brand-primary);
+    font-size: 0.78rem;
+    font-weight: 700;
+}
+
+// ── 输入区（与讨论共用 RichComposer，这里只补外面那张卡）──────────────────────
+//
+// 与讨论输入区共用同一份样式（components/_composer.scss），只是 BEM 前缀不同。
+// ⚠️ 不要在这里写 `.comment-form textarea { ... }`：那条选择器（0-1-1）会压过
+// `.comment-composer__input`（0-1-0），把面板内的透明输入框重新涂成卡片底色。
+@include composer.rich-composer('comment-composer');
+
+.comment-form {
+    margin: 0 0 16px;
+    padding: 18px 20px;
+    background: var(--color-background-card);
+    border-radius: v.$radius-card;
+}
+
+/* 输入面板的底色在讨论区是「页面底色」（它直接坐在页面底色上）。评论区这里外面多了一张
+   白卡，再用页面底色就只能勉强看出边界 —— 按「卡内子块用 content 一档」的总则换掉。
+   就地回复那张卡本身就是 content 底，面板退回页面底色。 */
+.comment-form .comment-composer__panel {
+    background: var(--color-background-content);
+}
+
+.comment-form.is-inline .comment-composer__panel {
+    background: var(--color-background-page);
+}
+
+/* 就地回复：表单挂到被回复那条评论下面。它已经在白卡/回复槽里，所以换一档更紧凑的
+   子块表面（内容底色），左侧缩进与正文列对齐（头像宽 + 间距），窄屏归零。 */
+.comment-form.is-inline {
+    margin: 14px 0 0 calc(var(--comment-avatar-size, 38px) + var(--comment-avatar-gap, 10px));
+    padding: 12px;
+    background: var(--color-background-content);
+    border-radius: v.$radius-field;
+}
+
+/* 「匿名」勾选项 —— 只有评论区有（讨论区不传 anonToggle，那一整段根本不渲染）。
+   底条仍是「提示在左、操作在右」：margin-left:auto 把它连同提交按钮一起推到右边。 */
+.comment-composer__anon {
+    margin-left: auto;
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 0.72rem;
+    color: var(--color-text-secondary);
+    user-select: none;
+    cursor: pointer;
+
+    input[type='checkbox'] {
+        width: 0.95rem;
+        height: 0.95rem;
+        margin: 0;
+        accent-color: var(--color-brand-primary);
+        cursor: pointer;
+    }
+}
+
+/* 底条提示：共享 composer 用的是 `--color-text-tertiary`，那档在「内容底色」上
+   几乎看不见（浅色 #dde4ee on #eff2f5，暗色 #2b3036 on #21252A）。评论输入区把面板
+   换成了 content 底，所以这里补一档次要文字色 —— 只改评论，讨论区照旧。 */
+.comment-composer__hint {
+    color: var(--color-text-secondary);
+}
+
+// ── 评论列表 ────────────────────────────────────────────────────────────────
+
+.comment-list {
+    width: 100%;
+    margin: 0;
+    padding: 0;
+    /* 父级已经是页面底色 / 白卡，这里显式 transparent 保持同一观感。 */
+    background-color: transparent;
+    list-style: none;
+    overflow-wrap: break-word;
+    line-height: 1.5;
+
+    /* ★ 整片评论区**唯一**的横向滚动容器。深层楼中楼被 .comment-item 的 min-width 撑宽后，
+       溢出会一路上浮到这一层 —— 只在这里给滚动条，于是整片评论区只有一条横条。
+       ⚠️ 必须带 `.comment-section >`：嵌套列表复用同一个类名，不加限定就是每层各画一条。
+       代价：overflow-x: auto 会把 overflow-y 也算成 auto（规范如此），评论区内部没有
+       需要纵向逃逸的元素（弹窗 / 灯箱都渲染在列表外面且是 fixed），高度又是 auto。 */
+    .comment-section > & {
+        overflow-x: auto;
+    }
+}
+
+/* 楼中楼「回复槽」：根评论卡内部的一层淡色子块（内容色阶），承载所有后代回复。
+   缩进由这一层的左右内距承担（不再用 margin，margin 在 border-box 下会逐层向右溢出）。
+   中间层**必须**保持 overflow: visible —— 否则每层各画一条横条（见文件头②）。 */
+.comment-item > .comment-list {
+    margin: 14px 0 0;
+    padding: 14px 14px 0;
+    background: var(--color-background-content);
+    border-radius: 20px;
+    overflow: visible;
+}
+
+.comment-item {
+    /* 头像列宽度走变量：正文/操作区缩进读它，楼中楼自动换小一号。 */
+    --comment-avatar-size: 38px;
+    --comment-avatar-gap: 10px;
+    min-width: 240px;
+    padding: 16px 0;
+    border-top: 1px solid var(--color-border);
+
+    /* 楼中楼里的评论（含更深层）统一小一号身份区：层级越深，头部越轻。 */
+    .comment-item {
+        --comment-avatar-size: 28px;
+        --comment-avatar-gap: 9px;
+    }
+
+    &:first-child {
+        border-top: none;
+    }
+}
+
+/* ★ 根评论卡：白底 30px 圆角，不描边、不托阴影；卡片之间留 14px 呼吸。
+   只有根评论是卡片，楼中楼是卡内子块 —— 否则深层每一层都画一圈卡片边，视觉会碎掉。 */
+.comment-section > .comment-list > .comment-item {
+    padding: 20px 22px;
+    margin-bottom: 14px;
+    background: var(--color-background-card);
+    border-top: none;
+    border-radius: v.$radius-card;
+    /* 根卡内可能既有回复槽又有回复表单，底部的收尾留白归根卡自己；
+       嵌套层则把下内距归零（见下一条），避免逐层累加。 */
+    &:last-child {
+        margin-bottom: 0;
+    }
+}
+
+/* 有子楼的**嵌套**评论：下内距归零。
+   不归零的话每一层要付两次账：本条 padding-bottom 16 + 回复槽自己的收尾；
+   父级的 padding 挡住外边距折叠、子级的外边距又算进父级高度 —— 两者相加，
+   层数越深末尾空白越大。归零后任何层数都只剩「最内层叶子的 padding + 根卡 padding」。 */
+.comment-item .comment-item:has(> .comment-list) {
+    padding-bottom: 0;
+}
+
+/* 回复槽的第一楼紧跟父楼，不要顶出一条线来断掉从属关系 */
+.comment-item .children .comment-item:first-child {
+    padding-top: 0;
+    border-top: none;
+}
+
+// ── 身份行（头像 / 作者 / 匿名标 / 时间）────────────────────────────────────
+
+.comment-meta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px 10px;
+    margin: 0 0 8px;
+    font-size: 0.95rem;
+    color: var(--color-text-secondary);
+
+    /* 24px 的旧尺寸已随卡片版式放大（全站头像尺寸台账见 docs/frontend-styles.md §4.1）。 */
+    .comment-author-avatar {
+        width: var(--comment-avatar-size);
+        height: var(--comment-avatar-size);
+        border-radius: 8%;
+        object-fit: cover;
+    }
+}
+
+/* 评论者链接：头像 + 用户名 → 个人主页（只有实名且未注销的评论才有链接） */
+.comment-author-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    color: var(--color-text-primary);
+    text-decoration: none;
+
+    &:hover .comment-author-name {
+        color: var(--color-brand-primary);
+    }
+}
+
+.comment-author-name {
+    font-weight: 600;
+    color: var(--color-text-primary);
+    overflow-wrap: anywhere;
+}
+
+/* 化名评论的「匿名」小标 —— 光看到一个「Alice」，读者不知道那是化名而不是某人的用户名。 */
+.comment-author-anon {
+    flex: none;
+    padding: 0 7px;
+    border-radius: 999px;
+    background: var(--color-background-subtle);
+    color: var(--color-text-secondary);
+    font-size: 0.68rem;
+    line-height: 1.6;
+}
+
+.comment-time {
+    margin-left: auto;
+    font-size: 0.75rem;
+    white-space: nowrap;
+}
+
+// ── 正文 / 附件 / 操作 ──────────────────────────────────────────────────────
+
+/* 正文列：桌面端对齐到用户名（头像宽 + 间距），窄屏退回卡片左边缘。 */
+.comment-item__body {
+    min-width: 0;
+    padding-left: calc(var(--comment-avatar-size) + var(--comment-avatar-gap));
+}
+
+// 评论正文的 Markdown 块级样式，与讨论气泡共用（components/_markdown-body.scss）
+@include markdown-body.rich-markdown('comment-content__md');
+
+// 评论正文容器：与讨论气泡的 .chat-msg__content 同族，但**不要**描边与内边距 ——
+// 评论是文章流里的段落，不是气泡。
+.comment-content {
+    font-size: 0.95rem;
+    line-height: 1.7;
+    color: var(--color-text-primary);
+}
+
+// 正文里的链接（Markdown 链接与裸 URL 自动识别，类名由 comment-markdown.ts 的后处理添加）
+.comment-link {
+    color: var(--color-brand-primary);
+    text-decoration: underline;
+    word-break: break-all;
+}
+
+.comment-link:hover {
+    text-decoration: none;
+}
+
+/* 操作行：点赞 / 回复 / 删除全部走「次级档」胶囊，图标 + 短文案。
+   允许换行 —— 深层楼中楼可用宽度会跌到 min-width 附近，不换行会把操作行顶出卡片
+   （那条横向溢出一条就不会只属于「有没有楼中楼」了）。 */
+.comment-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    margin-top: 12px;
+}
+
+.comment-action {
+    @include m.btn-secondary($pointer-hover-only: true);
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    height: 30px;
+    padding: 0 10px;
+    border-radius: 999px;
+    font-size: 0.8rem;
+    font-family: inherit;
+    white-space: nowrap;
+
+    svg {
+        width: 14px;
+        height: 14px;
+        flex: none;
+    }
+}
+
+/* 删除是破坏性操作：空闲就带警示红，不等 hover 才说。 */
+.comment-action--danger {
+    color: var(--color-warning-primary);
+
+    @media (hover: hover) and (pointer: fine) {
+        &:hover:not(:disabled) {
+            background-color: var(--color-warning-secondary);
+            color: var(--color-warning-primary);
+        }
+    }
+
+    &:active:not(:disabled) {
+        background-color: var(--color-warning-primary);
+        color: #fff;
+    }
+}
+
+/* 点赞：未赞时灰字；已赞时警示红（与文章页互动胶囊的 `.liked` 同一支色）。
+   未登录只读展示时同一个类名退化成静态（--static 去掉手型与 hover），位置保持一致。 */
+.comment-like {
+    @include m.btn-secondary($pointer-hover-only: true);
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    height: 30px;
+    padding: 0 10px;
+    border-radius: 999px;
+    font-size: 0.8rem;
+    font-family: inherit;
+    line-height: 1;
+    color: var(--color-text-secondary);
+
+    svg {
+        width: 15px;
+        height: 15px;
+        flex: none;
+    }
+}
+
+.comment-like.is-liked {
+    background-color: var(--color-warning-secondary);
+    color: var(--color-warning-primary);
+
+    svg {
+        fill: currentColor;
+    }
+
+    @media (hover: hover) and (pointer: fine) {
+        &:hover:not(:disabled) {
+            background-color: var(--color-warning-primary);
+            color: #fff;
+        }
+    }
+
+    &:active:not(:disabled) {
+        background-color: var(--color-warning-primary);
+        color: #fff;
+    }
+}
+
+.comment-like--static {
+    cursor: default;
+
+    @media (hover: hover) and (pointer: fine) {
+        &:hover:not(:disabled) {
+            background-color: transparent;
+            color: var(--color-text-secondary);
+        }
+    }
+}
+
+// ── 评论附件 ─────────────────────────────────────────────────────────────────
+
+.comment-image {
+    display: block;
+    max-width: min(240px, 100%);
+    max-height: 300px;
+    margin: 10px 0 0;
+    border: none;
+    border-radius: 12px;
+    cursor: zoom-in;
+    background: var(--color-background-subtle);
+}
+
+.comment-image-missing {
+    margin: 6px 0 0;
+    color: var(--color-text-secondary);
+    font-size: 0.85rem;
+}
+
+/* 引用博客链接卡（整卡可点 → 博客详情页）。**与讨论里的 .chat-msg__blog 同款**：
+   10px 圆角 + 内容底色 + 32px 图标方框。同一个东西在讨论区与评论区长得不一样，
+   读者会当成两种卡片。
+   ⚠️ 内部是两行（标题 + 作者），所以走 10px 那档，不是胶囊（见 frontend-styles §4）。 */
+.comment-blog {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    max-width: 100%;
+    margin: 10px 0 0;
+    padding: 8px 10px;
+    /* 无描边（全站卡片口径）；整卡是 <a>、可点击，故 hover 改亮品牌蓝光晕提示可点。
+       底色用 subtle 而不是 content：后者与楼中楼回复槽同色，卡会「消失」在槽里。 */
+    border-radius: v.$radius-large;
+    background: var(--color-background-subtle);
+    color: inherit;
+    text-decoration: none;
+    /* 与 .chat-msg__blog / .blog-item 等同族可点卡一致：光晕要走过渡，别瞬间弹出。 */
+    transition: box-shadow 0.2s ease;
+}
+
+.comment-blog:hover {
+    box-shadow: var(--shadow-card-brand);
+}
+
+/* 图标方框：与 .chat-msg__blog-icon 同尺寸同圆角（卡片底色 + 品牌字色） */
+.comment-blog__icon {
+    flex: none;
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--color-background-card);
+    color: var(--color-brand-primary);
+}
+
+.comment-blog__main {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.comment-blog__title {
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.comment-blog__author {
+    font-size: 0.8rem;
+    color: var(--color-text-secondary);
+}
+
+.comment-blog-missing {
+    margin: 6px 0 0;
+    color: var(--color-text-secondary);
+    font-size: 0.85rem;
+}
+
+// ── 空态 / 加载态 ───────────────────────────────────────────────────────────
+
+.comment-status {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    margin: 0;
+    padding: 32px 20px;
+    border-radius: v.$radius-card;
+    background: var(--color-background-card);
+    color: var(--color-text-secondary);
+    font-size: 0.9rem;
+    text-align: center;
+}
+
+.comment-status p {
+    margin: 0;
+}
+
+.comment-status__icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    border-radius: 14px;
+    background: var(--color-brand-secondary);
+    color: var(--color-brand-primary);
+
+    svg {
+        width: 22px;
+        height: 22px;
+    }
+}
+
+/* 空态比「加载中」多一颗图标，多留一点上下呼吸。 */
+.comment-status--empty {
+    padding-block: 36px;
+}
+
+// 「核心用户才能评论」的提示与上面的卡片保持同一段间距（.alert 自带内距）。
+.comment-section > .alert {
+    margin-bottom: 16px;
+}
+
+// ── 窄屏 ────────────────────────────────────────────────────────────────────
+
+@media (max-width: 768px) {
+    .comment-section__head {
+        margin-bottom: 12px;
+    }
+
+    .comment-section__title {
+        gap: 8px;
+        font-size: 1.1rem;
+    }
+
+    .comment-section__icon {
+        width: 30px;
+        height: 30px;
+        border-radius: 10px;
+
+        svg {
+            width: 16px;
+            height: 16px;
+        }
+    }
+
+    .comment-section__count {
+        min-width: 24px;
+        height: 20px;
+        padding: 0 7px;
+        font-size: 0.72rem;
+    }
+
+    .comment-form {
+        padding: 12px;
+        border-radius: 20px;
+    }
+
+    .comment-form.is-inline {
+        margin-left: 0;
+        padding: 10px;
+        border-radius: 16px;
+    }
+
+    .comment-section > .comment-list > .comment-item {
+        padding: 16px;
+        margin-bottom: 10px;
+        border-radius: 20px;
+    }
+
+    /* 窄屏空间优先给正文：头像小一号，正文列不再让出缩进（退回卡片左边缘）。 */
+    .comment-item {
+        --comment-avatar-size: 32px;
+        --comment-avatar-gap: 9px;
+    }
+
+    .comment-item .comment-item {
+        --comment-avatar-size: 26px;
+        --comment-avatar-gap: 8px;
+    }
+
+    .comment-item__body {
+        padding-left: 0;
+    }
+
+    .comment-item > .comment-list {
+        margin-top: 10px;
+        padding: 10px 10px 0;
+        border-radius: 16px;
+    }
+
+    .comment-time {
+        margin-left: 0;
+    }
+
+    .comment-status {
+        padding: 24px 16px;
+        border-radius: 20px;
+    }
+}
+
+/* 手机（≤480px）底条：提示文案独占一行，第二行留给「匿名 + 发表评论」。
+   480px 以上塞得下三样，别提前折 —— 折了会让输入区凭空高出两行。
+   判据是底条实际宽度，不是「窄屏」这个概念。 */
+@media (max-width: 480px) {
+    .comment-composer__foot {
+        flex-wrap: wrap;
+    }
+
+    .comment-composer__hint {
+        flex: 1 0 100%;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .comment-blog {
+        transition: none;
+    }
+}

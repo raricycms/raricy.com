@@ -8,6 +8,21 @@ export function uniqueTag(): string {
 }
 
 /**
+ * 等评论区**水合完成且首次拉取落定**。
+ *
+ * 【为什么必须等】评论区是客户端组件：SSR 只给出骨架，`loading` 初值为 true。在水合
+ * 完成之前对受控 `<textarea>` 调 `fill()`，React 首次渲染会把它的 value 重置回空 state ——
+ * 页面上看着字没了，但没有任何报错；随后点「发表评论」提交的是空正文，于是一条评论
+ * 都没发出去。作者在慢网 / 慢机器上也可能撞上，所以这里不靠 `waitForTimeout` 猜。
+ *
+ * 计数徽标从「—」变成数字 = `loading=false`（首次 GET 已返回），是水合完成 + 数据到达
+ * 的确定性信号；比「等 .comment-item」更通用（空评论区也成立）。
+ */
+export async function waitCommentSectionReady(page: Page): Promise<void> {
+  await expect(page.locator('.comment-section__count')).not.toHaveText('—');
+}
+
+/**
  * 在自定义下拉（`ExpandSelect`）里选中一项。
  *
  * 站内那些「选择栏目 / 全部动作」已经从原生 <select> 换成带展开动画的自定义控件，
