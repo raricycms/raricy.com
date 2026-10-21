@@ -219,7 +219,7 @@ export const DOC_ENTRIES: readonly DocEntry[] = [
     group: 'bot',
     slug: 'bot/account-bot',
     title: '账号与通知接口说明',
-    summary: '资料与开关、专注模式、通知（含批量与 SSE）、公开主页、禁言历史、改密与邀请码提权。',
+    summary: '资料与开关、可逐项配置的专注模式、通知（含批量与 SSE）、公开主页、禁言历史、改密与提权。',
   },
   {
     group: 'bot',

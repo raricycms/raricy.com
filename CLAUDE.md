@@ -129,10 +129,11 @@ raricy.com（聪明山）—— 个人博客 / 故事 / 工具集 / 剪贴板 / 
   「他还能不能自己把这一块打开」：档位不够是「你现在不配用」（core 点签到撞 403 是就地
   403，不是功能下线），所以入口照给；专注模式是**本人一键可关的账号偏好**（设置页就在
   那里），留一条点了 403 的灰链只是噪音，也没有「以为功能下线」的误导风险。
-  现行落点：练手盘的三处入口（`/fish` 卡片两组「引导语 + 入口」、`/fish/market` 页脚）
-  与讨论侧栏的大区行，都由调用方条件渲染 —— **连 `<p>` 一起**（`p + p` 的行距命中的是
-  「有没有那个 `<p>`」，留个空壳会凭空多出一段空白）。别改回「置灰保留」，也别给
-  `<Link>` 挂个类名了事（灰了却点得动比不灰更糟）。
+  现行落点：练手盘的三处入口（`/fish` 卡片两组「引导语 + 入口」、`/fish/market` 页脚，
+  仅在「屏蔽鱼干练手盘」时）、讨论侧栏的大区行（仅在「屏蔽讨论大区」时），以及首页
+  玩具卡与顶栏玩具入口（仅在「屏蔽玩具区」时），都由调用方条件渲染 —— **连 `<p>` 一起**
+  （`p + p` 的行距命中的是「有没有那个 `<p>`」，留个空壳会凭空多出一段空白）。别改回
+  「置灰保留」，也别给 `<Link>` 挂个类名了事（灰了却点得动比不灰更糟）。
 - **`/fish/pay` 的 DOM 类名被两个 e2e 用例钉死** —— 改样式 / 改类名 / 重做收银台之前先看用例。
 - **第三方素材不入库**（表情包留在 `instance/stickers/`，git 历史删不干净）—— 只有当授权
   **明确允许再分发**时才可入库（判例：`chess/` 那套棋子因 BSD-3 明文授予才进来过；2026-09
@@ -158,8 +159,19 @@ raricy.com（聪明山）—— 个人博客 / 故事 / 工具集 / 剪贴板 / 
   （`fish-webhook-service.ts`：投递行与流水同事务写入、投递在事务外）——
   账户微服务当年那条最大的 HTTP 路径已搬进站内，**别以为这条红线随之作废**：
   商户回调仍然是跨进程的，市场行情源（`market-price.ts`）也仍然是。
+- **专注模式 = 总开关 + 逐项屏蔽**（2026-10 起可自定义）。判定一律走
+  `src/lib/focus-mode.ts` 的 `isFocusLobbyBlocked` / `isFocusGamesBlocked` /
+  `isFocusFishTradeBlocked` 与 `focus-service.ts` 的 `resolveFocusHiddenCategoryIds`，
+  **绝不手写 `user.focusMode && user.focusBlockX`**（漏总开关或漏子项都静默错）。
+  `users.focus_hide_categories` 的 **NULL（未自定义 → 用站长 `categories.focus_hidden`
+  默认集合）与 `'[]'`（明确一个都不屏蔽）不可合并** —— 合并会让存量用户升级后突然看到
+  全部水区。`categories.focus_hidden` 只是**默认集合**，不是真相。
+  设置页在 `/settings#focus-mode`（`FocusPanel.tsx`）；对外接口见 `docs/bot/account-bot.md` §4。
 - **权限变更分两类**：禁言 / 重置密码 / 强制下线递增 `sessionVersion`（会话已废）→
-  `kickUser` + `kickTopbarUser` **成对**出现；改角色 / 专注模式**只推不踢**。
+  `kickUser` + `kickTopbarUser` **成对**出现；改角色 / 专注模式**不递增 sessionVersion**。
+  专注模式里只有**大区可见性**变化（总开关或 `focusBlockLobby`）才额外踢讨论 SSE
+  （重连按新值决定收不收大区广播）并推顶栏红点；改玩具 / 练手盘 / 博客栏目不踢流。
+  顶栏流一律不踢（会话没废，铃铛照常收推送）。
 - **改 `RULES` 的数值要同步对外文档** —— `docs/bot/` 三份与 `docs/guide/` 的投票 / 图床指南
   刻意复述了配额（站外读者要自包含），不同步就是下一次 drift。
 
@@ -487,8 +499,9 @@ raricy.com（聪明山）—— 个人博客 / 故事 / 工具集 / 剪贴板 / 
   raw 路由 404。⚠️ **音频属于「出得来」那一类**，别归进要 core+ 的那三种引用。
 - **sitemap 与 `/explore` 必须列同一个集合**（都用 `INDEXABLE_BLOG_WHERE`）。这不是洁癖：
   多一层过滤就会出现「搜索引擎收录了一篇，读者在公开列表上翻不到」，而那条差异
-  **不会有任何报错**。同理 `exclude_from_all` / `focus_hidden` **不作用于对外列表** ——
-  它们是站内陈列规则与账号级偏好（有静态守卫盯：`tests/unit/explore-visibility-guard.test.ts`）。
+  **不会有任何报错**。同理 `exclude_from_all` 与专注模式的栏目屏蔽**不作用于对外列表** ——
+  它们是站内陈列规则与账号级偏好（`focus_hide_categories` 为用户自选，未自定义时用站长
+  标记的 `focus_hidden` 作默认集合；有静态守卫盯：`tests/unit/explore-visibility-guard.test.ts`）。
 - **改档位必须记账**（`blog_visibility_logs`，迁移 19）：`updateBlog` / `setBlogVisibility`
   都在**同一个事务**里写日志。分开写会得到「档位改了但没账」，而那只能靠人工比对发现。
   `updateBlog` 的 `actorId` 是**必传**的 —— 新增加可见性写路径时别忘了。（`public` 不可逆，

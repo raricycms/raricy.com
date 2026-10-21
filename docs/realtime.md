@@ -109,12 +109,12 @@ Windows 使用进程树终止，避免遗留 Next dev / Node watch 的子进程�
 禁止以客户端自报的 userId 建立身份。两个联机 demo 使用如下主站接口（下文以 Wand 为例，
 公共空间对应的 gameId 是 `public-space`，签发入口是 `POST /api/game/public-space/launch`）：
 
-1. 浏览器 `POST /api/game/wand/launch`，主站通过会话 Cookie 检查登录、专注模式与当前封禁，
+1. 浏览器 `POST /api/game/wand/launch`，主站通过会话 Cookie 检查登录、「专注模式是否屏蔽玩具区」与当前封禁，
    按用户限频 10 次 / 分钟，返回 `{ticket, expiresIn: 60, wsUrl}`；绕过统一入口且未配置凭据时返回 503。
 2. 浏览器只在 WS 首帧发送票据，不放进 URL，也不保存到 localStorage。
 3. 实时进程以 `Authorization: Bearer <REALTIME_SERVICE_TOKEN>` 调用
    `POST /api/internal/realtime/session`，提交 `{action:"consume", gameId:"wand", ticket}`。
-   主站在第一次 await 前消费票据，重新检查数据库中的会话版本、专注模式和当前封禁。
+   主站在第一次 await 前消费票据，重新检查数据库中的会话版本、「是否屏蔽玩具区」和当前封禁。
 4. 已连接玩家每 10 秒通过同一接口的 `action:"validate"` 复核身份；主站超时、不可用或
    身份失效都关闭连接。复核 HTTP 超时 2.5 秒，传输层另设 3 秒截止。
 
@@ -145,7 +145,7 @@ Windows 使用进程树终止，避免遗留 Next dev / Node watch 的子进程�
 - 每 30 秒 ping，下一轮仍未收到 pong 则回收。
 - SIGINT / SIGTERM 停止接受新连接，通知客户端断开；3 秒后强制清理剩余连接。
 
-票据过期只约束建连；已有连接依靠定期身份复核撤权，包括开启专注模式、封禁、
+票据过期只约束建连；已有连接依靠定期身份复核撤权，包括在专注模式里开启「屏蔽玩具区」、封禁、
 改密或强制下线造成的会话版本变化，正常情况下在 10 秒内发现，失败按超时上界关闭。
 
 ### 3.2 Wand demo
@@ -208,11 +208,11 @@ Windows 使用进程树终止，避免遗留 Next dev / Node watch 的子进程�
 保留探索、对战、无限、生存、夺旗、昼夜六种模式，当前只支持电脑键盘操作。
 
 主站的 `POST /api/game/quandi/launch` 签发绑定 `quandi` 的一次性票据，
-连接路径为 `/realtime/quandi`；身份消费、每 10 秒复核、封禁、专注模式、会话版本、
+连接路径为 `/realtime/quandi`；身份消费、每 10 秒复核、封禁、专注模式里的「屏蔽玩具区」、会话版本、
 Origin 和传输限制与其他联机游戏共用。昵称只取主站认证结果，不接受客户端自报。
 每个账号最多一个圈地联机连接，游戏最多 64 个连接、16 个双人房间。
 
-游戏文档从 `/game/quandi/play` 分发，该 Route Handler 独立检查登录、封禁和专注模式，
+游戏文档从 `/game/quandi/play` 分发，该 Route Handler 独立检查登录、封禁和「是否屏蔽玩具区」，
 禁止缓存；HTML 不放在可匿名读取的 public 目录。
 iframe 仅设置 `sandbox="allow-scripts"`；文档响应自身也设置 CSP sandbox，直接访问仍隔离。
 不开放 same-origin、表单、弹窗或顶层导航，游戏不能读取本站 Cookie、父页 DOM 或存储。

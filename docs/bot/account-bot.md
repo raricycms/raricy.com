@@ -12,7 +12,8 @@
 | 想做 | 接口 | 在哪节 |
 |------|------|--------|
 | 看/改自己的资料、通知偏好、隐私开关 | `GET` / `PATCH /api/users/me` | §3 |
-| 开/关专注模式 | 同上（`focusMode` 字段） | §4 |
+| 专注模式的逐项配置（屏蔽范围 / 自选栏目） | `GET` / `PATCH /api/users/me/focus` | §4 |
+| 开/关专注模式总开关 | `PATCH /api/users/me`（`focusMode` 字段）或 `/api/users/me/focus` | §4 |
 | 读通知、标已读、删除、批量操作 | `/api/notifications/*` | §5 |
 | 免登录探一下「有没有未读」 | `GET /api/notifications/count` | §5.6 |
 | 实时收未读与讨论红点 | `GET /api/notifications/stream`（SSE） | §5.7 |
@@ -87,10 +88,18 @@ Cookie: raricy_session=<JWT>
     "notifyAdmin": true,
     "showRecentBlogs": true,
     "showRecentComments": true,
-    "focusMode": false
+    "focusMode": false,
+    "focusBlockLobby": true,
+    "focusBlockGames": true,
+    "focusBlockFishTrade": true,
+    "focusHideCategories": null
   }
 }
 ```
+
+> `focusHideCategories` 是**用户自选的屏蔽栏目 id 数组**：`null` = 未自定义（沿用站长在
+> 栏目管理里标记的「专注隐藏」默认集合），`[]` = 明确一个都不屏蔽。两种状态不可合并，
+> 详见 §4。
 
 ### 3.2 改
 
@@ -113,7 +122,11 @@ Content-Type: application/json
 | `notifyAdmin` | boolean | 是否接收受此开关控制的站务通知，包括定向通知与管理操作回执；强制通知不受此开关影响 |
 | `showRecentBlogs` | boolean | 主页**默认布局**是否自动展示最近文章（尚未布置主页时的兜底） |
 | `showRecentComments` | boolean | 资料接口 `GET /api/users/:id` 是否返回最近评论（主页本身不展示评论） |
-| `focusMode` | boolean | 专注模式，见 §4 |
+| `focusMode` | boolean | 专注模式总开关，见 §4 |
+| `focusBlockLobby` | boolean | 专注模式里是否屏蔽讨论大区（默认 `true`） |
+| `focusBlockGames` | boolean | 专注模式里是否屏蔽玩具区（默认 `true`） |
+| `focusBlockFishTrade` | boolean | 专注模式里是否屏蔽鱼干练手盘（默认 `true`） |
+| `focusHideCategories` | number[] \| null | 专注模式要屏蔽的博客栏目 id；`null` = 站长默认集合，`[]` = 一个都不屏蔽 |
 
 成功：
 
@@ -128,7 +141,11 @@ Content-Type: application/json
   "notifyAdmin": true,
   "showRecentBlogs": true,
   "showRecentComments": true,
-  "focusMode": true
+  "focusMode": true,
+  "focusBlockLobby": true,
+  "focusBlockGames": true,
+  "focusBlockFishTrade": true,
+  "focusHideCategories": null
 }
 ```
 
@@ -160,21 +177,84 @@ Content-Type: application/json
 
 ---
 
-## 4. 专注模式（`focusMode`）
+## 4. 专注模式（可逐项配置）
 
-打开后是「我今天只想安静看东西」：
+总开关是 `focusMode`。打开后是「我今天只想安静看东西」，但**屏蔽哪些东西可以逐项选**：
 
-| 效果 | 说明 |
+| 子项 | 字段 | 屏蔽效果 |
+|------|------|----------|
+| 讨论大区 | `focusBlockLobby` | 大区对你不进未读、不推 SSE、顶栏「讨论」红点不计大区；私聊照常 |
+| 玩具区 | `focusBlockGames` | `/game` 与游戏直达页换成设置提示，四个 `launch` 接口 403 |
+| 鱼干练手盘 | `focusBlockFishTrade` | 两页 403、四个接口一律 403（含只读的 `quote` / `candles`）；鱼干商城与转账不受影响 |
+| 博客栏目 | `focusHideCategories` | 博客列表 / 侧栏 / 搜索隐藏所选栏目及其子栏目的文章 |
+
+三个布尔子项的默认值都是 `true`，`focusHideCategories` 默认 `null` ——
+**不配置时的行为与旧版完全一致**。子项只在总开关打开时生效（关着也保留你的选择）。
+
+### 4.1 读配置
+
+```http
+GET /api/users/me/focus
+Cookie: raricy_session=<JWT>
+```
+
+```json
+{
+  "code": 200,
+  "message": "ok",
+  "settings": {
+    "enabled": true,
+    "blockLobby": true,
+    "blockGames": false,
+    "blockFishTrade": true
+  },
+  "categories": [
+    { "id": 3, "name": "水区", "parentId": null, "isActive": true, "focusHidden": true }
+  ],
+  "selected": [3, 7],
+  "customized": false
+}
+```
+
+| 字段 | 说明 |
 |------|------|
-| 大区讨论**不进未读、不推 SSE** | 私聊照常 |
-| 顶栏「讨论」小红点不计大区 | |
-| 带 `focusHidden` 的栏目的文章从列表里隐藏 | 栏目级设置，见站点栏目页 |
-| 网页端：练手盘入口与讨论侧栏的大区行**整段不渲染** | 只影响页面；频道列表接口照旧返回大区行（`disabled: true`），练手盘四个接口照旧 403 |
+| `settings` | 总开关与三个子项的**原值**（不与总开关做 AND） |
+| `categories` | 可勾选的栏目：启用中的，加上**你已选中的停用栏目**（`isActive: false`） |
+| `selected` | 当前生效的屏蔽集合，**已展开子栏目**（选根 = 连同子栏目） |
+| `customized` | `false` = 未自定义，`selected` 是站长标记的默认集合；`true` = 按你的选择 |
 
-> ⚠️ **打开/关闭专注模式会踢掉你已建立的讨论 SSE 连接**（讨论那边重连时按新值决定
-> 收不收大区广播）。所以机器人收到 `401`/断连后**要重连**，而不是以为接口坏了。
+### 4.2 改配置
+
+```http
+PATCH /api/users/me/focus
+Cookie: raricy_session=<JWT>
+Content-Type: application/json
+
+{ "enabled": true, "blockGames": false, "hiddenCategoryIds": [3, 7] }
+```
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `enabled` | boolean | 总开关 |
+| `blockLobby` / `blockGames` / `blockFishTrade` | boolean | 三个子项 |
+| `hiddenCategoryIds` | number[] \| null | `null` = 恢复站长默认集合；`[]` = 一个都不屏蔽；数组 = 你的选择（服务端会再展开子栏目） |
+
+- 全部字段可选，只改传入的；**一个有效字段都没有 → `400`**。
+- 类型不对 / 数组里有非正整数 → `400`（不会静默忽略，避免「点了保存却没生效」）。
+- 返回体与 §4.1 的 GET 同形（含 `message: "专注模式设置已保存"`）。
+- 兼容：`PATCH /api/users/me` 仍接受 `focusMode` / 三个子项 / `focusHideCategories`（§3.2），
+  效果与这里一致 —— 新代码建议用本接口。
+
+### 4.3 副作用
+
+> ⚠️ **改变大区可见性时会踢掉你已建立的讨论 SSE 连接**：总开关或 `blockLobby` 变化会
+> 踢一次（重连时按新值决定收不收大区广播）。只改玩具区 / 练手盘 / 博客栏目**不会**踢流。
+> 机器人收到断连后**要重连**，而不是以为接口坏了。
 >
-> 📌 顶栏那条 SSE（§5.7）**不**被踢 —— 会话没废，铃铛照常收推送。
+> 📌 顶栏那条 SSE（§5.7）**不**被踢 —— 会话没废，铃铛照常收推送；红点值会另行推送。
+
+> 📌 网页端按**被屏蔽的项**分别整段不渲染对应入口（不是置灰）。频道列表接口仍返回
+> `disabled: true` 的大区行，练手盘 / 游戏接口照旧 403 —— 入口消失只是展示层，不是权限层。
 
 ---
 

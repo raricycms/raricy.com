@@ -540,16 +540,19 @@ Kumbh Sans；代码块与编辑器继续使用完整的 JetBrains Mono。
   收藏夹专用的 `--color-star-*`。只有带 `href` 的卡才在 hover 亮
   `--shadow-card-brand`（判据见 §2.3）。
 
-**专注模式的入口：整段不渲染，没有「禁用态」这一档**（2026-09 改的口径）。
-此前这里有一节「禁用入口」配方 —— 保留元素、置灰、换成不导航的 `<span>` / `<button>`、
-`title` 取 `FOCUS_MODE_BLOCKED_TITLE`、再显式压掉各自的 `:hover`，两个用户是讨论侧栏的
-大区行与练手盘的三处外链。口径改成「用不了就不画」之后，**那套配方一个使用者都没有了**
-（连同 `.chat-chan.is-disabled` / `.fish-card__info-link.is-disabled` /
-`.market-foot__link.is-disabled` 三条规则一起删掉）。
+**专注模式的入口：被屏蔽的那一项整段不渲染，没有「禁用态」这一档**（2026-09 改的口径；
+2026-10 起可逐项配置）。此前这里有一节「禁用入口」配方 —— 保留元素、置灰、换成不导航的
+`<span>` / `<button>`、`title` 取 `FOCUS_MODE_BLOCKED_TITLE`、再显式压掉各自的 `:hover`，
+两个用户是讨论侧栏的大区行与练手盘的三处外链。口径改成「用不了就不画」之后，
+**那套配方一个使用者都没有了**（连同 `.chat-chan.is-disabled` /
+`.fish-card__info-link.is-disabled` / `.market-foot__link.is-disabled` 三条规则一起删掉）。
 
-判据与理由见 `CLAUDE.md` 的档位阶梯那条：档位不够 ≠ 专注模式。要加新的「专注模式下用不了
-的组件」，照现在的做法——**由调用方条件渲染整段（含外层 `<p>`：`p + p` 的行距命中的是
-「有没有那个 `<p>`」，留个空壳会凭空多出一段空白）**，别去复活那套置灰配方。
+判据与理由见 `CLAUDE.md` 的档位阶梯那条：档位不够 ≠ 专注模式。要加新的「专注模式里
+被屏蔽的组件」，照现在的做法——**由调用方按子项条件渲染整段（含外层 `<p>`：`p + p` 的
+行距命中的是「有没有那个 `<p>`」，留个空壳会凭空多出一段空白）**，别去复活那套置灰配方。
+设置页的专注模式卡片（`src/app/settings/FocusPanel.tsx`）是另一类：它是**配置界面**，
+三个子项复用 `.settings-toggle-row`，博客栏目清单用 `.focus-cats__*`（多行内容块 → 20px
+圆角、无边框、靠 `--color-background-subtle` 分层）。
 
 ### 6.3 表单控件（`components/_form-controls.scss`）
 
