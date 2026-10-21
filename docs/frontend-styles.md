@@ -1140,6 +1140,48 @@ inline transform），`prefers-reduced-motion: reduce` 下直接落终态。Esc 
 与同列上下移、把手拖动换位、底部工具条贴底与遮挡、页面不横向溢出；文章高卡片摘要；
 文字块详情层与 Esc / 背景关闭。
 
+### 6.14 通知中心（`/notifications`，`pages/_notifications.scss`）
+
+2026-10 重做。旧版把「action / 未读徽标 / 时间 / 用户名 / 两颗彩色药丸按钮」塞进同一行、
+同一个字号 —— 时间与身份没有层级；「查看博客 →」是一条裸文字链，不在站内三档按钮体系里。
+
+**结构**：按天分组的时间线。分组标题是 `今天 / 昨天 / M月D日 周X`（今年省略年份），
+卡片右上角只给 `HH:MM`。单卡是「类型图标 | 正文列」，正文列固定三层：
+
+| 层 | 内容 | 字号 / 颜色 |
+|----|------|-------------|
+| 眉标 | action（如「文章点赞」）+ 未读徽标 | 0.78rem / `--color-text-secondary` |
+| 正文 | detail | 0.95rem / `--color-text-primary` |
+| 页脚 | actor 头像 + 用户名、去程按钮、两个图标钮 | 0.8rem / `--color-text-secondary` |
+
+- **时间不进页脚**：它与眉标同行靠右，日期由分组标题回答。`<time dateTime>` 必须用
+  `+08:00` 真实偏移（库内是「UTC+8 墙钟贴 Z」，见 `db-time.ts`），别直接吐 `…Z`。
+  「今天 / 昨天」由服务端算好日期传进来（`today` prop），不在客户端现算 —— 否则
+  服务端渲染与客户端水合会在跨零点那一刻分组不一致。
+- **按钮**：去程入口（查看文章 / 查看讨论 / 查看操作日志）是 `btn-primary` 档的小号胶囊；
+  标记已读 / 删除是站内既有的「无底色图标钮」（30px 见方、8px 圆角、hover 才亮；
+  删除 hover 走 warning 色）；批量操作走 `btn-secondary` 档，「删除已读」空闲就带警示色。
+  **不要再用彩色胶囊当按钮** —— 旧版那两颗绿 / 红药丸既不属于三档，也读不出可点。
+- **类型图标**（`.notification-type`，38px 方底）：点赞 / 删除 / 禁言借 warning 色，
+  评论借 `accent-blue`、提及 `accent-violet`、投喂 `accent-amber`、申诉 `accent-cyan`，
+  系统 / 未知走中性色。action 是管理员**自由文本**，认不出的一律落 `--default`，
+  按名字查不到就漏渲染是这类映射最危险的失效方式。
+- **卡片不可点**（内部有链接与按钮），所以不挂 hover 光晕；未读只靠整卡淡底 +
+  「未读」徽标，**没有左侧竖条**（同 §11.8）。
+- **筛选**：`?filter=unread` 走服务端 `unreadOnly`（`listNotifications` 本就有这个参数）。
+  翻页链接必须带着 filter；在未读视图里标记已读要把该条移出当前列表，否则「未读」
+  页里会立刻出现一条已读。
+- **匿名**：评论类通知的 `actorId` 是 null（化名只在 detail 里），页脚**不显示「系统」**；
+  只有系统公告 / 管理员自由文本才显示「系统」。
+- **头像**走 `<Avatar>`（20px），actor 的 `frameUrl` 由服务端 `frameUrlFor()` 判定后下发，
+  渲染层不碰到期判断。落点已登记进 `tests/unit/avatar-sites-guard.test.ts`。
+- 窄屏（≤768px）：批量按钮拉满一行、两颗等分；卡片内距 0.875rem / 圆角 18px；
+  图标钮放大到 34px。批量按钮等分的理由同收藏夹选择器弹窗（对等操作不该挤在右边）。
+- 几何 / 行为契约：`tests/e2e/notifications.spec.ts` 钉 `.notification-card` 的条数与
+  「翻页真的换内容」；`chat-mention-notify.spec.ts` 钉 `.notification-content` 与
+  「查看讨论」的 href；`mention-picker.spec.ts` 钉评论提及卡里的 `/blog/<id>` 链接。
+  **别删 `.notification-content`**，那是三条用例共同依赖的正文钩子。
+
 ## 7. 图标方案
 
 **不用图标字体**。现有 mask 图标由 `components/_icons.scss` 的 `.icon` 基类引用
@@ -1367,13 +1409,12 @@ Hero 的导航入口为「开始探索」，复用 `btn-primary` 并增加 `back
   `.story-reader__content` 下整套重写）：注入点是 `src/lib/blog-renderer.ts`
   拼的内联 HTML 字符串，所以**任何**用了共享渲染管线的页面都会命中 blog 那份。
   story 页目前靠 0-2-0 压 0-1-0 才没走样 —— 改 `_blog.scss` 里那条的权重就会穿透。
-- `.filter-btn`（`pages/_fish.scss` vs `pages/_notifications.scss`）：**后者一个属性都没
-  生效**（`main.scss` 里 notifications 先于 fish 加载，fish 全胜），而通知页压根没有
-  筛选栏 —— 唯一消费方是 `fish/transactions`。改 `_notifications.scss` 那份是静默无效的。
-- `.notification-card`：2026-10 管理端改版后 `/admin/broadcast` 改用 `.admin-panel`，
-  `pages/admin/_notifications.scss` 整份已删除 —— 那条「裸 `.notification-card` 压到通知中心
-  条目」的同名冲突不复存在。通知中心仍靠 `.content-wrapper .notification-card` 的 0-2-0
-  权重压过通用 `.card` 类。
+- `.filter-btn`（`pages/_fish.scss`）：2026-10 通知页重做时删掉了
+  `pages/_notifications.scss` 里那份从未生效的副本（fish 先加载、也没人会去改它）。
+  现在唯一权威是 fish 那份，唯一消费方是 `/fish/transactions`。
+- `.notification-card`：2026-10 重做后通知中心的规则收在 `.notifications-page` 下
+  （0-2-0），不再依赖 `.content-wrapper` 的后代选择器，也不再需要 `margin-top: 0`
+  抵消后台广播页 —— `pages/admin/_notifications.scss` 整份已删除，那条同名冲突不复存在。
 
 - `pages/blog/_menu.scss` 的 `.current-category .badge` 是**死规则**：管理端改版后
   `.current-category` 已无任何渲染方。一旦有人把它加回去，浅色主题下就是白字压

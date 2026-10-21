@@ -18,10 +18,13 @@
 | 收款错误组件的外壳责任 | 可选整理：`PayError.tsx` 带整页 `content-wrapper`，当前 early-return 分支不冲突 | 有复用需求再分离外壳与内容；先核对 `/fish/pay` 与 `/fish/collect` 错误分支，遵守收银台 DOM 契约 |
 | `.current-category` 同名不同义与死规则 | 待整理：后台分类徽章与博客分类标签共享根级类，博客侧仍有 `.badge` 死规则 | 分开两个语义与选择器，清理死规则；核对徽章间距、未分类态及两套主题 |
 | 正文 `.copy-btn` 的样式归属 | 待整理：博客根级规则与故事局部规则靠特异性覆盖 | 结合共享 DOM 后处理核对注入点，明确公共基础与场景差异；验收博客、剪贴板、故事及编辑预览的复制按钮 |
-| 通知样式中的 `.filter-btn` | 待清理：通知页无消费者，流水页使用鱼干样式 | 保留流水页的权威样式，清理通知侧无效规则；验收流水筛选布局 |
 
-`.notification-card` 的同名冲突目前靠通知中心规则抵消，`margin-top: 0` 是现行必要约束；
-`btnPulse` 的品牌色差异也有刻意保留的理由。这两项先留作风险说明，不因本次归档而改样式。
+> 2026-10 通知页重做时已顺手清掉 `.filter-btn` 那份从未生效的通知侧副本；
+> 权威定义只剩 `pages/_fish.scss`，消费方仍是 `/fish/transactions`。
+> `.notification-card` 的同名冲突也一并消解：通知中心的规则现在收在
+> `.notifications-page` 下，不再依赖 `.content-wrapper` 的后代选择器，也不再需要
+> `margin-top: 0` 抵消后台广播页（`pages/admin/_notifications.scss` 已删除）。
+> `btnPulse` 的品牌色差异仍有刻意保留的理由，继续留作风险说明。
 
 ## 2. 翻译跳转入口的取舍
 

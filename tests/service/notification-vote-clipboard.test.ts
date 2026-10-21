@@ -756,8 +756,8 @@ describe('notification-service', () => {
       await makeNotification({ recipientId: me.id, actorId: actor.id, action: 'b', at: '2026-01-01T00:00:00.000Z' });
 
       const { notifications } = await listNotifications(me.id);
-      expect(notifications[0].actor).toEqual({ id: null, username: 'system' });
-      expect(notifications[1].actor).toEqual({ id: actor.id, username: 'zhangsan' });
+      expect(notifications[0].actor).toEqual({ id: null, username: 'system', frameUrl: null });
+      expect(notifications[1].actor).toEqual({ id: actor.id, username: 'zhangsan', frameUrl: null });
     });
 
     it('timestamp 序列化成 ISO 字符串，object 收进 {type,id}', async () => {

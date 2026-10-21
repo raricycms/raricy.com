@@ -2,7 +2,8 @@
 // notification-service.ts — 通知业务逻辑
 //
 // 风格与其它 service 一致：纯函数 + 显式参数。
-//   • 列表：recipientId = 当前用户，timestamp 倒序，20/页，带 actor.username。
+//   • 列表：recipientId = 当前用户，timestamp 倒序，20/页，带 actor.username 与
+//     判定后的 frameUrl（头像框的到期判定只在 frame-service.frameUrlFor 一处做）。
 //   • 未读数 / 标记单条已读 / 全部已读 / 批量已读 / 批量删除。
 //   • sendNotification 尊重接收者的 notify_* 偏好（除非 force）——
 //     旧版虽然收了 force 参数却从头到尾没查过偏好，偏好开关形同摆设；判定只散落在
@@ -13,6 +14,7 @@
 
 import { prisma } from './db';
 import { nowForDb } from './db-time';
+import { frameUrlFor } from './frame-service';
 import { hasSubscriber, publishToUser } from './topbar-bus';
 import { CHAT_NOTIFY_OBJECT_TYPE } from './chat-shared';
 
@@ -181,7 +183,16 @@ export async function listNotifications(userId: string, params: ListParams = {})
         objectId: true,
         detail: true,
         read: true,
-        actor: { select: { id: true, username: true } },
+        // 装备两列只为算头像框 —— 出门前换成判定后的 frameUrl（到期判定只许在
+        // frame-service.frameUrlFor 一处做，原始列不下发）。
+        actor: {
+          select: {
+            id: true,
+            username: true,
+            equippedFrameKey: true,
+            equippedFrameExpiresAt: true,
+          },
+        },
       },
     }),
   ]);
@@ -192,8 +203,8 @@ export async function listNotifications(userId: string, params: ListParams = {})
     action: n.action,
     recipientId: n.recipientId,
     actor: n.actor
-      ? { id: n.actor.id, username: n.actor.username }
-      : { id: null, username: 'system' },
+      ? { id: n.actor.id, username: n.actor.username, frameUrl: frameUrlFor(n.actor) }
+      : { id: null, username: 'system', frameUrl: null },
     object: { type: n.objectType, id: n.objectId },
     detail: n.detail,
     read: n.read,

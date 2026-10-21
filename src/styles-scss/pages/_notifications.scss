@@ -7,11 +7,10 @@ body {
 }
 
 /* 9 个页面（通知 / 条款 / 隐私 / 联系 / 注册资格 / fish 五页）在用的外层包裹。
-   ⚠️ **不要把它换成 .container**：本文件里的 .notification-card、.legal-card 等
-   都写成 `.content-wrapper .xxx`（0-2-0）的后代选择器，JSX 一换类名，那些卡片
+   ⚠️ **不要把它换成 .container**：本文件里的 .legal-card 等卡片都写成
+   `.content-wrapper .xxx`（0-2-0）的后代选择器，JSX 一换类名，那些卡片
    会静默变成无样式的裸 div —— 而 e2e 断言的是类名与条目数，不会报错。
-   所以做法是**把宽度定义改成和 .container 一样**，类名留在原处。
-   原先它是 max-width: 900px，比博客首页的正文窄 240px。 */
+   所以做法是**把宽度定义改成和 .container 一样**，类名留在原处。 */
 .content-wrapper {
     width: 100%;
     margin-left: auto;
@@ -74,186 +73,442 @@ body {
 }
 
 /* ── 通知列表 ────────────────────────────────────────────────────────────────
-   设计参照博客首页的列表（pages/blog/_menu.scss 的 .blog-item）：
-   30px 圆角的卡片、无边框、常态不投影。修改前这里是最陈旧的一页 ——
-   10px 圆角、未读靠左侧 3px 竖条、四个按钮各带 1px 描边、色值写死
-   #e67e22 与 #777，与博客页的视觉语言完全脱节。 */
+   2026-10 重做。旧版把「action / 未读徽标 / 时间 / 用户名 / 两个彩色胶囊按钮」
+   全塞进同一行、同一个字号，时间与身份没有层级；「查看博客 →」是一条裸文字链，
+   与站内三档按钮体系无关；两条批量操作也只是两段并排的裸文字。现在：
 
-.btn-group {
+   1. **层级**：类型（小号、次要色）→ 正文（主字号、主色）→ 身份与时间（更小、
+      次要色）。时间只露时分，日期交给「今天 / 昨天 / 10月18日」分组标题。
+   2. **按钮**：去程入口走 btn-primary 档（品牌淡底胶囊），标记已读 / 删除走
+      站内既有的「无底色图标钮」；批量操作走 btn-secondary 档。
+   3. **分组**：同一天的通知收在同一个 .notification-day 下，滚动时始终看得到
+      「这是哪一天」。
+
+   卡片本身不可点（内部有链接与按钮），所以按全站口径**不做 hover 光晕**。 */
+
+.notifications-page .page-title {
+    /* 副标题（共 N 条 · M 条未读）紧跟标题，标题的下距收一点 */
+    margin-bottom: 0.4rem;
+}
+
+/* 计数摘要。数字单独包 .numeric（等宽 + 主色），文字保持次要色 —— 这一行回答
+   「有多少」，不抢列表的视线。 */
+.notifications-summary {
+    margin: 0 0 1.1rem;
+    text-align: center;
+    font-size: 0.88rem;
+    color: var(--color-text-secondary);
+
+    .numeric {
+        color: var(--color-text-primary);
+        font-weight: 600;
+    }
+}
+
+/* 筛选 + 批量操作。筛选在左（切页档），批量在右（次级档）；窄屏整行换行。 */
+.notifications-toolbar {
     display: flex;
-    justify-content: center;
+    align-items: center;
     flex-wrap: wrap;
-    gap: $space-2;
-    margin-bottom: $space-4;
+    gap: 0.75rem;
+    margin-bottom: 1.25rem;
 }
 
-/* 两个批量操作归次级档（原先各自带 1px 描边 + 6px 圆角）。
-   .action-btn.btn-danger 的红色语义由 components/_button.scss 的
-   .btn-danger 提供 —— 本文件此前又定义了一遍 .btn-danger，
-   与组件层重名且颜色/边框各说各话，已删除（详见下方注释）。 */
-.action-btn {
-    @include m.btn-secondary;
-    padding: 0.5rem 1.1rem;
-    font-size: 0.9rem;
+.notifications-filters {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
 }
 
-/* 报销：此处原有 `.btn-danger { color/border-color: 警示色 }` 一份，与
-   components/_button.scss 里同名 —— 两份各自生效一半（本文件胜在 color 与
-   border-color，组件层胜在 background），渲染结果全靠巧合。已删除，
-   统一由组件层那份（警示色的最高级档）说话。 */
-
-/* 通知页**没有**筛选栏；.filter-btn 唯一的使用方是 /fish/transactions 的
-   收支类型筛选。定义落在本文件里是历史遗留 —— 改了这里会同时改到鱼干流水页，
-   故按「切页档」统一（当前项常驻最高级空闲态）。 */
-.filter-btn {
+.notifications-filter {
     @include m.btn-tab;
-    padding: 0.4rem 0.9rem;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.45rem 0.9rem;
     font-size: 0.85rem;
     text-decoration: none;
 }
 
-.content-wrapper .notification-card {
-    position: relative;
-    background: var(--color-background-card);
-    border-radius: 30px;
-    padding: 1rem 1.5rem;
-    margin-bottom: 12px;
-    box-shadow: none;
-    border: none;
-
-    /* ⚠️ `margin-top: 0` 不是冗余 —— 它在抵消**另一个页面的规则**：
-       `pages/admin/_notifications.scss` 里有一条裸的 `.notification-card`
-       （/admin/broadcast 的面板），本文件先于它加载、两条同为 0-1-0 时它全胜；
-       本规则是 0-2-0，把它写的 padding / radius / border / 底色都压住了，
-       唯独 margin-top: 30px 没人接 —— 于是卡片之间是 30px 而不是 12px
-       （相邻外边距折叠取大者，margin-bottom 那条根本不参与）。
-       「按博客卡片风格重做」那次重写时把原有的 margin-top: 0 弄丢了（不是有意去掉），
-       这行是补回来的。改这里请连带看 ≤768px 那一档：手机端的密度同样被它拦着。 */
-    margin-top: 0;
-    /* 卡片不可点（NotificationItems.tsx 渲染的是 <div>，只有内部的标题 / 按钮
-       才带链接），故常态不投影、也没有 hover 提阴影 —— 原先把它当可点卡片
-       给一条 hover 阴影是错的。 */
+.notifications-filter__count {
+    font-size: 0.75rem;
+    opacity: 0.75;
 }
 
-/* 未读：**不再用左侧竖条**。竖条与 30px 圆角是两种形状语言的混搭，而且卡片里
-   本来就有一个「未读」角标 —— 竖条是把同一句话说第二遍。现在只靠整卡淡底。 */
-.content-wrapper .notification-card.unread {
+.notifications-bulk {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.3rem;
+    margin-left: auto;
+}
+
+/* 批量操作只用次级档的表面（见 docs/frontend-styles.md §6.1），只收尺寸。
+   「删除已读」空闲就带警示色 —— 破坏性操作不能等 hover 才说。 */
+.notifications-bulk__btn {
+    @include m.btn-secondary;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.45rem 0.8rem;
+    font-size: 0.82rem;
+    font-family: inherit;
+}
+
+.notifications-bulk__btn--danger {
+    color: var(--color-warning-primary);
+
+    &:hover:not(:disabled) {
+        background-color: var(--color-warning-secondary);
+        color: var(--color-warning-primary);
+    }
+
+    &:active:not(:disabled) {
+        background-color: var(--color-warning-primary);
+        color: #fff;
+    }
+}
+
+/* ── 按天分组 ───────────────────────────────────────────────────────────────
+   日期标题是一条小号次要色文字 + 一条贯通的分隔线。不用吸顶：本页没有固定工具条，
+   吸顶会让分组标题在翻页后停在半空，反而像列表没滚完。 */
+
+.notifications-list {
+    display: block;
+}
+
+.notification-day {
+    margin-bottom: 1.4rem;
+}
+
+.notification-day:last-child {
+    margin-bottom: 0;
+}
+
+.notification-day__label {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin: 0 0 0.6rem;
+    padding: 0 0.25rem;
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--color-text-secondary);
+
+    &::after {
+        content: '';
+        flex: 1;
+        height: 1px;
+        background: var(--color-border);
+    }
+}
+
+.notification-day__list {
+    display: block;
+}
+
+/* ── 通知卡 ──────────────────────────────────────────────────────────────────
+   结构：类型图标 | 正文列（眉标 / 正文 / 页脚）。
+   0-2-0 的作用域锚定在 .notifications-page 上 —— 页面根节点上有它，
+   别把它从 page.tsx 里去掉，否则整组规则会静默失效。 */
+.notifications-page .notification-card {
+    display: grid;
+    grid-template-columns: 38px minmax(0, 1fr);
+    gap: 0.85rem;
+    background: var(--color-background-card);
+    border-radius: $radius-card;
+    padding: 1rem 1.25rem;
+    margin-bottom: 12px;
+    border: none;
+    box-shadow: none;
+    transition: background-color 0.25s ease;
+}
+
+.notifications-page .notification-card:last-child {
+    margin-bottom: 0;
+}
+
+/* 未读：整卡淡底（不用左侧竖条 —— 它与 30px 圆角是两种形状语言，而且卡里
+   本来就有一个「未读」徽标，竖条是把同一句话说第二遍）。 */
+.notifications-page .notification-card.unread {
     background: var(--color-background-card-unread);
 }
 
-.notification-header {
+/* 类型图标：36–38px 的方底，色相按通知类别分开。底色一律走同色系 -soft，
+   明暗主题跟着令牌切换。认不出的 action 落到 --default（中性色）。 */
+.notification-type {
+    display: grid;
+    place-items: center;
+    flex: none;
+    width: 38px;
+    height: 38px;
+    border-radius: 12px;
+}
+
+.notification-type--like {
+    background: var(--color-warning-secondary);
+    color: var(--color-warning-primary);
+}
+
+.notification-type--comment {
+    background: var(--color-accent-blue-soft);
+    color: var(--color-accent-blue);
+}
+
+.notification-type--mention {
+    background: var(--color-accent-violet-soft);
+    color: var(--color-accent-violet);
+}
+
+.notification-type--feed {
+    background: var(--color-accent-amber-soft);
+    color: var(--color-accent-amber);
+}
+
+.notification-type--appeal {
+    background: var(--color-accent-cyan-soft);
+    color: var(--color-accent-cyan);
+}
+
+.notification-type--warning {
+    background: var(--color-warning-secondary);
+    color: var(--color-warning-primary);
+}
+
+.notification-type--system {
+    background: var(--color-background-content);
+    color: var(--color-text-secondary);
+}
+
+.notification-type--default {
+    background: var(--color-background-subtle);
+    color: var(--color-text-secondary);
+}
+
+.notification-body {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+    min-width: 0;
+}
+
+/* 眉标行：类型 + 未读徽标（左） / 时间（右）。 */
+.notification-head {
     display: flex;
     align-items: center;
-    gap: 0.6rem;
-    flex-wrap: wrap;
+    gap: 0.5rem;
+    min-width: 0;
 }
 
 .notification-action {
+    overflow: hidden;
+    font-size: 0.78rem;
     font-weight: 600;
-    font-size: 0.95rem;
-    color: var(--color-text-primary);
-}
-
-/* 「未读」角标。原为写死的 #e67e22（橙）配 rgba(230,126,34,.15) ——
-   不在主题体系内，暗色下不跟着变。改走品牌色对。 */
-.notification-unread-badge {
-    color: var(--color-brand-primary);
-    font-size: 0.7rem;
-    font-weight: 600;
-    background: var(--color-brand-secondary);
-    padding: 0.1rem 0.5rem;
-    border-radius: 999px;
-}
-
-.notification-meta {
-    font-size: 0.75rem;
     color: var(--color-text-secondary);
-    flex: 1;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    letter-spacing: 0.01em;
+}
+
+.notification-unread-badge {
+    flex: none;
+    padding: 1px 7px;
+    border-radius: 999px;
+    background: var(--color-brand-secondary);
+    color: var(--color-brand-primary);
+    font-size: 0.68rem;
+    font-weight: 600;
+}
+
+.notification-time {
+    flex: none;
+    margin-left: auto;
+    color: var(--color-text-secondary);
+    font-size: 0.75rem;
+}
+
+/* 正文：这张卡最该被读到的一行。 */
+.notification-content {
+    margin: 0;
+    color: var(--color-text-primary);
+    font-size: 0.95rem;
+    line-height: 1.6;
+    overflow-wrap: break-word;
+}
+
+/* 页脚：谁（头像 + 用户名） / 能做什么（去程 + 两个图标钮）。 */
+.notification-foot {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.6rem;
+    margin-top: 0.15rem;
+}
+
+.notification-actor {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
     min-width: 0;
+    color: var(--color-text-secondary);
+    font-size: 0.8rem;
+    text-decoration: none;
+}
+
+/* 头像尺寸由这里给（.avatar 盒子刻意不设宽高，见 Avatar.tsx / §4.1）。 */
+.notification-actor__avatar {
+    flex: none;
+    width: 20px;
+    height: 20px;
+}
+
+.notification-actor__name {
+    max-width: 20ch;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+a.notification-actor:hover {
+    color: var(--color-brand-primary);
+}
+
+/* 系统通知没有真实用户，用一枚同尺寸的铃铛占位，页脚不会因此左右跳动。 */
+.notification-actor__glyph {
+    display: grid;
+    place-items: center;
+    flex: none;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: var(--color-background-content);
+    color: var(--color-text-secondary);
 }
 
 .notification-actions {
     display: flex;
-    gap: 0.4rem;
+    align-items: center;
+    gap: 0.35rem;
     margin-left: auto;
 }
 
-/* 单条的两个操作：无边框胶囊，语义色成对给出（原先各带 1px 描边 + 4px 圆角） */
-.btn-mark-read,
-.btn-delete {
-    font-size: 0.8rem;
-    padding: 0.3rem 0.8rem;
-    border: none;
-    border-radius: 999px;
-    cursor: pointer;
+/* 去程入口 = 站内最高级按钮档（品牌淡底胶囊），尺寸收小以配合列表密度。 */
+.notification-open {
+    @include m.btn-primary;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.3rem 0.7rem;
+    font-size: 0.78rem;
+    text-decoration: none;
     white-space: nowrap;
-    transition: color 0.2s ease, background-color 0.2s ease, filter 0.15s ease;
 }
 
-.btn-mark-read {
-    background: var(--color-success-secondary);
-    color: var(--color-success-primary);
-}
-.btn-mark-read:hover:not(:disabled) { background: var(--color-success-primary); color: #fff; }
+/* 标记已读 / 删除 = 站内既有的「无底色图标钮」那一款（30px 见方、8px 圆角，
+   见 docs/frontend-styles.md §6.9 末尾）。 */
+.notification-action-btn {
+    display: grid;
+    place-items: center;
+    width: 30px;
+    height: 30px;
+    padding: 0;
+    border: none;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--color-text-secondary);
+    cursor: pointer;
+    transition: color 0.2s ease, background-color 0.2s ease, opacity 0.2s ease;
 
-.btn-delete {
+    &:hover:not(:disabled) {
+        background: var(--color-brand-secondary);
+        color: var(--color-brand-primary);
+    }
+
+    &:focus-visible {
+        outline: 2px solid var(--color-brand-primary);
+        outline-offset: 2px;
+    }
+
+    &:disabled {
+        opacity: 0.45;
+        cursor: not-allowed;
+    }
+}
+
+.notification-action-btn--danger:hover:not(:disabled) {
     background: var(--color-warning-secondary);
     color: var(--color-warning-primary);
 }
-.btn-delete:hover:not(:disabled) { background: var(--color-warning-primary); color: #fff; }
 
-.btn-mark-read:disabled,
-.btn-delete:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-}
-
-.notification-content {
-    margin: 0.4rem 0 0 0;
+.notifications-empty-link {
+    @include m.btn-secondary;
+    display: inline-block;
+    margin-top: 0.75rem;
+    padding: 0.45rem 1rem;
     font-size: 0.85rem;
-    color: var(--color-text-secondary);
-    line-height: 1.5;
-}
-
-.notification-blog-link {
-    font-size: 0.78rem;
-    color: var(--color-brand-primary);
     text-decoration: none;
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    margin-top: 0.4rem;
 }
-.notification-blog-link:hover { text-decoration: underline; }
 
 /* ── 手机端（≤768px）：与博客目录同一套密度 ────────────────────────────────────
-   卡片数值逐字对齐 pages/blog/_menu.scss 的 `@media (max-width: 768px)` 里那份
-   .blog-item（14px 16px 内距 / 18px 圆角 / 10px 下距）—— 两页在手机上前翻后翻，
-   卡片应该是同一种卡片。
+   旧版在这一档的主要毛病是「头部一行塞四样」被挤成竖排；新版把类型图标固定在
+   左列、时间固定在右上角，天然不会有这个问题。这里只收内距、圆角与图标尺寸。
 
-   头部在桌面端是「一行塞四样」：动作 + 未读角标 + 时间来源 + 两个按钮。桌面够宽，
-   窄屏则把 `flex: 1` 的时间来源挤成**一字一行**的竖排 —— 未读角标与两个按钮同时在
-   场时，整卡实测 266px 高（.notification-header 自己就占 141px），比同屏的博客卡
-   还高出一截。这里改成确定性的两行：第一行动作 + 角标 + 操作（靠右），
-   第二行时间来源独占整行。 */
+   批量按钮在窄屏拉满一行、两颗等分 —— 它们是一组对等操作，不该挤在右边
+   （同收藏夹选择器弹窗的分行理由）。 */
 @media (max-width: 768px) {
-    .content-wrapper .notification-card {
-        padding: 14px 16px;
+    .notifications-summary {
+        margin-bottom: 0.9rem;
+    }
+
+    .notifications-toolbar {
+        gap: 0.5rem;
+        margin-bottom: 1rem;
+    }
+
+    .notifications-bulk {
+        width: 100%;
+        margin-left: 0;
+    }
+
+    .notifications-bulk__btn {
+        flex: 1 1 0;
+        justify-content: center;
+    }
+
+    .notifications-page .notification-card {
+        grid-template-columns: 34px minmax(0, 1fr);
+        gap: 0.7rem;
+        padding: 0.875rem 1rem;
         border-radius: 18px;
         margin-bottom: 10px;
     }
 
-    .notification-header {
-        gap: 0.35rem 0.6rem; /* 行距压紧、列距不动 */
+    .notification-type {
+        width: 34px;
+        height: 34px;
+        border-radius: 10px;
     }
 
-    /* 两行的关键在 `order`：把时间来源排到 .notification-actions **之后**，
-       再用 flex-basis: 100% 撑满一行（撑满即保证它起新行）。少了 order，它会先
-       在末尾换行、两个按钮被顶进第三行 —— 那是三行，反而更松。
-       顺带：不再需要「挤到多窄都要塞下」，一字一行的情况不会再出现。 */
-    .notification-meta {
-        order: 1;
-        flex: 1 1 100%;
+    .notification-foot {
+        gap: 0.4rem;
+    }
+
+    .notification-action-btn {
+        width: 34px;
+        height: 34px;
+    }
+}
+
+@media (max-width: 420px) {
+    .notifications-filter {
+        padding: 0.4rem 0.75rem;
+    }
+
+    .notification-open {
+        padding: 0.3rem 0.55rem;
+    }
+
+    .notification-time {
+        font-size: 0.72rem;
     }
 }
 

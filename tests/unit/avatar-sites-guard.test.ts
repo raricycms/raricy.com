@@ -79,6 +79,7 @@ const AVATAR_SITES = [
   'src/app/fish/PayForm.tsx', // 收银台 / 收款页的收款人（36px）
   'src/app/settings/FramePanel.tsx', // 装备中的框预览（72px）+ 可选框清单（56px）
   'src/app/components/UserPicker.tsx', // 发用户名片的选人列表（32px）
+  'src/app/components/NotificationItems.tsx', // 通知页的 actor 头像（20px）
 ];
 
 /**
