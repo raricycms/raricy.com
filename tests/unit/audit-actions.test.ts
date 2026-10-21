@@ -32,9 +32,9 @@ import {
 } from '@/lib/audit-actions';
 
 describe('AUDIT_ACTIONS 词汇表', () => {
-  it('24 个码，且互不重复', () => {
-    expect(AUDIT_ACTIONS).toHaveLength(24);
-    expect(new Set(AUDIT_ACTIONS).size).toBe(24);
+  it('27 个码，且互不重复', () => {
+    expect(AUDIT_ACTIONS).toHaveLength(27);
+    expect(new Set(AUDIT_ACTIONS).size).toBe(27);
   });
 
   it('四张 Record 表都穷尽全部动作码', () => {
@@ -57,6 +57,9 @@ describe('AUDIT_ACTIONS 词汇表', () => {
     expect(AUDIT_ACTIONS.filter((a) => !PUBLIC_AUDIT_ACTIONS.includes(a))).toEqual([
       'archive_user',
       'unarchive_user',
+      'daily_quote_approve',
+      'daily_quote_reject',
+      'daily_quote_retire',
       'frame_grant',
       'frame_revoke',
       'bubble_grant',
@@ -67,6 +70,7 @@ describe('AUDIT_ACTIONS 词汇表', () => {
   it('公开页的对象类型清单只滤掉两类 CLI 装扮', () => {
     expect(PUBLIC_AUDIT_OBJECT_TYPES).not.toContain('user_frame');
     expect(PUBLIC_AUDIT_OBJECT_TYPES).not.toContain('user_bubble');
+    expect(PUBLIC_AUDIT_OBJECT_TYPES).not.toContain('daily_quote');
     expect(PUBLIC_AUDIT_OBJECT_TYPES).toHaveLength(9);
   });
 });

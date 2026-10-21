@@ -50,6 +50,9 @@ export const AUDIT_ACTIONS = [
   'restore_vote',
   'restore_image',
   'delete_chat_message',
+  'daily_quote_approve',
+  'daily_quote_reject',
+  'daily_quote_retire',
   // 系统运维
   'decide_appeal',
   'revoke_invite_code',
@@ -80,6 +83,9 @@ export const AUDIT_ACTION_LABEL: Record<AuditAction, string> = {
   restore_vote: '恢复投票',
   restore_image: '恢复图片',
   delete_chat_message: '删除讨论消息',
+  daily_quote_approve: '通过一言投稿',
+  daily_quote_reject: '拒绝一言投稿',
+  daily_quote_retire: '下架每日一言',
   decide_appeal: '处理申诉',
   revoke_invite_code: '撤销邀请码',
   frame_grant: '发放头像框',
@@ -114,6 +120,9 @@ export const AUDIT_ACTION_GROUP: Record<AuditAction, AuditActionGroup> = {
   restore_vote: 'content',
   restore_image: 'content',
   delete_chat_message: 'content',
+  daily_quote_approve: 'content',
+  daily_quote_reject: 'content',
+  daily_quote_retire: 'content',
   decide_appeal: 'system',
   revoke_invite_code: 'system',
   frame_grant: 'system',
@@ -134,6 +143,9 @@ export const AUDIT_ACTION_KIND: Record<AuditAction, AuditActionKind> = {
   delete_clip: 'punish',
   delete_vote: 'punish',
   delete_chat_message: 'punish',
+  daily_quote_approve: 'restore',
+  daily_quote_reject: 'punish',
+  daily_quote_retire: 'punish',
   unban_user: 'restore',
   restore_blog: 'restore',
   restore_comment: 'restore',
@@ -166,6 +178,7 @@ export const AUDIT_OBJECT_TYPES = [
   'clipboard',
   'image',
   'chat_message',
+  'daily_quote',
   'invite_code',
   'user_frame',
   'user_bubble',
@@ -180,6 +193,7 @@ export const AUDIT_OBJECT_TYPE_LABEL: Record<AuditObjectType, string> = {
   clipboard: '剪贴板',
   image: '图片',
   chat_message: '讨论消息',
+  daily_quote: '每日一言',
   invite_code: '邀请码',
   user_frame: '头像框',
   user_bubble: '聊天气泡',
@@ -194,16 +208,19 @@ export const AUDIT_OBJECT_TYPE_LABEL: Record<AuditObjectType, string> = {
  */
 export const CLI_ONLY_ACTIONS = ['frame_grant', 'frame_revoke', 'bubble_grant', 'bubble_revoke', 'archive_user', 'unarchive_user'] as const;
 
+// 投稿审核不公开尚未发布的稿件与审核原因；网页管理日志仍可检索。
+const PRIVATE_QUOTE_ACTIONS = ['daily_quote_approve', 'daily_quote_reject', 'daily_quote_retire'] as const;
+
 /** 归档操作连网页管理日志也不展示，查看历史仅限 CLI。 */
 export const WEB_AUDIT_ACTIONS: AuditAction[] = AUDIT_ACTIONS.filter(a => a !== 'archive_user' && a !== 'unarchive_user');
 
 /** `/audit` 公示页可选的动作（= 全部 − CLI-only）。 */
 export const PUBLIC_AUDIT_ACTIONS: AuditAction[] = AUDIT_ACTIONS.filter(
-  (a) => !(CLI_ONLY_ACTIONS as readonly string[]).includes(a)
+  (a) => !(CLI_ONLY_ACTIONS as readonly string[]).includes(a) && !(PRIVATE_QUOTE_ACTIONS as readonly string[]).includes(a)
 );
 /** `/audit` 公示页可选的对象类型（两类装扮同上，只由 CLI 写）。 */
 export const PUBLIC_AUDIT_OBJECT_TYPES: AuditObjectType[] = AUDIT_OBJECT_TYPES.filter(
-  (t) => t !== 'user_frame' && t !== 'user_bubble'
+  (t) => t !== 'user_frame' && t !== 'user_bubble' && t !== 'daily_quote'
 );
 
 /**

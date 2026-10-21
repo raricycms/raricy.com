@@ -20,6 +20,10 @@ export default async function FavoritePage() {
         我的收藏夹
       </h1>
 
+      <p style={{ marginBottom: '1.25rem' }}>
+        <Link href="/favorite/quotes" className="read-btn">一言集 →</Link>
+      </p>
+
       <FavoriteMenu
         favorites={favorites.map((f) => ({
           id: f.id,

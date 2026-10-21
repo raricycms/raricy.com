@@ -65,6 +65,10 @@ export interface DocEntry {
  */
 export const DOC_ENTRIES: readonly DocEntry[] = [
   {
+    group: 'guide', slug: 'guide/每日一言使用指南', title: '每日一言使用指南',
+    summary: '签到后查看每日一言、共鸣投喂、私密收藏与投稿审核。',
+  },
+  {
     group: 'guide', slug: 'guide/聊天气泡使用指南', title: '聊天气泡使用指南',
     summary: '气泡的租用、选择、到期、历史消息展示与款式维护。',
   },

@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { LoaderCircle } from 'lucide-react';
 import { MedalIcon } from '@/app/components/MedalIcon';
 import Avatar from '@/app/components/Avatar';
+import DailyQuoteModal from '@/app/components/DailyQuoteModal';
 import type { LeaderboardEntry } from '@/lib/checkin-service';
 
 // ── 全局 toast（base.js 注入 window.showToast） ──────────────────────────────
@@ -41,6 +42,8 @@ export default function CheckinCard({
   const [count, setCount] = useState(totalCount);
   const [fishToday, setFishToday] = useState(todayFish);
   const [countBounce, setCountBounce] = useState(false);
+  const [quoteOpen, setQuoteOpen] = useState(false);
+  const quoteTrigger = useRef<HTMLButtonElement>(null);
 
   const [btnPhase, setBtnPhase] = useState<BtnPhase>(checkedIn ? 'done' : 'idle');
 
@@ -86,6 +89,7 @@ export default function CheckinCard({
         doneRef.current = true;
         toast(data.message || '签到成功！', 'success');
         setBtnPhase('success');
+        setQuoteOpen(true);
         later(() => setBtnPhase('done'), 1050);
         if (data.total_count != null) {
           setCount(data.total_count);
@@ -109,6 +113,7 @@ export default function CheckinCard({
         if (data.total_count != null) setCount(data.total_count);
         if (data.today_fish != null) setFishToday(data.today_fish);
         toast(data.message || '今天已签到', 'info');
+        setQuoteOpen(true);
       } else {
         setBtnPhase('idle');
         toast(data.message || '操作失败，请稍后重试', 'error');
@@ -183,6 +188,11 @@ export default function CheckinCard({
       ) : (
         <div className="checkin-reward-hint numeric">每天签到领 {rewardFish} 条小鱼干</div>
       )}
+      {done && <div className="checkin-quote-links">
+        <button ref={quoteTrigger} type="button" className="daily-quote-primary" onClick={() => setQuoteOpen(true)}>查看今日一言</button>
+        <Link href="/checkin/submissions">我的投稿</Link>
+      </div>}
+      {quoteOpen && <DailyQuoteModal onClose={() => setQuoteOpen(false)} returnFocus={quoteTrigger} />}
     </div>
   );
 }

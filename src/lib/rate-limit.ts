@@ -224,6 +224,7 @@ export function __resetRateLimitStore() {
 // ⚠️ **分钟档与日档必须一起看**：日档要 ≥ 分钟档 × 一段合理时长，否则放宽分钟档
 // 只是把撞墙时间往后推，撞的还是同一个日档，而日档一撞就是锁满整个滑动窗口。
 export const RULES = {
+  quoteSubmitDaily: { limit: 5, windowMs: 24 * 60 * 60 * 1000 },
   /** 一次连接一张短票据，按用户计数；只供站内联机页面使用。 */
   realtimeLaunch: { limit: 10, windowMs: 60 * 1000 },
   likeHourly: { limit: 300, windowMs: 60 * 60 * 1000 },

@@ -28,6 +28,7 @@ const FILTERS: { label: string; type: string | null }[] = [
   { label: '全部', type: null },
   { label: '签到', type: 'checkin' },
   { label: '投喂', type: 'feed_all' },
+  { label: '共鸣', type: 'quote_all' },
   { label: '转账', type: 'transfer_all' },
   { label: '练手盘', type: 'market_all' },
   // 商城合称由 fish-service.applyTypeFilter 合并头像框与气泡两种租赁支出。

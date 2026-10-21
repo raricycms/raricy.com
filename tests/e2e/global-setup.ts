@@ -17,6 +17,7 @@ import { PrismaClient } from '@prisma/client';
 import { hashPassword } from '../../src/lib/password';
 import { nowForDb } from '../../src/lib/db-time';
 import { fishToUnits } from '../../src/lib/fish-units';
+import classicQuotes from '../../src/data/daily-quote-classics.json';
 import {
   E2E_STICKERS,
   DIRECTORY_SEED,
@@ -226,6 +227,11 @@ export default async function globalSetup() {
   // 显式传 url：本进程的 .env 指向 prod.db，不能靠环境变量兜底
   const prisma = new PrismaClient({ datasources: { db: { url } } });
   try {
+    await prisma.dailyQuote.createMany({ data: classicQuotes.map((quote) => ({
+      id: quote.id, kind: 'builtin', content: quote.content, contentKey: quote.content_key,
+      category: quote.category, sourceType: 'quotation', sourceName: quote.source, sourceUrl: quote.source_url,
+      authorName: quote.author, status: 'approved', createdAt: nowForDb(),
+    })) });
     // 密码哈希必须真算：登录用例走的是真实的 verifyPassword（werkzeug scrypt），
     // 塞占位串会让「登录成功」这条主链路根本跑不起来。
     const passwordHash = await hashPassword(SEED_PASSWORD);

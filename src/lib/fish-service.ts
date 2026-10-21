@@ -178,6 +178,7 @@ export function toFishTxJson(t: FishTxDTO) {
 function applyTypeFilter(where: Prisma.FishTransactionWhereInput, type?: string | null): void {
   if (!type) return;
   if (type === 'feed_all') where.type = { in: ['feed', 'feed_receive', 'feed_backpay', 'feed_fee_refund'] };
+  else if (type === 'quote_all') where.type = { in: ['quote_resonance', 'quote_resonance_receive'] };
   else if (type === 'transfer_all') where.type = { in: ['transfer', 'transfer_receive'] };
   else if (type === 'market_all') where.type = { in: ['market_buy', 'market_sell'] };
   else if (type === 'shop_all') where.type = { in: ['frame_rent', 'bubble_rent'] };

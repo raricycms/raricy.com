@@ -241,14 +241,15 @@ POST /api/fish/market/transactions
   对齐方式：`nowInRaricyClock = Date.now() + 8 * 60 * 60 * 1000`。
   一份完整实现见 `docs/bot/fish-bank-example.md`。
 
-`type` 是**筛选项**，原样透传给查询；三个「合称」是特例：`feed_all` = 投喂（含收与支）、
-`transfer_all` = 转账（含转出与转入）、`market_all` = 练手盘（买入与卖出）。
+`type` 是**筛选项**，原样透传给查询；「合称」会展开为对应的收支类型，例如 `feed_all` = 投喂（含收与支）、
+`transfer_all` = 转账（含转出与转入）、`market_all` = 练手盘（买入与卖出）、`quote_all` = 每日一言共鸣（支出与收入）。
 **网页筛选条用的那套取值**（这张表就是全部，不多不少）：
 
 | 传什么 | 筛出 |
 |--------|------|
 | `checkin` | 签到 |
 | `feed_all` | 投喂（收 + 支 + 历史分成补发 + 手续费返还） |
+| `quote_all` | 每日一言共鸣（`quote_resonance` 支出 + `quote_resonance_receive` 收入） |
 | `transfer_all` | 转账（转出 + 转入） |
 | `market_all` | 练手盘（买入 + 卖出） |
 | `frame_rent` | 鱼干商城（租头像框的支出） |

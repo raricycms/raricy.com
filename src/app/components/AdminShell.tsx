@@ -24,6 +24,7 @@ export default function AdminShell({
       ? ([
           { href: '/admin', label: '管理概览', icon: 'chart', exact: true },
           { href: '/admin/blogs', label: '文章管理', icon: 'doc' },
+          { href: '/admin/daily-quotes', label: '一言审核', icon: 'doc' },
           { href: '/admin/logs', label: '日志检索', icon: 'list' },
         ] as AdminNavItem[])
       : []),

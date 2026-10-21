@@ -253,6 +253,12 @@ describe('RULES 全站配额（src/lib/rate-limit.ts 即权威，改动即报警
       desc: '新建 / 复制收藏夹 20 次/时（总量闸是 FAVORITE_PER_USER_MAX=200，不在 RULES）',
     },
     {
+      name: 'quoteSubmitDaily',
+      limit: 5,
+      windowMs: 24 * HOUR,
+      desc: '每日一言投稿每人24小时最多5次，说明见每日一言使用指南',
+    },
+    {
       name: 'favoriteImportHourly',
       limit: 10,
       windowMs: HOUR,

@@ -113,6 +113,10 @@ model User {
   votes                 Vote[]
   voteRecords           VoteRecord[]
   checkins              DailyCheckIn[]
+  dailyQuotes           DailyQuote[] @relation("DailyQuoteSubmitter")
+  dailyQuoteReviews     DailyQuote[] @relation("DailyQuoteReviewer")
+  quoteResonances       DailyQuoteResonance[]
+  quoteFavorites        DailyQuoteFavorite[]
   fishTransactions      FishTransaction[]   @relation("FishTxUser")
   fishTransactionsPeer  FishTransaction[]   @relation("FishTxRelated")
   blogFeeds             BlogFeed[]
@@ -171,6 +175,77 @@ model BlogVisibilityLog {
 
   @@index([blogId, createdAt], map: "ix_blog_visibility_logs_blog")
   @@map("blog_visibility_logs")
+}
+
+/// 每日一言内容池。投稿一经提交不可改写，拒绝是终态；内置语录由手写迁移导入。
+model DailyQuote {
+  id           String   @id
+  kind         String
+  content      String
+  contentKey   String   @unique @map("content_key")
+  category     String
+  signature    String   @default("nickname")
+  sourceType   String   @map("source_type")
+  sourceName   String?  @map("source_name")
+  sourceUrl    String?  @map("source_url")
+  authorName   String?  @map("author_name")
+  submitterId  String?  @map("submitter_id")
+  status       String   @default("pending")
+  reviewReason String?  @map("review_reason")
+  reviewerId   String?  @map("reviewer_id")
+  createdAt    DateTime @map("created_at")
+  reviewedAt   DateTime? @map("reviewed_at")
+
+  submitter  User? @relation("DailyQuoteSubmitter", fields: [submitterId], references: [id])
+  reviewer   User? @relation("DailyQuoteReviewer", fields: [reviewerId], references: [id])
+  editions   DailyQuoteEdition[]
+  resonances DailyQuoteResonance[]
+  favorites  DailyQuoteFavorite[]
+
+  @@index([kind, status], map: "ix_daily_quotes_pool")
+  @@index([submitterId, createdAt], map: "ix_daily_quotes_submitter")
+  @@map("daily_quotes")
+}
+
+/// UTC+8 日历日的全站唯一选择。保存选用记录，让重启、并发和90天去重共用同一真相。
+model DailyQuoteEdition {
+  day       String   @id
+  quoteId   String   @map("quote_id")
+  createdAt DateTime @map("created_at")
+  quote     DailyQuote @relation(fields: [quoteId], references: [id])
+
+  @@index([quoteId], map: "ix_daily_quote_editions_quote")
+  @@map("daily_quote_editions")
+}
+
+/// 共鸣记录与扣款、入账同事务创建。三元唯一键保证同一句每人每天只生效一次。
+model DailyQuoteResonance {
+  quoteId   String   @map("quote_id")
+  userId    String   @map("user_id")
+  day       String
+  paidUnits Int      @default(0) @map("paid_units")
+  createdAt DateTime @map("created_at")
+  quote     DailyQuote @relation(fields: [quoteId], references: [id])
+  user      User @relation(fields: [userId], references: [id])
+
+  @@id([quoteId, userId, day], name: "uq_daily_quote_resonance")
+  @@index([userId], map: "ix_daily_quote_resonances_user")
+  @@map("daily_quote_resonances")
+}
+
+/// 一言集固定为所有者私密分类，不生成公开句柄；取消收藏只写软删标记。
+model DailyQuoteFavorite {
+  userId    String   @map("user_id")
+  quoteId   String   @map("quote_id")
+  createdAt DateTime @map("created_at")
+  deleted   Boolean  @default(false)
+  deletedAt DateTime? @map("deleted_at")
+  user      User @relation(fields: [userId], references: [id])
+  quote     DailyQuote @relation(fields: [quoteId], references: [id])
+
+  @@id([userId, quoteId], name: "uq_daily_quote_favorite")
+  @@index([quoteId], map: "ix_daily_quote_favorites_quote")
+  @@map("daily_quote_favorites")
 }
 
 model InviteCode {

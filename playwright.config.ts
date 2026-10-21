@@ -29,7 +29,8 @@ import path from 'node:path';
 //
 // 名字唯一 → globalSetup 建的是一个谁都没开过的新文件，竞态从根上不存在。
 // 路径经 process.env.E2E_DB 传给 global-setup / teardown（它们与本文件同进程）。
-const E2E_DB = path.resolve(
+// worker 会再次加载配置；复用主进程传入的路径，避免夹具连接到另一份空库。
+const E2E_DB = process.env.E2E_DB ?? path.resolve(
   __dirname,
   `tests/.tmp/e2e-${process.pid}-${Math.random().toString(36).slice(2, 8)}.db`
 );
@@ -70,6 +71,7 @@ const REALTIME_PORT = 3103;
  * 就加进来；只是 goto 一个页面再断言内容，就不加。
  */
 const RESPONSIVE_SPECS: RegExp[] = [
+  /daily-quote\.spec\.ts$/,
   /blog-directory\.spec\.ts$/,
   /theme-transition\.spec\.ts$/,
   /public-space\.spec\.ts$/,
