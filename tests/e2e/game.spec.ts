@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { registerFreshUser } from './helpers';
 
-test('玩具入口：四张首页卡按故事、玩具、博客、工具排列，清单只有 ATÅMAS', async ({ page }) => {
+test('玩具入口：四张首页卡按故事、玩具、博客、工具排列，清单为 ATÅMAS 与 双影', async ({ page }) => {
   await page.goto('/');
   expect(await page.locator('.home-grid .feature-card').evaluateAll((cards) => cards.map((card) => card.getAttribute('href'))))
     .toEqual(['/story', '/game', '/explore', '/tool']);
@@ -16,9 +16,16 @@ test('玩具入口：四张首页卡按故事、玩具、博客、工具排列�
   await expect(page.locator('.site-nav a[href="/game"]')).toHaveCount(1);
   await expect(page.locator('.site-nav a[href="/chat"]')).toHaveCount(1);
   await page.locator('.home-grid a[href="/game"]').click();
-  await expect(page.locator('.game-card')).toHaveCount(1);
-  await expect(page.locator('.game-card h2')).toHaveText('ATÅMAS');
-  await expect(page.locator('.game-card__tags')).toHaveText('益智单人');
+  // 收藏在首页的「非合集」玩具现在有两张：ATÅMAS 与 双影（双影走 /game/twinshade）。
+  // 顺序不锁死（catalog 里谁先谁后是陈列决定），锁的是「恰好这两张、且都点得进」——
+  // 少一张 = 新玩具没上架，多一张 = 有游戏被重复登记进非合集清单。
+  await expect(page.locator('.game-card')).toHaveCount(2);
+  const titles = await page.locator('.game-card h2').allTextContents();
+  expect(titles.sort()).toEqual(['ATÅMAS', '双影'].sort());
+  const hrefs = await page.locator('.game-card').evaluateAll((cards) => cards.map((card) => card.getAttribute('href')));
+  expect(hrefs.sort()).toEqual(['/game/atamas', '/game/twinshade']);
+  // 两张卡都是「益智 · 单人」：标签是题材 + 人数，双影不该被登记成动作或多人。
+  await expect(page.locator('.game-card__tags')).toHaveText(['益智单人', '益智单人']);
 });
 
 test('ATÅMAS：鼠标或触屏落子、撤销、重置、语言和深色主题', async ({ page, isMobile }, testInfo) => {
@@ -70,7 +77,7 @@ test('专注模式隐藏玩具入口，并拦住菜单及游戏直达', async ({
   await page.goto('/');
   await expect(page.locator('.home-grid .feature-card')).toHaveCount(3);
   await expect(page.locator('.site-nav a[href="/game"]')).toHaveCount(0);
-  for (const route of ['/game', '/game/atamas', '/game/collections/test', '/game/wand', '/game/wand2', '/game/public-space', '/game/quandi']) {
+  for (const route of ['/game', '/game/atamas', '/game/collections/test', '/game/wand', '/game/wand2', '/game/public-space', '/game/quandi', '/game/twinshade']) {
     await page.goto(route);
     await expect(page.getByRole('heading', { name: '已开启专注模式' })).toBeVisible();
     await expect(page.locator('canvas, .game-card')).toHaveCount(0);
