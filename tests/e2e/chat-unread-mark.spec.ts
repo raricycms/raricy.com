@@ -102,9 +102,12 @@ test.describe('顶栏「讨论」链接红点：讨论未读不进铃铛', () =>
   // 现在两条各归各的（/api/notifications/count 返回 { count, chatUnread }）：
   // 铃铛数字 = 通知列表；私聊未读 / 大区被 @ → 「讨论」链接右上角的小红点。
   //
-  // 红点开关是 base.js 写的**行内 display**，故断言走 toHaveCSS 而不是 toBeVisible：
-  // 移动端整个顶栏折叠成 max-height:0（_header.scss），被裁掉的元素在 Playwright
-  // 眼里仍「有包围盒 = 可见」，toBeVisible 会在被裁的情况下照样放行。
+  // 红点与铃铛数字的开关都是 base.js 写的**行内 display**，故断言走 toHaveCSS 而不是
+  // toBeVisible：移动端整个顶栏折叠（`grid-template-rows: 0fr` + `visibility: hidden`，
+  // 见 _header.scss 的 ≤808px），铃铛徽标这时**确实不可见**（菜单收起，要先点汉堡），
+  // 但它「显示着」这件事仍要钉住 —— 否则 `toBeVisible` 在 mobile 那一遍永远红。
+  // 号码本身由上面的 toHaveText 断言，这里只补「没有 display:none」。`display` 的值
+  // 就是 base.js 写进行内样式的那一个（flex），样式表里 `.notification-badge` 同值。
 
   const dot = (page: Page) => page.locator('#chatUnreadDot');
 
@@ -148,7 +151,8 @@ test.describe('顶栏「讨论」链接红点：讨论未读不进铃铛', () =>
       // @ 是讨论里唯一进通知列表的东西（见 chat-service.notifyChannelMentions），
       // 所以铃铛显数字；大区那条未读同时点亮讨论红点 —— 两个指示器互不干扰
       await expect(badge).toHaveText('1', { timeout: 12_000 });
-      await expect(badge).toBeVisible();
+      // 不是 toBeVisible：mobile 那一遍顶栏是收起的，徽标被 visibility:hidden 盖着。
+      await expect(badge).toHaveCSS('display', 'flex');
       await expect(dot(page)).toHaveCSS('display', 'block');
     } finally {
       await close();
