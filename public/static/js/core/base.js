@@ -324,8 +324,24 @@ function transitionTheme(themeName) {
     const properties = ['color', 'backgroundColor', 'borderTopColor', 'borderRightColor',
         'borderBottomColor', 'borderLeftColor', 'outlineColor', 'boxShadow', 'fill', 'stroke', 'stopColor'];
     const cssProperties = new Set(properties.map(name => name.replace(/[A-Z]/g, letter => '-' + letter.toLowerCase())));
+    // 只给**视口里看得见**的元素建动画。
+    //
+    // 每个目标都会拿到一条独立的 WAAPI 动画，代价落在**每一帧**上：这一帧要把这些
+    // 元素的颜色重新算一遍再重绘。博客目录一页 50 篇，实测 810 个目标，其中 630 多个
+    // 在视口外（屏幕里只放得下 4 张卡）—— 白算。帧间隔被拖到 100ms 以上时，300ms 的
+    // 时间线只画得出 1~2 帧，观感就是「整页直接跳色、没有过渡」；同一时刻打开轻页面
+    // （通讯录、设置）却是平滑的，差别只在目标数量。
+    //
+    // 视口外的元素本来就看不见，让它们的颜色**直接落到终态**即可。判据用绘制盒与
+    // 视口的相交；零尺寸的盒子（SVG 渐变的 <stop>、display: contents 的壳）量不出
+    // 可见性，照旧动画 —— 它们都很少，留着不会把帧预算吃回去。
+    const viewportWidth = document.documentElement.clientWidth;
+    const viewportHeight = document.documentElement.clientHeight;
     const snapshots = [];
     for (const element of document.querySelectorAll('body, body *')) {
+        const box = element.getBoundingClientRect();
+        if ((box.width || box.height) &&
+            (box.right <= 0 || box.bottom <= 0 || box.left >= viewportWidth || box.top >= viewportHeight)) continue;
         for (const pseudo of [null, '::before', '::after']) {
             const style = getComputedStyle(element, pseudo);
             if (style.display === 'none' || (pseudo && (style.content === 'none' || style.content === 'normal'))) continue;
@@ -355,8 +371,20 @@ function transitionTheme(themeName) {
         themeColorAnimations.add(animation);
         animation.finished.then(() => themeColorAnimations.delete(animation), () => themeColorAnimations.delete(animation));
     }
-    const start = document.timeline.currentTime;
-    for (const animation of animations) { animation.play(); animation.startTime = start; }
+    // 起跑时刻是**下一帧**，不是现在。
+    // 上面两圈同步循环（采样 + 建动画）在重页面上要几百毫秒，而
+    // `document.timeline.currentTime` 读到的是**最近一次绘制**的时间戳：把它当
+    // startTime，等于让这段阻塞先消耗掉一段 300ms 的时间线。放到 rAF 里读，拿到的
+    // 就是即将绘制的那一帧自己的时刻，进度从 0 开始 —— 阻塞再久也不吃掉渐变。
+    for (const animation of animations) animation.play();
+    requestAnimationFrame(function () {
+        const start = document.timeline.currentTime;
+        for (const animation of animations) {
+            // 这一轮可能已被下一次切换取消（playState 回到 idle）：别再碰它的时间轴。
+            if (animation.playState === 'idle') continue;
+            animation.startTime = start;
+        }
+    });
 }
 
 function switchTheme(themeName) {
