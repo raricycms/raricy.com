@@ -255,13 +255,15 @@
     width: auto;
     z-index: 80;
 
-    // 收起态是「圆形加号 + 头像球」的胶囊：122 = 左内距 13 + 加号 44 + 间距 8 +
-    // 头像 44 + 右内距 13。外壳固定在右下角，展开时向左上伸展；头像留在胶囊右端
-    // （right 13），屏幕位置与改版前那颗球完全一致，所以「原来那颗头像球」不会跳。
+    // 收起态是「圆形加号 + 头像球」的胶囊：125 = 左内距 13 + 加号 44 + 间距 8 +
+    // 头像 44 + 右内距 16。外壳固定在右下角，展开时向左上伸展；头像留在胶囊右端，
+    // 右侧留 16（比左侧加号那 13 多 3px）—— 头像球与胶囊右端圆角之间不再贴得发紧，
+    // 而展开后头像会移到面板左上角（left 20 / top 24 / 48×48），所以收起态这点位移
+    // 不会让「同一颗头像」看起来跳过。
     &__shell {
       // 压在展开态的全屏蒙版之上（__backdrop 的 z-index 是 0）。
       z-index: 1;
-      width: 122px;
+      width: 125px;
       min-height: 70px;
       border-radius: 35px;
       overflow: clip;
@@ -294,7 +296,8 @@
     }
     &__avatar {
       top: 13px;
-      left: 65px; // 13 + 44 + 8：胶囊右端仍留着原来那颗头像球的位置
+      // 13 + 44 + 8：加号与头像之间的间距是 8；胶囊右侧 16 = 125 - 65 - 44。
+      left: 65px;
       width: 44px;
       height: 44px;
       transition: top .42s cubic-bezier(.22, 1, .36, 1), left .42s cubic-bezier(.22, 1, .36, 1), width .42s cubic-bezier(.22, 1, .36, 1), height .42s cubic-bezier(.22, 1, .36, 1);
@@ -310,7 +313,9 @@
       position: absolute;
       z-index: 2;
       top: 13px;
-      right: 13px;
+      // 收起态 X 必须正好盖在头像上：right 16 + 44 = 胶囊右端 60，与头像的
+      // left 65 + 44 = 109 一起落在同一个 44×44 方块里（125 - 16 - 44 = 65）。
+      right: 16px;
       align-items: center;
       justify-content: center;
       flex: none;
@@ -332,6 +337,9 @@
       min-height: 0;
       max-height: calc(100dvh - var(--navbar-height) - 64px);
       overflow: hidden;
+      // 面板内部真正可滚时，滚到尽头不要把余量转交给后面那一页（滚动链）。
+      // body 那条锁管「滚轮 / 蒙版」，这一条管「手指在面板里滑到头」。
+      overscroll-behavior: contain;
       padding: 0 20px;
     }
     &__identity { margin-top: 24px; padding-right: 28px; }
@@ -339,6 +347,11 @@
     // 同一个二级主题色容器，只是不显示文案），展开时宽 44→105、文案淡入，落成
     // 面板底部的创建按钮。位置钉在外壳左下角，随外壳向左展开，所以看起来就是
     // 「加号展开成创建按钮」。
+    //
+    // 内距固定 8px、内容靠左（justify-content: flex-start），图标圆盘才与按钮
+    // 左端的圆角同心：按钮高 44 ⇒ 半径 22，圆角圆心在「左沿 + 22」处，而直径 28
+    // 的圆盘圆心在「left + 8 + 14」—— 8 正是让两者重合的那个内距。收起态 44×44
+    // 时 8 + 28 + 8 = 44，圆盘仍然居中，与改版前看起来一样。
     &__create {
       position: absolute;
       z-index: 1;
@@ -347,20 +360,27 @@
       width: 44px;
       height: 44px;
       margin: 0;
-      padding: 0;
+      padding: 8px;
       gap: 0;
-      justify-content: center;
+      justify-content: flex-start;
       // 底色就是 `.upload-button`（btn-primary）的二级主题色，这里不再覆写成透明
       // —— 收起态也要保留那颗浅底圆形容器，和面板里的创建按钮同一档。
       transition: left .42s cubic-bezier(.22, 1, .36, 1), bottom .42s cubic-bezier(.22, 1, .36, 1), width .42s cubic-bezier(.22, 1, .36, 1), gap .42s cubic-bezier(.22, 1, .36, 1), background-color .25s ease, color .25s ease;
     }
     &__create-label {
       max-width: 0;
+      // 内距 8 让内容盒在整个宽度过渡里都比改版前窄 16px，而文案的 max-width 要等
+      // 进度过 2/3 才追上 40px —— 中段几帧会「装不下」。允许它收缩（min-width: 0）
+      // 由 overflow: hidden 裁掉尾巴，别让整行溢出到按钮圆角外面。
+      min-width: 0;
       opacity: 0;
       overflow: hidden;
       white-space: nowrap;
       transition: opacity .18s ease, max-width .42s cubic-bezier(.22, 1, .36, 1);
     }
+    // 图标圆盘宽度固定：让它跟着文案一起被 flex 压缩的话，mask 画的圆盘会在中段帧
+    // 拿到小数边长（见 pages/blog/_menu.scss 里整数 px 那条注释），看起来会变形。
+    &__create .icon { flex: none; }
     // 84 = 创建按钮 44 + 底部 20 + 与范围之间 20。创建按钮是绝对定位的，面板内容
     // 得自己把这格空出来 —— 但**不能**用 inner 的 padding：padding 不受 min-height: 0
     // 约束，收起时会把 0fr 的轨道撑到 84px，胶囊就不再是 70px（实测过）。空的占位
@@ -391,6 +411,8 @@
         bottom: 20px;
         // 105 = `.upload-button` 自己的宽度（pages/blog/_menu.scss）。两边是同一个
         // 视觉档位，改那一边的尺寸时记得同步这里，否则展开前后会差一截。
+        // 内距 8 + 图标 28 + 间距 10 + 文案 40 = 86 ⇒ 文案右边缘离按钮右端 19px；
+        // 靠左排（见上面 __create 的注释），不再两侧均分那 13.5px。
         width: 105px;
         gap: 10px;
         background-color: var(--color-brand-secondary);

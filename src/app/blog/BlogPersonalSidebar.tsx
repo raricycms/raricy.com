@@ -35,6 +35,29 @@ export default function BlogPersonalSidebar({ user, summary, scope }: {
     return () => media.removeEventListener('change', update);
   }, []);
 
+  // 窄屏展开时锁住 body 滚动。两条漏路都要堵：蒙版只有 touch-action: none，拦得住触摸
+  // 手势却拦不住鼠标滚轮；而面板自己真正可滚时，滚到尽头还会把余量转交给后面那一页
+  // （滚动链，SCSS 的 overscroll-behavior: contain 管这一半）。实测（390×844）：不锁时
+  // 展开后把滚轮停在面板上，window.scrollY 从 0 直接被带到 105。
+  // 锁法照 u/[id]/ProfileBoard.tsx 的详情层：先量滚动条宽度再用 padding-right 抵掉，
+  // 直接 overflow: hidden 会让桌面窄窗口的滚动条消失、正文横向跳一下。
+  // 收起 / 卸载（含链接导航）都走 cleanup 还原，别只在收起按钮里写。
+  useEffect(() => {
+    if (!open || !narrow) return;
+    const prevOverflow = document.body.style.overflow;
+    const prevPaddingRight = document.body.style.paddingRight;
+    const scrollbar = window.innerWidth - document.documentElement.clientWidth;
+    document.body.style.overflow = 'hidden';
+    if (scrollbar > 0) {
+      const current = Number.parseFloat(window.getComputedStyle(document.body).paddingRight) || 0;
+      document.body.style.paddingRight = `${current + scrollbar}px`;
+    }
+    return () => {
+      document.body.style.overflow = prevOverflow;
+      document.body.style.paddingRight = prevPaddingRight;
+    };
+  }, [open, narrow]);
+
   useEffect(() => {
     function outside(event: PointerEvent) {
       if (!host.current?.contains(event.target as Node)) setOpen(false);
@@ -75,11 +98,16 @@ export default function BlogPersonalSidebar({ user, summary, scope }: {
           层级刻意留在固定顶栏之下 —— 顶栏照常亮着，不参与变暗。
           它挂在 aside 里面而不是 portal：移动端 aside 本身就是 fixed，蒙版跟着一起
           显隐即可 —— 代价是文档上那个「点外部收起」的监听判不出它（它就在 aside 内），
-          所以这里自己接 pointerdown。同理，桌面 display:none，不进任何渲染。 */}
+          所以这里自己接点击。
+          ⚠️ 收起必须挂 onClick，**不能**挂 onPointerDown：按下那一刻就收起的话，蒙版
+          立刻 pointer-events: none，这次手势松手后生成的那一下 click 就直接落到它下面
+          那张博客卡上 —— 面板收了、人也被带进了 /blog/<id>（Chromium 与 WebKit 都如此）。
+          挂在 click 上时 pointerdown / pointerup / click 都发生在蒙版自己身上，点击不穿透；
+          代价是「按住不放再拖开」不会收起，但那本来也不该算一次点击。 */}
       <div
         className="blog-personal__backdrop"
         aria-hidden="true"
-        onPointerDown={() => setOpen(false)}
+        onClick={() => setOpen(false)}
       />
       <div className="blog-personal__shell">
         <Link

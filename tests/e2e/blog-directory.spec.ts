@@ -30,7 +30,8 @@ test('筛选条的行数、侧栏的高度和真实吸顶位置', async ({ page,
     expect(Math.abs(category.y - sort.y)).toBeLessThan(4);
     await expect(page.locator('.blog-personal__panel')).toBeHidden();
     const capsule = (await page.locator('.blog-personal').boundingBox())!;
-    expect(capsule.width).toBe(122);
+    // 125 = 左内距 13 + 加号 44 + 间距 8 + 头像 44 + 右侧留白 16（见 _directory.scss）。
+    expect(capsule.width).toBe(125);
     expect(capsule.height).toBe(70);
     const plus = (await page.locator('.blog-personal__create').boundingBox())!;
     expect(plus.width).toBe(44);
@@ -194,14 +195,31 @@ test('手机端胶囊：加号直达创建，点头像展开，加号展开成�
   const shell = (await capsule.boundingBox())!;
   const create = (await plus.boundingBox())!;
   const head = (await page.locator('.blog-personal__avatar').boundingBox())!;
-  expect(Math.round(shell.width)).toBe(122);
+  // 125 = 左内距 13 + 加号 44 + 间距 8 + 头像 44 + 右侧留白 16。
+  expect(Math.round(shell.width)).toBe(125);
   expect(Math.round(shell.height)).toBe(70);
   expect(Math.round(create.width)).toBe(44);
   expect(Math.round(create.height)).toBe(44);
-  // 加号在左、头像球在右，同一行，头像右侧留 13px。
+  // 加号在左、头像球在右，同一行，头像右侧留 16px。
   expect(create.x + create.width).toBeLessThan(head.x);
   expect(Math.abs(create.y - head.y)).toBeLessThan(1);
-  expect(Math.round(head.x + head.width + 13)).toBe(Math.round(shell.x + shell.width));
+  expect(Math.round(head.x + head.width + 16)).toBe(Math.round(shell.x + shell.width));
+
+  // 加号圆盘与胶囊左端圆角同心：胶囊 radius 35 ⇒ 左端圆角圆心在 (left + 35, bottom - 35)；
+  // 加号 44×44、内距 13 ⇒ 圆心在 (left + 13 + 22, bottom - 13 - 22)。同一对数字，
+  // 改内距或半径时要一起改，否则「圆盘贴着圆角」会歪成偏心的。
+  expect(await capsule.evaluate((el) => parseFloat(getComputedStyle(el.querySelector('.blog-personal__shell')!).borderRadius))).toBe(35);
+  expect(Math.abs(create.x + create.width / 2 - (shell.x + 35))).toBeLessThan(0.5);
+  expect(Math.abs(create.y + create.height / 2 - (shell.y + shell.height - 35))).toBeLessThan(0.5);
+  // 圆盘自身在 44px 里居中（内距 8 + 图标 28 + 内距 8）：收起态视觉与改版前一样。
+  const plusIcon = (await plus.locator('.icon').boundingBox())!;
+  expect(Math.round(plusIcon.width)).toBe(28);
+  expect(Math.abs(plusIcon.x + plusIcon.width / 2 - (create.x + create.width / 2))).toBeLessThan(0.5);
+  // 收起态那颗 X 必须正好盖在头像上（同一个 44×44 方块），否则「点头像展开」会点空。
+  const headToggle = (await page.locator('.blog-personal__toggle').boundingBox())!;
+  expect(Math.abs(headToggle.x - head.x)).toBeLessThan(0.5);
+  expect(Math.abs(headToggle.y - head.y)).toBeLessThan(0.5);
+  expect(Math.round(headToggle.width)).toBe(44);
   await expect(plus).toHaveAttribute('href', '/blog/upload');
   await expect(plus).toHaveAccessibleName('创建');
 
@@ -215,6 +233,20 @@ test('手机端胶囊：加号直达创建，点头像展开，加号展开成�
   await expect(page.locator('.blog-personal__toggle')).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
   await expect(page.getByRole('link', { name: '创建', exact: true })).toBeVisible();
   await expect.poll(async () => Math.round((await plus.boundingBox())!.width)).toBe(105);
+
+  // 展开态创建按钮 105×44：内距 8 + 图标 28 + 间距 10 + 文案 40 = 86。
+  // 图标圆盘与按钮左端圆角同心（高 44 ⇒ 半径 22，圆心在 left + 22；
+  // 图标圆心在 left + 8 + 14），文案右边缘离按钮右端 19px。
+  const expandedBox = (await plus.boundingBox())!;
+  const expandedIcon = (await plus.locator('.icon').boundingBox())!;
+  const expandedLabel = (await plus.locator('.blog-personal__create-label').boundingBox())!;
+  expect(Math.round(expandedBox.width)).toBe(105);
+  expect(Math.round(expandedBox.height)).toBe(44);
+  expect(await plus.evaluate((el) => getComputedStyle(el).padding)).toBe('8px');
+  expect(Math.abs(expandedIcon.x - expandedBox.x - 8)).toBeLessThan(0.5);
+  expect(Math.abs(expandedIcon.x + expandedIcon.width / 2 - (expandedBox.x + expandedBox.height / 2))).toBeLessThan(0.5);
+  expect(Math.round(expandedLabel.width)).toBe(40);
+  expect(Math.abs(expandedBox.x + expandedBox.width - (expandedLabel.x + expandedLabel.width) - 19)).toBeLessThan(0.5);
 
   // 收起后点加号直达创建页，不经过面板。
   await page.getByRole('button', { name: '收起我的博客', exact: true }).click();
@@ -270,9 +302,51 @@ test('手机端展开个人面板时压一层暗色蒙版，顶栏不被蒙，�
   expect(Math.round(box.height)).toBe(Math.round(layout.height));
 
   // 点左上角空白处收起（右下角那块是展开的面板本身，避开它），走触屏路径。
+  // 收回挂在 click 上（见下一条用例）：pointerdown 会在松手前就把蒙版变成
+  // pointer-events: none，这一下点击就会穿透到下面的文章卡。
   await backdrop.tap({ position: { x: 12, y: 220 } });
   await expect(panel).toBeHidden();
   await expect(backdrop).toHaveCSS('pointer-events', 'none');
+});
+
+test('手机端面板：点外部不穿透进文章页，展开时锁住页面滚动', async ({ page, isMobile }) => {
+  test.skip(!isMobile, '悬浮入口与蒙版只在 ≤992px 出现');
+  await page.goto('/blog?scope=mine');
+  const panel = page.locator('.blog-personal__panel');
+
+  // 选点判据：面板收起时这一点必须真的落在某张博客卡的整卡拉伸链接（.blog-item）上，
+  // 否则「没有导航」什么也证明不了 —— 点在一片空白上本来就进不去文章页。
+  // x 固定 40：展开后外壳左沿在 94（390 - 16 - 280），这一点在面板之外、卡片之内。
+  const point = await page.evaluate(() => {
+    const box = document.querySelector('.blog-item')!.getBoundingClientRect();
+    const x = 40;
+    const y = Math.round(box.top + Math.min(60, box.height / 2));
+    const hit = document.elementFromPoint(x, y);
+    return { x, y, onCard: !!hit?.closest('.blog-item') };
+  });
+  expect(point.onCard).toBe(true);
+
+  const before = page.url();
+  await page.getByRole('button', { name: '展开我的博客', exact: true }).tap();
+  await expect(panel).toBeVisible();
+  await expect(page.locator('.blog-personal')).toHaveClass(/is-settled/);
+
+  // 展开时锁住 body：不锁的话滚轮停在面板上会把后面那一页带着滚（Chromium 实测
+  // window.scrollY 从 0 直接被带到 105）。滚动本身没法在这里复现 —— mobile project
+  // 跑的是移动 WebKit，Playwright 的 mouse.wheel 在那个引擎里直接报「不支持」，
+  // 所以这里钉的是锁的那条机制（展开即 hidden、收起 / 卸载还原）。
+  await expect.poll(() => page.evaluate(() => document.body.style.overflow)).toBe('hidden');
+
+  // 点击穿透回归：收起挂在 click 上而不是 pointerdown。按下就收起的话，蒙版在松手前
+  // 已经是 pointer-events: none，这次手势生成的 click 落到下面那张卡上，直接进 /blog/<id>。
+  await page.touchscreen.tap(point.x, point.y);
+  await expect(panel).toBeHidden();
+  // 真穿透了的话导航要一点时间才发生：给它窗口，URL 仍是目录页才算过。
+  await page.waitForTimeout(600);
+  expect(page.url()).toBe(before);
+
+  // 收起后恢复滚动（cleanup 还原 body 的 overflow / padding-right）。
+  await expect.poll(() => page.evaluate(() => document.body.style.overflow)).toBe('');
 });
 
 test('五个范围使用同一列表，空状态清掉筛选后保留当前范围', async ({ page, isMobile }) => {
