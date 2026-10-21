@@ -21,14 +21,14 @@
 //
 // 【2026-09-19：顶层列表成了**刻意**的横向滚动容器（第二条用例钉着它）】
 // 上面那条「溢出不许冒泡」只对**浅层**楼中楼成立。深层楼中楼另有两条契约：
-//   · 纵向：有可见子楼的嵌套评论下内距归零、嵌套列表下外边距归零，末尾空白不再随层数累加；
+//   · 纵向：每张评论卡片保留下内距，嵌套列表不额外添加下外边距；
 //   · 横向：`.comment-item` 有 min-width，跌破它时**只由 `.comment-section > .comment-list`
 //     接住**（那里是 overflow-x: auto）—— 中间层必须保持 visible，否则每层各画一条横条。
 // 于是「页面本身不横向滚动」这条老契约照旧，被允许溢出的只有那一个容器。
 // 细节见 pages/blog/_comments.scss 里 .comment-list / .comment-item 两处的整段说明。
 //
 // 【2026-10：楼中楼从「回复槽」改成每层一张卡】嵌套列表透明、只剩左内距表达层级，
-// 同级子评论之间不再有分割线（换卡不换线）。上面那些几何契约与判据**没有变**，
+// 同级子评论之间不再有分割线（换卡不换线），每张卡片都保留底部留白，
 // 只是「回复槽」这个词在本文件里指的是那条透明缩进列表。
 
 import { test, expect } from '@playwright/test';
@@ -140,70 +140,48 @@ test('没有评论时显示空态，且列表里没有评论卡片', async ({ pa
   await expect(page.locator('#comment-list .comment-status--empty')).toHaveCount(1);
 });
 
-// ── 楼中楼末尾不许随层数累积空白 ────────────────────────────────────────────────
-//
-// 成因（旧版）：每一层都付两次账 —— 评论的下内距与嵌套列表的下外边距。父级的 padding
-// 挡住外边距折叠、子级的下外边距又算进父级的 auto 高度，两者**相加**（不是取大者）
-// ⇒ 每深一层多付一份，层数越深末尾越大。
-//
-// 现版把「嵌套列表的下外边距」与「有可见子楼的嵌套评论的下内距」都归零，
-// 只留最内层叶子自己的 padding + 根评论卡下内距 + 卡片间距。于是判据是：
-// **浅链与深链末尾到下一根评论的间距必须一致**（与深度无关）。不写死具体 px ——
-// 那是实现细节（卡片内距 + 间距），改版时不该逼着用例跟着改数。
-test('楼中楼末尾不再逐层累积空白', async ({ page }) => {
+// 每张卡片都应包住子回复，底部留白不能因展开楼中楼而消失。
+test('楼中楼展开和收起时每张评论卡片都保留底部留白', async ({ page }) => {
   await registerFreshUser(page, { core: true });
-  const blogId = await createBlog(page, `楼中楼间距 ${uniqueTag()}`);
-
+  const blogId = await createBlog(page, '楼中楼间距 ' + uniqueTag());
   const tag = uniqueTag();
-  // 浅链：根一 + 一条回复（两层）
-  const rootA = await postComment(page, blogId, `根一 ${tag}`);
-  const shallowLeaf = `浅链末 ${tag}`;
-  await postComment(page, blogId, shallowLeaf, rootA);
-
-  // 深链：根二 + 四层回复（五层）
-  const rootB = await postComment(page, blogId, `根二 ${tag}`);
-  let parent = rootB;
-  let deepLeaf = '';
-  for (let i = 0; i < 4; i++) {
-    deepLeaf = `深链第${i + 1}层 ${tag}`;
-    parent = await postComment(page, blogId, deepLeaf, parent);
+  let parent: string | undefined;
+  for (let i = 0; i < 5; i++) {
+    parent = await postComment(page, blogId, '第' + (i + 1) + '层 ' + tag, parent);
   }
 
-  // 末尾补一条根评论：量的是「每条链末尾 → 下一条根评论」这段
-  await postComment(page, blogId, `根三 ${tag}`);
+  await page.goto('/blog/' + blogId);
+  await expect(page.locator('.comment-item')).toHaveCount(5);
 
-  await page.goto(`/blog/${blogId}`);
-  // ⚠️ 必须 .last()：父级 li 的 textContent 包住整个子树，祖先**都**命中 hasText。
-  await expect(page.locator('.comment-item', { hasText: deepLeaf }).last()).toBeVisible();
-
-  const gaps = await page.evaluate(
-    ({ shallowLeaf, deepLeaf }) => {
-      // ⚠️ 根评论只认顶层列表的**直接子元素**。按文本找会踩「父级 textContent 包住整棵
-      //    子树」这个坑（comment-rich.spec.ts 记着同一个坑），所以叶子一律取「最后一个匹配」。
-      const roots = [...document.querySelectorAll<HTMLElement>('#comment-list > .comment-item')];
-      const deepest = (marker: string) =>
-        [...document.querySelectorAll<HTMLElement>('.comment-item')]
-          .filter((el) => (el.textContent ?? '').includes(marker))
-          .pop() as HTMLElement | undefined;
-      const shallow = deepest(shallowLeaf);
-      const deep = deepest(deepLeaf);
-      if (roots.length !== 3 || !shallow || !deep) return null;
-      const gap = (a: HTMLElement, b: HTMLElement) =>
-        b.getBoundingClientRect().top - a.getBoundingClientRect().bottom;
-      return { shallowAfter: gap(shallow, roots[1]), deepAfter: gap(deep, roots[2]) };
-    },
-    { shallowLeaf, deepLeaf }
+  const cards = await page.locator('.comment-item').evaluateAll((items) =>
+    items.map((item) => {
+      const style = getComputedStyle(item);
+      const children = item.querySelector<HTMLElement>(':scope > .children.comment-list');
+      return {
+        paddingTop: parseFloat(style.paddingTop),
+        paddingBottom: parseFloat(style.paddingBottom),
+        bottomGap: children
+          ? item.getBoundingClientRect().bottom - children.getBoundingClientRect().bottom
+          : null,
+      };
+    })
   );
+  for (const card of cards) {
+    expect(card.paddingBottom, '评论卡片缺少下内距').toBeGreaterThan(0);
+    expect(card.paddingBottom).toBe(card.paddingTop);
+    if (card.bottomGap !== null) {
+      expect(Math.abs(card.bottomGap - card.paddingBottom), '子回复贴住父卡片底边').toBeLessThanOrEqual(1);
+    }
+  }
 
-  expect(gaps, '顶层列表里不是三条根评论，或者找不到最深的那条').not.toBeNull();
-  // ★ 不变式：浅链（2 层）与深链（5 层）末尾到下一根评论的间距相同。
-  //   改前这里是「每深一层 +33px」，深浅两条会差出 99px 来。
-  expect(
-    Math.abs(gaps!.shallowAfter - gaps!.deepAfter),
-    `浅链末尾空 ${gaps!.shallowAfter}px、深链末尾空 ${gaps!.deepAfter}px —— 间距在随层数累加`
-  ).toBeLessThanOrEqual(1);
-  // 顺带兜一下量级：正常是「根卡下内距 + 卡片间距」这一档，不该出现旧版那种 66px+ 的空。
-  expect(gaps!.deepAfter, `深链末尾空了 ${gaps!.deepAfter}px，明显不是固定间距`).toBeLessThanOrEqual(60);
+  const nested = page.locator('#comment-list > .comment-item > .children > .comment-item');
+  await nested.locator(':scope > .comment-meta .comment-collapse').click();
+  await expect(nested.locator(':scope > .children')).toBeHidden();
+  const collapsed = await nested.evaluate((item) => {
+    const style = getComputedStyle(item);
+    return { top: style.paddingTop, bottom: style.paddingBottom };
+  });
+  expect(collapsed.bottom).toBe(collapsed.top);
 });
 
 // ── 深层楼中楼：最内层不许被挤成一个字宽，整片评论区共用一条横向滚动条 ──────────────
