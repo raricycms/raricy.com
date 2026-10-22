@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { X } from 'lucide-react';
 import Avatar from '@/app/components/Avatar';
@@ -16,16 +16,44 @@ export default function BlogPersonalSidebar({ user, summary, scope }: {
   const [narrow, setNarrow] = useState(false);
   const [settled, setSettled] = useState(false);
   const host = useRef<HTMLElement>(null);
+  const shell = useRef<HTMLDivElement>(null);
+  const panelInner = useRef<HTMLDivElement>(null);
   const toggle = useRef<HTMLButtonElement>(null);
   const params = useSearchParams();
+
+  // 面板展开高度的唯一来源：内容自然高度（受 max-height 夹住后的值）。
+  // 写进 --blog-personal-panel-height 后，外壳高度从收起态的 70px **线性**过渡到
+  // 这个值 —— 不用 grid-template-rows 0fr→1fr，因为浏览器把 fr 内插成
+  // 「进度²」的高度，而头像的 top/left 是按进度线性走的，两者一叠头像就成了折线。
+  // 测的是 __inner 的盒子（panel 收起时高度固定 70、内容溢出，但 inner 自身仍是
+  // 内容高度），所以收起态也能测。
+  //
+  // ⚠️ 必须在**加上 .is-open 之前**把变量写好（挂载时量一次，点开关时再量一次）。
+  // 等展开后的 layout effect 才写就已经晚了：那时 .is-open 的
+  // `height: var(--…, auto)` 先落到 auto（内容高度），px→auto 不可插值，外壳高度
+  // 第一帧就跳到位 —— 头像的 top/left 还在动、外壳却已到终点，轨迹自然不是直线。
+  const measurePanel = useCallback(() => {
+    const inner = panelInner.current;
+    const shellElement = shell.current;
+    if (!inner || !shellElement) return;
+    shellElement.style.setProperty('--blog-personal-panel-height', `${inner.getBoundingClientRect().height}px`);
+  }, []);
+
+  useLayoutEffect(() => { measurePanel(); }, [measurePanel, narrow]);
+
+  useEffect(() => {
+    window.addEventListener('resize', measurePanel);
+    return () => window.removeEventListener('resize', measurePanel);
+  }, [measurePanel]);
 
   useLayoutEffect(() => {
     setSettled(false);
     if (!open) return;
+    measurePanel();
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) { setSettled(true); return; }
     const timer = window.setTimeout(() => setSettled(true), 450);
     return () => window.clearTimeout(timer);
-  }, [open]);
+  }, [open, measurePanel]);
 
   useEffect(() => {
     const media = window.matchMedia('(max-width: 992px)');
@@ -109,7 +137,7 @@ export default function BlogPersonalSidebar({ user, summary, scope }: {
         aria-hidden="true"
         onClick={() => setOpen(false)}
       />
-      <div className="blog-personal__shell">
+      <div className="blog-personal__shell" ref={shell}>
         <Link
           className="blog-personal__avatar"
           href={`/u/${user.id}`}
@@ -126,12 +154,12 @@ export default function BlogPersonalSidebar({ user, summary, scope }: {
           aria-label={open ? '收起我的博客' : '展开我的博客'}
           aria-expanded={open}
           aria-controls="blog-personal-panel"
-          onClick={() => setOpen((value) => !value)}
+          onClick={() => { measurePanel(); setOpen((value) => !value); }}
         >
           <X aria-hidden="true" />
         </button>
         <div className="blog-personal__panel" id="blog-personal-panel" inert={narrow && !open}>
-          <div className="blog-personal__inner">
+          <div className="blog-personal__inner" ref={panelInner}>
             <Link className="blog-personal__identity" href={`/u/${user.id}`}>
               <span>{user.username}</span>
             </Link>

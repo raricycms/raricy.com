@@ -1,4 +1,5 @@
 @use '../../abstracts/mixins' as m;
+@use '../../abstracts/variables' as v;
 
 // 站内目录独立于 /explore 的旧栏目侧栏；桌面保持 280px 栏宽。
 .blog-directory {
@@ -66,9 +67,12 @@
   // 宽度过渡只在用户操作过之后开启（组件挂 `.is-ready`）。首帧的服务端兜底宽度
   // 到真实文字宽度那一次变化发生在水合后，若这里常开过渡，进入目录页时会看到
   // 「全部栏目」按钮先显示成 120px、再缩短到内容宽度的一段动画。
-  &.is-ready,
+  // 收起方向用收起节奏，展开方向在 .is-open 里换成展开节奏（过渡取变化后那一侧）。
+  &.is-ready {
+    transition: width v.$motion-collapse-duration v.$motion-collapse-easing;
+  }
   &.is-open {
-    transition: width .42s cubic-bezier(.22, 1, .36, 1);
+    transition: width v.$motion-expand-duration v.$motion-expand-easing;
   }
 
   &__shell {
@@ -78,7 +82,7 @@
     background: var(--color-background-page);
     border-radius: 21px;
     overflow: hidden;
-    transition: width .42s cubic-bezier(.22, 1, .36, 1), box-shadow .25s ease;
+    transition: width v.$motion-collapse-duration v.$motion-collapse-easing, box-shadow .25s ease;
   }
 
   &__toggle {
@@ -93,7 +97,7 @@
     font-size: .9rem;
 
     span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    svg { width: 16px; height: 16px; flex: none; transition: transform .42s cubic-bezier(.22, 1, .36, 1); }
+    svg { width: 16px; height: 16px; flex: none; transition: transform v.$motion-expand-duration v.$motion-expand-easing; }
     &:focus-visible { box-shadow: var(--shadow-focus-brand); }
   }
 
@@ -123,7 +127,7 @@
     width: 36px;
     height: 36px;
     padding: 0;
-    svg { width: 16px; height: 16px; transition: transform .42s cubic-bezier(.22, 1, .36, 1); }
+    svg { width: 16px; height: 16px; transition: transform v.$motion-expand-duration v.$motion-expand-easing; }
     &[aria-expanded='true'] svg { transform: rotate(180deg); }
   }
   &__children {
@@ -136,7 +140,7 @@
     padding: 4px 6px 8px;
     opacity: 0;
     transform: translateY(-8px);
-    transition: opacity .18s ease, transform .28s cubic-bezier(.22, 1, .36, 1);
+    transition: opacity .18s ease, transform v.$motion-collapse-duration v.$motion-collapse-easing;
   }
 
   &__option {
@@ -153,9 +157,18 @@
   &.is-open {
     z-index: 1;
     width: var(--category-open-width, var(--category-closed-width, 120px));
-    .blog-category-select__shell { background: var(--color-background-card); box-shadow: var(--shadow-card-brand); }
+    .blog-category-select__shell {
+      background: var(--color-background-card);
+      box-shadow: var(--shadow-card-brand);
+      transition: width v.$motion-expand-duration v.$motion-expand-easing, box-shadow .25s ease;
+    }
     .blog-category-select__panel { @include m.expand-panel-open; }
-    .blog-category-select__options { opacity: 1; transform: translateY(0); transition-delay: 55ms; }
+    .blog-category-select__options {
+      opacity: 1;
+      transform: translateY(0);
+      transition: opacity .18s ease 55ms,
+                  transform v.$motion-expand-duration v.$motion-expand-easing 55ms;
+    }
     .blog-category-select__toggle svg { transform: rotate(180deg); }
   }
 }
@@ -255,20 +268,22 @@
     width: auto;
     z-index: 80;
 
-    // 收起态是「圆形加号 + 头像球」的胶囊：125 = 左内距 13 + 加号 44 + 间距 8 +
-    // 头像 44 + 右内距 16。外壳固定在右下角，展开时向左上伸展；头像留在胶囊右端，
-    // 右侧留 16（比左侧加号那 13 多 3px）—— 头像球与胶囊右端圆角之间不再贴得发紧，
-    // 而展开后头像会移到面板左上角（left 20 / top 24 / 48×48），所以收起态这点位移
+    // 收起态是「圆形加号 + 头像球」的胶囊：129 = 左内距 13 + 加号 44 + 间距 8 +
+    // 头像 44 + 右内距 20。外壳固定在右下角，展开时向左上伸展；头像留在胶囊右端，
+    // 右侧留 20 —— 头像球与胶囊右端圆角之间留出呼吸，不再贴得发紧（此前 16 仍显近）。
+    // 展开后头像会移到面板左上角（left 20 / top 24 / 48×48），所以收起态这点位移
     // 不会让「同一颗头像」看起来跳过。
     &__shell {
       // 压在展开态的全屏蒙版之上（__backdrop 的 z-index 是 0）。
       z-index: 1;
-      width: 125px;
+      width: 129px;
       min-height: 70px;
       border-radius: 35px;
       overflow: clip;
       box-shadow: var(--shadow-card-brand);
-      transition: width .42s cubic-bezier(.22, 1, .36, 1), border-radius .42s cubic-bezier(.22, 1, .36, 1);
+      // 收起方向用收起节奏；展开方向在 .is-open 里换成展开节奏。
+      transition: width v.$motion-collapse-duration v.$motion-collapse-easing,
+                  border-radius v.$motion-collapse-duration v.$motion-collapse-easing;
     }
     // 展开时的全屏暗色蒙版。色值取站内**模态遮罩**统一的那一个：
     //   .modal / .modal-overlay / .bento-detail__backdrop / .oauth-modal-overlay
@@ -296,11 +311,17 @@
     }
     &__avatar {
       top: 13px;
-      // 13 + 44 + 8：加号与头像之间的间距是 8；胶囊右侧 16 = 125 - 65 - 44。
+      // 13 + 44 + 8：加号与头像之间的间距是 8；胶囊右侧 20 = 129 - 65 - 44。
       left: 65px;
       width: 44px;
       height: 44px;
-      transition: top .42s cubic-bezier(.22, 1, .36, 1), left .42s cubic-bezier(.22, 1, .36, 1), width .42s cubic-bezier(.22, 1, .36, 1), height .42s cubic-bezier(.22, 1, .36, 1);
+      // 收起方向用收起节奏；展开方向在 .is-open 里换成展开节奏。宽度/高度与外壳
+      // 宽度、面板高度必须是同一条时间线 —— 任一属性另用一套曲线，屏幕上的合成
+      // 轨迹就会折一下（e2e 用「到首尾连线的最大垂距」钉住）。
+      transition: top v.$motion-collapse-duration v.$motion-collapse-easing,
+                  left v.$motion-collapse-duration v.$motion-collapse-easing,
+                  width v.$motion-collapse-duration v.$motion-collapse-easing,
+                  height v.$motion-collapse-duration v.$motion-collapse-easing;
     }
     // 收起时它是盖在头像上的「点头像」热区 —— 与展开后右上角的 X 是同一颗按钮，
     // 只是随外壳移动、换位置。图标在收起态透明，所以看起来就是一颗头像球。
@@ -313,25 +334,36 @@
       position: absolute;
       z-index: 2;
       top: 13px;
-      // 收起态 X 必须正好盖在头像上：right 16 + 44 = 胶囊右端 60，与头像的
-      // left 65 + 44 = 109 一起落在同一个 44×44 方块里（125 - 16 - 44 = 65）。
-      right: 16px;
+      // 收起态 X 必须正好盖在头像上：right 20 + 44 = 胶囊右端 64，与头像的
+      // left 65 + 44 = 109 一起落在同一个 44×44 方块里（129 - 20 - 44 = 65）。
+      right: 20px;
       align-items: center;
       justify-content: center;
       flex: none;
       width: 44px;
       height: 44px;
       padding: 0;
-      transition: top .42s cubic-bezier(.22, 1, .36, 1), right .42s cubic-bezier(.22, 1, .36, 1), width .42s cubic-bezier(.22, 1, .36, 1), height .42s cubic-bezier(.22, 1, .36, 1), background-color .25s ease;
+      transition: top v.$motion-collapse-duration v.$motion-collapse-easing,
+                  right v.$motion-collapse-duration v.$motion-collapse-easing,
+                  width v.$motion-collapse-duration v.$motion-collapse-easing,
+                  height v.$motion-collapse-duration v.$motion-collapse-easing,
+                  background-color .25s ease;
       svg { width: 18px; height: 18px; opacity: 0; transition: opacity .18s ease; }
     }
+    // 面板高度用显式 height 而不是 grid-template-rows 0fr→1fr：浏览器把 fr 内插成
+    // 「进度²」的高度，而头像的 top/left 是按进度线性走的，叠起来头像在视觉上就是
+    // 一条折线。展开高度由组件量出内容高度后写进 --blog-personal-panel-height
+    // （见 BlogPersonalSidebar），这里只负责按同一条节奏过渡。
     &__panel {
       width: min(280px, calc(100vw - 32px));
       max-width: calc(100vw - 32px);
-      display: grid;
-      grid-template-rows: 0fr;
+      // 收起态与胶囊同高，内容由 overflow 裁掉；这样外壳高度从第一帧起就跟着
+      // 面板高度线性变化，不会被 min-height 顶成一段平台期。
+      height: 70px;
+      overflow: hidden;
       visibility: hidden;
-      transition: grid-template-rows .42s cubic-bezier(.22, 1, .36, 1), visibility 0s .42s;
+      transition: height v.$motion-collapse-duration v.$motion-collapse-easing,
+                  visibility 0s v.$motion-collapse-duration;
     }
     &__inner {
       min-height: 0;
@@ -365,7 +397,11 @@
       justify-content: flex-start;
       // 底色就是 `.upload-button`（btn-primary）的二级主题色，这里不再覆写成透明
       // —— 收起态也要保留那颗浅底圆形容器，和面板里的创建按钮同一档。
-      transition: left .42s cubic-bezier(.22, 1, .36, 1), bottom .42s cubic-bezier(.22, 1, .36, 1), width .42s cubic-bezier(.22, 1, .36, 1), gap .42s cubic-bezier(.22, 1, .36, 1), background-color .25s ease, color .25s ease;
+      transition: left v.$motion-collapse-duration v.$motion-collapse-easing,
+                  bottom v.$motion-collapse-duration v.$motion-collapse-easing,
+                  width v.$motion-collapse-duration v.$motion-collapse-easing,
+                  gap v.$motion-collapse-duration v.$motion-collapse-easing,
+                  background-color .25s ease, color .25s ease;
     }
     &__create-label {
       max-width: 0;
@@ -376,15 +412,15 @@
       opacity: 0;
       overflow: hidden;
       white-space: nowrap;
-      transition: opacity .18s ease, max-width .42s cubic-bezier(.22, 1, .36, 1);
+      transition: opacity .18s ease, max-width v.$motion-collapse-duration v.$motion-collapse-easing;
     }
     // 图标圆盘宽度固定：让它跟着文案一起被 flex 压缩的话，mask 画的圆盘会在中段帧
     // 拿到小数边长（见 pages/blog/_menu.scss 里整数 px 那条注释），看起来会变形。
     &__create .icon { flex: none; }
     // 84 = 创建按钮 44 + 底部 20 + 与范围之间 20。创建按钮是绝对定位的，面板内容
-    // 得自己把这格空出来 —— 但**不能**用 inner 的 padding：padding 不受 min-height: 0
-    // 约束，收起时会把 0fr 的轨道撑到 84px，胶囊就不再是 70px（实测过）。空的占位
-    // 元素是内容，能被收起态裁成 0。
+    // 得自己把这格空出来 —— 但**不能**用 inner 的 padding：padding 会进内容高度，
+    // 收起态固定 70px 的面板就会被撑高（实测过）。空的占位元素是内容，随面板
+    // overflow: hidden 一起被裁掉。
     &__create-space {
       display: block;
       height: 84px;
@@ -394,7 +430,7 @@
     &__identity, &__stats, &__range {
       opacity: 0;
       transform: translateY(-8px);
-      transition: opacity .18s ease, transform .28s cubic-bezier(.22, 1, .36, 1);
+      transition: opacity .18s ease, transform v.$motion-collapse-duration v.$motion-collapse-easing;
     }
 
     &.is-open {
@@ -402,10 +438,41 @@
       // （.site-navbar，1030）之下 —— 顶栏照常亮着、不参与变暗。80 正好夹在两者
       // 之间（这一页页面内容的最高层是吸顶筛选条的 40）。
       .blog-personal__backdrop { opacity: 1; pointer-events: auto; }
-      .blog-personal__shell { width: min(280px, calc(100vw - 32px)); border-radius: 30px; }
-      .blog-personal__avatar { top: 24px; left: 20px; width: 48px; height: 48px; }
-      .blog-personal__toggle { top: 28px; right: 12px; width: 36px; height: 36px; padding: 0; svg { opacity: 1; transition-delay: 55ms; } }
-      .blog-personal__panel { grid-template-rows: 1fr; visibility: visible; transition-delay: 0s; }
+      .blog-personal__shell {
+        width: min(280px, calc(100vw - 32px));
+        border-radius: 30px;
+        transition: width v.$motion-expand-duration v.$motion-expand-easing,
+                    border-radius v.$motion-expand-duration v.$motion-expand-easing;
+      }
+      .blog-personal__avatar {
+        top: 24px;
+        left: 20px;
+        width: 48px;
+        height: 48px;
+        transition: top v.$motion-expand-duration v.$motion-expand-easing,
+                    left v.$motion-expand-duration v.$motion-expand-easing,
+                    width v.$motion-expand-duration v.$motion-expand-easing,
+                    height v.$motion-expand-duration v.$motion-expand-easing;
+      }
+      .blog-personal__toggle {
+        top: 28px;
+        right: 12px;
+        width: 36px;
+        height: 36px;
+        padding: 0;
+        transition: top v.$motion-expand-duration v.$motion-expand-easing,
+                    right v.$motion-expand-duration v.$motion-expand-easing,
+                    width v.$motion-expand-duration v.$motion-expand-easing,
+                    height v.$motion-expand-duration v.$motion-expand-easing,
+                    background-color .25s ease;
+        svg { opacity: 1; transition-delay: 55ms; }
+      }
+      .blog-personal__panel {
+        height: var(--blog-personal-panel-height, auto);
+        visibility: visible;
+        transition: height v.$motion-expand-duration v.$motion-expand-easing,
+                    visibility 0s;
+      }
       .blog-personal__create {
         left: 20px;
         bottom: 20px;
@@ -416,11 +483,22 @@
         width: 105px;
         gap: 10px;
         background-color: var(--color-brand-secondary);
+        transition: left v.$motion-expand-duration v.$motion-expand-easing,
+                    bottom v.$motion-expand-duration v.$motion-expand-easing,
+                    width v.$motion-expand-duration v.$motion-expand-easing,
+                    gap v.$motion-expand-duration v.$motion-expand-easing,
+                    background-color .25s ease, color .25s ease;
       }
-      .blog-personal__create-label { max-width: 60px; opacity: 1; transition-delay: 55ms; }
+      .blog-personal__create-label {
+        max-width: 60px;
+        opacity: 1;
+        transition: opacity .18s ease 55ms,
+                    max-width v.$motion-expand-duration v.$motion-expand-easing 55ms;
+      }
       .blog-personal__identity, .blog-personal__stats, .blog-personal__range {
         opacity: 1;
         transform: translateY(0);
+        transition: opacity .18s ease, transform v.$motion-expand-duration v.$motion-expand-easing;
         transition-delay: 55ms;
       }
       .blog-personal__range {

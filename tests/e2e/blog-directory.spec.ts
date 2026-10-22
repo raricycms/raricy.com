@@ -30,8 +30,8 @@ test('筛选条的行数、侧栏的高度和真实吸顶位置', async ({ page,
     expect(Math.abs(category.y - sort.y)).toBeLessThan(4);
     await expect(page.locator('.blog-personal__panel')).toBeHidden();
     const capsule = (await page.locator('.blog-personal').boundingBox())!;
-    // 125 = 左内距 13 + 加号 44 + 间距 8 + 头像 44 + 右侧留白 16（见 _directory.scss）。
-    expect(capsule.width).toBe(125);
+    // 129 = 左内距 13 + 加号 44 + 间距 8 + 头像 44 + 右侧留白 20（见 _directory.scss）。
+    expect(capsule.width).toBe(129);
     expect(capsule.height).toBe(70);
     const plus = (await page.locator('.blog-personal__create').boundingBox())!;
     expect(plus.width).toBe(44);
@@ -109,14 +109,24 @@ test('栏目在同一外壳内展开，二级缩进，选择保留范围/搜索/
 test('个人面板使用统计胶囊，窄屏由同一个头像连续移动展开', async ({ page, isMobile }, testInfo) => {
   await page.goto('/blog?scope=mine');
   if (isMobile) {
+    const start = await page.locator('.blog-personal').evaluate((host) => {
+      const avatar = host.querySelector('.blog-personal__avatar')!;
+      const create = host.querySelector('.blog-personal__create')!;
+      const createLabel = host.querySelector('.blog-personal__create-label')!;
+      return {
+        start: avatar.getBoundingClientRect().toJSON(),
+        startCreate: create.getBoundingClientRect().toJSON(),
+        startStyle: { bg: getComputedStyle(create).backgroundColor, label: getComputedStyle(createLabel).opacity },
+      };
+    });
+    // 用 Playwright 的点击（等到元素可操作、React 完成挂载）而不是在 evaluate 里
+    // 直接点：后者可能抢在水合之前，点击处理器还没挂上，面板根本不会展开，
+    // 于是 getAnimations() 拿到空数组（表现为「没有过渡」）。
+    await page.getByRole('button', { name: '展开我的博客', exact: true }).click();
     const motion = await page.locator('.blog-personal').evaluate(async (host) => {
       const avatar = host.querySelector('.blog-personal__avatar')!;
       const create = host.querySelector('.blog-personal__create')!;
       const createLabel = host.querySelector('.blog-personal__create-label')!;
-      const start = avatar.getBoundingClientRect().toJSON();
-      const startCreate = create.getBoundingClientRect().toJSON();
-      const startStyle = { bg: getComputedStyle(create).backgroundColor, label: getComputedStyle(createLabel).opacity };
-      (host.querySelector('.blog-personal__toggle') as HTMLButtonElement).click();
       await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
       const animations = host.getAnimations({ subtree: true });
       animations.forEach((animation) => { animation.pause(); animation.currentTime = 210; });
@@ -129,7 +139,7 @@ test('个人面板使用统计胶囊，窄屏由同一个头像连续移动展�
       const endCreate = create.getBoundingClientRect().toJSON();
       const endStyle = { bg: getComputedStyle(create).backgroundColor, label: getComputedStyle(createLabel).opacity };
       return {
-        start, middle, end, startCreate, middleCreate, endCreate, startStyle, endStyle,
+        middle, end, middleCreate, endCreate, endStyle,
         scroll, same: avatar === host.querySelector('.blog-personal__avatar'),
         avatars: host.querySelectorAll('.avatar').length,
       };
@@ -138,24 +148,24 @@ test('个人面板使用统计胶囊，窄屏由同一个头像连续移动展�
     expect(motion.avatars).toBe(1);
     expect(motion.scroll.overflow).toBe('hidden');
     expect(Math.abs(motion.scroll.gutter)).toBeLessThan(1);
-    expect(motion.start.width).toBe(44);
-    expect(motion.middle.width).toBeGreaterThan(motion.start.width);
+    expect(start.start.width).toBe(44);
+    expect(motion.middle.width).toBeGreaterThan(start.start.width);
     expect(motion.middle.width).toBeLessThan(motion.end.width);
     expect(motion.end.width).toBe(48);
-    expect(motion.middle.y).toBeLessThan(motion.start.y);
+    expect(motion.middle.y).toBeLessThan(start.start.y);
     expect(motion.middle.y).toBeGreaterThan(motion.end.y);
     // 收起时加号在头像球左侧（胶囊左端），展开后二者在面板左沿对齐。
-    expect(motion.startCreate.left + motion.startCreate.width).toBeLessThan(motion.start.left);
+    expect(start.startCreate.left + start.startCreate.width).toBeLessThan(start.start.left);
     expect(Math.abs(motion.end.left - motion.endCreate.left)).toBeLessThan(1);
     // 同一个「创建」元素从圆形加号长成面板底部的创建按钮。
-    expect(motion.startCreate.width).toBe(44);
-    expect(motion.middleCreate.width).toBeGreaterThan(motion.startCreate.width);
+    expect(start.startCreate.width).toBe(44);
+    expect(motion.middleCreate.width).toBeGreaterThan(start.startCreate.width);
     expect(motion.middleCreate.width).toBeLessThan(motion.endCreate.width);
     expect(motion.endCreate.width).toBe(105);
-    expect(motion.startStyle).toEqual({ bg: 'rgba(37, 99, 235, 0.1)', label: '0' });
+    expect(start.startStyle).toEqual({ bg: 'rgba(37, 99, 235, 0.1)', label: '0' });
     expect(motion.endStyle.label).toBe('1');
     // 收起态与展开态是同一个二级主题色容器（只是收起时没有文案）。
-    expect(motion.endStyle.bg).toBe(motion.startStyle.bg);
+    expect(motion.endStyle.bg).toBe(start.startStyle.bg);
     await expect(page.getByRole('button', { name: '收起我的博客', exact: true })).toBeVisible();
     await page.screenshot({ path: testInfo.outputPath('personal-avatar-expanded.png') });
   }
@@ -172,8 +182,8 @@ test('个人面板使用统计胶囊，窄屏由同一个头像连续移动展�
   await expect(page.locator('.blog-personal').getByRole('link', { name: '创建', exact: true })).toBeVisible();
   if (isMobile) {
     await expect(page.locator('.blog-personal')).toHaveClass(/is-settled/);
+    await page.getByRole('button', { name: '收起我的博客', exact: true }).click();
     const closing = await page.locator('.blog-personal').evaluate(async (host) => {
-      (host.querySelector('.blog-personal__toggle') as HTMLButtonElement).click();
       await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
       const animations = host.getAnimations({ subtree: true });
       animations.forEach((animation) => { animation.pause(); animation.currentTime = 210; });
@@ -195,15 +205,15 @@ test('手机端胶囊：加号直达创建，点头像展开，加号展开成�
   const shell = (await capsule.boundingBox())!;
   const create = (await plus.boundingBox())!;
   const head = (await page.locator('.blog-personal__avatar').boundingBox())!;
-  // 125 = 左内距 13 + 加号 44 + 间距 8 + 头像 44 + 右侧留白 16。
-  expect(Math.round(shell.width)).toBe(125);
+  // 129 = 左内距 13 + 加号 44 + 间距 8 + 头像 44 + 右侧留白 20。
+  expect(Math.round(shell.width)).toBe(129);
   expect(Math.round(shell.height)).toBe(70);
   expect(Math.round(create.width)).toBe(44);
   expect(Math.round(create.height)).toBe(44);
-  // 加号在左、头像球在右，同一行，头像右侧留 16px。
+  // 加号在左、头像球在右，同一行，头像右侧留 20px。
   expect(create.x + create.width).toBeLessThan(head.x);
   expect(Math.abs(create.y - head.y)).toBeLessThan(1);
-  expect(Math.round(head.x + head.width + 16)).toBe(Math.round(shell.x + shell.width));
+  expect(Math.round(head.x + head.width + 20)).toBe(Math.round(shell.x + shell.width));
 
   // 加号圆盘与胶囊左端圆角同心：胶囊 radius 35 ⇒ 左端圆角圆心在 (left + 35, bottom - 35)；
   // 加号 44×44、内距 13 ⇒ 圆心在 (left + 13 + 22, bottom - 13 - 22)。同一对数字，
@@ -442,8 +452,7 @@ test('范围内分页保留筛选，第二页显示实际的剩余文章', async
   expect(Object.fromEntries(params)).toMatchObject({ scope: 'mine', category: DIRECTORY_SEED.child.slug, search: DIRECTORY_SEED.titlePrefix, sort: 'updated', page: '2' });
 });
 
-test('浅色/深色及浮层的视觉检查，减少动态效果时直接切换', async ({ page, isMobile }, testInfo) => {
-  await page.emulateMedia({ reducedMotion: 'reduce' });
+test('浅色/深色及浮层的视觉检查，减少动态效果时直接切换', async ({ page, isMobile }, testInfo) => {  await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.goto('/blog?scope=mine');
   await expect(page.locator('.blog-item')).toHaveCount(50);
   await expect(page.locator('.blog-item').first()).toBeVisible();
@@ -470,3 +479,86 @@ test('浅色/深色及浮层的视觉检查，减少动态效果时直接切换'
     expect((await page.getByRole('searchbox', { name: '搜索文章' }).boundingBox())!.width).toBeGreaterThan(100);
   }
 });
+
+test('手机端悬浮球收起态：头像沿直线移动到展开位置', async ({ page, isMobile }) => {
+  test.skip(!isMobile, '悬浮球只在 ≤992px 出现');
+  await page.goto('/blog?scope=mine');
+
+  // 等 React 挂载完成：组件在 layout effect 里把面板高度写进 --blog-personal-panel-height
+  // （这个变量也是「展开前先量高度」的契约）。有了它，下面 evaluate 里的 .click()
+  // 一定打得到已经挂上的处理器，不会抢在水合之前。
+  await page.waitForFunction(() => {
+    const shell = document.querySelector<HTMLElement>('.blog-personal__shell');
+    return !!shell?.style.getPropertyValue('--blog-personal-panel-height');
+  });
+
+  // 逐帧记录头像中心的真实轨迹（不暂停、不拖时间轴）。头像的 top/left/宽高与外壳的
+  // 宽/高、面板高度各自是独立过渡，任何一条用了不同的曲线或时长，中心轨迹就会折一次
+  // —— 用「到首尾连线的最大垂距」量出来。
+  //
+  // 采样从点击后的第一帧开始，且丢掉最初一帧：展开时组件会锁 body 滚动，模拟器里
+  // 滚动条占位消失会让固定定位的悬浮球整体平移 10px（既有行为，不是过渡的一部分）；
+  // 那一帧之后的帧才全部落在同一条过渡轨迹上。
+  const probe = await page.locator('.blog-personal').evaluate(async (host) => {
+    const avatar = host.querySelector<HTMLElement>('.blog-personal__avatar')!;
+    const toggle = host.querySelector<HTMLButtonElement>('.blog-personal__toggle')!;
+
+    function center() {
+      const rect = avatar.getBoundingClientRect();
+      return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
+    }
+
+    async function record(ms: number) {
+      const points: Array<{ x: number; y: number }> = [];
+      const started = performance.now();
+      let first = true;
+      while (performance.now() - started < ms) {
+        await new Promise((resolve) => requestAnimationFrame(resolve));
+        if (first) { first = false; continue; }
+        points.push(center());
+      }
+      return points;
+    }
+
+    toggle.click();
+    const opening = await record(700);
+    // record(700) 已覆盖展开（480ms）与 .is-settled（450ms），此刻收起不会打断它。
+    // 收起方向单独取「过渡参数」而不是再采样一次轨迹：WebKit 移动模拟里点一下收起，
+    // React 提交 + 解锁滚动的同步耗时可能已经吃掉大半个 220ms，逐帧采到的只剩尾巴。
+    // 展开方向的真实轨迹已经证明「同一个布局里各属性共用一条曲线 = 直线」；收起只要
+    // 所有位移类属性拿的是同一条收起参数，镜像结论就成立。
+    toggle.click();
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+    const closingMotion = host.getAnimations({ subtree: true })
+      .filter((animation) => animation.effect && ['top', 'left', 'right', 'bottom', 'width', 'height'].includes(animation.transitionProperty))
+      .map((animation) => {
+        const timing = animation.effect!.getTiming();
+        return { prop: animation.transitionProperty, dur: timing.duration, ease: timing.easing };
+      });
+    await record(450);
+    return { opening, closingMotion };
+  });
+
+  function deviationOf(points: Array<{ x: number; y: number }>) {
+    const first = points[0];
+    const last = points[points.length - 1];
+    const dx = last.x - first.x;
+    const dy = last.y - first.y;
+    const length = Math.hypot(dx, dy);
+    expect(length, JSON.stringify(points)).toBeGreaterThan(100);
+    return Math.max(...points.map((point) => {
+      const distance = Math.abs(dy * (point.x - first.x) - dx * (point.y - first.y));
+      return distance / length;
+    }));
+  }
+
+  // 1px：只允许亚像素取整造成的抖动；任何一条曲线不一致都会远大于它。
+  expect(deviationOf(probe.opening), JSON.stringify(probe.opening)).toBeLessThan(1);
+  // 收起：位移类属性的时长与曲线必须同一条（220ms / cubic-bezier(0.4, 0, 0.2, 1)）。
+  expect(probe.closingMotion.length).toBeGreaterThan(0);
+  for (const motion of probe.closingMotion) {
+    expect(motion.dur, motion.prop).toBe(220);
+    expect(motion.ease, motion.prop).toBe('cubic-bezier(0.4, 0, 0.2, 1)');
+  }
+});
+
