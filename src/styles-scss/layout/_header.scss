@@ -48,7 +48,10 @@ a {
   display: flex;
   align-items: center;
   flex-shrink: 0;
-  gap: 0.5rem;
+  // 图标与英文标准字贴得更近；英文与中文之间用 .5em 拉开（见 __chinese）。
+  // 判据：logo→英文 的距离必须小于英文→中文，三级品牌元素才是「图标 + 英文名 +
+  // 中文名」的层级，而不是两段等距文字。
+  gap: 6px;
   color: var(--color-text-secondary);
   text-decoration: none;
   font-weight: 400;
@@ -64,6 +67,8 @@ a {
 }
 
 .site-brand__chinese {
+  // 与英文标准字的距离（.5em ≈ 12px）大于图标到英文那 6px。
+  margin-left: .5em;
   font-size: 1.25rem;
   font-weight: 400;
   color: var(--color-text-secondary);
