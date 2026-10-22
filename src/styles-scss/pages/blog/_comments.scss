@@ -54,7 +54,7 @@
     color: var(--color-text-primary);
 }
 
-/* 图标方框与 .comment-blog__icon 同一档（卡片底色 + 品牌字色），只是这里用淡底 */
+/* 图标底座与 .comment-blog__icon 同一档（淡底 + 品牌字色）；淡色底座图标统一圆形 */
 .comment-section__icon {
     display: inline-flex;
     align-items: center;
@@ -62,7 +62,7 @@
     flex: none;
     width: 34px;
     height: 34px;
-    border-radius: 12px;
+    border-radius: 50%;
     background: var(--color-brand-secondary);
     color: var(--color-brand-primary);
 
@@ -476,12 +476,13 @@
     box-shadow: var(--shadow-card-brand);
 }
 
-/* 图标方框：与 .chat-msg__blog-icon 同尺寸同圆角（卡片底色 + 品牌字色） */
+/* 图标底座：与 .chat-msg__blog-icon 同尺寸（卡片底色 + 品牌字色）；
+   淡色底座图标统一圆形 */
 .comment-blog__icon {
     flex: none;
     width: 32px;
     height: 32px;
-    border-radius: 8px;
+    border-radius: 50%;
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -533,13 +534,14 @@
     margin: 0;
 }
 
+/* 淡色底座图标统一圆形 */
 .comment-status__icon {
     display: inline-flex;
     align-items: center;
     justify-content: center;
     width: 44px;
     height: 44px;
-    border-radius: 14px;
+    border-radius: 50%;
     background: var(--color-brand-secondary);
     color: var(--color-brand-primary);
 
@@ -574,7 +576,7 @@
     .comment-section__icon {
         width: 30px;
         height: 30px;
-        border-radius: 10px;
+        border-radius: 50%;
 
         svg {
             width: 16px;
