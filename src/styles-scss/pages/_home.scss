@@ -1,4 +1,5 @@
 @use '../abstracts/mixins' as m;
+@use '../abstracts/variables' as v;
 /* Homepage styles migrated from template */
 
 /* Layout utilities for homepage (no Bootstrap) */
@@ -125,19 +126,18 @@
   &__moon {
     transform-box: view-box;
     transform-origin: 1375px 480px;
-    // 300ms 与 public/static/js/core/base.js 的 theme-colors 时间线**同速**
-    // （那里 `new KeyframeEffect(…, { duration: 300, easing: 'ease' })`）：
+    // 与 public/static/js/core/base.js 的 theme-colors 时间线**同一条**（那里
+    // `KeyframeEffect(…, { duration: 480, easing: 'cubic-bezier(0.16, 1, 0.3, 1)' })`）：
     // 日月转过半圈的同时底色/文字/山体也在换色，两边差一截就会出现
     // 「景已经换完了、天还在转」的割裂。**改一处要改两处。**
-    // 缓动取中段明显加速的非线性曲线：半圈行程短，匀速曲线读起来像「滑过去」，
-    // cubic-bezier(.76, 0, .24, 1) 起步与落定都快收住，读起来是「翻过去」。
-    transition: transform 0.3s cubic-bezier(.76, 0, .24, 1),
-                opacity 0.3s cubic-bezier(.76, 0, .24, 1);
+    // 节奏取顶栏展开那一条（$motion-expand-*）：起始就有速度、末段平滑落定，
+    // 半圈行程读起来是「翻过去」而不是「滑过去」。
+    transition: transform v.$motion-expand-duration v.$motion-expand-easing,
+                opacity v.$motion-expand-duration v.$motion-expand-easing;
 
-    // circle 的 fill/stroke 也 300ms（保留 ease）：base.js 那条换色动画同样只跑
-    // 300ms，留长了自己这份过渡会在 WAAPI 动画结束后再拖一截，暗色天体的 fill
-    // 会晚到一步。
-    circle { transition: fill 0.3s ease, stroke 0.3s ease; }
+    // circle 的 fill/stroke 与 base.js 那条换色动画同速（480ms / 同一条曲线），
+    // 留长了自己这份过渡会在 WAAPI 动画结束后再拖一截。
+    circle { transition: fill v.$motion-expand-duration v.$motion-expand-easing, stroke v.$motion-expand-duration v.$motion-expand-easing; }
   }
 
   &__sun { transform: rotate(var(--hero-orbit-angle)); opacity: 1; }
@@ -155,8 +155,8 @@
 }
 
 // 动画结束后释放 opacity/transform，按钮的背景模糊才能采样下方山景。
-// 禁用 JS 时直接展示静态文字。
-.js .hero-content { animation: fadeInUp 0.9s ease-out backwards; }
+// 禁用 JS 时直接展示静态文字。入场位移与全站形变动效同一条节奏（§6.2）。
+.js .hero-content { animation: fadeInUp v.$motion-expand-duration v.$motion-expand-easing backwards; }
 
 .hero-eyebrow {
   margin: 0 0 32px;
@@ -348,7 +348,7 @@
   from { opacity: 0; transform: translateY(30px); }
   to { opacity: 1; transform: translateY(0); }
 }
-.fade-in-up { animation: fadeInUp 0.8s ease-out }
+.fade-in-up { animation: fadeInUp v.$motion-expand-duration v.$motion-expand-easing }
 
 /* 此处原有 `.btn-custom`：紫色渐变按钮，没有任何 TSX 使用它。
    渐变两端 #667eea / #764ba2 都不在站内色板里。已删。 */

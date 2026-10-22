@@ -1,4 +1,5 @@
 @use '../abstracts/mixins' as m;
+@use '../abstracts/variables' as v;
 
 // 管理端外壳（/admin/* 与 /audit 共用）。
 //
@@ -29,7 +30,7 @@
   overflow-y: auto;
   background: var(--color-background-card);
   border-radius: 30px;
-  animation: admin-rise 0.42s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: admin-rise v.$motion-expand-duration v.$motion-expand-easing both;
 }
 
 .admin-sidebar__brand {

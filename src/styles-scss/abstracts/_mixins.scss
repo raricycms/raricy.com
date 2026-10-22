@@ -148,10 +148,13 @@
 }
 
 // 「展开面板」的共享动画：grid-template-rows 0fr → 1fr 按**实际内容高度**伸展。
-// 博客目录的栏目下拉（外壳 / 二级子组）与通用下拉 ExpandSelect 共用这一份节奏，
-// 时长与缓动对齐用户菜单（420ms / cubic-bezier(.22, 1, .36, 1)）。
+// 博客目录的栏目下拉（外壳 / 二级子组）与通用下拉 ExpandSelect 共用这一份节奏。
+//
+// 节奏就是顶栏那两条（见 abstracts/_variables.scss 的 $motion-*）：收起方向用
+// 收起档，展开方向在 expand-panel-open 里换成展开档。CSS 过渡取「变化到哪一侧」
+// 的声明，所以两条都要写 —— 只写一条的话另一个方向会静默退回默认曲线。
 // 调用方负责给内层 `min-height: 0; overflow: hidden` 的裁剪壳。
-@mixin expand-panel($duration: .42s, $easing: cubic-bezier(.22, 1, .36, 1)) {
+@mixin expand-panel($duration: v.$motion-collapse-duration, $easing: v.$motion-collapse-easing) {
   display: grid;
   grid-template-rows: 0fr;
   visibility: hidden;
@@ -162,11 +165,12 @@
   }
 }
 
-/// 展开态。`transition-delay: 0s` 让 visibility 立刻切到可见（收起时则等动画走完）。
+/// 展开态。visibility 立刻切到可见（收起时则等动画走完），外壳走展开档节奏。
 @mixin expand-panel-open {
   grid-template-rows: 1fr;
   visibility: visible;
-  transition-delay: 0s;
+  transition: grid-template-rows v.$motion-expand-duration v.$motion-expand-easing,
+              visibility 0s;
 }
 
 // 容器宽度阶梯。顶栏（.site-container）与正文（.container）共用同一档，

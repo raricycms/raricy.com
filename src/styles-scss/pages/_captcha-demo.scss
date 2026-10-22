@@ -546,7 +546,7 @@
   font-weight: 700;
   color: #fff;
   pointer-events: none;
-  animation: vdmPop 0.32s cubic-bezier(0.2, 1.4, 0.4, 1) both;
+  animation: vdmPop $motion-expand-duration $motion-expand-easing both;
 }
 
 .vdm__mark--ok {
@@ -603,7 +603,7 @@
   background: var(--color-background-card);
   border: 1px solid var(--color-border);
   border-left-width: 4px;
-  animation: vdmRise 0.3s ease-out both;
+  animation: vdmRise $motion-expand-duration $motion-expand-easing both;
 }
 
 .vdm__result--good {

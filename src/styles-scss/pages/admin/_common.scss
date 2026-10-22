@@ -11,7 +11,7 @@
 //   · 面板 (.admin-panel) 常态不描边、不托阴影，层级靠背景色阶。
 //   · 只有整块可点的卡才允许 hover 亮 --shadow-card-brand；这里的行卡不是整块
 //     可点的，选中态一律用品牌淡底，不画左侧竖条、不描边。
-//   · 所有动效统一 0.42s cubic-bezier(.22, 1, .36, 1)，与博客目录的展开节奏同源；
+//   · 所有入场动效统一走 v.$motion-expand-duration / v.$motion-expand-easing（480ms）；
 //     prefers-reduced-motion 下整体关掉。
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -33,7 +33,7 @@
 .admin-hero__text {
   flex: 1 1 260px;
   min-width: 0;
-  animation: admin-rise 0.42s cubic-bezier(0.22, 1, 0.36, 1) backwards;
+  animation: admin-rise v.$motion-expand-duration v.$motion-expand-easing backwards;
 }
 
 .admin-hero__eyebrow {
@@ -78,7 +78,7 @@
   flex-wrap: wrap;
   align-items: center;
   gap: 8px;
-  animation: admin-rise 0.42s cubic-bezier(0.22, 1, 0.36, 1) 0.06s backwards;
+  animation: admin-rise v.$motion-expand-duration v.$motion-expand-easing 0.06s backwards;
 }
 
 // ---- 内容列 ----
@@ -101,7 +101,7 @@
   padding: 24px;
   background: var(--color-background-card);
   border-radius: 30px;
-  animation: admin-rise 0.42s cubic-bezier(0.22, 1, 0.36, 1) backwards;
+  animation: admin-rise v.$motion-expand-duration v.$motion-expand-easing backwards;
 
   + .admin-panel {
     margin-top: 16px;
@@ -166,7 +166,7 @@
   padding: 8px;
   border-radius: 999px;
   background: var(--color-background-card);
-  animation: admin-rise 0.42s cubic-bezier(0.22, 1, 0.36, 1) backwards;
+  animation: admin-rise v.$motion-expand-duration v.$motion-expand-easing backwards;
 }
 
 .admin-toolbar__select {
@@ -295,7 +295,7 @@
   padding: 18px;
   background: var(--color-background-card);
   border-radius: 24px;
-  animation: admin-rise 0.42s cubic-bezier(0.22, 1, 0.36, 1) backwards;
+  animation: admin-rise v.$motion-expand-duration v.$motion-expand-easing backwards;
 }
 
 .admin-pagination {
@@ -379,7 +379,7 @@
   background: var(--color-background-card);
   border-radius: 22px;
   transition: background-color 0.25s ease;
-  animation: admin-rise 0.42s cubic-bezier(0.22, 1, 0.36, 1) backwards;
+  animation: admin-rise v.$motion-expand-duration v.$motion-expand-easing backwards;
   // 延迟封顶：一页 20 行时末行不该等到 ~0.9s 才落定。
   animation-delay: calc(min(var(--i, 0), 8) * 26ms);
 
@@ -635,7 +635,7 @@
   background: var(--color-background-card);
   box-shadow: var(--shadow-card-brand);
   transform: translateX(-50%);
-  animation: admin-dock-in 0.32s cubic-bezier(0.22, 1, 0.36, 1) backwards;
+  animation: admin-dock-in v.$motion-expand-duration v.$motion-expand-easing backwards;
 }
 
 .admin-dock__count {

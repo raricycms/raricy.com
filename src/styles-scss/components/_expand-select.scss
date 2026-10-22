@@ -1,4 +1,5 @@
 @use '../abstracts/mixins' as m;
+@use '../abstracts/variables' as v;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 通用下拉列表（ExpandSelect）—— 列表型字段的展开动画与浮层外观。
@@ -52,7 +53,7 @@
     width: 16px;
     height: 16px;
     color: var(--color-text-secondary);
-    transition: transform .42s cubic-bezier(.22, 1, .36, 1);
+    transition: transform v.$motion-expand-duration v.$motion-expand-easing;
   }
 
   // 浮层是「另一档」：常驻 --shadow-card-brand，见 docs/frontend-styles.md §3.6。
@@ -82,7 +83,7 @@
     padding: 6px;
     opacity: 0;
     transform: translateY(-8px);
-    transition: opacity .18s ease, transform .28s cubic-bezier(.22, 1, .36, 1);
+    transition: opacity .18s ease, transform v.$motion-expand-duration v.$motion-expand-easing;
   }
 
   &__group-label {

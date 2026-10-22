@@ -328,8 +328,8 @@ function transitionTheme(themeName) {
     //
     // 每个目标都会拿到一条独立的 WAAPI 动画，代价落在**每一帧**上：这一帧要把这些
     // 元素的颜色重新算一遍再重绘。博客目录一页 50 篇，实测 810 个目标，其中 630 多个
-    // 在视口外（屏幕里只放得下 4 张卡）—— 白算。帧间隔被拖到 100ms 以上时，300ms 的
-    // 时间线只画得出 1~2 帧，观感就是「整页直接跳色、没有过渡」；同一时刻打开轻页面
+    // 在视口外（屏幕里只放得下 4 张卡）—— 白算。帧间隔被拖到 100ms 以上时，480ms 的
+    // 时间线只画得出 2~4 帧，观感就是「整页直接跳色、没有过渡」；同一时刻打开轻页面
     // （通讯录、设置）却是平滑的，差别只在目标数量。
     //
     // 视口外的元素本来就看不见，让它们的颜色**直接落到终态**即可。判据用绘制盒与
@@ -364,7 +364,10 @@ function transitionTheme(themeName) {
             if (before[name] !== style[name]) { from[name] = before[name]; to[name] = style[name]; }
         }
         if (!Object.keys(to).length) continue;
-        const effect = new KeyframeEffect(element, [from, to], { duration: 300, easing: 'ease', pseudoElement: pseudo });
+        // 480ms / 顶栏展开曲线：与样式里的形变动效同一条（$motion-expand-*，
+        // 见 _home.scss 的日月旋转与 docs/frontend-styles.md §6.2/§6.4）。首页
+        // 日月与整页换色必须同一条时间线，改一处要改两处。
+        const effect = new KeyframeEffect(element, [from, to], { duration: 480, easing: 'cubic-bezier(0.16, 1, 0.3, 1)', pseudoElement: pseudo });
         const animation = new Animation(effect, document.timeline);
         animation.id = 'theme-colors';
         animations.push(animation);
@@ -374,7 +377,7 @@ function transitionTheme(themeName) {
     // 起跑时刻是**下一帧**，不是现在。
     // 上面两圈同步循环（采样 + 建动画）在重页面上要几百毫秒，而
     // `document.timeline.currentTime` 读到的是**最近一次绘制**的时间戳：把它当
-    // startTime，等于让这段阻塞先消耗掉一段 300ms 的时间线。放到 rAF 里读，拿到的
+    // startTime，等于让这段阻塞先消耗掉一段 480ms 的时间线。放到 rAF 里读，拿到的
     // 就是即将绘制的那一帧自己的时刻，进度从 0 开始 —— 阻塞再久也不吃掉渐变。
     for (const animation of animations) animation.play();
     requestAnimationFrame(function () {

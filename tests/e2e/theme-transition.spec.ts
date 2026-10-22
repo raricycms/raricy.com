@@ -25,7 +25,7 @@ test('主题颜色共用时间线，覆盖卡片、字段、滑槽及蒙版；�
   });
   expect(result.timings).toHaveLength(5);
   expect(new Set(result.timings.map((timing) => timing.start)).size).toBe(1);
-  for (const timing of result.timings) expect(timing).toMatchObject({ duration: 300, easing: 'ease' });
+  for (const timing of result.timings) expect(timing).toMatchObject({ duration: 480, easing: 'cubic-bezier(0.16, 1, 0.3, 1)' });
   expect(result.current).toBe(result.from);
   expect(result.pseudo).toBe(true);
   await page.emulateMedia({ reducedMotion: 'reduce' });
@@ -38,8 +38,8 @@ test('主题颜色共用时间线，覆盖卡片、字段、滑槽及蒙版；�
 //
 // 根因不是时间线，而是**目标数量**：目录一页 50 篇，每个元素的颜色都要单独建一条
 // WAAPI 动画，实测 810 条，其中 630 多条的目标在视口外（屏幕里只放得下 4 张卡）。
-// 每帧都要把这 800 多个元素重算一遍样式，帧间隔被拖到 100ms 以上 —— 300ms 的时间线
-// 只画得出 1~2 帧，观感就是没有过渡；同一时刻打开轻页面（设置页）却平滑。
+// 每帧都要把这 800 多个元素重算一遍样式，帧间隔被拖到 100ms 以上 —— 480ms 的时间线
+// 只画得出 2~4 帧，观感就是没有过渡；同一时刻打开轻页面（设置页）却平滑。
 //
 // 修复只给「绘制盒与视口相交」的元素建动画（零尺寸盒子量不出可见性，照旧动画）。
 // 这里钉住两件事：视口内的卡片**有**动画、视口外的卡片**没有** —— 谁把那条可见性

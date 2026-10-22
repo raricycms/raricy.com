@@ -453,9 +453,13 @@ a {
     line-height: 1.2;
     opacity: 0;
     // 数字使用等宽字体，按位数伸缩；间距也包含在宽度内，零值时整段收回。
-    transition: width .32s cubic-bezier(.22, 1, .36, 1), opacity .2s ease;
+    // 变宽（有计数）走展开节奏，收回（零值）走收起节奏 —— 过渡取变化后那一侧。
+    transition: width v.$motion-collapse-duration v.$motion-collapse-easing, opacity .2s ease;
 
-    &--visible { opacity: 1; }
+    &--visible {
+        opacity: 1;
+        transition: width v.$motion-expand-duration v.$motion-expand-easing, opacity .2s ease;
+    }
 
     > span {
         flex: none;
@@ -470,7 +474,8 @@ a {
     height: 48px;
     border-radius: 24px;
     background: var(--color-background-content);
-    transition: grid-template-columns .42s cubic-bezier(.22, 1, .36, 1);
+    // 收起方向用收起节奏；展开方向在 .is-open 里换成展开节奏。
+    transition: grid-template-columns v.$motion-collapse-duration v.$motion-collapse-easing;
 
     &__toggle {
         @include m.btn-secondary;
@@ -488,7 +493,7 @@ a {
         .icon {
             width: 20px;
             height: 20px;
-            transition: transform .42s cubic-bezier(.22, 1, .36, 1);
+            transition: transform v.$motion-expand-duration v.$motion-expand-easing;
         }
     }
 
@@ -496,15 +501,16 @@ a {
         min-width: 0;
         overflow: hidden;
         visibility: hidden;
-        transition: visibility 0s .42s;
+        transition: visibility 0s v.$motion-collapse-duration;
     }
 
     &.is-open {
         grid-template-columns: 48px 1fr;
+        transition: grid-template-columns v.$motion-expand-duration v.$motion-expand-easing;
 
         .manage-control__panel {
             visibility: visible;
-            transition-delay: 0s;
+            transition: visibility 0s;
         }
 
         .manage-control__toggle .icon { transform: rotate(-180deg); }
@@ -512,6 +518,9 @@ a {
         .manage-menu__item {
             opacity: 1;
             transform: translateX(0);
+            transition: color .25s ease, background-color .25s ease, filter .15s ease,
+                        opacity .18s ease,
+                        transform v.$motion-expand-duration v.$motion-expand-easing;
 
             @for $i from 1 through 5 {
                 &:nth-child(#{$i}) { transition-delay: 55ms + ($i - 1) * 28ms; }
@@ -545,8 +554,10 @@ a {
         white-space: nowrap;
         opacity: 0;
         transform: translateX(-8px);
+        // 收起方向（管理菜单收回）走收起节奏；展开方向在 .is-open 里换成展开节奏。
         transition: color .25s ease, background-color .25s ease, filter .15s ease,
-                    opacity .18s ease, transform .28s cubic-bezier(.22, 1, .36, 1);
+                    opacity .18s ease,
+                    transform v.$motion-collapse-duration v.$motion-collapse-easing;
 
         .icon { width: 20px; height: 20px; flex: none; }
 
@@ -570,8 +581,8 @@ a {
             overflow: hidden;
             visibility: visible;
             opacity: 1;
-            transition: grid-template-columns .42s cubic-bezier(.22, 1, .36, 1),
-                        margin-inline-end .42s cubic-bezier(.22, 1, .36, 1),
+            transition: grid-template-columns v.$motion-expand-duration v.$motion-expand-easing,
+                        margin-inline-end v.$motion-expand-duration v.$motion-expand-easing,
                         opacity .18s ease, visibility 0s;
 
             &:last-child { margin-inline-end: 0; }
@@ -584,7 +595,10 @@ a {
             margin-inline-end: 0;
             opacity: 0;
             visibility: hidden;
-            transition-delay: 0s, 0s, 0s, .42s;
+            // 进入管理模式 = 收起互动区（收起节奏）；退出时回到基础态（展开节奏）。
+            transition: grid-template-columns v.$motion-collapse-duration v.$motion-collapse-easing,
+                        margin-inline-end v.$motion-collapse-duration v.$motion-collapse-easing,
+                        opacity .18s ease, visibility 0s v.$motion-collapse-duration;
         }
     }
 

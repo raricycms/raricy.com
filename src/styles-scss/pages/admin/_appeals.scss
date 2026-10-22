@@ -12,6 +12,8 @@
 // 整卡不可点（操作按钮在卡内），所以没有 hover 光晕。
 // ─────────────────────────────────────────────────────────────────────────────
 
+@use '../../abstracts/variables' as v;
+
 // ---- 状态筛选 ----
 // 窄屏下 .admin-seg 自己会换行；这层只负责与下方列表拉开距离。
 // 不用 overflow-x: auto —— 那会把按钮的聚焦光晕裁掉一圈，换行已经够用。
@@ -29,7 +31,7 @@
   padding: 16px 18px;
   background: var(--color-background-card);
   border-radius: 22px;
-  animation: admin-rise 0.42s cubic-bezier(0.22, 1, 0.36, 1) backwards;
+  animation: admin-rise v.$motion-expand-duration v.$motion-expand-easing backwards;
   // 逐条错开入场；--i 由页面按列表下标给（与 .admin-row 同一节奏）。
   animation-delay: calc(var(--i, 0) * 26ms);
 

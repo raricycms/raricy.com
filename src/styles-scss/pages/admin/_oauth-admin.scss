@@ -9,6 +9,8 @@
 // 共用的类，这里只做 `.admin-content` 作用域内的覆写，绝不改那份公共样式。
 // ─────────────────────────────────────────────────────────────────────────────
 
+@use '../../abstracts/variables' as v;
+
 // ---- 创建表单 ----
 // 两列（名称 / 说明 / 主页各占一格，回调 URI 整行）；窄屏单列。
 .admin-oauth-create {
@@ -56,7 +58,7 @@
   padding: 16px 18px;
   border-radius: 20px;
   background: var(--color-background-content);
-  animation: admin-rise 0.42s cubic-bezier(0.22, 1, 0.36, 1) backwards;
+  animation: admin-rise v.$motion-expand-duration v.$motion-expand-easing backwards;
 }
 
 .admin-app-row__head {

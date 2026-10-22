@@ -1,4 +1,5 @@
 @use '../../abstracts/mixins' as m;
+@use '../../abstracts/variables' as v;
 
 // 文章管理页 —— 行卡骨架与筛选条走 pages/admin/_common.scss，
 // 这里只放「单行动作簇」与栏目管理 / 申诉页暂时还在用的 .article-card 兼容层。
@@ -91,7 +92,7 @@
   padding: 16px 18px;
   background: var(--color-background-card);
   border-radius: 22px;
-  animation: admin-rise 0.42s cubic-bezier(0.22, 1, 0.36, 1) backwards;
+  animation: admin-rise v.$motion-expand-duration v.$motion-expand-easing backwards;
 
   + .article-card {
     margin-top: 10px;

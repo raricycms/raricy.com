@@ -271,7 +271,7 @@
 
 .bento-card {
   position: relative;
-  animation: bento-rise 0.38s cubic-bezier(0.2, 0.8, 0.2, 1) backwards;
+  animation: bento-rise $motion-expand-duration $motion-expand-easing backwards;
   animation-delay: calc(var(--i, 0) * 45ms);
   grid-column: calc(var(--gx) + 1) / span var(--gw);
   grid-row: calc(var(--gy) + 1) / span var(--gh);
@@ -1213,7 +1213,7 @@
   background: rgba(0, 0, 0, 0.45);
 
   &__box {
-    animation: bento-pop 0.22s cubic-bezier(0.2, 0.8, 0.2, 1);
+    animation: bento-pop $motion-expand-duration $motion-expand-easing;
     display: flex;
     flex-direction: column;
     width: min(560px, 100%);
@@ -1410,7 +1410,7 @@
   border-radius: 20px;
   background: var(--color-background-card);
   box-shadow: var(--shadow-card-brand);
-  animation: bento-dock-in 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
+  animation: bento-dock-in $motion-expand-duration $motion-expand-easing;
 
   &__head {
     display: flex;

@@ -26,5 +26,14 @@ $space-4: 16px;
 $space-6: 24px;
 $space-8: 32px;
 
+// 形变动效只留两条节奏，参数取自顶栏展开/收起（见 layout/_header.scss 的
+// 移动导航与 docs/frontend-styles.md §6.2）。形变（伸缩、位移、旋转、网格展开）
+// 一律引用这两个值，不再各写一条 cubic-bezier；颜色/阴影/透明度的短反馈仍用
+// 各组件自己的 150–250ms ease。
+$motion-expand-duration: 480ms;
+$motion-expand-easing: cubic-bezier(0.16, 1, 0.3, 1);
+$motion-collapse-duration: 220ms;
+$motion-collapse-easing: cubic-bezier(0.4, 0, 0.2, 1);
+
 $container-max: 1140px;
 

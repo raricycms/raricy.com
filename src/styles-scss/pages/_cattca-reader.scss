@@ -403,12 +403,12 @@
 
 .cattca-reader--book .cattca-reader__spread.is-spread .cattca-reader__page.is-left {
   transform-origin: 100% 50%;
-  animation: cattca-reader-turn-left 0.36s cubic-bezier(0.2, 0.7, 0.3, 1) both;
+  animation: cattca-reader-turn-left $motion-expand-duration $motion-expand-easing both;
 }
 
 .cattca-reader--book .cattca-reader__spread.is-spread .cattca-reader__page.is-right {
   transform-origin: 0 50%;
-  animation: cattca-reader-turn-right 0.36s cubic-bezier(0.2, 0.7, 0.3, 1) both;
+  animation: cattca-reader-turn-right $motion-expand-duration $motion-expand-easing both;
 }
 
 @keyframes cattca-reader-page-in {
