@@ -530,7 +530,8 @@ test('手机端悬浮球收起态：头像沿直线移动到展开位置', async
     toggle.click();
     await new Promise((resolve) => requestAnimationFrame(resolve));
     const closingMotion = host.getAnimations({ subtree: true })
-      .filter((animation) => animation.effect && ['top', 'left', 'right', 'bottom', 'width', 'height'].includes(animation.transitionProperty))
+      .filter((animation): animation is CSSTransition => animation instanceof CSSTransition)
+      .filter((animation) => ['top', 'left', 'right', 'bottom', 'width', 'height'].includes(animation.transitionProperty))
       .map((animation) => {
         const timing = animation.effect!.getTiming();
         return { prop: animation.transitionProperty, dur: timing.duration, ease: timing.easing };
