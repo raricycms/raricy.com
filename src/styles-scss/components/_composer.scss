@@ -119,6 +119,9 @@
   }
   .#{$p}__blog-icon {
     flex: none;
+    // 原 Lucide 图标是 1em（父级 0.8rem）；换 span.icon 后按同一字号收住。
+    width: 1em;
+    height: 1em;
     color: var(--color-brand-primary);
   }
 
@@ -191,6 +194,12 @@
     justify-content: center;
     padding: 0;
     transition: background-color 0.25s ease, color 0.25s ease;
+
+    // 工具条图标原为 Lucide 的 1em（约 18px）；换成 mask 图标后钉回同一尺寸。
+    .icon {
+      width: 18px;
+      height: 18px;
+    }
   }
   .#{$p}__icon-btn:hover:not(:disabled) {
     background: var(--color-brand-secondary);
