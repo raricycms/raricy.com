@@ -355,8 +355,10 @@ raricy.com（聪明山）—— 个人博客 / 故事 / 工具集 / 剪贴板 / 
 
 ### 文件落盘
 
-`docs/architecture.md` §6.6（六个存储域 + env 覆盖 + 读取入口）+ `src/lib/image-upload.ts`
-头部（MIME 嗅探、`sanitizeFilename` 的白名单防线、配额常量的来由）。
+`docs/architecture.md` §6.6（六个存储域 + env 覆盖 + 读取入口 + 内容判定那条）+
+`src/lib/image-sniff.ts` 头部（**零依赖**：magic bytes / SVG 文本头 / HEIC·AVIF·MOV 的
+ftyp 品牌 / 声明归一化 / `planImageUpload` —— 服务端与浏览器共用同一份）+
+`src/lib/image-upload.ts` 头部（`sanitizeFilename` 的白名单防线、配额常量的来由）。
 
 音频床那一路另有一层坑，见 `src/lib/audio-upload.ts` 头部：**MIME 别名归一化**
 （`.m4a` 的声明值三种平台三个样，还可能是空串；归一化只用来补浏览器没给的那格，

@@ -114,7 +114,7 @@
 | 投票 / 签到 / 剪贴板 | `vote-service.ts` · `checkin-service.ts` · `clipboard-service.ts` |
 | 收藏夹 | `favorite-service.ts`（六条不变量见文件头）· `favorite-refs.ts`（`[@六位]` 的纯逻辑），见 §6.9 |
 | 保存的消息（私聊） | `saved-message-service.ts`（私聊消息保存箱：**不是收藏夹**，没有 6 位句柄 / 分享 / 导出 / 复制 / bot 出口），见 §6.20 |
-| 图床 | `image-service.ts` · `image-upload.ts`（服务端）· `image-client.ts`（浏览器侧**单文件**上传：校验 / XHR / 弱网重试。讨论、评论、博客与剪贴板编辑器共用这一条；编辑器侧的**多文件**调度另住 `md-editor/upload.ts`） |
+| 图床 | `image-service.ts` · `image-sniff.ts`（**零依赖的内容判定**：magic bytes / SVG 文本头 / HEIC·AVIF·MOV 的 ftyp 品牌 / 声明归一化 / `planImageUpload` —— 服务端与浏览器侧共用同一份）· `image-upload.ts`（服务端：配额 / sharp 压缩 / 落盘 / 落库）· `image-client.ts`（浏览器侧**单文件**上传：按字节归一化（HEIC → JPEG）/ XHR / 弱网重试。讨论、评论、博客与剪贴板编辑器共用这一条；编辑器侧的**多文件**调度另住 `md-editor/upload.ts`） |
 | 音频床 | `audio-upload.ts`（magic bytes 嗅探 + **MIME 别名归一化**，**无压缩**）· `audio-service.ts`（含**独立配额聚合**）· `audio-refs.ts`（`[@音频/<ID>]`，**零 import** —— 要被拉进客户端包），见 §6.15 |
 | 头像框 | `frame-refs.ts`（纯词汇层：白名单 / 解析 / 到期判定 / **租金与在架清单**，仅依赖共享租期 `shop-refs.ts`）· `frame-service.ts`（素材扫盘 + 持有与装备写路径 + **判定唯一出口**；授予内核 `grantFrameTx` 收调用方的事务，供商城拼原子性）· `frame-shop-service.ts`（鱼干商城：租框。**它不直接写那两列**，一律经 `grantFrameTx` —— F1），见 §6.14 |
 | 聊天气泡与商城词汇 | `bubble-refs.ts`（白名单、展示与定价）· `shop-refs.ts`（共享租期）· `bubble-service.ts`（持有/装备唯一写入者与判定出口）· `bubble-shop-service.ts`（同事务扣款与发放），见 §6.18 |
@@ -324,7 +324,7 @@ GET/HEAD/OPTIONS 视为安全方法，不校验（协议闸不受这条影响，
 | 域 | 路径 | 上传入口 | 读取入口 |
 |----|------|---------|---------|
 | 头像 | `instance/avatars/<uuid>.png`（或 `AVATARS_DIR` 覆盖） | **无上传入口**：注册时 `avatarPath` 留空，头像由读取入口按 id 确定性生成；磁盘上的 `.png` 只有历史存量文件 | `src/app/api/avatar/[id]/route.ts`（有文件则回放，否则 `generateIdenticonSvg` 兜底，永不 404） |
-| 图床 | `instance/images/<id><ext>`（或 `IMAGE_UPLOAD_FOLDER` 覆盖） | `src/lib/image-upload.ts` — sharp 压缩 + MIME 嗅探 + 配额累计 | `src/app/api/images/[id]/raw/route.ts` |
+| 图床 | `instance/images/<id><ext>`（或 `IMAGE_UPLOAD_FOLDER` 覆盖） | `src/lib/image-upload.ts` — sharp 压缩 + 配额累计；类型由 `image-sniff.ts` 的 `planImageUpload` **按字节**判定（HEIC 在浏览器侧转 JPEG） | `src/app/api/images/[id]/raw/route.ts` |
 | 音频床 | `instance/audio/<id><ext>`（或 `AUDIO_UPLOAD_FOLDER` 覆盖） | `src/lib/audio-upload.ts` — MIME 嗅探 + **无压缩** + 独立配额累计 | `src/app/api/audio/[id]/raw/route.ts`（**带 Range**） |
 | 故事 | `instance/stories/<合集>/<故事>.md\|.cattca`（或 `STORIES_DIR` 覆盖） | 服务端直接落盘 | `src/lib/story-service.ts` 服务端 marked |
 | 表情包 | `instance/stickers/<合集>/<表情>.{gif,webp,png,jpg,jpeg}`（或 `STICKERS_DIR` 覆盖） | **无上传入口**：站长直接往目录里拷文件 | `src/app/api/stickers/[collection]/[name]/route.ts`（查扫盘 manifest，见 `src/lib/sticker-service.ts`） |
@@ -336,7 +336,7 @@ GET/HEAD/OPTIONS 视为安全方法，不校验（协议闸不受这条影响，
 
 - **它是唯一「没有上传入口」的存储域**（头像那个也无入口，但读取是 identicon 兜底）。
   素材由站长从外部拷进来，所以**目录里没有任何上游校验** —— 图床那条链路的
-  `verifyImageMime` 在这里不存在。因此 raw 路由必须**按字节**复核类型并明确拒绝
+  `planImageUpload` 在这里不存在。因此 raw 路由必须**按字节**复核类型并明确拒绝
   SVG（`detectImageMime` + `ALLOWED_STICKER_MIME`），否则丢一个 `<svg onload=…>`
   进来就是同源存储型 XSS。
 - **查表模型**：`resolveSticker()` 拿 collection / name 只当 map 的 key，**永不拼路径**
@@ -356,6 +356,33 @@ GET/HEAD/OPTIONS 视为安全方法，不校验（协议闸不受这条影响，
   （`ALLOWED_FRAME_MIME` 只有 `image/png`，路由仍按字节复核）。
 - **key 先过白名单，才谈得上拼路径**。与表情的「只当 map 的 key、永不拼路径」是同一
   条安全来源，只是这里多了一层「白名单本身就是手写常量」的保证。
+
+#### 图床上传的类型判定（内容为准）
+
+「这个文件收不收、按什么类型收」只有一处实现：`src/lib/image-sniff.ts` 的
+`planImageUpload`（**零依赖**，Node 与浏览器共用同一份）。
+
+- **落库的 `mime_type` 永远来自字节**，声明（`Content-Type` / 扩展名）只当提示。
+  位图之间的错配（PNG 存成 `.jpg`、浏览器给空 type、`image/jpg` 这种别名）**照收**，
+  类型与回显文件名按内容纠正 —— 它们不是安全事件，只是名字错了，拒掉只会让用户
+  对着「文件内容与声明的格式不匹配」怀疑自己。
+- **SVG 是唯一收窄的一档**：只有「内容与声明都是 SVG」才收。SVG 必须以
+  `Content-Disposition: attachment` 下发，而那条分支按**落库的** mimeType 判 ——
+  SVG 字节若以位图类型落库，attachment 分支就不触发。当下 `nosniff` 还兜着一层，
+  所以「浏览器照着 image/png 去渲染 SVG」**现在**走不通；但闸门不该只有一道
+  （换一条下发路径、或加个不设 nosniff 的读口，这个洞就成了同源 XSS）。
+  反向（位图字节声明 SVG）同样拒：要的是矢量图，不该默默换成位图。
+- **HEIC / AVIF / MOV 只识别、不入库**：服务端 sharp 的预编译 libvips 只带 AVIF 那一路
+  解码器（没有 HEVC），收下 HEIC 也压不了、浏览器多半显示不出来。HEIC 由**浏览器**
+  用 heic2any 就地转 JPEG 再传（`image-client.ts`，函数体内动态 import）；服务端对
+  裸 HEIC 只能回一句能行动的提示。**实况照片**的 `.MOV` 是视频段，回「这是视频文件…」。
+  别为了「兼容」把 HEIC 加进白名单 —— 压缩会静默回退原字节，用户拿到一个打不开的
+  直链（且没有任何报错）。
+- **字节判定有两处，必须同源**：服务端路由与 `image-client.ts` 的上传前校验都调
+  `planImageUpload`（同一份实现）。`md-editor/upload.ts` 的批次闸门只按 type / 后缀筛
+  （`isUploadableImage`），它是「一次别丢太多」的用量提示、不看字节 —— 正因如此，
+  它的口径必须只收**确实会发出去**的类型（BMP / TIFF / AVIF 不算进体积），
+  否则一整批合法图片会被它误拒。
 
 #### 已知限制：配额与落盘不是原子的（图床 / 音频床共有）
 
@@ -1311,12 +1338,15 @@ MB 级传输；正文上限 5000 字能塞下几百个引用，按 50 放开就�
 - **`immutable` 只发在 200 上**。发在 206 上会诱使中间缓存拿残段去满足后续的全量请求，
   症状是播放器莫名失败、完全看不出跟缓存有关。
 
-**MIME 别名归一化**（图床没有这一层）：`.m4a` 在三种平台上被报成 `audio/mp4` /
-`audio/x-m4a` / `audio/m4a`，Windows 上还可能是空串。`normalizeAudioMime` 把别名折到
-规范形，空则按扩展名兜底。⚠️ **归一化只用来补浏览器没给的那格**：之后仍要与
+**MIME 别名归一化**（图床是**另一套**语义，别互相照抄）：`.m4a` 在三种平台上被报成
+`audio/mp4` / `audio/x-m4a` / `audio/m4a`，Windows 上还可能是空串。`normalizeAudioMime`
+把别名折到规范形，空则按扩展名兜底。⚠️ **归一化只用来补浏览器没给的那格**：之后仍要与
 `detectAudioMime` 严格相等，且 `verifyAudioMime` 返回的是**规范形** —— 落库与下发的
 `Content-Type` 必须是认过的那个值。**别认 `.mp4` 扩展名**：那是视频容器的通用扩展名，
 认了就等于给「传视频」开一条明路。
+
+图床那边（`image-sniff.ts` 的 `normalizeClaimedMime`）只把别名用于**解释声明**：它的
+判定是内容优先，落库类型永远来自字节，不存在「归一化后与声明严格相等」这一层。
 
 **格式白名单只有三种**：MP3 / M4A / OGG。不收 WAV 与 FLAC —— WAV 一分钟约 10MB，
 正好等于单文件上限，收进来只会给用户一个「传什么都失败」的入口。嗅探有两处比图床严：
