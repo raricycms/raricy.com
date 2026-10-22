@@ -4,17 +4,37 @@ import { apiOk, apiErr } from '@/lib/format';
 import { rateLimit, RULES } from '@/lib/rate-limit';
 import { UploadQuotaError } from '@/lib/upload-quota';
 import {
-  ALLOWED_MIMETYPES,
   MAX_IMAGE_SIZE,
   MAX_REQUEST_BYTES,
+  filenameWithMimeExtension,
   getQuotaLimitMb,
   getUserUsedBytes,
+  planImageUpload,
   saveUpload,
-  verifyImageMime,
+  type UploadRejectReason,
 } from '@/lib/image-upload';
 
 // 说明：文件路由需 Node 运行时（fs / sharp）
 export const runtime = 'nodejs';
+
+/**
+ * 内容判定被拒时的文案（**对外契约**，改之前看 docs/bot/image-bot.md 的错误表）。
+ *
+ * 分得这么细是有原因的：原来所有「不是合格图片」都回同一句「文件内容与声明的格式
+ * 不匹配」，而 iPhone 用户看到这句话时手里明明是一张照片 —— 因为 HEIC 既不是白名单
+ * 格式、内容也认不出。三种情况要分别给出**能照着做**的动作：
+ *   · HEIC → 先转 JPEG（站内格式转换器 / 图床页面会自动转）；
+ *   · MOV → 那是实况照片的动态部分，不是图片；
+ *   · AVIF → 转换器可转。
+ */
+const REJECT_MESSAGES: Record<UploadRejectReason | 'heic', string> = {
+  unsupported: '不支持的文件格式，仅允许 PNG、JPEG、GIF、WebP、SVG',
+  mismatch: '文件内容与声明的格式不匹配',
+  unknown: '无法识别图片内容：文件可能已损坏，或不是图片',
+  heic: '这是 iPhone 的 HEIC/HEIF 格式，服务端不收；请先转成 JPEG 再上传（图床页面与编辑器会自动转，也可以走 /tool/convert）',
+  avif: '暂不支持 AVIF，请先转成 JPEG / PNG（/tool/convert 可转）',
+  video: '这是视频文件，图床只收静态图片。iPhone 实况照片的 .MOV 是它的动态部分，请改传同一张照片的静态图（HEIC / JPEG）',
+};
 
 // GET /api/images — 列出当前用户自己的图片元信息（需登录，排除软删）
 export async function GET() {
@@ -41,22 +61,9 @@ export async function GET() {
   });
 }
 
-/**
- * 落库 / 回显给调用方的文件名 —— **保证带扩展名**。
- *
- * 这个名字是用户唯一看得到的图片名字（图床卡片、被删时的通知、SVG 的下载名），
- * 而浏览器偶尔给不出名字（粘贴的截图、匿名 Blob）。名字按 MIME 补一个扩展名，
- * 比让卡片显示一个「无标题」的空名或让下载落成无后缀的文件可靠。
- */
-function displayFilename(name: string, mimeType: string): string {
-  const base = name || 'image';
-  if (base.includes('.')) return base;
-  return `${base}.${mimeType.split('/')[1]?.replace('+xml', '') || 'png'}`;
-}
-
 // POST /api/images — multipart 二进制上传（登录 + 禁言校验）
 //
-// 上传流程：MIME 白名单 → 内容嗅探 → 尺寸上限 →
+// 上传流程：内容判定（image-sniff 的 planImageUpload，**以字节为准**）→ 尺寸上限 →
 // 角色配额累计 → 内存限频（RULES.imageUploadHourly，**按张计**）→ sharp 压缩 →
 // 10 位安全 ID 写盘 → 落库（file_size 记压缩后字节）。
 //
@@ -113,13 +120,10 @@ export async function POST(req: Request) {
   let rateLimited = false;
 
   for (const file of files) {
-    const filename = displayFilename(file.name, file.type);
-    const mimeType = file.type;
-
-    if (!ALLOWED_MIMETYPES.has(mimeType)) {
-      failed.push({ filename, message: '不支持的文件格式，仅允许 PNG、JPEG、GIF、WebP、SVG' });
-      continue;
-    }
+    // 被拒的文件回显**用户自己给的名字**，不按声明纠正：Safari 常把 HEIC 报成
+    // image/jpeg，按声明补后缀会让失败列表显示 `IMG_0001.jpg`，而用户选的是 `.HEIC`
+    // —— 报错时名字必须诚实，否则用户找不到自己那张图。
+    const displayName = file.name || 'image';
 
     // 每个文件各自 try/catch：一张图炸了（磁盘满 / sharp 崩 / ID 重试耗尽）不能整批 500 ——
     // 前面的已经落盘落库了，用户重传整批只会得到重复图。也不引入事务：它盖不住磁盘写，
@@ -127,13 +131,21 @@ export async function POST(req: Request) {
     try {
       const buffer = Buffer.from(await file.arrayBuffer());
 
-      // 内容校验：file.type 是浏览器声明的，可伪造。必须比对真实 magic bytes，
-      // 否则「SVG/HTML 字节 + 声明 image/png」可绕过 raw 路由的 SVG attachment 分支
-      // → 被浏览器嗅探为 SVG 渲染 → 同源 XSS。
-      if (!verifyImageMime(buffer, mimeType)) {
-        failed.push({ filename, message: '文件内容与声明的格式不匹配' });
+      // 内容判定：声明是浏览器（甚至攻击者）说了算的提示值，**落库类型只认字节**。
+      // HEIC 走 convert-heic（服务端没有 HEVC 解码器，只能由浏览器先转成 JPEG），
+      // 实况照片的 .MOV 走 video —— 各自回一句能照着做的提示。
+      const plan = planImageUpload(buffer, file.type);
+      if (plan.kind !== 'accept') {
+        failed.push({
+          filename: displayName,
+          message: REJECT_MESSAGES[plan.kind === 'convert-heic' ? 'heic' : plan.reason],
+        });
         continue;
       }
+
+      const mimeType = plan.mimeType;
+      // 名字与**内容**对齐：PNG 存成 .jpg 的、没有扩展名的，这里纠正/补齐。
+      const filename = filenameWithMimeExtension(file.name, mimeType);
 
       if (buffer.length > MAX_IMAGE_SIZE) {
         failed.push({
@@ -166,14 +178,14 @@ export async function POST(req: Request) {
         userId: user.id,
         buffer,
         mimeType,
-        filename: file.name,
+        filename,
         compress,
         quotaBytes: limitBytes,
       });
       used += saved.fileSize;
       items.push({ filename, id: saved.id, url: `/api/images/${saved.id}/raw` });
     } catch (error) {
-      failed.push({ filename, message: error instanceof UploadQuotaError
+      failed.push({ filename: displayName, message: error instanceof UploadQuotaError
         ? `存储空间不足，你的配额为 ${limitMb} MB` : '图片保存失败，请重试' });
     }
   }

@@ -68,7 +68,7 @@ const MIME_BY_EXT: Record<string, string> = {
  * raw 路由允许下发的真实类型 —— **不含 image/svg+xml**。
  *
  * 【为什么必须排除 SVG】表情目录**没有任何上游校验**（不像图床：上传时
- * verifyImageMime 验过字节并落库，raw 路由信的是库不是盘）。有人往目录里丢一个
+ * planImageUpload 按字节认过类型并落库，raw 路由信的是库不是盘）。有人往目录里丢一个
  * `开心.svg`（内容是 `<svg onload=...>`），若按扩展名下发的实现会以
  * image/svg+xml 内联返回 = **同源存储型 XSS**。这条白名单是那条攻击路径的唯一闸门。
  */

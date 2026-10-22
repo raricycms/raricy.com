@@ -19,7 +19,11 @@
 // 把配额和限频额度一口气吃光。留的是那句能指导动作的文案，不是旧的实现形状。
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { IMAGE_ACCEPT, MAX_IMAGE_BYTES, MAX_UPLOAD_REQUEST_BYTES } from '@/lib/image-client';
+import {
+  MAX_IMAGE_BYTES,
+  MAX_UPLOAD_REQUEST_BYTES,
+  isUploadableImage,
+} from '@/lib/image-client';
 
 /**
  * 同时在飞的上传数。取 2：一条在传、一条备好，既不空等也不会把手机的连接数占满。
@@ -27,9 +31,14 @@ import { IMAGE_ACCEPT, MAX_IMAGE_BYTES, MAX_UPLOAD_REQUEST_BYTES } from '@/lib/i
  */
 export const MAX_CONCURRENT_UPLOADS = 2;
 
-/** 单文件是否是我们收的图片（与服务端白名单同一份 accept）。 */
+/**
+ * 单文件是否是我们收的图片。
+ *
+ * 判据在 `image-client.ts` 的 `isUploadableImage`（与服务端同一份字节判定同源）：
+ * 位图 / iPhone HEIC（上传前会就地转 JPEG）/ 浏览器给不出类型但名字像图片的。
+ */
 export function isAcceptableImage(file: File): boolean {
-  return IMAGE_ACCEPT.split(',').includes(file.type) && file.size > 0;
+  return isUploadableImage(file);
 }
 
 /**
@@ -71,7 +80,7 @@ export type BatchGate = { ok: true; files: File[] } | { ok: false; message: stri
  * 上传前的闸门：先按单文件口径筛，再看总体积。
  *
  * ★ 「算进体积的」必须逐条等于「会被发出去的」★ —— 判据直接复用 precheckFile
- * （同一份 IMAGE_ACCEPT 白名单、同一个单文件上限），而不是自己写一句
+ * （同一份 `isUploadableImage`、同一个单文件上限），而不是自己写一句
  * `type.split('/')[0] === 'image'`。写成后者会多算两种**根本发不出去**的文件：
  *   · `image/svg+xml`、`image/bmp`、`image/avif` 这类不在白名单里的 image/*；
  *   · 超过单文件上限的大图（precheckFile 会拒，但那时体积已经不必要地爆了）。
@@ -79,6 +88,10 @@ export type BatchGate = { ok: true; files: File[] } | { ok: false; message: stri
  * 「请分批上传」—— 可他批的正是本来该过的那些。
  * 它们**不是被悄悄丢掉**：调用方要为每个被筛掉的文件留一个失败槽位，
  * 这样用户看到的是「第 3 张只支持 PNG / JPEG / GIF / WebP」，而不是「选了 3 张只进来 2 张」。
+ *
+ * 唯一的例外是 HEIC：它会被**就地转成 JPEG** 再发，所以体积会变（通常变大一点）。
+ * 这个闸门按**原始字节**算，只作「一次别丢太多」的用量提示 —— 真正的硬闸门是每个
+ * 请求自己的 11MB（md-editor 是逐张发的，见文件头）。
  */
 export function gateUploadBatch(candidates: File[]): BatchGate {
   if (candidates.length === 0) return { ok: true, files: [] };
@@ -88,10 +101,10 @@ export function gateUploadBatch(candidates: File[]): BatchGate {
   return { ok: true, files: candidates };
 }
 
-/** 逐文件的前置校验（与 image-client.uploadImageFile 的前两句同一口径）。 */
+/** 逐文件的前置校验（与 image-client.prepareImageFile 的接受面同一口径）。 */
 export function precheckFile(file: File): string | null {
   if (file.size > MAX_IMAGE_BYTES) return `图片不能超过 ${MAX_IMAGE_BYTES / (1024 * 1024)}MB`;
-  if (!IMAGE_ACCEPT.split(',').includes(file.type)) return '仅支持 PNG / JPEG / GIF / WebP';
+  if (!isUploadableImage(file)) return '仅支持 PNG / JPEG / GIF / WebP（iPhone 的 HEIC 会自动转为 JPEG）';
   return null;
 }
 

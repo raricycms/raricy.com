@@ -41,14 +41,23 @@ describe('单文件判据', () => {
     expect(isAcceptableImage(file('a.svg', 'image/svg+xml', 100))).toBe(false);
   });
 
+  it('iPhone 的 HEIC 收 —— 会在浏览器里就地转成 JPEG，不该在闸门就被拒', () => {
+    expect(isAcceptableImage(file('IMG_0001.HEIC', 'image/heic', 100))).toBe(true);
+    // Windows 上浏览器可能给不出 type，只能靠后缀认
+    expect(isAcceptableImage(file('IMG_0001.HEIC', '', 100))).toBe(true);
+  });
+
   it('零字节的"文件"不算（浏览器有时会给一个空壳）', () => {
     expect(isAcceptableImage(file('a.png', 'image/png', 0))).toBe(false);
   });
 
   it('逐文件前置校验的文案与单文件上限一致', () => {
     expect(precheckFile(file('big.png', 'image/png', 10 * MB + 1))).toBe('图片不能超过 10MB');
-    expect(precheckFile(file('a.svg', 'image/svg+xml', 100))).toBe('仅支持 PNG / JPEG / GIF / WebP');
+    expect(precheckFile(file('a.svg', 'image/svg+xml', 100))).toBe(
+      '仅支持 PNG / JPEG / GIF / WebP（iPhone 的 HEIC 会自动转为 JPEG）'
+    );
     expect(precheckFile(file('a.png', 'image/png', 100))).toBeNull();
+    expect(precheckFile(file('a.HEIC', 'image/heic', 100))).toBeNull();
   });
 });
 
@@ -120,6 +129,18 @@ describe('总体积闸门', () => {
       // 用户看到的是「第 2 张仅支持 PNG / JPEG / GIF / WebP」
       expect(gate.files).toHaveLength(3);
     }
+  });
+
+  it('★ 浏览器给不出 type 的 .bmp 同样不算 —— 别让「名字像图片」混进体积', () => {
+    // 空 type 时只能按后缀猜，而猜的口径必须与「真能发出去」一致：BMP / TIFF / AVIF
+    // 名字再像图片也发不出去，算进 11MB 就会把同批合法的图一起顶爆。
+    const gate = gateUploadBatch([
+      file('a.png', 'image/png', 5 * MB),
+      file('scan.bmp', '', 40 * MB),
+      file('photo.tiff', '', 40 * MB),
+    ]);
+    expect(gate.ok).toBe(true);
+    expect(precheckFile(file('scan.bmp', '', 100))).not.toBeNull();
   });
 
   it('一个文件都没有时是「空批」而不是错', () => {

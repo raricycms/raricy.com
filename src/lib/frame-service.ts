@@ -154,7 +154,7 @@ const PNG_SIG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
  * raw 路由允许下发的真实类型 —— **只有 PNG**。
  *
  * 【为什么这条白名单是必须的】框目录**没有任何上游校验**（不像图床：上传时
- * verifyImageMime 验过字节并落库，raw 路由信的是库不是盘）。有人往目录里丢一个
+ * planImageUpload 按字节认过类型并落库，raw 路由信的是库不是盘）。有人往目录里丢一个
  * `demo.png`、内容却是 `<svg onload=...>`，若实现按扩展名下发的会以 image/svg+xml
  * 内联返回 = **同源存储型 XSS**。所以路由侧必须**按字节**复核 detectImageMime
  * 的结果再下发，而不是信文件名。

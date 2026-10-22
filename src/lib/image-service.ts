@@ -9,19 +9,16 @@
 
 import fs from 'node:fs/promises';
 import { prisma } from './db';
-import { storagePathFor } from './image-upload';
+import { extensionForMime, storagePathFor } from './image-upload';
 
-const EXT_MAP: Record<string, string> = {
-  'image/png': '.png',
-  'image/jpeg': '.jpg',
-  'image/gif': '.gif',
-  'image/webp': '.webp',
-  'image/svg+xml': '.svg',
-};
-
-/** 由 MIME 推扩展名，对齐 ImageHosting.ext 属性。 */
+/**
+ * 由 MIME 推扩展名，对齐 ImageHosting.ext 属性。
+ *
+ * 表只有一份（`image-sniff.ts` 的 `EXTENSION_FOR_MIME`）：这里再抄一份的话，
+ * 加格式时两处得一起改，漏一处不会报错 —— 卡片上那个后缀会与磁盘文件对不上。
+ */
 export function extForMime(mimeType: string): string {
-  return EXT_MAP[mimeType] ?? '';
+  return extensionForMime(mimeType);
 }
 
 export interface ImageMeta {

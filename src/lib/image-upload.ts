@@ -5,6 +5,11 @@
 // 落盘 + 落库。仅 Node 运行时可用（依赖 node:fs / node:crypto / sharp）。
 // 软删除：ignore = true 不计入配额、不参与服务。
 //
+// 【内容判定住 image-sniff.ts】`planImageUpload` 是「这串字节该不该收、按什么类型收」
+// 的唯一实现（零依赖，浏览器侧上传前校验也用同一份）。本文件只做 Node 侧的动作：
+// 配额、压缩、落盘、落库。**落库的 mimeType 永远来自字节**，不信声明 —— 理由与
+// 那条 XSS 链路见 image-sniff.ts 头部。
+//
 // 【两道安全闸门，改之前先看清楚】
 //  1. sanitizeFilename —— **白名单**字符集（`\p{L}\p{N}._- `），不是「滤掉危险字符」的
 //     黑名单：黑名单永远漏。四步：剥非法字符 → 折叠连续点/空格 → 去前导 `.`/`-`/空格
@@ -22,16 +27,30 @@ import { randomInt } from 'node:crypto';
 import sharp from 'sharp';
 import { prisma } from './db';
 import { nowForDb } from './db-time';
+import { EXTENSION_FOR_MIME, type ImageMime } from './image-sniff';
 import { UploadQuotaError } from './upload-quota';
 
-// 允许的 MIME 白名单（以下五项，扩大即放宽入站格式）
-export const ALLOWED_MIMETYPES = new Set<string>([
-  'image/png',
-  'image/jpeg',
-  'image/gif',
-  'image/webp',
-  'image/svg+xml',
-]);
+// 内容判定与 MIME 词汇（零依赖，与浏览器侧同一份）。在这里 re-export，Node 侧的调用方
+// 就只需要认识 image-upload 这一个入口 —— 但**实现只有 image-sniff.ts 那一份**。
+export {
+  BITMAP_IMAGE_MIMES,
+  EXTENSION_FOR_MIME,
+  UPLOAD_IMAGE_MIMES,
+  detectHeifContainer,
+  detectImageMime,
+  filenameWithMimeExtension,
+  normalizeClaimedMime,
+  planImageUpload,
+} from './image-sniff';
+export type {
+  HeifContainer,
+  ImageMime,
+  ImageUploadPlan,
+  UploadRejectReason,
+} from './image-sniff';
+
+// 白名单的权威是 image-sniff.ts 的 UPLOAD_IMAGE_MIMES（这里 re-export）。**别再留一份
+// Set**：路由已改为把 `planImageUpload` 当唯一闸门，多一份常量只会让人以为它还在把关。
 
 // 单文件上限 10MB
 export const MAX_IMAGE_SIZE = 10 * 1024 * 1024;
@@ -59,91 +78,29 @@ export const QUOTA_LIMITS_MB: Record<string, number> = {
 const MAX_DIMENSION = 2000; // 超过则等比缩放
 const ID_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
 
-// MIME → 扩展名（磁盘文件名后缀），与 image-service.ts 的 EXT_MAP 保持一致
-const EXT_MAP: Record<string, string> = {
-  'image/png': '.png',
-  'image/jpeg': '.jpg',
-  'image/gif': '.gif',
-  'image/webp': '.webp',
-  'image/svg+xml': '.svg',
-};
+// 磁盘文件名后缀：唯一真相是 image-sniff.ts 的 EXTENSION_FOR_MIME（见 extensionForMime）。
 
-// ── 内容嗅探（magic bytes）────────────────────────────────────────────────────
+// ── 内容嗅探 ──────────────────────────────────────────────────────────────────
 //
 // 【为什么必须有】`file.type` 是**浏览器声明**的 MIME，攻击者可任意伪造。
 // 不校验内容的话存在这条链路：上传 SVG/HTML 字节但声明 `image/png` →
-// raw 路由只看 mimeType，SVG attachment 分支不触发 → 以 `image/png` 内联下发 →
-// 浏览器 MIME 嗅探把它当 SVG/HTML 渲染 → **同源存储型 XSS**。
-// （nosniff 是第二道闸，但闸门不该只有一道；且 nosniff 挡不住直接声明 image/svg+xml
-// 却塞 HTML 的变体。）
+// raw 路由只看 mimeType，SVG attachment 分支不触发 → 以 `image/png` 内联下发。
+// **现在**还有 `nosniff`（raw 路由恒发）兜着，浏览器不会照着字节去嗅探，所以这条
+// 链路当下走不通 —— 但两道闸是**各自独立**的：nosniff 管的是「浏览器怎么解释响应」，
+// 这里管的是「什么能被存进来、按什么类型存」。闸门不该只有一道，也别因为「nosniff
+// 已经挡住了」就把这道删掉（换一条下发路径就可能穿）。
 //
-// 判定方式（纯字节比对，无第三方依赖）：
-//   · 位图：按 magic bytes 认出真实 format → 与声明的 MIME 比对，不符/认不出 → 拒绝
-//   · SVG：magic bytes 认不出 XML，改为文本前缀检查
-// 下面两处相对旧版是**收紧**，不要退回去：
-//   · 旧版在检测库不可用时会 `return True`（信任浏览器）——这里不留这个后门，
-//     纯字节比对无依赖，恒定生效。
-//   · 旧版的 SVG 分支是 `'<svg' in text[:1024]`（**子串**匹配），
-//     `<html><svg>` 这种也会放行。这里收紧为「跳过 BOM/prolog/注释/DOCTYPE 后
-//     必须以 <svg 开头」——真实 SVG 一定有 <svg 根元素，不会误伤。
+// 判定实现住 `image-sniff.ts`（零依赖，浏览器侧上传前校验共用同一份）。这里只做
+// re-export，别在 Node 侧另写一套 —— 两边判定不一致的症状是「客户端放行、服务端拒」
+// 或反向，都不报错。
+//
+// 语义（2026-10 起）：**以内容为准，声明只是提示**。位图之间声明的错配（PNG 存成
+// .jpg、Windows 给空 type、iOS 把 HEIC 报成 image/jpeg）不再拒 —— 按内容纠正类型。
+// 唯一收窄的仍是 SVG：只有「内容与声明都是 SVG」才收。
 
-const PNG_SIG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
-const JPEG_SIG = Buffer.from([0xff, 0xd8, 0xff]);
-
-/**
- * 判定字节是否为 SVG：跳过 BOM、空白、XML prolog(`<?...?>`)、注释(`<!--...-->`)、
- * DOCTYPE（含内部子集 `[...]`），随后必须紧跟 `<svg` 且后随空白/`>`/`/`
- * （避免 `<svgfoo>` 这类误判）。只看前 4KB，足够覆盖任何合法 SVG 的头部。
- */
-function looksLikeSvg(buffer: Buffer): boolean {
-  let text = buffer.subarray(0, 4096).toString('utf8');
-  if (text.charCodeAt(0) === 0xfeff) text = text.slice(1); // BOM
-
-  // 反复剥离头部噪声，直到遇到真正的元素
-  for (;;) {
-    const before = text;
-    text = text.replace(/^\s+/, '');
-    text = text.replace(/^<\?[\s\S]*?\?>/, ''); // <?xml ... ?> / <?xml-stylesheet ... ?>
-    text = text.replace(/^<!--[\s\S]*?-->/, ''); // 注释
-    text = text.replace(/^<!DOCTYPE[^[>]*(\[[\s\S]*?\])?[^>]*>/i, ''); // DOCTYPE（含内部子集）
-    if (text === before) break;
-  }
-
-  return /^<svg[\s/>]/i.test(text);
-}
-
-/**
- * 由**文件内容**识别真实图片类型；无法识别（含被截断的头部）返回 null。
- * 只读文件头，无第三方依赖。
- */
-export function detectImageMime(buffer: Buffer): string | null {
-  if (buffer.subarray(0, 8).equals(PNG_SIG)) return 'image/png';
-  if (buffer.subarray(0, 3).equals(JPEG_SIG)) return 'image/jpeg';
-
-  const head6 = buffer.subarray(0, 6).toString('latin1');
-  if (head6 === 'GIF87a' || head6 === 'GIF89a') return 'image/gif';
-
-  // WebP：RIFF<4字节长度>WEBP
-  if (
-    buffer.length >= 12 &&
-    buffer.subarray(0, 4).toString('latin1') === 'RIFF' &&
-    buffer.subarray(8, 12).toString('latin1') === 'WEBP'
-  ) {
-    return 'image/webp';
-  }
-
-  if (looksLikeSvg(buffer)) return 'image/svg+xml';
-
-  return null;
-}
-
-/**
- * 校验「文件内容是否真是所声明的格式」。声明不在白名单、内容识别不出、
- * 或内容与声明不符 → false（任一不满足即拒，不做例外）。
- */
-export function verifyImageMime(buffer: Buffer, claimedMime: string): boolean {
-  if (!ALLOWED_MIMETYPES.has(claimedMime)) return false;
-  return detectImageMime(buffer) === claimedMime;
+/** 规范扩展名（含点）；未知 MIME 回空串。 */
+export function extensionForMime(mimeType: string | null | undefined): string {
+  return mimeType ? (EXTENSION_FOR_MIME[mimeType as ImageMime] ?? '') : '';
 }
 
 /** 上传目录：优先环境变量，否则回落到 ./instance/images。 */
@@ -153,7 +110,7 @@ export function getUploadFolder(): string {
 
 /** 磁盘上的完整文件路径：<folder>/<id><ext>（存量图片文件即按此命名，不可改）。 */
 export function storagePathFor(id: string, mimeType: string): string {
-  return path.join(getUploadFolder(), id + (EXT_MAP[mimeType] ?? ''));
+  return path.join(getUploadFolder(), id + extensionForMime(mimeType));
 }
 
 /**

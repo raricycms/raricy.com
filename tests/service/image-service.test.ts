@@ -30,9 +30,9 @@ import {
   hardDeleteImage,
 } from '@/lib/image-service';
 import {
-  ALLOWED_MIMETYPES,
   MAX_IMAGE_SIZE,
   QUOTA_LIMITS_MB,
+  UPLOAD_IMAGE_MIMES,
   sanitizeFilename,
   getQuotaLimitMb,
   getUserUsedBytes,
@@ -41,7 +41,10 @@ import {
   getUploadFolder,
   saveUpload,
   detectImageMime,
-  verifyImageMime,
+  detectHeifContainer,
+  filenameWithMimeExtension,
+  normalizeClaimedMime,
+  planImageUpload,
 } from '@/lib/image-upload';
 import { resetDb, makeUser, prisma } from '../helpers/db';
 // 限频桶是进程内的 —— 这条用例要先把额度填到只剩一个，只能直接调它
@@ -600,9 +603,9 @@ describe('★ 配额边界（恰好满 / 超 1 字节）', () => {
 // 五、MIME 白名单 / 扩展名映射
 // ═════════════════════════════════════════════════════════════════════════════
 
-describe('ALLOWED_MIMETYPES / extForMime', () => {
+describe('UPLOAD_IMAGE_MIMES / extForMime', () => {
   it('白名单恰好是 PNG/JPEG/GIF/WebP/SVG', async () => {
-    expect([...ALLOWED_MIMETYPES].sort()).toEqual([
+    expect([...UPLOAD_IMAGE_MIMES].sort()).toEqual([
       'image/gif',
       'image/jpeg',
       'image/png',
@@ -621,7 +624,9 @@ describe('ALLOWED_MIMETYPES / extForMime', () => {
       'application/octet-stream',
       '',
     ]) {
-      expect(ALLOWED_MIMETYPES.has(bad), `${bad} 不应在白名单`).toBe(false);
+      expect((UPLOAD_IMAGE_MIMES as readonly string[]).includes(bad), `${bad} 不应在白名单`).toBe(
+        false
+      );
     }
   });
 
@@ -639,7 +644,7 @@ describe('ALLOWED_MIMETYPES / extForMime', () => {
   });
 
   it('白名单里每个 MIME 都有扩展名（否则会落一个无后缀的裸文件）', async () => {
-    for (const m of ALLOWED_MIMETYPES) {
+    for (const m of UPLOAD_IMAGE_MIMES) {
       expect(extForMime(m), `${m} 缺少扩展名映射`).not.toBe('');
     }
   });
@@ -1606,13 +1611,18 @@ describe('GET /api/images/:id/raw（SVG XSS 防护 + 私有图鉴权）', () => 
 });
 
 // ═════════════════════════════════════════════════════════════════════════════
-// 十、内容校验（magic bytes）—— detectImageMime / verifyImageMime
+// 十、内容校验（magic bytes）—— detectImageMime / planImageUpload
 // ═════════════════════════════════════════════════════════════════════════════
 //
 // 【威胁模型】file.type 由浏览器声明，攻击者可任意伪造。若只看声明：
 //   上传 SVG/HTML 字节 + 声明 image/png → 绕过 raw 路由「只看 mimeType」的
 //   SVG attachment 分支 → 以 image/png 内联下发 → 浏览器嗅探成 SVG → 同源 XSS。
-// 拒绝语义（契约）：识别不出 / 与声明不符 → 一律拒绝。
+//
+// 【契约（2026-10 起）】**落库类型只认字节**，声明只是提示：
+//   · 内容能认出白名单位图 → 收，类型按内容（声明不符时纠正，不再拒）；
+//   · SVG 要求「内容与声明都是 SVG」—— 只放一边是 mismatch；
+//   · HEIC / AVIF / MOV 认容器后给各自的专属原因（原来它们全被归成一句
+//     「文件内容与声明的格式不匹配」，iPhone 用户看到时手里明明是一张照片）。
 
 describe('detectImageMime（由内容识别真实类型）', () => {
   it('识别真 PNG', async () => {
@@ -1711,37 +1721,196 @@ describe('detectImageMime（由内容识别真实类型）', () => {
   });
 });
 
-describe('verifyImageMime（内容 vs 声明）', () => {
-  it('内容与声明一致 → 通过', async () => {
-    expect(verifyImageMime(await pngBytes(), 'image/png')).toBe(true);
+/** 造一个最小的 ISOBMFF 头（ftyp box）—— HEIC / AVIF / MOV 的识别依据就是品牌。 */
+function ftyp(majorBrand: string, compatible: string[] = ['mif1']): Buffer {
+  const box = Buffer.alloc(16 + compatible.length * 4);
+  box.writeUInt32BE(box.length, 0); // box size
+  box.write('ftyp', 4, 'latin1');
+  box.write(majorBrand.padEnd(4, ' ').slice(0, 4), 8, 'latin1');
+  box.writeUInt32BE(0, 12); // minor version
+  compatible.forEach((b, i) => {
+    box.write(b.padEnd(4, ' ').slice(0, 4), 16 + i * 4, 'latin1');
+  });
+  return box;
+}
+
+describe('detectHeifContainer（HEIC / AVIF / 实况照片的 .MOV）', () => {
+  it('认 iPhone 的 HEIC 品牌（含通用 HEIF 容器 mif1 / msf1）', () => {
+    for (const brand of ['heic', 'heix', 'hevc', 'hevx', 'mif1', 'msf1']) {
+      expect(detectHeifContainer(ftyp(brand)), brand).toBe('heic');
+    }
   });
 
-  it('★ SVG 字节声明成 image/png → 拒绝（这是 XSS 链路的入口）', () => {
-    const svg = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>');
-    expect(verifyImageMime(svg, 'image/png')).toBe(false);
+  it('认 AVIF（同属 ISOBMFF，但不是可入库格式）', () => {
+    expect(detectHeifContainer(ftyp('avif'))).toBe('avif');
   });
 
-  it('★ HTML 字节声明成 image/svg+xml → 拒绝', () => {
-    const html = Buffer.from('<!DOCTYPE html><html><script>alert(1)</script></html>');
-    expect(verifyImageMime(html, 'image/svg+xml')).toBe(false);
+  it('★ 通用容器 mif1 里装的是 AV1 还是 HEVC，看兼容品牌', () => {
+    // 只看主品牌的话，一部分 AVIF 会被当成 HEIC：浏览器拿 heic2any 去解 AV1，
+    // 解不出来 → 用户看到「HEIC 转换失败」（其实文件好得很，是判定错了）。
+    expect(detectHeifContainer(ftyp('mif1', ['mif1', 'avif', 'miaf']))).toBe('avif');
+    expect(detectHeifContainer(ftyp('mif1', ['mif1', 'heic']))).toBe('heic');
   });
 
-  it('★ 位图之间互相伪装 → 拒绝', async () => {
+  it('认 QuickTime（实况照片的 .MOV 就是它）与 MP4 家族', () => {
+    expect(detectHeifContainer(ftyp('qt  '))).toBe('video');
+    expect(detectHeifContainer(ftyp('isom'))).toBe('video');
+    expect(detectHeifContainer(ftyp('mp42'))).toBe('video');
+  });
+
+  it('不是 ftyp 容器的一律 null（含截断的头部）', () => {
+    expect(detectHeifContainer(Buffer.alloc(0))).toBeNull();
+    expect(detectHeifContainer(Buffer.from('hello world'))).toBeNull();
+    expect(detectHeifContainer(Buffer.from('GIF89a\x00\x00'))).toBeNull();
+  });
+});
+
+describe('normalizeClaimedMime（声明归一化）', () => {
+  it('常见别名折算成规范形', () => {
+    expect(normalizeClaimedMime('image/jpg')).toBe('image/jpeg');
+    expect(normalizeClaimedMime('image/pjpeg')).toBe('image/jpeg');
+    expect(normalizeClaimedMime('image/x-png')).toBe('image/png');
+  });
+
+  it('大小写与 `; charset=` 参数', () => {
+    expect(normalizeClaimedMime('IMAGE/JPEG; charset=binary')).toBe('image/jpeg');
+  });
+
+  it('空 / 缺省 → null（浏览器给不出类型是常态，不是错误）', () => {
+    expect(normalizeClaimedMime('')).toBeNull();
+    expect(normalizeClaimedMime('   ')).toBeNull();
+    expect(normalizeClaimedMime(null)).toBeNull();
+    expect(normalizeClaimedMime(undefined)).toBeNull();
+  });
+});
+
+describe('filenameWithMimeExtension（名字跟着内容走）', () => {
+  it('扩展名与内容一致时原样返回（.jpeg 不改成 .jpg）', () => {
+    expect(filenameWithMimeExtension('a.png', 'image/png')).toBe('a.png');
+    expect(filenameWithMimeExtension('a.jpeg', 'image/jpeg')).toBe('a.jpeg');
+    expect(filenameWithMimeExtension('a.svg', 'image/svg+xml')).toBe('a.svg');
+  });
+
+  it('扩展名与内容不符时只换后缀（PNG 存成 .jpg / HEIC 转成 JPEG）', () => {
+    expect(filenameWithMimeExtension('a.jpg', 'image/png')).toBe('a.png');
+    expect(filenameWithMimeExtension('IMG_0001.HEIC', 'image/jpeg')).toBe('IMG_0001.jpg');
+  });
+
+  it('没有扩展名就补一个（粘贴的截图 / 匿名 Blob 常常没有名字）', () => {
+    expect(filenameWithMimeExtension('截图', 'image/png')).toBe('截图.png');
+    expect(filenameWithMimeExtension('', 'image/jpeg')).toBe('image.jpg');
+  });
+
+  it('不认识的后缀在末尾补 —— 别把名字里的一段当成扩展名吃掉', () => {
+    expect(filenameWithMimeExtension('Screenshot 2026.10.22', 'image/png')).toBe(
+      'Screenshot 2026.10.22.png'
+    );
+  });
+
+  it('MIME 未知时不动名字', () => {
+    expect(filenameWithMimeExtension('a.txt', null)).toBe('a.txt');
+  });
+});
+
+/** 只关心「收不收、按什么类型收」时的简写（完整 plan 的形状在下面单测）。 */
+function acceptedMime(bytes: Buffer, claimed: string | null | undefined): string | null {
+  const plan = planImageUpload(bytes, claimed);
+  return plan.kind === 'accept' ? plan.mimeType : null;
+}
+
+describe('planImageUpload（内容 vs 声明）', () => {
+  it('内容与声明一致 → 收', async () => {
+    expect(acceptedMime(await pngBytes(), 'image/png')).toBe('image/png');
+  });
+
+  it('★ 位图之间声明不符 → 收，类型按内容纠正（这不是安全事件，只是名字错了）', async () => {
+    // 用户把 PNG 存成 .jpg（浏览器据此声明 image/jpeg）、另存为时改了后缀 ——
+    // 原来这些全被一句「文件内容与声明的格式不匹配」拒掉，而他手里就是一张正常图片。
     const png = await pngBytes();
-    for (const claimed of ['image/jpeg', 'image/gif', 'image/webp', 'image/svg+xml']) {
-      expect(verifyImageMime(png, claimed), `PNG 字节声明成 ${claimed}`).toBe(false);
+    for (const claimed of ['image/jpeg', 'image/gif', 'image/webp']) {
+      expect(acceptedMime(png, claimed), `PNG 字节声明成 ${claimed}`).toBe('image/png');
     }
   });
 
-  it('★ 识别不出的内容一律拒绝（解不开 → False）', () => {
-    for (const mime of ALLOWED_MIMETYPES) {
-      expect(verifyImageMime(Buffer.from('not an image at all'), mime)).toBe(false);
+  it('浏览器给不出 type / 只给 octet-stream → 内容说了算', async () => {
+    for (const claimed of ['', null, undefined, 'application/octet-stream']) {
+      expect(acceptedMime(await pngBytes(), claimed), String(claimed)).toBe('image/png');
     }
   });
 
-  it('声明不在白名单 → 拒绝（即便内容是真图）', async () => {
-    expect(verifyImageMime(await pngBytes(), 'text/html')).toBe(false);
-    expect(verifyImageMime(await pngBytes(), 'image/bmp')).toBe(false);
+  it('MIME 别名同理（image/jpg 不是「不支持」）', async () => {
+    const sharp = (await import('sharp')).default;
+    const jpeg = await sharp({
+      create: { width: 8, height: 8, channels: 3, background: { r: 4, g: 5, b: 6 } },
+    })
+      .jpeg()
+      .toBuffer();
+    expect(acceptedMime(jpeg, 'image/jpg')).toBe('image/jpeg');
+  });
+
+  it('声明 HEIC、字节却是 JPEG（浏览器为兼容自行转换过）→ 照收', async () => {
+    const sharp = (await import('sharp')).default;
+    const jpeg = await sharp({
+      create: { width: 8, height: 8, channels: 3, background: { r: 3, g: 2, b: 1 } },
+    })
+      .jpeg()
+      .toBuffer();
+    expect(acceptedMime(jpeg, 'image/heic')).toBe('image/jpeg');
+  });
+
+  it('★ SVG 字节声明成 image/png → 拒（这是 XSS 链路的入口）', () => {
+    const svg = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>');
+    expect(planImageUpload(svg, 'image/png')).toEqual({ kind: 'reject', reason: 'mismatch' });
+  });
+
+  it('★ 位图字节声明成 SVG → 拒（要的是矢量图、拿到的是位图，默默换格式更糟）', async () => {
+    expect(planImageUpload(await pngBytes(), 'image/svg+xml')).toEqual({
+      kind: 'reject',
+      reason: 'mismatch',
+    });
+  });
+
+  it('★ HTML 字节声明成 image/svg+xml → 拒', () => {
+    const html = Buffer.from('<!DOCTYPE html><html><script>alert(1)</script></html>');
+    expect(planImageUpload(html, 'image/svg+xml')).toEqual({ kind: 'reject', reason: 'mismatch' });
+  });
+
+  it('声明是**明确不支持**的类型 → 仍被白名单拦下（哪怕内容是真图）', async () => {
+    expect(planImageUpload(await pngBytes(), 'text/html')).toEqual({
+      kind: 'reject',
+      reason: 'unsupported',
+    });
+    expect(planImageUpload(await pngBytes(), 'image/bmp')).toEqual({
+      kind: 'reject',
+      reason: 'unsupported',
+    });
+  });
+
+  it('★ 识别不出的内容：声明是白名单位图 → mismatch；否则 → unsupported / unknown', () => {
+    const junk = Buffer.from('not an image at all');
+    for (const mime of UPLOAD_IMAGE_MIMES) {
+      expect(planImageUpload(junk, mime)).toEqual({ kind: 'reject', reason: 'mismatch' });
+    }
+    expect(planImageUpload(junk, 'text/plain')).toEqual({ kind: 'reject', reason: 'unsupported' });
+    expect(planImageUpload(junk, '')).toEqual({ kind: 'reject', reason: 'unknown' });
+  });
+
+  it('★ HEIC / AVIF / MOV 各有专属原因（不是笼统的 mismatch）', () => {
+    // iPhone 静帧：浏览器可能声明 image/heic，也可能（Safari 的常见形态）报成 image/jpeg
+    for (const claimed of ['image/heic', 'image/jpeg', null]) {
+      expect(planImageUpload(ftyp('heic'), claimed), String(claimed)).toEqual({
+        kind: 'convert-heic',
+      });
+    }
+    expect(planImageUpload(ftyp('avif'), 'image/avif')).toEqual({
+      kind: 'reject',
+      reason: 'avif',
+    });
+    // 实况照片的 .MOV：那是动态部分，不是图片
+    expect(planImageUpload(ftyp('qt  '), 'video/quicktime')).toEqual({
+      kind: 'reject',
+      reason: 'video',
+    });
   });
 
   it('白名单内每种真实格式都能自证', async () => {
@@ -1749,13 +1918,14 @@ describe('verifyImageMime（内容 vs 声明）', () => {
     const base = () =>
       sharp({ create: { width: 8, height: 8, channels: 3, background: { r: 9, g: 9, b: 9 } } });
 
-    expect(verifyImageMime(await base().png().toBuffer(), 'image/png')).toBe(true);
-    expect(verifyImageMime(await base().jpeg().toBuffer(), 'image/jpeg')).toBe(true);
-    expect(verifyImageMime(await base().webp().toBuffer(), 'image/webp')).toBe(true);
-    expect(verifyImageMime(await base().gif().toBuffer(), 'image/gif')).toBe(true);
-    expect(verifyImageMime(Buffer.from('<svg></svg>'), 'image/svg+xml')).toBe(true);
+    expect(acceptedMime(await base().png().toBuffer(), 'image/png')).toBe('image/png');
+    expect(acceptedMime(await base().jpeg().toBuffer(), 'image/jpeg')).toBe('image/jpeg');
+    expect(acceptedMime(await base().webp().toBuffer(), 'image/webp')).toBe('image/webp');
+    expect(acceptedMime(await base().gif().toBuffer(), 'image/gif')).toBe('image/gif');
+    expect(acceptedMime(Buffer.from('<svg></svg>'), 'image/svg+xml')).toBe('image/svg+xml');
   });
 });
+
 
 // ═════════════════════════════════════════════════════════════════════════════
 // 十一、POST /api/images —— 上传路由必须接上内容校验
@@ -1845,7 +2015,93 @@ describe('POST /api/images（上传内容校验接线）', () => {
     expect(res.status).toBe(200);
   });
 
-  it('白名单外的声明仍先被白名单拦下（错误文案不变）', async () => {
+  // ── 声明与内容不符的「良性」情形：按内容收，类型纠正 ────────────────────
+  //
+  // 这是用户最常撞的一类：「文件内容与声明的格式不匹配」。真实原因几乎都不是攻击，
+  // 而是名字/声明错了 —— 存成 .jpg 的 PNG、Windows 给不出的 type、iOS 把 HEIC
+  // 报成 image/jpeg（后者走下面的 HEIC 分支）。拒掉它们只会让用户觉得图床坏了。
+
+  it('PNG 字节声明 image/jpeg → 收，落库类型与文件名都按内容纠正', async () => {
+    const u = await makeUser({ role: 'core' });
+    authState.user = { id: u.id, role: 'core' };
+
+    const { res, body } = await upload(await pngBytes(), 'image/jpeg', 'renamed.jpg');
+    expect(res.status).toBe(200);
+    expect(body.items?.[0]?.filename).toBe('renamed.png');
+    const row = await prisma.imageHosting.findFirst({ where: { authorId: u.id } });
+    expect(row?.mimeType).toBe('image/png');
+  });
+
+  it('浏览器给不出 type（空串）→ 仍按字节收，并补上扩展名', async () => {
+    const u = await makeUser({ role: 'core' });
+    authState.user = { id: u.id, role: 'core' };
+
+    const { res, body } = await upload(await pngBytes(), '', '无后缀的名字');
+    expect(res.status).toBe(200);
+    expect(body.items?.[0]?.filename).toBe('无后缀的名字.png');
+  });
+
+  it('MIME 别名（image/jpg）不再被当成「不支持」', async () => {
+    const u = await makeUser({ role: 'core' });
+    authState.user = { id: u.id, role: 'core' };
+    const sharp = (await import('sharp')).default;
+    const jpeg = await sharp({
+      create: { width: 8, height: 8, channels: 3, background: { r: 7, g: 1, b: 2 } },
+    })
+      .jpeg()
+      .toBuffer();
+
+    const { res } = await upload(jpeg, 'image/jpg', 'a.jpg');
+    expect(res.status).toBe(200);
+    const row = await prisma.imageHosting.findFirst({ where: { authorId: u.id } });
+    expect(row?.mimeType).toBe('image/jpeg');
+  });
+
+  // ── HEIC / AVIF / 实况照片：以前全被归成「文件内容与声明的格式不匹配」 ─────
+  //
+  // 服务端没有 HEVC 解码器（sharp 预编译版只带 AVIF 那一路 libheif），收不了 HEIC ——
+  // 但至少要回一句用户能照着做的话，而不是让他对着「格式不匹配」怀疑自己。
+
+  it('★ HEIC 静帧（声明 image/heic）→ 400 + HEIC 专属提示', async () => {
+    const u = await makeUser({ role: 'core' });
+    authState.user = { id: u.id, role: 'core' };
+
+    const { res, body } = await upload(ftyp('heic'), 'image/heic', 'IMG_0001.HEIC');
+    expect(res.status).toBe(400);
+    expect(body.message).toContain('HEIC');
+  });
+
+  it('★ HEIC 字节 + 声明 image/jpeg（Safari 的常见形态）→ 同样给 HEIC 提示', async () => {
+    // 这正是「内容与声明的格式不匹配」最费解的一类：声明说 JPEG，字节是 HEIC。
+    const u = await makeUser({ role: 'core' });
+    authState.user = { id: u.id, role: 'core' };
+
+    const { res, body } = await upload(ftyp('heic'), 'image/jpeg', 'IMG_0002.jpg');
+    expect(res.status).toBe(400);
+    expect(body.message).toContain('HEIC');
+  });
+
+  it('★ 实况照片的 .MOV（动态部分）→ 400 + 说明它是什么', async () => {
+    const u = await makeUser({ role: 'core' });
+    authState.user = { id: u.id, role: 'core' };
+
+    const { res, body } = await upload(ftyp('qt  '), 'video/quicktime', 'IMG_0003.MOV');
+    expect(res.status).toBe(400);
+    expect(body.message).toContain('实况照片');
+    expect(await prisma.imageHosting.count({ where: { authorId: u.id } })).toBe(0);
+  });
+
+  it('★ AVIF → 400 + 指到站内格式转换器', async () => {
+    const u = await makeUser({ role: 'core' });
+    authState.user = { id: u.id, role: 'core' };
+
+    const { res, body } = await upload(ftyp('avif'), 'image/avif', 'a.avif');
+    expect(res.status).toBe(400);
+    expect(body.message).toContain('AVIF');
+    expect(body.message).toContain('/tool/convert');
+  });
+
+  it('声明是明确不支持的类型 → 仍被拦下（哪怕内容是真图）', async () => {
     const u = await makeUser({ role: 'core' });
     authState.user = { id: u.id, role: 'core' };
 

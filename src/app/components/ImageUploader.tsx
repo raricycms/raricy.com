@@ -2,9 +2,10 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { IMAGE_ACCEPT, MAX_IMAGE_BYTES, prepareImageFile } from '@/lib/image-client';
 
-const ACCEPT = 'image/png,image/jpeg,image/gif,image/webp,image/svg+xml';
-const MAX_BYTES = 10 * 1024 * 1024;
+const ACCEPT = `${IMAGE_ACCEPT},image/svg+xml`;
+const MAX_BYTES = MAX_IMAGE_BYTES;
 
 function showToast(msg: string, type: string) {
   const w = window as unknown as { showToast?: (m: string, t: string) => void };
@@ -26,9 +27,31 @@ export default function ImageUploader() {
       return;
     }
 
+    // 图床页是**唯一**允许 SVG 的上传入口（raw 路由对 SVG 强制附件下载，安全）；
+    // HEIC 在这里被就地转成 JPEG —— 服务端没有 HEVC 解码器。
+    //
+    // prepareImageFile 自己会把「读不到 / 转不了」resolve 成 { ok:false }，这里再包一层
+    // 是因为它内部还调了浏览器 API（FileReader / File 构造）——真抛出来时若没人接，
+    // 表现就是「点了上传，界面毫无反应」。
+    let prepared: Awaited<ReturnType<typeof prepareImageFile>>;
+    try {
+      prepared = await prepareImageFile(file, { allowSvg: true });
+    } catch {
+      showToast('图片读取失败，请重试', 'error');
+      return;
+    }
+    if (!prepared.ok) {
+      showToast(prepared.message, 'error');
+      return;
+    }
+    if (prepared.file.size > MAX_BYTES) {
+      showToast('图片转换后仍超过 10 MB，请先压缩或缩小尺寸', 'error');
+      return;
+    }
+
     const compress = compressRef.current?.checked ? '1' : '0';
     const formData = new FormData();
-    formData.append('file', file);
+    formData.append('file', prepared.file);
     formData.append('compress', compress);
 
     setProgressVisible(true);
@@ -85,7 +108,9 @@ export default function ImageUploader() {
           <line x1="12" y1="3" x2="12" y2="15" />
         </svg>
         <p className="image-hosting-upload__text">拖拽图片到此处，或点击上传</p>
-        <p className="image-hosting-upload__hint">支持 PNG / JPEG / GIF / WebP / SVG，单文件上限 10 MB</p>
+        <p className="image-hosting-upload__hint">
+          支持 PNG / JPEG / GIF / WebP / SVG，单文件上限 10 MB；iPhone 的 HEIC 会自动转成 JPEG
+        </p>
         <label className="image-hosting-upload__compress" onClick={(e) => e.stopPropagation()}>
           <input type="checkbox" id="compress-toggle" ref={compressRef} defaultChecked /> 压缩图片（减小文件体积，轻微损失画质）
         </label>
