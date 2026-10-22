@@ -66,7 +66,7 @@
     background: var(--color-brand-secondary);
     color: var(--color-brand-primary);
 
-    svg {
+    svg, .icon {
         width: 18px;
         height: 18px;
     }
@@ -353,7 +353,7 @@
     font-family: inherit;
     white-space: nowrap;
 
-    svg {
+    svg, .icon {
         width: 14px;
         height: 14px;
         flex: none;
@@ -392,7 +392,7 @@
     line-height: 1;
     color: var(--color-text-secondary);
 
-    svg {
+    svg, .icon {
         width: 15px;
         height: 15px;
         flex: none;
@@ -402,10 +402,6 @@
 .comment-like.is-liked {
     background-color: var(--color-warning-secondary);
     color: var(--color-warning-primary);
-
-    svg {
-        fill: currentColor;
-    }
 
     @media (hover: hover) and (pointer: fine) {
         &:hover:not(:disabled) {
@@ -488,6 +484,11 @@
     justify-content: center;
     background: var(--color-background-card);
     color: var(--color-brand-primary);
+
+    .icon {
+        width: 16px;
+        height: 16px;
+    }
 }
 
 .comment-blog__main {
@@ -545,7 +546,7 @@
     background: var(--color-brand-secondary);
     color: var(--color-brand-primary);
 
-    svg {
+    svg, .icon {
         width: 22px;
         height: 22px;
     }
@@ -578,7 +579,7 @@
         height: 30px;
         border-radius: 50%;
 
-        svg {
+        svg, .icon {
             width: 16px;
             height: 16px;
         }
