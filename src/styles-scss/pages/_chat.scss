@@ -1,3 +1,4 @@
+@use '../abstracts/variables' as v;
 @use '../abstracts/mixins' as m;
 @use '../components/composer' as composer;
 @use '../components/markdown-body' as markdown-body;
@@ -48,19 +49,24 @@
 .chat-sidebar {
   flex: 0 0 280px;
   width: 280px;
+  // 分栏线已删（§3.6：容器不加描边/轮廓）：侧栏是卡片底色、消息区是页面底色，
+  // 两层底色本身就把两栏分开了。不要再补 border 或阴影来「找补」这条线。
   background: var(--color-background-card);
-  border-right: 1px solid var(--color-border);
   display: flex;
   flex-direction: column;
-  // 宽度伸缩用展开外壳的公共节奏（§6.2「宽度与网格伸缩」），不另起一条时长。
-  transition: width 0.42s cubic-bezier(0.22, 1, 0.36, 1),
-    flex-basis 0.42s cubic-bezier(0.22, 1, 0.36, 1);
+  // 展开方向用公共展开节奏（480ms）；收起方向写在 --collapsed 那一侧（220ms）——
+  // transition 取「变化后那一侧」的声明，所以两份各写一份（§6.2 / §7.4）。
+  transition: width v.$motion-expand-duration v.$motion-expand-easing,
+    flex-basis v.$motion-expand-duration v.$motion-expand-easing;
   overflow: hidden;
 }
 
 .chat-page--collapsed .chat-sidebar {
   flex-basis: 60px;
   width: 60px;
+  // 收起方向：短、快、加速进入（§6.2 的收起节奏）
+  transition: width v.$motion-collapse-duration v.$motion-collapse-easing,
+    flex-basis v.$motion-collapse-duration v.$motion-collapse-easing;
 }
 
 .chat-sidebar__head {
@@ -68,7 +74,6 @@
   align-items: center;
   justify-content: space-between;
   padding: 12px 14px;
-  border-bottom: 1px solid var(--color-border);
   min-height: 54px;
 }
 
@@ -82,8 +87,10 @@
   max-width: 220px;
   // 折叠时把宽度收到 0 而不是 display: none —— display 不可过渡，标题一消失
   // 折叠按钮就瞬间从最右跳到最左；收宽度能让它随右边界平滑左移。
-  // 宽度 420ms（外壳节奏），淡出 180ms（展开内容淡入那一档，见 §6.2）。
-  transition: max-width 0.42s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.18s ease;
+  // 宽度展开方向 480ms（外壳节奏），淡出 180ms（展开内容淡入那一档，见 §6.2）；
+  // 收起方向由 --collapsed 那一侧覆盖成 220ms（transition 取变化后那一侧）。
+  transition: max-width v.$motion-expand-duration v.$motion-expand-easing,
+    opacity 0.18s ease;
 }
 
 // 折叠开关：密集桌面工具条里的次要图标钮（§5.1）—— 空闲无底色、悬停品牌淡底、
@@ -103,8 +110,8 @@
   svg {
     width: 16px;
     height: 16px;
-    // 箭头随折叠方向旋转（§3.7）
-    transition: transform 0.25s ease;
+    // 箭头随折叠方向旋转（§3.7）：旋转走展开节奏（480ms），方向同外壳伸展。
+    transition: transform v.$motion-expand-duration v.$motion-expand-easing;
   }
 
   &:focus-visible {
@@ -119,6 +126,9 @@
 .chat-page--collapsed .chat-sidebar__title {
   max-width: 0;
   opacity: 0;
+  // 收起方向：宽度 220ms；透明度仍是 180ms 的短反馈，不跟着拉长。
+  transition: max-width v.$motion-collapse-duration v.$motion-collapse-easing,
+    opacity 0.18s ease;
 }
 
 .chat-sidebar__list {
@@ -153,9 +163,10 @@
   color: var(--color-text-primary);
   cursor: pointer;
   text-align: left;
-  // padding 也参与折叠动画：12px → 5px 与宽度收缩同步，图标不跳
+  // padding 也参与折叠动画：12px → 5px 与宽度收缩同步，图标不跳。
+  // 展开方向 480ms（与侧栏同一条外壳节奏），收起方向在 --collapsed 那侧 220ms。
   transition: background-color 0.25s ease, color 0.25s ease,
-    padding 0.42s cubic-bezier(0.22, 1, 0.36, 1);
+    padding v.$motion-expand-duration v.$motion-expand-easing;
 
   &:focus-visible {
     outline: 2px solid var(--color-brand-primary);
@@ -208,7 +219,8 @@
   opacity: 0;
   transition: opacity 0.18s ease, background-color 0.25s ease, color 0.25s ease;
 }
-.chat-chan__more svg {
+.chat-chan__more svg,
+.chat-chan__more .icon {
   width: 16px;
   height: 16px;
 }
@@ -263,18 +275,30 @@
   display: flex;
 }
 
+// 图标 / 头像共用盒子几何；底座形状分开写：头像仍是 8% 方角（§3.4），
+// 淡色底座图标统一圆形（§3.3「圆形图标按钮与角标 = 50%」）。
 .chat-chan__icon,
 .chat-chan__avatar {
   flex: none;
   width: 34px;
   height: 34px;
-  border-radius: 8%;
   display: flex;
   align-items: center;
   justify-content: center;
   overflow: hidden;
   font-size: 1.1rem;
   background: var(--color-background-content);
+}
+.chat-chan__avatar {
+  border-radius: 8%;
+}
+.chat-chan__icon {
+  border-radius: 50%;
+}
+// 原 Lucide 图标是 1em（随 1.1rem 字号）；.icon 基类是 1.2em，这里钉回 1em。
+.chat-chan__icon .icon {
+  width: 1em;
+  height: 1em;
 }
 .chat-chan__avatar img {
   width: 100%;
@@ -325,6 +349,9 @@
 // 8(列表) + 5 + 34(头像) + 5 + 8 = 60 → 图标正好落在折叠轨道的中间
 .chat-page--collapsed .chat-chan {
   padding: 8px 5px;
+  // 收起方向 220ms（transition 取变化后那一侧）；颜色反馈保持 250ms。
+  transition: background-color 0.25s ease, color 0.25s ease,
+    padding v.$motion-collapse-duration v.$motion-collapse-easing;
 }
 
 .chat-chan__main {
@@ -359,7 +386,8 @@
 
 .chat-sidebar__foot {
   padding: 10px 12px calc(10px + var(--safe-bottom));
-  border-top: 1px solid var(--color-border);
+  // 与列表之间不再画线（§3.6）：底部两颗操作按钮本身把这一区读成「页脚」，
+  // 同在侧栏卡片底色上，靠留白分组即可。
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -378,7 +406,8 @@
   text-decoration: none;
   white-space: nowrap;
 
-  svg {
+  svg,
+  .icon {
     width: 14px;
     height: 14px;
   }
@@ -401,7 +430,8 @@
   font-size: 0.9rem;
   white-space: nowrap;
 
-  svg {
+  svg,
+  .icon {
     width: 16px;
     height: 16px;
     flex: none;
@@ -432,8 +462,9 @@
   align-items: center;
   gap: 10px;
   padding: 10px 16px;
+  // 头部与列表之间不再画线（§3.6）：头部是卡片底色、列表是页面底色，两层底色
+  // 已经分开了。别用 border / 阴影补这条线。
   background: var(--color-background-card);
-  border-bottom: 1px solid var(--color-border);
   min-height: 54px;
 }
 
@@ -538,7 +569,8 @@
     outline-offset: 2px;
   }
 
-  svg {
+  svg,
+  .icon {
     width: 16px;
     height: 16px;
   }
@@ -553,7 +585,8 @@
   color: var(--color-brand-primary);
   white-space: nowrap;
 
-  svg {
+  svg,
+  .icon {
     width: 14px;
     height: 14px;
   }
@@ -1211,12 +1244,18 @@
   flex: none;
   width: 32px;
   height: 32px;
-  border-radius: 8px;
+  // 淡色底座图标统一圆形（§3.3）。
+  border-radius: 50%;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   background: var(--color-background-card);
   color: var(--color-brand-primary);
+}
+// 原 Lucide 图标是 1em（16px）；.icon 基类 1.2em 会大一圈，钉回 16px。
+.chat-msg__blog-icon .icon {
+  width: 16px;
+  height: 16px;
 }
 .chat-msg__blog-main {
   flex: 1;
@@ -1246,6 +1285,10 @@
 .chat-msg__blog-arrow {
   flex: none;
   font-size: 0.9rem;
+  // 原来的 Lucide 图标由 svg.lucide 定成 1em（= 0.9rem）；.icon 基类是 1.2em，
+  // 这里按 1em 钉住，箭头视觉重量不变。
+  width: 1em;
+  height: 1em;
   color: var(--color-text-secondary);
 }
 .chat-msg__blog-missing {
@@ -1379,14 +1422,14 @@
 // ── 输入区（QQ 式：附件条在上、整块圆角面板，幽灵工具条嵌在面板顶部内侧）─────
 //
 // 具体样式在 components/_composer.scss —— 它与评论区的输入区共用同一份（mixin 带
-// BEM 前缀参数）。这里只补讨论气泡场景专属的容器形态：它是讨论列的 flex 子项，
-// 需要顶部描边与固定不收缩。
+// BEM 前缀参数）。这里只补讨论气泡场景专属的容器形态：它是讨论列的 flex 子项、
+// 固定不收缩。输入区与消息列表之间**不画分隔线**（§3.6）：输入区是卡片底色、
+// 列表是页面底色，同心圆角面板本身也说明了「这是输入区」。
 
 @include composer.rich-composer('chat-composer');
 
 .chat-composer {
   flex: none;
-  border-top: 1px solid var(--color-border);
   background: var(--color-background-card);
   // 两侧安全区由 main 统一让位；这里只处理工作台最下沿的 Home Indicator。
   padding: 10px 14px calc(10px + var(--safe-bottom));
@@ -1541,13 +1584,20 @@
   flex: none;
   width: 34px;
   height: 34px;
-  border-radius: 12px;
+  // 淡色底座图标统一圆形（§3.3）；头像才是 8% 方角。
+  border-radius: 50%;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   background: var(--color-brand-secondary);
   color: var(--color-brand-primary);
   transition: background-color 0.25s ease;
+}
+// 引用博客弹窗的图标底座（圆形）：原 Lucide 图标是 1em（16px），.icon 基类
+// 1.2em 会大一圈，这里钉回 16px。
+.chat-blog-item__icon .icon {
+  width: 16px;
+  height: 16px;
 }
 .chat-blog-item__main {
   flex: 1;
@@ -1629,7 +1679,8 @@
   justify-content: space-between;
   margin-top: 10px;
   padding-top: 8px;
-  border-top: 1px solid var(--color-border);
+  // 分页条与列表之间不再画线（§3.6）：翻页按钮本身是次级档胶囊，
+  // 与列表内容已有足够间距，线条只是装饰。
 }
 // 前后翻页：次级档（§5.1），不再自带描边 —— 站内只有投票页的 .btn--ghost 允许边框。
 // 当前页信息保持次要文字色 + 数字字体。
@@ -1670,7 +1721,8 @@
     height: 44px;
     border-radius: 50%;
 
-    svg {
+    svg,
+    .icon {
       width: 22px;
       height: 22px;
     }
@@ -1686,13 +1738,10 @@
     width: 300px;
     flex-basis: 300px;
     transform: translateX(-100%);
-    transition: transform 0.25s ease;
-    // 移动端抽屉浮起时用品牌蓝光晕（黑阴影退役）。
-    // 桌面端 .chat-sidebar 的 border-right 是布局分栏线，不在此列、不动。
+    // 关抽屉 = 收起方向（220ms）；开抽屉的方向写在 --drawer-open 那一侧（480ms）。
+    transition: transform v.$motion-collapse-duration v.$motion-collapse-easing;
+    // 抽屉浮起时用品牌蓝光晕（浮层阴影，不是用来补分栏线）。
     box-shadow: var(--shadow-card-brand);
-  }
-  .chat-page--drawer-open .chat-sidebar {
-    transform: translateX(0);
   }
 
   // 抽屉头部：折叠按钮在这里是「关闭抽屉」，同样给 44px 触屏点击区
@@ -1709,6 +1758,8 @@
   .chat-page--collapsed .chat-sidebar {
     flex-basis: 300px;
     width: 300px;
+    // 关抽屉方向：收起节奏（覆盖桌面那条 width/flex-basis 的 transition）
+    transition: transform v.$motion-collapse-duration v.$motion-collapse-easing;
   }
   .chat-page--collapsed .chat-chan__main {
     display: flex;
@@ -1731,6 +1782,13 @@
   }
   .chat-page--collapsed .chat-new-btn {
     padding: 9px 14px;
+  }
+
+  // 开抽屉：展开节奏（480ms）。必须排在上面那几条 --collapsed 之后 —— 它们同为
+  // 0-2-0，靠顺序决胜；否则「桌面折叠过、手机再打开抽屉」会拿到收起节奏。
+  .chat-page--drawer-open .chat-sidebar {
+    transform: translateX(0);
+    transition: transform v.$motion-expand-duration v.$motion-expand-easing;
   }
 }
 
@@ -1952,9 +2010,13 @@
 // 折叠伸缩、标题淡出与列表交叉淡入直接到终态；功能与焦点不依赖动画结束。
 @media (prefers-reduced-motion: reduce) {
   .chat-sidebar,
+  .chat-page--collapsed .chat-sidebar,
+  .chat-page--drawer-open .chat-sidebar,
   .chat-sidebar__title,
+  .chat-page--collapsed .chat-sidebar__title,
   .chat-sidebar__collapse svg,
-  .chat-chan {
+  .chat-chan,
+  .chat-page--collapsed .chat-chan {
     transition: none;
   }
   ::view-transition-old(chat-list),

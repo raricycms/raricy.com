@@ -20,7 +20,6 @@ import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import Avatar from '@/app/components/Avatar';
 import ChatBubble from '@/app/components/ChatBubble';
-import { ArrowRight, BookOpenText } from 'lucide-react';
 import { CHAT_DELETED_TEXT, type ChatMessageDTO } from '@/lib/chat-shared';
 import { nowForDb } from '@/lib/db-time';
 import ChatMarkdown from './ChatMarkdown';
@@ -400,7 +399,7 @@ function ChatMessageItemInner({
   const blogBlock = !msg.is_deleted && msg.blog ? (
     <a className="chat-msg__blog" href={`/blog/${msg.blog.id}`}>
       <span className="chat-msg__blog-icon" aria-hidden="true">
-        <BookOpenText />
+        <span className="icon icon-book-open" />
       </span>
       <span className="chat-msg__blog-main">
         <span className="chat-msg__blog-title">{msg.blog.title}</span>
@@ -411,7 +410,7 @@ function ChatMessageItemInner({
           <span className="chat-msg__blog-author">@{msg.blog.author}</span>
         ) : null}
       </span>
-      <ArrowRight className="chat-msg__blog-arrow" aria-hidden="true" />
+      <span className="icon chat-msg__blog-arrow icon-arrow-right" aria-hidden="true" />
     </a>
   ) : msg.blog_missing ? (
     <div className="chat-msg__blog-missing">[博客已删除]</div>
