@@ -13,10 +13,21 @@ export interface GameEntry {
   href: string;
   runtime: 'native' | 'embedded' | 'external';
   collectionId: typeof GAME_COLLECTIONS[number]['id'] | null;
-  icon: 'atamas' | 'wand' | 'public-space' | 'quandi' | 'twinshade';
+  icon: 'atamas' | 'wand' | 'public-space' | 'quandi' | 'twinshade' | 'lumen';
 }
 
 export const GAMES = [
+  {
+    id: 'lumen',
+    title: '折光',
+    description: '转动镜片，让光线分流、交汇、穿过传送门。22 个循序渐进的光路谜题，支持提示、撤销与进度保存。',
+    category: 'puzzle',
+    modes: ['solo'],
+    href: '/game/lumen',
+    runtime: 'native',
+    collectionId: null,
+    icon: 'lumen',
+  },
   {
     id: 'twinshade',
     title: '双影',
