@@ -168,9 +168,17 @@ body {
     }
 }
 
+/* 批量操作的图标与文字同行，尺寸对齐原来的 size=15。 */
+.notifications-bulk__btn .icon {
+    width: 15px;
+    height: 15px;
+}
+
 /* ── 按天分组 ───────────────────────────────────────────────────────────────
-   日期标题是一条小号次要色文字 + 一条贯通的分隔线。不用吸顶：本页没有固定工具条，
-   吸顶会让分组标题在翻页后停在半空，反而像列表没滚完。 */
+   日期标题是小号次要色文字 + 字重，**没有贯通分隔线**（§3.6：容器不加装饰轮廓，
+   层级由字号 / 字重 / 留白建立，线条只留给有内容语义的分隔）。
+   不用吸顶：本页没有固定工具条，吸顶会让分组标题在翻页后停在半空，
+   反而像列表没滚完。 */
 
 .notifications-list {
     display: block;
@@ -185,21 +193,11 @@ body {
 }
 
 .notification-day__label {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
     margin: 0 0 0.6rem;
     padding: 0 0.25rem;
     font-size: 0.78rem;
     font-weight: 600;
     color: var(--color-text-secondary);
-
-    &::after {
-        content: '';
-        flex: 1;
-        height: 1px;
-        background: var(--color-border);
-    }
 }
 
 .notification-day__list {
@@ -233,7 +231,8 @@ body {
     background: var(--color-background-card-unread);
 }
 
-/* 类型图标：36–38px 的方底，色相按通知类别分开。底色一律走同色系 -soft，
+/* 类型图标：38px 的**圆形**淡色底座（§3.3「圆形图标按钮与角标 = 50%」；淡色底座
+   统一圆形，头像才是 8% 方角），色相按通知类别分开。底色一律走同色系 -soft，
    明暗主题跟着令牌切换。认不出的 action 落到 --default（中性色）。 */
 .notification-type {
     display: grid;
@@ -241,7 +240,14 @@ body {
     flex: none;
     width: 38px;
     height: 38px;
-    border-radius: 12px;
+    border-radius: 50%;
+}
+
+/* 图标尺寸由 CSS 定（换 span.icon 后不再有 Lucide 的 size 属性）：与原 size=18
+   一一对应。.icon 基类的 1.2em 会随字号漂，所以这里钉死像素。 */
+.notification-type .icon {
+    width: 18px;
+    height: 18px;
 }
 
 .notification-type--like {
@@ -384,6 +390,11 @@ a.notification-actor:hover {
     color: var(--color-text-secondary);
 }
 
+.notification-actor__glyph .icon {
+    width: 12px;
+    height: 12px;
+}
+
 .notification-actions {
     display: flex;
     align-items: center;
@@ -401,6 +412,11 @@ a.notification-actor:hover {
     font-size: 0.78rem;
     text-decoration: none;
     white-space: nowrap;
+}
+
+.notification-open .icon {
+    width: 14px;
+    height: 14px;
 }
 
 /* 标记已读 / 删除 = 站内既有的「无底色图标钮」那一款（30px 见方、8px 圆角，
@@ -437,6 +453,12 @@ a.notification-actor:hover {
 .notification-action-btn--danger:hover:not(:disabled) {
     background: var(--color-warning-secondary);
     color: var(--color-warning-primary);
+}
+
+/* 标记已读 / 删除图标（原 Lucide size=16）。 */
+.notification-action-btn .icon {
+    width: 16px;
+    height: 16px;
 }
 
 .notifications-empty-link {
@@ -485,7 +507,7 @@ a.notification-actor:hover {
     .notification-type {
         width: 34px;
         height: 34px;
-        border-radius: 10px;
+        border-radius: 50%;
     }
 
     .notification-foot {
@@ -521,6 +543,12 @@ a.notification-actor:hover {
     font-size: 3rem;
     margin-bottom: 0.5rem;
     opacity: 0.5;
+}
+/* 空状态铃铛 44px（原 Lucide size=44）。只钉通知页 —— 鱼干流水页的同名容器
+   给的是 inline style 的 3rem，不受这条影响。 */
+.notifications-page .empty-state-icon .icon {
+    width: 44px;
+    height: 44px;
 }
 .empty-state h3 {
     font-size: 1.1rem;
