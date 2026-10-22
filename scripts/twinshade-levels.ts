@@ -5,11 +5,13 @@
 // 一张关卡「能不能玩」有三件事要验，缺一条都会做出坏关卡：
 //   1. **形状**：编译不抛（行宽、A/B、灯数、par 合法性）；
 //   2. **可解且 par 诚实**：par 必须等于 solver 算出来的最优步数；
-//   3. **石头是不是工具**：把所有石头换成地板再求一次最短解 ——
-//      · 无石头更短  ⇒ 石头只是减速带（玩家绕开它就行，机制没被用上）
-//      · 无石头同样长 ⇒ 石头纯属摆设
-//      · 无石头无解 / 无石头更长 ⇒ 石头是解法的一部分（刹车、挡路、远程同纹）
-//      玩家反馈过「把石头删掉解法完全一样」，所以这条现在是硬指标，落在表里第 11 列。
+//   3. **石头是不是工具**：把石头改写成别的格子再求一次最短解，两种改法各问一件事 ——
+//      · 换成地板（第 11 列）：石头的阻挡是否必要
+//        无石头更短 ⇒ 石头只是减速带（玩家绕开它就行）；同样长 ⇒ 纯属摆设
+//      · 换成墙（第 12 列，**真正的判据**）：石头的「可推」是否必要
+//        冻住石头仍然可解（且不更差）⇒ 最优解一次都不用推石头，石头只是装饰墙
+//      玩家反馈过「把石头删掉解法完全一样」，所以第一条现在是硬指标；
+//      随后又发现「石头贴着墙推都推不了」的关卡混了进来（第六关），于是补了第二条。
 //
 // 另外几列是难度读数（作者用来判断这关是不是「走两步就完事」）：
 //   · 局面：可达状态数，太少说明空间太扁；
@@ -21,6 +23,7 @@
 //   npx tsx scripts/twinshade-levels.ts                 对账全部关卡（有错时 exit 1）
 //   npx tsx scripts/twinshade-levels.ts --path a3       打印最优走法
 //   npx tsx scripts/twinshade-levels.ts --only a3       只检查一关
+//   npx tsx scripts/twinshade-levels.ts --trace a3      逐步打印最优走法（含推石 / 滑行）
 //   npx tsx scripts/twinshade-levels.ts --sim urdl a3   模拟一串方向并打印两身体终点
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -71,10 +74,16 @@ function offsetCandidate(level: CompiledLevel): string | null {
   return null;
 }
 
-// ── 石头必要性：删掉所有石头再求最短解 ──────────────────────────────────────
-// 注意字符集：`o`（灯）不能被当成石头删掉，所以用 [a-np-z1-9]（跳过 o）。
-function parWithoutStones(rows: readonly string[]): number | null {
-  const stripped = rows.map((row) => row.replace(/[a-np-z1-9]/g, '.'));
+// ── 石头必要性：两种改写各求一次最短解 ──────────────────────────────────────
+// 注意字符集：`o`（灯）不能被当成石头替换掉，所以用 [a-np-z1-9]（跳过 o）。
+//
+// 两份读数回答的是**两个不同的问题**，少问一个就会漏掉「石头只是墙」这整类坏关卡：
+//   · 无石 par（石头换成地板）：石头的**阻挡**是否必要；
+//   · 冻石 par（石头换成墙）  ：石头的**可推**是否必要。
+// 后者才是「石头是工具」的判据 —— 石头杵在原地当墙一样能卡死路线，玩家全程不推它，
+// 关卡照样无石无解，可那个机制一次都没被用到。第六关就是这么漏过去的。
+function parWithFiller(rows: readonly string[], filler: '.' | '#'): number | null {
+  const stripped = rows.map((row) => row.replace(/[a-np-z1-9]/g, filler));
   let level: CompiledLevel;
   try {
     level = compileLevel({ id: 'x', act: 1, name: 'x', rows: stripped, par: 1, hint: '' });
@@ -196,6 +205,42 @@ const pathId = pathIndex >= 0 ? args[pathIndex + 1] : null;
 const onlyId = onlyIndex >= 0 ? args[onlyIndex + 1] : null;
 const simSpec = simIndex >= 0 ? args[simIndex + 1] : null;
 const simId = simIndex >= 0 ? args[simIndex + 2] : null;
+const traceIndex = args.indexOf('--trace');
+const traceId = traceIndex >= 0 ? args[traceIndex + 1] : null;
+
+/**
+ * `--trace <关卡 id>`：把**最优走法**逐步打出来，并标出每一步推了哪几块石头。
+ * 写 hint 时必须用：光看方向串看不出「第几步才真的在推石头」，
+ * 于是很容易写出「先往上，看石头怎么动」这种与事实不符的提示
+ * （第六关第一版就是这么错的 —— 第一步根本不推石头）。
+ */
+if (traceId) {
+  const def = LEVELS.find((entry) => entry.id === traceId);
+  if (!def) {
+    console.error(`没有关卡 ${traceId}`);
+    process.exit(1);
+  }
+  const level = compileLevel(def);
+  const result = analyzeLevel(level);
+  if (!result.moves) {
+    console.error(`${traceId} 无解`);
+    process.exit(1);
+  }
+  let state = initialState(level);
+  const at = (cell: number) => `(${cell % level.width},${Math.floor(cell / level.width)})`;
+  for (const dir of result.moves) {
+    const outcome = resolveMove(level, state, dir);
+    if (!outcome.ok) break;
+    state = outcome.state;
+    const pushed = outcome.events.pushes.map((push) => `石${push.block}${at(push.from)}→${at(push.to)}`);
+    const slides = outcome.events.selves.a.slide + outcome.events.selves.b.slide;
+    console.log(
+      `${String(state.moves).padStart(2)} ${ARROW[dir]}  A${at(state.a)} B${at(state.b)}` +
+        `${slides > 0 ? ` 滑${slides}` : ''}${pushed.length > 0 ? ` 推 ${pushed.join(' ')}` : ''}`,
+    );
+  }
+  process.exit(0);
+}
 
 /**
  * `--sim <方向串> <关卡 id>`：把手写的一串方向（u/d/l/r 或 ↑↓←→，可带逗号空格）
@@ -241,7 +286,7 @@ if (simSpec && simId) {
 }
 
 const rows: string[] = [];
-rows.push(['id', '关名', '尺寸', '石', 'par', '推', '滑', '局面', '陷阱', '首步', '解', '无石par', '结论'].join('\t'));
+rows.push(['id', '关名', '尺寸', '石', 'par', '推', '滑', '局面', '陷阱', '首步', '解', '无石par', '冻石par', '结论'].join('\t'));
 let failures = 0;
 
 for (const def of LEVELS) {
@@ -258,7 +303,8 @@ for (const def of LEVELS) {
   const result = analyzeLevel(level);
   const usage = result.moves ? replay(level, result.moves) : { pushes: 0, slides: 0 };
   const diff = difficulty(level);
-  const without = parWithoutStones(def.rows);
+  const without = parWithFiller(def.rows, '.');
+  const frozen = parWithFiller(def.rows, '#');
   const size = `${level.width}×${level.height}`;
 
   let verdict = '✓';
@@ -268,6 +314,10 @@ for (const def of LEVELS) {
     const hint = offsetCandidate(level);
     verdict += hint ? `（几何上可行：${hint}，检查路线是否被堵死）` : '（两盏灯的相对位置与出生点不一致）';
   } else if (result.optimal !== def.par) verdict = `par 不符：最优是 ${result.optimal}`;
+  // 有石头、却能把石头冻成墙照常过（且不更长）⇒ 这一关的石头从没被推过。
+  else if (level.blocks.length > 0 && frozen !== null && frozen <= def.par) {
+    verdict = `石头没被推（冻石 par=${frozen}）`;
+  }
   if (verdict !== '✓') failures++;
 
   rows.push([
@@ -283,6 +333,7 @@ for (const def of LEVELS) {
     diff ? String(diff.forced) : '-',
     diff ? String(diff.solutions) : '-',
     without === null ? '无解' : String(without),
+    frozen === null ? '无解' : String(frozen),
     verdict,
   ].join('\t'));
 

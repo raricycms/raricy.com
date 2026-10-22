@@ -154,12 +154,12 @@ test('双影：刷新后进度还在（localStorage），并且续上次关卡',
 
   // 存档形状：只存步数（星数是规则算出来的，不落盘）。
   await expect
-    .poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('twinshade_progress_v2') ?? 'null')?.best?.a1))
+    .poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('twinshade_progress_v3') ?? 'null')?.best?.a1))
     .toBe(1);
   await expect
-    .poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('twinshade_progress_v2') ?? 'null')?.lastLevelId))
+    .poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('twinshade_progress_v3') ?? 'null')?.lastLevelId))
     .toBe('a2');
-  const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('twinshade_progress_v2') ?? 'null'));
+  const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('twinshade_progress_v3') ?? 'null'));
   expect(saved).toMatchObject({ version: 1, seenIntro: true });
 
   // 刷新：引导层不再出现（seenIntro 已落盘），并续上次玩的 a2（不是「第一个没通关的关」）。

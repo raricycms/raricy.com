@@ -22,10 +22,11 @@ import type { ProgressState } from './ui-types';
 
 /**
  * localStorage 的键。带版本号：**改形状或整批换关卡时换版本**，旧键自然失效、不做迁移。
- * 2026-10 关卡表整体重做（旧关卡全部替换成更难的 14 关），所以从 v1 升到 v2 ——
+ * 2026-10 关卡表整体重做（旧关卡全部替换成更难的 14 关）→ v1 升到 v2；
+ * 同月又重做了 b2 / c1 / c2 / c4 四关（石头必须被推，路线与 par 全变了）→ 升到 v3。
  * 旧成绩对应的是另一批关卡，留着只会让玩家看到「最好 2 步」却要 10 步才过。
  */
-export const PROGRESS_KEY = 'twinshade_progress_v2';
+export const PROGRESS_KEY = 'twinshade_progress_v3';
 
 type BestMap = Record<string, number>;
 

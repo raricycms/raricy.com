@@ -94,7 +94,7 @@ describe('读存档的容错', () => {
 
   it('saveProgress 写盘后 loadProgress 能原样读回；存档键是 e2e 直接读的那一个', async () => {
     const { loadProgress, saveProgress, PROGRESS_KEY } = await freshProgress();
-    expect(PROGRESS_KEY).toBe('twinshade_progress_v2');
+    expect(PROGRESS_KEY).toBe('twinshade_progress_v3');
     const saved: ProgressState = {
       version: 1,
       best: { a1: 3, b2: 7 },

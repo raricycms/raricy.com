@@ -30,6 +30,9 @@ const GEOMETRY_HINT =
 
 const where = (def: { id: string; name: string }) => `关卡 ${def.id}（${def.name}）`;
 
+/** 关卡 ASCII 里的石头字符：a–z 里除了 o（灯）的字母，加上 1–9（同纹组的编号）。 */
+const STONE = /[a-np-z1-9]/;
+
 // 逐关一条用例（而不是「一个 it 循环全部」）：失败时测试报告直接指到哪一关，
 // 不用从一行汇总里翻。
 for (const def of LEVELS) {
@@ -123,6 +126,41 @@ for (const def of LEVELS) {
       ).toBe(true);
       expect(state.moves, `${name}：路径步数 ${state.moves} 与 par ${def.par} 不一致。`).toBe(def.par);
     });
+
+    // 「石头必须是工具」这条纪律被玩家打回过两次，所以落成断言：
+    //   · 删掉石头能过 ⇒ 石头只是减速带；
+    //   · 把石头冻成墙能过 ⇒ 这块石头从头到尾没被推过（贴墙当装饰）。
+    // 两种改法各求一次最短解，都必须「无解」或「比原 par 更长」。
+    const stoneCount = def.rows.join('').split('').filter((ch) => STONE.test(ch)).length;
+    if (stoneCount > 0) {
+      it('石头是工具：删掉石头、或把石头冻成墙之后，都必须无解或更长', () => {
+        const name = where(def);
+        const variants: [string, string][] = [
+          ['.', '删掉石头（换成地板）'],
+          ['#', '把石头冻成墙（推不动）'],
+        ];
+        for (const [filler, what] of variants) {
+          const rows = def.rows.map((row) => row.replace(new RegExp(STONE, 'g'), filler));
+          // 换成墙以后可能把出生点 / 灯围死，compileLevel 直接抛 —— 那就是「无解」。
+          let probe;
+          try {
+            probe = compileLevel({ ...def, rows });
+          } catch {
+            continue;
+          }
+          const result = analyzeLevel(probe);
+          const stillSolvable = result.solved && (result.optimal as number) <= def.par;
+          expect(
+            stillSolvable,
+            `${name}：${what}之后仍然 ${result.optimal} 步可通（par 是 ${def.par}）—— ` +
+              '这一关的石头没有参与解法。' +
+              (filler === '#'
+                ? '石头贴着墙、推都推不了是最常见的成因：重新摆石头，让至少一块必须被推动。'
+                : '石头只是挡路，玩家绕开就行：让它成为刹车、门栓或必须挪开的障碍。'),
+          ).toBe(false);
+        }
+      });
+    }
   });
 }
 
