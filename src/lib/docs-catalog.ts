@@ -289,6 +289,12 @@ export const DOC_ENTRIES: readonly DocEntry[] = [
   },
   {
     group: 'dev',
+    slug: 'design-philosophy',
+    title: '设计哲学',
+    summary: '可整份转发的界面看法：相信什么、拒绝什么、怎么判断；附一页实现参照。',
+  },
+  {
+    group: 'dev',
     slug: 'instance-restore',
     title: '从 instance.zip 还原数据目录与数据库',
     summary: '灾备：从备份包还原出可运行的 instance/。',

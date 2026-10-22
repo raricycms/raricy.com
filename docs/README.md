@@ -76,6 +76,7 @@ GitHub 上仍是原来的反引号，两边不冲突。
 | `cli.md` | 运维 CLI：交互式向导 / 命令式用法；角色、用户、内容检索与恢复、鱼干、头像框、邀请码、审计、申诉 |
 | `oauth.md` | raricy 作为 OAuth 2.0 IdP 的完整协议与集成 |
 | `frontend-styles.md` | 全站设计标准：视觉基础 / 布局 / 组件 / 动效 / 场景组合 / 实现与验收 |
+| `design-philosophy.md` | **可整份转发**的设计哲学：相信什么 / 拒绝什么 / 怎么判断，附一页实现参照（不引用源码） |
 | `instance-restore.md` | 从 `instance.zip` 还原数据目录与数据库（灾备） |
 | `legacy-constraints.md` | 历史遗留约束：哪些不能删、为什么（含「不是框架痕迹」的辨析）；注释清理口径与已解决问题记录 |
 | `format-converter-implementation.md` | 格式转换器首轮实施记录：原始方案、八个能力区的交付与历史验证（**功能已交付，全部验收条件尚未满足**；剩余项在 `plan/`） |
