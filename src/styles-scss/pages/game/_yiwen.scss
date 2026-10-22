@@ -1,0 +1,92 @@
+@use '../../abstracts/mixins' as m;
+
+.yw-game {
+  padding-top: 28px; padding-bottom: 40px;
+  button, a { -webkit-tap-highlight-color: transparent; }
+  button:focus-visible, a:focus-visible, section:focus-visible { outline: none; box-shadow: var(--shadow-focus-brand); }
+  h2:focus { outline: none; }
+  button { font-family: inherit; }
+}
+.yw-header, .yw-heading, .yw-bench-heading, .yw-editor-heading, .yw-plate-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.yw-header { margin-bottom: 24px; }
+.yw-heading { justify-content: flex-start; gap: 12px; h1 { margin: 0; font-size: 1.8rem; font-weight: 700; } small { font-size: .8rem; font-weight: 500; color: var(--color-text-secondary); } }
+.yw-logo { width: 40px; height: 40px; color: var(--color-brand-primary); }
+.yw-progress { color: var(--color-text-secondary); font-size: .85rem; }
+.yw-primary, .yw-secondary, .yw-icon-button, .yw-frame-button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; padding: 10px 16px; font-size: .85rem; line-height: 1.4; }
+.yw-primary { @include m.btn-primary; }
+.yw-secondary, .yw-icon-button { @include m.btn-secondary; }
+.yw-icon-button { width: 44px; padding: 10px; flex-shrink: 0; }
+.yw-frame-button { @include m.btn-tab; margin-left: auto; }
+.yw-cards { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 24px; }
+.yw-card-tab { @include m.btn-tab; display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; padding: 10px 14px; font-size: .85rem; }
+.yw-layout { display: grid; grid-template-columns: minmax(0, 1fr) 264px; gap: 24px; align-items: start; }
+.yw-workbench, .yw-plate, .yw-notebook, .yw-previous { background: var(--color-background-card); border-radius: 30px; padding: 24px; min-width: 0; }
+.yw-bench-heading { margin-bottom: 24px; h2 { margin: 0; font-size: 1.4rem; font-weight: 600; } }
+.yw-bench-heading h2 { scroll-margin-top: calc(var(--navbar-height) + 20px); }
+.yw-eyebrow { margin: 0 0 6px; font-size: .75rem; color: var(--color-text-secondary); }
+.yw-papers { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; figure { margin: 0; padding: 12px 4px 0; background: var(--color-background-page); border-radius: 16px; min-width: 0; } figcaption { text-align: center; color: var(--color-text-secondary); font-size: .75rem; } }
+.yw-papers .yw-output { background: var(--color-brand-secondary); color: var(--color-brand-primary); }
+.yw-drawing { display: block; width: 100%; height: auto; aspect-ratio: 1; }
+.yw-paper-note, .yw-instruction { color: var(--color-text-secondary); font-size: .75rem; line-height: 1.8; margin: 12px 0; }
+.yw-editor { margin-top: 28px; }
+.yw-editor-heading { margin-bottom: 12px; h3 { margin: 0; font-size: .95rem; font-weight: 600; } > span { color: var(--color-text-secondary); font-size: .75rem; } }
+.yw-program { display: flex; flex-wrap: wrap; gap: 6px; min-height: 90px; align-items: center; background: var(--color-background-page); border-radius: 20px; padding: 12px; }
+.yw-empty { color: var(--color-text-secondary); font-size: .85rem; margin: auto; }
+.yw-token { @include m.btn-secondary; display: flex; flex-direction: column; align-items: center; padding: 4px 6px; min-width: 44px; font-size: .65rem; svg { width: 36px; height: 36px; } }
+.yw-palette { display: flex; align-items: center; gap: 12px; margin-top: 16px; }
+.yw-rune-button { @include m.btn-primary; display: inline-flex; align-items: center; gap: 8px; min-height: 56px; padding: 4px 20px 4px 10px; svg { width: 44px; height: 44px; } }
+.yw-toolbar { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 20px; }
+.yw-trace { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; margin-top: 24px; > span { font-size: .75rem; color: var(--color-text-secondary); margin-right: 8px; } }
+.yw-step { @include m.btn-tab; min-width: 44px; min-height: 44px; padding: 6px 10px; display: inline-flex; align-items: center; font-size: .75rem; svg { width: 28px; height: 28px; } }
+.yw-feedback { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-top: 20px; min-height: 44px; font-size: .85rem; line-height: 1.7; color: var(--color-text-secondary); > span { display: flex; gap: 8px; align-items: center; svg { flex-shrink: 0; } } }
+.yw-feedback--success { color: var(--color-success-primary); }
+.yw-hint { background: var(--color-background-subtle); border-radius: 16px; padding: 12px 16px; margin-top: 16px; p { margin: 4px 0; font-size: .85rem; line-height: 1.8; } }
+.yw-sidebar { display: flex; flex-direction: column; gap: 20px; }
+.yw-sidebar h2 { margin: 0; font-size: .95rem; font-weight: 600; }
+.yw-plate-heading { color: var(--color-text-primary); > svg { color: var(--color-success-primary); } }
+.yw-inscription { display: flex; justify-content: center; gap: 12px; padding: 24px 0 12px; color: var(--color-text-primary); > svg { width: 48px; height: 48px; } }
+.yw-plate-paper { width: 120px; margin: 0 auto 12px; color: var(--color-text-secondary); }
+.yw-plate-actions { display: flex; flex-direction: column; gap: 8px; }
+.yw-plate-feedback { font-size: .8rem; line-height: 1.8; color: var(--color-text-secondary); margin: 12px 0 0; }
+.yw-notebook p, .yw-reveal p { color: var(--color-text-secondary); font-size: .8rem; line-height: 1.8; margin: 12px 0 0; }
+.yw-notebook .yw-save-note { color: var(--color-warning-primary); }
+.yw-reveal { margin-top: 24px; h3 { margin: 0; font-size: 1rem; color: var(--color-success-primary); } }
+.yw-unknown { aspect-ratio: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; color: var(--color-text-secondary); span { font-size: 2.5rem; } p { font-size: .75rem; margin: 8px 0 0; } }
+.yw-previous .yw-drawing { max-width: 180px; margin: auto; }
+
+@media (max-width: 991px) {
+  .yw-layout { grid-template-columns: minmax(0, 1fr) 224px; gap: 16px; }
+  .yw-workbench, .yw-plate, .yw-notebook, .yw-previous { padding: 20px; }
+  .yw-papers { gap: 8px; }
+  .yw-card-tab { padding-inline: 12px; }
+}
+@media (max-width: 767px) {
+  .yw-game { padding-top: 20px; }
+  .yw-heading { gap: 8px; h1 { font-size: 1.5rem; } }
+  .yw-logo { width: 32px; height: 32px; }
+  .yw-progress { font-size: .75rem; }
+  .yw-header { gap: 8px; }
+  .yw-cards { gap: 4px; }
+  .yw-card-tab { font-size: .75rem; padding-inline: 10px; gap: 6px; }
+  .yw-layout { grid-template-columns: minmax(0, 1fr); }
+  .yw-workbench { padding: 20px 16px; }
+  .yw-bench-heading { gap: 8px; h2 { font-size: 1.2rem; } .yw-secondary { padding-inline: 10px; font-size: .75rem; } }
+  .yw-papers { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .yw-papers figure:first-child { grid-column: 1 / -1; display: flex; align-items: center; justify-content: center; gap: 16px; padding: 0 12px; .yw-drawing { width: 100px; } }
+  .yw-sidebar { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+  .yw-inscription { gap: 4px; > svg { min-width: 0; } }
+  .yw-rune-button { padding-right: 16px; }
+  .yw-palette { gap: 8px; }
+}
+@media (max-width: 479px) {
+  .yw-sidebar { display: flex; }
+  .yw-header .yw-logo { display: none; }
+  .yw-papers { gap: 6px; figcaption { font-size: .7rem; } }
+  .yw-unknown p { font-size: .65rem; }
+  .yw-rune-button { gap: 4px; padding: 4px 12px 4px 6px; }
+  .yw-frame-button { padding-inline: 10px; }
+  .yw-toolbar .yw-secondary { padding-inline: 10px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .yw-game * { transition: none !important; animation: none !important; }
+}

@@ -13,10 +13,21 @@ export interface GameEntry {
   href: string;
   runtime: 'native' | 'embedded' | 'external';
   collectionId: typeof GAME_COLLECTIONS[number]['id'] | null;
-  icon: 'atamas' | 'wand' | 'public-space' | 'quandi' | 'twinshade' | 'lumen';
+  icon: 'atamas' | 'wand' | 'public-space' | 'quandi' | 'twinshade' | 'lumen' | 'yiwen';
 }
 
 export const GAMES = [
+  {
+    id: 'yiwen',
+    title: '异文 Demo',
+    description: '观察图形，组合符号，自己发现一套未知语言的规则。七张可自由试验的卡片，以及一块等待解读的铭牌。',
+    category: 'puzzle',
+    modes: ['solo'],
+    href: '/game/yiwen',
+    runtime: 'native',
+    collectionId: 'test',
+    icon: 'yiwen',
+  },
   {
     id: 'lumen',
     title: '折光',
