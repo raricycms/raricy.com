@@ -82,6 +82,7 @@ const RESPONSIVE_SPECS: RegExp[] = [
   // 桌面那一遍同样保留 —— 另外几条用例（键盘通关、关卡选择、刷新续关）在两个
   // project 里都该跑，而 testMatch 只能到文件粒度（见上方注释）。
   /twinshade\.spec\.ts$/,
+  /lumen\.spec\.ts$/,
   /navbar-capsule\.spec\.ts$/,
   // 首页山景的窄屏构图、SVG 视差与减少动态效果偏好。
   /home-hero\.spec\.ts$/,
