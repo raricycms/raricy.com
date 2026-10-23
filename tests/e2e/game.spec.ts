@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { registerFreshUser } from './helpers';
 
-test('玩具入口：四张首页卡按故事、玩具、博客、工具排列，清单为 ATÅMAS、双影与折光', async ({ page }) => {
+test('玩具入口：四张首页卡按故事、玩具、博客、工具排列，首页为 ATÅMAS，折光与双影在测试合集', async ({ page }) => {
   await page.goto('/');
   expect(await page.locator('.home-grid .feature-card').evaluateAll((cards) => cards.map((card) => card.getAttribute('href'))))
     .toEqual(['/story', '/game', '/explore', '/tool']);
@@ -16,13 +16,19 @@ test('玩具入口：四张首页卡按故事、玩具、博客、工具排列�
   await expect(page.locator('.site-nav a[href="/game"]')).toHaveCount(1);
   await expect(page.locator('.site-nav a[href="/chat"]')).toHaveCount(1);
   await page.locator('.home-grid a[href="/game"]').click();
-  // 首页登记三款单人益智游戏；具体陈列顺序由 catalog 决定。
-  await expect(page.locator('.game-card')).toHaveCount(3);
+  // 首页只登记 ATÅMAS；折光与双影归入「测试」合集。
+  await expect(page.locator('.game-card')).toHaveCount(1);
   const titles = await page.locator('.game-card h2').allTextContents();
-  expect(titles.sort()).toEqual(['ATÅMAS', '双影', '折光'].sort());
+  expect(titles).toEqual(['ATÅMAS']);
   const hrefs = await page.locator('.game-card').evaluateAll((cards) => cards.map((card) => card.getAttribute('href')));
-  expect(hrefs.sort()).toEqual(['/game/atamas', '/game/lumen', '/game/twinshade']);
-  await expect(page.locator('.game-card__tags')).toHaveText(['益智单人', '益智单人', '益智单人']);
+  expect(hrefs).toEqual(['/game/atamas']);
+  await expect(page.locator('.game-card__tags')).toHaveText(['益智单人']);
+
+  await page.locator('.game-collection[href="/game/collections/test"]').click();
+  await expect(page).toHaveURL('/game/collections/test');
+  await expect(page.locator('.game-card')).toHaveCount(8);
+  await expect(page.locator('.game-card[href="/game/lumen"]')).toHaveCount(1);
+  await expect(page.locator('.game-card[href="/game/twinshade"]')).toHaveCount(1);
 });
 
 test('ATÅMAS：鼠标或触屏落子、撤销、重置、语言和深色主题', async ({ page, isMobile }, testInfo) => {

@@ -135,7 +135,7 @@ export default function Lumen() {
     if (event.key.toLowerCase() === 'r') { event.preventDefault(); selectLevel(index); }
   }}>
     <header className="lm-header">
-      <div className="lm-heading"><Link href="/game" className="lm-icon-button" aria-label="返回玩具"><ArrowLeft /></Link><span className="lm-logo"><LumenIcon /></span><div><h1>折光</h1><p>转动镜片，点亮每一个终点。</p></div></div>
+      <div className="lm-heading"><Link href="/game/collections/test" className="lm-icon-button" aria-label="返回测试合集"><ArrowLeft /></Link><span className="lm-logo"><LumenIcon /></span><div><h1>折光</h1><p>转动镜片，点亮每一个终点。</p></div></div>
       <div className="lm-header-actions"><span className="lm-overall"><Sparkles size={16} /><span className="numeric">{totalStars} / {LEVELS.length * 3}</span></span>
         <button className="lm-icon-button" aria-label={progress.sound ? '关闭音效' : '开启音效'} aria-pressed={progress.sound} disabled={!ready} onClick={() => setProgress((p) => ({ ...p, sound: !p.sound }))}>{progress.sound ? <Volume2 /> : <VolumeX />}</button>
         <button className="lm-icon-button" aria-label="玩法说明" onClick={(event) => openModal('help', event.currentTarget)}><CircleHelp /></button>

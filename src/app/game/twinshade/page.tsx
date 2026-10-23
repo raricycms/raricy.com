@@ -7,5 +7,5 @@ export const metadata: Metadata = {
 };
 
 export default function TwinShadePage() {
-  return <TwinShade backHref="/game" backLabel="返回玩具" />;
+  return <TwinShade backHref="/game/collections/test" backLabel="返回测试合集" />;
 }

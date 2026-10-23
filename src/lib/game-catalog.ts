@@ -47,7 +47,7 @@ export const GAMES = [
     modes: ['solo'],
     href: '/game/lumen',
     runtime: 'native',
-    collectionId: null,
+    collectionId: 'test',
     icon: 'lumen',
   },
   {
@@ -58,7 +58,7 @@ export const GAMES = [
     modes: ['solo'],
     href: '/game/twinshade',
     runtime: 'native',
-    collectionId: null,
+    collectionId: 'test',
     icon: 'twinshade',
   },
   {
