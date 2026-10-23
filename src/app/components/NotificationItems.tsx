@@ -2,6 +2,21 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
+import {
+  ArrowRight,
+  AtSign,
+  Bell,
+  Check,
+  CheckCheck,
+  Fish,
+  Heart,
+  Megaphone,
+  MessageCircle,
+  Scale,
+  ShieldAlert,
+  Trash,
+  type LucideIcon,
+} from 'lucide-react';
 import type { NotificationDTO } from '@/lib/notification-service';
 import { CHAT_NOTIFY_OBJECT_TYPE } from '@/lib/chat-shared';
 import Avatar from './Avatar';
@@ -39,42 +54,41 @@ type NotificationTone =
   | 'default';
 
 interface NotificationVisual {
-  /** 站内 mask 图标类名（public/static/img/icons，填充版）；尺寸由 _notifications.scss 给。 */
-  icon: string;
+  icon: LucideIcon;
   tone: NotificationTone;
 }
 
 function visualForAction(action: string): NotificationVisual {
   switch (action) {
     case '文章点赞':
-      return { icon: 'icon-heart-fill', tone: 'like' };
+      return { icon: Heart, tone: 'like' };
     case '评论回复':
     case '文章评论':
-      return { icon: 'icon-chat-dots', tone: 'comment' };
+      return { icon: MessageCircle, tone: 'comment' };
     case '评论提及':
     case '讨论提及':
-      return { icon: 'icon-at', tone: 'mention' };
+      return { icon: AtSign, tone: 'mention' };
     case '文章投喂':
-      return { icon: 'icon-fish', tone: 'feed' };
+      return { icon: Fish, tone: 'feed' };
     case '申诉提交':
     case '申诉结果':
-      return { icon: 'icon-scale', tone: 'appeal' };
+      return { icon: Scale, tone: 'appeal' };
     case '禁言通知':
     case '解除禁言':
     case '强制下线':
     case '文章删除':
     case '图片删除':
     case '音频删除':
-      return { icon: 'icon-shield-alert', tone: 'warning' };
+      return { icon: ShieldAlert, tone: 'warning' };
     case '系统公告':
     case '功能更新':
     case '维护通知':
     case '活动通知':
     case '栏目发文提醒':
     case '用户提醒':
-      return { icon: 'icon-megaphone', tone: 'system' };
+      return { icon: Megaphone, tone: 'system' };
     default:
-      return { icon: 'icon-bell-fill', tone: 'default' };
+      return { icon: Bell, tone: 'default' };
   }
 }
 
@@ -350,7 +364,7 @@ export default function NotificationItems({
             onClick={markAll}
             disabled={busy !== null || unread === 0}
           >
-            <span className="icon icon-check-double" aria-hidden="true" />
+            <CheckCheck size={15} aria-hidden="true" />
             全部已读
           </button>
           <button
@@ -359,7 +373,7 @@ export default function NotificationItems({
             onClick={deleteRead}
             disabled={busy !== null}
           >
-            <span className="icon icon-trash-fill" aria-hidden="true" />
+            <Trash size={15} aria-hidden="true" />
             删除已读
           </button>
         </div>
@@ -368,7 +382,7 @@ export default function NotificationItems({
       {items.length === 0 ? (
         <div className="empty-state">
           <div className="empty-state-icon" aria-hidden="true">
-            <span className="icon icon-bell-fill" aria-hidden="true" />
+            <Bell size={44} />
           </div>
           <h3>{unreadOnly ? '没有未读通知' : '暂无通知'}</h3>
           <p>{unreadOnly ? '所有通知都读过了。' : '你还没有收到任何通知。'}</p>
@@ -386,6 +400,7 @@ export default function NotificationItems({
               <div className="notification-day__list">
                 {group.items.map((n) => {
                   const visual = visualForAction(n.action);
+                  const TypeIcon = visual.icon;
                   const dest = destinationFor(n);
                   return (
                     <article
@@ -398,7 +413,7 @@ export default function NotificationItems({
                         className={`notification-type ${TONE_CLASS[visual.tone]}`}
                         aria-hidden="true"
                       >
-                        <span className={`icon ${visual.icon}`} aria-hidden="true" />
+                        <TypeIcon size={18} strokeWidth={2} />
                       </span>
 
                       <div className="notification-body">
@@ -431,7 +446,7 @@ export default function NotificationItems({
                           ) : ANONYMOUS_ACTOR_ACTIONS.has(n.action) ? null : (
                             <span className="notification-actor">
                               <span className="notification-actor__glyph" aria-hidden="true">
-                                <span className="icon icon-bell-fill" aria-hidden="true" />
+                                <Bell size={12} />
                               </span>
                               系统
                             </span>
@@ -441,7 +456,7 @@ export default function NotificationItems({
                             {dest && (
                               <Link href={dest.href} className="notification-open">
                                 {dest.label}
-                                <span className="icon icon-arrow-right" aria-hidden="true" />
+                                <ArrowRight size={14} aria-hidden="true" />
                               </Link>
                             )}
                             {!n.read && (
@@ -453,7 +468,7 @@ export default function NotificationItems({
                                 aria-label="标记为已读"
                                 title="标记为已读"
                               >
-                                <span className="icon icon-check" aria-hidden="true" />
+                                <Check size={16} aria-hidden="true" />
                               </button>
                             )}
                             <button
@@ -464,7 +479,7 @@ export default function NotificationItems({
                               aria-label="删除通知"
                               title="删除通知"
                             >
-                              <span className="icon icon-trash-fill" aria-hidden="true" />
+                              <Trash size={16} aria-hidden="true" />
                             </button>
                           </div>
                         </div>

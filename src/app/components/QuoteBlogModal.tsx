@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { BookOpenText } from 'lucide-react';
 
 type BlogRow = {
   id: string;
@@ -103,7 +104,7 @@ export default function QuoteBlogModal({
                     }
                   >
                     <span className="chat-blog-item__icon" aria-hidden="true">
-                      <span className="icon icon-book-open" />
+                      <BookOpenText />
                     </span>
                     <span className="chat-blog-item__main">
                       <span className="chat-blog-item__title">{b.title}</span>

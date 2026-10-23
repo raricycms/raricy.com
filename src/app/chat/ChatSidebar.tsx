@@ -21,7 +21,7 @@
 
 import { memo, useState } from 'react';
 import Link from 'next/link';
-import { ChevronsLeft } from 'lucide-react';
+import { Bookmark, ChevronsLeft, MessageCircle, MoreHorizontal, Plus, VolumeX } from 'lucide-react';
 import { type ChatChannelDTO } from '@/lib/chat-shared';
 import Avatar from '@/app/components/Avatar';
 import ChatChannelMenu, { type ChannelMenuAnchor } from './ChatChannelMenu';
@@ -58,7 +58,7 @@ const SidebarRow = memo(function SidebarRow({
         <span className="chat-chan__iconwrap">
           {isLobby ? (
             <span className="chat-chan__icon" aria-hidden="true">
-              <span className="icon icon-chat-dots" />
+              <MessageCircle />
             </span>
           ) : (
             /* 此前这里拼的是「头像路由 + peer?.id ?? 空串」——peer 为 null 时会去请求
@@ -91,11 +91,7 @@ const SidebarRow = memo(function SidebarRow({
         <span className="chat-chan__main">
           <span className="chat-chan__title">
             {ch.muted && (
-              <span
-                className="icon icon-volume-off chat-chan__muted"
-                role="img"
-                aria-label="已静音"
-              />
+              <VolumeX className="chat-chan__muted" aria-label="已静音" />
             )}
             {ch.title}
           </span>
@@ -115,7 +111,7 @@ const SidebarRow = memo(function SidebarRow({
         aria-label={`${ch.title} 的更多操作`}
         title="更多操作"
       >
-        <span className="icon icon-more" aria-hidden="true" />
+        <MoreHorizontal aria-hidden="true" />
       </button>
     </div>
   );
@@ -187,13 +183,13 @@ export default function ChatSidebar({
 
       <div className="chat-sidebar__foot">
         <button type="button" className="chat-new-btn" onClick={onNewChat}>
-          <span className="icon icon-plus" aria-hidden="true" />
+          <Plus aria-hidden="true" />
           {!collapsed && <span>发起私聊</span>}
         </button>
         {/* 「保存的消息」是独立页面（不是收藏夹）：入口放在会话列表底部，
             与「发起私聊」并列 —— 它在私聊消息的操作条里被写进去，得有个地方读。 */}
         <Link className="chat-saved-link" href="/chat/saved" title="保存的消息">
-          <span className="icon icon-bookmark" aria-hidden="true" />
+          <Bookmark aria-hidden="true" />
           {!collapsed && <span>保存的消息</span>}
         </Link>
       </div>

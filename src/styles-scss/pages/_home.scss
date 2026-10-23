@@ -305,9 +305,9 @@
 /* 图标只需取色，形状（mask）仍各卡一支 */
 .feature-card .feature-icon { color: var(--card-accent); }
 
-.card-story .feature-icon { -webkit-mask-image: url('/static/img/icons/book-fill.svg'); mask-image: url('/static/img/icons/book-fill.svg'); }
-.card-blog  .feature-icon { -webkit-mask-image: url('/static/img/icons/journal-text-fill.svg'); mask-image: url('/static/img/icons/journal-text-fill.svg'); }
-.card-tool  .feature-icon { -webkit-mask-image: url('/static/img/icons/tools-fill.svg'); mask-image: url('/static/img/icons/tools-fill.svg'); }
+.card-story .feature-icon { -webkit-mask-image: url('/static/img/icons/book.svg'); mask-image: url('/static/img/icons/book.svg'); }
+.card-blog  .feature-icon { -webkit-mask-image: url('/static/img/icons/journal-text.svg'); mask-image: url('/static/img/icons/journal-text.svg'); }
+.card-tool  .feature-icon { -webkit-mask-image: url('/static/img/icons/tools.svg'); mask-image: url('/static/img/icons/tools.svg'); }
 
 /* 卡内按钮跟随卡片强调色（而非它自己那支 --outline-* 变体）。
    选择器权重 0-2-0 高过 .home-btn--outline-*（0-1-0），故无需 !important。

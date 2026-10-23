@@ -332,15 +332,15 @@ test.describe('评论点赞', () => {
     await expect(btn).toBeVisible();
     await expect(btn).not.toHaveClass(/is-liked/);
     // 0 赞时只显示心形，不显示数字
-    await expect(btn.locator('.numeric')).toHaveCount(0);
+    await expect(btn.locator('span')).toHaveCount(0);
 
     await btn.click();
     await expect(btn).toHaveClass(/is-liked/);
-    await expect(btn.locator('.numeric')).toHaveText('1');
+    await expect(btn.locator('span')).toHaveText('1');
 
     await btn.click();
     await expect(btn).not.toHaveClass(/is-liked/);
-    await expect(btn.locator('.numeric')).toHaveCount(0);
+    await expect(btn.locator('span')).toHaveCount(0);
   });
 
   test('★ 赞过之后刷新页面仍然是已赞（liked 落到了服务端，不是纯前端状态）', async ({ page }) => {
@@ -354,7 +354,7 @@ test.describe('评论点赞', () => {
     await page.reload();
     const after = commentRow(page, marker).locator('.comment-like');
     await expect(after).toHaveClass(/is-liked/);
-    await expect(after.locator('.numeric')).toHaveText('1');
+    await expect(after.locator('span')).toHaveText('1');
   });
 
   test('★ 别人看同一条是未赞（liked 随查看者而变）', async ({ page }) => {
@@ -375,6 +375,6 @@ test.describe('评论点赞', () => {
     await page.goto(BLOG_URL);
     const other = commentRow(page, marker).locator('.comment-like');
     await expect(other, '别人看不该是已赞').not.toHaveClass(/is-liked/);
-    await expect(other.locator('.numeric'), '但计数是共享的').toHaveText('1');
+    await expect(other.locator('span'), '但计数是共享的').toHaveText('1');
   });
 });

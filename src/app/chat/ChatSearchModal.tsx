@@ -9,6 +9,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useEffect, useRef, useState } from 'react';
+import { Search } from 'lucide-react';
 import type { ChatMessageDTO } from '@/lib/chat-shared';
 import { fmtTime } from './ChatMessageItem';
 
@@ -183,7 +184,7 @@ export function SearchButton({ onClick }: { onClick: () => void }) {
       title="搜索消息"
       aria-label="搜索消息"
     >
-      <span className="icon icon-search" aria-hidden="true" />
+      <Search aria-hidden="true" />
     </button>
   );
 }

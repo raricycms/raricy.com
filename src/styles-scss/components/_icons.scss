@@ -1,15 +1,4 @@
-/* Icon masking utilities using local SVG files; color follows currentColor.
- *
- * 全站 mask 图标统一走**填充版**（fill=currentColor、无 stroke 的实心剪影）：
- * 素材住 public/static/img/icons/，多数取自 Bootstrap Icons（MIT，
- * https://github.com/twbs/icons）；没有官方 `-fill` 版的（fish / market / tools /
- * journal-text / link / controller / theme-toggle / box-arrow-right /
- * person-circle / book-open / scale / menu）按同一几何自绘，viewBox 一律 0 0 16 16。
- *
- * 约定：**类名保持语义不变**（`.icon-person` 仍叫这个），只把 mask-image 指向填充素材；
- * 旧的 `-fill` 类继续保留并指向同一份素材。唯一的线性例外是**直角箭头（chevron）**：
- * 它由 React 里的 Lucide 组件绘制（展开方向靠 rotate 表达），不做填充版。
- */
+/* Icon masking utilities using local SVG files; color follows currentColor */
 .icon {
   display: inline-block;
   width: 1.2rem;
@@ -25,19 +14,18 @@
 }
 
 .icon-bell-fill    { -webkit-mask-image: url('/static/img/icons/bell-fill.svg');    mask-image: url('/static/img/icons/bell-fill.svg'); }
-.icon-bell         { -webkit-mask-image: url('/static/img/icons/bell-fill.svg');    mask-image: url('/static/img/icons/bell-fill.svg'); }
-.icon-person       { -webkit-mask-image: url('/static/img/icons/person-fill.svg');  mask-image: url('/static/img/icons/person-fill.svg'); }
-.icon-person-fill  { -webkit-mask-image: url('/static/img/icons/person-fill.svg');  mask-image: url('/static/img/icons/person-fill.svg'); }
-.icon-person-circle{ -webkit-mask-image: url('/static/img/icons/person-circle-fill.svg'); mask-image: url('/static/img/icons/person-circle-fill.svg'); }
-.icon-gear         { -webkit-mask-image: url('/static/img/icons/gear-fill.svg');    mask-image: url('/static/img/icons/gear-fill.svg'); }
+.icon-bell         { -webkit-mask-image: url('/static/img/icons/bell.svg');         mask-image: url('/static/img/icons/bell.svg'); }
+.icon-person       { -webkit-mask-image: url('/static/img/icons/person.svg');       mask-image: url('/static/img/icons/person.svg'); }
+.icon-person-circle{ -webkit-mask-image: url('/static/img/icons/person-circle.svg');mask-image: url('/static/img/icons/person-circle.svg'); }
+.icon-gear         { -webkit-mask-image: url('/static/img/icons/gear.svg');         mask-image: url('/static/img/icons/gear.svg'); }
 .icon-gear-fill    { -webkit-mask-image: url('/static/img/icons/gear-fill.svg');    mask-image: url('/static/img/icons/gear-fill.svg'); }
-.icon-people       { -webkit-mask-image: url('/static/img/icons/people-fill.svg');  mask-image: url('/static/img/icons/people-fill.svg'); }
-.icon-box-arrow-right{ -webkit-mask-image: url('/static/img/icons/box-arrow-right-fill.svg'); mask-image: url('/static/img/icons/box-arrow-right-fill.svg'); }
+.icon-people       { -webkit-mask-image: url('/static/img/icons/people.svg');       mask-image: url('/static/img/icons/people.svg'); }
+.icon-box-arrow-right{ -webkit-mask-image: url('/static/img/icons/box-arrow-right.svg'); mask-image: url('/static/img/icons/box-arrow-right.svg'); }
 .icon-github       { -webkit-mask-image: url('/static/img/icons/github.svg');       mask-image: url('/static/img/icons/github.svg'); }
 .icon-twitter      { -webkit-mask-image: url('/static/img/icons/twitter.svg');      mask-image: url('/static/img/icons/twitter.svg'); }
-.icon-envelope     { -webkit-mask-image: url('/static/img/icons/envelope-fill.svg');mask-image: url('/static/img/icons/envelope-fill.svg'); }
+.icon-envelope     { -webkit-mask-image: url('/static/img/icons/envelope.svg');     mask-image: url('/static/img/icons/envelope.svg'); }
 
-.icon-theme-toggle { -webkit-mask-image: url('/static/img/icons/theme-toggle-fill.svg'); mask-image: url('/static/img/icons/theme-toggle-fill.svg'); }
+.icon-theme-toggle { -webkit-mask-image: url('/static/img/icons/theme-toggle.svg'); mask-image: url('/static/img/icons/theme-toggle.svg'); }
 
 .icon-heart-fill { -webkit-mask-image: url('/static/img/icons/heart-fill.svg'); mask-image: url('/static/img/icons/heart-fill.svg'); }
 .icon-person-heart-fill { -webkit-mask-image: url('/static/img/icons/person-heart-fill.svg'); mask-image: url('/static/img/icons/person-heart-fill.svg'); }
@@ -50,50 +38,23 @@
    颜色由 .favorite-btn 的 color 给（.icon 是 currentColor + mask-image）。 */
 .icon-star-fill   { -webkit-mask-image: url('/static/img/icons/star-fill.svg');     mask-image: url('/static/img/icons/star-fill.svg'); }
 
-/* 讨论图标：旧类名 _new 后缀是历史误拼（见 css-classes.test.ts 头部的黑方块事故），
-   新代码用 .icon-chat-dots；两个类名指向同一份填充素材。 */
-.icon-chat-dots_new { -webkit-mask-image: url('/static/img/icons/chat-dots-fill.svg'); mask-image: url('/static/img/icons/chat-dots-fill.svg'); }
-.icon-chat-dots     { -webkit-mask-image: url('/static/img/icons/chat-dots-fill.svg'); mask-image: url('/static/img/icons/chat-dots-fill.svg'); }
+.icon-chat-dots_new { -webkit-mask-image: url('/static/img/icons/chat-dots_new.svg'); mask-image: url('/static/img/icons/chat-dots_new.svg'); }
 
 .icon-add { -webkit-mask-image: url('/static/img/icons/add.svg'); mask-image: url('/static/img/icons/add.svg'); }
-.icon-calendar-check { -webkit-mask-image: url('/static/img/icons/calendar-check-fill.svg'); mask-image: url('/static/img/icons/calendar-check-fill.svg'); }
+.icon-calendar-check { -webkit-mask-image: url('/static/img/icons/calendar-check.svg'); mask-image: url('/static/img/icons/calendar-check.svg'); }
 
-.icon-house       { -webkit-mask-image: url('/static/img/icons/house-fill.svg');       mask-image: url('/static/img/icons/house-fill.svg'); }
-/* 直角箭头保持线性（方向靠 rotate 表达，填充会糊成三角块）。 */
+.icon-house       { -webkit-mask-image: url('/static/img/icons/house.svg');       mask-image: url('/static/img/icons/house.svg'); }
 .icon-arrow-left  { -webkit-mask-image: url('/static/img/icons/arrow-left.svg');  mask-image: url('/static/img/icons/arrow-left.svg'); }
-.icon-book        { -webkit-mask-image: url('/static/img/icons/book-fill.svg');        mask-image: url('/static/img/icons/book-fill.svg'); }
-.icon-controller  { -webkit-mask-image: url('/static/img/icons/controller-fill.svg'); mask-image: url('/static/img/icons/controller-fill.svg'); }
-.icon-journal-text{ -webkit-mask-image: url('/static/img/icons/journal-text-fill.svg'); mask-image: url('/static/img/icons/journal-text-fill.svg'); }
-.icon-tools       { -webkit-mask-image: url('/static/img/icons/tools-fill.svg');       mask-image: url('/static/img/icons/tools-fill.svg'); }
+.icon-book        { -webkit-mask-image: url('/static/img/icons/book.svg');        mask-image: url('/static/img/icons/book.svg'); }
+.icon-controller  { -webkit-mask-image: url('/static/img/icons/controller.svg');  mask-image: url('/static/img/icons/controller.svg'); }
+.icon-journal-text{ -webkit-mask-image: url('/static/img/icons/journal-text.svg');mask-image: url('/static/img/icons/journal-text.svg'); }
+.icon-tools       { -webkit-mask-image: url('/static/img/icons/tools.svg');       mask-image: url('/static/img/icons/tools.svg'); }
 
-.icon-fish        { -webkit-mask-image: url('/static/img/icons/fish-fill.svg');        mask-image: url('/static/img/icons/fish-fill.svg'); }
-.icon-market      { -webkit-mask-image: url('/static/img/icons/market-fill.svg');      mask-image: url('/static/img/icons/market-fill.svg'); }
+.icon-fish        { -webkit-mask-image: url('/static/img/icons/fish.svg');        mask-image: url('/static/img/icons/fish.svg'); }
+.icon-market      { -webkit-mask-image: url('/static/img/icons/market.svg');      mask-image: url('/static/img/icons/market.svg'); }
 
-.icon-clipboard   { -webkit-mask-image: url('/static/img/icons/clipboard-fill.svg');   mask-image: url('/static/img/icons/clipboard-fill.svg'); }
-.icon-link        { -webkit-mask-image: url('/static/img/icons/link-fill.svg');        mask-image: url('/static/img/icons/link-fill.svg'); }
-.icon-image       { -webkit-mask-image: url('/static/img/icons/image-fill.svg');       mask-image: url('/static/img/icons/image-fill.svg'); }
-
-/* ── 功能图标（聊天 / 通知 / 顶栏 / 管理台）──────────────────────────────────
-   这些类供界面按钮使用；尺寸走 .icon 基类，颜色跟随按钮的 currentColor。 */
-.icon-search      { -webkit-mask-image: url('/static/img/icons/search.svg');      mask-image: url('/static/img/icons/search.svg'); }
-.icon-menu        { -webkit-mask-image: url('/static/img/icons/menu.svg');        mask-image: url('/static/img/icons/menu.svg'); }
-.icon-plus        { -webkit-mask-image: url('/static/img/icons/plus-lg.svg');     mask-image: url('/static/img/icons/plus-lg.svg'); }
-.icon-close       { -webkit-mask-image: url('/static/img/icons/x-lg.svg');        mask-image: url('/static/img/icons/x-lg.svg'); }
-.icon-arrow-right { -webkit-mask-image: url('/static/img/icons/arrow-right.svg'); mask-image: url('/static/img/icons/arrow-right.svg'); }
-.icon-arrow-down  { -webkit-mask-image: url('/static/img/icons/arrow-down.svg');  mask-image: url('/static/img/icons/arrow-down.svg'); }
-.icon-check       { -webkit-mask-image: url('/static/img/icons/check-lg.svg');    mask-image: url('/static/img/icons/check-lg.svg'); }
-.icon-check-double{ -webkit-mask-image: url('/static/img/icons/check2-all.svg');  mask-image: url('/static/img/icons/check2-all.svg'); }
-.icon-bookmark    { -webkit-mask-image: url('/static/img/icons/bookmark-fill.svg'); mask-image: url('/static/img/icons/bookmark-fill.svg'); }
-.icon-volume-off  { -webkit-mask-image: url('/static/img/icons/volume-mute-fill.svg'); mask-image: url('/static/img/icons/volume-mute-fill.svg'); }
-.icon-more        { -webkit-mask-image: url('/static/img/icons/three-dots.svg');  mask-image: url('/static/img/icons/three-dots.svg'); }
-.icon-at          { -webkit-mask-image: url('/static/img/icons/at.svg');          mask-image: url('/static/img/icons/at.svg'); }
-.icon-scale       { -webkit-mask-image: url('/static/img/icons/scale-fill.svg');  mask-image: url('/static/img/icons/scale-fill.svg'); }
-.icon-shield-alert{ -webkit-mask-image: url('/static/img/icons/shield-fill-exclamation.svg'); mask-image: url('/static/img/icons/shield-fill-exclamation.svg'); }
-.icon-megaphone   { -webkit-mask-image: url('/static/img/icons/megaphone-fill.svg'); mask-image: url('/static/img/icons/megaphone-fill.svg'); }
-.icon-smile       { -webkit-mask-image: url('/static/img/icons/emoji-smile-fill.svg'); mask-image: url('/static/img/icons/emoji-smile-fill.svg'); }
-.icon-id-card     { -webkit-mask-image: url('/static/img/icons/person-vcard-fill.svg'); mask-image: url('/static/img/icons/person-vcard-fill.svg'); }
-.icon-book-open   { -webkit-mask-image: url('/static/img/icons/book-open-fill.svg'); mask-image: url('/static/img/icons/book-open-fill.svg'); }
-.icon-images      { -webkit-mask-image: url('/static/img/icons/images-fill.svg');    mask-image: url('/static/img/icons/images-fill.svg'); }
+.icon-clipboard   { -webkit-mask-image: url('/static/img/icons/clipboard.svg');   mask-image: url('/static/img/icons/clipboard.svg'); }
+.icon-link        { -webkit-mask-image: url('/static/img/icons/link.svg');        mask-image: url('/static/img/icons/link.svg'); }
 /* lucide 内联 SVG + 自绘 rc-icon：1em 随字号缩放、颜色走 currentColor */
 svg.lucide,
 svg.rc-icon {

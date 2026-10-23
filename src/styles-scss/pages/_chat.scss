@@ -219,8 +219,7 @@
   opacity: 0;
   transition: opacity 0.18s ease, background-color 0.25s ease, color 0.25s ease;
 }
-.chat-chan__more svg,
-.chat-chan__more .icon {
+.chat-chan__more svg {
   width: 16px;
   height: 16px;
 }
@@ -275,30 +274,18 @@
   display: flex;
 }
 
-// 图标 / 头像共用盒子几何；底座形状分开写：头像仍是 8% 方角（§3.4），
-// 淡色底座图标统一圆形（§3.3「圆形图标按钮与角标 = 50%」）。
 .chat-chan__icon,
 .chat-chan__avatar {
   flex: none;
   width: 34px;
   height: 34px;
+  border-radius: 8%;
   display: flex;
   align-items: center;
   justify-content: center;
   overflow: hidden;
   font-size: 1.1rem;
   background: var(--color-background-content);
-}
-.chat-chan__avatar {
-  border-radius: 8%;
-}
-.chat-chan__icon {
-  border-radius: 50%;
-}
-// 原 Lucide 图标是 1em（随 1.1rem 字号）；.icon 基类是 1.2em，这里钉回 1em。
-.chat-chan__icon .icon {
-  width: 1em;
-  height: 1em;
 }
 .chat-chan__avatar img {
   width: 100%;
@@ -406,8 +393,7 @@
   text-decoration: none;
   white-space: nowrap;
 
-  svg,
-  .icon {
+  svg {
     width: 14px;
     height: 14px;
   }
@@ -430,8 +416,7 @@
   font-size: 0.9rem;
   white-space: nowrap;
 
-  svg,
-  .icon {
+  svg {
     width: 16px;
     height: 16px;
     flex: none;
@@ -569,8 +554,7 @@
     outline-offset: 2px;
   }
 
-  svg,
-  .icon {
+  svg {
     width: 16px;
     height: 16px;
   }
@@ -585,8 +569,7 @@
   color: var(--color-brand-primary);
   white-space: nowrap;
 
-  svg,
-  .icon {
+  svg {
     width: 14px;
     height: 14px;
   }
@@ -1244,18 +1227,12 @@
   flex: none;
   width: 32px;
   height: 32px;
-  // 淡色底座图标统一圆形（§3.3）。
-  border-radius: 50%;
+  border-radius: 8px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   background: var(--color-background-card);
   color: var(--color-brand-primary);
-}
-// 原 Lucide 图标是 1em（16px）；.icon 基类 1.2em 会大一圈，钉回 16px。
-.chat-msg__blog-icon .icon {
-  width: 16px;
-  height: 16px;
 }
 .chat-msg__blog-main {
   flex: 1;
@@ -1285,10 +1262,6 @@
 .chat-msg__blog-arrow {
   flex: none;
   font-size: 0.9rem;
-  // 原来的 Lucide 图标由 svg.lucide 定成 1em（= 0.9rem）；.icon 基类是 1.2em，
-  // 这里按 1em 钉住，箭头视觉重量不变。
-  width: 1em;
-  height: 1em;
   color: var(--color-text-secondary);
 }
 .chat-msg__blog-missing {
@@ -1584,20 +1557,13 @@
   flex: none;
   width: 34px;
   height: 34px;
-  // 淡色底座图标统一圆形（§3.3）；头像才是 8% 方角。
-  border-radius: 50%;
+  border-radius: 12px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   background: var(--color-brand-secondary);
   color: var(--color-brand-primary);
   transition: background-color 0.25s ease;
-}
-// 引用博客弹窗的图标底座（圆形）：原 Lucide 图标是 1em（16px），.icon 基类
-// 1.2em 会大一圈，这里钉回 16px。
-.chat-blog-item__icon .icon {
-  width: 16px;
-  height: 16px;
 }
 .chat-blog-item__main {
   flex: 1;
@@ -1721,8 +1687,7 @@
     height: 44px;
     border-radius: 50%;
 
-    svg,
-    .icon {
+    svg {
       width: 22px;
       height: 22px;
     }

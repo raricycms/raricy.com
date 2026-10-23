@@ -21,6 +21,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useEffect, useRef, useState } from 'react';
+import { BookOpenText, IdCard, Image as ImageIcon, Images, Smile } from 'lucide-react';
 import { IMAGE_ACCEPT } from '@/lib/image-client';
 import type { MentionScope } from '@/lib/mention-shared';
 import MentionInput from './MentionInput';
@@ -193,7 +194,7 @@ export default function RichComposer({
       )}
       {blogQuote && (
         <div className={`${className}__blog`}>
-          <span className={`${className}__blog-icon icon icon-book-open`} aria-hidden="true" />
+          <BookOpenText className={`${className}__blog-icon`} aria-hidden="true" />
           <span className={`${className}__reply-text`}>{blogQuote.title}</span>
           <button
             type="button"
@@ -228,7 +229,7 @@ export default function RichComposer({
             title="引用博客"
             aria-label="引用博客"
           >
-            <span className="icon icon-book-open" aria-hidden="true" />
+            <BookOpenText aria-hidden="true" />
           </button>
           <button
             type="button"
@@ -238,7 +239,7 @@ export default function RichComposer({
             title="上传图片（图床）"
             aria-label="上传图片"
           >
-            {uploadingImage ? '…' : <span className="icon icon-image" aria-hidden="true" />}
+            {uploadingImage ? '…' : <ImageIcon aria-hidden="true" />}
           </button>
           <button
             type="button"
@@ -248,7 +249,7 @@ export default function RichComposer({
             title="从图床选择"
             aria-label="从图床选择"
           >
-            <span className="icon icon-images" aria-hidden="true" />
+            <Images aria-hidden="true" />
           </button>
           <button
             type="button"
@@ -261,7 +262,7 @@ export default function RichComposer({
             title="发送用户名片"
             aria-label="发送用户名片"
           >
-            <span className="icon icon-id-card" aria-hidden="true" />
+            <IdCard aria-hidden="true" />
           </button>
           <button
             type="button"
@@ -273,7 +274,7 @@ export default function RichComposer({
             // 供 StickerPicker 的「点外面关掉」识别并让开（否则会关了又开）
             data-sticker-toggle
           >
-            <span className="icon icon-smile" aria-hidden="true" />
+            <Smile aria-hidden="true" />
           </button>
           <input
             ref={fileRef}

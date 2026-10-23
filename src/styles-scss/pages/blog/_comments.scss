@@ -54,7 +54,7 @@
     color: var(--color-text-primary);
 }
 
-/* 图标底座与 .comment-blog__icon 同一档（淡底 + 品牌字色）；淡色底座图标统一圆形 */
+/* 图标方框与 .comment-blog__icon 同一档（卡片底色 + 品牌字色），只是这里用淡底 */
 .comment-section__icon {
     display: inline-flex;
     align-items: center;
@@ -62,11 +62,11 @@
     flex: none;
     width: 34px;
     height: 34px;
-    border-radius: 50%;
+    border-radius: 12px;
     background: var(--color-brand-secondary);
     color: var(--color-brand-primary);
 
-    svg, .icon {
+    svg {
         width: 18px;
         height: 18px;
     }
@@ -353,7 +353,7 @@
     font-family: inherit;
     white-space: nowrap;
 
-    svg, .icon {
+    svg {
         width: 14px;
         height: 14px;
         flex: none;
@@ -392,7 +392,7 @@
     line-height: 1;
     color: var(--color-text-secondary);
 
-    svg, .icon {
+    svg {
         width: 15px;
         height: 15px;
         flex: none;
@@ -402,6 +402,10 @@
 .comment-like.is-liked {
     background-color: var(--color-warning-secondary);
     color: var(--color-warning-primary);
+
+    svg {
+        fill: currentColor;
+    }
 
     @media (hover: hover) and (pointer: fine) {
         &:hover:not(:disabled) {
@@ -472,23 +476,17 @@
     box-shadow: var(--shadow-card-brand);
 }
 
-/* 图标底座：与 .chat-msg__blog-icon 同尺寸（卡片底色 + 品牌字色）；
-   淡色底座图标统一圆形 */
+/* 图标方框：与 .chat-msg__blog-icon 同尺寸同圆角（卡片底色 + 品牌字色） */
 .comment-blog__icon {
     flex: none;
     width: 32px;
     height: 32px;
-    border-radius: 50%;
+    border-radius: 8px;
     display: inline-flex;
     align-items: center;
     justify-content: center;
     background: var(--color-background-card);
     color: var(--color-brand-primary);
-
-    .icon {
-        width: 16px;
-        height: 16px;
-    }
 }
 
 .comment-blog__main {
@@ -535,18 +533,17 @@
     margin: 0;
 }
 
-/* 淡色底座图标统一圆形 */
 .comment-status__icon {
     display: inline-flex;
     align-items: center;
     justify-content: center;
     width: 44px;
     height: 44px;
-    border-radius: 50%;
+    border-radius: 14px;
     background: var(--color-brand-secondary);
     color: var(--color-brand-primary);
 
-    svg, .icon {
+    svg {
         width: 22px;
         height: 22px;
     }
@@ -577,9 +574,9 @@
     .comment-section__icon {
         width: 30px;
         height: 30px;
-        border-radius: 50%;
+        border-radius: 10px;
 
-        svg, .icon {
+        svg {
             width: 16px;
             height: 16px;
         }

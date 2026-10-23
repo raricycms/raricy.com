@@ -12,6 +12,7 @@ import { flushSync } from 'react-dom';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import Avatar from '@/app/components/Avatar';
+import { ArrowDown, ArrowRight, Menu } from 'lucide-react';
 import type { ChatChannelDTO, ChatMessageDTO, ChatStreamEvent } from '@/lib/chat-shared';
 import {
   CHAT_LOBBY_ID,
@@ -1743,7 +1744,7 @@ export default function ChatApp({
                 onClick={() => setDrawerOpen((v) => !v)}
                 aria-label={`切换会话列表${anyUnreadMark ? '（有新消息）' : ''}`}
               >
-                <span className="icon icon-menu" aria-hidden="true" />
+                <Menu />
                 {anyUnreadMark && !drawerOpen && (
                   <span className="chat-main__menu-dot" aria-hidden="true" />
                 )}
@@ -1765,7 +1766,7 @@ export default function ChatApp({
               <SearchButton onClick={() => setSearchOpen(true)} />
               {activeChannel.kind === 'direct' && activeChannel.peer && (
                 <Link className="chat-main__profile-link" href={`/u/${activeChannel.peer.id}`}>
-                  个人资料 <span className="icon icon-arrow-right" aria-hidden="true" />
+                  个人资料 <ArrowRight aria-hidden="true" />
                 </Link>
               )}
             </header>
@@ -1815,7 +1816,7 @@ export default function ChatApp({
             {(newCount > 0 || historyView) && (
               <button type="button" className="chat-jump-new" onClick={returnToPresent}>
                 <span className="numeric">{newCount > 0 ? `${newCount} 条新消息` : '回到最新'}</span>{' '}
-                <span className="icon icon-arrow-down" aria-hidden="true" />
+                <ArrowDown aria-hidden="true" />
               </button>
             )}
 

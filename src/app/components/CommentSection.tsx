@@ -24,7 +24,7 @@
 
 import Link from 'next/link';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ChevronDown, CornerUpLeft } from 'lucide-react';
+import { BookOpenText, ChevronDown, CornerUpLeft, Heart, MessageCircle, Trash2 } from 'lucide-react';
 import RichComposer, { type ComposerBlogQuote } from './RichComposer';
 import QuoteBlogModal from './QuoteBlogModal';
 import ImageLightbox from './ImageLightbox';
@@ -452,7 +452,7 @@ export default function CommentSection({
         <header className="comment-section__head">
           <h2 className="comment-section__title" id="comment-section-title">
             <span className="comment-section__icon" aria-hidden="true">
-              <span className="icon icon-chat-dots" />
+              <MessageCircle />
             </span>
             评论
             <span className="comment-section__count numeric">
@@ -476,7 +476,7 @@ export default function CommentSection({
           <ul className="comment-list" id="comment-list">
             <li className="comment-status comment-status--empty">
               <span className="comment-status__icon" aria-hidden="true">
-                <span className="icon icon-chat-dots" />
+                <MessageCircle />
               </span>
               <p>{canComment ? '还没有评论，来写第一条吧。' : '还没有评论。'}</p>
             </li>
@@ -712,7 +712,7 @@ function CommentItem({
         {node.blog && (
           <a className="comment-blog" href={`/blog/${node.blog.id}`}>
             <span className="comment-blog__icon" aria-hidden="true">
-              <span className="icon icon-book-open" />
+              <BookOpenText />
             </span>
             <span className="comment-blog__main">
               <span className="comment-blog__title">{node.blog.title}</span>
@@ -733,12 +733,12 @@ function CommentItem({
               aria-pressed={node.liked}
               aria-label={node.liked ? '取消点赞' : '点赞'}
             >
-              <span className="icon icon-heart-fill" aria-hidden="true" />
+              <Heart aria-hidden="true" />
               {node.likes_count > 0 && <span className="numeric">{node.likes_count}</span>}
             </button>
           ) : !node.is_deleted && node.likes_count > 0 ? (
             <span className="comment-like comment-like--static">
-              <span className="icon icon-heart-fill" aria-hidden="true" />
+              <Heart aria-hidden="true" />
               <span className="numeric">{node.likes_count}</span>
             </span>
           ) : null}
@@ -754,7 +754,7 @@ function CommentItem({
               className="comment-action comment-action--danger"
               onClick={() => onDelete(node.id, requiresReason)}
             >
-              <span className="icon icon-trash-fill" aria-hidden="true" />
+              <Trash2 aria-hidden="true" />
               删除
             </button>
           )}

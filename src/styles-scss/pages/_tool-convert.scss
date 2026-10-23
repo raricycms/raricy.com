@@ -210,10 +210,9 @@
       display: grid;
       place-items: center;
       flex: none;
-      /* 淡色底座图标统一圆形（40×40 正方形，避免 50% 拉成椭圆） */
       width: 40px;
-      height: 40px;
-      border-radius: 50%;
+      height: 44px;
+      border-radius: $radius-large;
       background: var(--color-background-page);
       color: var(--color-text-secondary);
     }
