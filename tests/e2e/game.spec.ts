@@ -80,7 +80,7 @@ test('专注模式隐藏玩具入口，并拦住菜单及游戏直达', async ({
   await page.goto('/');
   await expect(page.locator('.home-grid .feature-card')).toHaveCount(3);
   await expect(page.locator('.site-nav a[href="/game"]')).toHaveCount(0);
-  for (const route of ['/game', '/game/atamas', '/game/collections/test', '/game/wand', '/game/wand2', '/game/public-space', '/game/quandi', '/game/twinshade', '/game/lumen', '/game/yiwen', '/game/hinge']) {
+  for (const route of ['/game', '/game/atamas', '/game/collections/test', '/game/collections/craft', '/game/wand', '/game/wand2', '/game/public-space', '/game/quandi', '/game/twinshade', '/game/lumen', '/game/yiwen', '/game/hinge', '/game/loom', '/game/papercut', '/game/marbling']) {
     await page.goto(route);
     await expect(page.getByRole('heading', { name: '已开启专注模式' })).toBeVisible();
     await expect(page.locator('canvas, .game-card, .lm-game, .yw-game, .hy-game')).toHaveCount(0);
