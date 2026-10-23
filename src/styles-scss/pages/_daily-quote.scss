@@ -1,4 +1,5 @@
 @use '../abstracts/mixins' as m;
+@use '../abstracts/variables' as v;
 
 // ── 每日一言弹窗（<dialog> + showModal，全站唯一一个） ──────────────────────
 //
@@ -7,7 +8,7 @@
 // 盒子高度因此会跳一次（390×664 实测：占位 166px → 正片 425px）。用
 // `margin: auto` 垂直居中时，这次变化会让**整个盒子**上下各挪半个高度差（这里是
 // 130px）—— 手机上网络比桌面慢，占位那一帧会停留得足够久，用户看到的就是
-// 「弹窗突然被往下/上拽了半屏，然后又弹回来」。后面还有两次同类变化：点「我也要
+// 「弹窗突然被往下/上拽了半屏，然后又弹回来」。后面还有几次同类变化：点「我也要
 // 投稿」换成表单（高得多），共鸣/收藏成功后卡片下方多一行反馈。
 // 窄屏把上沿钉死（固定上外边距 + 下外边距 auto 吃掉剩余空间），高度只向下长，
 // 标题、「每日一言」和关闭按钮原地不动。宽屏这次加载通常在一帧内就完成（本机实测
@@ -18,6 +19,32 @@
 // 纯色层，模糊之后只剩一层脏灰；此外这一幕在手机上出现过「打开瞬间整块弹窗被
 // 合成到错误偏移、一帧后自己回来」的闪动，与这层全屏滤镜的初始化同时发生。
 // 弹窗自己的层级由 `--shadow-card-brand` 交代，够用。
+//
+// 【开合只淡入淡出，不缩放、不位移】这个弹窗的几何被 e2e 按真视口量（左右留白、
+// 高度上限、窄屏上沿固定），缩放会把这几条断言变成抖动源；而且模态是视口级浮层，
+// 没有一个可以「长出来」的触发边缘，它属于 §6.2 的入场 / 退场档。关闭时内容先退
+// （150ms），外壳与遮罩后收（220ms，收起档曲线），收完才真正 close()。减少动态
+// 效果时 JS 直接收尾，不依赖动画结束事件。
+// ⚠️ `::backdrop` 的 background 必须保持固定的 `rgba(0,0,0,.5)`：透明度动画走
+// `opacity`，不要把 alpha 写进 background —— e2e 直接读 computed backgroundColor，
+// 那种写法会让它随帧变化。
+
+@keyframes daily-quote-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+// 状态内容入场：只改透明度，不推布局（弹窗已经由外壳交代了空间来源）。
+@keyframes daily-quote-content-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
 .daily-quote-dialog {
   border: 0;
   padding: 0;
@@ -27,68 +54,570 @@
   width: min(500px, calc(100vw - 32px));
   max-width: none;
   max-height: calc(100dvh - 32px - var(--safe-top) - var(--safe-bottom));
-  border-radius: 30px;
+  border-radius: v.$radius-card;
   color: var(--color-text-primary);
   background: var(--color-background-card);
   box-shadow: var(--shadow-card-brand);
   overflow-y: auto;
-  &::backdrop { background: rgba(0, 0, 0, .5); }
-  &__body { padding: 28px; }
-  &__header { display: flex; align-items: center; gap: 12px; margin-bottom: 24px;
-    > div { flex: 1; }
-    h2 { font-size: 1.35rem; margin: 0; }
-    p { margin: 4px 0 0; }
+  overscroll-behavior: contain;
+  opacity: 0;
+  transition: opacity .2s ease;
+
+  &::backdrop {
+    background: rgba(0, 0, 0, .5);
+    opacity: 0;
+    transition: opacity .2s ease;
   }
-  &__links { display: flex; flex-wrap: wrap; gap: 20px; margin-top: 20px; font-size: .875rem; }
+
+  &.is-open {
+    opacity: 1;
+
+    &::backdrop {
+      opacity: 1;
+    }
+
+    .daily-quote-dialog__body {
+      opacity: 1;
+      transition-delay: 55ms;
+    }
+  }
+
+  // 关闭：内容先退场，外壳与遮罩随后收起。两条时间线同一条收起节奏。
+  &.is-closing {
+    opacity: 0;
+    transition: opacity v.$motion-collapse-duration v.$motion-collapse-easing;
+
+    &::backdrop {
+      opacity: 0;
+      transition: opacity v.$motion-collapse-duration v.$motion-collapse-easing;
+    }
+
+    .daily-quote-dialog__body {
+      opacity: 0;
+      transition: opacity .15s ease;
+      transition-delay: 0s;
+    }
+  }
+
+  &__body {
+    padding: 28px;
+    opacity: 0;
+    transition: opacity .18s ease;
+  }
+
+  &__header {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    margin-bottom: 24px;
+  }
+
+  &__heading {
+    flex: 1;
+    min-width: 0;
+
+    h2 {
+      margin: 0;
+      font-size: 1.35rem;
+      line-height: 1.3;
+      animation: daily-quote-content-in .18s ease;
+    }
+  }
+
+  // 日期槽常驻：占位 → 正片只换文字，标题区高度不跟着跳。
+  &__day {
+    min-height: 1.3em;
+    margin: 4px 0 0;
+    color: var(--color-text-secondary);
+    font-size: .875rem;
+    line-height: 1.3;
+
+    span {
+      display: inline-block;
+      animation: daily-quote-content-in .18s ease;
+    }
+  }
+
+  &__stage {
+    animation: daily-quote-content-in .18s ease .055s both;
+  }
+
+  &__footer {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 12px;
+    margin-top: 24px;
+  }
+
+  &__links {
+    display: flex;
+    flex: 1;
+    flex-wrap: wrap;
+    gap: 0 20px;
+    min-width: 0;
+
+    a {
+      display: inline-flex;
+      align-items: center;
+      min-height: 44px;
+      color: var(--color-text-secondary);
+      font-size: .875rem;
+      text-decoration: none;
+      transition: color .25s ease;
+
+      &:hover {
+        color: var(--color-brand-primary);
+      }
+    }
+  }
+
+  // 阅读 / 投稿两种模式共用这一颗按钮：位置、焦点与外壳不变，只换文案与图标。
+  &__mode {
+    @include m.btn-secondary;
+    display: inline-flex;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    min-height: 44px;
+    padding: 10px 16px;
+    font-size: .875rem;
+  }
 }
-.daily-quote-icon { @include m.btn-secondary; display: inline-flex; align-items: center; justify-content: center; min-width: 44px; min-height: 44px; flex-shrink: 0; }
-.daily-quote-primary { @include m.btn-primary; display: inline-flex; align-items: center; justify-content: center; padding: 12px 20px; min-height: 44px; font-size: 1rem; }
+
+.daily-quote-icon {
+  @include m.btn-secondary;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  min-height: 44px;
+  flex-shrink: 0;
+}
+
+.daily-quote-primary,
+.daily-quote-secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px 20px;
+  min-height: 44px;
+  font-size: 1rem;
+}
+
+.daily-quote-primary {
+  @include m.btn-primary;
+}
+
+.daily-quote-secondary {
+  @include m.btn-secondary;
+}
+
+// 键盘焦点走品牌光晕：沿胶囊自身圆角扩散，不留浏览器默认的方形描边。
+.daily-quote-icon,
+.daily-quote-primary,
+.daily-quote-secondary,
+.daily-quote-card__action,
+.daily-quote-dialog__mode {
+  &:focus-visible {
+    outline: none;
+    box-shadow: var(--shadow-focus-brand);
+  }
+}
+
+.daily-quote-state {
+  display: grid;
+  justify-items: start;
+  gap: 16px;
+  color: var(--color-text-secondary);
+
+  p {
+    margin: 0;
+    line-height: 1.7;
+  }
+
+  &--loading {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-height: 44px;
+  }
+}
+
+.daily-quote-spin {
+  flex: none;
+  animation: daily-quote-spin 1s linear infinite;
+}
+
 .daily-quote-card {
   min-width: 0;
-  &__meta { display: flex; flex-wrap: wrap; gap: 12px; color: var(--color-text-secondary); font-size: .875rem; }
-  &__text { border: 0; padding: 0; margin: 32px 0 24px; font-size: clamp(1.25rem, 4vw, 1.65rem); font-weight: 600; line-height: 1.85; overflow-wrap: anywhere; white-space: pre-wrap; }
-  &__author { margin: 0 0 8px; font-weight: 600; }
-  &__source, &__hint { color: var(--color-text-secondary); font-size: .875rem; line-height: 1.7; overflow-wrap: anywhere; }
-  &__source { margin: 0 0 24px; }
-  &__actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-  &__action { @include m.btn-secondary($pointer-hover-only: true); display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 44px; padding: 10px 14px; font-size: .875rem;
-    &.is-active { background: var(--color-brand-secondary); color: var(--color-brand-primary); }
-    &--favorite.is-active { background: var(--color-star-secondary); color: var(--color-star-primary); }
-    &.is-active svg { fill: currentColor; }
+
+  &__meta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 12px;
+    color: var(--color-text-secondary);
+    font-size: .875rem;
   }
-  &__feedback { color: var(--color-brand-primary); font-size: .875rem; }
+
+  &__category {
+    padding: 3px 10px;
+    border-radius: v.$radius-max;
+    background: var(--color-background-subtle);
+    color: var(--color-text-secondary);
+    font-size: .8rem;
+    line-height: 1.5;
+  }
+
+  // 引文是卡内内容块：比弹窗卡片再深一档，靠底色分层，不描边。
+  &__quote {
+    margin: 20px 0;
+    padding: 24px;
+    border-radius: v.$radius-field;
+    background: var(--color-background-content);
+  }
+
+  &__text {
+    border: 0;
+    padding: 0;
+    margin: 0;
+    font-size: clamp(1.25rem, 4vw, 1.65rem);
+    font-weight: 600;
+    line-height: 1.85;
+    overflow-wrap: anywhere;
+    white-space: pre-wrap;
+  }
+
+  &__byline {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 4px 12px;
+    margin: 20px 0 0;
+  }
+
+  &__author {
+    font-weight: 600;
+  }
+
+  &__source {
+    color: var(--color-text-secondary);
+    font-size: .875rem;
+    line-height: 1.7;
+    overflow-wrap: anywhere;
+
+    a {
+      color: var(--color-brand-primary);
+      text-decoration: none;
+
+      &:hover {
+        text-decoration: underline;
+      }
+    }
+  }
+
+  &__actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+  }
+
+  // 状态递进与点赞 / 收藏按钮同一套（_blog.scss）：未激活灰色无底；
+  // 未激活悬停或已激活空闲为功能色淡底 + 同色图标；已激活悬停与按下为实底白图标。
+  &__action {
+    @include m.btn-secondary($pointer-hover-only: true);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    min-height: 44px;
+    padding: 10px 14px;
+    font-size: .875rem;
+
+    &.is-active {
+      background-color: var(--color-brand-secondary);
+      color: var(--color-brand-primary);
+
+      @media (hover: hover) and (pointer: fine) {
+        &:hover:not(:disabled) {
+          background-color: var(--color-brand-primary);
+          color: #fff;
+        }
+      }
+    }
+
+    &.is-active .daily-quote-card__icon {
+      fill: currentColor;
+    }
+
+    &--favorite {
+      --color-brand-primary: var(--color-star-primary);
+      --color-brand-secondary: var(--color-star-secondary);
+    }
+  }
+
+  &__count {
+    animation: daily-quote-content-in .18s ease;
+  }
+
+  &__hint {
+    margin: 12px 0 0;
+    color: var(--color-text-secondary);
+    font-size: .875rem;
+    line-height: 1.7;
+    overflow-wrap: anywhere;
+  }
+
+  // 反馈行常驻一行高度：提示与结果互相替换时不推动下方的布局。
+  &__note {
+    min-height: 1.7em;
+    margin: 4px 0 0;
+    color: var(--color-brand-primary);
+    font-size: .875rem;
+    line-height: 1.7;
+    overflow-wrap: anywhere;
+
+    &--error {
+      color: var(--color-warning-primary);
+    }
+
+    span {
+      display: inline-block;
+      animation: daily-quote-content-in .18s ease;
+    }
+  }
 }
+
 .daily-quote-form {
-  display: grid; gap: 16px;
-  &__field { display: grid; gap: 8px; }
-  label { display: grid; gap: 8px; font-size: .9375rem; }
-  input, select, textarea { @include m.field-surface; width: 100%; padding: 12px 16px; font: inherit; font-size: 1rem; }
-  input, select { border-radius: 999px; }
-  textarea { border-radius: 20px; resize: vertical; min-height: 110px; }
-  option { color: var(--color-text-primary); background: var(--color-background-card); }
-  p { margin: 0; }
+  display: grid;
+  gap: 16px;
+
+  &__field {
+    display: grid;
+    gap: 8px;
+    min-width: 0;
+  }
+
+  &__row {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+  }
+
+  label {
+    display: grid;
+    gap: 8px;
+    font-size: .9375rem;
+  }
+
+  input,
+  textarea {
+    @include m.field-surface;
+    width: 100%;
+    padding: 12px 16px;
+    font: inherit;
+    font-size: 1rem;
+  }
+
+  input {
+    border-radius: v.$radius-max;
+  }
+
+  textarea {
+    border-radius: v.$radius-field;
+    resize: vertical;
+    min-height: 110px;
+    line-height: 1.7;
+  }
+
+  &__counter,
+  &__hint {
+    margin: 0;
+    color: var(--color-text-secondary);
+    font-size: .8125rem;
+    line-height: 1.6;
+  }
+
+  &__counter {
+    justify-self: end;
+
+    &.is-over {
+      color: var(--color-warning-primary);
+    }
+  }
+
+  // 出处字段由来源选择展开：收起时高度归零、退出焦点与表单数据。
+  &__reveal {
+    @include m.expand-panel;
+  }
+
+  &__reveal-clip {
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  &__reveal.is-open {
+    @include m.expand-panel-open;
+  }
+
+  &__submit {
+    width: 100%;
+  }
+
+  &__done {
+    display: grid;
+    justify-items: center;
+    gap: 12px;
+    padding: 32px 20px;
+    border-radius: v.$radius-field;
+    background: var(--color-success-secondary);
+    color: var(--color-success-primary);
+    text-align: center;
+
+    p {
+      margin: 0;
+      font-weight: 600;
+      line-height: 1.7;
+    }
+  }
+
+  &__done-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
 }
-.daily-quote-error { color: var(--color-warning-primary); line-height: 1.7; }
-.daily-quote-page { padding-top: 32px; padding-bottom: 40px; max-width: 940px;
-  &__header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 24px; h1 { margin: 0; font-size: 1.75rem; } }
+
+// 告警区：状态色 + 淡底 + 固定圆角，不加装饰性左侧竖条。
+.daily-quote-error {
+  margin: 0;
+  padding: 12px 16px;
+  border-radius: v.$radius-large;
+  background: var(--color-warning-secondary);
+  color: var(--color-warning-primary);
+  line-height: 1.7;
+  overflow-wrap: anywhere;
 }
-.daily-quote-panel { background: var(--color-background-card); border-radius: 30px; padding: 28px; min-width: 0; overflow-wrap: anywhere;
-  > h2 { margin-top: 0; font-size: 1.25rem; }
+
+.daily-quote-page {
+  padding-top: 32px;
+  padding-bottom: 40px;
+  max-width: 940px;
+
+  &__header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 24px;
+
+    h1 {
+      margin: 0;
+      font-size: 1.75rem;
+    }
+  }
 }
-.daily-quote-list { display: grid; gap: 20px; margin-top: 24px; }
-.daily-quote-submission-text { font-size: 1.125rem; line-height: 1.8; }
-.daily-quote-pagination { display: flex; flex-wrap: wrap; gap: 12px; margin: 20px 0; a[aria-current='page'] { color: var(--color-brand-primary); background: var(--color-brand-secondary); } }
-.checkin-quote-links { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 20px; margin-top: 24px; }
+
+.daily-quote-panel {
+  background: var(--color-background-card);
+  border-radius: 30px;
+  padding: 28px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+
+  > h2 {
+    margin-top: 0;
+    font-size: 1.25rem;
+  }
+}
+
+.daily-quote-list {
+  display: grid;
+  gap: 20px;
+  margin-top: 24px;
+}
+
+.daily-quote-submission-text {
+  font-size: 1.125rem;
+  line-height: 1.8;
+}
+
+.daily-quote-pagination {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin: 20px 0;
+
+  a[aria-current='page'] {
+    color: var(--color-brand-primary);
+    background: var(--color-brand-secondary);
+  }
+}
+
+.checkin-quote-links {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  margin-top: 24px;
+
+  a {
+    color: var(--color-text-secondary);
+    font-size: .9rem;
+    text-decoration: none;
+    transition: color .25s ease;
+
+    &:hover {
+      color: var(--color-brand-primary);
+    }
+  }
+}
 
 /* 窄屏：上沿钉死（理由见文件头）。`<dialog>` 的 UA 样式是 `height: fit-content`，
    所以固定上外边距 + `margin-bottom: auto` 只会让它贴顶，不会把盒子拉满视口；
    内容超过 max-height 时仍然是弹窗内部滚动。 */
 @media (max-width: 768px) {
-  .daily-quote-dialog { margin: calc(12px + var(--safe-top)) auto auto; }
+  .daily-quote-dialog {
+    margin: calc(12px + var(--safe-top)) auto auto;
+  }
 }
 
 @media (max-width: 576px) {
-  .daily-quote-dialog__body, .daily-quote-panel { padding: 20px; }
-  .daily-quote-card__action { padding: 10px 12px; }
-  .daily-quote-panel { border-radius: 18px; }
+  .daily-quote-dialog__body,
+  .daily-quote-panel {
+    padding: 20px;
+  }
+
+  .daily-quote-card__action {
+    padding: 10px 12px;
+  }
+
+  .daily-quote-panel {
+    border-radius: 18px;
+  }
+}
+
+@media (max-width: 480px) {
+  .daily-quote-form__row {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .daily-quote-dialog,
+  .daily-quote-dialog::backdrop,
+  .daily-quote-dialog *,
+  .daily-quote-card,
+  .daily-quote-card *,
+  .daily-quote-form,
+  .daily-quote-form * {
+    transition: none !important;
+    animation: none !important;
+  }
 }

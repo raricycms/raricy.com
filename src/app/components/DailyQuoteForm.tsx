@@ -1,19 +1,28 @@
 'use client';
 
-import { useId, useState, type FormEvent } from 'react';
+import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { CircleCheck, LoaderCircle } from 'lucide-react';
 import { QUOTE_CATEGORIES, QUOTE_CONTENT_MAX, quoteLength } from '@/lib/daily-quote';
 import ExpandSelect from './ExpandSelect';
 
-export default function DailyQuoteForm({ onDone }: { onDone?: () => void }) {
+export default function DailyQuoteForm() {
   const router = useRouter();
   const id = useId();
+  const textarea = useRef<HTMLTextAreaElement>(null);
+  const doneBox = useRef<HTMLDivElement>(null);
+  const focusForm = useRef(false);
   const [content, setContent] = useState('');
   const [sourceType, setSourceType] = useState('original');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [done, setDone] = useState(false);
+
+  useEffect(() => {
+    if (done) { doneBox.current?.focus(); return; }
+    if (focusForm.current) { focusForm.current = false; textarea.current?.focus(); }
+  }, [done]);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -33,38 +42,65 @@ export default function DailyQuoteForm({ onDone }: { onDone?: () => void }) {
     finally { setBusy(false); }
   }
 
+  function again() {
+    focusForm.current = true;
+    setContent('');
+    setSourceType('original');
+    setError('');
+    setDone(false);
+  }
+
   if (done) return <div className="daily-quote-form">
-    <p role="status">投稿已提交，等待管理员审核。</p>
-    <Link href="/checkin/submissions" className="read-btn">查看我的投稿</Link>
-    <button type="button" className="daily-quote-primary" onClick={() => { setContent(''); setSourceType('original'); setDone(false); }}>继续投稿</button>
-    {onDone && <button type="button" className="daily-quote-primary" onClick={onDone}>返回每日一言</button>}
+    <div ref={doneBox} tabIndex={-1} className="daily-quote-form__done">
+      <CircleCheck size={30} aria-hidden="true" />
+      <p role="status">投稿已提交，等待管理员审核。</p>
+    </div>
+    <div className="daily-quote-form__done-actions">
+      <Link href="/checkin/submissions" className="read-btn">查看我的投稿</Link>
+      <button type="button" className="daily-quote-secondary" onClick={again}>继续投稿</button>
+    </div>
   </div>;
 
+  const length = quoteLength(content);
+  const tooLong = length > QUOTE_CONTENT_MAX;
+  const quoting = sourceType === 'quotation';
+
   return <form className="daily-quote-form" onSubmit={(event) => void submit(event)}>
-    <label>一言内容
-      <textarea name="content" value={content} onChange={(event) => setContent(event.target.value)}
-        required rows={3} aria-describedby="daily-quote-length" />
-    </label>
-    <p id="daily-quote-length" className="daily-quote-card__hint numeric">{quoteLength(content)} / {QUOTE_CONTENT_MAX} 字</p>
-    <div className="daily-quote-form__field"><label htmlFor={`${id}-category`}>类型</label>
-      <ExpandSelect id={`${id}-category`} ariaLabel="类型" name="category" defaultValue={QUOTE_CATEGORIES[0]}
-        groups={[{ options: QUOTE_CATEGORIES.map((category) => ({ value: category, label: category })) }]} disabled={busy} />
+    <div className="daily-quote-form__field">
+      <label htmlFor={`${id}-content`}>一言内容</label>
+      <textarea ref={textarea} id={`${id}-content`} name="content" value={content}
+        onChange={(event) => setContent(event.target.value)}
+        required rows={3} aria-describedby={`${id}-length`} />
+      <p id={`${id}-length`} className={`daily-quote-form__counter numeric${tooLong ? ' is-over' : ''}`}>
+        {length} / {QUOTE_CONTENT_MAX} 字
+      </p>
     </div>
-    <div className="daily-quote-form__field"><label htmlFor={`${id}-signature`}>署名方式</label>
-      <ExpandSelect id={`${id}-signature`} ariaLabel="署名方式" name="signature" defaultValue="nickname"
-        groups={[{ options: [{ value: 'nickname', label: '昵称' }, { value: 'anonymous', label: '匿名' }] }]} disabled={busy} />
+    <div className="daily-quote-form__row">
+      <div className="daily-quote-form__field"><label htmlFor={`${id}-category`}>类型</label>
+        <ExpandSelect id={`${id}-category`} ariaLabel="类型" name="category" defaultValue={QUOTE_CATEGORIES[0]}
+          groups={[{ options: QUOTE_CATEGORIES.map((category) => ({ value: category, label: category })) }]} disabled={busy} />
+      </div>
+      <div className="daily-quote-form__field"><label htmlFor={`${id}-signature`}>署名方式</label>
+        <ExpandSelect id={`${id}-signature`} ariaLabel="署名方式" name="signature" defaultValue="nickname"
+          groups={[{ options: [{ value: 'nickname', label: '昵称' }, { value: 'anonymous', label: '匿名' }] }]} disabled={busy} />
+      </div>
     </div>
     <div className="daily-quote-form__field"><label htmlFor={`${id}-source`}>来源</label>
       <ExpandSelect id={`${id}-source`} ariaLabel="来源" name="source_type" value={sourceType} onChange={setSourceType}
         groups={[{ options: [{ value: 'original', label: '原创' }, { value: 'quotation', label: '引用' }] }]} disabled={busy} />
+      {/* 出处字段不卸载：外壳按内容高度展开，收起时退出焦点与表单数据。 */}
+      <div className={`daily-quote-form__reveal${quoting ? ' is-open' : ''}`} inert={!quoting}>
+        <div className="daily-quote-form__reveal-clip">
+          <label htmlFor={`${id}-source-name`}>原作者或出处</label>
+          <input id={`${id}-source-name`} name="source_name" maxLength={100} placeholder="原作者、作品名"
+            disabled={!quoting} required={quoting} />
+        </div>
+      </div>
     </div>
-    {sourceType === 'quotation' && <label>原作者或出处
-      <input name="source_name" required maxLength={100} placeholder="原作者、作品名" />
-    </label>}
-    <p className="daily-quote-card__hint">每天最多投稿5次。通过审核后进入内容池；被拒绝的内容不能再次提交。匿名仅隐藏对其他用户的署名，管理员仍可查看投稿人。</p>
+    <p className="daily-quote-form__hint">每天最多投稿5次。通过审核后进入内容池；被拒绝的内容不能再次提交。匿名仅隐藏对其他用户的署名，管理员仍可查看投稿人。</p>
     {error && <p className="daily-quote-error" role="alert">{error}</p>}
-    <button type="submit" className="daily-quote-primary" disabled={busy || !content.trim() || quoteLength(content) > QUOTE_CONTENT_MAX}>
-      {busy ? '提交中…' : '提交投稿'}
+    <button type="submit" className="daily-quote-primary daily-quote-form__submit" disabled={busy || !content.trim() || tooLong} aria-busy={busy}>
+      {busy ? <><LoaderCircle className="daily-quote-spin" size={18} aria-hidden="true" />提交中…</> : '提交投稿'}
     </button>
   </form>;
 }
