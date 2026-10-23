@@ -8,7 +8,7 @@
 
 ## 1. 背景与结论
 
-目标是让站内切页不再"硬切"，在不改变站点安静、克制气质的前提下补一层顺滑感。
+目标是让站内切页不再"硬切"，在保持快而稳的手感下补一层顺滑感。
 结论：**分三层推进，先做 P0 + P1，P2 作为实验批**。
 
 | 层级 | 内容 | 风险 | 建议 |
@@ -60,7 +60,9 @@ Next 15 App Router + React 19 的结构对切页动画是"半适合"：
 
 1. **`prefers-reduced-motion: reduce` 下一律 0ms。** 站点已有这套纪律（`src/styles-scss/pages/_home.scss`
    的 reduced-motion 块、`src/app/components/HeroLandscape.tsx` 的 `reducedMotion`），新动画照做。
-2. **不做横滑推拉、不做 3D、不做弹簧、不超过 300ms。**
+2. **不做横滑推拉、不做 3D、不做弹簧；整页切换不超过 300ms。**
+   这里约束的是整页这条路；组件自身的伸缩 / 位移仍按 `docs/frontend-styles.md` §6.2 的
+   480 / 220ms，两者不混用。
 3. **动画只做视觉叠加，绝不延缓可点击/可读。**
 
 ### 3.3 为什么整页只能动 opacity
