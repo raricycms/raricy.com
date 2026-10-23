@@ -84,6 +84,7 @@ const RESPONSIVE_SPECS: RegExp[] = [
   /twinshade\.spec\.ts$/,
   /lumen\.spec\.ts$/,
   /yiwen\.spec\.ts$/,
+  /hinge\.spec\.ts$/,
   /navbar-capsule\.spec\.ts$/,
   // 首页山景的窄屏构图、SVG 视差与减少动态效果偏好。
   /home-hero\.spec\.ts$/,

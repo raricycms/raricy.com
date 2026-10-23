@@ -1,0 +1,116 @@
+@use '../../abstracts/mixins' as m;
+
+.hy-game {
+  padding-top: 28px; padding-bottom: 40px;
+  button, a { -webkit-tap-highlight-color: transparent; }
+  button { font-family: inherit; touch-action: manipulation; }
+  button:focus-visible, a:focus-visible, section:focus-visible { outline: none; box-shadow: var(--shadow-focus-brand); }
+  button:disabled { cursor: default; opacity: .4; }
+}
+.hy-header, .hy-title, .hy-stage-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.hy-header { margin-bottom: 20px; }
+.hy-title { justify-content: flex-start; gap: 12px; h1 { margin: 0; font-size: 1.8rem; font-weight: 700; } small { color: var(--color-text-secondary); font-size: .8rem; font-weight: 500; } }
+.hy-logo { color: var(--color-accent-amber); width: 40px; height: 40px; }
+.hy-progress { color: var(--color-text-secondary); font-size: .8rem; text-align: right; }
+.hy-primary, .hy-secondary, .hy-icon-button, .hy-tab, .hy-direction { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; font-size: .85rem; line-height: 1.4; padding: 10px 14px; }
+.hy-primary, .hy-direction { @include m.btn-primary; }
+.hy-secondary, .hy-icon-button { @include m.btn-secondary; }
+.hy-icon-button { width: 44px; flex-shrink: 0; padding: 10px; }
+.hy-tab { @include m.btn-tab; }
+.hy-levels { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 20px; }
+.hy-layout { display: grid; grid-template-columns: minmax(0, 1fr) 248px; gap: 24px; align-items: start; }
+.hy-workspace { background: var(--color-background-card); border-radius: 30px; padding: 24px; min-width: 0; }
+.hy-stage-heading { margin-bottom: 20px; h2 { font-size: 1.4rem; font-weight: 600; margin: 0; } }
+.hy-eyebrow { display: block; margin: 0 0 6px; color: var(--color-text-secondary); font-size: .75rem; }
+.hy-goal-label { display: flex; gap: 6px; align-items: center; color: var(--color-text-secondary); font-size: .8rem; svg { width: 30px; height: 30px; } }
+.hy-board-wrap { background: var(--color-background-content); border-radius: 20px; padding: 16px; }
+.hy-board { width: 100%; max-width: calc(var(--hy-columns) * 164px); margin: 0 auto; position: relative; isolation: isolate; }
+.hy-slot, .hy-room { position: absolute; width: calc(100% / var(--hy-columns)); height: calc(100% / var(--hy-rows)); }
+.hy-slot { padding: 5px; color: var(--color-text-secondary); opacity: .4; pointer-events: none; svg { width: 100%; height: 100%; } }
+.hy-connections { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.hy-room { padding: 3px; border: 0; border-radius: 8px; background: transparent; cursor: pointer; transition: left .22s ease, top .22s ease; color: inherit; }
+.hy-room[data-kind='slide'] { cursor: grab; touch-action: none; }
+.hy-room--dragging { cursor: grabbing; z-index: 2; filter: brightness(1.06); }
+.hy-room-art { display: block; width: 100%; height: 100%; }
+.hy-room-paper { transform-origin: 50px 50px; transition: transform .24s ease; }
+.hy-toolbar { display: flex; gap: 2px; flex-wrap: wrap; margin-top: 16px; }
+.hy-hint-button { margin-left: auto; }
+.hy-feedback { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 56px; margin-top: 8px; font-size: .8rem; line-height: 1.8; color: var(--color-text-secondary); strong { display: flex; gap: 6px; align-items: center; font-size: .9rem; } p { margin: 4px 0 0; } > button { flex-shrink: 0; } }
+.hy-feedback--won { color: var(--color-success-primary); }
+.hy-hints { margin: 12px 0 20px; padding: 16px; background: var(--color-background-subtle); border-radius: 16px; font-size: .85rem; line-height: 1.8; > span { color: var(--color-text-secondary); font-size: .75rem; } p { margin: 6px 0; } .hy-secondary { padding: 8px 10px; margin-left: -10px; } }
+.hy-controls { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 16px; }
+.hy-control-group { border-radius: 20px; background: var(--color-background-page); padding: 16px 8px 12px; text-align: center; min-width: 0; h3 { font-size: .95rem; font-weight: 600; margin: 0; height: 32px; display: flex; align-items: center; justify-content: center; gap: 4px; > svg { width: 28px; height: 28px; } } > p { margin: 4px 0 12px; font-size: .75rem; line-height: 1.6; color: var(--color-text-secondary); } .hy-control-note { margin: 12px 0 0; font-size: .7rem; } }
+.hy-dpad { display: grid; grid-template: repeat(3, 44px) / repeat(3, 44px); gap: 3px; justify-content: center; }
+.hy-direction { padding: 10px; min-width: 44px; }
+.hy-direction--0 { grid-area: 1 / 2; }
+.hy-direction--1 { grid-area: 2 / 3; }
+.hy-direction--2 { grid-area: 3 / 2; }
+.hy-direction--3 { grid-area: 2 / 1; }
+.hy-dpad-center { grid-area: 2 / 2; align-self: center; color: var(--color-text-secondary); font-size: .75rem; }
+.hy-rotations, .hy-fixed-note { display: flex; align-items: center; justify-content: center; gap: 12px; min-height: 138px; }
+.hy-rotations .hy-primary { flex-direction: column; gap: 8px; padding: 16px; }
+.hy-fixed-note { color: var(--color-text-secondary); font-size: .8rem; line-height: 1.8; padding: 12px; }
+.hy-sidebar { display: flex; flex-direction: column; gap: 20px; min-width: 0; }
+.hy-main-card { @include m.btn-tab; border-radius: 30px; padding: 24px; width: 100%; text-align: left; background: var(--color-background-card); strong { display: flex; justify-content: space-between; gap: 8px; font-size: 1.1rem; font-weight: 600; color: var(--color-text-primary); } > span:last-child { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: .8rem; } }
+.hy-mini-map { display: block; width: 150px; height: 112px; margin: 20px auto; max-width: 100%; }
+.hy-mini-map .hy-room-art { width: 100px; height: 100px; }
+.hy-instructions { background: var(--color-background-card); padding: 24px; border-radius: 30px; h2 { margin: 0 0 20px; font-size: .95rem; font-weight: 600; } ul { list-style: none; margin: 0; padding: 0; } li { display: flex; align-items: flex-start; gap: 12px; margin: 16px 0; font-size: .8rem; line-height: 1.7; color: var(--color-text-secondary); > svg { flex-shrink: 0; margin-top: 3px; color: var(--color-accent-amber); } strong { display: block; font-weight: 600; color: var(--color-text-primary); margin-bottom: 2px; } } p { font-size: .75rem; line-height: 1.8; color: var(--color-text-secondary); margin: 16px 0 0; } .hy-save-note { color: var(--color-warning-primary); } .hy-local-note { margin-top: 20px; } }
+
+@media (min-width: 992px) {
+  .hy-workspace { display: grid; grid-template-columns: minmax(0, 1fr) 160px; column-gap: 16px; align-content: start; }
+  .hy-stage-heading { grid-column: 1 / -1; }
+  .hy-board-wrap { grid-column: 1; grid-row: 2; align-self: start; }
+  .hy-toolbar { grid-column: 1; grid-row: 3; align-self: start; }
+  .hy-feedback { grid-column: 1; grid-row: 4; align-self: start; flex-wrap: wrap; }
+  .hy-hints { grid-column: 1; grid-row: 5; align-self: start; }
+  .hy-controls { grid-column: 2; grid-row: 2 / 6; grid-template-columns: minmax(0, 1fr); align-self: start; margin-top: 0; }
+  .hy-control-group { padding-inline: 4px; }
+  .hy-rotations { gap: 8px; .hy-primary { padding: 14px; } }
+}
+@media (max-width: 991px) {
+  .hy-layout { grid-template-columns: minmax(0, 1fr) 210px; gap: 16px; }
+  .hy-workspace, .hy-instructions, .hy-main-card { padding: 20px; }
+  .hy-toolbar .hy-secondary { padding-inline: 10px; }
+  .hy-board-wrap { padding: 10px; }
+}
+@media (max-width: 767px) {
+  .hy-game { padding-top: 20px; }
+  .hy-title { gap: 8px; h1 { font-size: 1.5rem; } }
+  .hy-logo { width: 32px; height: 32px; }
+  .hy-layout { grid-template-columns: minmax(0, 1fr); }
+  .hy-workspace { padding: 20px 16px; }
+  .hy-stage-heading h2 { font-size: 1.2rem; }
+  .hy-tab { padding-inline: 10px; font-size: .75rem; }
+  .hy-levels { gap: 4px; }
+  .hy-sidebar { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+  .hy-main-card { align-self: start; }
+  .hy-toolbar { gap: 0; .hy-secondary { font-size: .75rem; gap: 5px; padding-inline: 10px; } }
+  .hy-hint-button { margin-left: 0; }
+  .hy-progress { font-size: .7rem; }
+}
+@media (max-width: 479px) {
+  .hy-logo { display: none; }
+  .hy-title { gap: 4px; }
+  .hy-header { gap: 8px; }
+  .hy-controls { gap: 8px; }
+  .hy-dpad { grid-template: repeat(3, 44px) / repeat(3, 44px); gap: 0; }
+  .hy-control-group { padding-inline: 4px; }
+  .hy-control-group > p { font-size: .7rem; min-height: 34px; }
+  .hy-sidebar { grid-template-columns: minmax(0, 1fr); }
+  .hy-main-card { display: grid; grid-template-columns: 1fr 100px; column-gap: 12px; align-items: center; .hy-mini-map { grid-column: 2; grid-row: 1 / 4; margin: 0; width: 100px; height: 80px; } strong { font-size: 1rem; } > span:last-child { margin-top: 12px; } }
+  .hy-feedback { flex-wrap: wrap; }
+  .hy-goal-label { gap: 2px; font-size: .7rem; }
+  .hy-board-wrap { padding: 6px; }
+  .hy-room { padding: 1px; }
+  .hy-rotations { gap: 4px; .hy-primary { padding: 12px; } }
+}
+@media (max-width: 359px) {
+  .hy-workspace { padding-inline: 10px; }
+  .hy-control-group { padding-inline: 0; }
+  .hy-controls { gap: 4px; }
+  .hy-toolbar .hy-secondary { padding-inline: 6px; }
+  .hy-title h1 { font-size: 1.35rem; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .hy-game * { transition: none !important; animation: none !important; }
+}

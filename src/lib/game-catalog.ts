@@ -13,10 +13,21 @@ export interface GameEntry {
   href: string;
   runtime: 'native' | 'embedded' | 'external';
   collectionId: typeof GAME_COLLECTIONS[number]['id'] | null;
-  icon: 'atamas' | 'wand' | 'public-space' | 'quandi' | 'twinshade' | 'lumen' | 'yiwen';
+  icon: 'atamas' | 'wand' | 'public-space' | 'quandi' | 'twinshade' | 'lumen' | 'yiwen' | 'hinge';
 }
 
 export const GAMES = [
+  {
+    id: 'hinge',
+    title: '合页 Demo',
+    description: '滑动、转动承载房间的纸片，改变门之间的连接。五个练习与一张从开局就能尝试的主谜题。',
+    category: 'puzzle',
+    modes: ['solo'],
+    href: '/game/hinge',
+    runtime: 'native',
+    collectionId: 'test',
+    icon: 'hinge',
+  },
   {
     id: 'yiwen',
     title: '异文 Demo',
