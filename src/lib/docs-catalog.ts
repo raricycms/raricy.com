@@ -319,6 +319,12 @@ export const DOC_ENTRIES: readonly DocEntry[] = [
   },
   {
     group: 'dev',
+    slug: 'plan/craft-games-design',
+    title: '手工间小游戏设计',
+    summary: '织布机、剪纸、水面印花的设计草案：核心玩法、首版范围、共用体验与推进顺序。',
+  },
+  {
+    group: 'dev',
     slug: 'plan/editor-plan',
     title: '编辑器换代方案（Vditor → CodeMirror 6）',
     summary: 'M0–M2 与导出已交付；就地装饰、表格辅助、大纲及真实设备验收待完成。',
