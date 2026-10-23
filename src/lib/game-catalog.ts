@@ -1,8 +1,11 @@
 // 游戏清单只描述陈列与启动方式；引擎按页面加载，不从这里导入客户端组件。
-export const GAME_CATEGORIES = { puzzle: '益智', action: '动作', social: '互动' } as const;
+export const GAME_CATEGORIES = { puzzle: '益智', action: '动作', social: '互动', craft: '手工' } as const;
 export const GAME_MODES = { solo: '单人', local: '本地双人', online: '在线多人' } as const;
 
-export const GAME_COLLECTIONS = [{ id: 'test', title: '测试', href: '/game/collections/test' }] as const;
+export const GAME_COLLECTIONS = [
+  { id: 'craft', title: '手工间', href: '/game/collections/craft', icon: 'craft' },
+  { id: 'test', title: '测试', href: '/game/collections/test', icon: 'flask' },
+] as const;
 
 export interface GameEntry {
   id: string;
@@ -13,10 +16,43 @@ export interface GameEntry {
   href: string;
   runtime: 'native' | 'embedded' | 'external';
   collectionId: typeof GAME_COLLECTIONS[number]['id'] | null;
-  icon: 'atamas' | 'wand' | 'public-space' | 'quandi' | 'twinshade' | 'lumen' | 'yiwen' | 'hinge';
+  icon: 'atamas' | 'wand' | 'public-space' | 'quandi' | 'twinshade' | 'lumen' | 'yiwen' | 'hinge' | 'loom' | 'papercut' | 'marbling';
 }
 
 export const GAMES = [
+  {
+    id: 'loom',
+    title: '小小织布机',
+    description: '选择经线配色，拖动梭子一行行织出小布块。可逐行换色、撤销与导出。',
+    category: 'craft',
+    modes: ['solo'],
+    href: '/game/loom',
+    runtime: 'native',
+    collectionId: 'craft',
+    icon: 'loom',
+  },
+  {
+    id: 'papercut',
+    title: '剪纸窗花',
+    description: '在折好的纸上随手剪几刀，展开成对称窗花。支持两折、三折与透明底导出。',
+    category: 'craft',
+    modes: ['solo'],
+    href: '/game/papercut',
+    runtime: 'native',
+    collectionId: 'craft',
+    icon: 'papercut',
+  },
+  {
+    id: 'marbling',
+    title: '水面印花',
+    description: '滴入颜料，用针或梳子拖出纹理，再用纸吸起花纹。支持撤销与图片导出。',
+    category: 'craft',
+    modes: ['solo'],
+    href: '/game/marbling',
+    runtime: 'native',
+    collectionId: 'craft',
+    icon: 'marbling',
+  },
   {
     id: 'hinge',
     title: '合页 Demo',

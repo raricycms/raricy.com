@@ -1,0 +1,796 @@
+@use '../../abstracts/mixins' as m;
+
+// 手工间的三款游戏共用一套工作台外壳：卡片底、右侧工具区、底部操作条。
+// 材料面（台面、水盆、纸）用局部变量，深浅主题各有一套亮度，关系不变。
+.craft-game {
+  --craft-table: #e9e0cc;
+  --craft-table-line: rgba(120, 96, 58, 0.12);
+  --craft-bench: #f3ecdd;
+  padding-top: 28px;
+  padding-bottom: 48px;
+
+  button,
+  a { -webkit-tap-highlight-color: transparent; }
+  button { font-family: inherit; touch-action: manipulation; }
+  button:focus-visible,
+  a:focus-visible { outline: none; box-shadow: var(--shadow-focus-brand); }
+  button:disabled { cursor: default; opacity: 0.4; }
+}
+
+[data-theme='dark'] .craft-game {
+  --craft-table: #23272a;
+  --craft-table-line: rgba(255, 255, 255, 0.06);
+  --craft-bench: #2a2d31;
+}
+
+@mixin craft-table-surface {
+  background-color: var(--craft-table);
+  background-image:
+    linear-gradient(var(--craft-table-line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--craft-table-line) 1px, transparent 1px);
+  background-size: 32px 32px;
+}
+
+.craft-header,
+.craft-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.craft-header { margin-bottom: 20px; }
+
+.craft-title {
+  justify-content: flex-start;
+  gap: 12px;
+
+  h1 {
+    margin: 0;
+    font-size: 1.8rem;
+    font-weight: 700;
+  }
+
+  small {
+    margin-left: 6px;
+    color: var(--color-text-secondary);
+    font-size: 0.8rem;
+    font-weight: 500;
+  }
+}
+
+.craft-logo {
+  width: 40px;
+  height: 40px;
+  color: var(--color-accent-amber);
+
+  svg { display: block; width: 100%; height: 100%; }
+}
+
+.craft-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.craft-primary,
+.craft-secondary,
+.craft-icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 10px 16px;
+  font-size: 0.85rem;
+  line-height: 1.4;
+}
+
+.craft-primary { @include m.btn-primary; }
+.craft-secondary { @include m.btn-secondary; }
+.craft-icon-button { @include m.btn-secondary; width: 44px; height: 44px; padding: 10px; flex-shrink: 0; }
+
+.craft-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 280px;
+  align-items: start;
+  gap: 24px;
+}
+
+.craft-workspace {
+  min-width: 0;
+  padding: 24px;
+  border-radius: 30px;
+  background: var(--color-background-card);
+}
+
+.loom-game,
+.paper-game,
+.marbling-game {
+  .craft-workspace { min-width: 0; }
+}
+
+.craft-stage-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 20px;
+
+  h2 {
+    margin: 0;
+    font-size: 1.4rem;
+    font-weight: 600;
+  }
+}
+
+.craft-eyebrow {
+  display: block;
+  margin: 0 0 6px;
+  color: var(--color-text-secondary);
+  font-size: 0.75rem;
+}
+
+.craft-status {
+  color: var(--color-text-secondary);
+  font-size: 0.8rem;
+  line-height: 1.7;
+}
+
+.craft-workspace > .craft-status {
+  margin: 14px 0 0;
+  min-height: 1.7em;
+}
+
+.craft-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.craft-choice {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 14px;
+  border: none;
+  border-radius: 20px;
+  background: var(--color-background-page);
+  color: var(--color-text-primary);
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
+
+  &.is-active {
+    background: var(--color-brand-secondary);
+    color: var(--color-brand-primary);
+  }
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .craft-choice:hover { background: var(--color-background-content); }
+  .craft-choice.is-active:hover { background: var(--color-brand-secondary); }
+}
+
+.craft-choice__swatches {
+  display: flex;
+  gap: 3px;
+  width: 100%;
+
+  i {
+    display: block;
+    flex: 1;
+    height: 32px;
+    border-radius: 4px;
+  }
+}
+
+.craft-choice__label {
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.craft-swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.craft-swatch {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border: none;
+  border-radius: 50%;
+  color: #fff;
+  cursor: pointer;
+  transition: box-shadow 0.2s ease;
+
+  svg { filter: drop-shadow(0 1px 2px rgba(15, 23, 42, 0.45)); }
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .craft-swatch:hover {
+    box-shadow: 0 0 0 2px var(--color-background-card), 0 0 0 4px var(--color-text-secondary);
+  }
+
+  .craft-swatch.is-active:hover {
+    box-shadow: 0 0 0 2px var(--color-background-card), 0 0 0 4px var(--color-brand-primary);
+  }
+}
+
+.craft-swatch.is-active {
+  box-shadow: 0 0 0 2px var(--color-background-card), 0 0 0 4px var(--color-brand-primary);
+}
+
+.craft-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  min-width: 0;
+}
+
+.craft-panel {
+  padding: 24px;
+  border-radius: 30px;
+  background: var(--color-background-card);
+
+  h2 {
+    margin: 0 0 16px;
+    font-size: 0.95rem;
+    font-weight: 600;
+  }
+}
+
+.craft-note {
+  margin: 12px 0 0;
+  color: var(--color-text-secondary);
+  font-size: 0.75rem;
+  line-height: 1.8;
+
+  &--warn { color: var(--color-warning-primary); }
+}
+
+.craft-steps {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--color-text-secondary);
+  font-size: 0.8rem;
+  line-height: 1.8;
+
+  li { margin: 8px 0; }
+}
+
+.craft-text-button {
+  @include m.btn-secondary;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  margin: 12px 0 0 -10px;
+  padding: 8px 10px;
+  font-size: 0.8rem;
+}
+
+.loom-board-caption,
+.paper-board-caption,
+.marbling-caption {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 10px;
+  color: var(--color-text-secondary);
+  font-size: 0.72rem;
+  line-height: 1.6;
+}
+
+// ── 小小织布机 ────────────────────────────────────────────────────────────────
+
+.loom-setup {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 16px;
+  padding: 8px 0 4px;
+}
+
+.loom-setup__lead {
+  max-width: 52ch;
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: 0.85rem;
+  line-height: 1.8;
+}
+
+.loom-warps {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px;
+  width: 100%;
+}
+
+.loom-begin { margin-top: 4px; }
+
+.loom-board-wrap {
+  padding: 12px;
+  border-radius: 20px;
+  background: var(--craft-bench);
+}
+
+.loom-stage {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 14px;
+}
+
+.loom-shuttle {
+  transition: transform 320ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.loom-shuttle--drag { transition: none; }
+
+.loom-drag {
+  cursor: grab;
+  touch-action: none;
+
+  &:active { cursor: grabbing; }
+}
+
+.loom-row--settling {
+  animation: loom-settle 320ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes loom-settle {
+  from { opacity: 0.25; transform: translateY(-7px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.loom-finish { margin-left: auto; }
+
+.loom-result {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.loom-result__stage {
+  display: flex;
+  justify-content: center;
+  padding: 24px 16px;
+  border-radius: 20px;
+  background: var(--craft-bench);
+}
+
+.loom-artifact {
+  display: block;
+  width: 100%;
+  max-width: 520px;
+  height: auto;
+}
+
+.loom-result__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 16px;
+
+  .craft-primary { min-width: 128px; }
+}
+
+.loom-status--result { color: var(--color-text-primary); }
+
+// ── 剪纸窗花 ─────────────────────────────────────────────────────────────────
+
+.paper-setup {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 8px 0 4px;
+}
+
+.paper-setup__lead {
+  max-width: 52ch;
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: 0.85rem;
+  line-height: 1.8;
+}
+
+.paper-folds {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  width: 100%;
+  max-width: 520px;
+  margin-bottom: 8px;
+}
+
+.paper-fold {
+  align-items: center;
+  padding: 18px 12px;
+  text-align: center;
+
+  &.is-active .paper-fold__meta { color: inherit; opacity: 0.75; }
+}
+
+.paper-fold__art {
+  display: block;
+  width: 92px;
+  height: 92px;
+}
+
+.paper-fold__label {
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.paper-fold__meta {
+  color: var(--color-text-secondary);
+  font-size: 0.72rem;
+}
+
+.paper-setup__label {
+  margin: 8px 0 0;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.paper-begin { margin-top: 4px; }
+
+.paper-stage-wrap {
+  @include craft-table-surface;
+  position: relative;
+  overflow: hidden;
+  border-radius: 20px;
+}
+
+.paper-stage {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 720 / 640;
+  touch-action: none;
+  cursor: crosshair;
+}
+
+.paper-stage--result {
+  background: transparent;
+  cursor: default;
+}
+
+.paper-scraps {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  border-radius: inherit;
+  pointer-events: none;
+}
+
+.paper-scrap {
+  position: absolute;
+  width: 11px;
+  height: 8px;
+  opacity: 0;
+  clip-path: polygon(0 20%, 100% 0, 82% 100%, 16% 82%);
+  animation: paper-scrap-fall 900ms cubic-bezier(0.3, 0.7, 0.6, 1) forwards;
+  animation-delay: var(--scrap-delay, 0ms);
+}
+
+@keyframes paper-scrap-fall {
+  0% { opacity: 1; transform: translate(0, 0) rotate(0); }
+  100% { opacity: 0; transform: translate(var(--scrap-drift, 16px), 96px) rotate(var(--scrap-spin, 180deg)); }
+}
+
+.paper-intro {
+  @include craft-table-surface;
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  cursor: pointer;
+
+  svg { display: block; width: 100%; height: 100%; }
+}
+
+.paper-intro__caption {
+  position: absolute;
+  bottom: 24px;
+  left: 50%;
+  padding: 8px 14px;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.72);
+  color: #fff;
+  font-size: 0.8rem;
+  transform: translateX(-50%);
+  white-space: nowrap;
+}
+
+.paper-result {
+  display: flex;
+  flex-direction: column;
+}
+
+.paper-result__stage {
+  overflow: hidden;
+  border-radius: 20px;
+  background: radial-gradient(circle at 50% 38%, #55645b 0%, #3a443e 65%, #2e3631 100%);
+  box-shadow: inset 0 0 70px rgba(9, 15, 12, 0.35);
+}
+
+.paper-window {
+  overflow: hidden;
+  border-radius: 20px;
+  background: #ded3c0;
+}
+
+.paper-window__scene {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.paper-window__caption {
+  margin: 12px 0 0;
+  color: var(--color-text-secondary);
+  font-size: 0.72rem;
+  line-height: 1.7;
+}
+
+.paper-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+
+  strong { display: block; font-size: 0.9rem; font-weight: 600; }
+  p { margin: 4px 0 0; color: var(--color-text-secondary); font-size: 0.75rem; }
+}
+
+.paper-info__swatch {
+  flex-shrink: 0;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+}
+
+.paper-export {
+  position: fixed;
+  top: 0;
+  left: -10000px;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+// ── 水面印花 ─────────────────────────────────────────────────────────────────
+
+.marbling-tray {
+  position: relative;
+  padding: 10px;
+  border-radius: 24px;
+  background: linear-gradient(150deg, #45645b, #2c403a);
+  box-shadow:
+    inset 0 2px 8px rgba(255, 255, 255, 0.12),
+    inset 0 -8px 24px rgba(0, 0, 0, 0.25);
+}
+
+.marbling-canvas {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 16px;
+  touch-action: none;
+  cursor: crosshair;
+}
+
+.marbling-paper {
+  position: absolute;
+  inset: 10px;
+  border-radius: 16px;
+  background: linear-gradient(135deg, #fdfaf0, #efe5cf);
+  box-shadow: 0 10px 24px rgba(28, 22, 12, 0.22);
+  animation: marbling-lay 480ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  pointer-events: none;
+}
+
+@keyframes marbling-lay {
+  from { opacity: 0.5; transform: translateY(-106%) rotate(-1.2deg); }
+  to { opacity: 1; transform: translateY(0) rotate(0); }
+}
+
+.marbling-lay { min-width: 118px; }
+
+.marbling-game .craft-toolbar { margin-top: 14px; }
+
+.marbling-result {
+  display: flex;
+  flex-direction: column;
+}
+
+.marbling-print {
+  --print-tilt: -0.5deg;
+  max-width: 860px;
+  margin: 0 auto;
+  overflow: hidden;
+  border-radius: 6px;
+  background: #f4eddd;
+  box-shadow: 0 14px 30px rgba(60, 44, 24, 0.18);
+  transform: rotate(var(--print-tilt));
+  animation: print-rise 480ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes print-rise {
+  from { opacity: 0; transform: translateY(18px) rotate(var(--print-tilt)); }
+  to { opacity: 1; transform: translateY(0) rotate(var(--print-tilt)); }
+}
+
+.marbling-print__canvas {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.marbling-print__note {
+  margin: 12px 0 0;
+  color: var(--color-text-secondary);
+  font-size: 0.72rem;
+  line-height: 1.7;
+  text-align: center;
+}
+
+.marbling-palettes {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.marbling-palette {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 7px;
+  padding: 10px;
+  border: none;
+  border-radius: 14px;
+  background: var(--color-background-page);
+  color: var(--color-text-primary);
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 0.2s ease, color 0.2s ease;
+
+  &.is-active {
+    background: var(--color-brand-secondary);
+    color: var(--color-brand-primary);
+  }
+
+  > svg { position: absolute; top: 8px; right: 8px; }
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .marbling-palette:hover { background: var(--color-background-content); }
+  .marbling-palette.is-active:hover { background: var(--color-brand-secondary); }
+}
+
+.marbling-palette__dots {
+  display: flex;
+  gap: 2px;
+  width: 100%;
+
+  i {
+    flex: 1;
+    height: 10px;
+    border-radius: 3px;
+  }
+}
+
+.marbling-palette__name {
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.marbling-tools {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.marbling-tool {
+  @include m.btn-tab;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-height: 60px;
+  padding: 8px 4px;
+  font-size: 0.72rem;
+  line-height: 1.2;
+  touch-action: manipulation;
+
+  svg { width: 20px; height: 20px; }
+}
+
+// ── 窄屏 ─────────────────────────────────────────────────────────────────────
+
+@media (max-width: 1199px) {
+  .craft-layout { grid-template-columns: minmax(0, 1fr) 248px; }
+}
+
+@media (max-width: 991px) {
+  .craft-layout { grid-template-columns: minmax(0, 1fr) 216px; gap: 16px; }
+  .craft-workspace,
+  .craft-panel { padding: 20px; }
+  .craft-toolbar .craft-secondary { padding-inline: 10px; }
+}
+
+@media (max-width: 767px) {
+  .craft-game { padding-top: 20px; padding-bottom: 32px; }
+  .craft-title {
+    gap: 8px;
+    h1 { font-size: 1.5rem; }
+  }
+  .craft-logo { width: 32px; height: 32px; }
+  .craft-layout { grid-template-columns: minmax(0, 1fr); }
+  .craft-workspace { padding: 20px 16px; }
+  .craft-stage-heading {
+    flex-wrap: wrap;
+    gap: 6px 16px;
+    h2 { font-size: 1.2rem; }
+  }
+  .craft-sidebar {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px;
+  }
+  .craft-toolbar .craft-secondary { gap: 6px; font-size: 0.78rem; }
+  .loom-warps { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .loom-result__stage { padding: 18px 10px; }
+  .loom-finish { margin-left: 0; }
+  .paper-fold__art { width: 76px; height: 76px; }
+  .marbling-print { --print-tilt: 0deg; width: calc(100% - 2px); }
+}
+
+@media (max-width: 479px) {
+  .craft-logo { display: none; }
+  .craft-title {
+    gap: 4px;
+    h1 { font-size: 1.35rem; }
+    small { display: none; }
+  }
+  .craft-header { gap: 8px; }
+  .craft-sidebar { grid-template-columns: minmax(0, 1fr); }
+  .craft-panel { padding: 18px; }
+  .loom-warps { grid-template-columns: minmax(0, 1fr); }
+  .paper-fold { padding: 12px 8px; }
+  .paper-fold__art { width: 64px; height: 64px; }
+  .craft-toolbar { gap: 4px; }
+  .craft-primary,
+  .craft-secondary { padding-inline: 12px; }
+  .craft-toolbar .craft-secondary { font-size: 0.72rem; }
+  .marbling-tool { min-height: 56px; }
+  .paper-window__caption { text-align: center; }
+}
+
+@media (max-width: 359px) {
+  .craft-workspace { padding-inline: 12px; }
+  .paper-folds { grid-template-columns: minmax(0, 1fr); }
+  .paper-fold__art { width: 60px; height: 60px; }
+  .craft-toolbar .craft-secondary { padding-inline: 8px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .craft-game,
+  .craft-game *,
+  .craft-game *::before,
+  .craft-game *::after {
+    transition: none !important;
+    animation: none !important;
+  }
+}

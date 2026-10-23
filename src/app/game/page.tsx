@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import type { Metadata } from 'next';
-import { FlaskConical } from 'lucide-react';
+import { FlaskConical, Scissors } from 'lucide-react';
 import { GAMES, GAME_COLLECTIONS } from '@/lib/game-catalog';
 import GameCard from './GameCard';
 
@@ -18,7 +18,7 @@ export default function GameMenuPage() {
         <div className="game-grid">
           {GAME_COLLECTIONS.map((collection) => (
             <Link key={collection.id} href={collection.href} className="game-collection">
-              <FlaskConical aria-hidden="true" />
+              {collection.icon === 'craft' ? <Scissors aria-hidden="true" /> : <FlaskConical aria-hidden="true" />}
               <h3>{collection.title}</h3>
               <span className="game-action">查看合集</span>
             </Link>
