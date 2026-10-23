@@ -40,17 +40,29 @@ async function expectNoOverflow(page: Page) {
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(page.viewportSize()!.width);
 }
 
-test('手工间合集：三件手工都能从卡片进入', async ({ page }) => {
+test('手工间合集：从测试合集进入，三件手工都能从卡片打开', async ({ page }) => {
   await page.goto('/game');
-  await expect(page.locator('.game-collection[href="/game/collections/craft"]')).toHaveCount(1);
-  await page.locator('.game-collection[href="/game/collections/craft"]').click();
-  await expect(page).toHaveURL('/game/collections/craft');
+  // 手工间已挂到「测试」下面：玩具首页只陈列顶层合集，不再直接出现手工间；
+  // 旧顶层地址在这里也不该被当成「还挂在顶层」的证据。
+  await expect(page.locator('.game-collection[href="/game/collections/craft"]')).toHaveCount(0);
+  await expect(page.locator('.game-collection[href="/game/collections/test"]')).toHaveCount(1);
+  await page.locator('.game-collection[href="/game/collections/test"]').click();
+  await expect(page).toHaveURL('/game/collections/test');
+  await expect(page.locator('.game-collection[href="/game/collections/test/craft"]')).toHaveCount(1);
+  await page.locator('.game-collection[href="/game/collections/test/craft"]').click();
+  await expect(page).toHaveURL('/game/collections/test/craft');
+  await expect(page.locator('.game-breadcrumb')).toContainText('测试');
+  await expect(page.locator('.game-breadcrumb')).toContainText('手工间');
   await expect(page.locator('.game-card')).toHaveCount(3);
   const hrefs = await page.locator('.game-card').evaluateAll((cards) => cards.map((card) => card.getAttribute('href')));
   expect(hrefs).toEqual(['/game/loom', '/game/papercut', '/game/marbling']);
   await expect(page.locator('.game-card[href="/game/loom"]')).toContainText('小小织布机');
   await expect(page.locator('.game-card[href="/game/papercut"]')).toContainText('剪纸窗花');
   await expect(page.locator('.game-card[href="/game/marbling"]')).toContainText('水面印花');
+
+  // 旧地址（合集还在顶层时的收藏）永久跳到新路径 —— 别让书签 404。
+  await page.goto('/game/collections/craft');
+  await expect(page).toHaveURL('/game/collections/test/craft');
 });
 
 test('小小织布机：选经线、穿梭、压紧、撤销、刷新续织与导出', async ({ page }) => {

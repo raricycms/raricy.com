@@ -1,11 +1,29 @@
-// 游戏清单只描述陈列与启动方式；引擎按页面加载，不从这里导入客户端组件。
+// 玩具清单只描述陈列与启动方式；引擎按页面加载，不从这里导入客户端组件。
+//
+// 【合集可以嵌套】合集只登记 `parentId`，**URL 由父链推出来**，不在清单里存 href。
+// 存一份 href 的话，改父链就得记得回来同步那个字符串 —— 漏了不会报类型错，
+// 症状是「卡片点进去 404」。层级深度不限：玩具首页只陈列顶层合集，合集页陈列
+// 「直属游戏 + 子合集」，路径就是 `/game/collections/<父>/<子>`。
 export const GAME_CATEGORIES = { puzzle: '益智', action: '动作', social: '互动', craft: '手工' } as const;
 export const GAME_MODES = { solo: '单人', local: '本地双人', online: '在线多人' } as const;
 
+/** 合集图标键；具体画哪一支由 `GameCollectionCard` 决定，别把 JSX 塞进清单。 */
+export type GameCollectionIcon = 'craft' | 'flask';
+
+export interface GameCollection {
+  id: string;
+  title: string;
+  /** 父合集 id；`null` 表示顶层合集。 */
+  parentId: string | null;
+  icon: GameCollectionIcon;
+}
+
 export const GAME_COLLECTIONS = [
-  { id: 'craft', title: '手工间', href: '/game/collections/craft', icon: 'craft' },
-  { id: 'test', title: '测试', href: '/game/collections/test', icon: 'flask' },
-] as const;
+  { id: 'test', title: '测试', parentId: null, icon: 'flask' },
+  { id: 'craft', title: '手工间', parentId: 'test', icon: 'craft' },
+] as const satisfies readonly GameCollection[];
+
+export type GameCollectionId = (typeof GAME_COLLECTIONS)[number]['id'];
 
 export interface GameEntry {
   id: string;
@@ -15,7 +33,7 @@ export interface GameEntry {
   modes: readonly (keyof typeof GAME_MODES)[];
   href: string;
   runtime: 'native' | 'embedded' | 'external';
-  collectionId: typeof GAME_COLLECTIONS[number]['id'] | null;
+  collectionId: GameCollectionId | null;
   icon: 'atamas' | 'wand' | 'public-space' | 'quandi' | 'twinshade' | 'lumen' | 'yiwen' | 'hinge' | 'loom' | 'papercut' | 'marbling';
 }
 
@@ -153,3 +171,66 @@ export const GAMES = [
     icon: 'wand',
   },
 ] as const satisfies readonly GameEntry[];
+
+/** 按 id 找合集；找不到回 undefined（调用方自己决定 404 还是抛错）。 */
+export function gameCollection(id: string): GameCollection | undefined {
+  return GAME_COLLECTIONS.find((entry) => entry.id === id);
+}
+
+/**
+ * 从根到该合集的完整父链（含自身）。`parentId` 指向不存在的合集或成环时抛错 ——
+ * 清单是编译期数据，宁可构建 / 首次请求时就炸，也别让「合集静默消失」活下来。
+ */
+export function collectionPath(id: string): GameCollection[] {
+  const seen = new Set<string>();
+  const path: GameCollection[] = [];
+  let current = gameCollection(id);
+  if (!current) throw new Error(`未知的玩具合集：${id}`);
+  for (;;) {
+    if (seen.has(current.id)) {
+      throw new Error(`玩具合集的 parentId 成环：${[...seen, current.id].join(' → ')}`);
+    }
+    seen.add(current.id);
+    path.unshift(current);
+    if (current.parentId === null) return path;
+    const parent = gameCollection(current.parentId);
+    if (!parent) {
+      throw new Error(`玩具合集 ${current.id} 的 parentId 指向不存在的合集：${current.parentId}`);
+    }
+    current = parent;
+  }
+}
+
+/** 合集的规范 URL（由父链推出）；顶层是 `/game/collections/<id>`，每深一层多一段。 */
+export function collectionHref(id: string): string {
+  return `/game/collections/${collectionPath(id).map((entry) => entry.id).join('/')}`;
+}
+
+/** 顶层合集 —— 玩具首页陈列的就是这一批。 */
+export function topLevelCollections(): GameCollection[] {
+  return GAME_COLLECTIONS.filter((entry) => entry.parentId === null);
+}
+
+/** 直接子合集（只查一层；孙合集由子合集自己的页面陈列）。 */
+export function childCollections(parentId: string): GameCollection[] {
+  return GAME_COLLECTIONS.filter((entry) => entry.parentId === parentId);
+}
+
+/**
+ * 按 URL 段逐级解析成一个「id 链」并返回末端合集。
+ *
+ * ⚠️ 它**不要求**首段是顶层：`['craft']` 会解析出手工间，调用方随后拿
+ * `collectionPath()` 比对规范路径 —— 不一致就永久跳转（旧的顶层地址就是这么救的）。
+ * 整段对不上（父链断了 / 不存在 / 空路径）回 null，交给页面 404。
+ */
+export function collectionByPath(slugs: readonly string[]): GameCollection | null {
+  const [head, ...rest] = slugs;
+  let current = head ? gameCollection(head) : undefined;
+  if (!current) return null;
+  for (const slug of rest) {
+    const next = gameCollection(slug);
+    if (!next || next.parentId !== current.id) return null;
+    current = next;
+  }
+  return current;
+}

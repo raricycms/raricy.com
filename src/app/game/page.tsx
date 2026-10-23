@@ -1,8 +1,7 @@
-import Link from 'next/link';
 import type { Metadata } from 'next';
-import { FlaskConical, Scissors } from 'lucide-react';
-import { GAMES, GAME_COLLECTIONS } from '@/lib/game-catalog';
+import { GAMES, topLevelCollections } from '@/lib/game-catalog';
 import GameCard from './GameCard';
+import GameCollectionCard from './GameCollectionCard';
 
 export const metadata: Metadata = { title: '玩具 · 聪明山' };
 
@@ -16,12 +15,8 @@ export default function GameMenuPage() {
       <section className="game-collections" aria-labelledby="game-collections-title">
         <h2 id="game-collections-title">合集</h2>
         <div className="game-grid">
-          {GAME_COLLECTIONS.map((collection) => (
-            <Link key={collection.id} href={collection.href} className="game-collection">
-              {collection.icon === 'craft' ? <Scissors aria-hidden="true" /> : <FlaskConical aria-hidden="true" />}
-              <h3>{collection.title}</h3>
-              <span className="game-action">查看合集</span>
-            </Link>
+          {topLevelCollections().map((collection) => (
+            <GameCollectionCard key={collection.id} collection={collection} />
           ))}
         </div>
       </section>

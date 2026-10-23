@@ -83,7 +83,8 @@
 
 ## 7. 首版落地
 
-- **入口：** `/game` 的「手工间」合集 → `/game/loom`、`/game/papercut`、`/game/marbling`，
+- **入口：** 玩具 → 测试 → 手工间合集 `/game/collections/test/craft` →
+  `/game/loom`、`/game/papercut`、`/game/marbling`，
   与玩具区其它游戏共用专注模式闸门和 https 协议闸门。
 - **纯客户端：** 三个页面都只有薄服务端壳，制作状态、渲染、音效与导出全部在浏览器内完成，
   没有新增库表、接口或鱼干奖励。

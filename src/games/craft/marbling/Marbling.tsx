@@ -300,7 +300,7 @@ export default function Marbling() {
     data-tool={draft.tool} data-painted={painted}>
     <header className="craft-header">
       <div className="craft-title">
-        <Link className="craft-icon-button" href="/game/collections/craft" aria-label="返回手工间"><ArrowLeft size={20} /></Link>
+        <Link className="craft-icon-button" href="/game/collections/test/craft" aria-label="返回手工间"><ArrowLeft size={20} /></Link>
         <span className="craft-logo"><MarblingIcon /></span>
         <h1>水面印花 <small>手工间</small></h1>
       </div>

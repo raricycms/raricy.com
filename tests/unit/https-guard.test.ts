@@ -78,6 +78,8 @@ describe('guardFor —— 哪条路径过闸、过哪一档、403 文案点名�
       '/game/atamas',
       '/game/wand2/',
       '/game/collections/test',
+      // 合集可以嵌套：闸认的是 /game 前缀，新层级不该漏出去。
+      '/game/collections/test/craft',
     ]) {
       expect(guardFor(p), p).toEqual({ kind: 'page', label: p.startsWith('/game') ? '玩具' : '练手盘' });
     }

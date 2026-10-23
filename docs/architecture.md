@@ -1591,9 +1591,13 @@ MP3 的帧同步要核版本 / 层 / 位速率字段（只判 `0xFF` 打头太�
 
 首页内容卡按「故事 / 玩具 / 博客 / 工具」排列；讨论入口保留在顶栏。
 游戏清单住 `src/lib/game-catalog.ts`：每款游戏只登记一次，玩法类别、游玩方式与
-启动方式分别描述。玩具首页只展示 ATÅMAS（益智、单人、原生组件），另有「测试」合集
-`/game/collections/test`，收录 Wand demo、Wand demo 2、公共空间、圈地运动、合页 Demo、异文 Demo、
-折光与双影。
+启动方式分别描述。**合集可以嵌套**：清单只写 `parentId`，URL 由父链推出来
+（`/game/collections/<父>/<子>`），没有第二份 href 可漂；玩具首页只陈列顶层合集与
+ATÅMAS（益智、单人、原生组件），合集页陈列「直属游戏 + 子合集」，路由是 catch-all
+（`src/app/game/collections/[...slug]/page.tsx`）。顶层「测试」合集
+`/game/collections/test` 收录 Wand demo、Wand demo 2、公共空间、圈地运动、合页 Demo、
+异文 Demo、折光与双影，并挂着手工间子合集 `/game/collections/test/craft`
+（织布机、剪纸、水面印花）；旧的顶层地址 `/game/collections/craft` 永久跳到新路径。
 
 `src/games/atamas/` 包含客户端引擎、Canvas 绘制、24 种语言与界面，
 `src/app/game/atamas/page.tsx` 是路由包装。游戏匿名可玩，不调用账号接口、

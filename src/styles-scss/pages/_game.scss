@@ -26,6 +26,12 @@
 }
 .game-action { @include m.btn-primary; display: inline-flex; padding: 10px 18px; align-items: center; gap: 6px; }
 .game-back { @include m.btn-secondary; display: inline-flex; padding: 10px 16px; margin-bottom: 16px; }
+.game-breadcrumb {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+  margin-bottom: 16px; color: var(--color-text-secondary); font-size: .95rem;
+  a { color: inherit; &:hover { color: var(--color-text-primary); } }
+  [aria-current='page'] { color: var(--color-text-primary); }
+}
 .game-collections { margin-top: 40px; > h2 { font-size: 1.5rem; margin-bottom: 20px; } }
 .game-collection {
   display: flex; flex-direction: column; align-items: flex-start; gap: 20px; padding: 28px;

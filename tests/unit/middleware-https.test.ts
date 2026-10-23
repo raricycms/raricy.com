@@ -56,6 +56,7 @@ describe('页面：确证 http → 308 跳到 https', () => {
       '/game',
       '/game/atamas',
       '/game/collections/test',
+      '/game/collections/test/craft',
       '/game/quandi',
       // iframe 文档路由：GET，按页面 308 跟过去即可（见 https-guard.ts 文件头）。
       '/game/quandi/play',

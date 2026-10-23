@@ -213,7 +213,7 @@ export default function Loom() {
     data-started={draft.started} data-finished={draft.finished}>
     <header className="craft-header">
       <div className="craft-title">
-        <Link className="craft-icon-button" href="/game/collections/craft" aria-label="返回手工间"><ArrowLeft size={20} /></Link>
+        <Link className="craft-icon-button" href="/game/collections/test/craft" aria-label="返回手工间"><ArrowLeft size={20} /></Link>
         <span className="craft-logo"><LoomIcon /></span>
         <h1>小小织布机 <small>手工间</small></h1>
       </div>

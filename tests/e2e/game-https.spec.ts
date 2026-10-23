@@ -21,7 +21,7 @@ test.describe('玩具区协议闸', () => {
   test('页面：确证 http → 308 跳到 https，查询串保留', async ({ request }) => {
     // /game/quandi/play 是 iframe 的文档路由（route handler），它落在页面前缀下，
     // 按页面走 308 —— 它只有 GET，跟过去没有任何损失（见 https-guard.ts 文件头）。
-    for (const p of ['/game', '/game/atamas', '/game/collections/test', '/game/quandi/play']) {
+    for (const p of ['/game', '/game/atamas', '/game/collections/test', '/game/collections/test/craft', '/game/quandi/play']) {
       // maxRedirects: 0 —— 不跟走，否则 Playwright 会去连 example.com（一个不存在的站）。
       const res = await request.get(`${p}?a=1`, { headers: AS_PLAINTEXT, maxRedirects: 0 });
       expect(res.status(), p).toBe(308);

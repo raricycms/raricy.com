@@ -337,7 +337,7 @@ export default function PaperCutGame() {
     data-view={draft.view} data-cuts={draft.cuts.length}>
     <header className="craft-header">
       <div className="craft-title">
-        <Link className="craft-icon-button" href="/game/collections/craft" aria-label="返回手工间"><ArrowLeft size={20} /></Link>
+        <Link className="craft-icon-button" href="/game/collections/test/craft" aria-label="返回手工间"><ArrowLeft size={20} /></Link>
         <span className="craft-logo"><PaperCutIcon /></span>
         <h1>剪纸窗花 <small>手工间</small></h1>
       </div>
