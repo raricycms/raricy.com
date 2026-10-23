@@ -12,7 +12,7 @@ async function play(page: Page, actions: Action[]) {
     }
   }
 }
-test.use({ reducedMotion: 'reduce' });
+test.use({ contextOptions: { reducedMotion: 'reduce' } });
 
 test('五张练习可通过；切题、撤销重做与刷新续玩保留局面', async ({ page }) => {
   // 一条用例串联五次通关、切题和刷新；手机在棋盘与控件之间滚动更多。
