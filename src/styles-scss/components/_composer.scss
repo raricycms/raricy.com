@@ -210,6 +210,35 @@
     cursor: not-allowed;
   }
 
+  /* 工具条右端的关闭叉（`dismiss` prop，见 RichComposer.tsx）。
+     尺寸与幽灵工具条上的图标钮同档（30px 命中区 = 同一条视觉基线），但**类名不叫
+     icon-btn**：评论区的 e2e 把 `.comment-composer__icon-btn` 的数量钉死为 5，
+     叉混进那个类会让「工具条到底有几个按钮」失去意义 —— 它管的是关掉表单，
+     不是往正文里插东西。 */
+  .#{$p}__dismiss {
+    @include m.btn-secondary($pointer-hover-only: true);
+    flex: none;
+    /* 推到工具条右端 —— 也就是面板右上角。左侧图标组的宽度与它无关。 */
+    margin-left: auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    padding: 0;
+    border-radius: 8px;
+
+    svg {
+      width: 16px;
+      height: 16px;
+    }
+
+    &:focus-visible {
+      outline: 2px solid var(--color-brand-primary);
+      outline-offset: 2px;
+    }
+  }
+
   .#{$p}__input {
     resize: none;
     border: none;

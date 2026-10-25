@@ -16,10 +16,13 @@
 // 【回复是「就地」的】点某条评论的「回复」，表单整块移动到那条评论下方（不是弹窗）。
 // 这是评论与讨论的语义差异：讨论回复是引用一条消息，评论回复是挂到某个父级下面
 // （parent_id 决定楼中楼的位置）。两边的输入区长得一样，语义不混。
+// 就地表单只保留输入框本体 —— 不放「回复 某某：…」预览条（目标由占位符交代），
+// 右上角一颗叉可以把它收掉，收掉后表单回到顶部。
 //
 // 【每层一张卡 + 可折叠】每条评论（每一层）都是一张独立卡片，底色按层深交替
-// 一级 / 二级卡片色（根 = 一级）。带子楼的评论在身份行右侧有一颗箭头，点击把
-// 子回复整棵折叠 —— 折叠状态在 CommentSection 的 Set<string> 里，见 collapsedIds。
+// 一级 / 二级卡片色（根 = 一级）。正文与操作行都从头像左边缘起排。带子楼的评论在
+// 操作行右端有一颗箭头，点击把子回复整棵折叠 —— 折叠状态在 CommentSection 的
+// Set<string> 里，见 collapsedIds。
 // ─────────────────────────────────────────────────────────────────────────────
 
 import Link from 'next/link';
@@ -153,17 +156,6 @@ interface Props {
 interface ReplyTarget {
   id: string;
   username: string;
-  preview: string;
-}
-
-/** 回复条预览文案：与讨论同一口径 —— 正文为空时按附件给占位，别显示成「回复 某某：」空着。 */
-function replyPreview(node: CommentNode): string {
-  const collapsed = node.content.replace(/\s+/g, ' ').trim();
-  if (collapsed) return collapsed.length > 40 ? `${collapsed.slice(0, 40)}…` : collapsed;
-  if (node.image) return '[图片]';
-  if (node.image_missing) return '[图片已删除]';
-  if (node.blog) return `[博客] ${node.blog.title}`;
-  return '';
 }
 
 async function api(url: string, init?: RequestInit): Promise<{ code: number; message: string; [k: string]: unknown }> {
@@ -395,16 +387,18 @@ export default function CommentSection({
         sending={submitting}
         sendLabel="发表评论"
         sendingLabel="发表中…"
-        // 占位符不必再报一次「回复 某某」—— 正上方的回复条已经写着，重复只是噪音
-        placeholderLead="说点什么…"
+        // 就地回复时占位符报出目标：回复条已随「只保留输入框」一起去掉，这里是唯一的
+        // 上下文提示（表单本来就挂在那条评论下方，不必再重复一遍正文预览）。
+        // 顶部新写评论时没有目标，退回中性提示。
+        placeholderLead={replyTo ? `回复 ${replyTo.username}` : '说点什么…'}
         // 按键提示用「发送」（「Enter 发送」是固定说法）；按钮仍叫「发表评论」。
         // submitVerb 只进占位符与提示文案，不影响按钮 —— 见 RichComposer 的 props。
         submitVerb="发送"
         pendingImage={pendingImage}
         uploadingImage={uploadingImage}
-        replyChip={
-          replyTo ? { label: `回复 ${replyTo.username}`, text: replyTo.preview } : null
-        }
+        /* 评论区**不用**「回复条」：就地回复的表单是浮出来的，只留输入框本身 ——
+           目标已经由占位符交代，整条预览会凭空多出一行高度。 */
+        replyChip={null}
         blogQuote={blogQuote}
         textareaRef={textareaRef}
         onTextChange={setText}
@@ -418,7 +412,9 @@ export default function CommentSection({
         onPickImage={(f) => void pickImage(f)}
         onPickFromLibrary={pickFromLibrary}
         onOpenQuote={() => setQuoteOpen(true)}
-        onClearReply={() => setReplyTo(null)}
+        // 顶部主输入区常驻、不可关（不传 dismiss）；就地回复那块是浮出来的，右上角一颗叉
+        // 把它收掉。这里也不传 onClearReply —— 讨论区的回复条才需要它。
+        dismiss={replyTo ? { label: '取消回复', onClick: () => setReplyTo(null) } : null}
         onClearBlogQuote={() => setBlogQuote(null)}
         onClearImage={clearImage}
         anonToggle={
@@ -491,7 +487,7 @@ export default function CommentSection({
                 currentUserId={currentUserId}
                 isAdmin={isAdmin}
                 onReply={(n) =>
-                  setReplyTo({ id: n.id, username: n.author.username ?? '匿名用户', preview: replyPreview(n) })
+                  setReplyTo({ id: n.id, username: n.author.username ?? '匿名用户' })
                 }
                 onDelete={openDeleteModal}
                 onToggleLike={toggleLike}
@@ -670,26 +666,10 @@ function CommentItem({
             {ymdhms(published)}
           </time>
         )}
-        {/* 折叠子回复：只有带子楼的评论才有这颗箭头。只折 `ul.children`（整棵子树一起
-            隐藏），不动本条正文 / 操作行 / 就地回复表单。aria-expanded 跟着状态走，
-            aria-controls 指向子列表 —— 读屏能知道「这里还能展开」。 */}
-        {hasChildren && (
-          <button
-            type="button"
-            className="comment-collapse"
-            aria-expanded={!collapsed}
-            aria-controls={childrenId}
-            aria-label={collapsed ? '展开回复' : '收起回复'}
-            title={collapsed ? '展开回复' : '收起回复'}
-            onClick={() => onToggleCollapse(node.id)}
-          >
-            <ChevronDown aria-hidden="true" />
-          </button>
-        )}
       </div>
 
-      {/* 正文列与头像列分开缩进：桌面端正文对齐到用户名（头像宽 + 间距），窄屏
-          （≤768px）退回到卡片左边缘 —— 手机上的可用宽度不够再让出这一列。 */}
+      {/* 正文与操作行都**不再让出头像列**：从头像左边缘（= 卡片内容区左边缘）起排，
+          读者一眼能看到正文与头像同一条竖线。窄屏同样如此，不用另设断点。 */}
       <div className="comment-item__body">
         {/* 正文：CommentMarkdown 内部走 renderCommentMarkdown 净化（见文件头） */}
         {node.content ? (
@@ -722,40 +702,60 @@ function CommentItem({
         )}
         {node.blog_missing && <div className="comment-blog-missing">[博客已删除]</div>}
 
+        {/* 操作行：左边是点赞 / 回复 / 删除，**右端**是折叠箭头。箭头属于「这一条的
+            操作」，所以放在这里而不是身份行 —— 身份行只放「谁、什么时候」。 */}
         <div className="comment-actions">
-          {/* 点赞：已删除的占位节点不给按钮（服务端对它一律 notFound）。
-              未登录只读展示计数 —— 点不了的东西不该长成能点的样子。 */}
-          {!node.is_deleted && currentUserId ? (
+          <div className="comment-actions__main">
+            {/* 点赞：已删除的占位节点不给按钮（服务端对它一律 notFound）。
+                未登录只读展示计数 —— 点不了的东西不该长成能点的样子。 */}
+            {!node.is_deleted && currentUserId ? (
+              <button
+                type="button"
+                className={`comment-like${node.liked ? ' is-liked' : ''}`}
+                onClick={() => onToggleLike(node)}
+                aria-pressed={node.liked}
+                aria-label={node.liked ? '取消点赞' : '点赞'}
+              >
+                <Heart aria-hidden="true" />
+                {node.likes_count > 0 && <span className="numeric">{node.likes_count}</span>}
+              </button>
+            ) : !node.is_deleted && node.likes_count > 0 ? (
+              <span className="comment-like comment-like--static">
+                <Heart aria-hidden="true" />
+                <span className="numeric">{node.likes_count}</span>
+              </span>
+            ) : null}
+            {canComment && (
+              <button type="button" className="comment-action" onClick={() => onReply(node)}>
+                <CornerUpLeft aria-hidden="true" />
+                回复
+              </button>
+            )}
+            {canDelete && (
+              <button
+                type="button"
+                className="comment-action comment-action--danger"
+                onClick={() => onDelete(node.id, requiresReason)}
+              >
+                <Trash2 aria-hidden="true" />
+                删除
+              </button>
+            )}
+          </div>
+          {/* 折叠子回复：只有带子楼的评论才有这颗箭头。只折 `ul.children`（整棵子树一起
+              隐藏），不动本条正文 / 操作行 / 就地回复表单。aria-expanded 跟着状态走，
+              aria-controls 指向子列表 —— 读屏能知道「这里还能展开」。 */}
+          {hasChildren && (
             <button
               type="button"
-              className={`comment-like${node.liked ? ' is-liked' : ''}`}
-              onClick={() => onToggleLike(node)}
-              aria-pressed={node.liked}
-              aria-label={node.liked ? '取消点赞' : '点赞'}
+              className="comment-collapse"
+              aria-expanded={!collapsed}
+              aria-controls={childrenId}
+              aria-label={collapsed ? '展开回复' : '收起回复'}
+              title={collapsed ? '展开回复' : '收起回复'}
+              onClick={() => onToggleCollapse(node.id)}
             >
-              <Heart aria-hidden="true" />
-              {node.likes_count > 0 && <span className="numeric">{node.likes_count}</span>}
-            </button>
-          ) : !node.is_deleted && node.likes_count > 0 ? (
-            <span className="comment-like comment-like--static">
-              <Heart aria-hidden="true" />
-              <span className="numeric">{node.likes_count}</span>
-            </span>
-          ) : null}
-          {canComment && (
-            <button type="button" className="comment-action" onClick={() => onReply(node)}>
-              <CornerUpLeft aria-hidden="true" />
-              回复
-            </button>
-          )}
-          {canDelete && (
-            <button
-              type="button"
-              className="comment-action comment-action--danger"
-              onClick={() => onDelete(node.id, requiresReason)}
-            >
-              <Trash2 aria-hidden="true" />
-              删除
+              <ChevronDown aria-hidden="true" />
             </button>
           )}
         </div>

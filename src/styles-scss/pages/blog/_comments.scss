@@ -17,7 +17,8 @@
 //     不为任意深度写 N 条选择器（深层楼中楼 e2e 会造 20 层）；
 //   · 楼中楼：嵌套列表透明、只留左内距表达层级；**同层换卡不换线** —— 同级子评论
 //     之间没有 border-top 分割线，靠卡片间距隔开；
-//   · 带子楼的评论在身份行右侧有一颗折叠箭头（.comment-collapse），折叠时子列表
+//   · 正文与操作行都**从头像左边缘起排**（不再让出头像列），与身份行同一竖线；
+//   · 带子楼的评论在**操作行右端**有一颗折叠箭头（.comment-collapse），折叠时子列表
 //     用 hidden 退出排版。
 //
 // 【两条几何契约】tests/e2e/comment-layout.spec.ts 的用例钉着，改版时一并守住：
@@ -103,18 +104,20 @@
     background: transparent;
 }
 
-/* 面板在讨论区是页面底色（它直接坐在页面底色上）。评论区把它抬成一级卡片色 ——
-   于是「输入框」与「每条评论卡」是同一档表面，层级只有页面底 → 卡片两层。 */
+/* 主输入框用**弱背景**（`--color-background-subtle`），不再抬成一级卡片色：
+    它是一枚「字段」而不是一张评论卡 —— 与卡片同色时读者会把它当成「还没有内容的
+    评论」，弱背景则一眼看出这是可写的字段。层级靠圆角与聚焦光晕表达。 */
 .comment-form .comment-composer__panel {
-    background: var(--color-background-card);
+    background: var(--color-background-subtle);
 }
 
 /* 就地回复：表单挂到被回复那条评论下面。它已经坐在一张评论卡上，所以换一档可辨识的
-   表面（页面底色）+ 面板二级卡片色。两种评论卡底色上都分得出来：一级白卡上页面底色
-   更灰一圈，二级 content 卡上页面底色更亮、面板又与卡同色、隔着一圈页面底色。
-   左侧缩进与正文列对齐（头像宽 + 间距），窄屏归零。 */
+    表面（页面底色）+ 面板二级卡片色。两种评论卡底色上都分得出来：一级白卡上页面底色
+    更灰一圈，二级 content 卡上页面底色更亮、面板又与卡同色、隔着一圈页面底色。
+    不再左右缩进 —— 正文本身就是从卡片左边缘（头像左边缘）起排的，表单跟着它走才同一条
+    竖线；缩进会成为唯一的例外。 */
 .comment-form.is-inline {
-    margin: 14px 0 0 calc(var(--comment-avatar-size, 38px) + var(--comment-avatar-gap, 10px));
+    margin: 14px 0 0;
     padding: 12px;
     background: var(--color-background-page);
     border-radius: v.$radius-field;
@@ -182,9 +185,9 @@
 }
 
 .comment-item {
-    /* 头像列宽度走变量：正文/操作区缩进读它，楼中楼自动换小一号。 */
+    /* 头像尺寸走变量：身份行（头像本体）读它，楼中楼自动换小一号。
+       正文与操作行**不再**读它做缩进 —— 它们从头像左边缘起排（见 __body）。 */
     --comment-avatar-size: 38px;
-    --comment-avatar-gap: 10px;
     /* 每一条评论（每一层）都是独立卡片：底色由 TSX 按 depth % 2 写成
        --comment-card-bg（一级 / 二级卡片色交替）。 */
     min-width: 240px;
@@ -198,7 +201,6 @@
     /* 楼中楼里的评论（含更深层）统一小一号身份区：层级越深，头部越轻。 */
     .comment-item {
         --comment-avatar-size: 28px;
-        --comment-avatar-gap: 9px;
     }
 
     /* 任何列表的最后一张卡都不留底部间距（间距是「两张卡之间」的属性）。 */
@@ -277,11 +279,14 @@
 }
 
 /* 折叠子回复的箭头：次级图标按钮（30px 命中区、不显示文字、不抢视线）。
+   住在**操作行右端**（.comment-actions，见 TSX）：它管的是这一条的操作，
+   margin-left:auto 把它推到那一行的最右边，与左侧按钮组同一行。
    状态只由 aria-expanded 表达（TSX 同步维护），样式跟着它走，不再另加会与 ARIA
    不同步的类：展开时箭头朝下，收起时旋成朝右（-90°）。 */
 .comment-collapse {
     @include m.btn-secondary($pointer-hover-only: true);
     flex: none;
+    margin-left: auto;
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -303,10 +308,10 @@
 
 // ── 正文 / 附件 / 操作 ──────────────────────────────────────────────────────
 
-/* 正文列：桌面端对齐到用户名（头像宽 + 间距），窄屏退回卡片左边缘。 */
+/* 正文列：**从头像左边缘起排**，不再让出头像宽度 + 间距那一列。
+   于是身份行的头像、正文、操作行落在同一条竖线上（窄屏也是这一条，不需要另设断点）。 */
 .comment-item__body {
     min-width: 0;
-    padding-left: calc(var(--comment-avatar-size) + var(--comment-avatar-gap));
 }
 
 // 评论正文的 Markdown 块级样式，与讨论气泡共用（components/_markdown-body.scss）
@@ -331,15 +336,23 @@
     text-decoration: none;
 }
 
-/* 操作行：点赞 / 回复 / 删除全部走「次级档」胶囊，图标 + 短文案。
-   允许换行 —— 深层楼中楼可用宽度会跌到 min-width 附近，不换行会把操作行顶出卡片
-   （那条横向溢出一条就不会只属于「有没有楼中楼」了）。 */
+/* 操作行：点赞 / 回复 / 删除全部走「次级档」胶囊，图标 + 短文案；**右端**是折叠箭头。
+   左侧按钮组自己允许换行 —— 深层楼中楼可用宽度会跌到 min-width 附近，不换行会把操作行
+   顶出卡片（那条横向溢出一条就不会只属于「有没有楼中楼」了）。箭头不进那个换行流：
+   它固定在行首那一行的右端（见 .comment-collapse 的 margin-left:auto）。 */
 .comment-actions {
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+    margin-top: 12px;
+}
+
+.comment-actions__main {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
     gap: 6px;
-    margin-top: 12px;
+    min-width: 0;
 }
 
 .comment-action {
@@ -603,7 +616,6 @@
     }
 
     .comment-form.is-inline {
-        margin-left: 0;
         padding: 10px;
         border-radius: 16px;
     }
@@ -618,10 +630,10 @@
         }
     }
 
-    /* 窄屏空间优先给正文：头像小一号，正文列不再让出缩进（退回卡片左边缘）。 */
+    /* 窄屏空间优先给正文：头像小一号。正文 / 操作行本来就从头像左边缘起排，
+       窄屏不需要另写一条缩进归零。 */
     .comment-item {
         --comment-avatar-size: 32px;
-        --comment-avatar-gap: 9px;
         padding: 12px;
         margin-bottom: 10px;
         border-radius: 16px;
@@ -629,11 +641,6 @@
 
     .comment-item .comment-item {
         --comment-avatar-size: 26px;
-        --comment-avatar-gap: 8px;
-    }
-
-    .comment-item__body {
-        padding-left: 0;
     }
 
     /* 窄屏层级缩进收窄到 10px（卡片内距也一起收），仍只由左内距表达层级。 */

@@ -223,6 +223,36 @@ test.describe('评论输入区（与讨论同源的 RichComposer）', () => {
     await expect(row).toBeVisible();
     await expect(row.locator('.comment-content__md strong')).toHaveText('来自输入区');
   });
+
+  // 主输入框是「字段」，不是一张评论卡：面板走弱背景（--color-background-subtle），
+  // 与卡片底色拉开一档。漂成卡片色时视觉上会像一条「还没有内容的评论」，而页面一切正常。
+  // 断言用同页面现算的变量值，不把十六进制色号抄进来（明暗两套主题各有一份）。
+  test('主输入框面板用弱背景色，与评论卡区分开', async ({ page }) => {
+    const res = await page.request.post('/api/auth/login', {
+      data: { username: SEED_USERS.core.username, password: 'e2e-Password-123' },
+    });
+    expect(res.status()).toBe(200);
+
+    await page.goto(BLOG_URL);
+    await waitCommentSectionReady(page);
+
+    const colors = await page.evaluate(() => {
+      const panel = document.querySelector<HTMLElement>(
+        '.comment-form:not(.is-inline) .comment-composer__panel'
+      );
+      if (!panel) return null;
+      // 同一个文档里现算一遍 --color-background-subtle，避免把色号写死在用例里
+      const probe = document.createElement('div');
+      probe.style.background = 'var(--color-background-subtle)';
+      document.body.appendChild(probe);
+      const want = getComputedStyle(probe).backgroundColor;
+      probe.remove();
+      return { got: getComputedStyle(panel).backgroundColor, want };
+    });
+
+    expect(colors, '页面里没有主输入框面板').not.toBeNull();
+    expect(colors!.got, '主输入框应当用弱背景（--color-background-subtle）').toBe(colors!.want);
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

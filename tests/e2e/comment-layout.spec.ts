@@ -175,7 +175,7 @@ test('楼中楼展开和收起时每张评论卡片都保留底部留白', async
   }
 
   const nested = page.locator('#comment-list > .comment-item > .children > .comment-item');
-  await nested.locator(':scope > .comment-meta .comment-collapse').click();
+  await nested.locator(':scope > .comment-item__body .comment-collapse').click();
   await expect(nested.locator(':scope > .children')).toBeHidden();
   const collapsed = await nested.evaluate((item) => {
     const style = getComputedStyle(item);
@@ -365,7 +365,7 @@ test('折叠箭头收起并重新展开子回复', async ({ page }) => {
   await expect(page.locator('.comment-item', { hasText: `折叠孙 ${tag}` }).last()).toBeVisible();
 
   const rootItem = page.locator('#comment-list > .comment-item', { hasText: `折叠根 ${tag}` });
-  const arrow = rootItem.locator(':scope > .comment-meta .comment-collapse');
+  const arrow = rootItem.locator(':scope > .comment-item__body .comment-collapse');
   const children = rootItem.locator(':scope > ul.children');
 
   // ① 根有子楼 → 有箭头；孙子没有子楼 → 没有箭头
@@ -397,4 +397,108 @@ test('折叠箭头收起并重新展开子回复', async ({ page }) => {
   await expect(arrow).toHaveAttribute('aria-expanded', 'true');
   await expect(children).toBeVisible();
   await expect(page.locator('.comment-item', { hasText: `折叠孙 ${tag}` }).last()).toBeVisible();
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 对齐：头像 / 正文 / 操作行同一条竖线，折叠箭头守在操作行右端
+//
+// 这两件都是**排版结果**，读样式表算不出来（正文有没有让出缩进、箭头落在哪一行，
+// 由 flex 与可用宽度共同决定）。改版前是「正文缩进到头像宽 + 间距，箭头挂在身份行
+// 末尾」；下面的断言就是那次改版的落点 —— 别只靠截图看。
+// ─────────────────────────────────────────────────────────────────────────────
+test('正文与操作行从头像左边缘起排，折叠箭头在操作行同一行右端', async ({ page }) => {
+  await registerFreshUser(page, { core: true });
+  const blogId = await createBlog(page, `评论对齐 ${uniqueTag()}`);
+
+  const tag = uniqueTag();
+  const root = await postComment(page, blogId, `对齐根 ${tag}`);
+  await postComment(page, blogId, `对齐子 ${tag}`, root);
+
+  await page.goto(`/blog/${blogId}`);
+  const item = page.locator('#comment-list > .comment-item', { hasText: `对齐根 ${tag}` });
+  await expect(item.locator(':scope > .children .comment-item').first()).toBeVisible();
+
+  const geom = await item.evaluate((li) => {
+    const q = (sel: string) => li.querySelector<HTMLElement>(sel);
+    const avatar = q(':scope > .comment-meta .comment-author-avatar');
+    const content = q(':scope > .comment-item__body > .comment-content');
+    const actions = q(':scope > .comment-item__body > .comment-actions');
+    // 登录着的核心用户 → 点赞与回复按钮都在，用它当「按钮那一行」的参照
+    const like = q(':scope > .comment-item__body .comment-actions .comment-like');
+    const arrow = q(':scope > .comment-item__body .comment-actions .comment-collapse');
+    if (!avatar || !content || !actions || !like || !arrow) return null;
+    const box = (el: HTMLElement) => el.getBoundingClientRect();
+    const a = box(avatar);
+    const c = box(content);
+    const act = box(actions);
+    const lk = box(like);
+    const ar = box(arrow);
+    return {
+      avatarLeft: a.left,
+      contentLeft: c.left,
+      actionsLeft: act.left,
+      actionsRight: act.right,
+      arrowRight: ar.right,
+      // 与点赞按钮在纵向有交集 = 同一行（不比较行高，触屏下按钮会更高）
+      sameRow: ar.bottom > lk.top && lk.bottom > ar.top,
+    };
+  });
+
+  expect(geom, '评论卡片里没找到头像 / 正文 / 操作行，断言前提不成立').not.toBeNull();
+  expect(Math.abs(geom!.contentLeft - geom!.avatarLeft), '正文没有和头像左对齐').toBeLessThanOrEqual(1);
+  expect(
+    Math.abs(geom!.actionsLeft - geom!.avatarLeft),
+    '操作行没有和头像左对齐'
+  ).toBeLessThanOrEqual(1);
+  expect(Math.abs(geom!.arrowRight - geom!.actionsRight), '折叠箭头没贴在操作行右端').toBeLessThanOrEqual(1);
+  expect(geom!.sameRow, '折叠箭头掉到了操作按钮下面').toBe(true);
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 就地回复的表单：只留输入框本体（不再有「回复 某某：…」预览条），右上角一颗叉
+// ─────────────────────────────────────────────────────────────────────────────
+test('就地回复只留输入框，右上角的叉能收起表单', async ({ page }) => {
+  await registerFreshUser(page, { core: true });
+  const blogId = await createBlog(page, `就地回复 ${uniqueTag()}`);
+
+  const tag = uniqueTag();
+  await postComment(page, blogId, `回复目标 ${tag}`);
+
+  await page.goto(`/blog/${blogId}`);
+  const item = page.locator('#comment-list > .comment-item', { hasText: `回复目标 ${tag}` });
+  await item.locator('.comment-action', { hasText: '回复' }).click();
+
+  const inline = page.locator('#comment-form.is-inline');
+  await expect(inline).toBeVisible();
+  // ① 只留输入框：旧版那条「回复 某某：正文预览」条不再出现
+  await expect(inline.locator('.comment-composer__reply')).toHaveCount(0);
+  // 目标没有丢 —— 搬进了输入框的占位符里
+  await expect(inline.locator('.comment-composer__input')).toHaveAttribute('placeholder', /^回复 /);
+
+  // ② 叉在面板右上角：与工具条同一行、贴右端
+  const closeBtn = inline.getByRole('button', { name: '取消回复' });
+  await expect(closeBtn).toBeVisible();
+  const geo = await inline.evaluate((form) => {
+    const panel = form.querySelector<HTMLElement>('.comment-composer__panel');
+    const toolbar = form.querySelector<HTMLElement>('.comment-composer__toolbar');
+    const close = form.querySelector<HTMLElement>('.comment-composer__dismiss');
+    if (!panel || !toolbar || !close) return null;
+    const p = panel.getBoundingClientRect();
+    const t = toolbar.getBoundingClientRect();
+    const c = close.getBoundingClientRect();
+    return {
+      inToolbarRow: c.top >= t.top - 1 && c.bottom <= t.bottom + 1,
+      rightGap: t.right - c.right,
+      topGap: c.top - p.top,
+    };
+  });
+  expect(geo, '就地回复的表单里没有找到右上角的叉').not.toBeNull();
+  expect(geo!.inToolbarRow, '叉不在工具条那一行').toBe(true);
+  expect(geo!.rightGap, '叉没有贴住面板右端').toBeLessThanOrEqual(1);
+  expect(geo!.topGap, '叉跑到了面板下方').toBeLessThanOrEqual(12);
+
+  // ③ 点叉：表单从评论下方消失，回到顶部（新写一条评论的状态）
+  await closeBtn.click();
+  await expect(inline).toHaveCount(0);
+  await expect(page.locator('#comment-form')).toBeVisible();
 });

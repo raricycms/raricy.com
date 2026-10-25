@@ -21,7 +21,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useEffect, useRef, useState } from 'react';
-import { BookOpenText, IdCard, Image as ImageIcon, Images, Smile } from 'lucide-react';
+import { BookOpenText, IdCard, Image as ImageIcon, Images, Smile, X } from 'lucide-react';
 import { IMAGE_ACCEPT } from '@/lib/image-client';
 import type { MentionScope } from '@/lib/mention-shared';
 import MentionInput from './MentionInput';
@@ -86,6 +86,7 @@ export default function RichComposer({
   stickerPickClosesPanel = true,
   hintExtra,
   anonToggle = null,
+  dismiss = null,
   mentionScope,
 }: {
   /** BEM 前缀，见文件头「类名由调用方注入」。 */
@@ -113,7 +114,8 @@ export default function RichComposer({
   /** 「从图床选择」选中一张已有的图（与上传落在同一条待发附件状态上）。 */
   onPickFromLibrary: (image: PendingImage) => void;
   onOpenQuote: () => void;
-  onClearReply: () => void;
+  /** 点回复条上的叉。**只有传了 replyChip 才需要**（评论区不再用回复条，所以不传）。 */
+  onClearReply?: () => void;
   onClearBlogQuote: () => void;
   onClearImage: () => void;
   /**
@@ -153,6 +155,14 @@ export default function RichComposer({
    * `.comment-composer__icon-btn` 数量钉死为 5，把勾选项塞进工具条会当场红。
    */
   anonToggle?: { checked: boolean; onChange: (checked: boolean) => void } | null;
+  /**
+   * 面板**右上角**的关闭叉。不传 = 不渲染（顶部主输入区与讨论区就是这样）。
+   *
+   * 只有评论区那条「就地回复」的表单会传：那块表单是点「回复」后临时浮出来的，
+   * 读者必须能不做任何操作就把它收掉。放在工具条右端而不是另起一行 —— 那行左侧
+   * 本来就是一片空位，叉在右上角既不占高度也不和输入内容抢位置。
+   */
+  dismiss?: { label: string; onClick: () => void } | null;
 }) {
   const isTouch = useCoarsePointer();
   // 文件 input 归自己持有：选完立即清 value，否则连续选同一个文件不会再触发 change。
@@ -287,6 +297,19 @@ export default function RichComposer({
               if (f) onPickImage(f);
             }}
           />
+          {/* 右上角的关闭叉（只有传了 dismiss 才有，见上面的 prop 说明）。
+              margin-left:auto 由 SCSS 给 —— 它把叉推到工具条右端 = 面板右上角。 */}
+          {dismiss && (
+            <button
+              type="button"
+              className={`${className}__dismiss`}
+              onClick={dismiss.onClick}
+              aria-label={dismiss.label}
+              title={dismiss.label}
+            >
+              <X aria-hidden="true" />
+            </button>
+          )}
         </div>
         <MentionInput
           scope={mentionScope}
