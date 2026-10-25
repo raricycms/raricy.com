@@ -381,6 +381,12 @@
    未登录只读展示时同一个类名退化成静态（--static 去掉手型与 hover），位置保持一致。 */
 .comment-like {
     @include m.btn-secondary($pointer-hover-only: true);
+    /* 点赞的功能色是红（--color-warning-* 就是红色那组，见 docs/frontend-styles §3.1 /
+       §6.1）。做法与文章页的 .like-btn 相同：把次级档用来上色的两枚品牌变量就地换成
+       警示红，mixin 的 hover（淡红底 + 红字）与按下（实红底 + 白字）自动跟着走。
+       不换的话，评论点赞悬停是品牌蓝、文章点赞悬停是红 —— 同一个动作两种颜色。 */
+    --color-brand-primary: var(--color-warning-primary);
+    --color-brand-secondary: var(--color-warning-secondary);
     display: inline-flex;
     align-items: center;
     gap: 5px;
