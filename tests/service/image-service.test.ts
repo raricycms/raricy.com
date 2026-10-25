@@ -1319,8 +1319,8 @@ describe('GET /api/images/:id/raw（SVG XSS 防护 + 私有图鉴权）', () => 
     authState.user = null;
   });
 
-  const call = (id: string) =>
-    rawGET(new Request(`http://localhost/api/images/${id}/raw`), {
+  const call = (id: string, headers?: Record<string, string>) =>
+    rawGET(new Request(`http://localhost/api/images/${id}/raw`, { headers }), {
       params: Promise.resolve({ id }),
     });
 
@@ -1546,12 +1546,74 @@ describe('GET /api/images/:id/raw（SVG XSS 防护 + 私有图鉴权）', () => 
     });
   });
 
-  it('缓存头为 immutable 长缓存（ID 内容不可变，安全）', async () => {
+  // ── 缓存口径：no-cache + 弱 ETag，**不是**一年 immutable ──────────────────
+  //
+  // 这一组钉的是线上那次「图床删了图，之前访问过博客的人还能看见」：
+  // 旧口径 `public, max-age=31536000, immutable` 让浏览器一年不回来问，
+  // 而这张图在服务端已经软删（同一个 URL 从此 404）—— 于是「删了」这件事
+  // 永远送不到访客眼前。现在每次使用前回来验证，没变 304、删了 404。
+
+  it('★ 公开图不许 immutable 长缓存：`public, no-cache` + 弱 ETag', async () => {
     const u = await makeUser({ role: 'core' });
     const img = await seedOnDisk({ authorId: u.id, mimeType: 'image/png', bytes: await pngBytes() });
-    expect((await call(img.id)).headers.get('Cache-Control')).toBe(
-      'public, max-age=31536000, immutable'
+
+    const res = await call(img.id);
+    expect(res.status).toBe(200);
+    const cc = res.headers.get('Cache-Control');
+    expect(cc, 'immutable / max-age 都会让删掉的图在访客浏览器里继续活着').toBe(
+      'public, no-cache'
     );
+    expect(cc).not.toContain('immutable');
+    expect(res.headers.get('ETag')).toMatch(/^W\/"\d+-\d+"$/);
+  });
+
+  it('条件请求：If-None-Match 命中 → 304，零字节，且缓存头原样带回', async () => {
+    const u = await makeUser({ role: 'core' });
+    const img = await seedOnDisk({ authorId: u.id, mimeType: 'image/png', bytes: await pngBytes() });
+    const etag = (await call(img.id)).headers.get('ETag')!;
+    expect(etag).not.toBeNull();
+
+    const res = await call(img.id, { 'if-none-match': etag });
+    expect(res.status).toBe(304);
+    expect(res.headers.get('ETag')).toBe(etag);
+    expect(res.headers.get('Cache-Control')).toBe('public, no-cache');
+    expect((await res.arrayBuffer()).byteLength, '304 不能带 body').toBe(0);
+  });
+
+  it('★ 软删之后，带着匹配的 ETag 也必须 404（缓存验证不能盖过删除）', async () => {
+    const u = await makeUser({ role: 'core' });
+    const img = await seedOnDisk({ authorId: u.id, mimeType: 'image/png', bytes: await pngBytes() });
+    const etag = (await call(img.id)).headers.get('ETag')!;
+
+    await softDeleteImage(img.id);
+    const res = await call(img.id, { 'if-none-match': etag });
+    expect(res.status, '删图后条件请求拿到 304 = 浏览器继续显示已删除的图').toBe(404);
+    expect(res.headers.get('Cache-Control')).toBe('no-store');
+  });
+
+  it('★ 404 一律 no-store（删图的反馈不能被浏览器记住）', async () => {
+    const u = await makeUser({ role: 'core' });
+    const deleted = await seedOnDisk({
+      authorId: u.id,
+      mimeType: 'image/png',
+      bytes: await pngBytes(),
+      ignore: true,
+    });
+    expect((await call(deleted.id)).headers.get('Cache-Control')).toBe('no-store');
+    expect((await call('nope')).headers.get('Cache-Control')).toBe('no-store');
+  });
+
+  it('磁盘文件被换掉（大小/时间变）→ ETag 变，旧 ETag 不再 304', async () => {
+    const u = await makeUser({ role: 'core' });
+    const img = await seedOnDisk({ authorId: u.id, mimeType: 'image/png', bytes: await pngBytes() });
+    const etag = (await call(img.id)).headers.get('ETag')!;
+
+    // 运维工作流：直接往 instance/images 里拷文件。换了字节就必须换 ETag，
+    // 否则「换了图、访客却永远 304 看旧图」，且不报任何错。
+    await fsp.writeFile(storagePathFor(img.id, 'image/png'), await pngBytes(20, 20));
+    const res = await call(img.id, { 'if-none-match': etag });
+    expect(res.status).toBe(200);
+    expect(res.headers.get('ETag')).not.toBe(etag);
   });
 
   it('★ 私有图必须是 private, no-store（否则共享缓存/CDN 会向无权者下发）', async () => {
