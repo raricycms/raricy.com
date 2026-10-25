@@ -163,7 +163,8 @@
       margin-bottom: $space-4;
       background: var(--color-background-card);
       color: var(--color-brand-primary);
-      border-radius: $radius-field;
+      /* 淡色底座的小图标容器一律圆形（docs/frontend-styles.md §3.3）。 */
+      border-radius: 50%;
 
       .icon { width: 28px; height: 28px; }
     }
@@ -210,9 +211,11 @@
       display: grid;
       place-items: center;
       flex: none;
+      /* 正方形 40×40，否则 50% 会把非正方盒子拉成椭圆；
+         淡色底座的小图标容器一律圆形（§3.3）。 */
       width: 40px;
-      height: 44px;
-      border-radius: $radius-large;
+      height: 40px;
+      border-radius: 50%;
       background: var(--color-background-page);
       color: var(--color-text-secondary);
     }

@@ -224,7 +224,8 @@ body {
     background: var(--color-background-card-unread);
 }
 
-/* 类型图标：36–38px 的方底，色相按通知类别分开。底色一律走同色系 -soft，
+/* 类型图标：36–38px 的圆形淡色底座（docs/frontend-styles.md §3.3；头像才是 8% 方角），
+   色相按通知类别分开。底色一律走同色系 -soft，
    明暗主题跟着令牌切换。认不出的 action 落到 --default（中性色）。 */
 .notification-type {
     display: grid;
@@ -232,7 +233,7 @@ body {
     flex: none;
     width: 38px;
     height: 38px;
-    border-radius: 12px;
+    border-radius: 50%;
 }
 
 .notification-type--like {
@@ -476,7 +477,7 @@ a.notification-actor:hover {
     .notification-type {
         width: 34px;
         height: 34px;
-        border-radius: 10px;
+        border-radius: 50%;
     }
 
     .notification-foot {

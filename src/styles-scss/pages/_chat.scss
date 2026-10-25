@@ -274,18 +274,25 @@
   display: flex;
 }
 
+// 图标 / 头像共用盒子几何；底座形状分开写：头像仍是 8% 方角（§3.4），
+// 淡色底座的小图标容器一律圆形（docs/frontend-styles.md §3.3）。
 .chat-chan__icon,
 .chat-chan__avatar {
   flex: none;
   width: 34px;
   height: 34px;
-  border-radius: 8%;
   display: flex;
   align-items: center;
   justify-content: center;
   overflow: hidden;
   font-size: 1.1rem;
   background: var(--color-background-content);
+}
+.chat-chan__avatar {
+  border-radius: 8%;
+}
+.chat-chan__icon {
+  border-radius: 50%;
 }
 .chat-chan__avatar img {
   width: 100%;
@@ -1227,7 +1234,8 @@
   flex: none;
   width: 32px;
   height: 32px;
-  border-radius: 8px;
+  // 淡色底座的小图标容器一律圆形（§3.3）。
+  border-radius: 50%;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1557,7 +1565,8 @@
   flex: none;
   width: 34px;
   height: 34px;
-  border-radius: 12px;
+  // 淡色底座的小图标容器一律圆形（§3.3）；头像才是 8% 方角。
+  border-radius: 50%;
   display: inline-flex;
   align-items: center;
   justify-content: center;

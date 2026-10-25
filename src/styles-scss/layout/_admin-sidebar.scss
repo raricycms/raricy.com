@@ -48,7 +48,8 @@
   flex: none;
   width: 36px;
   height: 36px;
-  border-radius: 12px;
+  // 淡色底座的小图标一律圆形（docs/frontend-styles.md §3.3）；36px 方盒即正圆。
+  border-radius: 50%;
   background: var(--color-brand-secondary);
   color: var(--color-brand-primary);
 

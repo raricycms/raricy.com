@@ -8,7 +8,7 @@
 //
 // 【版式】页面底色上摆一张张卡片（不描边、常态不托阴影），层级靠**底色层级 +
 // 缩进**表达，不靠分割线：
-//   · 标题行：品牌淡底方框图标 + 「评论」 + 总数胶囊（数字走 .numeric）；
+//   · 标题行：品牌淡底圆形图标 + 「评论」 + 总数胶囊（数字走 .numeric）；
 //   · 发表评论：没有外卡 —— RichComposer 的面板本身就是字段（一级卡片色、20px
 //     圆角、聚焦光晕），直接坐在页面底色上；
 //   · 每一条评论（每一层）各自是一张卡：底色按层深交替一级 / 二级卡片色
@@ -54,7 +54,8 @@
     color: var(--color-text-primary);
 }
 
-/* 图标方框与 .comment-blog__icon 同一档（卡片底色 + 品牌字色），只是这里用淡底 */
+/* 图标底座与 .comment-blog__icon 同一档（淡底 + 品牌字色）；
+   淡色底座的小图标容器一律圆形（docs/frontend-styles.md §3.3），头像才走 8% 方角。 */
 .comment-section__icon {
     display: inline-flex;
     align-items: center;
@@ -62,7 +63,7 @@
     flex: none;
     width: 34px;
     height: 34px;
-    border-radius: 12px;
+    border-radius: 50%;
     background: var(--color-brand-secondary);
     color: var(--color-brand-primary);
 
@@ -457,7 +458,7 @@
 }
 
 /* 引用博客链接卡（整卡可点 → 博客详情页）。**与讨论里的 .chat-msg__blog 同款**：
-   10px 圆角 + 内容底色 + 32px 图标方框。同一个东西在讨论区与评论区长得不一样，
+   10px 圆角 + 内容底色 + 32px 圆形图标底座。同一个东西在讨论区与评论区长得不一样，
    读者会当成两种卡片。
    ⚠️ 内部是两行（标题 + 作者），所以走 10px 那档，不是胶囊（见 frontend-styles §3.3）。 */
 .comment-blog {
@@ -482,12 +483,13 @@
     box-shadow: var(--shadow-card-brand);
 }
 
-/* 图标方框：与 .chat-msg__blog-icon 同尺寸同圆角（卡片底色 + 品牌字色） */
+/* 图标底座：与 .chat-msg__blog-icon 同尺寸同形状（卡片底色 + 品牌字色）；
+   淡色底座的小图标容器一律圆形（§3.3） */
 .comment-blog__icon {
     flex: none;
     width: 32px;
     height: 32px;
-    border-radius: 8px;
+    border-radius: 50%;
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -539,13 +541,14 @@
     margin: 0;
 }
 
+/* 淡色底座的小图标容器一律圆形（§3.3） */
 .comment-status__icon {
     display: inline-flex;
     align-items: center;
     justify-content: center;
     width: 44px;
     height: 44px;
-    border-radius: 14px;
+    border-radius: 50%;
     background: var(--color-brand-secondary);
     color: var(--color-brand-primary);
 
@@ -580,7 +583,7 @@
     .comment-section__icon {
         width: 30px;
         height: 30px;
-        border-radius: 10px;
+        border-radius: 50%;
 
         svg {
             width: 16px;
