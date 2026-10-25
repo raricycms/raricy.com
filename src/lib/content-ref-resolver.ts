@@ -46,6 +46,9 @@ import {
   clipboardFailureText,
   createConcurrencyLimiter,
 } from '@/lib/content-refs';
+import { parseContentFormat } from '@/lib/content-format';
+import type { ContentFormat } from '@/lib/content-format';
+import type { ExternalClipData } from '@/lib/reactive/ref-types';
 import {
   MAX_CARD_ITEMS,
   buildFavoriteCardHtml,
@@ -72,11 +75,30 @@ export type ContentRefType = 'clipboard' | 'vote' | 'image' | 'favorite';
 export interface ResolvedRef {
   type: ContentRefType;
   content?: string;
+  /**
+   * 仅 clipboard：结果的正文格式。**缓存必须连格式一起存** —— 只存正文的话，
+   * 下一次命中缓存就分不出「可以内联的 markdown」和「只能给链接的 reactive」。
+   * 兼容旧响应时缺省按 markdown（见 load 里的说明）；认不出的值不给。
+   */
+  format?: ContentFormat | null;
+  version?: string;
   error?: boolean;
   id?: string;
   url?: string;
   /** 仅 vote：小组件数据（探测那一条报文里的 `data`）。 */
   data?: VoteEmbedData;
+}
+
+/**
+ * reactive 剪贴板在旧 Markdown 管线里的**唯一**合法形态：一个站内链接。
+ *
+ * 绝不内联源码：旧渲染器读不懂 reactive 语法，内联的结果是整段源码被当成
+ * Markdown/HTML 重新解释（静默坏内容）。文案不掺标题等用户输入，id 再过滤一遍
+ * 非字母数字字符 —— 这个字符串会被拼进 Markdown 再交给 marked。
+ */
+export function reactiveClipboardLink(id: string): string {
+  const safeId = id.replace(/[^A-Za-z0-9]/g, '');
+  return `[查看剪贴板](/clipboard/${safeId})`;
 }
 
 /**
@@ -105,11 +127,13 @@ export class ContentRefResolver {
 
   /**
    * @param mode          见文件头「两种模式」。实例级固定，不随调用变。
-   * @param externalClips 'external' 下**服务端预先解析好**的公开剪贴板（id → 正文）。
+   * @param externalClips 'external' 下**服务端预先解析好**的公开剪贴板。
+   *   新形状是 id → `{ content, format, version?, title? }`；**同时接受旧的
+   *   id → 字符串**（当作 markdown 内联，保持既有调用方可用）。
    */
   constructor(
     private mode: ContentRefMode,
-    private externalClips: Record<string, string> = {}
+    private externalClips: Record<string, string | ExternalClipData> = {}
   ) {}
 
   /**
@@ -210,17 +234,48 @@ export class ContentRefResolver {
     if (type === 'clipboard') {
       if (this.mode === 'external') {
         // 服务端已替我们判过公开档：在表里的直接当内容用；不在表里的
-        // （私有 / 已软删 / 不存在同形）保持字面量。**不缓存 undefined** ——
+        // （私有 / 已软删 / 不存在 / 格式认不出）保持字面量。**不缓存 undefined** ——
         // 同一篇的 payload 不变，重查一次字典没有成本，缓存它反而挡住
         // 「调用方随后补了一张更大的表」这种合法用法。
-        const content = this.externalClips[id];
-        return content === undefined ? undefined : { type: 'clipboard', content };
+        const entry = this.externalClips[id];
+        if (entry === undefined) return undefined;
+        // 旧形状（纯字符串）= 历史上只有 markdown，按 markdown 内联。
+        if (typeof entry === 'string') {
+          return { type: 'clipboard', content: entry, format: 'markdown' };
+        }
+        if (typeof entry.content !== 'string') return undefined;
+        const format = parseContentFormat(entry.format);
+        // 新形状但格式认不出：不内联、不猜 markdown，只给安全链接。
+        if (format !== 'markdown') {
+          return { type: 'clipboard', content: reactiveClipboardLink(id), format, version: entry.version };
+        }
+        return { type: 'clipboard', content: entry.content, format, version: entry.version };
       }
       try {
         const res = await fetch(`/api/clipboard/${id}`, { credentials: 'same-origin' });
         if (!res.ok) throw new Error('failed');
-        const data = await res.json();
-        return { type: 'clipboard', content: data.clip?.content ?? data.content ?? '' };
+        const data = (await res.json()) as {
+          clip?: { content?: unknown; format?: unknown; version?: unknown };
+          content?: unknown;
+        };
+        const content =
+          typeof data.clip?.content === 'string'
+            ? data.clip.content
+            : typeof data.content === 'string'
+              ? data.content
+              : '';
+        // 兼容未带 format 的旧响应（同一部署里不会出现，但测试桩/旧缓存可能）；
+        // 带了一个**认不出**的值时绝不猜成 markdown —— 只给链接。
+        const rawFormat = data.clip?.format;
+        const version = typeof data.clip?.version === 'string' ? data.clip.version : undefined;
+        const format =
+          rawFormat === undefined
+            ? 'markdown'
+            : parseContentFormat(rawFormat);
+        if (format !== 'markdown') {
+          return { type: 'clipboard', content: reactiveClipboardLink(id), format, version };
+        }
+        return { type: 'clipboard', content, format, version };
       } catch {
         return { type: 'clipboard', content: clipboardFailureText(id) };
       }

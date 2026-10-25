@@ -1,4 +1,3 @@
-import { createHash } from 'node:crypto';
 import { isCoreUser, isOwner } from '../auth';
 import { getClip } from '../clipboard-service';
 import { getVoteDetail } from '../vote-service';
@@ -42,7 +41,7 @@ export function createServiceReferenceReader(
         if (!format) return mode === 'external' ? undefined : { status: 'error' };
         return {
           status: 'ready', title: clip.title, format, content: clip.content,
-          version: createHash('sha256').update(JSON.stringify([format, clip.title, clip.content])).digest('hex'),
+          version: clip.version,
           payload: { href: `/clipboard/${slot.ref}`, title: clip.title },
         };
       }

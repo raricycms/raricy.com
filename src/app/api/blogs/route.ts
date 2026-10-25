@@ -6,6 +6,8 @@ import {
   getCategoryPostingMeta,
   banActionMessage,
   createBlog,
+  resolveBlogContentFormat,
+  contentWriteFailureMessage,
   BLOG_DAILY_LIMIT,
   ALL_SEARCH_FIELDS,
   type SearchField,
@@ -143,6 +145,11 @@ export async function POST(req: Request) {
   const body = await req.json().catch(() => null);
   const v = await validateBlogData(body);
   if (!v.ok) return apiErr(400, v.message);
+
+  // 内容格式写入闸门（API 层也要判一次；service 层还有同一道 —— 两边都设防）。
+  // 新建省略 format = 默认 markdown；reactive 尚未开放，直接 400 而不是落库一半。
+  const contentWrite = resolveBlogContentFormat(v.data.format);
+  if (!contentWrite.ok) return apiErr(400, contentWriteFailureMessage(contentWrite.reason));
 
   // 每日发文上限（20 篇）
   const todayCount = await countBlogsToday(user.id);

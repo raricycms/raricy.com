@@ -9,6 +9,14 @@ import { prisma } from './db';
 import { nowForDb } from './db-time';
 import { generateShortId } from './short-id';
 import {
+  DEFAULT_CONTENT_FORMAT,
+  parseContentFormat,
+  resolveContentWriteFormat,
+} from './content-format';
+import type { ContentFormat } from './content-format';
+import type { ExternalClipData } from './reactive/ref-types';
+import { createHash } from 'node:crypto';
+import {
   collectClipboardRefIds,
   createConcurrencyLimiter,
   MAX_REF_CONCURRENCY,
@@ -25,10 +33,49 @@ export const CLIP_CONTENT_MAX = 50000;
 //    与站内文案「一个用户只能发布200篇云剪贴板！」对不上。这里就是真正的 200。
 export const CLIP_PER_USER_MAX = 200;
 
+/** 正文写入闸门的失败原因（与 blog-service 同形，但两域各自设防）。 */
+export type ClipContentWriteFailure = 'invalid_format' | 'reactive_not_ready';
+
+export type ClipContentWriteGate =
+  | { ok: true; format: ContentFormat }
+  | { ok: false; reason: ClipContentWriteFailure };
+
+/**
+ * 剪贴板正文的**唯一写入闸门**（createClip / updateClip / 两条写接口都调它）。
+ *
+ * 规则与博客侧逐条一致（见 blog-service.resolveBlogContentFormat）：
+ *   · 省略 = 保留库里的原值（新建时默认 markdown）；
+ *   · 未知请求值 → 拒绝；
+ *   · 未知存量值 / 存量 reactive → 拒绝 —— 本期没有同版本快照可回滚，
+ *     任何写入都会静默丢格式或把 reactive 源码按 Markdown 改写。
+ */
+export function resolveClipContentFormat(
+  requested: unknown,
+  stored: unknown = undefined
+): ClipContentWriteGate {
+  const current =
+    stored === undefined ? DEFAULT_CONTENT_FORMAT : parseContentFormat(stored);
+  if (current === null) return { ok: false, reason: 'invalid_format' };
+  if (current === 'reactive') return { ok: false, reason: 'reactive_not_ready' };
+  return resolveContentWriteFormat(requested, current);
+}
+
+/** 写入闸门失败时的对外文案（route 层直接用它，避免两处措辞漂移）。 */
+export function clipContentWriteMessage(reason: ClipContentWriteFailure): string {
+  return reason === 'invalid_format'
+    ? '内容格式取值不合法，可选：markdown / reactive'
+    : 'ReactiveMD 内容暂未开放写入';
+}
+
 export interface CreateClipInput {
   title: string;
   content: string;
   publicity?: boolean;
+  /**
+   * 正文格式。`unknown` 而不是 `ContentFormat`：service 自己必须校验任何绕过 route
+   * 的调用方（同长度校验的理由）。缺省 = 新建默认 markdown。
+   */
+  format?: unknown;
 }
 
 /** 长度校验失败的原因，与 route 层的 'title too long' / 'content too long' 一一对应。 */
@@ -36,7 +83,7 @@ export type ClipLengthReason = 'title_too_long' | 'content_too_long';
 
 export type CreateClipResult =
   | { ok: true; id: string }
-  | { ok: false; reason: 'limit' | ClipLengthReason };
+  | { ok: false; reason: 'limit' | ClipLengthReason | ClipContentWriteFailure };
 
 /**
  * 标题 / 正文长度校验。
@@ -63,6 +110,10 @@ export async function createClip(
   const lengthErr = validateClipLength(input.title, input.content);
   if (lengthErr) return { ok: false, reason: lengthErr };
 
+  // 写入闸门放在查库之前：非法 / reactive 请求连配额都不该消耗。
+  const write = resolveClipContentFormat(input.format);
+  if (!write.ok) return { ok: false, reason: write.reason };
+
   const count = await prisma.clipBoard.count({ where: { authorId } });
   if (count >= CLIP_PER_USER_MAX) {
     return { ok: false, reason: 'limit' };
@@ -80,7 +131,12 @@ export async function createClip(
       ignore: false,
       createdAt: now,
       content: {
-        create: { content: input.content, updatedAt: now },
+        create: {
+          content: input.content,
+          format: write.format,
+          syntaxVersion: null,
+          updatedAt: now,
+        },
       },
     },
   });
@@ -92,11 +148,13 @@ export interface UpdateClipInput {
   title: string;
   content: string;
   publicity: boolean;
+  /** 与 CreateClipInput.format 同：unknown 由 service 自己校验；省略 = 保留原格式。 */
+  format?: unknown;
 }
 
 export type UpdateClipResult =
   | { ok: true; id: string }
-  | { ok: false; reason: 'not_found' | 'forbidden' | ClipLengthReason };
+  | { ok: false; reason: 'not_found' | 'forbidden' | ClipLengthReason | ClipContentWriteFailure };
 
 /**
  * 编辑剪贴板。
@@ -117,11 +175,16 @@ export async function updateClip(
 
   const clip = await prisma.clipBoard.findFirst({
     where: { id: clipId, ignore: false },
-    select: { id: true, authorId: true },
+    // content.format 是写入闸门的当前值：省略 format 的编辑必须保留原值，
+    // 而存量 reactive 当前一律拒绝写入（理由见 resolveClipContentFormat）。
+    select: { id: true, authorId: true, content: { select: { format: true } } },
   });
 
   if (!clip) return { ok: false, reason: 'not_found' };
   if (clip.authorId !== editorId) return { ok: false, reason: 'forbidden' };
+
+  const write = resolveClipContentFormat(input.format, clip.content?.format);
+  if (!write.ok) return { ok: false, reason: write.reason };
 
   const now = nowForDb();
   await prisma.clipBoard.update({
@@ -131,8 +194,18 @@ export async function updateClip(
       publicity: input.publicity,
       content: {
         upsert: {
-          create: { content: input.content, updatedAt: now },
-          update: { content: input.content, updatedAt: now },
+          create: {
+            content: input.content,
+            format: write.format,
+            syntaxVersion: null,
+            updatedAt: now,
+          },
+          update: {
+            content: input.content,
+            format: write.format,
+            syntaxVersion: null,
+            updatedAt: now,
+          },
         },
       },
     },
@@ -181,6 +254,15 @@ export interface ClipDetail {
   authorName: string | null;
   publicity: boolean;
   content: string;
+  /**
+   * 正文格式。**null = 库里的值不认识**（或正文行缺失）—— 绝不猜成 markdown：
+   * 猜错等于把另一种语言的源码交给 Markdown 解析器。读取方必须保留字面量 / 走链接。
+   */
+  format: ContentFormat | null;
+  /** 仅 format='reactive' 时有意义；只用于升级审计，不是渲染开关。 */
+  syntaxVersion: string | null;
+  /** Shared by API, member embeds and public embeds. */
+  version: string;
   createdAt: Date | null;
 }
 
@@ -212,7 +294,7 @@ export async function getClip(
       publicity: true,
       createdAt: true,
       author: { select: { username: true } },
-      content: { select: { content: true } },
+      content: { select: { content: true, format: true, syntaxVersion: true } },
     },
   });
 
@@ -232,13 +314,27 @@ export async function getClip(
       authorName: clip.author?.username ?? null,
       publicity: isPublic,
       content: clip.content?.content ?? '',
+      // 未知存量值给 null，不猜 markdown（见 ClipDetail.format 的说明）。
+      format: parseContentFormat(clip.content?.format) ?? null,
+      syntaxVersion: clip.content?.syntaxVersion ?? null,
+      version: createHash('sha256').update(JSON.stringify([
+        clip.content?.format ?? null, clip.content?.syntaxVersion ?? null,
+        clip.title, clip.content?.content ?? '',
+      ])).digest('hex'),
       createdAt: clip.createdAt ?? null,
     },
   };
 }
 
 /**
- * 解析正文里所有 `[@8位]` 剪贴板引用，返回**只有公开档**的 id → 正文映射。
+ * 解析正文里所有 `[@8位]` 剪贴板引用，返回**只有公开档**的 id → 结构化数据
+ * （`{ content, format, version?, title? }`）。
+ *
+ * ⚠️ 返回的 `content` 是**源码**，`format` 才是调用方该看的判据：
+ *   · markdown → 旧渲染器可以内联；
+ *   · reactive → **不得内联**（旧渲染器读不懂），消费端（ContentRefResolver /
+ *     useResolvedContent）只生成一个安全的 Markdown 链接；
+ *   · format 认不出（库里是脏值）→ 这条**不进表**，调用方保留字面量。
  *
  * 【谁在用】文章详情页的**对外视图**（`blog/[id]/page.tsx` 的访客分支）：把结果当
  * `externalClips` 交给 `MarkdownRenderer`。
@@ -272,12 +368,14 @@ export async function getClip(
  * 不展开」，两边必须一致：不一致的形态是同一篇正文在成员视图与对外视图里显示
  * 不同的东西，**而且都不报错**。
  */
-export async function resolvePublicClipRefs(markdown: string): Promise<Record<string, string>> {
+export async function resolvePublicClipRefs(
+  markdown: string
+): Promise<Record<string, ExternalClipData>> {
   const ids = collectClipboardRefIds(maskMarkdownCode(markdown)).slice(0, MAX_REF_FETCHES);
   if (ids.length === 0) return {};
 
   // 按**下标**收集结果 —— 并发完成顺序不定，映射要按源文顺序重建。
-  const contents: Array<string | undefined> = new Array(ids.length);
+  const contents: Array<ExternalClipData | undefined> = new Array(ids.length);
   const gate = createConcurrencyLimiter(MAX_REF_CONCURRENCY);
   await Promise.all(
     ids.map((id, i) =>
@@ -285,19 +383,32 @@ export async function resolvePublicClipRefs(markdown: string): Promise<Record<st
         // 不传 viewerId / viewerIsOwner：拿不到「本人」或「站长」这两个例外，
         // 于是结果只可能是公开档（下面那句是第二道确认，别删）。
         const result = await getClip(id);
-        contents[i] = result.ok && result.clip.publicity ? result.clip.content : undefined;
+        if (!result.ok || !result.clip.publicity) return;
+        const clip = result.clip;
+        // 未知 / 缺失格式（null）一律**不进表**：调用方会保留字面量。
+        // 绝不把它当 Markdown 下发 —— 那等于替库里一个认不出的值做决定。
+        if (clip.format === null) return;
+        // 版本 = 这份公开快照的稳定标识（格式 + 标题 + 正文）。相同内容同版本，
+        // 引用方编辑后版本变化 —— 缓存与快照失效都靠它，不需要另存一张版本表。
+        const version = clip.version;
+        contents[i] = {
+          content: clip.content,
+          format: clip.format,
+          version,
+          title: clip.title,
+        };
       })
     )
   );
 
-  const out: Record<string, string> = {};
+  const out: Record<string, ExternalClipData> = {};
   let total = 0;
   for (let i = 0; i < ids.length; i += 1) {
-    const content = contents[i];
-    if (content === undefined) continue;
-    if (total + content.length > MAX_REF_EXPAND_CHARS) continue;
-    out[ids[i]] = content;
-    total += content.length;
+    const data = contents[i];
+    if (data === undefined) continue;
+    if (total + data.content.length > MAX_REF_EXPAND_CHARS) continue;
+    out[ids[i]] = data;
+    total += data.content.length;
   }
   return out;
 }

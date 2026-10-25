@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const mocks = vi.hoisted(() => ({ clip: vi.fn(), vote: vi.fn(), favorite: vi.fn() }));
-vi.mock('@/lib/clipboard-service', () => ({ getClip: mocks.clip }));
+const mocks = vi.hoisted(() => ({ clip: vi.fn(), publicClips: vi.fn(), vote: vi.fn(), favorite: vi.fn() }));
+vi.mock('@/lib/clipboard-service', () => ({ getClip: mocks.clip, resolvePublicClipRefs: mocks.publicClips }));
 vi.mock('@/lib/vote-service', () => ({ getVoteDetail: mocks.vote }));
 vi.mock('@/lib/favorite-service', () => ({ getPublicFavorite: mocks.favorite }));
 vi.mock('@/lib/auth', () => ({
@@ -9,12 +9,25 @@ vi.mock('@/lib/auth', () => ({
   isOwner: (v: { role: string; archivedAt?: unknown } | null) => !!v && !v.archivedAt && v.role === 'owner',
 }));
 import { createServiceReferenceReader } from '@/lib/reactive/ref-reader';
+import { prepareReactiveDocument } from '@/lib/reactive/prepare';
 import type { ReferenceKind } from '@/lib/reactive/ref-types';
 
 const slot = (kind: ReferenceKind, ref: string) => ({ kind, ref, token: `[@${ref}]`, start: 0, end: ref.length + 3 });
 beforeEach(() => vi.clearAllMocks());
 
 describe('request-scoped reference permissions', () => {
+  it('prepares external payloads using public data without probing member resources', async () => {
+    mocks.publicClips.mockResolvedValue({ AbCd1234: { content: '{{private-looking syntax}}', format: 'reactive', version: 'v1' } });
+    const source = '[@AbCd1234] [@AbCdEf123] [@123456]';
+    const result = await prepareReactiveDocument(source, { mode: 'external', viewer: null });
+    expect(result.hostData['clipboard:AbCd1234']).toMatchObject({ format: 'reactive', version: 'v1' });
+    expect(result.adaptedSource).not.toContain('private-looking');
+    expect(result.adaptedSource).toContain('[@AbCdEf123]');
+    expect(result.sourceHash).toMatch(/^[a-f0-9]{64}$/);
+    expect(mocks.clip).not.toHaveBeenCalled();
+    expect(mocks.vote).not.toHaveBeenCalled();
+    expect(mocks.favorite).not.toHaveBeenCalled();
+  });
   it('does not bypass the core gate for any member reference', async () => {
     for (const viewer of [null, { id: 'u', role: 'user' }]) {
       const read = createServiceReferenceReader('expand', viewer);

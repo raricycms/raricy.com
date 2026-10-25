@@ -213,6 +213,65 @@ describe('external 模式：一个请求都不发', () => {
   });
 });
 
+describe('剪贴板格式：reactive 绝不内联', () => {
+  it('external 结构化数据：markdown 内联；reactive / 未知格式 → 安全站内链接', async () => {
+    const calls = stubFetch();
+    const r = new ContentRefResolver('external', {
+      [CLIP_ID]: { content: '# reactive 源码', format: 'reactive', title: '标题' },
+      MdMd1234: { content: '普通 markdown 正文', format: 'markdown' },
+      // 库里认不出的值：类型上不该出现，运行时必须 fail-closed。
+      Bad0Bad0: { content: '未知格式源码', format: 'weird' as never },
+      // 旧形状：按 markdown 内联（兼容既有调用方）。
+      Legacy01: '旧字符串正文',
+    });
+
+    const reactive = await r.resolve('clipboard', CLIP_ID);
+    expect(reactive?.format).toBe('reactive');
+    expect(reactive?.content, 'reactive 源码不得进入旧 Markdown 管线').toBe(
+      '[查看剪贴板](/clipboard/AbCd1234)'
+    );
+
+    expect((await r.resolve('clipboard', 'MdMd1234'))?.content).toBe('普通 markdown 正文');
+    expect((await r.resolve('clipboard', 'Bad0Bad0'))?.content).toBe(
+      '[查看剪贴板](/clipboard/Bad0Bad0)'
+    );
+    expect((await r.resolve('clipboard', 'Legacy01'))?.content).toBe('旧字符串正文');
+
+    expect(calls, '对外视图一个请求都不发').toEqual([]);
+  });
+
+  it('expand 响应：带 reactive / 未知格式 → 链接；缺 format 的旧响应仍按 markdown 内联', async () => {
+    let body: unknown = { clip: { content: '# 源码', format: 'reactive' } };
+    const calls = stubFetch(() => body);
+    const r = new ContentRefResolver('expand');
+
+    const reactive = await r.resolve('clipboard', CLIP_ID);
+    expect(reactive?.format).toBe('reactive');
+    expect(reactive?.content).toBe('[查看剪贴板](/clipboard/AbCd1234)');
+
+    body = { clip: { content: '认不出', format: 'weird' } };
+    expect((await r.resolve('clipboard', 'Bad0Bad0'))?.content).toBe(
+      '[查看剪贴板](/clipboard/Bad0Bad0)'
+    );
+
+    body = { clip: { content: '未知格式源码', format: null } };
+    expect((await r.resolve('clipboard', 'Null0001'))?.content).toBe('[查看剪贴板](/clipboard/Null0001)');
+    body = { clip: { content: '旧响应正文' } };
+    expect((await r.resolve('clipboard', 'Legacy02'))?.content).toBe('旧响应正文');
+
+    expect(calls).toHaveLength(4);
+  });
+
+  it('缓存保留格式（只存正文的话，第二次命中就分不出能不能内联）', async () => {
+    stubFetch(() => ({ clip: { content: '# 源码', format: 'reactive' } }));
+    const r = new ContentRefResolver('expand');
+
+    await r.resolve('clipboard', CLIP_ID);
+    expect(r.peek('clipboard', CLIP_ID)?.format).toBe('reactive');
+    expect(r.peek('clipboard', CLIP_ID)?.content).toBe('[查看剪贴板](/clipboard/AbCd1234)');
+  });
+});
+
 describe('图床与收藏夹', () => {
   it('图床不请求，只拼 raw URL（私有档由 raw 路由自己 404）', async () => {
     const calls = stubFetch();

@@ -22,6 +22,7 @@ import { ContentRefResolver, type ContentRefMode } from '@/lib/content-ref-resol
 import { renderBlogMarkdown } from '@/lib/blog-renderer';
 import { enhanceBlogContent } from '@/lib/blog-content-dom';
 import type { VoteEmbedData } from '@/lib/blog-markdown';
+import type { ExternalClipData } from '@/lib/reactive/ref-types';
 import { useHljsThemeStyles } from '@/app/components/useHljsThemeStyles';
 
 export default function MarkdownRenderer({
@@ -67,8 +68,12 @@ export default function MarkdownRenderer({
    * 不能因为「被引用进了一篇公开文章」而放宽。所以判档在服务端做，判完只把能给的
    * 那几条随 payload 发下来（`clipboard-service.ts` 的 `resolvePublicClipRefs`）。
    * 不带会话的页面**必须**传它，否则正文里的剪贴板引用一律是字面量。
+   *
+   * 值既可以是旧形状（id → 正文，按 markdown 内联），也可以是
+   * `{ content, format, version?, title? }`。reactive 剪贴板**绝不内联** ——
+   * 旧渲染器读不懂它，只会生成一个站内链接（见 ContentRefResolver）。
    */
-  externalClips?: Record<string, string>;
+  externalClips?: Record<string, string | ExternalClipData>;
   /**
    * 正文交互开关，默认 true（正文页行为）。编辑器完整预览传 **false**：
    * 投票小组件渲染同一份结构但不绑提交处理器（预览不发业务写请求），

@@ -265,11 +265,11 @@ describe('validateBlogData / 未知字段（键集封闭）', () => {
   it('与栏目无关的未知字段 → 列出可接受的键集', async () => {
     const r = await validateBlogData(baseInput({ tags: ['a'] }));
     expect((r as { message: string }).message).toBe(
-      '未知字段 "tags"，本接口只接受：title / description / content / category_id / visibility / allow_anonymous_comments'
+      '未知字段 "tags"，本接口只接受：title / description / content / category_id / visibility / allow_anonymous_comments / format'
     );
   });
 
-  it('六个合法键全带上照样通过（键集没把谁误伤）', async () => {
+  it('七个合法键全带上照样通过（键集没把谁误伤）', async () => {
     const cat = await makeCategory({ isActive: true });
     const r = await validateBlogData({
       title: '标题',
@@ -278,6 +278,7 @@ describe('validateBlogData / 未知字段（键集封闭）', () => {
       category_id: cat.id,
       visibility: 'public',
       allow_anonymous_comments: false,
+      format: 'markdown',
     });
     expect(r.ok).toBe(true);
     expect((r as { data: { visibility: string } }).data.visibility).toBe('public');

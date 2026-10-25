@@ -55,7 +55,8 @@ describe('resolvePublicClipRefs', () => {
     const id = await makeClip(author.id, { content: '公开的正文' });
 
     const out = await resolvePublicClipRefs(`见 ${ref(id)} 谢谢`);
-    expect(out).toEqual({ [id]: '公开的正文' });
+    expect(out[id]).toMatchObject({ content: '公开的正文', format: 'markdown', title: '引用用例' });
+    expect(typeof out[id].version, '结构化结果要带稳定的内容版本').toBe('string');
   });
 
   it('★ 私有档 → 一条都不给 ★', async () => {
@@ -85,7 +86,7 @@ describe('resolvePublicClipRefs', () => {
     const id = await makeClip(author.id, { content: '重复引用' });
 
     const out = await resolvePublicClipRefs(`${ref(id)} 和 ${ref(id)}`);
-    expect(out).toEqual({ [id]: '重复引用' });
+    expect(out[id]).toMatchObject({ content: '重复引用', format: 'markdown' });
   });
 
   it('★ 代码块里的引用不解析（与渲染器同口径，指南承诺「代码里一律不展开」）★', async () => {
@@ -97,8 +98,8 @@ describe('resolvePublicClipRefs', () => {
     expect(await resolvePublicClipRefs(fenced)).toEqual({});
     expect(await resolvePublicClipRefs(inline)).toEqual({});
     // 同一篇里既有围栏又有正文引用 → 只解析正文那处
-    expect(await resolvePublicClipRefs([fenced, '', ref(id)].join('\n'))).toEqual({
-      [id]: '公开的正文',
+    expect(await resolvePublicClipRefs([fenced, '', ref(id)].join('\n'))).toMatchObject({
+      [id]: { content: '公开的正文', format: 'markdown' },
     });
   });
 
@@ -118,7 +119,7 @@ describe('resolvePublicClipRefs', () => {
 
     const out = await resolvePublicClipRefs(ids.map(ref).join(' '));
     expect(Object.keys(out)).toHaveLength(MAX_REF_FETCHES);
-    expect(out[ids[0]]).toBe('第 0 条');
+    expect(out[ids[0]].content).toBe('第 0 条');
     expect(out, '第 51 条不该被解析').not.toHaveProperty(ids[MAX_REF_FETCHES]);
   });
 
@@ -142,7 +143,7 @@ describe('resolvePublicClipRefs', () => {
 
     expect(Object.keys(out), '超预算的大条跳过后，后面的小条该照样进').toHaveLength(11);
     expect(out, '装不下的那条不该进来').not.toHaveProperty(tooBig);
-    expect(out[small]).toBe('C'.repeat(100));
+    expect(out[small].content).toBe('C'.repeat(100));
   });
 
   it('预算只按**公开**正文计：私有 / 已软删不占额度、也不出现', async () => {
@@ -155,7 +156,7 @@ describe('resolvePublicClipRefs', () => {
 
     const out = await resolvePublicClipRefs([priv, deleted, pub].map(ref).join(' '));
 
-    expect(out).toEqual({ [pub]: 'Z'.repeat(100) });
+    expect(out[pub]).toMatchObject({ content: 'Z'.repeat(100), format: 'markdown' });
   });
 
   it(`★ 查库并发封顶 ${MAX_REF_CONCURRENCY}（按 prisma 实际调用计数）★`, async () => {
