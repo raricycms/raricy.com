@@ -2,6 +2,7 @@ import { requireOwner } from '@/lib/guard';
 import { getTotalAudioBytes, listAllAudio } from '@/lib/audio-service';
 import { ymdhms } from '@/lib/format';
 import AudioAdminTable, { type AdminAudioRow } from '@/app/components/AudioAdminTable';
+import SitePager from '@/app/components/SitePager';
 
 export const dynamic = 'force-dynamic';
 
@@ -77,31 +78,16 @@ export default async function AudioAdminPage({
       </div>
 
       {rows.length > 0 ? (
-        <>
-          <AudioAdminTable items={rows} />
-
-          {data.pages > 1 && (
-            <nav className="image-hosting-pagination" aria-label="分页">
-              {Array.from({ length: data.pages }, (_, i) => i + 1).map((p) => (
-                <a
-                  key={p}
-                  href={pageHref(p)}
-                  className={`numeric image-hosting-pagination__item${
-                    p === data.page ? ' active' : ''
-                  }`}
-                  aria-current={p === data.page ? 'page' : undefined}
-                >
-                  {p}
-                </a>
-              ))}
-            </nav>
-          )}
-        </>
+        <AudioAdminTable items={rows} />
       ) : (
         <div className="image-hosting-grid__empty">
           <p>{search ? '没有匹配的音频' : '还没有任何上传'}</p>
         </div>
       )}
+
+      {/* 与 /image/admin 同款分页（也同 /blog、/notifications）：窗口页码 + 站内箭头 +
+          跳页胶囊。这里原先把**全部页码**平铺，音频一多就挤满整行。 */}
+      <SitePager page={data.page} pages={data.pages} href={pageHref} />
     </div>
   );
 }

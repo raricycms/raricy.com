@@ -2,6 +2,7 @@ import { requireOwner } from '@/lib/guard';
 import { listAllImages, getTotalStorageBytes } from '@/lib/image-service';
 import { ymdhms } from '@/lib/format';
 import ImageAdminTable, { type AdminImageRow } from '@/app/components/ImageAdminTable';
+import SitePager from '@/app/components/SitePager';
 
 export const dynamic = 'force-dynamic';
 
@@ -74,31 +75,17 @@ export default async function ImageAdminPage({
       </div>
 
       {rows.length > 0 ? (
-        <>
-          <ImageAdminTable images={rows} />
-
-          {data.pages > 1 && (
-            <nav className="image-hosting-pagination" aria-label="分页">
-              {Array.from({ length: data.pages }, (_, i) => i + 1).map((p) => (
-                <a
-                  key={p}
-                  href={pageHref(p)}
-                  className={`numeric image-hosting-pagination__item${
-                    p === data.page ? ' active' : ''
-                  }`}
-                  aria-current={p === data.page ? 'page' : undefined}
-                >
-                  {p}
-                </a>
-              ))}
-            </nav>
-          )}
-        </>
+        <ImageAdminTable images={rows} />
       ) : (
         <div className="image-hosting-grid__empty">
           <p>{search ? '没有匹配的图片' : '还没有任何上传'}</p>
         </div>
       )}
+
+      {/* 分页与博客 / 通知同款（窗口页码 + 站内箭头 + 跳页胶囊）。
+          这里原先 `Array.from({ length: data.pages })` 把**全部页码**铺出来，
+          图床一多就挤成满满一排方块；窗口与折叠的算术在 lib/page-window.ts。 */}
+      <SitePager page={data.page} pages={data.pages} href={pageHref} />
     </div>
   );
 }
