@@ -355,9 +355,12 @@ export default function RichComposer({
               : `Enter ${submitVerb} · Shift+Enter 换行 · 支持 Markdown`}
           </span>
           {anonToggle && (
+            /* 「匿名」是一枚状态胶囊（外观见 pages/blog/_comments.scss 的 __anon）：
+               原生 checkbox 留在里面承担语义 / 键盘 / 屏幕阅读器，外观铺满整颗胶囊。
+               别把它换成伪装成复选框的按钮 —— 那会丢掉 checked 语义。 */
             <label
-              className={`${className}__anon`}
-              title="勾选后以化名发表；同一篇文章里你的化名固定不变"
+              className={`${className}__anon${anonToggle.checked ? ' is-checked' : ''}`}
+              title="开启后以化名发表；同一篇文章里你的化名固定不变"
             >
               <input
                 type="checkbox"
