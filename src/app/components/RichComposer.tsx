@@ -21,7 +21,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useEffect, useRef, useState } from 'react';
-import { BookOpenText, IdCard, Image as ImageIcon, Images, Smile, X } from 'lucide-react';
+import { BookOpenText, Check, IdCard, Image as ImageIcon, Images, Smile, X } from 'lucide-react';
 import { IMAGE_ACCEPT } from '@/lib/image-client';
 import type { MentionScope } from '@/lib/mention-shared';
 import MentionInput from './MentionInput';
@@ -355,18 +355,22 @@ export default function RichComposer({
               : `Enter ${submitVerb} · Shift+Enter 换行 · 支持 Markdown`}
           </span>
           {anonToggle && (
-            /* 「匿名」是一枚状态胶囊（外观见 pages/blog/_comments.scss 的 __anon）：
-               原生 checkbox 留在里面承担语义 / 键盘 / 屏幕阅读器，外观铺满整颗胶囊。
-               别把它换成伪装成复选框的按钮 —— 那会丢掉 checked 语义。 */
+            /* 勾选钮是一枚圆形按钮 + ✔（外观见 pages/blog/_comments.scss 的 __anon）；
+               「匿名」两个字仍是普通标签文字，不跟着状态变色。
+               原生 checkbox 留在圆里承担语义 / 键盘 / 屏幕阅读器，
+               别把它换成伪装成按钮的 <button> —— 那会丢掉 checked 语义。 */
             <label
               className={`${className}__anon${anonToggle.checked ? ' is-checked' : ''}`}
-              title="开启后以化名发表；同一篇文章里你的化名固定不变"
+              title="勾选后以化名发表；同一篇文章里你的化名固定不变"
             >
-              <input
-                type="checkbox"
-                checked={anonToggle.checked}
-                onChange={(e) => anonToggle.onChange(e.target.checked)}
-              />
+              <span className={`${className}__anon-box`}>
+                <input
+                  type="checkbox"
+                  checked={anonToggle.checked}
+                  onChange={(e) => anonToggle.onChange(e.target.checked)}
+                />
+                <Check className={`${className}__anon-check`} strokeWidth={3} aria-hidden="true" />
+              </span>
               匿名
             </label>
           )}

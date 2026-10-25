@@ -132,35 +132,42 @@
 /* 「匿名」勾选项 —— 只有评论区有（讨论区不传 anonToggle，那一整段根本不渲染）。
    底条仍是「提示在左、操作在右」：margin-left:auto 把它连同提交按钮一起推到右边。
 
-   形态照文章页点赞按钮那一档（.like-btn，§5.1 / §6.1 的次级档递进）：
-     · 空闲：无底色、次级字色；
-     · 悬停（仅真实指针）：品牌淡底 + 品牌字色；
-     · 按下：品牌实底 + 白字；
-     · 开启（.is-checked）：淡底 + 品牌字色，并常驻一层**状态光晕**
-       （--shadow-glow-brand，见 base/_root.scss）。只靠一层 10% 淡底表达
-       「这条会匿名发出」太轻，光晕是这条状态唯一多出来的一档。
-   ⚠️ 原生 checkbox **仍在**（语义 / 键盘 / 屏幕阅读器都靠它），只是外观铺满整颗胶囊：
-   别改成 `display:none` / 0×0 —— e2e 的 `.check()` 会点不到，键盘焦点框也会消失。 */
+   ★ 变的是「匿名」**前面那颗勾选钮**，不是这两个字：
+     · 勾选钮 = 一枚圆形按钮 + 圆心的 ✔ 图标（lucide Check，装饰性，aria-hidden）；
+     · 「匿名」两个字保持普通标签文字 —— 颜色不跟状态变，也不套底色。
+   变色递进照文章页点赞按钮（.like-btn / §5.1 / §6.1）：
+     · 空闲：中性圆底 + 次级色 ✔；
+     · 悬停（仅真实指针）：品牌淡底 + 品牌色 ✔；
+     · 按下：品牌实底 + 白 ✔；
+     · 开启（.is-checked）：品牌淡底 + 品牌色 ✔，并常驻一层**状态光晕**
+       （--shadow-glow-brand，见 base/_root.scss）。
+   停手态的圆底用一层**半透明灰罩**而不是某个固定底色：它坐在输入面板上（浅色主题下
+   面板底色与 --color-background-content 只差 1~3 个 RGB 值，固定色几乎看不见），
+   半透明罩叠在哪种底上都深一档，明暗两套主题同理。
+   ⚠️ input 仍是原生 checkbox（语义 / 键盘 / 屏幕阅读器 / e2e 的 .check() 都靠它），
+   只是 appearance:none 后由这里画成圆；别改成 `display:none` / 0×0 —— 点不到，
+   焦点框也会一起消失。 */
 .comment-composer__anon {
-    @include m.btn-secondary($pointer-hover-only: true);
-    position: relative;
     margin-left: auto;
     flex: none;
     display: inline-flex;
     align-items: center;
-    justify-content: center;
-    height: 30px;
-    padding: 0 12px;
-    border-radius: 999px;
-    font-size: 0.75rem;
-    line-height: 1;
+    gap: 6px;
+    font-size: 0.72rem;
+    color: var(--color-text-secondary);
     white-space: nowrap;
     user-select: none;
-    transition: color .25s ease, background-color .25s ease, box-shadow .2s ease;
+    cursor: pointer;
+
+    /* 圆钮的盒子：input 铺满它，✔ 叠在正中。 */
+    &-box {
+        position: relative;
+        flex: none;
+        width: 20px;
+        height: 20px;
+    }
 
     input[type='checkbox'] {
-        /* appearance:none 让原生方框不画，但元素本身仍是整颗胶囊大小的可点区域。
-           不用 opacity:0：那会把 focus-visible 的 outline 一起淡掉。 */
         appearance: none;
         -webkit-appearance: none;
         position: absolute;
@@ -170,42 +177,98 @@
         margin: 0;
         padding: 0;
         border: 0;
-        border-radius: inherit;
-        background: transparent;
+        border-radius: 50%;
+        background: color-mix(in srgb, var(--color-text-primary) 8%, transparent);
         cursor: pointer;
+        transition: background-color .25s ease, box-shadow .2s ease;
 
-        /* 唯一可聚焦的元素就是它 —— 焦点框挂在它身上，形状跟着胶囊圆角走。 */
         &:focus-visible {
             outline: 2px solid var(--color-brand-primary);
             outline-offset: 2px;
         }
     }
 
-    /* 开启态 = 点赞按钮的「已点赞」那一档 + 状态光晕；悬停与按下同 .like-btn.liked。 */
+    &-check {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        width: 12px;
+        height: 12px;
+        transform: translate(-50%, -50%);
+        color: var(--color-text-secondary);
+        pointer-events: none;
+        transition: color .25s ease;
+    }
+
+    @media (hover: hover) and (pointer: fine) {
+        &:hover input[type='checkbox'] {
+            background: var(--color-brand-secondary);
+        }
+
+        &:hover &-check {
+            color: var(--color-brand-primary);
+        }
+    }
+
+    &:active input[type='checkbox'] {
+        background: var(--color-brand-primary);
+    }
+
+    &:active &-check {
+        color: #fff;
+    }
+
+    /* 开启 = 点赞按钮的「已点赞」那一档 + 状态光晕；悬停 / 按下回落实底白 ✔。
+       ⚠️ ✔ 的规则必须留在这一层用 `&-check` 写 —— 放进 `.is-checked { … }` 里时
+       `&` 已经变成 `.comment-composer__anon.is-checked`，`&-check` 会被拼成
+       `.comment-composer__anon.is-checked-check`（一个不存在的类，静默不生效）。 */
     &.is-checked {
-        background-color: var(--color-brand-secondary);
-        color: var(--color-brand-primary);
-        box-shadow: var(--shadow-glow-brand);
+        input[type='checkbox'] {
+            background: var(--color-brand-secondary);
+            box-shadow: var(--shadow-glow-brand);
+        }
 
         @media (hover: hover) and (pointer: fine) {
-            &:hover:not(:disabled) {
-                background-color: var(--color-brand-primary);
-                color: #fff;
+            &:hover input[type='checkbox'] {
+                background: var(--color-brand-primary);
             }
         }
 
-        &:active:not(:disabled) {
-            background-color: var(--color-brand-primary);
+        &:active input[type='checkbox'] {
+            background: var(--color-brand-primary);
+        }
+    }
+
+    &.is-checked &-check {
+        color: var(--color-brand-primary);
+    }
+
+    @media (hover: hover) and (pointer: fine) {
+        &.is-checked:hover &-check {
             color: #fff;
         }
     }
+
+    &.is-checked:active &-check {
+        color: #fff;
+    }
 }
 
-/* 触屏把点击区域抬到 36px（与共享 composer 的图标按钮同档）：胶囊可见高度只有 30px，
-   手指压在边缘容易落空。只加高度，底条里与提交键的相对位置不变。 */
+/* 触屏把勾选钮抬到 24px（20px 的圆太小，手指压不中），整颗标签留 36px 高 ——
+   与共享 composer 在触屏下的图标按钮同档；底条里与提交键的相对位置不变。 */
 @media (hover: none) and (pointer: coarse) {
     .comment-composer__anon {
-        height: 36px;
+        min-height: 36px;
+
+        &-box {
+            width: 24px;
+            height: 24px;
+        }
+
+        &-check {
+            width: 14px;
+            height: 14px;
+        }
     }
 }
 
