@@ -94,6 +94,7 @@ GitHub 上仍是原来的反引号，两边不冲突。
 | `plan/format-converter-roadmap.md` | 格式转换器长期规划：八个能力区已有首轮功能；剩余验收、功能缺口与长期候选见 §16；路线图不作为支持清单 |
 | `plan/maintenance-plan.md` | 样式容器 / 类名整理、翻译入口取舍与站长可见性完整轨迹视图 |
 | `plan/page-transition-plan.md` | 切页动画 P0–P2 方案：全站淡入、页面内过渡、路由交叉溶解实验；含风险、验收与单文件 P0 demo |
+| `plan/reactive-md-migration-plan.md` | ReactiveMD 接入博客区方案：分阶段替换博客 / 剪贴板渲染器；含数据层、语料报告、引用组件、SSR、编辑器与回滚 |
 
 ## bot/ —— 站外机器人开发者
 
