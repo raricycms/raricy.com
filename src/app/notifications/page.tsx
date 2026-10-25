@@ -1,9 +1,8 @@
-import Link from 'next/link';
 import { requireCoreUser } from '@/lib/guard';
 import { listNotifications, getUnreadCount } from '@/lib/notification-service';
 import { nowForDb } from '@/lib/db-time';
 import NotificationItems from '@/app/components/NotificationItems';
-import PageJump from './PageJump';
+import SitePager from '@/app/components/SitePager';
 
 export const dynamic = 'force-dynamic';
 
@@ -37,16 +36,6 @@ export default async function NotificationsPage({
   const qs = (p: number) =>
     filter === 'unread' ? `?filter=unread&page=${p}` : `?page=${p}`;
 
-  const win = 3;
-  const pageItems: (number | '...')[] = [];
-  for (let p = 1; p <= result.pages; p++) {
-    if (p === 1 || p === result.pages || (p >= result.page - win && p <= result.page + win)) {
-      pageItems.push(p);
-    } else if (p === result.page - win - 1 || p === result.page + win + 1) {
-      pageItems.push('...');
-    }
-  }
-
   return (
     <div className="content-wrapper notifications-page">
       <h1 className="page-title">我的通知</h1>
@@ -68,37 +57,7 @@ export default async function NotificationsPage({
         today={nowForDb().toISOString().slice(0, 10)}
       />
 
-      {result.pages > 1 && (
-        <nav className="pagination" aria-label="分页">
-          {result.hasPrev && (
-            <Link className="page-link" href={qs(result.page - 1)}>
-              ‹
-            </Link>
-          )}
-          {pageItems.map((p, i) =>
-            p === '...' ? (
-              <span key={`e${i}`} className="page-ellipsis">
-                …
-              </span>
-            ) : (
-              <Link
-                key={p}
-                href={qs(p)}
-                className={`numeric page-link${p === result.page ? ' active' : ''}`}
-                aria-current={p === result.page ? 'page' : undefined}
-              >
-                {p}
-              </Link>
-            )
-          )}
-          {result.hasNext && (
-            <Link className="page-link" href={qs(result.page + 1)}>
-              ›
-            </Link>
-          )}
-          <PageJump totalPages={result.pages} current={result.page} />
-        </nav>
-      )}
+      <SitePager page={result.page} pages={result.pages} href={qs} />
     </div>
   );
 }

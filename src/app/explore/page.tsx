@@ -14,6 +14,7 @@ import { categoryFullPath } from '@/lib/format';
 // 这两个文件不是 Next 的特殊文件，不会被当成路由。
 import BlogSidebar from '@/app/blog/BlogSidebar';
 import SearchForm from '@/app/blog/SearchForm';
+import SitePager from '@/app/components/SitePager';
 
 // 根 layout 读 cookie 取登录态，整棵树本来就是动态的 —— 这里写 revalidate/静态化
 // 都是自欺（它不会生效，只会让下一个人以为这页有缓存）。见「已知风险」。
@@ -228,16 +229,6 @@ async function ExploreListSection({
 }) {
   const result = await pending;
 
-  const win = 3;
-  const pageItems: (number | '...')[] = [];
-  for (let p = 1; p <= result.pages; p++) {
-    if (p === 1 || p === result.pages || (p >= result.page - win && p <= result.page + win)) {
-      pageItems.push(p);
-    } else if (p === result.page - win - 1 || p === result.page + win + 1) {
-      pageItems.push('...');
-    }
-  }
-
   if (result.blogs.length === 0) {
     return (
       <div className="no-blogs">
@@ -289,36 +280,7 @@ async function ExploreListSection({
         ))}
       </div>
 
-      {result.pages > 1 && (
-        <nav className="pagination" aria-label="分页">
-          {result.hasPrev && (
-            <Link href={qs(result.page - 1)} className="page-link">
-              &laquo;
-            </Link>
-          )}
-          {pageItems.map((p, i) =>
-            p === '...' ? (
-              <span key={`e${i}`} className="page-ellipsis">
-                ...
-              </span>
-            ) : (
-              <Link
-                key={p}
-                href={qs(p)}
-                className={`numeric page-link${p === result.page ? ' active' : ''}`}
-                aria-current={p === result.page ? 'page' : undefined}
-              >
-                {p}
-              </Link>
-            )
-          )}
-          {result.hasNext && (
-            <Link href={qs(result.page + 1)} className="page-link">
-              &raquo;
-            </Link>
-          )}
-        </nav>
-      )}
+      <SitePager page={result.page} pages={result.pages} href={qs} />
     </>
   );
 }

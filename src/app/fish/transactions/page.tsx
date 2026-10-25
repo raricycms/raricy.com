@@ -4,7 +4,7 @@ import { getCurrentUser } from '@/lib/auth';
 import { loginUrlWithNext } from '@/lib/safe-url';
 import { getTransactions } from '@/lib/fish-service';
 import { fmtFish } from '@/lib/fish-amount';
-import FishPageJump from '../FishPageJump';
+import SitePager from '@/app/components/SitePager';
 
 export const dynamic = 'force-dynamic';
 
@@ -59,10 +59,6 @@ export default async function FishTransactionsPage({
   const filterHref = (type: string | null) =>
     type ? `/fish/transactions?type=${type}` : '/fish/transactions';
 
-  const prevNum = data.hasPrev ? data.page - 1 : null;
-  const nextNum = data.hasNext ? data.page + 1 : null;
-  const WINDOW = 3;
-
   return (
     <div className="content-wrapper">
       <h1 className="page-title"><span className="icon icon-fish" aria-hidden="true" style={{ marginRight: '0.5rem' }}></span>小鱼干流水</h1>
@@ -112,47 +108,7 @@ export default async function FishTransactionsPage({
             ))}
           </div>
 
-          {data.pages > 1 && (
-            <div className="pagination">
-              {data.hasPrev && prevNum !== null && (
-                <Link className="page-link" href={hrefFor(prevNum)}>
-                  &laquo;
-                </Link>
-              )}
-
-              {Array.from({ length: data.pages }, (_, i) => i + 1).map((p) => {
-                if (
-                  p === 1 ||
-                  p === data.pages ||
-                  (p >= data.page - WINDOW && p <= data.page + WINDOW)
-                ) {
-                  return (
-                    <Link
-                      key={p}
-                      className={`numeric page-link${p === data.page ? ' active' : ''}`}
-                      href={hrefFor(p)}
-                    >
-                      {p}
-                    </Link>
-                  );
-                }
-                if (p === data.page - WINDOW - 1 || p === data.page + WINDOW + 1) {
-                  return (
-                    <span key={p} className="page-ellipsis">...</span>
-                  );
-                }
-                return null;
-              })}
-
-              {data.hasNext && nextNum !== null && (
-                <Link className="page-link" href={hrefFor(nextNum)}>
-                  &raquo;
-                </Link>
-              )}
-
-              <FishPageJump totalPages={data.pages} current={data.page} />
-            </div>
-          )}
+          <SitePager page={data.page} pages={data.pages} href={hrefFor} />
         </>
       ) : (
         <div className="empty-state">

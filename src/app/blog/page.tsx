@@ -21,8 +21,7 @@ import BlogCategorySelect from './BlogCategorySelect';
 import BlogFilters from './BlogFilters';
 import SearchForm from './SearchForm';
 import BlogSort from './BlogSort';
-import BlogPageJump from './BlogPageJump';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import SitePager from '@/app/components/SitePager';
 
 export const dynamic = 'force-dynamic'; // 依赖查询参数，禁用静态化
 
@@ -243,16 +242,6 @@ async function BlogListSection({
 }) {
   const result = await pending;
 
-  const win = 3;
-  const pageItems: (number | '...')[] = [];
-  for (let p = 1; p <= result.pages; p++) {
-    if (p === 1 || p === result.pages || (p >= result.page - win && p <= result.page + win)) {
-      pageItems.push(p);
-    } else if (p === result.page - win - 1 || p === result.page + win + 1) {
-      pageItems.push('...');
-    }
-  }
-
   return (
     <>
       {result.blogs.length > 0 && (
@@ -340,37 +329,7 @@ async function BlogListSection({
         </div>
       )}
 
-      {result.pages > 1 && (
-        <nav className="pagination" aria-label="分页">
-          {result.hasPrev && (
-            <Link href={qs(result.page - 1)} className="page-link" aria-label="上一页">
-              <ChevronLeft aria-hidden="true" size={16} />
-            </Link>
-          )}
-          {pageItems.map((p, i) =>
-            p === '...' ? (
-              <span key={`e${i}`} className="page-ellipsis">
-                ...
-              </span>
-            ) : (
-              <Link
-                key={p}
-                href={qs(p)}
-                className={`numeric page-link${p === result.page ? ' active' : ''}`}
-                aria-current={p === result.page ? 'page' : undefined}
-              >
-                {p}
-              </Link>
-            )
-          )}
-          {result.hasNext && (
-            <Link href={qs(result.page + 1)} className="page-link" aria-label="下一页">
-              <ChevronRight aria-hidden="true" size={16} />
-            </Link>
-          )}
-          <BlogPageJump totalPages={result.pages} current={result.page} />
-        </nav>
-      )}
+      <SitePager page={result.page} pages={result.pages} href={qs} />
     </>
   );
 }
