@@ -276,7 +276,15 @@ describe('文档交叉引用', () => {
   });
 
   it('每个引用的路径都解析得到真实文件', () => {
-    const broken = REFS.filter((r) => r.abs === null).map(
+    // 语料报告是**构建产物**（gitignored，见迁移计划 M1），仓库里本来就没有文件；
+    // 它出现在文档里是「跑完命令会得到什么」，不是指向仓库中的现成文件。
+    const GENERATED_REPORTS = new Set([
+      'reports/reactive-corpus.md',
+      'reports/reactive-corpus.json',
+    ]);
+    const broken = REFS.filter(
+      (r) => r.abs === null && !GENERATED_REPORTS.has(r.raw.replace(/\\/g, '/'))
+    ).map(
       (r) => `${path.relative(ROOT, r.from)}:${r.line} → \`${r.raw}\``
     );
     expect(broken, `这些文档引用了不存在的文件：\n  ${broken.join('\n  ')}`).toEqual([]);

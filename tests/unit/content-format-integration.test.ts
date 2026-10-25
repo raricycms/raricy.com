@@ -78,37 +78,19 @@ describe('resolveBlogContentFormat / resolveClipContentFormat —— 写入闸�
     expect(resolveClipContentFormat(undefined, 'markdown')).toEqual({ ok: true, format: 'markdown' });
   });
 
-  it('★ 省略 format 而存量是 reactive → 拒绝 ★（否则会把源码按 markdown 改写而格式列不动）', () => {
-    expect(resolveBlogContentFormat(undefined, 'reactive')).toEqual({
-      ok: false,
-      reason: 'reactive_not_ready',
-    });
-    expect(resolveClipContentFormat(undefined, 'reactive')).toEqual({
-      ok: false,
-      reason: 'reactive_not_ready',
-    });
+  it('省略 format 而存量是 reactive → 保留 reactive（不静默降级）', () => {
+    expect(resolveBlogContentFormat(undefined, 'reactive')).toEqual({ ok: true, format: 'reactive' });
+    expect(resolveClipContentFormat(undefined, 'reactive')).toEqual({ ok: true, format: 'reactive' });
   });
 
-  it('★ 显式 reactive → 拒绝 ★（本期写入整体关闭）', () => {
-    expect(resolveBlogContentFormat('reactive')).toEqual({
-      ok: false,
-      reason: 'reactive_not_ready',
-    });
-    expect(resolveClipContentFormat('reactive')).toEqual({
-      ok: false,
-      reason: 'reactive_not_ready',
-    });
+  it('显式 reactive → 允许（能否发布由 service 的编译+快照校验决定）', () => {
+    expect(resolveBlogContentFormat('reactive')).toEqual({ ok: true, format: 'reactive' });
+    expect(resolveClipContentFormat('reactive')).toEqual({ ok: true, format: 'reactive' });
   });
 
-  it('★ 显式 markdown 而存量是 reactive 也拒绝 ★（不做未实现的「降级转换」）', () => {
-    expect(resolveBlogContentFormat('markdown', 'reactive')).toEqual({
-      ok: false,
-      reason: 'reactive_not_ready',
-    });
-    expect(resolveClipContentFormat('markdown', 'reactive')).toEqual({
-      ok: false,
-      reason: 'reactive_not_ready',
-    });
+  it('显式 markdown 而存量是 reactive → 允许显式降级（不猜、不丢格式）', () => {
+    expect(resolveBlogContentFormat('markdown', 'reactive')).toEqual({ ok: true, format: 'markdown' });
+    expect(resolveClipContentFormat('markdown', 'reactive')).toEqual({ ok: true, format: 'markdown' });
   });
 
   it('★ 未知值一律拒绝，绝不猜成 markdown ★（请求值与存量值都算）', () => {
@@ -151,18 +133,39 @@ describe('博客格式：validateBlogData / 落库 / 读出口', () => {
     expect(row?.syntaxVersion).toBeNull();
   });
 
-  it('★ 绕过 HTTP 直接调 createBlog 写 reactive → 抛错且不落库 ★', async () => {
+  it('createBlog 写 reactive：正文、syntaxVersion 与同版本快照一起落库', async () => {
+    const u = await makeUser();
+    const content = '# 标题\n\n正文 **加粗**';
+    const id = await createBlog(u.id, {
+      ...BLOG_BASE,
+      content,
+      categoryId: null,
+      visibility: 'internal',
+      format: 'reactive',
+    });
+    const row = await prisma.blogContent.findUnique({ where: { blogId: id } });
+    expect(row?.format).toBe('reactive');
+    expect(row?.syntaxVersion).toBe('local-draft-2');
+    const snap = await prisma.reactiveSnapshot.findFirst({ where: { kind: 'blog', contentId: id } });
+    expect(snap).not.toBeNull();
+    expect(snap?.scope).toBe('external');
+    expect(typeof snap?.documentJson).toBe('string');
+  });
+
+  it('★ 绕过 HTTP 直接调 createBlog 写无法编译的 reactive → 抛错且什么都不落库 ★', async () => {
     const u = await makeUser();
     await expect(
       createBlog(u.id, {
         ...BLOG_BASE,
+        content: '<panel title="未闭合">',
         categoryId: null,
         visibility: 'internal',
         format: 'reactive',
       })
-    ).rejects.toThrow('ReactiveMD 内容暂未开放写入');
+    ).rejects.toThrow('ReactiveMD 正文无法编译');
     expect(await prisma.blog.count()).toBe(0);
     expect(await prisma.blogContent.count()).toBe(0);
+    expect(await prisma.reactiveSnapshot.count()).toBe(0);
   });
 
   it('更新省略 format → 保留库里原值（markdown 仍是 markdown）', async () => {
@@ -180,21 +183,37 @@ describe('博客格式：validateBlogData / 落库 / 读出口', () => {
     expect(row?.format).toBe('markdown');
   });
 
-  it('★ 存量 reactive 的任何更新都被拒，且正文一个字都没变 ★', async () => {
+  it('更新 reactive → 重新生成同版本快照；改回 markdown 也允许（显式）', async () => {
     const u = await makeUser();
     const id = await makeReactiveBlog(u.id);
 
     const result = await updateBlog(
       id,
-      { ...BLOG_BASE, content: '想改成 markdown', categoryId: null, visibility: 'internal' },
+      {
+        ...BLOG_BASE,
+        content: '# 新 reactive\n\n正文',
+        categoryId: null,
+        visibility: 'internal',
+        format: 'reactive',
+      },
       u.id
     );
-    expect(result).toEqual({ hasChanges: false, changesDetail: [], error: 'reactive_not_ready' });
-
+    expect(result.error).toBeUndefined();
     const row = await prisma.blogContent.findUnique({ where: { blogId: id } });
-    expect(row?.content, '被拒的写入不得留下半份结果').toBe('C');
+    expect(row?.content).toBe('# 新 reactive\n\n正文');
     expect(row?.format).toBe('reactive');
     expect(row?.syntaxVersion).toBe('local-draft-2');
+    expect(await prisma.reactiveSnapshot.count({ where: { kind: 'blog', contentId: id } })).toBe(1);
+
+    const downgraded = await updateBlog(
+      id,
+      { ...BLOG_BASE, content: '普通 markdown', categoryId: null, visibility: 'internal', format: 'markdown' },
+      u.id
+    );
+    expect(downgraded.error).toBeUndefined();
+    const after = await prisma.blogContent.findUnique({ where: { blogId: id } });
+    expect(after?.format).toBe('markdown');
+    expect(after?.syntaxVersion).toBeNull();
   });
 
   it('读出口带 format / syntaxVersion / rendererOverride（详情与编辑页同源）', async () => {
@@ -229,7 +248,7 @@ describe('博客格式：validateBlogData / 落库 / 读出口', () => {
 
 // ── 3. 剪贴板：落库、读出口、对外解析 ────────────────────────────────────────
 describe('剪贴板格式：createClip / updateClip / getClip / resolvePublicClipRefs', () => {
-  it('新建默认 markdown；显式 reactive 被拒且不落库', async () => {
+  it('新建默认 markdown；显式 reactive 生成同版本快照；无法编译时整笔拒绝', async () => {
     const u = await makeUser();
     const ok = await createClip(u.id, { title: 't', content: 'c' });
     expect(ok.ok).toBe(true);
@@ -239,12 +258,20 @@ describe('剪贴板格式：createClip / updateClip / getClip / resolvePublicCli
       expect(row?.syntaxVersion).toBeNull();
     }
 
-    expect(await createClip(u.id, { title: 't', content: 'c', format: 'reactive' })).toEqual({
-      ok: false,
-      reason: 'reactive_not_ready',
-    });
-    expect(await prisma.clipBoard.count({ where: { authorId: u.id } }), '被拒的创建不得留下元信息行').toBe(1);
-    expect(await prisma.clipText.count({ where: { format: 'reactive' } })).toBe(0);
+    const reactive = await createClip(u.id, { title: 't', content: '# reactive', format: 'reactive' });
+    expect(reactive.ok).toBe(true);
+    if (reactive.ok) {
+      const row = await prisma.clipText.findUnique({ where: { clipId: reactive.id } });
+      expect(row?.format).toBe('reactive');
+      expect(row?.syntaxVersion).toBe('local-draft-2');
+      expect(
+        await prisma.reactiveSnapshot.count({ where: { kind: 'clipboard', contentId: reactive.id } })
+      ).toBe(1);
+    }
+
+    expect(
+      await createClip(u.id, { title: 't', content: '<panel title="未闭合">', format: 'reactive' })
+    ).toEqual({ ok: false, reason: 'reactive_invalid' });
   });
 
   it('更新省略 format → 保留原格式；存量 reactive → 拒绝且正文不变', async () => {
@@ -262,14 +289,29 @@ describe('剪贴板格式：createClip / updateClip / getClip / resolvePublicCli
     }
 
     const reactiveId = await makeReactiveClip(u.id);
-    expect(await updateClip(reactiveId, u.id, { title: 't', content: '改掉', publicity: true })).toEqual({
-      ok: false,
-      reason: 'reactive_not_ready',
+    const edited = await updateClip(reactiveId, u.id, {
+      title: 't',
+      content: '# 改过的 reactive\n\n正文',
+      publicity: true,
+      format: 'reactive',
     });
+    expect(edited).toEqual({ ok: true, id: reactiveId });
     const reactive = await prisma.clipText.findUnique({ where: { clipId: reactiveId } });
-    expect(reactive?.content).toBe('# reactive 源码');
+    expect(reactive?.content).toBe('# 改过的 reactive\n\n正文');
     expect(reactive?.format).toBe('reactive');
     expect(reactive?.syntaxVersion).toBe('local-draft-2');
+    expect(
+      await prisma.reactiveSnapshot.count({ where: { kind: 'clipboard', contentId: reactiveId } })
+    ).toBe(1);
+
+    expect(
+      await updateClip(reactiveId, u.id, {
+        title: 't',
+        content: '<panel title="未闭合">',
+        publicity: true,
+        format: 'reactive',
+      })
+    ).toEqual({ ok: false, reason: 'reactive_invalid' });
   });
 
   it('getClip 把 format / syntaxVersion 一起交出；未知存量值给 null', async () => {

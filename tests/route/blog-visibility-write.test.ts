@@ -211,15 +211,35 @@ describe('博客写接口：format 的默认、保留与拒绝', () => {
     expect(detail.blog).toMatchObject({ format: 'markdown', syntax_version: null });
   });
 
-  it('POST format=reactive → 400，且不落库', async () => {
+  it('POST format=reactive（可编译）→ 200，正文与快照一起落库', async () => {
     const author = await makeUser({ role: 'core' });
     await login(author.id);
 
-    const res = await createBlog(post({ ...base, format: 'reactive' }));
+    const res = await createBlog(post({ ...base, content: '# 标题\n\n正文', format: 'reactive' }));
+    expect(res.status).toBe(200);
+    const { blog_id } = (await res.json()) as { blog_id: string };
+    expect(await contentFormatOf(blog_id)).toMatchObject({
+      content: '# 标题\n\n正文',
+      format: 'reactive',
+      syntaxVersion: 'local-draft-2',
+    });
+    expect(
+      await prisma.reactiveSnapshot.count({ where: { kind: 'blog', contentId: blog_id } })
+    ).toBe(1);
+  });
+
+  it('POST format=reactive（无法编译）→ 400，且不落库', async () => {
+    const author = await makeUser({ role: 'core' });
+    await login(author.id);
+
+    const res = await createBlog(
+      post({ ...base, content: '<panel title="未闭合">', format: 'reactive' })
+    );
     expect(res.status).toBe(400);
-    expect(((await res.json()) as { message: string }).message).toBe('ReactiveMD 内容暂未开放写入');
+    expect(((await res.json()) as { message: string }).message).toContain('无法编译');
     expect(await prisma.blog.count()).toBe(0);
     expect(await prisma.blogContent.count()).toBe(0);
+    expect(await prisma.reactiveSnapshot.count()).toBe(0);
   });
 
   it('POST format 未知 → 400（不静默当成 markdown）', async () => {
@@ -245,7 +265,7 @@ describe('博客写接口：format 的默认、保留与拒绝', () => {
     });
   });
 
-  it('★ PUT 到存量 reactive 的文章 → 400，正文 / 格式 / 语法版本一个都没变 ★', async () => {
+  it('★ PUT 到存量 reactive 的文章（可编译）→ 200，正文 / 快照同版本更新 ★', async () => {
     const author = await makeUser({ role: 'core' });
     const blog = await makeBlog({ authorId: author.id, content: 'reactive 源码' });
     await prisma.blogContent.update({
@@ -254,13 +274,28 @@ describe('博客写接口：format 的默认、保留与拒绝', () => {
     });
     await login(author.id);
 
-    const res = await updateBlog(put({ ...base, content: '想改成 markdown' }), ctx(blog.id));
-    expect(res.status).toBe(400);
-    expect(((await res.json()) as { message: string }).message).toBe('ReactiveMD 内容暂未开放写入');
+    const res = await updateBlog(
+      put({ ...base, content: '# 新 reactive\n\n正文', format: 'reactive' }),
+      ctx(blog.id)
+    );
+    expect(res.status).toBe(200);
     expect(await contentFormatOf(blog.id)).toMatchObject({
-      content: 'reactive 源码',
+      content: '# 新 reactive\n\n正文',
       format: 'reactive',
       syntaxVersion: 'local-draft-2',
+    });
+    expect(
+      await prisma.reactiveSnapshot.count({ where: { kind: 'blog', contentId: blog.id } })
+    ).toBe(1);
+
+    const broken = await updateBlog(
+      put({ ...base, content: '<panel title="未闭合">', format: 'reactive' }),
+      ctx(blog.id)
+    );
+    expect(broken.status).toBe(400);
+    expect(await contentFormatOf(blog.id)).toMatchObject({
+      content: '# 新 reactive\n\n正文',
+      format: 'reactive',
     });
   });
 });
@@ -283,15 +318,28 @@ describe('剪贴板写接口：format 的默认、保留与拒绝', () => {
     expect(detail.clip).toMatchObject({ format: 'markdown', syntax_version: null });
   });
 
-  it('POST format=reactive → 400，且连元信息行都不建', async () => {
+  it('POST format=reactive（可编译）→ 200；无法编译时连元信息行都不建', async () => {
     const author = await makeUser({ role: 'core' });
     await login(author.id);
 
-    const res = await createClip(post({ ...clipBody, format: 'reactive' }));
-    expect(res.status).toBe(400);
-    expect(((await res.json()) as { message: string }).message).toBe('ReactiveMD 内容暂未开放写入');
-    expect(await prisma.clipBoard.count()).toBe(0);
-    expect(await prisma.clipText.count()).toBe(0);
+    const res = await createClip(post({ ...clipBody, content: '# 标题\n\n正文', format: 'reactive' }));
+    expect(res.status).toBe(200);
+    const { id } = (await res.json()) as { id: string };
+    expect(await prisma.clipText.findUnique({ where: { clipId: id } })).toMatchObject({
+      format: 'reactive',
+      syntaxVersion: 'local-draft-2',
+    });
+    expect(
+      await prisma.reactiveSnapshot.count({ where: { kind: 'clipboard', contentId: id } })
+    ).toBe(1);
+
+    const before = await prisma.clipBoard.count();
+    const broken = await createClip(
+      post({ ...clipBody, content: '<panel title="未闭合">', format: 'reactive' })
+    );
+    expect(broken.status).toBe(400);
+    expect(((await broken.json()) as { message: string }).message).toContain('无法编译');
+    expect(await prisma.clipBoard.count()).toBe(before);
   });
 
   it('PUT 省略 format → 保留原值；存量 reactive → 400 且正文不变', async () => {
@@ -325,16 +373,19 @@ describe('剪贴板写接口：format 的默认、保留与拒绝', () => {
       },
     });
 
-    const denied = await updateClip(put({ ...clipBody, content: '想改成 markdown' }), ctx(reactiveId));
-    expect(denied.status).toBe(400);
-    expect(((await denied.json()) as { message: string }).message).toBe(
-      'ReactiveMD 内容暂未开放写入'
+    const edited = await updateClip(
+      put({ ...clipBody, content: '# 新 reactive\n\n正文', format: 'reactive' }),
+      ctx(reactiveId)
     );
+    expect(edited.status).toBe(200);
     expect(await prisma.clipText.findUnique({ where: { clipId: reactiveId } })).toMatchObject({
-      content: 'reactive 源码',
+      content: '# 新 reactive\n\n正文',
       format: 'reactive',
       syntaxVersion: 'local-draft-2',
     });
+    expect(
+      await prisma.reactiveSnapshot.count({ where: { kind: 'clipboard', contentId: reactiveId } })
+    ).toBe(1);
   });
 
   it('GET /api/clipboard 列表**不**改形状（格式只在详情里给）', async () => {

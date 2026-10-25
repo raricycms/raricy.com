@@ -18,10 +18,12 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   PRINT_READY_MAX_MS,
+  REACTIVE_EXPORT_NOTE,
   absolutizeSiteUrls,
   buildExportHtml,
   localizeFragmentLinks,
   printHtml,
+  renderStaticMarkup,
   resolveUrl,
   safeFilename,
   stripInteractiveShells,
@@ -32,6 +34,7 @@ const ORIGIN = 'https://example.test';
 afterEach(() => {
   vi.useRealTimers();
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
   document.body.innerHTML = '';
   document.head.querySelectorAll('style[data-test], link[data-test]').forEach((n) => n.remove());
 });
@@ -195,6 +198,125 @@ describe('导出文件本身', () => {
     expect(html).toContain(`url(${ORIGIN}/static/bg.png)`);
     // data: / https: / //cdn 一概不碰
     expect(html).not.toContain(`url("${ORIGIN}/https:`);
+  });
+});
+
+describe('ReactiveMD 静态导出', () => {
+  const jsonResponse = (body: unknown) =>
+    ({
+      ok: true,
+      headers: { get: () => 'application/json' },
+      json: async () => body,
+    }) as unknown as Response;
+
+  const imageResponse = () =>
+    ({
+      ok: true,
+      headers: { get: () => 'image/png' },
+      arrayBuffer: async () => new Uint8Array([0x89, 0x50, 0x4e, 0x47]).buffer,
+    }) as unknown as Response;
+
+  function stubReactiveFetch() {
+    const fetchMock = vi.fn(async (input: string | URL | Request) => {
+      const url = String(input);
+      if (url.includes('/api/clipboard/')) {
+        return jsonResponse({
+          code: 200,
+          clip: { title: '一段笔记', content: '不应内联的正文', format: 'markdown', version: 'v1' },
+        });
+      }
+      if (url.includes('/api/votes/')) {
+        return jsonResponse({
+          code: 200,
+          data: {
+            title: '投票标题',
+            is_locked: true,
+            total_votes: 3,
+            user_voted: null,
+            options: [{ id: 1, label: '甲', count: 2, percentage: 67 }],
+          },
+        });
+      }
+      if (url.includes('/api/spider/favorites/')) {
+        return jsonResponse({
+          title: '收藏夹标题',
+          author: 'raricy',
+          count: 1,
+          blogs: [{ id: 'blog-1', title: '被收藏的文章' }],
+        });
+      }
+      if (url.includes('/api/images/')) return imageResponse();
+      return { ok: false, headers: { get: () => null } } as unknown as Response;
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    return fetchMock;
+  }
+
+  const SOURCE = [
+    '# 导出测试',
+    '',
+    '剪贴板 [@AbCd1234]',
+    '',
+    '投票 [@AbCdEf123]',
+    '',
+    '收藏 [@123456]',
+    '',
+    '音频 [@音频/EeFfGgHh20]',
+    '',
+    '![示意图](/api/images/AaBbCcDd10/raw)',
+  ].join('\n');
+
+  it('★ 无语法残留、宿主卡片在、图片内联成 data URL ★', async () => {
+    stubReactiveFetch();
+    const html = await renderStaticMarkup({ source: SOURCE, format: 'reactive', base: ORIGIN });
+
+    // 语法 / 组件标签 / 引用 token 都不得泄漏到导出件里
+    expect(html).not.toContain('{{');
+    expect(html).not.toContain('<panel');
+    expect(html).not.toContain('[@');
+
+    // 四类宿主卡片按只读形态出现（剪贴板仍是链接卡片，不内联正文）
+    expect(html).toContain('site-embed-clipboard');
+    expect(html).toContain('一段笔记');
+    expect(html).not.toContain('不应内联的正文');
+    expect(html).toContain('vote-embed');
+    expect(html).toContain('favorite-embed');
+    expect(html).toContain('site-embed--audio');
+
+    // 图片先取回再同步映射，离线打开也有图
+    expect(html).toContain('data:image/png;base64,');
+    expect(html).toContain('初始状态');
+  });
+
+  it('取不到的图片保留 alt 回退，不让整篇失败', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: string | URL | Request) => {
+        const url = String(input);
+        if (url.includes('/api/images/')) {
+          return { ok: false, headers: { get: () => null } } as unknown as Response;
+        }
+        return { ok: false, headers: { get: () => null } } as unknown as Response;
+      })
+    );
+    const html = await renderStaticMarkup({
+      source: '![私图](/api/images/AaBbCcDd10/raw)',
+      format: 'reactive',
+      base: ORIGIN,
+    });
+    expect(html).not.toContain('data:image');
+    expect(html).toContain('私图');
+  });
+
+  it('导出说明可作为 footerNote 进导出件', () => {
+    const html = buildExportHtml({
+      title: 't',
+      bodyHtml: '<p>x</p>',
+      base: ORIGIN,
+      footerNote: REACTIVE_EXPORT_NOTE,
+    });
+    expect(html).toContain('class="export-note"');
+    expect(html).toContain('初始状态');
   });
 });
 

@@ -6,10 +6,12 @@ export default defineConfig({
     // 默认 node 环境；需要 DOM 的用例在文件顶部用 // @vitest-environment jsdom 覆盖
     environment: 'node',
     globals: false,
-    include: ['tests/**/*.test.ts'],
+    include: ['tests/**/*.test.ts', 'tests/**/*.test.tsx'],
     // E2E 用 Playwright 跑（npm run e2e），它的用例引的是 @playwright/test 的 API，
     // 被 vitest 吸进来必崩。两套 runner 共用 tests/ 目录，故显式排除。
-    exclude: ['tests/e2e/**', 'node_modules/**'],
+    // `tests/.tmp/` 是测试基建的临时目录（数据库副本、审计残留），
+    // 里面的 *.test.ts 不属于本项目用例 —— 不排除的话会被当成本仓测试跑。
+    exclude: ['tests/e2e/**', 'tests/.tmp/**', 'node_modules/**'],
     // 文件级并行。曾经是 false，因为 service 层用例会互相 rmSync + db push 同一个库
     // （报 "table users already exists" / "readonly database"）。
     //

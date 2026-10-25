@@ -11,7 +11,7 @@ describe('format write gate', () => {
     expect(parseContentFormat('Markdown')).toBeNull();
     expect(resolveContentWriteFormat(undefined)).toEqual({ ok: true, format: 'markdown' });
     expect(resolveContentWriteFormat(null)).toEqual({ ok: false, reason: 'invalid_format' });
-    expect(resolveContentWriteFormat(undefined, 'reactive')).toEqual({ ok: false, reason: 'reactive_not_ready' });
+    expect(resolveContentWriteFormat(undefined, 'reactive')).toEqual({ ok: true, format: 'reactive' });
   });
 });
 
