@@ -19,6 +19,7 @@
     "diagnose": "tsx scripts/diagnose-deploy.mjs",
     "probe:ws": "node scripts/probe-binance-ws.mjs",
     "check:links": "node scripts/check-links.mjs",
+    "reactive:corpus": "tsx scripts/reactive-corpus-report.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",

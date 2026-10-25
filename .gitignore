@@ -30,6 +30,9 @@ coverage/
 /blob-report/
 /playwright/.cache/
 
+# ReactiveMD 语料报告的默认输出目录 —— 含存量文章 ID 与风险计数，不入库
+/reports/
+
 # 运行时数据目录（头像 / 图床 / 故事 / 数据库）—— 绝不入库
 #
 # 头像框素材**不在**这里：它是我们自己画的（源码 = scripts/make-frame-demos.mjs），
