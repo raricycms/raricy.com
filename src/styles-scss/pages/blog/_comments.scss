@@ -139,8 +139,10 @@
      · 空闲：中性圆底 + 次级色 ✔；
      · 悬停（仅真实指针）：品牌淡底 + 品牌色 ✔；
      · 按下：品牌实底 + 白 ✔；
-     · 开启（.is-checked）：品牌淡底 + 品牌色 ✔，并常驻一层**状态光晕**
+     · 勾选（.is-checked）：**品牌实底 + 白 ✔**，并常驻一层状态光晕
        （--shadow-glow-brand，见 base/_root.scss）。
+     勾选态刻意不走「淡底」那一档：checkbox 的「打勾 = 已选」要一眼看得出来，
+     淡底留给悬停；实底 + 光晕把「这条会匿名发出」钉住。
    停手态的圆底用一层**半透明灰罩**而不是某个固定底色：它坐在输入面板上（浅色主题下
    面板底色与 --color-background-content 只差 1~3 个 RGB 值，固定色几乎看不见），
    半透明罩叠在哪种底上都深一档，明暗两套主题同理。
@@ -218,38 +220,17 @@
         color: #fff;
     }
 
-    /* 开启 = 点赞按钮的「已点赞」那一档 + 状态光晕；悬停 / 按下回落实底白 ✔。
+    /* 勾选 = 品牌实底 + 白 ✔ + 状态光晕（停手即「已选」，不等到悬停才实底）。
        ⚠️ ✔ 的规则必须留在这一层用 `&-check` 写 —— 放进 `.is-checked { … }` 里时
        `&` 已经变成 `.comment-composer__anon.is-checked`，`&-check` 会被拼成
        `.comment-composer__anon.is-checked-check`（一个不存在的类，静默不生效）。 */
-    &.is-checked {
-        input[type='checkbox'] {
-            background: var(--color-brand-secondary);
-            box-shadow: var(--shadow-glow-brand);
-        }
-
-        @media (hover: hover) and (pointer: fine) {
-            &:hover input[type='checkbox'] {
-                background: var(--color-brand-primary);
-            }
-        }
-
-        &:active input[type='checkbox'] {
-            background: var(--color-brand-primary);
-        }
+    &.is-checked input[type='checkbox'] {
+        background: var(--color-brand-primary);
+        box-shadow: var(--shadow-glow-brand);
     }
 
+    /* 勾选后悬停 / 按下都保持实底白 ✔（已是最强一档，不做额外变化）。 */
     &.is-checked &-check {
-        color: var(--color-brand-primary);
-    }
-
-    @media (hover: hover) and (pointer: fine) {
-        &.is-checked:hover &-check {
-            color: #fff;
-        }
-    }
-
-    &.is-checked:active &-check {
         color: #fff;
     }
 }
