@@ -13,37 +13,28 @@
   right: calc(12px + var(--safe-right));
 }
 
-// 右上角这枚提示是**固定的浅色毛玻璃胶囊**：长胶囊 + 背景模糊 + 浅底彩色字。
+// 右上角这枚提示是**长胶囊 + 状态色淡底的毛玻璃**：不描边、不投影。
 //
-// 每条提示自带一枚**提示色** --toast-accent（成功绿 / 错误红 / 提示蓝 / 警告橙），
-// 淡底、字色、光晕三样都从它派生，颜色不再各说各的：
-//   · 淡底 = 提示色 12% 混进半透明白（再重就把玻璃压回色块）；
-//   · 字色 = 提示色 48% 混黑 —— 不是黑，也不能直接用状态色原值：原值在浅玻璃上
-//     读不清（暗色主题的橙尤其浅，压在白底上几乎消失）。混黑而不是混站内墨色，
-//     是因为墨色带蓝，绿 / 橙混进去色相会跑掉；
-//   · 光晕 = 提示色 26% 的透明色 —— 旧版统一用品牌蓝光晕，一条绿色提示配一圈蓝边，
-//     等于同时说了两件事。
+// 每条提示自带两枚变量：
+//   · --toast-accent —— 状态色主色（成功绿 / 错误红 / 提示蓝 / 警告橙），文字与叉用它；
+//   · --toast-tint   —— 该状态色的 secondary 淡底（10% 透明），就是胶囊背景本身。
+// 背景只铺这一层淡底，其余交给 backdrop-filter —— 浮起来靠「半透明 + 模糊」，
+// 不靠阴影（前一版的光晕已经去掉，阴影令牌的消费者清单里也没有它了）。
 //
-// 面板刻意**不读** --color-background-card / --color-text-*：那两个令牌随主题翻转，
-// 跟随它们就会在暗色主题下退回改版前的「深底白字」。浮层本来就要跳出页面，暗色下
-// 也保持同一枚亮胶囊 —— 与 _error.scss 的 .rainbow-error__box（固定深色玻璃卡）
-// 是同一种做法：底色与模糊就是这块浮层自己的外观，不是主题底色的一份拷贝。
+// 文字与叉直接用状态色原值、不压深（浅色主题的令牌本来就比暗色那组暗一档）：
+// 与淡底同一支，观感统一。代价是浅色淡底上对比度偏柔 —— 这是刻意的取舍，
+// 别为了「更稳」又把它偷偷混黑。
 .toast {
   --toast-accent: var(--color-brand-primary);
+  --toast-tint: var(--color-brand-secondary);
   pointer-events: auto;
-  /* 下面三对声明都是「先兜底、后 color-mix」：不支持 color-mix 的浏览器退回
-     纯浅色玻璃 + 墨色字 + 品牌蓝光晕，而不是整条声明失效、只剩透明底。 */
-  background: rgba(255, 255, 255, 0.78);
-  background: color-mix(in srgb, var(--toast-accent) 12%, rgba(255, 255, 255, 0.8));
-  color: #0f172a;
-  color: color-mix(in srgb, var(--toast-accent) 48%, #000);
+  background: var(--toast-tint);
+  color: var(--toast-accent);
   // 长胶囊：单行约 50px 高，999px 会被浏览器夹到高度的一半，两端正好是完整的半圆。
   border-radius: 999px;
-  box-shadow: var(--shadow-card-brand);
-  box-shadow: 0 2px 22px color-mix(in srgb, var(--toast-accent) 26%, transparent);
-  // 玻璃感来自这一层：底下的页面被揉开，而不是再加一张不透明度。
-  -webkit-backdrop-filter: blur(16px) saturate(160%);
-  backdrop-filter: blur(16px) saturate(160%);
+  // 背景只有 10% 淡底，玻璃感全靠这一层：背后的页面被揉开，再透出一点状态色。
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
   margin: 8px 0;
   opacity: 0;
   transform: translateY(-6px);
@@ -74,19 +65,24 @@
   padding: 2px 6px;
 }
 
-/* 提示色：成功绿 / 错误红 / 提示蓝 / 警告橙。淡底、字色、光晕全在 .toast 里从它派生，
-   这里只换这一枚变量 —— 加新类型时也只加一行，不要另写三份背景 / 字色 / 阴影。 */
+/* 状态色：成功绿 / 错误红 / 提示蓝 / 警告橙。主色给文字，secondary 给淡底；
+   加新类型只补这两行，不要另写背景 / 字色 / 阴影。 */
 .toast--success {
   --toast-accent: var(--color-success-primary);
+  --toast-tint: var(--color-success-secondary);
 }
 .toast--error {
   --toast-accent: var(--color-warning-primary);
+  --toast-tint: var(--color-warning-secondary);
 }
 .toast--info {
   --toast-accent: var(--color-brand-primary);
+  --toast-tint: var(--color-brand-secondary);
 }
+/* 琥珀没有 -secondary 这一支，它的淡底叫 -soft（12%），别去拼一个不存在的变量名。 */
 .toast--warning {
   --toast-accent: var(--color-accent-amber);
+  --toast-tint: var(--color-accent-amber-soft);
 }
 
 
