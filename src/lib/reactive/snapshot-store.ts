@@ -102,7 +102,13 @@ export async function readReactiveSnapshot(
   try {
     const document = JSON.parse(row.documentJson) as LocalDocument;
     const hostData = JSON.parse(row.hostDataJson) as SiteHostData;
-    if (!document || typeof document !== 'object' || !hostData || typeof hostData !== 'object') {
+    if (
+      !document ||
+      typeof document !== 'object' ||
+      !Array.isArray((document as { nodes?: unknown }).nodes) ||
+      !hostData ||
+      typeof hostData !== 'object'
+    ) {
       return { status: 'corrupt', reason: 'json' };
     }
     return { status: 'ready', payload: { document, hostData } };

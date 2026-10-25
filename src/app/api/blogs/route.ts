@@ -13,6 +13,7 @@ import {
   type SearchField,
 } from '@/lib/blog-service';
 import { categoryFullPath, ymd, apiOk, apiErr } from '@/lib/format';
+import { ReactivePublishError } from '@/lib/reactive/publish';
 import { getCurrentUser, isCoreUser, hasAdminRights, isCurrentlyBanned } from '@/lib/auth';
 import { rateLimit, RULES } from '@/lib/rate-limit';
 import { sendNotification } from '@/lib/notification-service';
@@ -175,7 +176,7 @@ export async function POST(req: Request) {
   try {
     blogId = await createBlog(user.id, v.data);
   } catch (error) {
-    if (error instanceof Error && error.message === contentWriteFailureMessage('reactive_invalid')) {
+    if (error instanceof ReactivePublishError) {
       return apiErr(400, error.message);
     }
     throw error;

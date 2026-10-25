@@ -69,7 +69,7 @@ import {
   resolveContentWriteFormat,
 } from './content-format';
 import type { ContentFormat } from './content-format';
-import { buildReactiveSnapshotForWrite } from './reactive/publish';
+import { buildReactiveSnapshotForWrite, ReactivePublishError } from './reactive/publish';
 import type { Prisma } from '@prisma/client';
 import type { PersonalBlogScope } from './blog-directory';
 
@@ -1286,7 +1286,7 @@ export async function createBlog(authorId: string, data: ValidatedBlogData): Pro
       ? await buildReactiveSnapshotForWrite({ kind: 'blog', contentId: blogId, content: data.content })
       : null;
   if (snapshot && !snapshot.ok) {
-    throw new Error(contentWriteFailureMessage('reactive_invalid'));
+    throw new ReactivePublishError(contentWriteFailureMessage('reactive_invalid'));
   }
   const syntaxVersion = snapshot && snapshot.ok ? snapshot.syntaxVersion : null;
 

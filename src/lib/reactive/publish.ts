@@ -26,6 +26,14 @@ export interface BuildReactiveSnapshotInput {
   content: string;
 }
 
+/** 发布被拒的**类型化**错误：route 用它折 400，不靠比对错误文案。 */
+export class ReactivePublishError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'ReactivePublishError';
+  }
+}
+
 export type BuildReactiveSnapshotResult =
   | {
       ok: true;
