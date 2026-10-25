@@ -24,7 +24,10 @@
     --color-brand-secondary: rgba(37, 99, 235, 0.1);
     --color-background-card: #fff;
     --color-background-page: #F8FAFC;
-    --color-background-content: #eff2f5;
+    /* 卡内内容底色（嵌入块 / 二级评论卡 / 代码块）：卡片内层用的浅灰。
+       刻意压到接近页面底色（#f8fafc）—— 够看出「同一张卡的内层」，又不至于在
+       白卡片里读成一块明显的灰底。 */
+    --color-background-content: #f4f6f9;
     /* 注意拼写是 -unread（曾误拼成 -unrend，导致浅色下 var() 解析失败 ——
        未读底色静默退回 transparent，只有暗色是好的）。改名即修复。 */
     --color-background-card-unread: #fffdf0;

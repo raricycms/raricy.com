@@ -68,7 +68,7 @@
 | 品牌淡底 | `--color-brand-secondary` | 品牌蓝 10% | 品牌蓝 10% |
 | 页面底色 | `--color-background-page` | `#F8FAFC` | `#131517` |
 | 卡片底色 | `--color-background-card` | `#fff` | `#181A1D` |
-| 卡内内容底色 | `--color-background-content` | `#eff2f5` | `#21252A` |
+| 卡内内容底色 | `--color-background-content` | `#f4f6f9` | `#21252A` |
 | 弱背景 | `--color-background-subtle` | `#f3f4f6` | `#1e2024` |
 | 主要文字 | `--color-text-primary` | `#0f172a` | `#f1f5f9` |
 | 辅助文字 | `--color-text-secondary` | `#64748B` | `#94A3B8` |
