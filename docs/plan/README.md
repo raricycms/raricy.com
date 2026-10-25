@@ -12,7 +12,7 @@
 | `docs/plan/format-converter-roadmap.md` | 首轮交付，长期规划未完成 | 八个能力区已有本地功能；剩余验收、中文可搜索 PDF、两条服务端 PDF 方向与长期候选见 §16 |
 | `docs/plan/maintenance-plan.md` | 待处理 / 待决策 | 样式容器与类名整理、翻译跳转入口取舍、面向站长的完整可见性轨迹视图 |
 | `docs/plan/page-transition-plan.md` | 仅方案 + P0 demo，未实施 | P0–P2 的落地与验收；P0 已有单文件可交互 demo，产品代码未改 |
-| `docs/plan/reactive-md-migration-plan.md` | 草案，未实施；方案 A 已定 | ReactiveMD 0.5.2 宿主组件协议已就绪；剩余：数据层、语料报告、引用组件、SSR、编辑器与回滚；§9 仍有 7 个待决策项 |
+| `docs/plan/reactive-md-migration-plan.md` | 审查修订稿（2026-10-26），产品适配未实施 | §11 列 6 组上游补丁与 2 类条件项；§12 列 9 项可预先做的站内适配；格式回滚、剪贴板引用与共享依赖规则已统一 |
 
 长期候选与「需要确认范围」的项目不等于已排期或必须实现。产品范围之外的能力、
 用户指南里的交付检查表、示例项目刻意省略的功能，也不自动归为本站待办。
