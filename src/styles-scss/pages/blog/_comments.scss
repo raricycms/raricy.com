@@ -228,7 +228,10 @@
     flex-wrap: wrap;
     align-items: center;
     gap: 4px 10px;
-    margin: 0 0 8px;
+    /* 身份行（头像那一排）与正文之间的呼吸。12px = 间距尺度的第二档（4/8/12/16…，
+       见 docs/frontend-styles.md §3.5）—— 8px 时正文顶得太近，头像像压在字上。
+       正文与头像左对齐之后，这段纵向留白是唯一还能表达「头像是谁、正文是他的话」的距离。 */
+    margin: 0 0 12px;
     font-size: 0.95rem;
     color: var(--color-text-secondary);
 
