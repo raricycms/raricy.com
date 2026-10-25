@@ -106,9 +106,9 @@ async function seedAudio(opts: {
   return { id, bytes };
 }
 
-function req(id: string, range?: string): Request {
+function req(id: string, range?: string, headers: Record<string, string> = {}): Request {
   return new Request(`http://localhost/api/audio/${id}/raw`, {
-    headers: range ? { Range: range } : {},
+    headers: { ...(range ? { Range: range } : {}), ...headers },
   });
 }
 const ctx = (id: string) => ({ params: Promise.resolve({ id }) });
@@ -268,17 +268,98 @@ describe('合法 Range → 206 + 正确的 Content-Range', () => {
     expect(await bodyOf(res)).toEqual(bytes.subarray(0, 2));
   });
 
-  it('206 不发 immutable，200 才发（残段不能诱使缓存去满足全量请求）', async () => {
+  it('★ 200 与 206 都是 `public, no-cache` + 同一个 ETag（都不许 immutable）', async () => {
     const user = await makeUser();
     const { id } = await seedAudio({ authorId: user.id });
 
     const partial = await rawGet(req(id, 'bytes=0-99'), ctx(id));
     expect(partial.status).toBe(206);
-    expect(partial.headers.get('Cache-Control')).not.toContain('immutable');
-
     const full = await rawGet(req(id), ctx(id));
     expect(full.status).toBe(200);
-    expect(full.headers.get('Cache-Control')).toContain('immutable');
+
+    for (const res of [partial, full]) {
+      const cc = res.headers.get('Cache-Control');
+      expect(cc, 'immutable / max-age 会让软删的音频在访客那里继续能播').toBe(
+        'public, no-cache'
+      );
+      expect(cc).not.toContain('immutable');
+      expect(res.headers.get('ETag')).toMatch(/^W\/"\d+-\d+"$/);
+    }
+    // 两边必须是同一个验证器：播放器拿全量那份去验证分段请求，不一致就永远重下。
+    expect(partial.headers.get('ETag')).toBe(full.headers.get('ETag'));
+  });
+});
+
+// ═══ 二·五、条件请求 ═══════════════════════════════════════════════════════════
+//
+// 背景：音频的删除是软删，同一个 URL 从此 404。所以缓存不能是「一年别回来问」，
+// 必须是「每次用之前验证」—— 没变 304（零字节），删了 404。这一节钉的就是
+// 「验证不能盖过删除」与「200/206 共用同一个 ETag」。
+
+describe('条件请求（软删后必须能失效）', () => {
+  it('If-None-Match 命中 → 304，零字节，且缓存头原样带回', async () => {
+    const user = await makeUser();
+    const { id } = await seedAudio({ authorId: user.id });
+    const etag = (await rawGet(req(id), ctx(id))).headers.get('ETag')!;
+
+    const res = await rawGet(req(id, undefined, { 'if-none-match': etag }), ctx(id));
+    expect(res.status).toBe(304);
+    expect(res.headers.get('ETag')).toBe(etag);
+    expect(res.headers.get('Cache-Control')).toBe('public, no-cache');
+    expect((await bodyOf(res)).byteLength, '304 不能带 body').toBe(0);
+  });
+
+  it('带 Range 的验证请求同样回 304（RFC 9110 §13.1.3：If-None-Match 先于 Range）', async () => {
+    const user = await makeUser();
+    const { id } = await seedAudio({ authorId: user.id });
+    const etag = (await rawGet(req(id), ctx(id))).headers.get('ETag')!;
+
+    const res = await rawGet(req(id, 'bytes=0-99', { 'if-none-match': etag }), ctx(id));
+    expect(res.status).toBe(304);
+    expect((await bodyOf(res)).byteLength).toBe(0);
+  });
+
+  it('★ 软删之后，带着匹配的 ETag 也必须 404（删除赢过缓存验证）', async () => {
+    const user = await makeUser();
+    const { id } = await seedAudio({ authorId: user.id });
+    const etag = (await rawGet(req(id), ctx(id))).headers.get('ETag')!;
+
+    await prisma.audioHosting.update({ where: { id }, data: { ignore: true } });
+    const res = await rawGet(req(id, undefined, { 'if-none-match': etag }), ctx(id));
+    expect(res.status, '304 = 浏览器继续播放已经删掉的音频').toBe(404);
+    expect(res.headers.get('Cache-Control')).toBe('no-store');
+  });
+
+  it('★ 404 一律 no-store（删音频的反馈不能被记住）', async () => {
+    const user = await makeUser();
+    const deleted = await seedAudio({ authorId: user.id, ignore: true });
+    expect((await rawGet(req(deleted.id), ctx(deleted.id))).headers.get('Cache-Control')).toBe(
+      'no-store'
+    );
+    expect((await rawGet(req('nope123456'), ctx('nope123456'))).headers.get('Cache-Control')).toBe(
+      'no-store'
+    );
+  });
+
+  it('磁盘文件被换掉（大小变）→ ETag 变，旧 ETag 不再 304', async () => {
+    const user = await makeUser();
+    const { id } = await seedAudio({ authorId: user.id });
+    const etag = (await rawGet(req(id), ctx(id))).headers.get('ETag')!;
+
+    fs.writeFileSync(audioStoragePathFor(id, 'audio/mpeg'), makeBytes(AUDIO_SIZE + 7));
+    const res = await rawGet(req(id, undefined, { 'if-none-match': etag }), ctx(id));
+    expect(res.status).toBe(200);
+    expect(res.headers.get('ETag')).not.toBe(etag);
+  });
+
+  it('私有音频不发 ETag（no-store 下条件请求无意义，也不能缓存鉴权结果）', async () => {
+    const author = await makeUser();
+    const { id } = await seedAudio({ authorId: author.id, isPublic: false });
+    mockUser.current = author;
+
+    const res = await rawGet(req(id), ctx(id));
+    expect(res.status).toBe(200);
+    expect(res.headers.get('ETag')).toBeNull();
   });
 });
 

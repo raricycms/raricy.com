@@ -216,6 +216,11 @@ GET /api/audio/<ID>/raw
 - **不需要登录**，也不需要 cookie；
 - 响应头 `Content-Type` 是上传时**判定出来的**格式，不是浏览器当初声明的别名；
 - 带 `X-Content-Type-Options: nosniff`；
+- **不是长缓存**：`Cache-Control: public, no-cache` + 弱 `ETag`
+  （`W/"<字节数>-<文件 mtime 毫秒>"`）。播放器会带 `If-None-Match` 回来验证 ——
+  没变化回 `304`（**不下发字节**），音频被删后同一个请求直接 `404`（`404` 带
+  `Cache-Control: no-store`，别把删除结果也缓存起来）。`200` 与 `206` 带的是
+  **同一个** ETag，实现自己的缓存时照这个语义来，别把音频字节按「永久」存；
 - **支持 HTTP Range**（`206 Partial Content`）—— 播放器拖进度条靠它。
   三种形态都支持：`bytes=A-B`、`bytes=A-`、`bytes=-N`（最后 N 字节）。
   不可满足的 Range 返回 `416` 并带 `Content-Range: bytes */<总长>`。

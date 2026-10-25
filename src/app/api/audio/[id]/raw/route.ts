@@ -2,6 +2,12 @@ import fs from 'node:fs/promises';
 import { getCurrentUser, hasAdminRights } from '@/lib/auth';
 import { getAudioForServe } from '@/lib/audio-service';
 import { audioStoragePathFor } from '@/lib/audio-upload';
+import {
+  PRIVATE_BYTES_CACHE_CONTROL,
+  PUBLIC_BYTES_CACHE_CONTROL,
+  ifNoneMatchMatches,
+  weakFileEtag,
+} from '@/lib/http-cache';
 
 // 文件路由需 Node 运行时（fs 读盘）
 export const runtime = 'nodejs';
@@ -25,10 +31,17 @@ export const runtime = 'nodejs';
 // 【安全】与图床同形：ignore → 404；私有档对无权者伪装成不存在。
 // 内容类型取**落库的** mimeType —— 那是上传时 verifyAudioMime 认过的规范值，
 // 不是浏览器当初声明的别名。
+//
+// 【缓存】与图床同一条口径（`public, no-cache` + 弱 ETag，见 src/lib/http-cache.ts）：
+// 删除是软删，同一个 URL 会变 404，所以不能发 immutable 长缓存 —— 否则已经听过
+// 的访客永远听得到一条已删除的录音，且没有任何报错。200 / 206 都带同一个 ETag，
+// 未变化回 304（零字节），删了回 404。
 // ─────────────────────────────────────────────────────────────────────────────
 
 function notFound(): Response {
-  return new Response('Not Found', { status: 404 });
+  // 404 不能被缓存：不存在 / 已软删 / 私有档伪装三合一，且「已软删」正是删音频的
+  // 正常反馈 —— 被记住之后访客连问都不问。
+  return new Response('Not Found', { status: 404, headers: { 'Cache-Control': 'no-store' } });
 }
 
 /** 严格解析非负整数：`NaN` 与溢出都返回 null（见下面 parseRange 的说明）。 */
@@ -137,10 +150,36 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
 
   const filePath = audioStoragePathFor(audio.id, audio.mimeType);
   let total: number;
+  let mtimeMs: number;
   try {
-    total = (await fs.stat(filePath)).size;
+    const stat = await fs.stat(filePath);
+    total = stat.size;
+    mtimeMs = stat.mtimeMs;
   } catch {
     return notFound();
+  }
+
+  // 公开音频的条件请求：**先验证、命中就 304**，只有真要下发字节时才读盘。
+  // 删除一定赢 —— 上面的 getAudioForServe 已经把软删挡成 404，所以哪怕客户端
+  // 带着完全匹配的 ETag 回来，也拿不到 304。
+  // 私有音频没有条件请求可言（no-store，且绝不能把「作者能听」这个判断结果
+  // 按 ETag 缓存出去）。
+  //
+  // ⚠️ 带着 `Range` 的验证请求同样走 304 —— RFC 9110 §13.1.3 规定 If-None-Match
+  // 先于 Range 求值，缓存用自己已经存下的段来满足这次请求。播放器拖进度条时
+  // 发的就是这种请求。
+  const etag = audio.isPublic ? weakFileEtag({ size: total, mtimeMs }) : null;
+  if (etag && ifNoneMatchMatches(req.headers.get('if-none-match'), etag)) {
+    return new Response(null, {
+      status: 304,
+      headers: {
+        ETag: etag,
+        'Cache-Control': PUBLIC_BYTES_CACHE_CONTROL,
+        'X-Content-Type-Options': 'nosniff',
+        'X-Robots-Tag': 'all',
+        'Accept-Ranges': 'bytes',
+      },
+    });
   }
 
   const range = parseRange(req.headers.get('range'), total);
@@ -178,19 +217,21 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
     // 私有档绝不能进共享缓存（CDN / 反代 / 中间缓存），否则鉴权形同虚设：
     // 缓存命中后会绕过本路由的作者/管理员校验，直接向无权者下发。
     //
-    // ⚠️ `immutable` **只发在 200 上**。把它发在 206 上，会诱使中间缓存拿一个
-    // 残段去满足后续的全量请求 —— 那正是经典的「媒体文件下坏了」成因，
-    // 而且症状是播放器莫名其妙失败，完全看不出跟缓存有关。
+    // 公开档是 `public, no-cache`，**200 与 206 同一口径** —— 不能给 200 发长缓存、
+    // 给 206 发短的（旧写法正是如此）：那会诱使中间缓存拿一个残段去满足后续的全量
+    // 请求，是经典的「媒体文件下坏了」成因，而症状只是播放器莫名其妙失败。
+    // 现在两档都靠 ETag 验证：未变化 304、删了 404。
     'Cache-Control': !audio.isPublic
-      ? 'private, no-store'
-      : isPartial
-        ? 'public, max-age=31536000'
-        : 'public, max-age=31536000, immutable',
+      ? PRIVATE_BYTES_CACHE_CONTROL
+      : PUBLIC_BYTES_CACHE_CONTROL,
     // robots.txt 里 /api/ 整段 disallow，只给几个前缀开了口（见 src/app/robots.ts）——
     // 那是**按路径**放行，粒度不到单个文件。私有文件必须逐个挡掉。
     'X-Robots-Tag': audio.isPublic ? 'all' : 'noindex',
     'Content-Length': String(data.length),
   });
+  // 200 与 206 必须带**同一个** ETag：播放器会拿全量请求拿到的 ETag 去验证后续
+  // 的分段请求，两边不一致就永远不会命中 304（表现只是「每次都在重下」）。
+  if (etag) headers.set('ETag', etag);
 
   // 刻意**不设 Content-Disposition**：音频是用来内联播放的。
   // 图床那边只对 SVG 强制 attachment（防内联执行脚本），这三种音频格式没有那条路径。
