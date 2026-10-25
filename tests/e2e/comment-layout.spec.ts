@@ -475,7 +475,51 @@ test('就地回复只留输入框，右上角的叉能收起表单', async ({ pa
   // 目标没有丢 —— 搬进了输入框的占位符里
   await expect(inline.locator('.comment-composer__input')).toHaveAttribute('placeholder', /^回复 /);
 
-  // ② 叉在面板右上角：与工具条同一行、贴右端
+  // ② 表单自身**不套外框**：没有内距 / 底色 / 圆角，输入面板就是最外层那一块。
+  //    这条必须取计算值：少写一条就会重新长出「框里套框」，而页面看着也不算坏。
+  const frame = await inline.evaluate((form) => {
+    const panel = form.querySelector<HTMLElement>('.comment-composer__panel');
+    const body = form.parentElement?.querySelector<HTMLElement>(':scope > .comment-item__body');
+    const content = body?.querySelector<HTMLElement>(':scope > .comment-content') ?? null;
+    const cs = getComputedStyle(form as HTMLElement);
+    const box = (el: Element | null) => (el ? el.getBoundingClientRect() : null);
+    const pb = box(panel);
+    const cb = box(content);
+    const rgb = panel ? getComputedStyle(panel).backgroundColor : '';
+    // Chromium 对 color-mix 的结果会序列化成 `color(srgb … / <alpha>)`，
+    // 不一定是 rgba()；两种写法都认，别只匹配 rgba 就当成「不透明」。
+    const alphaOf = (value: string): number => {
+      if (!value || value === 'transparent') return value ? 0 : 1;
+      const rgba = value.match(/rgba?\(([^)]+)\)/);
+      if (rgba) {
+        const parts = rgba[1].split(/[,\s/]+/).filter(Boolean).map(Number);
+        return parts.length === 4 ? parts[3] : 1;
+      }
+      const colorFn = value.match(/color\(([^)]+)\)/);
+      if (colorFn) {
+        const slash = colorFn[1].split('/');
+        return slash.length > 1 ? parseFloat(slash[1]) : 1;
+      }
+      return 1;
+    };
+    return {
+      paddingLeft: parseFloat(cs.paddingLeft),
+      radius: parseFloat(cs.borderRadius) || 0,
+      background: cs.backgroundColor,
+      // 面板左边缘与正文左边缘同一条竖线（外框若回来，这里会先偏移一档内距）
+      panelLeftGap: pb && cb ? Math.abs(pb.left - cb.left) : null,
+      // 面板底色必须是半透明罩：它叠在任何一层评论卡上都可见；
+      // 换成固定色会在某一档卡片上消失（一级白卡 / 二级浅灰卡各吃掉一种固定色）
+      panelAlpha: alphaOf(rgb),
+    };
+  });
+  expect(frame.paddingLeft, '就地回复框外面又套了一层内距').toBe(0);
+  expect(frame.radius, '就地回复框外面又套了一层圆角').toBe(0);
+  expect(frame.background, '就地回复框外面又套了一层底色').toBe('rgba(0, 0, 0, 0)');
+  expect(frame.panelLeftGap, '回复面板没有和正文左对齐').toBeLessThanOrEqual(1);
+  expect(frame.panelAlpha, '回复面板用了不透明底色 —— 会在某一层评论卡上消失').toBeLessThan(1);
+
+  // ③ 叉在面板右上角：与工具条同一行、贴右端
   const closeBtn = inline.getByRole('button', { name: '取消回复' });
   await expect(closeBtn).toBeVisible();
   const geo = await inline.evaluate((form) => {
@@ -497,7 +541,7 @@ test('就地回复只留输入框，右上角的叉能收起表单', async ({ pa
   expect(geo!.rightGap, '叉没有贴住面板右端').toBeLessThanOrEqual(1);
   expect(geo!.topGap, '叉跑到了面板下方').toBeLessThanOrEqual(12);
 
-  // ③ 点叉：表单从评论下方消失，回到顶部（新写一条评论的状态）
+  // ④ 点叉：表单从评论下方消失，回到顶部（新写一条评论的状态）
   await closeBtn.click();
   await expect(inline).toHaveCount(0);
   await expect(page.locator('#comment-form')).toBeVisible();

@@ -111,20 +111,22 @@
     background: var(--color-background-subtle);
 }
 
-/* 就地回复：表单挂到被回复那条评论下面。它已经坐在一张评论卡上，所以换一档可辨识的
-    表面（页面底色）+ 面板二级卡片色。两种评论卡底色上都分得出来：一级白卡上页面底色
-    更灰一圈，二级 content 卡上页面底色更亮、面板又与卡同色、隔着一圈页面底色。
-    不再左右缩进 —— 正文本身就是从卡片左边缘（头像左边缘）起排的，表单跟着它走才同一条
-    竖线；缩进会成为唯一的例外。 */
+/* 就地回复：表单挂到被回复那条评论下面。**不套外框** —— 只有输入面板本身
+   （与顶部主输入框同一档观感），下方紧跟子回复列表。
+   不再左右缩进：正文本身就是从卡片左边缘（头像左边缘）起排的，表单跟着它走才同一条
+   竖线；缩进会成为唯一的例外。 */
 .comment-form.is-inline {
     margin: 14px 0 0;
-    padding: 12px;
-    background: var(--color-background-page);
-    border-radius: v.$radius-field;
 }
 
+/* 就地面板**不能用某一档固定的底色**：它坐在评论卡上，而卡片底色按层深在
+   一级 / 二级之间交替（白 / 浅灰）。选白会在白卡上消失，选 content 会在二级卡上消失
+   —— 两种都是「框看起来没渲染」的静默版式错。改用一层**半透明灰罩**：叠在哪种卡上
+   都比卡本身深一档，明暗两套主题同理（text-primary 与背景永远反向）。
+   ⚠️ 别换成 var(--color-background-subtle)：它在浅色下与卡内内容底色只差 1~3 个
+   RGB 值，二级卡上等于没有。 */
 .comment-form.is-inline .comment-composer__panel {
-    background: var(--color-background-content);
+    background: color-mix(in srgb, var(--color-text-primary) 6%, transparent);
 }
 
 /* 「匿名」勾选项 —— 只有评论区有（讨论区不传 anonToggle，那一整段根本不渲染）。
@@ -616,11 +618,6 @@
 
     .comment-form {
         margin-bottom: 12px;
-    }
-
-    .comment-form.is-inline {
-        padding: 10px;
-        border-radius: 16px;
     }
 
     .comment-section > .comment-list > .comment-item {
