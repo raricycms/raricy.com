@@ -325,6 +325,12 @@ export const DOC_ENTRIES: readonly DocEntry[] = [
   },
   {
     group: 'dev',
+    slug: 'plan/yiwen-chapter-two',
+    title: '异文第二章关卡设计：对读',
+    summary: '镜映新符、七张实验卡与双面铭牌的关卡方案；规则原型已验证，游戏内未实施。',
+  },
+  {
+    group: 'dev',
     slug: 'plan/editor-plan',
     title: '编辑器换代方案（Vditor → CodeMirror 6）',
     summary: 'M0–M2 与导出已交付；就地装饰、表格辅助、大纲及真实设备验收待完成。',
