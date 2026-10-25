@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { forbidden, notFound } from 'next/navigation';
 import type { Metadata } from 'next';
+import type { ReactNode } from 'react';
 import { redirectToLogin } from '@/lib/guard';
 import {
   EXTERNAL_VISIBILITIES,
@@ -13,6 +14,7 @@ import {
 import { ymd } from '@/lib/format';
 import { prisma } from '@/lib/db';
 import MarkdownRenderer from '@/app/components/MarkdownRenderer';
+import ReactiveDocument from '@/app/components/reactive/ReactiveDocumentLazy';
 import Avatar from '@/app/components/Avatar';
 import BlogTimestamps from '@/app/components/BlogTimestamps';
 import CommentSection from '@/app/components/CommentSection';
@@ -22,6 +24,7 @@ import ReadingProgress from '@/app/blog/ReadingProgress';
 import { getCurrentUser, hasAdminRights, isCoreUser } from '@/lib/auth';
 import { getFeedStatus } from '@/lib/feed-service';
 import { resolvePublicClipRefs } from '@/lib/clipboard-service';
+import { resolveReadRender } from '@/lib/reactive/read-render';
 import { isBlogFavorited } from '@/lib/favorite-service';
 import { jsonLdScript } from '@/lib/json-ld';
 import { isoWithOffset } from '@/lib/db-time';
@@ -138,11 +141,31 @@ export default async function BlogDetailPage({ params }: { params: Promise<{ id:
       ])
     : [{ fed: 0 }, null, false];
 
+  // 渲染路径决策（格式 / override / 灰度 / 回退）全部交给 read-render：
+  // 页面不自己判 cohort，也绝不把 reactive 源码交给 MarkdownRenderer。
+  // 访客（非 core）走 external —— 服务端只带公开剪贴板，投票与收藏保留字面量。
+  const contentSource = blog.content?.content ?? '';
+  const readRender = await resolveReadRender({
+    kind: 'blog',
+    id: blog.id,
+    source: contentSource,
+    format: blog.content?.format,
+    override: blog.rendererOverride,
+    viewer: member
+      ? { id: member.id, role: member.role, archivedAt: member.archivedAt }
+      : null,
+    mode: member ? 'expand' : 'external',
+    syntaxVersion: blog.content?.syntaxVersion,
+  });
+
   // 对外视图的剪贴板引用：正文里的 `[@8位]` 由**服务端**解析成内容随 payload 下发
   // （访客没有会话，客户端去拉只会吃 401）。只出公开档 —— 私有 / 已软删 / 不存在
   // 一律不进表，正文里保持字面量。见 clipboard-service.resolvePublicClipRefs。
   // 成员视图不需要：那边客户端自己带凭据拉，连私有剪贴板（作者 / 站长）也能展开。
-  const externalClips = member ? undefined : await resolvePublicClipRefs(blog.content?.content ?? '');
+  // reactive / reactive-static 由适配器自己取数（prepare.ts），这里不要重复查库。
+  const externalClips = !member && readRender.choice.renderer === 'legacy'
+    ? await resolvePublicClipRefs(contentSource)
+    : undefined;
 
   // 「管理文章 → 设置可见性」里那句「上次变更」。只给**能改的人**取（作者 / 管理员）——
   // 其余人白花一次查询。公开是不可逆的，所以这条信息的价值在「我什么时候放的」，
@@ -154,6 +177,78 @@ export default async function BlogDetailPage({ params }: { params: Promise<{ id:
   const lastVisibilityChange = visLog
     ? `${ymd(visLog.at) ?? ''} 由「${VISIBILITY_LABEL[visLog.from]}」改为「${VISIBILITY_LABEL[visLog.to]}」`
     : null;
+
+  // 三种新路径都保留 `.blog-content-container-container > .blog-content-container
+  // #userContentContainer` 这层外壳（e2e 与 _clipboard/_blog 样式都钉着它）。
+  // 只有 legacy 分支由 MarkdownRenderer 自己产出这两个节点。
+  const contentRenderer = readRender.choice.renderer;
+  const reactiveDocument = readRender.bundle?.result.ok ? readRender.bundle.result.document : null;
+  // reactive-static 优先用同版本持久快照；没有可用快照时才用本次现编译的产物。
+  const staticDocument =
+    readRender.snapshot?.document ?? (readRender.bundle?.result.ok ? readRender.bundle.result.document : null);
+  const staticHostData = readRender.snapshot?.hostData ?? readRender.bundle?.hostData;
+  let contentNode: ReactNode;
+  if (contentRenderer === 'reactive' && reactiveDocument) {
+    contentNode = (
+      <div className="blog-content-container-container">
+        <div
+          className="blog-content-container"
+          id="userContentContainer"
+          data-content-renderer="reactive"
+        >
+          <ReactiveDocument
+            document={reactiveDocument}
+            hostData={readRender.bundle?.hostData}
+            staticFirst
+            role="read"
+          />
+        </div>
+      </div>
+    );
+  } else if (contentRenderer === 'reactive-static' && staticDocument) {
+    contentNode = (
+      <div className="blog-content-container-container">
+        <div
+          className="blog-content-container"
+          id="userContentContainer"
+          data-content-renderer="reactive-static"
+        >
+          {/* 同版本快照 / 本次编译产物，按上游 static 分支渲染：SSR 首屏即静态正文，
+              无 JS 也可读；不需要（也不允许）在服务端 import react-dom/server。 */}
+          <ReactiveDocument
+            document={staticDocument}
+            hostData={staticHostData}
+            mode="static"
+            role="read"
+          />
+        </div>
+      </div>
+    );
+  } else if (contentRenderer === 'unavailable') {
+    contentNode = (
+      <div className="blog-content-container-container">
+        <div
+          className="blog-content-container"
+          id="userContentContainer"
+          data-content-renderer="unavailable"
+        >
+          <div className="reactive-document" role="alert">
+            <p>这篇内容暂时无法显示；正文格式或渲染器配置有误。</p>
+          </div>
+        </div>
+      </div>
+    );
+  } else {
+    contentNode = (
+      <div data-content-renderer="legacy">
+        <MarkdownRenderer
+          content={contentSource}
+          contentRefs={member ? 'expand' : 'external'}
+          externalClips={externalClips}
+        />
+      </div>
+    );
+  }
 
   return (
     <>
@@ -210,15 +305,10 @@ export default async function BlogDetailPage({ params }: { params: Promise<{ id:
               </div>
             </header>
 
-            {/* contentRefs 与 externalClips 都由**服务端**决定，不是客户端开关。
-                成员视图 'expand'（带凭据请求三条 core+ 接口）；对外视图 'external'
-                —— 图床 / 音频照渲染，剪贴板只出服务端判过的那几条公开档，
-                投票与收藏保留字面量。判据与理由见 MarkdownRenderer 的 prop 说明。 */}
-            <MarkdownRenderer
-              content={blog.content?.content ?? ''}
-              contentRefs={member ? 'expand' : 'external'}
-              externalClips={externalClips}
-            />
+            {/* 渲染路径由服务端 read-render 决定（legacy / reactive /
+                reactive-static / unavailable），data-content-renderer 是观测钩子。
+                旧分支原样交给 MarkdownRenderer；reactive 源文绝不进 Markdown 管线。 */}
+            {contentNode}
           </div>
         </div>
 

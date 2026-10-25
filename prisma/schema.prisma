@@ -1323,3 +1323,27 @@ model ProfileBlock {
   @@index([userId], map: "ix_profile_blocks_user_id")
   @@map("profile_blocks")
 }
+
+// reactive 正文的同版本静态快照（迁移 36）。
+// 存的是可信编译产物（LocalDocument + hostData），不是作者上传的 HTML。
+// 正文与这一行必须在同一个事务里写入；编译签名不一致的旧行按 stale 拒读。
+model ReactiveSnapshot {
+  id              String @id
+  kind            String
+  contentId       String @map("content_id")
+  contentVersion  String @map("content_version")
+  format          String @default("reactive")
+  scope           String @default("external")
+  syntaxVersion   String @map("syntax_version")
+  compilerVersion String @map("compiler_version")
+  adapterVersion  String @map("adapter_version")
+  optionsKey      String @map("options_key")
+  documentJson    String @map("document_json")
+  hostDataJson    String @map("host_data_json")
+  digest          String
+  generatedAt     String @map("generated_at")
+
+  @@unique([kind, contentId, contentVersion], name: "uq_reactive_snapshot_version")
+  @@index([kind, contentId], name: "idx_reactive_snapshot_content")
+  @@map("reactive_snapshots")
+}

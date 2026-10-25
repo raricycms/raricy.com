@@ -73,7 +73,7 @@ export async function POST(req: Request) {
     // 把它们如实映射成与上面同样的文案，避免被误报成「超过 200 篇」。
     if (result.reason === 'title_too_long') return apiErr(400, 'title too long');
     if (result.reason === 'content_too_long') return apiErr(400, 'content too long');
-    if (result.reason === 'invalid_format' || result.reason === 'reactive_not_ready') {
+    if (result.reason === 'invalid_format' || result.reason === 'reactive_invalid') {
       return apiErr(400, clipContentWriteMessage(result.reason));
     }
     return apiErr(400, '一个用户只能发布200篇云剪贴板！');

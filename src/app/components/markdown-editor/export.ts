@@ -30,7 +30,27 @@
 //
 // 【公式】MathJax 已经渲染成 CHTML（内联样式 + head 里的字体表），所以把 `<style>`
 // 抄过去就够了，导出件里**不需要**再加载 MathJax。
+//
+// 【ReactiveMD】`renderStaticMarkup` 用离屏 React 根按**初始状态**渲染一份只读正文，
+// 再取出 innerHTML（见该函数头）。适配、编译、图片内联都在这里做，调用方只负责
+// 把结果交给 `buildExportHtml`。上游 `screen.css` 从这里 side-effect import ——
+// 编辑器页面因此一定会把它带进 head，`collectStyleMarkup` 才抄得到。
 // ─────────────────────────────────────────────────────────────────────────────
+
+import { createElement } from 'react';
+import { flushSync } from 'react-dom';
+import { createRoot } from 'react-dom/client';
+import { compileLocal, createLocalRuntime } from 'reactive-md';
+import { LocalDocumentView } from 'reactive-md/react';
+import 'reactive-md/screen.css';
+
+import { renderSiteEmbedStatic } from '@/app/components/reactive/site-embed-static';
+import type { ContentFormat } from '@/lib/content-format';
+import { adaptReactivePreview, createClientReferenceReader } from '@/lib/reactive/client-compile';
+import { reactiveCompileOptions } from '@/lib/reactive/host-components';
+import type { SiteHostData } from '@/lib/reactive/ref-types';
+import { isAllowedReactiveUrl } from '@/lib/reactive/url-policy';
+import { MAX_REF_CONCURRENCY, createConcurrencyLimiter } from '@/lib/content-refs';
 
 /**
  * 解析相对地址时的**基准地址** —— 这一页自己的地址。
@@ -84,6 +104,31 @@ export function absolutizeCssUrls(css: string, base: string): string {
   });
 }
 
+/**
+ * 同源样式表**内联**成 `<style>`，让导出件离线也有版式。
+ *
+ * `<link>` 只能是绝对地址、离线打开时取不到；而浏览器已经把同源样式表解析进
+ * `link.sheet` 了，读 `cssRules` 就能拿到原文。跨源样式表（字体 CDN 之类）会抛
+ * SecurityError —— 那些**原样保留 link**，绝不因为读不到就把样式整条丢掉。
+ * 读得到但为空（还在加载）时同样回退到 link。
+ */
+function inlineSameOriginSheet(link: HTMLLinkElement, base: string): string | null {
+  try {
+    const sheet = link.sheet;
+    if (!sheet) return null;
+    const rules = sheet.cssRules;
+    if (!rules || rules.length === 0) return null;
+    const css = Array.from(rules)
+      .map((rule) => rule.cssText)
+      .join('\n');
+    if (!css) return null;
+    // 规则里的相对 url() 是相对**样式表自己**解析的，所以基准用 link.href。
+    return `<style>\n${absolutizeCssUrls(css, link.href || base)}\n</style>`;
+  } catch {
+    return null;
+  }
+}
+
 /** 把 head 里的样式抄成一段可以直接放进导出件的标记。 */
 function collectStyleMarkup(base: string): string {
   const parts: string[] = [];
@@ -91,8 +136,14 @@ function collectStyleMarkup(base: string): string {
     document.head.querySelectorAll('link[rel="stylesheet"], style')
   )) {
     if (node.tagName === 'LINK') {
+      const link = node as HTMLLinkElement;
+      const inlined = inlineSameOriginSheet(link, base);
+      if (inlined) {
+        parts.push(inlined);
+        continue;
+      }
       // 浏览器已经把 `.href` 解析成绝对地址了 —— 直接用，别自己拼
-      const href = (node as HTMLLinkElement).href;
+      const href = link.href;
       if (href) parts.push(`<link rel="stylesheet" href="${href}">`);
     } else {
       parts.push(absolutizeCssUrls(node.outerHTML, base));
@@ -160,6 +211,162 @@ export function stripInteractiveShells(root: HTMLElement): void {
   root.querySelectorAll('.copy-btn').forEach((el) => el.remove());
 }
 
+/**
+ * ReactiveMD 导出件的固定说明：只含**初始状态**。
+ *
+ * 导出发生在作者的工作台上，但导出的语义是「与读者打开时看到的初始状态一致」，
+ * 不是作者此刻拖过的滑杆值。`renderStaticMarkup` 把它写进正文末尾的注释里；
+ * 调用方也可以把它当 `buildExportHtml` 的 `footerNote` 显示出来。
+ */
+export const REACTIVE_EXPORT_NOTE =
+  'ReactiveMD 文档：导出件展示初始状态；交互控件在导出件中不可用。';
+
+/** Markdown 图片与原生 `<img>` —— 两处都要预取，漏一处那张图离线就裂。 */
+const MD_IMAGE_RE = /!\[[^\]]*\]\(\s*<?([^)\s>]+)>?(?:\s+["'][^"']*["'])?\s*\)/g;
+const HTML_IMAGE_RE = /<img\b[^>]*\bsrc\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/gi;
+
+function collectImageUrls(source: string): string[] {
+  const urls = new Set<string>();
+  for (const match of source.matchAll(MD_IMAGE_RE)) {
+    if (match[1]) urls.add(match[1]);
+  }
+  for (const match of source.matchAll(HTML_IMAGE_RE)) {
+    const value = match[1] ?? match[2] ?? match[3];
+    if (value) urls.add(value);
+  }
+  return [...urls];
+}
+
+function bytesToBase64(bytes: Uint8Array): string {
+  let binary = '';
+  // 分块：`String.fromCharCode(...bytes)` 在长图上会撞调用栈上限。
+  const chunk = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunk) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
+  }
+  return btoa(binary);
+}
+
+/**
+ * 把允许的图片**全部先取回来**，再交给同步的 `imageResolver`。
+ *
+ * 上游的 resolver 是同步签名 —— 渲染到那一张时才开始 fetch 就来不及了，只能
+ * 返回 null、由渲染器显示 alt 回退。取不到的（私有图 / 网络失败 / 非图片）保持
+ * 不在表里：那张图按上游的既定形态降级成 alt 文本，**不伪造一个空 data URL**。
+ */
+async function prefetchImages(urls: readonly string[], base?: string): Promise<Map<string, string>> {
+  const resolved = new Map<string, string>();
+  const schedule = createConcurrencyLimiter(MAX_REF_CONCURRENCY);
+  await Promise.all(
+    urls.map((url) =>
+      schedule(async () => {
+        try {
+          const response = await fetch(resolveUrl(url, pageBase(base)), {
+            credentials: 'same-origin',
+          });
+          if (!response.ok) return;
+          const mime = (response.headers.get('content-type') ?? '')
+            .split(';')[0]
+            .trim()
+            .toLowerCase();
+          if (!mime.startsWith('image/')) return;
+          const bytes = new Uint8Array(await response.arrayBuffer());
+          if (bytes.length === 0) return;
+          resolved.set(url, `data:${mime};base64,${bytesToBase64(bytes)}`);
+        } catch {
+          // 单张失败只影响它自己。
+        }
+      })
+    )
+  );
+  return resolved;
+}
+
+export interface ReactiveStaticMarkupInput {
+  /** 作者源码（未适配）。给了 `adaptedSource` 时忽略。 */
+  source: string;
+  /** 正文语言：决定 `markdownBreaks` 等编译选项。 */
+  format: ContentFormat;
+  /** 解析相对地址的基准（页面地址）；不传取 `location.href`。 */
+  base?: string;
+  /** 已适配的源码与 hostData（预览侧已做过同一趟时可复用）。 */
+  adaptedSource?: string;
+  hostData?: SiteHostData;
+}
+
+/**
+ * 把一份 ReactiveMD 文档渲染成**只读静态** HTML。
+ *
+ * 三步，顺序固定：
+ *   1. 适配 `[@…]`（与预览同一套 `adaptReactiveReferences`）并编译；
+ *   2. 预取允许的图片 → data URL（同步 resolver 才拿得到）；
+ *   3. 离屏 `createRoot` + `flushSync` 渲染 `mode="static"` 的 `LocalDocumentView`，
+ *      读 `innerHTML`，然后卸载并释放运行时。
+ *
+ * ⚠️ 只渲染**初始状态**：不 import 状态文件、不读预览里调过的参数。导出件因此
+ * 与读者打开时的第一屏一致（见 `REACTIVE_EXPORT_NOTE`）。
+ *
+ * 编译失败会抛出（调用方据此提示「导出失败」）—— 绝不拿一份空正文冒充成功。
+ */
+export async function renderStaticMarkup(input: ReactiveStaticMarkupInput): Promise<string> {
+  const adapted =
+    input.adaptedSource !== undefined
+      ? { adaptedSource: input.adaptedSource, hostData: input.hostData ?? {} }
+      : // 与预览共用同一份客户端取数 / 适配（client-compile）—— 两处各写一份的话，
+        // 「导出里能看见的引用」与「预览里能看见的引用」会慢慢漂开。
+        await adaptReactivePreview(input.source, createClientReferenceReader());
+
+  const compiled = compileLocal(adapted.adaptedSource, reactiveCompileOptions(input.format));
+  if (!compiled.ok) {
+    const codes = compiled.diagnostics.map((diagnostic) => diagnostic.code).join(', ');
+    throw new Error(codes ? `ReactiveMD 编译失败：${codes}` : 'ReactiveMD 编译失败');
+  }
+
+  const imageUrls = collectImageUrls(adapted.adaptedSource).filter((url) =>
+    isAllowedReactiveUrl(url, 'image')
+  );
+  const resolvedImages = await prefetchImages(imageUrls, input.base);
+
+  const runtime = createLocalRuntime(compiled.document);
+  const container = document.createElement('div');
+  container.style.cssText = 'position:absolute;left:-100000px;top:0;width:760px;';
+  document.body.appendChild(container);
+  const root = createRoot(container, { identifierPrefix: 'reactive-export-' });
+  let mounted = false;
+  try {
+    flushSync(() => {
+      root.render(
+        createElement(LocalDocumentView, {
+          document: compiled.document,
+          runtime,
+          mode: 'static',
+          locale: 'zh',
+          hostData: adapted.hostData,
+          hostRenderer: renderSiteEmbedStatic,
+          urlPolicy: (url: string, kind: 'image' | 'link') =>
+            isAllowedReactiveUrl(url, kind),
+          imageResolver: (url: string) =>
+            resolvedImages.get(url) ?? resolvedImages.get(resolveUrl(url, pageBase(input.base))) ?? null,
+        })
+      );
+      mounted = true;
+    });
+
+    // 相对地址补成站点绝对地址（音频、链接卡片）；`#锚点` 就地跳。
+    absolutizeSiteUrls(container, input.base);
+    localizeFragmentLinks(container);
+    stripInteractiveShells(container);
+
+    // 唯一一处读 innerHTML：读的是**离屏渲染结果**，不是作者输入。
+    const html = container.innerHTML;
+    return `${html}\n<!-- ${REACTIVE_EXPORT_NOTE} -->`;
+  } finally {
+    if (mounted) root.unmount();
+    container.remove();
+    runtime.dispose();
+  }
+}
+
 /** HTML 文本转义 —— 只用于标题（正文 HTML 是我们自己的渲染产物，不再转义）。 */
 function escapeHtml(text: string): string {
   return text
@@ -179,6 +386,8 @@ export interface ExportOptions {
    * `location.href`（单测可显式传）。
    */
   base?: string;
+  /** 导出件末尾的说明（纯文本，会转义）。ReactiveMD 用它交代「只含初始状态」。 */
+  footerNote?: string;
 }
 
 /**
@@ -187,7 +396,7 @@ export interface ExportOptions {
  * `body` 的形状沿用文章页（`.blog-content-container` 提供阅读版式），
  * 于是导出件在浏览器里打开的观感与站内文章页一致。
  */
-export function buildExportHtml({ title, bodyHtml, base }: ExportOptions): string {
+export function buildExportHtml({ title, bodyHtml, base, footerNote }: ExportOptions): string {
   const theme = document.documentElement.getAttribute('data-theme') ?? 'light';
   return `<!DOCTYPE html>
 <html lang="zh-CN" data-theme="${theme}">
@@ -202,6 +411,7 @@ ${collectStyleMarkup(pageBase(base))}
 <div class="blog-content-container">
 ${bodyHtml}
 </div>
+${footerNote ? `<p class="export-note">${escapeHtml(footerNote)}</p>` : ''}
 </main>
 </body>
 </html>

@@ -15,15 +15,19 @@ export function parseContentFormat(value: unknown): ContentFormat | null {
 
 export type ContentFormatWriteResult =
   | { ok: true; format: ContentFormat }
-  | { ok: false; reason: 'invalid_format' | 'reactive_not_ready' };
+  | { ok: false; reason: 'invalid_format' };
 
-/** Omitted updates preserve the stored language. Reactive writes await publication snapshots. */
+/**
+ * Omitted updates preserve the stored language.
+ *
+ * Reactive writes are accepted here; the **compile + snapshot** check is the service's
+ * job (a request that cannot be compiled must not be stored at all).
+ */
 export function resolveContentWriteFormat(
   requested: unknown,
   current: ContentFormat = DEFAULT_CONTENT_FORMAT,
 ): ContentFormatWriteResult {
   const format = requested === undefined ? current : parseContentFormat(requested);
   if (format === null) return { ok: false, reason: 'invalid_format' };
-  if (format === 'reactive') return { ok: false, reason: 'reactive_not_ready' };
   return { ok: true, format };
 }

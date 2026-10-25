@@ -15,6 +15,7 @@ import {
 } from './content-format';
 import type { ContentFormat } from './content-format';
 import type { ExternalClipData } from './reactive/ref-types';
+import { buildReactiveSnapshotForWrite } from './reactive/publish';
 import { createHash } from 'node:crypto';
 import {
   collectClipboardRefIds,
@@ -34,7 +35,7 @@ export const CLIP_CONTENT_MAX = 50000;
 export const CLIP_PER_USER_MAX = 200;
 
 /** 正文写入闸门的失败原因（与 blog-service 同形，但两域各自设防）。 */
-export type ClipContentWriteFailure = 'invalid_format' | 'reactive_not_ready';
+export type ClipContentWriteFailure = 'invalid_format' | 'reactive_invalid';
 
 export type ClipContentWriteGate =
   | { ok: true; format: ContentFormat }
@@ -43,11 +44,10 @@ export type ClipContentWriteGate =
 /**
  * 剪贴板正文的**唯一写入闸门**（createClip / updateClip / 两条写接口都调它）。
  *
- * 规则与博客侧逐条一致（见 blog-service.resolveBlogContentFormat）：
- *   · 省略 = 保留库里的原值（新建时默认 markdown）；
- *   · 未知请求值 → 拒绝；
- *   · 未知存量值 / 存量 reactive → 拒绝 —— 本期没有同版本快照可回滚，
- *     任何写入都会静默丢格式或把 reactive 源码按 Markdown 改写。
+ * 与博客侧逐条一致（见 blog-service.resolveBlogContentFormat）：省略 = 保留原值
+ * （新建默认 markdown）；非法请求值 / 未知存量值 → 拒绝。
+ *
+ * reactive 能不能发布不在这里判：它要编译并生成同版本快照，见 createClip / updateClip。
  */
 export function resolveClipContentFormat(
   requested: unknown,
@@ -56,7 +56,6 @@ export function resolveClipContentFormat(
   const current =
     stored === undefined ? DEFAULT_CONTENT_FORMAT : parseContentFormat(stored);
   if (current === null) return { ok: false, reason: 'invalid_format' };
-  if (current === 'reactive') return { ok: false, reason: 'reactive_not_ready' };
   return resolveContentWriteFormat(requested, current);
 }
 
@@ -64,7 +63,7 @@ export function resolveClipContentFormat(
 export function clipContentWriteMessage(reason: ClipContentWriteFailure): string {
   return reason === 'invalid_format'
     ? '内容格式取值不合法，可选：markdown / reactive'
-    : 'ReactiveMD 内容暂未开放写入';
+    : 'ReactiveMD 正文无法编译，已拒绝发布';
 }
 
 export interface CreateClipInput {
@@ -122,24 +121,37 @@ export async function createClip(
   const id = generateShortId(8);
   const now = nowForDb();
 
-  await prisma.clipBoard.create({
-    data: {
-      id,
-      title: input.title,
-      authorId,
-      publicity: input.publicity ?? true,
-      ignore: false,
-      createdAt: now,
-      content: {
-        create: {
-          content: input.content,
-          format: write.format,
-          syntaxVersion: null,
-          updatedAt: now,
+  // reactive：先编译并生成同版本快照；编不出来就整笔拒绝（不落半篇）。
+  const snapshot =
+    write.format === 'reactive'
+      ? await buildReactiveSnapshotForWrite({ kind: 'clipboard', contentId: id, content: input.content })
+      : null;
+  if (snapshot && !snapshot.ok) return { ok: false, reason: 'reactive_invalid' };
+  const syntaxVersion = snapshot && snapshot.ok ? snapshot.syntaxVersion : null;
+
+  await prisma.$transaction([
+    prisma.clipBoard.create({
+      data: {
+        id,
+        title: input.title,
+        authorId,
+        publicity: input.publicity ?? true,
+        ignore: false,
+        createdAt: now,
+        content: {
+          create: {
+            content: input.content,
+            format: write.format,
+            syntaxVersion,
+            updatedAt: now,
+          },
         },
       },
-    },
-  });
+    }),
+    ...(snapshot && snapshot.ok
+      ? [prisma.reactiveSnapshot.create({ data: snapshot.row })]
+      : []),
+  ]);
 
   return { ok: true, id };
 }
@@ -175,9 +187,13 @@ export async function updateClip(
 
   const clip = await prisma.clipBoard.findFirst({
     where: { id: clipId, ignore: false },
-    // content.format 是写入闸门的当前值：省略 format 的编辑必须保留原值，
-    // 而存量 reactive 当前一律拒绝写入（理由见 resolveClipContentFormat）。
-    select: { id: true, authorId: true, content: { select: { format: true } } },
+    // content.format 是写入闸门的当前值；content / syntaxVersion 用来判断要不要
+    // 重新生成同版本快照（只改标题时不必重编）。
+    select: {
+      id: true,
+      authorId: true,
+      content: { select: { format: true, content: true, syntaxVersion: true } },
+    },
   });
 
   if (!clip) return { ok: false, reason: 'not_found' };
@@ -186,30 +202,76 @@ export async function updateClip(
   const write = resolveClipContentFormat(input.format, clip.content?.format);
   if (!write.ok) return { ok: false, reason: write.reason };
 
+  const oldContent = clip.content?.content ?? '';
+  const oldFormat = clip.content ? parseContentFormat(clip.content.format) : null;
+  const snapshot =
+    write.format === 'reactive' && (oldFormat !== 'reactive' || oldContent !== input.content)
+      ? await buildReactiveSnapshotForWrite({
+          kind: 'clipboard',
+          contentId: clipId,
+          content: input.content,
+        })
+      : null;
+  if (snapshot && !snapshot.ok) return { ok: false, reason: 'reactive_invalid' };
+  const syntaxVersion =
+    write.format === 'reactive'
+      ? snapshot && snapshot.ok
+        ? snapshot.syntaxVersion
+        : clip.content?.syntaxVersion ?? null
+      : null;
+
   const now = nowForDb();
-  await prisma.clipBoard.update({
-    where: { id: clipId },
-    data: {
-      title: input.title,
-      publicity: input.publicity,
-      content: {
-        upsert: {
-          create: {
-            content: input.content,
-            format: write.format,
-            syntaxVersion: null,
-            updatedAt: now,
-          },
-          update: {
-            content: input.content,
-            format: write.format,
-            syntaxVersion: null,
-            updatedAt: now,
+  await prisma.$transaction([
+    prisma.clipBoard.update({
+      where: { id: clipId },
+      data: {
+        title: input.title,
+        publicity: input.publicity,
+        content: {
+          upsert: {
+            create: {
+              content: input.content,
+              format: write.format,
+              syntaxVersion,
+              updatedAt: now,
+            },
+            update: {
+              content: input.content,
+              format: write.format,
+              syntaxVersion,
+              updatedAt: now,
+            },
           },
         },
       },
-    },
-  });
+    }),
+    ...(snapshot && snapshot.ok
+      ? [
+          prisma.reactiveSnapshot.upsert({
+            where: {
+              uq_reactive_snapshot_version: {
+                kind: 'clipboard',
+                contentId: clipId,
+                contentVersion: snapshot.contentVersion,
+              },
+            },
+            create: snapshot.row,
+            update: {
+              format: snapshot.row.format,
+              scope: snapshot.row.scope,
+              syntaxVersion: snapshot.row.syntaxVersion,
+              compilerVersion: snapshot.row.compilerVersion,
+              adapterVersion: snapshot.row.adapterVersion,
+              optionsKey: snapshot.row.optionsKey,
+              documentJson: snapshot.row.documentJson,
+              hostDataJson: snapshot.row.hostDataJson,
+              digest: snapshot.row.digest,
+              generatedAt: snapshot.row.generatedAt,
+            },
+          }),
+        ]
+      : []),
+  ]);
 
   return { ok: true, id: clipId };
 }
@@ -263,6 +325,8 @@ export interface ClipDetail {
   syntaxVersion: string | null;
   /** Shared by API, member embeds and public embeds. */
   version: string;
+  /** 逐篇渲染覆盖（NULL / 'legacy' / 'reactive'）；只影响渲染路径，不改变格式。 */
+  rendererOverride: string | null;
   createdAt: Date | null;
 }
 
@@ -292,6 +356,7 @@ export async function getClip(
       title: true,
       authorId: true,
       publicity: true,
+      rendererOverride: true,
       createdAt: true,
       author: { select: { username: true } },
       content: { select: { content: true, format: true, syntaxVersion: true } },
@@ -321,6 +386,7 @@ export async function getClip(
         clip.content?.format ?? null, clip.content?.syntaxVersion ?? null,
         clip.title, clip.content?.content ?? '',
       ])).digest('hex'),
+      rendererOverride: clip.rendererOverride ?? null,
       createdAt: clip.createdAt ?? null,
     },
   };

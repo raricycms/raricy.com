@@ -20,6 +20,12 @@ import type { CategoryHierarchy } from '@/lib/blog-service';
 // 它拖着 prisma，值导出会把服务端依赖拉进客户端包。理由见该文件头。
 import { BLOG_VISIBILITIES, VISIBILITY_LABEL } from '@/lib/blog-visibility';
 import type { BlogVisibility } from '@/lib/blog-visibility';
+import {
+  CONTENT_FORMATS,
+  CONTENT_FORMAT_LABELS,
+  DEFAULT_CONTENT_FORMAT,
+  type ContentFormat,
+} from '@/lib/content-format';
 
 function toast(msg: string, type: string) {
   if (typeof window === 'undefined') return;
@@ -40,6 +46,8 @@ export interface BlogFormBlog {
   /** 是否允许匿名评论（作者可关，默认允许）。 */
   allowAnonymousComments: boolean;
   contentMarkdown: string;
+  /** 库里的正文格式（null / 缺省 = 认不出；读口不猜 markdown）。 */
+  format?: ContentFormat | null;
 }
 
 export interface BlogFormBanInfo {
@@ -65,6 +73,7 @@ interface FormFields {
   categoryId: string;
   visibility: string;
   allowAnonymousComments: boolean;
+  format: string;
   content: string;
 }
 
@@ -75,6 +84,7 @@ const FIELD_LABELS: ReadonlyArray<readonly [keyof FormFields, string]> = [
   ['categoryId', '栏目'],
   ['visibility', '可见范围'],
   ['allowAnonymousComments', '匿名评论开关'],
+  ['format', '正文格式'],
   ['content', '正文'],
 ];
 
@@ -83,6 +93,11 @@ export default function BlogForm({ categories, blog = null, banInfo = null }: Bl
   const initialMarkdown = blog?.contentMarkdown ?? '';
   const categoryValue = String(blog?.categoryId ?? '');
   const visibilityValue = blog?.visibility ?? 'internal';
+  // 编辑态从**库里的**格式起步；新建态默认 markdown。显式写回请求体 ——
+  // 省略 format 在 PUT 上是「这一列不动」而不是「打回默认档」，回写才与界面一致。
+  const [format, setFormat] = useState<ContentFormat>(
+    blog?.format ?? DEFAULT_CONTENT_FORMAT
+  );
 
   // 下拉选项是**从同一份权威数据推出来的**：栏目来自服务端的层级树，可见性来自
   // lib/blog-visibility（加第四档时前端会跟着长出来，不会静默少一个选项）。
@@ -197,6 +212,7 @@ export default function BlogForm({ categories, blog = null, banInfo = null }: Bl
       visibility: formValue(form, 'visibility'),
       allowAnonymousComments:
         form.querySelector<HTMLInputElement>('[name="allowAnonymous"]')?.checked ?? false,
+      format: formValue(form, 'format'),
       content: getContent(),
     };
   }
@@ -242,7 +258,7 @@ export default function BlogForm({ categories, blog = null, banInfo = null }: Bl
 
     // 提交的是**这一刻**的表单：之后不管用户怎么改，成功回调都用这一份做判断。
     const snapshot = readFields(form);
-    const { title, description, categoryId, visibility, allowAnonymousComments, content } =
+    const { title, description, categoryId, visibility, allowAnonymousComments, format, content } =
       snapshot;
 
     if (!title || !description || !content) {
@@ -280,6 +296,7 @@ export default function BlogForm({ categories, blog = null, banInfo = null }: Bl
           category_id: categoryId,
           visibility,
           allow_anonymous_comments: allowAnonymousComments,
+          format,
         }),
       });
       const result = await response.json();
@@ -505,10 +522,30 @@ export default function BlogForm({ categories, blog = null, banInfo = null }: Bl
           </span>
         </div>
 
+        {/* 正文格式：新文档默认 Markdown；编辑态显示库里的值并原样回写。
+            reactive 的写入闸门在服务端（当前会 400），这里**不隐藏选项** ——
+            选了就如实收到服务端的拒绝文案。 */}
         <div className="form-group">
-          <label className="form-label">
-            内容（Markdown 格式）
+          <label htmlFor="format" className="form-label">
+            正文格式
           </label>
+          <select
+            className="form-control"
+            id="format"
+            name="format"
+            value={format}
+            onChange={(e) => setFormat(e.target.value as ContentFormat)}
+          >
+            {CONTENT_FORMATS.map((value) => (
+              <option key={value} value={value}>
+                {CONTENT_FORMAT_LABELS[value]}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div className="form-group">
+          <label className="form-label">内容</label>
           {/* 只有新建页给草稿键：编辑态的正文是服务端那一份，本地草稿在编辑态既不读
               也不写 —— 否则「上个月新建到一半的半成品」会覆盖掉正在编辑的已发布文章。 */}
           {!banInfo && (
@@ -517,6 +554,8 @@ export default function BlogForm({ categories, blog = null, banInfo = null }: Bl
               ref={editorRef}
               initialValue={initialMarkdown}
               draftKey={isEdit ? undefined : DRAFT_KEY}
+              format={format}
+              onDraftFormatRestored={setFormat}
               // 导出件的文件名与 `<title>` 读的是**此刻**的标题（不是进页面那一刻的）
               title={title}
               height="60vh"

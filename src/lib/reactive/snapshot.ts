@@ -18,8 +18,11 @@
 // 可公开下发的快照。调用方传入的 `publicData` 只是给生成器的公开上下文，不落库；
 // 它必须 JSON-safe，避免函数/类实例混进跨请求数据。
 //
-// 此期 reactive 写入闸仍然关闭（`content-format.ts` 的 `resolveContentWriteFormat`）；
-// 本文件只把发布链路先接成可测试的契约，真实表结构与迁移等后续阶段再定。
+// 【与生产路径的关系】这里保留的是**HTML 快照**的通用契约（含它的纯函数测试）。
+// 线上实际写入的表是迁移 36 的 `reactive_snapshots`，存的是编译产物 JSON
+// （`snapshot-store.ts`）：Next 的 RSC 编译链不允许在服务端现调 `react-dom/server`，
+// 阅读页改用上游组件的 `mode="static"` 从 JSON 得到同样的静态首屏。
+// 本文件不参与那条线上链路，不要把它当成生产存储。见 `docs/architecture.md` §6.23。
 // ─────────────────────────────────────────────────────────────────────────────
 
 import {

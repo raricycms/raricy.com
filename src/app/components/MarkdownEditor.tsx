@@ -47,12 +47,16 @@ import {
   downloadHtml,
   localizeFragmentLinks,
   printHtml,
+  REACTIVE_EXPORT_NOTE,
+  renderStaticMarkup,
   safeFilename,
   stripInteractiveShells,
 } from './markdown-editor/export';
 import MarkdownRenderer from './MarkdownRenderer';
+import ReactivePreview from './reactive/ReactivePreview';
 import { ContentRefProcessor } from '@/lib/content-ref-processor';
 import { ContentRefResolver } from '@/lib/content-ref-resolver';
+import type { ContentFormat } from '@/lib/content-format';
 import { renderBlogMarkdown } from '@/lib/blog-renderer';
 import { enhanceBlogContent } from '@/lib/blog-content-dom';
 import { IMAGE_ACCEPT, uploadImageFile } from '@/lib/image-client';
@@ -116,12 +120,25 @@ export interface MarkdownEditorProps {
   title?: string;
   /** 是否给公式按钮（剪贴板有、博客没有）。 */
   withMath?: boolean;
+  /**
+   * 正文语言。`reactive` 时预览面板改走 ReactiveMD（`ReactivePreview`），
+   * Markdown 的一切（含导出 / 打印）保持原样。**默认 markdown，行为不变。**
+   */
+  format?: ContentFormat;
   /** 编辑区高度（CSS 值）。 */
   height?: string;
   /** CM6 初始化失败 —— 调用方把 textarea 回退显示出来，并用这个初值填进去。 */
   onInitError?: (initialValue: string) => void;
   /** 提示（上传失败、草稿冲突等）。由表单提供，保证每页只有一条 toast 通道。 */
   onNotify?: (message: string, type: 'error' | 'warning' | 'success') => void;
+  /**
+   * 恢复了一份**非 Markdown**草稿时通知表单。
+   *
+   * 草稿信封里存着它自己的格式（见 `lib/md-editor/draft.ts`）；表单的初始格式来自
+   * 服务端或默认值。不把两者对齐，用户恢复一份 reactive 草稿后点保存，服务端会按
+   * 表单上那个 markdown 写入 —— 正文没变，格式被静默改写。
+   */
+  onDraftFormatRestored?: (format: ContentFormat) => void;
 }
 
 const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(
@@ -132,9 +149,11 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(
       draftKey,
       title = '',
       withMath = false,
+      format = 'markdown',
       height = '60vh',
       onInitError,
       onNotify,
+      onDraftFormatRestored,
     },
     ref
   ) {
@@ -158,6 +177,11 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(
 
     const draftRef = useRef<DraftStore | null>(null);
     const [draftChoice, setDraftChoice] = useState<string | null>(null);
+    /** 横幅里那份草稿自己的格式（恢复时同步给表单）。 */
+    const restoredDraftFormatRef = useRef<ContentFormat>('markdown');
+    /** 最新的表单格式 —— 草稿落盘时随正文一起写，不读可能过期的闭包。 */
+    const formatRef = useRef(format);
+    formatRef.current = format;
     const [initFailed, setInitFailed] = useState(false);
 
     /** 已取消 / 已销毁的批次 —— 迟到的上传结果据此丢弃，绝不插回正文。 */
@@ -196,8 +220,10 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(
         if (!initialValue) {
           // 新建页没有服务端初值 —— 直接恢复，不问（这是绝大多数情况）
           resolvedInitialRef.current = read.value;
+          if (read.format !== format) onDraftFormatRestored?.(read.format);
         } else {
           // 两份都有内容：不静默覆盖任何一份，交给用户在横幅里选
+          restoredDraftFormatRef.current = read.format;
           setDraftChoice(read.value);
         }
       }
@@ -397,7 +423,7 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(
           docRef.current = text;
           bump();
           schedulePreview(text);
-          draftRef.current?.schedule(text);
+          draftRef.current?.schedule({ format: formatRef.current, text });
         }),
         EditorView.domEventHandlers({
           /**
@@ -513,6 +539,7 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(
     const buildSnapshot = useCallback(async (): Promise<{
       title: string;
       bodyHtml: string;
+      footerNote?: string;
     } | null> => {
       if (snapshotBusyRef.current) {
         // ★ 第二次点击必须**说话** ★ 早退本身是对的（连点两下不该渲染两遍、下两份），
@@ -525,6 +552,12 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(
       let holder: HTMLDivElement | null = null;
       try {
         const source = viewRef.current?.state.doc.toString() ?? docRef.current;
+        // reactive 走 ReactiveMD 的静态渲染（`mode="static"`，初始状态）；
+        // 旧管线只服务 Markdown 文档 —— 两种语言不能互换解析器。
+        if (formatRef.current === 'reactive') {
+          const bodyHtml = await renderStaticMarkup({ source, format: 'reactive' });
+          return { title, bodyHtml, footerNote: REACTIVE_EXPORT_NOTE };
+        }
         const resolver = resolverRef.current;
         if (!resolver) return null;
         // 本轮的真值（含投票小组件要用的那格）随 text 一起出来 —— 见 preprocessRound。
@@ -602,6 +635,9 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(
           changes: { from: 0, to: v.state.doc.length, insert: value },
           selection: { anchor: value.length },
         });
+      }
+      if (restoredDraftFormatRef.current !== formatRef.current) {
+        onDraftFormatRestored?.(restoredDraftFormatRef.current);
       }
       setDraftChoice(null);
     }
@@ -682,13 +718,23 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(
               </button>
             </div>
             <div className="md-editor__preview-body" ref={previewBodyRef}>
-              <MarkdownRenderer
-                content={previewDoc}
-                contentRefs="expand"
-                interactive={false}
-                resolver={resolverRef.current}
-                refreshToken={refreshToken}
-              />
+              {format === 'reactive' ? (
+                /*
+                 * reactive：预览由 ReactivePreview 自己防抖 + 适配 + 编译，
+                 * 旧的 Markdown 管线（ContentRefProcessor → blog-renderer →
+                 * blog-content-dom）**一行都不跑** —— 它读不懂 reactive 语法，
+                 * 跑一遍只会把源码当 Markdown 重新解释。
+                 */
+                <ReactivePreview source={previewDoc} />
+              ) : (
+                <MarkdownRenderer
+                  content={previewDoc}
+                  contentRefs="expand"
+                  interactive={false}
+                  resolver={resolverRef.current}
+                  refreshToken={refreshToken}
+                />
+              )}
             </div>
           </div>
         </div>

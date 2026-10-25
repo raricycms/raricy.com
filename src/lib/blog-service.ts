@@ -63,11 +63,13 @@ import {
 } from './blog-visibility';
 import type { BlogVisibility } from './blog-visibility';
 import {
+  CONTENT_FORMAT_LABELS,
   DEFAULT_CONTENT_FORMAT,
   parseContentFormat,
   resolveContentWriteFormat,
 } from './content-format';
 import type { ContentFormat } from './content-format';
+import { buildReactiveSnapshotForWrite } from './reactive/publish';
 import type { Prisma } from '@prisma/client';
 import type { PersonalBlogScope } from './blog-directory';
 
@@ -867,8 +869,8 @@ export const BLOG_ACCEPTED_KEYS = [
   'format',
 ] as const;
 
-/** 正文写入闸门的失败原因。两个都是**拒绝**，不是降级。 */
-export type ContentWriteFailure = 'invalid_format' | 'reactive_not_ready';
+/** 正文写入闸门的失败原因。全部是**拒绝**，不是降级。 */
+export type ContentWriteFailure = 'invalid_format' | 'reactive_invalid';
 
 export type ContentWriteGate =
   | { ok: true; format: ContentFormat }
@@ -878,11 +880,11 @@ export type ContentWriteGate =
  * 博客正文的**唯一写入闸门**（createBlog / updateBlog / 两个写接口都调它）。
  *
  * 与 `resolveContentWriteFormat` 的分工：那边只回答「请求值与当前值合不合法」，
- * 这里先判**库里那个当前值**：
- *   · 未知存量值 → 拒绝（绝不猜成 markdown —— 猜错就是把另一种语言的源码交给旧解析器）；
- *   · 存量已经是 reactive → 一律拒绝。本期还没有同版本快照可回滚，任何写入都会
- *     要么把 reactive 源码按 Markdown 改写，要么在省略 format 时**静默丢掉格式**。
- *     等 M6 开放 reactive 写入时再放开这一条，别提前放宽。
+ * 这里先判**库里那个当前值**：未知存量值一律拒绝（绝不猜成 markdown —— 猜错就是
+ * 把另一种语言的源码交给旧解析器）。
+ *
+ * reactive 的「能不能发布」不在这里判：它要编译一次并生成同版本快照，属于
+ * `createBlog` / `updateBlog` 的发布步骤（见 `buildReactiveSnapshotForWrite`）。
  */
 export function resolveBlogContentFormat(
   requested: unknown,
@@ -891,7 +893,6 @@ export function resolveBlogContentFormat(
   const current =
     stored === undefined ? DEFAULT_CONTENT_FORMAT : parseContentFormat(stored);
   if (current === null) return { ok: false, reason: 'invalid_format' };
-  if (current === 'reactive') return { ok: false, reason: 'reactive_not_ready' };
   return resolveContentWriteFormat(requested, current);
 }
 
@@ -899,7 +900,7 @@ export function resolveBlogContentFormat(
 export function contentWriteFailureMessage(reason: ContentWriteFailure): string {
   return reason === 'invalid_format'
     ? '内容格式取值不合法，可选：markdown / reactive'
-    : 'ReactiveMD 内容暂未开放写入';
+    : 'ReactiveMD 正文无法编译，已拒绝发布';
 }
 
 /**
@@ -1272,13 +1273,23 @@ export async function getBlogForEdit(blogId: string) {
  * 磁盘 instance/blogs/<id> 目录是历史遗留物（旧数据残留），正文已入库，本站不再创建。
  */
 export async function createBlog(authorId: string, data: ValidatedBlogData): Promise<string> {
-  // 服务层自己的闸门（route 已先判过）：绕过 HTTP 的调用方也不该能写 reactive。
-  // 当前 reactive 写入整体关闭，所以这里抛错而不是落一个「写了一半」的文档。
+  // 服务层自己的闸门（route 已先判过）：绕过 HTTP 的调用方也不该能写非法格式。
   const write = resolveBlogContentFormat(data.format);
   if (!write.ok) throw new Error(contentWriteFailureMessage(write.reason));
 
   const blogId = crypto.randomUUID();
   const now = nowForDb();
+
+  // reactive 发布前先编译一次并生成同版本快照；编译不出来就**不落库**。
+  const snapshot =
+    write.format === 'reactive'
+      ? await buildReactiveSnapshotForWrite({ kind: 'blog', contentId: blogId, content: data.content })
+      : null;
+  if (snapshot && !snapshot.ok) {
+    throw new Error(contentWriteFailureMessage('reactive_invalid'));
+  }
+  const syntaxVersion = snapshot && snapshot.ok ? snapshot.syntaxVersion : null;
+
   await prisma.$transaction([
     prisma.blog.create({
       data: {
@@ -1298,13 +1309,15 @@ export async function createBlog(authorId: string, data: ValidatedBlogData): Pro
         blogId,
         content: data.content,
         // 显式写格式：不依赖列默认值，免得「create 路径漏填 → 由默认值兜底」变成
-        // 一条只在将来改默认值时才暴露的静默差异。syntaxVersion 只在 reactive 时有值，
-        // 而 reactive 写入当前被上面那道闸门拒绝。
+        // 一条只在将来改默认值时才暴露的静默差异。
         format: write.format,
-        syntaxVersion: null,
+        syntaxVersion,
         updatedAt: now,
       },
     }),
+    ...(snapshot && snapshot.ok
+      ? [prisma.reactiveSnapshot.create({ data: snapshot.row })]
+      : []),
   ]);
   return blogId;
 }
@@ -1350,6 +1363,27 @@ export async function updateBlog(
   const oldContent = contentRow?.content ?? '';
   const write = resolveBlogContentFormat(data.format, contentRow?.format);
   if (!write.ok) return { hasChanges: false, changesDetail: [], error: write.reason };
+
+  // reactive 的发布检查：正文或格式变了就重新编译并生成同版本快照；
+  // 只改标题 / 摘要等元信息时沿用已有快照（内容版本没变）。
+  const oldFormat = contentRow ? parseContentFormat(contentRow.format) : null;
+  let snapshot: Awaited<ReturnType<typeof buildReactiveSnapshotForWrite>> | null = null;
+  if (write.format === 'reactive' && (oldFormat !== 'reactive' || oldContent !== data.content)) {
+    snapshot = await buildReactiveSnapshotForWrite({
+      kind: 'blog',
+      contentId: blogId,
+      content: data.content,
+    });
+    if (!snapshot.ok) {
+      return { hasChanges: false, changesDetail: [], error: 'reactive_invalid' };
+    }
+  }
+  const syntaxVersion =
+    write.format === 'reactive'
+      ? snapshot && snapshot.ok
+        ? snapshot.syntaxVersion
+        : contentRow?.syntaxVersion ?? null
+      : null;
 
   let hasChanges = false;
   const changesDetail: string[] = [];
@@ -1409,13 +1443,25 @@ export async function updateBlog(
     hasChanges = true;
   }
 
+  // 格式变化也是正文变化：同样的文字从 Markdown 换成 ReactiveMD（或反过来）时
+  // 旧管线 / 新管线的解释完全不同，不能因为「字符串没变」就静默返回。
+  const formatChanged = !!contentRow && oldFormat !== write.format;
+  if (formatChanged) {
+    changesDetail.push(
+      `正文格式从《${oldFormat ? CONTENT_FORMAT_LABELS[oldFormat] : '未知'}》` +
+        `改为《${CONTENT_FORMAT_LABELS[write.format]}》`
+    );
+    hasChanges = true;
+  }
+
   if (!hasChanges && contentRow) return { hasChanges, changesDetail };
 
   const articleChanged =
     blog.title !== data.title ||
     blog.description !== data.description ||
     blog.categoryId !== data.categoryId ||
-    oldContent !== data.content;
+    oldContent !== data.content ||
+    formatChanged;
 
   const now = nowForDb();
   const ops: Prisma.PrismaPromise<unknown>[] = [
@@ -1442,17 +1488,46 @@ export async function updateBlog(
         blogId,
         content: data.content,
         format: write.format,
-        syntaxVersion: null,
+        syntaxVersion,
         updatedAt: articleChanged ? now : blog.createdAt,
       },
       update: {
         content: data.content,
         format: write.format,
-        syntaxVersion: null,
+        syntaxVersion,
         ...(articleChanged ? { updatedAt: now } : {}),
       },
     }),
   ];
+
+  // 正文与快照同一个事务：正文写成功而快照没写成，就会得到一个「reactive 但读不出」
+  // 的版本；反过来快照先落、正文失败则快照指向一个不存在的版本。两者都不可接受。
+  if (snapshot && snapshot.ok) {
+    ops.push(
+      prisma.reactiveSnapshot.upsert({
+        where: {
+          uq_reactive_snapshot_version: {
+            kind: 'blog',
+            contentId: blogId,
+            contentVersion: snapshot.contentVersion,
+          },
+        },
+        create: snapshot.row,
+        update: {
+          format: snapshot.row.format,
+          scope: snapshot.row.scope,
+          syntaxVersion: snapshot.row.syntaxVersion,
+          compilerVersion: snapshot.row.compilerVersion,
+          adapterVersion: snapshot.row.adapterVersion,
+          optionsKey: snapshot.row.optionsKey,
+          documentJson: snapshot.row.documentJson,
+          hostDataJson: snapshot.row.hostDataJson,
+          digest: snapshot.row.digest,
+          generatedAt: snapshot.row.generatedAt,
+        },
+      })
+    );
+  }
 
   // 可见性变更**与正文改动同事务**落账（见 migration 19 头部：public 不可逆，而这条
   // 路径此前不留任何痕迹）。放在同一个 $transaction 里是必须的 —— 分成两次写，

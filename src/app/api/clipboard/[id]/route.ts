@@ -97,7 +97,7 @@ export async function PUT(req: Request, ctx: { params: Promise<{ id: string }> }
     // 把它们如实映射成与上面同样的文案，避免被误报成「剪贴板不存在」。
     if (result.reason === 'title_too_long') return apiErr(400, 'title too long');
     if (result.reason === 'content_too_long') return apiErr(400, 'content too long');
-    if (result.reason === 'invalid_format' || result.reason === 'reactive_not_ready') {
+    if (result.reason === 'invalid_format' || result.reason === 'reactive_invalid') {
       return apiErr(400, clipContentWriteMessage(result.reason));
     }
     return apiErr(404, '剪贴板不存在');

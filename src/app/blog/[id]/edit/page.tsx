@@ -68,6 +68,8 @@ export default async function EditBlogPage({ params }: { params: Promise<{ id: s
           visibility: blog.visibility,
           allowAnonymousComments: blog.allowAnonymousComments,
           contentMarkdown: blog.contentMarkdown,
+          // 编辑表单按库里的格式起步并原样回写（null = 认不出，表单回 default）。
+          format: blog.format,
         }}
         banInfo={banInfo}
       />

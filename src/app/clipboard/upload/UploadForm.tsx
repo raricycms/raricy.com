@@ -14,6 +14,12 @@
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import MarkdownEditor, { type MarkdownEditorHandle } from '@/app/components/MarkdownEditor';
+import {
+  CONTENT_FORMATS,
+  CONTENT_FORMAT_LABELS,
+  DEFAULT_CONTENT_FORMAT,
+  type ContentFormat,
+} from '@/lib/content-format';
 
 function toast(msg: string, type: string) {
   if (typeof window === 'undefined') return;
@@ -29,6 +35,8 @@ export interface EditClip {
   title: string;
   content: string;
   publicity: boolean;
+  /** 库里的正文格式（null / 缺省 = 认不出；读口不猜 markdown）。 */
+  format?: ContentFormat | null;
 }
 
 /**
@@ -39,12 +47,14 @@ interface ClipFields {
   title: string;
   content: string;
   publicity: boolean;
+  format: string;
 }
 
 const CLIP_LABELS: ReadonlyArray<readonly [keyof ClipFields, string]> = [
   ['title', '标题'],
   ['content', '正文'],
   ['publicity', '公开设置'],
+  ['format', '正文格式'],
 ];
 
 export default function UploadForm({ clip }: { clip?: EditClip }) {
@@ -54,6 +64,10 @@ export default function UploadForm({ clip }: { clip?: EditClip }) {
   const [title, setTitle] = useState(clip?.title ?? '');
   const [content, setContent] = useState(clip?.content ?? '');
   const [publicity, setPublicity] = useState(clip ? clip.publicity : true);
+  // 编辑态从库里的格式起步；新建态默认 markdown，并在每次请求里显式回写。
+  const [format, setFormat] = useState<ContentFormat>(
+    clip?.format ?? DEFAULT_CONTENT_FORMAT
+  );
   const [autoSave, setAutoSave] = useState(false);
   /**
    * 新建态**提交成功、却因为有未保存的改动而留在页面上**时钉住的那一篇
@@ -98,9 +112,11 @@ export default function UploadForm({ clip }: { clip?: EditClip }) {
   const titleRef = useRef(title);
   const contentRef = useRef(content);
   const publicityRef = useRef(publicity);
+  const formatRef = useRef(format);
   titleRef.current = title;
   contentRef.current = content;
   publicityRef.current = publicity;
+  formatRef.current = format;
 
   /**
    * `pinnedId` 的**同步**副本 —— `doSave` 一律读它，不读那个 state。
@@ -136,6 +152,7 @@ export default function UploadForm({ clip }: { clip?: EditClip }) {
       // 兜底 textarea（判据见上面那段注释）。**不要**在这里改读其它来源。
       content: getContent(),
       publicity: publicityRef.current,
+      format: formatRef.current,
     };
   }
 
@@ -443,7 +460,26 @@ export default function UploadForm({ clip }: { clip?: EditClip }) {
           </div>
 
           <div className="clipboard-form__group">
-            <label htmlFor="clipboard-editor">正文（支持 Markdown 与 LaTeX）</label>
+            <label htmlFor="format">正文格式</label>
+            <select
+              className="form-control"
+              id="format"
+              name="format"
+              value={format}
+              onChange={(e) => setFormat(e.target.value as ContentFormat)}
+            >
+              {CONTENT_FORMATS.map((value) => (
+                <option key={value} value={value}>
+                  {CONTENT_FORMAT_LABELS[value]}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="clipboard-form__group">
+            <label htmlFor="clipboard-editor">
+              正文（{CONTENT_FORMAT_LABELS[format]}）
+            </label>
             {/* 外观全在 .md-editor（styles-scss/components/_markdown-editor.scss）；
                 `#clipboard-editor` 这个 id 只是表单与 e2e 的元素钩子。
                 只有新建页给草稿键：编辑态的正文是服务端那一份，本地草稿在编辑态
@@ -453,6 +489,8 @@ export default function UploadForm({ clip }: { clip?: EditClip }) {
               ref={editorRef}
               initialValue={clip?.content ?? ''}
               draftKey={isEdit ? undefined : DRAFT_KEY}
+              format={format}
+              onDraftFormatRestored={setFormat}
               title={title}
               withMath
               height="50vh"

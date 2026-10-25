@@ -1,0 +1,400 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// ReactiveMD 正文的站点视觉对齐
+//
+// 上游 `reactive-md/screen.css` 自带一套以 `.md-document` 为根的版式。这里**只**
+// 在 `.reactive-document .md-document` 下覆写，理由有两条：
+//   · 上游 CSS 由客户端组件 import，与全站 main.scss 的加载顺序不保证；
+//     多一层 `.reactive-document` 把权重提到 0-2-x，胜负不靠顺序；
+//   · 站内其它地方将来若直接用 `.md-document`，不该被博客的排版口径污染。
+//
+// 颜色全部走站点令牌（`--color-*`），所以暗色主题自动跟随；上游自己那套
+// `--ink` / `--surface` 也在根上映射过去，避免组件内部的 color-mix 落回浅色值。
+// ─────────────────────────────────────────────────────────────────────────────
+
+.reactive-document {
+  width: 100%;
+  min-width: 0;
+}
+
+.reactive-document .md-document {
+  // 上游令牌 → 站点令牌。`--document-bg` 设为透明：正文卡由页面提供底色。
+  --ink: var(--color-text-primary);
+  --ink-soft: var(--color-text-secondary);
+  --ink-muted: var(--color-text-secondary);
+  --surface: var(--color-background-card);
+  --surface-subtle: var(--color-background-subtle);
+  --document-bg: transparent;
+  --line: var(--color-border);
+  --line-strong: var(--color-border);
+  --accent: var(--color-brand-primary);
+  --accent-hover: var(--color-brand-primary);
+  --accent-soft: var(--color-brand-secondary);
+  --accent-line: var(--color-border);
+  --accent-text: var(--color-brand-primary);
+  --neutral-soft: var(--color-background-content);
+  --font-sans: var(--font-body);
+  --leading-relaxed: 2;
+  --text-md: 1rem;
+
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--color-text-primary);
+  font-family: var(--font-body);
+  font-size: 1.15rem;
+  line-height: 2;
+  overflow-wrap: anywhere;
+
+  > :first-child {
+    margin-top: 0;
+  }
+
+  > :last-child {
+    margin-bottom: 0;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    margin: 2em 0 1em;
+    font-weight: 600;
+    line-height: 1.4;
+    letter-spacing: normal;
+    color: var(--color-text-primary);
+  }
+
+  h1 {
+    padding-bottom: 10px;
+    border-bottom: 2px solid var(--color-brand-primary);
+    font-size: 1.8rem;
+  }
+
+  h2 {
+    font-size: 1.5rem;
+  }
+
+  h3 {
+    font-size: 1.3rem;
+  }
+
+  h4 {
+    font-size: 1.15rem;
+  }
+
+  h5,
+  h6 {
+    font-size: 1rem;
+    color: var(--color-text-secondary);
+  }
+
+  p {
+    margin: 0 0 1.5em;
+    text-align: justify;
+  }
+
+  a {
+    color: var(--color-brand-primary);
+    text-decoration: none;
+    border-bottom: 1px solid transparent;
+
+    &:hover {
+      color: var(--color-brand-primary);
+      border-bottom-color: currentColor;
+      text-decoration: none;
+    }
+  }
+
+  ul,
+  ol,
+  .md-list {
+    margin: 1.5em 0;
+    padding-left: 2em;
+  }
+
+  li,
+  .md-list-item {
+    margin-bottom: 0.5em;
+  }
+
+  // 任务列表：上游用 .md-task-item / .md-task-checkbox，形态对齐旧正文。
+  .md-task-item {
+    margin-left: -1.5em;
+    list-style: none;
+  }
+
+  .md-task-checkbox {
+    margin: 0 0.5em 0 0;
+    vertical-align: -1px;
+    cursor: default;
+  }
+
+  blockquote {
+    margin: 1.5em 0;
+    padding: 5px 15px;
+    border-left: 4px solid var(--color-text-secondary);
+    background: var(--color-background-content);
+    color: var(--color-text-secondary);
+  }
+
+  blockquote p {
+    margin: 0;
+
+    & + p {
+      margin-top: 1em;
+    }
+  }
+
+  hr {
+    margin: 2em 0;
+    border: 0;
+    border-top: 1px solid var(--color-text-tertiary);
+  }
+
+  img,
+  .md-image {
+    max-width: 100%;
+    height: auto;
+    margin: 1.5em 0;
+    border-radius: 6px;
+  }
+
+  // 音频控件不随容器收缩：只加 max-width，别写成 width: 100%（会拉成一整条）。
+  audio,
+  .site-embed--audio {
+    display: block;
+    max-width: 100%;
+  }
+
+  .md-inline-code {
+    padding: 2px 6px;
+    border-radius: 3px;
+    background: var(--color-background-content);
+    color: var(--color-text-primary);
+    font-size: 0.9em;
+  }
+
+  .md-code-block,
+  .md-code {
+    max-width: 100%;
+    border-radius: 6px;
+  }
+
+  .md-table-scroll {
+    max-width: 100%;
+    margin: 1.5em 0;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .md-table {
+    width: 100%;
+    max-width: 100%;
+    border-collapse: collapse;
+    font-size: 1rem;
+    line-height: 1.6;
+  }
+
+  .md-table th,
+  .md-table td {
+    padding: 12px;
+    border: 0;
+    border-bottom: 1px solid var(--color-text-tertiary);
+    text-align: left;
+    vertical-align: top;
+  }
+
+  .md-table th {
+    background: var(--color-background-content);
+    color: var(--color-text-primary);
+    font-weight: 600;
+  }
+
+  .md-table tbody tr:last-child td {
+    border-bottom: 0;
+  }
+}
+
+// 暗色下让原生控件（复选框 / 滚动条）也跟随站点主题。
+[data-theme='dark'] .reactive-document .md-document {
+  color-scheme: dark;
+}
+
+// ── 站点引用组件 ────────────────────────────────────────────────────────────
+// 类名与 src/app/components/reactive/* 保持一致；投票 / 收藏夹沿用现有的
+// `.vote-embed*` / `.favorite-embed*`，这里只补 site-embed 自己的外壳。
+
+.site-embed {
+  margin: 1.25rem 0;
+  max-width: 100%;
+}
+
+.site-embed--audio {
+  display: block;
+  width: auto;
+  max-width: 100%;
+}
+
+.site-embed__status {
+  margin: 1rem 0;
+  padding: 0.75rem 1rem;
+  border-radius: 12px;
+  background: var(--color-background-content);
+  color: var(--color-text-secondary);
+  font-size: 0.9rem;
+  line-height: 1.6;
+}
+
+.site-embed__status--error {
+  background: var(--color-warning-secondary);
+  color: var(--color-warning-primary);
+}
+
+.site-embed__status--forbidden {
+  background: var(--color-info-secondary);
+  color: var(--color-text-secondary);
+}
+
+.site-embed-clipboard {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin: 1.25rem 0;
+  padding: 0.9rem 1.1rem;
+  border-radius: 12px;
+  background: var(--color-background-content);
+  color: var(--color-text-primary);
+  text-decoration: none;
+
+  &:hover {
+    color: var(--color-text-primary);
+    text-decoration: none;
+    box-shadow: var(--shadow-card-brand);
+  }
+}
+
+.site-embed-clipboard__title {
+  min-width: 0;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.site-embed-clipboard__meta {
+  display: flex;
+  flex-shrink: 0;
+  align-items: baseline;
+  gap: 0.5rem;
+  color: var(--color-text-secondary);
+  font-size: 0.85rem;
+}
+
+.site-embed-clipboard__format {
+  padding: 0.1rem 0.45rem;
+  border-radius: 0.25rem;
+  background: var(--color-brand-secondary);
+  color: var(--color-brand-primary);
+  font-size: 0.75rem;
+}
+
+// ── 窄屏 ────────────────────────────────────────────────────────────────────
+@media (max-width: 375px) {
+  .reactive-document .md-document {
+    font-size: 1.05rem;
+    line-height: 1.9;
+
+    h1 {
+      font-size: 1.5rem;
+    }
+
+    h2 {
+      font-size: 1.3rem;
+    }
+
+    h3 {
+      font-size: 1.15rem;
+    }
+
+    .md-table {
+      min-width: 420px;
+    }
+  }
+}
+
+// ── 打印 ────────────────────────────────────────────────────────────────────
+// 交互控件不上纸：投票按钮 / 详情入口 / 播放器都藏掉，正文与静态结果保留。
+@media print {
+  .reactive-document .vote-embed-submit,
+  .reactive-document .vote-embed-option[data-option-id],
+  .reactive-document .vote-embed-link,
+  .reactive-document .site-embed--audio {
+    display: none !important;
+  }
+}
+
+// ── 编辑器预览（ReactivePreview） ────────────────────────────────────────────
+// 预览面板自己已有内距；这里只处理编译中 / 诊断两种状态，避免它们把正文顶下去。
+.reactive-preview {
+  min-width: 0;
+}
+
+.reactive-preview__status {
+  margin: 0;
+  padding: 1rem 0;
+  color: var(--color-text-secondary);
+  font-size: 0.9rem;
+}
+
+.reactive-preview__errors {
+  margin: 0 0 0.75rem;
+  padding: 0.6rem 0.8rem;
+  border: 1px solid var(--color-error, var(--color-border));
+  border-radius: 0.5rem;
+  background: var(--color-background-subtle);
+  color: var(--color-text-primary);
+  font-size: 0.85rem;
+  line-height: 1.6;
+  list-style: none;
+}
+
+// ── 管理员隔离预览页（/reactive-preview/:id） ───────────────────────────────
+.reactive-preview__meta {
+  margin: 0.5rem 0 0;
+  color: var(--color-text-secondary);
+  font-size: 0.85rem;
+}
+
+.reactive-preview__diagnostics {
+  margin-top: 1.5rem;
+  color: var(--color-text-secondary);
+  font-size: 0.85rem;
+
+  > summary {
+    cursor: pointer;
+  }
+
+  ul {
+    margin: 0.5rem 0 0;
+    padding-left: 1.25rem;
+  }
+}
+
+// 剪贴板详情里的 reactive 正文：沿用 .clipboard-markdown-content 那套「一页一张白卡」，
+// 只是根节点不同（这里没有 .blog-content-container 可供抵消）。
+.clipboard-reactive-content {
+  min-width: 0;
+}
+
+// 导出件的静态说明（buildExportHtml 写进 HTML 的 .export-note）。
+.export-note {
+  margin: 1.5rem 0 0;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--color-border);
+  color: var(--color-text-secondary);
+  font-size: 0.85rem;
+  line-height: 1.6;
+}

@@ -169,7 +169,17 @@ export async function POST(req: Request) {
     fullPath = meta.fullPath;
   }
 
-  const blogId = await createBlog(user.id, v.data);
+  // reactive 发布要先编译并生成同版本快照；编译不出来时 service 抛错，
+  // 这里折成 400（不是 500 —— 这是**请求内容**的问题，不是服务器故障）。
+  let blogId: string;
+  try {
+    blogId = await createBlog(user.id, v.data);
+  } catch (error) {
+    if (error instanceof Error && error.message === contentWriteFailureMessage('reactive_invalid')) {
+      return apiErr(400, error.message);
+    }
+    throw error;
+  }
 
   // 栏目发文提醒：通知所有管理员/站长（跳过自己），失败忽略
   if (v.data.categoryId != null && notifyEffective) {

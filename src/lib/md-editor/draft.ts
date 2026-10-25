@@ -1,10 +1,14 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// md-editor/draft.ts —— 新建页的本地纯文本草稿（两个老键的原样续用）
+// md-editor/draft.ts —— 新建页的本地草稿（两个老键的原样续用）
 //
 // 【键不能改】`blog-upload-editor` / `clipboard-upload-editor` 这两个键名先于本
 // 编辑器存在，且**存的本来就是纯文本 Markdown 正文** —— 于是换代时原样续用，老用户
 // 浏览器里那份没写完的草稿会被照常恢复。换成新键名 = 那批草稿静默消失，页面上不会
 // 有任何提示（键名是本地数据的物理形态，改它等于丢数据）。见 §5.2 的表格。
+//
+// 【格式也一起存】reactive 草稿必须连**正文语言**一起恢复；裸 Markdown 的落盘
+// 形态一个字都不变（老草稿续用、且只能恢复成 markdown）。编码细节见下面
+// 「格式怎么存」。
 //
 // 【为什么单独一层】「防抖写入 / 离页尽力落下 / 发布成功后先停再清」这三条是**容易
 // 写错且错了看不出来**的地方：
@@ -16,14 +20,72 @@
 // 所以这里把失败收成 `onUnavailable` 回调，由调用方给一句提示即可，编辑继续。
 // ─────────────────────────────────────────────────────────────────────────────
 
+import type { ContentFormat } from '../content-format';
+
 /** 防抖间隔。取 500ms：比一次连续打字的停顿略长，又短到「刚打完切走」也来得及。 */
 export const DRAFT_DEBOUNCE_MS = 500;
 
+/** 草稿 = 正文 + 它所属的格式。两者必须一起恢复（见下面「格式怎么存」）。 */
+export interface DraftEntry {
+  format: ContentFormat;
+  text: string;
+}
+
+/**
+ * ★ 格式怎么存：markdown 仍是**裸正文**，只有非 markdown 才套信封 ★
+ *
+ * 老草稿（Vditor 时代留下的）在 localStorage 里就是一段裸 Markdown，键名也一直
+ * 沿用 —— 它们必须原样恢复成 markdown。所以 markdown 这一档的落盘形态一个字都
+ * 不能变；reactive 用一个带前缀的 JSON 信封，读回时认前缀。
+ *
+ * 前缀外层的任何内容（包括一段以 `{` 开头的旧正文）都按裸 Markdown 恢复 ——
+ * **绝不因为「看起来像 JSON」就猜成 reactive**。猜错等于把一份 Markdown 交给
+ * ReactiveMD 解析器，页面上通常看不出异常，只是内容悄悄变样。
+ */
+const DRAFT_ENVELOPE_PREFIX = 'raricy-md-draft:v1:';
+
+/** 把 localStorage 里的原样字符串解成草稿。null = 没有草稿。 */
+export function parseDraftValue(raw: string | null): DraftEntry | null {
+  if (raw === null) return null;
+  if (raw.startsWith(DRAFT_ENVELOPE_PREFIX)) {
+    try {
+      const parsed: unknown = JSON.parse(raw.slice(DRAFT_ENVELOPE_PREFIX.length));
+      if (
+        parsed &&
+        typeof parsed === 'object' &&
+        (parsed as { format?: unknown }).format === 'reactive' &&
+        typeof (parsed as { text?: unknown }).text === 'string'
+      ) {
+        return { format: 'reactive', text: (parsed as { text: string }).text };
+      }
+    } catch {
+      // 信封坏了就按旧草稿处理：原文仍然还给用户，绝不把它丢掉。
+    }
+  }
+  return { format: 'markdown', text: raw };
+}
+
+/** 落盘形态（见上面「格式怎么存」）。 */
+export function encodeDraftValue(entry: DraftEntry): string {
+  if (entry.format === 'markdown') return entry.text;
+  return DRAFT_ENVELOPE_PREFIX + JSON.stringify({ format: entry.format, text: entry.text });
+}
+
 export interface DraftStore {
-  /** 读回上次的草稿。`{ok:false}` = localStorage 用不了（调用方给提示，继续编辑）。 */
-  read(): { ok: true; value: string | null } | { ok: false };
-  /** 记下最新正文，防抖后落盘。 */
-  schedule(value: string): void;
+  /**
+   * 读回上次的草稿。`{ok:false}` = localStorage 用不了（调用方给提示，继续编辑）。
+   *
+   * 形状是「正文 + 格式」两个平级字段（而不是把正文包进对象）：老调用方只读
+   * `value`，因此不必为格式改动重写一遍；要按格式恢复的调用方再读 `format`。
+   * 没有草稿时 `value` 为 null、`format` 仍是 markdown。
+   */
+  read(): { ok: true; value: string | null; format: ContentFormat } | { ok: false };
+  /**
+   * 记下最新正文，防抖后落盘。
+   *
+   * 字符串重载 = markdown（老调用方 / 老测试的形态，落盘仍是裸正文）。
+   */
+  schedule(value: DraftEntry | string): void;
   /** 立刻把待写的一份落盘（离页 / 提交前用）。 */
   flush(): void;
   /** 永久停止后续写入（页面马上要跳走、不再编辑时用）。clear() 不必先调它。 */
@@ -47,7 +109,7 @@ export function createDraftStore(key: string, options: DraftStoreOptions = {}): 
   const target = host ?? (typeof window !== 'undefined' ? window : undefined);
 
   let timer: ReturnType<typeof setTimeout> | null = null;
-  let pending: string | null = null;
+  let pending: DraftEntry | null = null;
   let stopped = false;
   let notified = false;
 
@@ -59,7 +121,7 @@ export function createDraftStore(key: string, options: DraftStoreOptions = {}): 
 
   function write(): void {
     if (stopped || pending === null) return;
-    const value = pending;
+    const value = encodeDraftValue(pending);
     pending = null;
     try {
       window.localStorage.setItem(key, value);
@@ -84,7 +146,10 @@ export function createDraftStore(key: string, options: DraftStoreOptions = {}): 
   return {
     read() {
       try {
-        return { ok: true, value: window.localStorage.getItem(key) };
+        const entry = parseDraftValue(window.localStorage.getItem(key));
+        return entry === null
+          ? { ok: true, value: null, format: 'markdown' }
+          : { ok: true, value: entry.text, format: entry.format };
       } catch {
         notifyUnavailable();
         return { ok: false };
@@ -92,7 +157,7 @@ export function createDraftStore(key: string, options: DraftStoreOptions = {}): 
     },
     schedule(value) {
       if (stopped) return;
-      pending = value;
+      pending = typeof value === 'string' ? { format: 'markdown', text: value } : value;
       if (timer !== null) clearTimeout(timer);
       timer = setTimeout(() => {
         timer = null;
