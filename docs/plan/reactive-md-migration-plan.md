@@ -1,18 +1,21 @@
 # ReactiveMD 接入博客区方案（渲染器换代）
 
-> **状态：草案（2026-10-25），未实施。**
+> **状态：草案（2026-10-26），未实施。方案 A 已定，ReactiveMD 0.5.2 已提供宿主组件协议。**
 > 本文把「ReactiveMD 接入博客区」拆成 8 个依赖有序的阶段，并把 2026-10-25 代码审读
 > 中发现的、原计划未覆盖的兼容性与工程约束写进对应阶段。
 >
-> 三条前置事实决定了这份计划的形状：
+> 四条前置事实决定了这份计划的形状：
 > 1. ReactiveMD 不是「另一个 Markdown 渲染器」，而是一套**文档语言 + 组件模型 + 运行时**；
-> 2. 它当前**没有公开的组件扩展点**（`LOCAL_COMPONENTS` / `NATIVE_COMPONENTS` 都不在
->    包的公开导出里，`component-protocol` CP-CORE-05 明确写了本期不提供注册接口）；
-> 3. 本站存量正文里已经有大量会被新语法**重新解释**的内容（单换行、`{{ }}`、HTML 标签、
+> 2. **0.5.2（2026-10-26）已加上宿主组件扩展轴**（`hostComponents` / `hostComponent`
+>    节点 / `hostData` / `hostRenderer`），方案 A 不再需要改协议形状，只需按实际 API 接入；
+> 3. 但**作者工具所需的组件目录仍未公开导出**（`LOCAL_COMPONENTS` / `NATIVE_COMPONENTS`
+>    不在包的公开 entry 里），M5 的「插入组件」仍要上游补导出或 vendor；
+> 4. 本站存量正文里已经有大量会被新语法**重新解释**的内容（单换行、`{{ }}`、HTML 标签、
 >    公式子集、`[@…]` 展开产物）。「编译通过」不等于「渲染正确」。
 >
-> §3 记录已定的默认决策，§9 列出仍然阻塞的待决策项。**默认按 A 方案（修改 ReactiveMD
-> 上游）排期**；若该前提不成立，M3 / M4 / M6 的验收范围要整体降级。
+> §3 记录已定的决策，§9 列出仍然阻塞的待决策项。依赖固定到 **`reactive-md@0.5.2`**
+> （`next` 渠道；`latest` 仍是 0.4.0），协议为 `component-protocol-2`，语法仍为
+> `local-draft-2`。
 
 ## 1. 目标与非目标
 
@@ -58,7 +61,7 @@
 | 1 | 旧管线保留给「评论、故事和回滚」 | `MarkdownRenderer` 只有三个消费者：`blog/[id]/page.tsx:217`、`ClipDetailClient.tsx:172`、`MarkdownEditor.tsx:685`；评论走 `rich-text.ts`，故事走 `story-service.ts:477` | 保留旧管线的唯一理由是回滚；不要把它当成评论/故事的依赖 |
 | 2 | 需要补齐代码高亮、复制按钮、图片放大、外链加固 | ReactiveMD 已内置：`src/local/code-block.tsx`（lowlight + 复制）、`image-view.tsx`（`<dialog>` 放大）、`LocalDocumentView.tsx:1249-1252`（外链 `_blank` + `noopener noreferrer`） | 要做的是「迁移站点视觉与口径」，不是「从零实现」 |
 | 3 | 编译失败才 fallback | `class` / `style` / `on*` 会让整个 HTML 标签降级成源码文本（`parser.ts:670`）；`audio` / `video` / `input` / `button` 不是 P0 HTML，会走「未知组件」分支；这些情况 `ok === true` | fallback 判据必须包含 warning 白名单，不能只看 `ok` |
-| 4 | 插件/组件列表来自 ReactiveMD 的 schema | `src/local/index.ts` 与 `src/editor/index.ts` 的公开导出都不含 `schema.ts` / `native-components.ts` | 「不手写组件列表」当前做不到，必须先改上游导出或 vendor |
+| 4 | 插件/组件列表来自 ReactiveMD 的 schema | 0.5.2 已提供**宿主组件**协议，但 `src/local/index.ts` 与 `src/editor/index.ts` 的公开导出仍不含 `schema.ts` / `native-components.ts` | 站点引用组件可以直接接入；**作者工具目录**（插入/补全）仍要上游补导出或 vendor |
 | 5 | ReactiveMD 的编辑器可以「移植工具条/命令」到 CM6 | 编辑器是 textarea + overlay（`ReactiveMarkdownEditor.tsx:65`）；可复用的是纯函数 `analyzeLocalSource` / `completeLocalSource` / `renameLocalBinding` / `formatLocalSource` 与 `editor-commands.ts` | 高亮/补全/诊断的 UI 层要按 CM6 重写；计划要写清「哪些可移植」 |
 | 6 | 公开文章用 `staticFirst` 即可 | `staticFirst` 存在（`LocalDocumentView.tsx:4454`），但 `LocalReactiveDocument` 在 `useMemo` 里**同步编译**（`LocalDocumentView.tsx:4629`） | SSR 成本、编辑防抖、worker 都不会自动获得，要宿主自己接线 |
 | 7 | 外对接口只需要「别暴露组件标签」 | `spider-service.ts:173` 直接返回原始 `content`；`/api/blogs/[id]` 同样；`docs/bot/blog-bot.md:252` 明写「content = Markdown 源文」 | 这是一次对外契约变更，要加 `format` 字段并同步 bot 文档 |
@@ -66,24 +69,109 @@
 
 ## 3. 决策
 
-### D1 站点引用组件放在哪一侧（默认 A）
+### D1 站点引用组件：方案 A（已定，ReactiveMD 0.5.2 已实现协议）
 
-| 方案 | 做法 | 优点 | 代价 |
-|------|------|------|------|
-| **A（默认）** | 给 ReactiveMD 加**宿主组件协议**：作者不能写，宿主注册；新增一个宿主专用标签（建议 `<site-embed kind="audio\|vote\|favorite\|clipboard" ref="…">`） | SSR、静态导出、无 JS 降级、服务端权限四件事一次做完；组件数据与渲染集中在站内 | 要改 ReactiveMD 并升协议版本（`component-protocol-2`），重走它的验收矩阵 |
-| B（备选） | 适配器输出 `<div data-site-ref="vote:xxx"></div>`（`data-*` 允许，**不能带 `class`**），阅读页用 `createPortal` 挂现有 React 组件 | 能复用现有取数/权限代码；改动小 | `static` 模式与导出只有降级文案；无 JS 时投票/音频/收藏夹不可用；预览与阅读页两套挂载逻辑 |
-| C（不采用） | 按引用把正文切成多段 `compileLocal`，中间插组件 | 看似直观 | 摧毁脚注编号、锚点命名空间、跨段列表/引用；不可接受 |
+**结论**：站点引用组件走 ReactiveMD 0.5.2 的**宿主组件扩展轴**。作者仍然只写 `[@…]`；
+适配器在编译前把它改写成宿主专用标签；站点提供 schema、数据与渲染函数。
 
-**A 方案的最小协议面**（不追求通用插件系统）：
+**标签形状**（属性名必须是 `kind` 与 `ref`：0.5.2 的 `hostData` 键就是
+`${node.attrs.kind}:${node.attrs.ref}`，改属性名会让数据永远取不到）：
 
-- 编译选项新增 `hostComponents?: readonly string[]`，只允许宿主传入；
-- 作者源码里出现宿主标签 → `local.component.host` 编译错误（不是 warning）；
-- 宿主提供：
-  - `hostData: Record<string, HostEmbedData>`（按节点 id 或 `ref` 索引）；
-  - `renderHostComponent(kind, data, ctx): ReactNode`；
-  - `staticHostComponent(kind, data): ReactNode`（导出/无 JS）；
-- `mode === 'static'` 时只调用后者，绝不发请求；
-- 协议版本升到 `component-protocol-2`，在 ReactiveMD 的 CHANGELOG 与本站文档里同时记录。
+```markdown
+<site-embed kind="audio|vote|favorite|clipboard" ref="Ab12Cd34E" />
+```
+
+**schema（纯数据，可结构化克隆进 worker）**：
+
+```ts
+import type { LocalHostComponentSchema } from 'reactive-md';
+
+export const SITE_EMBED_SCHEMA: LocalHostComponentSchema = {
+  name: 'site-embed',
+  form: 'leaf',
+  props: {
+    kind: {
+      kind: 'enum',
+      required: true,
+      static: true,
+      enum: ['audio', 'vote', 'favorite', 'clipboard'],
+    },
+    ref: {
+      kind: 'string',
+      required: true,
+      static: true,
+      pattern: '^[A-Za-z0-9]{1,32}$',
+    },
+  },
+};
+```
+
+**编译**：
+
+```ts
+const result = compileLocal(adaptedSource, {
+  hostComponents: [SITE_EMBED_SCHEMA],
+  limits: { maxSyntaxNodes: 50_000 },
+});
+```
+
+0.5.2 的实际行为（`src/local/options.ts`、`parser.ts`、`compiler.ts`）：
+
+- 不传 `hostComponents` → 标签仍是未知组件，按原有 fallback 显示源码；
+- 传了 → 命中标签生成 `type: 'hostComponent'` 叶子节点，计 **1 个语法节点**；
+- 非法 schema → `local.options.invalid`（整次编译失败，不会部分注册）；
+- 属性缺失 / 未知 / 枚举越界 / pattern 不匹配 / `static` 属性里出现 `{{ }}`
+  → `local.host.attribute`；
+- 名字必须是 kebab-case，不能撞 48 个作者标签、P0 HTML 标签名或 `theme`；
+- 单次最多 32 个宿主 schema；`pattern` 只接受线性时间安全子集。
+
+**渲染**：
+
+```tsx
+<LocalDocumentView
+  document={result.document}
+  runtime={runtime}
+  hostData={hostData}          // JSON-safe，键 = `${kind}:${ref}`
+  hostRenderer={renderSiteEmbed}
+/>
+
+function renderSiteEmbed(
+  node: LocalNode,
+  data: unknown,
+  ctx: { runtime: LocalRuntime; render: ...; visible: boolean; mode: 'interactive' | 'static' },
+) {
+  // ctx.mode === 'static' → 只读快照；否则按 kind 渲染交互组件
+}
+```
+
+- `hostRenderer` 是**客户端函数**，不进 worker；`hostData` 也不进 worker；
+  `hostComponents` schema 会随编译请求进 worker。
+- 缺少 renderer、缺少 `${kind}:${ref}` 数据、renderer 同步抛错 → ReactiveMD 渲染一个
+  可见占位（`local-host-unavailable`），不会白屏、不会走 `onDiagnostics`。
+  因此**站点必须保证「发出去的标签一定有数据」**，否则页面上会出现占位而不是产品组件。
+- `mode="static"` 走同一分派，由 renderer 自己按 `ctx.mode` 返回只读形态。
+- 0.5.2 的 `ctx` **没有 locale / preview 字段**：预览态的「不发业务写请求」由站点在
+  闭包里传（例如 `hostRenderer={(n, d, c) => renderSiteEmbed(n, d, c, { preview })}`）。
+- `hostData` 与 `hostRenderer` 都会进 `LocalDocumentView` 的 memo 依赖：两者必须是
+  **稳定引用**（`useMemo` / `useCallback` 或模块级函数 + 闭包参数），否则每次父级
+  渲染都会让整篇文档的环境失效，重新分派所有宿主节点。
+
+**作者不可写**：`site-embed` 不进作者文档、补全、组件目录。适配器在插入自己的标签前，
+先**在盖码副本上**定位作者源码里同形的 `<site-embed`，再按区间把原文改写成
+`&lt;site-embed` —— 代码块与行内代码里的同形文本**不动**（与 `[@…]` 的盖码纪律同源）。
+不转义的话，站点渲染管线带着 `hostComponents` 编译时，作者手打的那个标签会被当成
+合法宿主节点（随后因缺数据渲染成占位）。作者手打时，编辑器自己的编译路径不传
+`hostComponents`，所以它只表现为未知组件 warning，不会误执行。
+
+**不再采用的备选**：B（占位 + portal）与 C（分段编译）保留在 2026-10-25 的审读记录里，
+仅作为历史对照；A 已经落地，不再按它们排期。
+
+**本站仍需自己做的部分**（0.5.2 不提供）：
+
+- `[@…]` → `<site-embed>` 的适配器（含代码块盖码、预算、external 模式）；
+- 五类引用的服务端取数与权限（`expand` / `external`）；
+- 四个 renderer 与静态形态（音频 / 投票 / 收藏夹 / 剪贴板）；
+- 「作者工具组件目录」的公开导出（M5 的前置，见 D5）。
 
 ### D2 格式、版本与回滚粒度
 
@@ -141,9 +229,11 @@ hash 取模，保证同一篇稳定落在同一档）。
 ### D5 编辑器与组件目录
 
 - 保留 `MarkdownEditor.tsx` 的 CM6、上传、草稿、Ctrl+S、自动保存、导出、textarea 回退。
-- ReactiveMD 上游新增公开导出（或新增 `reactive-md/authoring` 入口）：
-  `LOCAL_COMPONENTS`、`getLocalComponent`、`NATIVE_COMPONENTS`、`NATIVE_COMPONENT_GROUPS`、
-  `renderNativeSnippet`、`insertTemplate` 所需的纯逻辑。
+- **0.5.2 仍未公开作者工具目录**。M5 之前必须二选一：
+  - （推荐）在 ReactiveMD 再加一个公开导出（或新增 `reactive-md/authoring` 入口）：
+    `LOCAL_COMPONENTS`、`getLocalComponent`、`NATIVE_COMPONENTS`、`NATIVE_COMPONENT_GROUPS`、
+    `renderNativeSnippet`、`insertTemplate` 所需的纯逻辑；
+  - 或把 ReactiveMD 源码 vendor 进本站，直接从 `src/editor/native-components.ts` 取目录。
 - 站点只消费这份导出，不手抄组件列表；`site-embed` 不进作者目录。
 - 插入走 CM6 transaction（`view.dispatch({ changes, selection })`），保留撤销、选区、IME；
   插入前用 `compileLocal` 校验候选片段，失败则给出诊断而不是写入。
@@ -213,20 +303,29 @@ hash 取模，保证同一篇稳定落在同一档）。
 
 **上游改动（ReactiveMD 仓库）**：
 
-1. `markdownBreaks` 编译/渲染选项：把段落内软换行渲染成 `<br>`，默认关闭。
-   —— 这是本站 `breaks: true` 的兼容开关，**不要**用预处理改源码（会破坏诊断偏移与编辑选区）。
-2. 公开作者工具所需的 schema / 原生组件目录（见 D5）。
-3. 宿主组件协议（若走 A，见 D1）。
-4. 发布版本、CHANGELOG、兼容性说明；本站固定到精确 tag/版本。
+- **已完成（0.5.2，2026-10-26）**：宿主组件扩展轴、`hostComponent` 节点、
+  `hostData` / `hostRenderer`、worker 透传 schema、`local.host.attribute`、
+  静态模式同一分派、协议升到 `component-protocol-2`。本站直接用，不再设计协议形状。
+- **仍需上游补的两项**：
+  1. `markdownBreaks` 编译/渲染选项：把段落内软换行渲染成 `<br>`，默认关闭。
+     —— 这是本站 `breaks: true` 的兼容开关，**不要**用预处理改源码
+     （会破坏诊断偏移与编辑选区）。0.5.2 的文档仍明确「ordinary single newlines
+     remain Markdown soft breaks」，所以这一项**尚未提供**。
+  2. 公开作者工具所需的 schema / 原生组件目录（见 D5）。
+- 发布版本、CHANGELOG、兼容性说明；本站固定到精确版本 **`reactive-md@0.5.2`**
+  （`next` 渠道；`latest` 仍是 0.4.0，不能用 `latest`）。
 
 **站内改动**：
 
 - 依赖来源写死：npm 精确版本 / git tag / vendor `packages/reactive-md`（三选一，见 §9）。
   注意当前 ReactiveMD 仓库**没有 `dist-library` 产物**，走 git/file 依赖必须能跑 `prepack`。
 - `src/app/components/reactive/ReactiveDocument.tsx`（`'use client'`）：
-  - 入参：`source`、`format`、`mode`、`staticFirst`、`locale="zh"`、`urlPolicy`、
-    `hostData`、`onDiagnostics`；
+  - 入参：`adaptedSource`（**已经过引用适配的源码**）、`format`、`mode`、`staticFirst`、
+    `locale="zh"`、`urlPolicy`、`hostComponents`、`hostData`、`hostRenderer`、
+    `onDiagnostics`；
   - 内部：编译（或接收编译结果）→ `createLocalRuntime` → `LocalDocumentView`；
+  - **wrapper 不做 `[@…]` 适配**：阅读页的适配器在服务端跑（要权限），编辑器的适配器
+    在客户端跑（要会话）；wrapper 只认适配后的源码，避免两边各自解析出不同结果；
   - 严格模式下运行时释放按官方 `queueMicrotask` 语义处理，不自己写一套。
 - `src/lib/reactive/url-policy.ts`：
   - 允许同源 `/api/images/`、`/api/audio/`、`/api/avatar/`、`/image/i/`（历史 rewrite）；
@@ -277,15 +376,21 @@ hash 取模，保证同一篇稳定落在同一档）。
 
 渲染：
 
-- 按 D1 的 `renderHostComponent` / `staticHostComponent` 实现；
-- 每个嵌入组件都要有：ready / loading / error / forbidden / missing 五态，
-  可访问名称，键盘可达；
+- 按 0.5.2 的实际 API：`hostData`（键 = `${kind}:${ref}`）+ `hostRenderer(node, data, ctx)`；
+- 标签放在**独立行**（块级嵌入）；行内嵌入（如果将来需要）必须重新确认段落语义；
+- `hostData` 的每条值都是 `unknown`（**JSON-safe**），站点自己定义形状：
+  `{ status: 'ready' | 'error' | 'forbidden', payload }`；
+- 每个 renderer 都要处理：ready / error / forbidden 三态，可访问名称，键盘可达；
+  `ctx.mode === 'static'` 返回只读快照；
+- **`external` 模式解析不到时不要发标签**：保留 `[@…]` 字面量，与现在的口径逐字一致；
+  否则 ReactiveMD 会渲染 `local-host-unavailable` 占位，页面上多出一行诊断文案；
+- 预览态的「不发业务写请求」用闭包传（0.5.2 的 `ctx` 没有 preview 字段）；
 - 组件内部**绝不** `innerHTML`；一律 React 元素。
 
 测试：
 
 - `tests/unit/ref-adapter.test.ts`：输出形状、预算、盖码、external 不发请求；
-- `tests/unit/site-embed.test.tsx`：五态、静态模式不请求、id 校验；
+- `tests/unit/site-embed.test.tsx`：三态、静态模式不请求、id 校验；
 - 安全用例：伪造 id、`javascript:`、属性逃逸。
 
 退出条件：五类引用与现有 e2e 的产品行为逐条对齐（类名可以改，行为不能变）。
@@ -348,9 +453,10 @@ hash 取模，保证同一篇稳定落在同一档）。
 
 导出：
 
-- 新增 `renderStaticMarkup(source, hostData)`：
+- 新增 `renderStaticMarkup(adaptedSource, { hostComponents, hostData, hostRenderer })`：
   - 离屏 `createRoot` + `flushSync` 渲染 `mode="static"`；
   - `imageResolver` 用预取的 data URL 映射（先 fetch 全部图片，再同步映射）；
+  - 用同一套 `hostData` / `hostRenderer`（`ctx.mode === 'static'` 分支）；
   - 读 `innerHTML` 后 unmount；
   - 不再读预览 DOM，不再走 `buildSnapshot`。
 - `buildExportHtml` 继续负责「拼文件 + 绝对化 URL + 抄 head 样式」；
@@ -417,30 +523,74 @@ export interface RendererChoice {
 }
 ```
 
-### 5.2 宿主组件（A 方案）
+### 5.2 宿主组件（A 方案，ReactiveMD 0.5.2 实际 API）
+
+ReactiveMD 公开的类型（**照抄，不要自定义同名形状**）：
 
 ```ts
-export type HostEmbedKind = 'audio' | 'vote' | 'favorite' | 'clipboard';
+export type LocalHostPropKind = 'string' | 'number' | 'boolean' | 'enum';
 
-export interface HostEmbedData {
-  kind: HostEmbedKind;
-  ref: string;
-  status: 'ready' | 'loading' | 'error' | 'forbidden' | 'missing';
-  /** 可访问名称；不要拼用户输入以外的文本。 */
-  title?: string;
-  /** 仅 ready；形状由站点定义，ReactiveMD 不解释。 */
-  payload?: unknown;
-  /** static 模式与导出用；没有则显示 status 对应的降级文案。 */
-  staticView?: ReactNode;
+export interface LocalHostPropSchema {
+  readonly kind: LocalHostPropKind;
+  readonly required?: boolean;
+  /** 为 true 时拒绝 {{ ... }}。 */
+  readonly static?: boolean;
+  /** kind === 'enum' 时必填、非空、去重。 */
+  readonly enum?: readonly string[];
+  /** 只用于 kind === 'string'，且必须是线性时间安全子集。 */
+  readonly pattern?: string;
 }
 
-export interface HostComponentContext {
+export interface LocalHostComponentSchema {
+  readonly name: string;
+  readonly form: 'leaf';
+  readonly props: Readonly<Record<string, LocalHostPropSchema>>;
+}
+
+export type LocalHostData = Readonly<Record<string, unknown>>;
+
+export type LocalHostRenderer = (
+  node: LocalNode,
+  data: unknown,
+  ctx: LocalRenderContext,
+) => ReactNode;
+
+export interface LocalRenderContext {
+  runtime: LocalRuntime;
+  render(nodes?: LocalNode[], visible?: boolean): ReactNode;
+  visible: boolean;
   mode: 'interactive' | 'static';
-  locale: 'en' | 'zh';
-  /** 预览上下文：嵌入组件不得发业务写请求。 */
-  preview: boolean;
 }
 ```
+
+站点自己定义的数据形状（ReactiveMD 不解释 `payload`）：
+
+```ts
+export type SiteEmbedKind = 'audio' | 'vote' | 'favorite' | 'clipboard';
+
+export interface SiteEmbedData {
+  kind: SiteEmbedKind;
+  ref: string;
+  status: 'ready' | 'error' | 'forbidden';
+  /** 可访问名称；不要拼用户输入以外的文本。 */
+  title?: string;
+  /** 仅 ready；每类引用自己的形状，**必须 JSON-safe**。 */
+  payload?: unknown;
+}
+
+export type SiteHostData = Readonly<Record<`${SiteEmbedKind}:${string}`, SiteEmbedData>>;
+```
+
+注意：
+
+- `hostData` 的键由 **`node.attrs.kind` + `node.attrs.ref`** 拼成，所以标签属性名
+  必须是 `kind` / `ref`；
+- `hostData` 会随 RSC payload 跨服务端/客户端边界，**只能放 JSON-safe 数据**：
+  不要放 ReactNode、函数或类实例。静态形态由 `hostRenderer` 根据 `payload` 与
+  `ctx.mode` 自己生成；
+- `ctx` 里**没有** `locale` / `preview`；需要预览上下文时用闭包；
+- `status` 不需要 `loading` / `missing`：数据没准备好就不要发标签（保留字面量），
+  发了但缺数据 ReactiveMD 会显示占位。
 
 ### 5.3 编译缓存键
 
@@ -462,6 +612,7 @@ X-Content-Renderer: legacy | reactive | reactive-fallback
 | warning 含 `local.html` / `local.component.unknown` | 同上（可在灰度期先只告警） | 旧渲染器结果 |
 | 引用数据 5xx 且有静态快照 | 留在新渲染器，嵌入组件显示快照 | 降级卡片 |
 | 引用数据 5xx 且无快照 | 该嵌入组件显示 error 态，不整篇回退 | 可重试的失败态 |
+| 发了宿主标签但 `hostData` 缺键 / 缺 `hostRenderer` / renderer 抛错 | ReactiveMD 渲染 `local-host-unavailable` 占位；站点同时记一条错误日志（这是站点的 bug，不是文档的 bug） | 一行可见占位 |
 | 单篇 override=legacy | 旧渲染器 | 旧渲染器结果 |
 | 编译缓存不可用 | 直接编译，记一次 miss | 无感 |
 
@@ -498,16 +649,15 @@ X-Content-Renderer: legacy | reactive | reactive-fallback
 
 ## 9. 待决策（阻塞或影响范围）
 
-1. **A / B 方案**（§3 D1）。默认 A；若不能修改 ReactiveMD 上游，退回 B，并接受
-   无 JS / 导出 / 静态快照的降级。
-2. **软换行**：上游加 `markdownBreaks`（推荐），还是接受 CommonMark 语义并在迁移期
-   逐篇修？不做这个决定，存量文章会整体变排版。
-3. **外链图片**：继续允许，还是收紧到同源 + 显式 host 白名单？与「跟踪像素」口径相关。
-4. **公开文章是否开始被索引**：现在正文是客户端注入、爬虫拿不到；SSR 后会改变这一点。
+1. **软换行**：上游加 `markdownBreaks`（推荐），还是接受 CommonMark 语义并在迁移期
+   逐篇修？不做这个决定，存量文章会整体变排版。0.5.2 **尚未提供**这个选项。
+2. **外链图片**：继续允许，还是收紧到同源 + 显式 host 白名单？与「跟踪像素」口径相关。
+3. **公开文章是否开始被索引**：现在正文是客户端注入、爬虫拿不到；SSR 后会改变这一点。
    `public` 档建议开始索引，`link` / `internal` 维持 noindex（robots 已按白名单）。
-5. **嵌套剪贴板**：内联源码 vs 链接 vs 静态快照；本文默认「一层内联，reactive 嵌套改链接」。
-6. **依赖来源**：npm 精确版本 / git tag / vendor。当前 ReactiveMD 没有构建产物，
-   部署机需要能跑 `prepack`。
+4. **嵌套剪贴板**：内联源码 vs 链接 vs 静态快照；本文默认「一层内联，reactive 嵌套改链接」。
+5. **依赖来源**：npm 精确版本 `0.5.2`（`next` 渠道）/ git tag / vendor。当前 ReactiveMD
+   没有 `dist-library` 产物，部署机需要能跑 `prepack`。
+6. **作者工具目录**：上游补公开导出，还是 vendor 源码（见 D5）。这项阻塞 M5。
 7. **评论/讨论里的 `[@8位]`**：继续内联「第一段正文」，还是改成链接？本文默认保持不变，
    只保证不把 reactive 源码裸露给评论渲染器。
 
@@ -516,7 +666,12 @@ X-Content-Renderer: legacy | reactive | reactive-fallback
 - **「编译通过」不等于「渲染正确」**：换行、HTML 子集、数学子集、锚点都会静默变化。
   fallback 判据必须有 warning 白名单；corpus 报告必须看文本与结构 diff。
 - **投票/音频/收藏夹/剪贴板的现有展开产物与 ReactiveMD 完全不兼容**：`class` 被拒、
-  `audio` 不是 P0 HTML。不要试图「适配一下」，要按 D1 重做。
+  `audio` 不是 P0 HTML。不要试图「适配一下」，要用 0.5.2 的宿主组件落点重做。
+- **宿主组件的失败是可见的**：缺 renderer / 缺 `hostData` 键 / renderer 抛错都会渲染
+  一行 `local-host-unavailable` 占位。它不会白屏，但会把站点的数据错误暴露到页面上；
+  所以「发标签」与「发数据」必须在同一处原子地决定。
+- **`hostData` 的键是 `${kind}:${ref}`**：改属性名、改大小写、给 `ref` 做 URL 编码都会
+  让数据对不上，而症状只是「页面上出现占位」，不报错。
 - **数学是子集**：`aligned` / `matrix` / 自定义宏 / `\(...\)` 会原样显示。先量化，再决定
   修上游还是让相关文章留在旧渲染器。
 - **锚点被命名空间化**：深链 `#标题` 与作者 `<a id>` 会失效；若要做目录/分享锚点，
@@ -529,4 +684,5 @@ X-Content-Renderer: legacy | reactive | reactive-fallback
 - **回滚不是「留着旧代码」**：没有逐篇标记和可观测性，就不知道线上哪篇在用哪个渲染器，
   回滚只能靠猜。
 - **包与运行时**：ESM-only、Node >= 22.12（本站 `engines` 写的是 >= 20）、
-  `dist-library` 未构建。部署机与 CI 都要先验证。
+  `dist-library` 未构建。0.5.2 在 `next` 渠道（`latest` 仍是 0.4.0），安装时必须写
+  精确版本或 tag，不能用 `npm install reactive-md@latest`。部署机与 CI 都要先验证。
