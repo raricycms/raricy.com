@@ -14,22 +14,22 @@ import {
 } from '@/lib/http-cache';
 
 describe('weakFileEtag', () => {
-  it('形状是 W/"<size>-<整毫秒>"，不带小数', () => {
-    expect(weakFileEtag({ size: 1234, mtimeMs: 1699999999123.456 })).toBe(
-      'W/"1234-1699999999123"'
-    );
+  const base = { size: 1234, mtimeMs: 1_699_999_999_123.456, ctimeMs: 1_699_999_998_000.789 };
+
+  it('形状是 W/"<size>-<mtime 毫秒>-<ctime 毫秒>"，不带小数', () => {
+    expect(weakFileEtag(base)).toBe('W/"1234-1699999999123-1699999998000"');
   });
 
-  it('size 或 mtime 任一变化 → ETag 变化（换文件必须让旧 304 失效）', () => {
-    const base = { size: 100, mtimeMs: 1_700_000_000_000 };
+  it('size / mtime / ctime 任一变化 → ETag 变化（换文件必须让旧 304 失效）', () => {
     const etag = weakFileEtag(base);
-    expect(weakFileEtag({ ...base, size: 101 })).not.toBe(etag);
+    expect(weakFileEtag({ ...base, size: 1235 })).not.toBe(etag);
     expect(weakFileEtag({ ...base, mtimeMs: base.mtimeMs + 1 })).not.toBe(etag);
+    // ctime 这一格专治 `cp -p` / `rsync -t`：它们保留 mtime，却保留不了 ctime
+    expect(weakFileEtag({ ...base, ctimeMs: base.ctimeMs + 1 })).not.toBe(etag);
   });
 
   it('同一份元信息 → 稳定的字符串（304 的前提）', () => {
-    const stat = { size: 42, mtimeMs: 1_700_000_000_000 };
-    expect(weakFileEtag(stat)).toBe(weakFileEtag({ ...stat }));
+    expect(weakFileEtag(base)).toBe(weakFileEtag({ ...base }));
   });
 });
 

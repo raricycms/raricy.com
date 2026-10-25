@@ -277,7 +277,7 @@ GET /api/images/<10位ID>/raw
 | `Content-Type` | 上传时的 MIME |
 | `X-Content-Type-Options` | `nosniff` |
 | `Cache-Control` | 公开图 `public, no-cache`（**不是**长缓存，见下） |
-| `ETag` | 公开图的弱 ETag（`W/"<字节数>-<文件 mtime 毫秒>"`） |
+| `ETag` | 公开图的弱 ETag（`W/"<字节数>-<文件 mtime 毫秒>-<文件 ctime 毫秒>"`） |
 | `X-Robots-Tag` | 公开图 `all` |
 
 > ⚠️ **公开图不是一年长缓存，而是「每次使用前验证」。** 图床的删除是软删：同一个
@@ -287,7 +287,8 @@ GET /api/images/<10位ID>/raw
 > 图被删掉之后同一个请求直接 `404`。
 >
 > ⚠️ **机器人做缓存时请照这个语义来**：图片字节可以存，但**必须**保留 ETag 并在复用前
-> 验证，别按「永久」存 —— 否则删图在你那边永远不生效，与浏览器半年缓存是同一个坑。
+> 验证，别按「永久」存 —— 否则删图在你那边永远不生效，与浏览器按旧策略存下的一年
+> 长缓存是同一个坑。
 > `304` 与 `404` 都不会带图片字节；`404` 带 `Cache-Control: no-store`（别缓存删除结果）。
 
 > ⚠️ **SVG 以附件形式下发**（`Content-Disposition: attachment`）—— 强制下载而不是

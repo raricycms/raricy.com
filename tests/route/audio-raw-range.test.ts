@@ -283,7 +283,7 @@ describe('合法 Range → 206 + 正确的 Content-Range', () => {
         'public, no-cache'
       );
       expect(cc).not.toContain('immutable');
-      expect(res.headers.get('ETag')).toMatch(/^W\/"\d+-\d+"$/);
+      expect(res.headers.get('ETag')).toMatch(/^W\/"\d+-\d+-\d+"$/);
     }
     // 两边必须是同一个验证器：播放器拿全量那份去验证分段请求，不一致就永远重下。
     expect(partial.headers.get('ETag')).toBe(full.headers.get('ETag'));
@@ -295,9 +295,15 @@ describe('合法 Range → 206 + 正确的 Content-Range', () => {
 // 背景：音频的删除是软删，同一个 URL 从此 404。所以缓存不能是「一年别回来问」，
 // 必须是「每次用之前验证」—— 没变 304（零字节），删了 404。这一节钉的就是
 // 「验证不能盖过删除」与「200/206 共用同一个 ETag」。
+//
+// ⚠️ 304 **只发在没有 Range 的请求上**：按 RFC 9110 §13.1.2 + §13.2.2，If-None-Match
+// 先于 Range 求值、给 Range 请求回 304 合法；但本站的硬约束是 **Safari 先发
+// `Range: bytes=0-1` 探测、拿不到 206 就直接不播**（见路由文件头）。给探测回 304
+// 是在赌播放器缓存了整段，赌输的症状是「音频放不出来」—— 所以带 Range 一律
+// 206 / 416。删除仍然可见：no-cache 让客户端必须回来验证，软删在验证之前已判 404。
 
 describe('条件请求（软删后必须能失效）', () => {
-  it('If-None-Match 命中 → 304，零字节，且缓存头原样带回', async () => {
+  it('If-None-Match 命中（无 Range）→ 304，零字节，且缓存头原样带回', async () => {
     const user = await makeUser();
     const { id } = await seedAudio({ authorId: user.id });
     const etag = (await rawGet(req(id), ctx(id))).headers.get('ETag')!;
@@ -309,14 +315,33 @@ describe('条件请求（软删后必须能失效）', () => {
     expect((await bodyOf(res)).byteLength, '304 不能带 body').toBe(0);
   });
 
-  it('带 Range 的验证请求同样回 304（RFC 9110 §13.1.3：If-None-Match 先于 Range）', async () => {
+  it('★ 带 Range 的请求**不许**回 304：回 206（Safari 的 0-1 探测必须先拿到 206）', async () => {
+    const user = await makeUser();
+    const { id, bytes } = await seedAudio({ authorId: user.id });
+    const etag = (await rawGet(req(id), ctx(id))).headers.get('ETag')!;
+
+    const probe = await rawGet(req(id, 'bytes=0-1', { 'if-none-match': etag }), ctx(id));
+    expect(probe.status, 'Safari 拿不到 206 就直接不播').toBe(206);
+    expect(await bodyOf(probe)).toEqual(bytes.subarray(0, 2));
+
+    const seek = await rawGet(req(id, 'bytes=0-99', { 'if-none-match': etag }), ctx(id));
+    expect(seek.status).toBe(206);
+    // 206 也要带 ETag：下一次验证仍然靠它
+    expect(seek.headers.get('ETag')).toBe(etag);
+    expect(await bodyOf(seek)).toEqual(bytes.subarray(0, 100));
+  });
+
+  it('不可满足的 Range + 匹配 ETag → 416（Range 求值在前的证据之一）', async () => {
     const user = await makeUser();
     const { id } = await seedAudio({ authorId: user.id });
     const etag = (await rawGet(req(id), ctx(id))).headers.get('ETag')!;
 
-    const res = await rawGet(req(id, 'bytes=0-99', { 'if-none-match': etag }), ctx(id));
-    expect(res.status).toBe(304);
-    expect((await bodyOf(res)).byteLength).toBe(0);
+    const res = await rawGet(
+      req(id, `bytes=${AUDIO_SIZE}-`, { 'if-none-match': etag }),
+      ctx(id)
+    );
+    expect(res.status).toBe(416);
+    expect(res.headers.get('Cache-Control')).toBe('no-store');
   });
 
   it('★ 软删之后，带着匹配的 ETag 也必须 404（删除赢过缓存验证）', async () => {
@@ -352,6 +377,24 @@ describe('条件请求（软删后必须能失效）', () => {
     expect(res.headers.get('ETag')).not.toBe(etag);
   });
 
+  it('★ 同尺寸换文件（只差字节）→ ETag 变，且 200 给的是新字节', async () => {
+    const user = await makeUser();
+    const { id } = await seedAudio({ authorId: user.id });
+    const etag = (await rawGet(req(id), ctx(id))).headers.get('ETag')!;
+
+    // 同尺寸替换是 `size + mtime` 的真盲区；`cp -p` / `rsync -t` 连 mtime 都保留，
+    // 那一格由 ETag 里的 ctime 兜住（Linux 上 ctime 无法被 cp -p 保留）。
+    const replacement = makeBytes(AUDIO_SIZE);
+    replacement[replacement.length - 1] ^= 0xff;
+    await new Promise((r) => setTimeout(r, 15)); // 让 mtime 一定跨过毫秒边界
+    fs.writeFileSync(audioStoragePathFor(id, 'audio/mpeg'), replacement);
+
+    const res = await rawGet(req(id, undefined, { 'if-none-match': etag }), ctx(id));
+    expect(res.status, '同尺寸替换若仍回 304，访客会一直听旧音频').toBe(200);
+    expect(res.headers.get('ETag')).not.toBe(etag);
+    expect(await bodyOf(res)).toEqual(replacement);
+  });
+
   it('私有音频不发 ETag（no-store 下条件请求无意义，也不能缓存鉴权结果）', async () => {
     const author = await makeUser();
     const { id } = await seedAudio({ authorId: author.id, isPublic: false });
@@ -360,6 +403,20 @@ describe('条件请求（软删后必须能失效）', () => {
     const res = await rawGet(req(id), ctx(id));
     expect(res.status).toBe(200);
     expect(res.headers.get('ETag')).toBeNull();
+  });
+
+  it('★ 公开音频先拿到 ETag，再改成私有：带匹配 ETag 也不能 304', async () => {
+    const author = await makeUser();
+    const { id } = await seedAudio({ authorId: author.id });
+    const etag = (await rawGet(req(id), ctx(id))).headers.get('ETag')!;
+
+    await prisma.audioHosting.update({ where: { id }, data: { isPublic: false } });
+    mockUser.current = author;
+
+    const res = await rawGet(req(id, undefined, { 'if-none-match': etag }), ctx(id));
+    expect(res.status, '私有档若按公开档的 ETag 回 304，鉴权就被缓存旁路了').toBe(200);
+    expect(res.headers.get('ETag')).toBeNull();
+    expect(res.headers.get('Cache-Control')).toBe('private, no-store');
   });
 });
 

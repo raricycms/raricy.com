@@ -72,7 +72,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
   // 私有图是 no-store，没有条件请求可言，也绝不能按 ETag 走 304 —— 那等于
   // 把「作者能看」这一判断结果缓存出去。
   if (img.isPublic) {
-    let stat: { size: number; mtimeMs: number };
+    let stat: { size: number; mtimeMs: number; ctimeMs: number };
     try {
       stat = await fs.stat(filePath);
     } catch {

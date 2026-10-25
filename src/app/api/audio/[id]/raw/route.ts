@@ -34,8 +34,10 @@ export const runtime = 'nodejs';
 //
 // 【缓存】与图床同一条口径（`public, no-cache` + 弱 ETag，见 src/lib/http-cache.ts）：
 // 删除是软删，同一个 URL 会变 404，所以不能发 immutable 长缓存 —— 否则已经听过
-// 的访客永远听得到一条已删除的录音，且没有任何报错。200 / 206 都带同一个 ETag，
-// 未变化回 304（零字节），删了回 404。
+// 的访客永远听得到一条已删除的录音，且没有任何报错。200 / 206 都带同一个 ETag；
+// **没有 Range 的条件请求**未变化回 304（零字节），删了回 404。
+// 带 Range 的请求一律 206 / 416，**不回 304** —— 理由见下面 etag 那段的注释
+// （Safari 的 `bytes=0-1` 探测必须先拿到 206）。
 // ─────────────────────────────────────────────────────────────────────────────
 
 function notFound(): Response {
@@ -151,25 +153,36 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
   const filePath = audioStoragePathFor(audio.id, audio.mimeType);
   let total: number;
   let mtimeMs: number;
+  let ctimeMs: number;
   try {
     const stat = await fs.stat(filePath);
     total = stat.size;
     mtimeMs = stat.mtimeMs;
+    ctimeMs = stat.ctimeMs;
   } catch {
     return notFound();
   }
 
-  // 公开音频的条件请求：**先验证、命中就 304**，只有真要下发字节时才读盘。
+  // 公开音频的条件请求：命中就 304，只有真要下发字节时才读盘。
   // 删除一定赢 —— 上面的 getAudioForServe 已经把软删挡成 404，所以哪怕客户端
   // 带着完全匹配的 ETag 回来，也拿不到 304。
   // 私有音频没有条件请求可言（no-store，且绝不能把「作者能听」这个判断结果
   // 按 ETag 缓存出去）。
   //
-  // ⚠️ 带着 `Range` 的验证请求同样走 304 —— RFC 9110 §13.1.3 规定 If-None-Match
-  // 先于 Range 求值，缓存用自己已经存下的段来满足这次请求。播放器拖进度条时
-  // 发的就是这种请求。
-  const etag = audio.isPublic ? weakFileEtag({ size: total, mtimeMs }) : null;
-  if (etag && ifNoneMatchMatches(req.headers.get('if-none-match'), etag)) {
+  // ⚠️ **带 `Range` 的请求一律不走 304，回 206 / 416。** 按 RFC 9110 §13.1.2 +
+  // §13.2.2，If-None-Match 确实先于 Range 求值、304 合法；但本站这条路由有一条
+  // 更硬的约束：**Safari 先发 `Range: bytes=0-1` 探测，拿不到 206 就直接不播**
+  // （见文件头）。给这个探测回 304 是在赌「播放器一定已经缓存了整段」，
+  // 而部分缓存 / 缓存头被中间层换掉时就会变成「音频放不出来」这种最难查的症状。
+  // 所以验证只发生在**没有 Range** 的请求上：那里 304 只可能让客户端用整份缓存，
+  // 不存在「用残段补全段」的歧义。
+  // 带 Range 时虽然拿不到 304，删除仍然可见 —— `no-cache` 让客户端每次都必须回来
+  // 验证，而软删在验证之前就已判成 404。
+  const rangeHeader = req.headers.get('range');
+  const etag = audio.isPublic
+    ? weakFileEtag({ size: total, mtimeMs, ctimeMs })
+    : null;
+  if (etag && !rangeHeader && ifNoneMatchMatches(req.headers.get('if-none-match'), etag)) {
     return new Response(null, {
       status: 304,
       headers: {
@@ -182,7 +195,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
     });
   }
 
-  const range = parseRange(req.headers.get('range'), total);
+  const range = parseRange(rangeHeader, total);
 
   if (range.kind === 'unsatisfiable') {
     return new Response('Range Not Satisfiable', {

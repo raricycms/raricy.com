@@ -35,17 +35,32 @@ export const PRIVATE_BYTES_CACHE_CONTROL = 'private, no-store';
 /**
  * 由文件元信息构造**弱** ETag。
  *
- * 为什么用 `size + mtime` 而不是只用 id：id 确实按上传定稿，但运维习惯是
- * 「往 `instance/images|audio/` 里拷文件」—— 只看 id 的话，换过的文件会让
- * 浏览器永远拿 304，人却看着旧内容，且不报任何错。mtime 截到毫秒。
+ * 为什么不是只用 id：id 确实按上传定稿，但运维习惯是「往 `instance/images|audio/`
+ * 里拷文件」—— 只看 id 的话，换过的文件会让浏览器永远拿 304，人却看着旧内容，
+ * 且不报任何错。
  *
- * 为什么是弱验证器（`W/`）：`size + mtime` 只保证「内容变了它就变」，
- * 不保证「没变就一定没改」（毫秒级碰撞理论上存在）。弱 ETag 只能用于
- * 缓存验证（`If-None-Match`），不能用于 `If-Range` 断点续传 —— 本站也从不发
- * `If-Range`，所以这条限制正好落在空处。
+ * 为什么带上 `ctime`：`cp -p` / `rsync -t` 这类拷法会**连同 mtime 一起保留**，
+ * 于是「同尺寸 + 保留 mtime」的替换在 `size + mtime` 下得到完全一样的 ETag。
+ * Linux 上 ctime 无法被 `cp -p` 保留（任何元数据 / 数据变更都会刷新它），
+ * 正好补上这一格。⚠️ **Windows 上 ctime 是「创建时间」**，覆盖写不会变它 ——
+ * 那种环境下仍靠 mtime（Windows 覆盖写会刷新 mtime）。
+ *
+ * 为什么是**弱**验证器（`W/`）：即便三样元信息全同，也不能证明字节相同
+ * （时间戳有精度上限，理论上可碰撞）。弱 ETag 的语义本来就只用于缓存验证：
+ * **同样的 ETag 不证明同字节**，它省的是流量，不是正确性 —— 删除 / 鉴权这些
+ * 判断一律在验证**之前**由数据库裁决，绝不靠 ETag。
+ *
+ * 弱验证器也不能用于 `If-Range` 断点续传（客户端规范如此）。本路由不解析
+ * `If-Range`：带它的请求按普通 `Range` 处理，回 206。
+ *
+ * 毫秒取整：`mtimeMs` / `ctimeMs` 带小数（NTFS 100ns），ETag 里不需要那位精度。
  */
-export function weakFileEtag(stat: { size: number; mtimeMs: number }): string {
-  return `W/"${stat.size}-${Math.floor(stat.mtimeMs)}"`;
+export function weakFileEtag(stat: {
+  size: number;
+  mtimeMs: number;
+  ctimeMs: number;
+}): string {
+  return `W/"${stat.size}-${Math.floor(stat.mtimeMs)}-${Math.floor(stat.ctimeMs)}"`;
 }
 
 /**

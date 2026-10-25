@@ -1462,10 +1462,12 @@ describe('GET /api/images/:id/raw（SVG XSS 防护 + 私有图鉴权）', () => 
     expect((await call('nope')).status).toBe(404);
   });
 
-  it('DB 有行但磁盘文件缺失 → 404，不是 500', async () => {
+  it('DB 有行但磁盘文件缺失 → 404，不是 500（404 也不许被缓存）', async () => {
     const u = await makeUser({ role: 'core' });
     const img = await makeImage({ authorId: u.id }); // 只落库
-    expect((await call(img.id)).status).toBe(404);
+    const res = await call(img.id);
+    expect(res.status).toBe(404);
+    expect(res.headers.get('Cache-Control')).toBe('no-store');
   });
 
   describe('私有图鉴权（isPublic = false）', () => {
@@ -1564,7 +1566,7 @@ describe('GET /api/images/:id/raw（SVG XSS 防护 + 私有图鉴权）', () => 
       'public, no-cache'
     );
     expect(cc).not.toContain('immutable');
-    expect(res.headers.get('ETag')).toMatch(/^W\/"\d+-\d+"$/);
+    expect(res.headers.get('ETag')).toMatch(/^W\/"\d+-\d+-\d+"$/);
   });
 
   it('条件请求：If-None-Match 命中 → 304，零字节，且缓存头原样带回', async () => {
@@ -1616,6 +1618,25 @@ describe('GET /api/images/:id/raw（SVG XSS 防护 + 私有图鉴权）', () => 
     expect(res.headers.get('ETag')).not.toBe(etag);
   });
 
+  it('★ 同尺寸换文件（只差字节）→ ETag 也必须变，且 200 给的是新字节', async () => {
+    const u = await makeUser({ role: 'core' });
+    const original = await pngBytes();
+    const img = await seedOnDisk({ authorId: u.id, mimeType: 'image/png', bytes: original });
+    const etag = (await call(img.id)).headers.get('ETag')!;
+
+    // 同尺寸替换是 `size + mtime` 唯一的真盲区（`cp -p` / `rsync -t` 还会保留
+    // mtime，那一格由 ETag 里的 ctime 兜住）。这里只改末字节，尺寸不变。
+    const replacement = Buffer.from(original);
+    replacement[replacement.length - 1] ^= 0xff;
+    await new Promise((r) => setTimeout(r, 15)); // 让 mtime 一定跨过毫秒边界
+    await fsp.writeFile(storagePathFor(img.id, 'image/png'), replacement);
+
+    const res = await call(img.id, { 'if-none-match': etag });
+    expect(res.status, '同尺寸替换若仍回 304，访客会一直看旧图').toBe(200);
+    expect(res.headers.get('ETag')).not.toBe(etag);
+    expect(Buffer.from(await res.arrayBuffer()).equals(replacement)).toBe(true);
+  });
+
   it('★ 私有图必须是 private, no-store（否则共享缓存/CDN 会向无权者下发）', async () => {
     const u = await makeUser({ role: 'core' });
     const img = await seedOnDisk({
@@ -1625,10 +1646,27 @@ describe('GET /api/images/:id/raw（SVG XSS 防护 + 私有图鉴权）', () => 
       isPublic: false,
     });
     authState.user = { id: u.id, role: 'core' };
-    const cc = (await call(img.id)).headers.get('Cache-Control');
+    const res = await call(img.id);
+    const cc = res.headers.get('Cache-Control');
     expect(cc).toBe('private, no-store');
     // 关键回归点：私有图一旦出现 public，鉴权就被缓存层旁路了
     expect(cc).not.toContain('public');
+    // 私有档也不发 ETag：发了就等于给「按 ETag 走 304」留了一条绕过鉴权的路
+    expect(res.headers.get('ETag')).toBeNull();
+  });
+
+  it('★ 公开图先拿到 ETag，再改成私有：带匹配 ETag 也不能 304', async () => {
+    const u = await makeUser({ role: 'core' });
+    const img = await seedOnDisk({ authorId: u.id, mimeType: 'image/png', bytes: await pngBytes() });
+    const etag = (await call(img.id)).headers.get('ETag')!;
+
+    await prisma.imageHosting.update({ where: { id: img.id }, data: { isPublic: false } });
+    authState.user = { id: u.id, role: 'core' };
+
+    const res = await call(img.id, { 'if-none-match': etag });
+    expect(res.status, '私有档若按公开档的 ETag 回 304，鉴权就被缓存旁路了').toBe(200);
+    expect(res.headers.get('ETag')).toBeNull();
+    expect(res.headers.get('Cache-Control')).toBe('private, no-store');
   });
 
   it('私有图即便由管理员取回，也不得进共享缓存', async () => {
