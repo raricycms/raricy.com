@@ -406,10 +406,14 @@ GET/HEAD/OPTIONS 视为安全方法，不校验（协议闸不受这条影响，
 
 ### 6.7 Markdown / 内容渲染
 
+⚠️ **博客详情与剪贴板详情的正文渲染按篇分叉**：`format` / `renderer_override` /
+`REACTIVE_MD_MODE` 决定走本节这套旧管线，还是 §6.23 的 ReactiveMD 管线。评论、讨论、
+故事**不变**；默认 `off` 时全部仍走本节。下表是旧管线（legacy 分支）的分工。
+
 | 场景 | 渲染方式 | 管线 |
 |------|---------|------|
 | 讨论正文 / 评论正文 | **客户端**渲染，同一套管线 | `rich-text.ts`（marked → DOMPurify → 后处理），白名单与链接类名见 `chat-markdown.ts` / `comment-markdown.ts` |
-| 博客正文 | **客户端**渲染 | `src/app/components/MarkdownRenderer.tsx`（marked + DOMPurify + highlight.js + MathJax + `[@…]` 内容引用） |
+| 博客正文（legacy 分支） | **客户端**渲染 | `src/app/components/MarkdownRenderer.tsx`（marked + DOMPurify + highlight.js + MathJax + `[@…]` 内容引用） |
 | 故事正文 | **服务端**渲染 | `src/lib/story-service.ts` 的 `marked` + `stripScripts`。内容由站长直接写在 `instance/stories/`，按可信输入处理，**不走 DOMPurify / highlight.js** |
 | 内容引用 `[@…]` | 浏览器渲染时正则替换为剪贴板/投票/图床/收藏夹组件 | `src/app/components/MarkdownRenderer.tsx` 的 `ContentRefProcessor`（按 id 长度分流：6 位收藏夹 / 8 位剪贴板 / 9 位投票 / 10 位图床）。**表情包不在这条管道上**。**展开到哪一档看 `contentRefs`**（成员 `'expand'` / 对外 `'external'`，见 §7.3）。两次替换都**按区间切片**、不按内容 `replace`；分流扫的是**盖过码**的副本，所以代码块里的引用一律不展开（指南对读者的承诺）。收藏夹卡片是在主循环**之后**单独一趟，理由见 §6.10 |
 | 表情包 `[@合集/表情]` | 浏览器渲染时替换为内联 `<img>`（**仅评论 / 讨论**）。两个来源共用这条管道：站长放的图片（`/api/stickers/` 字节路由）与**内置黄脸**（`/static/emoji/` 静态素材）—— 后者多叠一个 `rich-emoji-ref` 类把自己压成文字大小；**整条正文只有这一张黄脸时**再叠 `rich-emoji-solo`，尺寸退回表情包那一档（判据是「最终 DOM 里只有这一张」） | `src/lib/sticker-refs.ts` 的 `embedStickerRefs`，在 `rich-text.ts` 里紧跟 `embedUserRefs` 之后调用；单发那一档是 `markSoloEmojiFaces`（同一文件），在 `render()` 里**最后**跑（任何新的 `embed*` 都必须排在它上面）；黄脸清单在 `src/lib/emoji-faces.ts` |
@@ -485,7 +489,7 @@ core+；讨论大区过滤专注、禁言与静音者，私聊只列未静音的
 ⚠️ 那个 `useEffect` 的依赖必须是 `[html]` —— 组件在 `html` 为空时 `return null`，
 div 会卸载重挂，`deps=[]` 的监听器永远附不上。
 
-**编辑器（博客 / 剪贴板）的预览走的就是上表那台渲染器**，不是另写一份近似实现 ——
+**编辑器（博客 / 剪贴板）的 Markdown 预览走的就是上表那台渲染器**，不是另写一份近似实现 ——
 「预览长什么样」和「发布后长什么样」因此不需要人去对齐，它们本来就是同一个
 `MarkdownRenderer`。两处刻意的差别：
 
@@ -500,6 +504,10 @@ div 会卸载重挂，`deps=[]` 的监听器永远附不上。
 预览**不展开**表情包与用户名片：那两者只挂在评论 / 讨论那条管线上（见上表），
 博客正文里它们就是普通文字。这是刻意的，不要为了「统一」把它们接进来 ——
 一旦接进来，发一篇日记就顺带获得了两项评论区的功能。
+
+⚠️ `format='reactive'` 的文档预览**不再走这台渲染器**：预览面板改为客户端编译
+ReactiveMD（`ReactivePreview`，只发 GET、不发写请求），见 §6.23。把 reactive 源码
+交给本文这条管线不会抛错，只会把 `{{ }}` 与组件标签当普通文本显示出来。
 
 **投票数据在预览里只取一次，且与正文同一份快照**：预览是**防抖重渲染**的，而投票
 小组件自己会去拉 `GET /api/votes/<id>` —— 每停一下手就把整块 DOM 换成新的，等于每停
@@ -791,6 +799,12 @@ disallow（断掉「internal 文章 → 307 → next 参数里带 UUID」那条�
    **不是**在那条路由里加可见性过滤（那会把「站外聚合器能读什么」和「文章是否对外」
    这两件事混在一起）。
 
+**`format` 与 `renderer_override` 不改变可见性。** 这两列只决定「用哪个渲染器解释正文」，
+档位仍只由 `visibility` 判；对外视图（非 core）进 ReactiveMD 管线时仍按 `external`
+模式取数（见 §6.23 / §7.3）。一篇 `public` 的 reactive 文章对访客照常可读，一篇
+`internal` 的 reactive 文章对访客照常是登录页。不要把「换了渲染器」误当成「放宽了
+可见性」，也不要在渲染器选择里新增任何 `if (isAdmin)` 式的豁免。
+
 ### 6.12 对外公开列表 `/explore`
 
 第 1 期把「单篇读得到」打开了，但访客读完就是死胡同 —— 而从站外点进来的人**没有经过
@@ -807,6 +821,10 @@ disallow（断掉「internal 文章 → 307 → next 参数里带 UUID」那条�
 用户自选存在 `users.focus_hide_categories`，未自定义时用站长标记的 `categories.focus_hidden`
 作默认集合）**一律不作用于这里** —— 对外列表的资格只有一条 `visibility = public`。
 混合它们会直接破坏上面那条同源。
+
+**`format` / `renderer_override` 同样不参与这个集合**：对外列表的资格仍然只有
+`visibility = public`，换了正文语言不改变「可发现」。卡片摘要按 `buildBlogExcerpt`
+的格式分派（reactive 走编译后的 AST，仍是纯文本），只影响卡片文字，不影响收录。
 
 **侧栏从公开集合反推**：`listPublicCategoryFacets()` 取出公开文章真正出现过的
 `category_id`，页面据此剪枝栏目树 —— 只列「自己或某个子栏目有公开文章」的栏目。
@@ -1801,6 +1819,140 @@ bot 接口，私密夹也能**复制成公开**、能导出 JSON —— 它的�
 重新收藏复活原行。已下架内容只保留可移出的占位。归档账号边界沿用 `archive-scope`。
 用户操作、审核入口与接口字段见 `docs/guide/每日一言使用指南.md`。
 
+### 6.23 ReactiveMD 渲染器（博客 / 剪贴板，2026-10）
+
+博客详情与剪贴板详情现在有**两条正文管线**：§6.7 的旧 Markdown 管线，与
+`reactive-md@0.5.3` 的新管线。逐篇选择的唯一入口是 `src/lib/reactive/read-render.ts`
+（阅读页）；编辑器预览的分叉在 `MarkdownEditor.tsx`。页面不自己判灰度，也**绝不把
+reactive 源码交给旧 Markdown 解析器** —— 那不会抛错，只会把 `{{ }}` 与组件标签当
+普通文本显示出来。
+
+#### 选择：格式、override 与开关
+
+- **`format`**（`blog_contents.format` / `clip_text.format`，迁移 35）：`markdown` |
+  `reactive`，描述**内容本身**。存量默认 `markdown`；未知值不猜，走 `unavailable`。
+- **`renderer_override`**（`blogs` / `clipboards`）：`NULL` | `legacy` | `reactive`，
+  只决定兼容的渲染路径，不改变 `format`。目前只有读取，没有 API 写入口；
+  `format='reactive'` 配 `legacy` 是脏值，按静态降级处理。
+- **`REACTIVE_MD_MODE=off|shadow|on`**（默认 `off`）与
+  **`REACTIVE_MD_PERCENT=0..100`**（默认 `0`），解析在 `src/lib/reactive/flags.ts`。
+  `off` 是全局紧急关闭，优先于单篇 override；`shadow` 的可见结果与 `off` 相同；
+  `on` 才应用合法 override 与百分比分档。分档按**稳定 ID**：
+  `FNV-1a("${kind}:${id}") % 100 < REACTIVE_MD_PERCENT`，编辑正文不会改变分档。
+- 决策收在 `src/lib/renderer-select.ts`，结果只有四种：`legacy` / `reactive` /
+  `reactive-static` / `unavailable`。页面用 `data-content-renderer` 记录事实。
+- `markdown` 只有在**候选**（`override='reactive'` 或命中灰度）时才编译，否则直接
+  legacy；`reactive` 一律先编译（静态正文也需要 document）。`shadow` 下 markdown
+  不是候选，因此不编译；reactive 仍会编译一次以产出静态正文。
+
+#### 回退（D4）
+
+判据在 `src/lib/reactive/diagnostics.ts` 的 `shouldFallbackToLegacy`：**不只看
+`ok`**，还查 `REACTIVE_FALLBACK_CODES` —— `local.html`（HTML 属性降级）、
+`local.component.unknown`（未知标签）、`local.options.invalid`、`local.budget`，
+以及数学显示降级的各码（粗分类 `local.math.display` 与细分 `messageKey` 都查）。
+这些情况 `compileLocal` 常常返回 `ok: true`，却会**静默改变可见内容**。
+
+- `markdown` 编译失败或不兼容 → 回 `legacy`；
+- `reactive` **编译成功但语义不兼容** → `reactive-static`（本次请求现算的静态正文）；
+- `reactive` **编译失败**（没有 document 可渲染）或格式认不出 → `unavailable`，
+  页面显示明确失败态；
+- 单个引用失败**只影响该组件**（保留字面量或 error / forbidden 态），不整篇回退。
+
+#### reactive 的静态正文
+
+`reactive-static` **先读同版本持久快照**（`reactive_snapshots`，迁移 36），再把
+`LocalDocument` 交给客户端组件 `ReactiveDocument mode="static"` 渲染：SSR 首屏即静态
+正文，无 JS 也可读，交互控件不挂事件。**不在服务端调 `react-dom/server`** —— Next 的
+RSC 编译链会拒绝它（构建期直接失败）；快照因此存的是可信编译产物（`LocalDocument` +
+external 权限下的 `hostData`，均为 JSON），不是作者上传的 HTML。
+
+内容版本 = `sha256(格式, 语法版本, 原文)`；正文与快照在**同一个事务**里写入，重编失败
+或命中回退码时整笔发布被拒。读取时版本 / 编译签名（语法、包、适配器、选项键）不一致的
+旧行按 stale 拒读，绝不拿旧正文冒充当前正文；真读不到快照时按当前正文现编译一次
+（结果仍是当前版本），再失败才给 `unavailable`。博客与剪贴板走同一条路径。
+
+#### 宿主组件 `site-embed`
+
+词汇表在 `src/lib/reactive/host-components.ts`，渲染在
+`src/app/components/reactive/`。
+
+- 唯一宿主标签是 `site-embed`，属性 `kind`（`audio` | `vote` | `favorite` |
+  `clipboard`）与 `ref`（`^[A-Za-z0-9]{1,32}$`）。两者都是 `static: true`，拒绝
+  `{{ }}`；schema 不合法会让整次编译失败（`local.options.invalid`）。
+- `hostData` 的键**必须**是 `${kind}:${ref}`，改属性名或大小写会让数据永远取不到。
+  标签与数据由 `src/lib/reactive/ref-adapter.ts` 在**同一次调用里原子成对**产生：
+  缺数据就不发标签、保留字面量 token —— 否则 ReactiveMD 会渲染一行可见的
+  `local-host-unavailable` 占位。
+- 作者伪造的 `<site-embed` 在 `maskMarkdownCode` 之后被转义成 `&lt;site-embed`；
+  代码块 / 行内代码里的同形文本原样保留。
+- `SiteEmbedView.tsx` 只把**投票**接成交互组件（POST `/api/votes/:id/vote`，票数
+  以服务端回读为准）；音频 / 收藏夹 / 剪贴板委托 `site-embed-static.tsx`。静态与
+  预览态一律只读、不发业务写请求。任何分支都**不 `dangerouslySetInnerHTML`**，
+  链接只由校验过的 `kind` / `ref` 拼，绝不采信 payload 里的 href。
+
+#### 五类引用与 `external` 的零请求
+
+适配规则在 `src/lib/reactive/ref-adapter.ts`：
+
+- 图床 → Markdown `![id](/api/images/id/raw)`（权限由 raw 路由逐条判）；
+- 音频 → `<site-embed kind="audio">`，播放 `/api/audio/<id>/raw`；
+- 投票 / 收藏夹 → 宿主组件（`expand` 才发标签）；
+- 剪贴板 → **链接卡片**，`hostData` 刻意不携带 `content`；reactive 剪贴板尤其不嵌套
+  编译。首期所有剪贴板都不内联。
+- 预算沿用旧管线：主循环 50 处替换、收藏夹 3 张、音频 3 个、50 次取数、4 并发、
+  展开后合计 50 万字符；超预算或取不到的那一处保留字面量，不占后续名额。
+- `external` 模式（非 core 的对外视图）：图床 / 音频照常（浏览器按 URL 取字节，
+  适配器**不发业务请求**）；投票 / 收藏夹保留字面量；剪贴板只用服务端
+  `resolvePublicClipRefs` 下发的公开数据。`prepare.ts` 在 external 下**不创建**
+  `ReferenceReader`，适配器也不会调用它 —— 这条路径的业务请求数为零。
+
+#### 编译缓存
+
+`src/lib/reactive/compile.ts` 的缓存键是
+`sha256(adaptedSource):LOCAL_SYNTAX_VERSION:reactive-md/0.5.3:adapterVersion:localCompileOptionsKey(options)`；
+选项由 `reactiveCompileOptions(format)` 固定（`markdownBreaks` 仅 markdown 为 true）。
+LRU 挂在 `globalThis` 上（Next 的独立 compilation 会有多份模块实例），按估算字节数
+计容（64MB / 500 条）；只缓存 `{ ok, document?, diagnostics }`，`hostData` / `segments` /
+会话数据每次请求现算，绝不进共享缓存。日志只写诊断码、耗时、命中与渲染路径，不写正文。
+
+#### 编辑器预览
+
+`format='reactive'` 时，预览面板走 `src/app/components/reactive/ReactivePreview.tsx`：
+防抖 300ms → 引用适配（`src/lib/reactive/client-compile.ts`，会话级 reader，只发
+GET）→ `LocalCompileScheduler`（worker 失败回退主线程）→ `ReactiveDocument`。
+编译期间保留上一版成功结果，坏文档只显示诊断；`preview` 标记一路传到宿主渲染器，
+投票只读、不发写请求。
+
+发文 / 剪贴板表单都有 `format` 选择（`BlogForm.tsx` / `clipboard/upload/UploadForm.tsx`），
+草稿用 `lib/md-editor/draft.ts` 的信封把**格式与正文一起存**，恢复时经
+`onDraftFormatRestored` 同步回表单 —— 否则恢复一份 reactive 草稿后保存，服务端会按表单
+上的 `markdown` 写入，正文没变、格式被静默改写。`MarkdownEditor` 的 `format` 默认
+`markdown`，不传时行为与换代前一致；reactive 写入当前仍被 API 拒绝（见上文「选择」）。
+
+#### 导出
+
+`src/app/components/markdown-editor/export.ts` 的 `renderStaticMarkup` 负责 reactive
+导出：先适配并编译，再把允许的图片预取成 data URL，然后离屏
+`createRoot` + `flushSync` 以 `mode="static"` 渲染，读 `innerHTML` 后卸载并释放运行时。
+`MarkdownEditor.buildSnapshot` 按 `format` 分派：reactive 调 `renderStaticMarkup`，
+Markdown 仍走旧管线。导出件展示的是**初始状态**（`REACTIVE_EXPORT_NOTE` 会写进文件），
+交互控件不可用；不读预览 DOM，也不要求上游新增渲染框架。`buildExportHtml` 仍负责拼文件、
+绝对化地址与抄 head 样式。
+
+#### 对外契约与管理端预览
+
+- `content` 仍是**源码**，不新增 HTML 字段；消费方按 `format` 分支。详见
+  `docs/bot/blog-bot.md` / `docs/bot/clipboard-bot.md` 与 §7.3。
+- 搜索 `search_fields=content` 继续搜源码，因此组件标签也会被匹配；不另做一套
+  正文抽词。
+- `/reactive-preview/[id]` 是**仅管理员**的隔离预览（`requireAdmin` +
+  `force-dynamic` + `noindex`）：绕过 `REACTIVE_MD_MODE` 与逐篇 override，强制用新
+  渲染器渲染任意存量文章，页面列出诊断码并标注「正式灰度会回退旧渲染器」。它只给
+  管理员，因为输出是尚未灰度的渲染路径。
+- 样式在 `src/styles-scss/pages/blog/_reactive-md.scss`，只在
+  `.reactive-document .md-document` 下覆写；详见 `docs/frontend-styles.md` §7.6。
+
 ## 7. 数据流（4 个典型路径）
 
 ### 7.1 用户登录
@@ -1868,12 +2020,24 @@ bot 接口，私密夹也能**复制成公开**、能导出 JSON —— 它的�
        未登录  → redirectToLogin('/blog/<id>')   站内文章不是「不存在」，访客拿登录页
        非 core → forbidden()                     已登录但档位不够 → 原地 403
        core+   → notFound()
-  → Server Component 渲染 Markdown 占位 + 注入数据
-       core+ → 正文 + FeedButton + CommentSection（contentRefs='expand'）
-       访客 → 标题 / 作者 / 文章时间 / 正文（contentRefs='external'），零站内 affordance
-              + resolvePublicClipRefs(正文) 的结果当 externalClips 一起下发
-  → 客户端 marked + DOMPurify + highlight.js 完成正文
+  → Server Component 先按 visibility / isCore 判可达，再交给 read-render：
+       resolveReadRender({ format, override, source, viewer, mode })
+         mode = core+ ? 'expand' : 'external'
+  → 四种结果（data-content-renderer）：
+       legacy         → MarkdownRenderer（contentRefs='expand' / 'external'）
+       reactive       → ReactiveDocument（RSC 只传可序列化 document + hostData）
+       reactive-static→ 本次请求的静态正文（ReactiveDocument mode="static"）
+       unavailable    → 明确失败态（不把源码交给任何解析器）
+       core+ → 正文 + FeedButton + CommentSection
+       访客 → 标题 / 作者 / 文章时间 / 正文，零站内 affordance
+              legacy 分支另把 resolvePublicClipRefs(正文) 的结果当 externalClips 下发
+  → legacy 由客户端 marked + DOMPurify + highlight.js 完成正文；
+    reactive / reactive-static 不走旧管线
 ```
+
+⚠️ **渲染路径不是可见性判定。** `read-render` 只决定「用哪个渲染器解释正文」，必须在
+`getBlogDetail` 已经判过档位之后调用；反过来，`format` / `renderer_override` 也不改变
+谁能读到这篇文章（§6.11）。
 
 ⚠️ **原始 markdown 是作为 RSC prop 随首屏 payload 下发的** —— 「正文交给客户端渲染」
 不构成任何保护，闸门必须在服务端把串传出去之前（`docs/architecture.md` §6.7 那条管线）。
@@ -1892,6 +2056,21 @@ bot 接口，私密夹也能**复制成公开**、能导出 JSON —— 它的�
 要 core+ 会话。`'external'` **一个请求都不发**（所以它不需要凭据，也拿不到 401）。
 ⚠️ 别把它缩回「一律不展开」——「作者把文章设为对外可见，读到的人却看不到正文里的
 图和录音」正是被修掉的那版行为；也别忘了**私有资源仍然出不去**（见 §6.11 风险 2）。
+
+**ReactiveMD 管线的引用行为**（`src/lib/reactive/ref-adapter.ts`，细节见 §6.23）：
+
+| 引用 | `expand`（core+） | `external`（访客 / 非 core） |
+|------|-------------------|------------------------------|
+| 图床 | `![id](/api/images/id/raw)` | 同左（浏览器按 URL 取，适配器不发业务请求） |
+| 音频 | `<site-embed kind="audio">` → `/api/audio/ID/raw` | 同左（raw 路由逐条判档） |
+| 投票 | 交互投票组件 | 保留 `[@9位]` 字面量，不发请求 |
+| 收藏夹 | 收藏夹卡片 | 保留 `[@6位]` 字面量，不发请求 |
+| 剪贴板 | **链接卡片**（不内联正文） | 仅服务端下发的公开剪贴板 → 链接卡片；否则字面量 |
+
+判据与 legacy 那条一样是「读口匿名取不取得到」，但**剪贴板在新管线里一律不内联** ——
+Markdown 与 ReactiveMD 的语义兼容性还没验收，把可能是 reactive 语法的正文拼进父文档
+等于拿作者内容做二次解析。`external` 模式下适配器**一个业务请求都不发**：公开剪贴板由
+`prepare.ts` 先查库（服务端）再作为 `externalClips` 传入。
 
 ⚠️ `generateMetadata()` 与页面是**两个独立的渲染步**，页面那道可见性判定管不到它 ——
 它必须自己判一次，判不过就返回中性标题、绝不回显（`tests/e2e/access-control.spec.ts`

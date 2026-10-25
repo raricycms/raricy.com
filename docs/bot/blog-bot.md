@@ -236,23 +236,27 @@ Content-Type: application/json
 {
   "title": "标题",
   "description": "一句话摘要",
-  "content": "# 正文\n\nMarkdown 源文",
+  "content": "# 正文\n\n正文源码（默认 Markdown）",
   "category_id": 7
 }
 ```
 
 ### 7.1 请求字段
 
-**只有这 6 个键。多一个都会被 `400` 顶回来。**
+**只有这 7 个键。多一个都会被 `400` 顶回来。**
 
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|:----:|------|
 | `title` | string | 是 | 标题，**去空白后**不能为空 |
 | `description` | string | 是 | 摘要 / 简介，**去空白后**不能为空 |
-| `content` | string | 是 | 正文，**Markdown 源文**，**不 trim**（原样入库） |
+| `content` | string | 是 | 正文**源文**，**不 trim**（原样入库）。默认是 Markdown；`format='reactive'` 时是 ReactiveMD 源码，**不是 HTML** |
 | `category_id` | number \| string | 否 | 栏目数字 ID（§6）；不传 = 未分类 |
 | `visibility` | string | 否 | 对外可见性三档（见下）；**不传 = `internal`（仅站内）** |
 | `allow_anonymous_comments` | boolean | 否 | 本文允不允许匿名评论（默认 `true`）。**必须是 JSON 布尔值**，传 `"false"` 会被 400 拒 |
+| `format` | string | 否 | 正文语言：`markdown`（默认）或 `reactive`。未知值 `400`，不静默当 Markdown。reactive 发布前会先编译并生成同版本静态快照；编译失败返回 `400 ReactiveMD 正文无法编译，已拒绝发布`，不会落半份正文 |
+
+> `syntax_version` 与 `renderer_override` 是**只读**字段，不属于写请求的键集；
+> 传了会按未知字段 `400`。它们只在 `GET /api/blogs/:id` 的响应里出现。
 
 | 长度上限 | 值 | 计数口径 |
 |----------|-----|----------|
@@ -333,7 +337,9 @@ Content-Type: application/json
 | 跨站调用 | `403 跨源请求被拒绝 (CSRF)` |
 | 标题 / 摘要 / 正文为空 | `400 标题不能为空` / `描述不能为空` / `内容不能为空` |
 | 超过长度上限 | `400 标题不能超过30个字符` / `描述不能超过100个字符` / `内容不能超过250000个字符` |
-| **传了不认识的键** | `400 未知字段 "…"，本接口只接受：title / description / content / category_id / visibility / allow_anonymous_comments` |
+| **传了不认识的键** | `400 未知字段 "…"，本接口只接受：title / description / content / category_id / visibility / allow_anonymous_comments / format` |
+| `format` 不在白名单 | `400 内容格式取值不合法，可选：markdown / reactive` |
+| `format='reactive'` | 先编译并生成同版本快照；无法编译时 `400 ReactiveMD 正文无法编译，已拒绝发布`（正文 / 快照都不落库） |
 | `allow_anonymous_comments` 不是布尔 | `400 allow_anonymous_comments 必须是布尔值（true / false）` |
 | `category_id` 不是整数 | `400 栏目ID格式错误` |
 | `category_id` 不存在或**已停用** | `400 选择的栏目不存在` |
@@ -341,8 +347,9 @@ Content-Type: application/json
 | 该栏目仅管理员可发（含父栏目勾选） | `403 该栏目仅允许管理员发布文章` |
 | 触发每日限额 | `429 今日发布数量已达上限（20篇）` |
 
-校验顺序是固定的，一次只报第一条：**未知字段 → 可见性 → 必填 → 长度 → 栏目格式 / 存在性**。
-所以「空标题 + `visibility` 拼错」报的是**可见性**那条；改完才会看到「标题不能为空」。
+校验顺序是固定的，一次只报第一条：**未知字段 → 正文格式 → 可见性 → 必填 → 长度 →
+栏目格式 / 存在性**。所以「空标题 + `visibility` 拼错」报的是**可见性**那条；改完才会
+看到「标题不能为空」。
 
 ---
 
@@ -356,7 +363,7 @@ Content-Type: application/json
 { "title": "新标题", "description": "新摘要", "content": "新正文", "category_id": null, "visibility": "link" }
 ```
 
-- **请求字段与 §7.1 完全一致**（同样只认那 6 个键，同样那几档长度上限）
+- **请求字段与 §7.1 完全一致**（同样只认那 7 个键，同样那几档长度上限）
 - 是**整体覆盖**，不是局部更新 —— 想把文章改成未分类，就显式传 `category_id: null`
 - 成功：`{ "code": 200, "message": "更新成功", "blog_id": "…", "redirect": "/blog/…" }`
 - 更新时间只在文章实际变化时刷新，口径见 §5；重复保存不会把文章顶到更新时间列表前面。
@@ -368,6 +375,10 @@ Content-Type: application/json
 >
 > ⚠️ 同一豁免也适用于 `allow_anonymous_comments`：**不传 = 不改动**。否则一个不认识
 > 这个键的旧调用方改一次标题，就会把作者刻意关掉的匿名评论**重新打开**。
+>
+> ⚠️ `format` 也是「不传 = 保留库里原值」：旧调用方整体覆盖时不会把一篇 reactive
+> 文章悄悄改回 Markdown。但**存量 reactive 文章目前拒绝任何写入**（没有同版本快照
+> 可回滚）；reactive 发布同样先编译，失败时返回 `400 ReactiveMD 正文无法编译，已拒绝发布`。
 >
 > 📌 这条豁免**只对 PUT 有效**。`POST`（创建）没有「原值」可保持，不传就是
 > 默认档 `internal`（§7.1）—— 两条路径的缺省语义**相反**，别一起记。
@@ -428,7 +439,7 @@ DELETE /api/blogs/:id
 ## 9. 读文章
 
 ```http
-GET /api/blogs/:id          # 单篇（含 Markdown 正文）
+GET /api/blogs/:id          # 单篇（含正文源码）
 GET /api/blogs?page=1       # 列表
 ```
 
@@ -453,13 +464,27 @@ GET /api/blogs?page=1       # 列表
     "fish_count": 0,
     "category": "前端",              // 栏目名，未分类为 null
     "category_path": "技术 > 前端",   // 完整路径
-    "content": "# 正文…",            // Markdown 源文
+    "content": "# 正文…",            // 正文**源码**（Markdown 或 ReactiveMD），绝不是 HTML
+    "format": "markdown",             // 正文语言：markdown / reactive；认不出为 null
+    "syntax_version": null,           // 仅 reactive 有意义（语法版本，用于升级审计）
+    "renderer_override": null,        // 逐篇渲染覆盖：null / legacy / reactive；不改变 format
     "visibility": "internal",         // 对外可见性三档（§7.1）
     "allow_anonymous_comments": true  // 本文允不允许匿名评论（§7.1）
 
   }
 }
 ```
+
+> ⚠️ **`content` 始终是源码，不是渲染结果。** 本站不新增 HTML 字段。拿到
+> `format: "reactive"` 时，**不要**把它交给 Markdown 解析器 —— ReactiveMD 有
+> `{{ }}`、组件标签、数学子集等 Markdown 不认识的语法，按 Markdown 解释不会报错，
+> 只会把源码当普通文本显示出来。要么用 ReactiveMD 渲染，要么只做纯文本展示。
+>
+> ⚠️ `search_fields=content` 搜的是**源码**，所以 reactive 文档里的组件标签
+> （如 `<site-embed …>`）也会参与匹配；本站不为正文另做一套抽词。
+>
+> ⚠️ `renderer_override` 只影响兼容渲染路径，**当前没有写接口**；`syntax_version`
+> 只在 `format='reactive'` 时有值，不要拿它当渲染开关。
 
 列表（`GET /api/blogs`）的查询参数：
 
@@ -526,7 +551,9 @@ GET /api/blogs?page=1       # 列表
 | 现象 | 多半是 |
 |------|--------|
 | `400 未知字段 "category"` | §6.2：栏目字段叫 `category_id`，值是**数字 ID**，不是 slug |
-| `400 未知字段 "tags"` | 键集封闭：只认 `title` / `description` / `content` / `category_id` / `visibility` |
+| `400 未知字段 "tags"` | 键集封闭：只认 `title` / `description` / `content` / `category_id` / `visibility` / `allow_anonymous_comments` / `format` |
+| `400 内容格式取值不合法…` | `format` 只认 `markdown` / `reactive`；当前 reactive **写入**未开放（§7.1） |
+| 拿到 `format: "reactive"` 的 `content` | 那是 ReactiveMD 源码，**不要按 Markdown 解析**（§9） |
 | `400 可见性取值不合法…` | `visibility` 不在 `internal` / `link` / `public` 三档里 —— 多半是拼错了（§7.1） |
 | 文章发出去，但访客打开是登录页 | **默认档就是仅站内**（`internal`）。要对外得显式传 `visibility`（§7.1） |
 | 改了标题之后，文章突然对外打不开 | 调用方没传 `visibility`。**现在的语义是「不传 = 不改档」**，所以这不该再发生 —— 若仍出现，请提 issue（§8） |

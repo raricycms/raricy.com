@@ -374,6 +374,14 @@ ftyp 品牌 / 声明归一化 / `planImageUpload` —— 服务端与浏览器�
 （`[@8位/9位/10位]` 与「博客一条管道、评论讨论另一条」的差别）。故事是**服务端**渲染
 （`story-service.ts`，按可信输入处理）——见 `docs/guide/story-module.md`。
 
+**ReactiveMD 渲染器（2026-10）**：主副本是 `docs/architecture.md` §6.23，文件头在
+`src/lib/reactive/`（`read-render.ts` 决策、`diagnostics.ts` 回退、`ref-adapter.ts`
+引用、`compile.ts` 缓存）。三条不能破：reactive 源码**永不**交给旧 Markdown 解析器
+（认不出或编译失败 → `unavailable` / 本次请求现算的静态正文）；`<site-embed>` 标签与
+`${kind}:${ref}` 的 hostData **原子成对**（缺数据只保留字面量，绝不发半套）；`external`
+模式**零业务请求**（只用服务端下发的公开剪贴板）。灰度只住 `renderer-select.ts` +
+`REACTIVE_MD_MODE` / `REACTIVE_MD_PERCENT`，别在页面里另判 cohort。
+
 ### 表情包
 
 `src/lib/sticker-refs.ts` 头部（正则纪律与分隔符选择）+ `sticker-service.ts` 头部

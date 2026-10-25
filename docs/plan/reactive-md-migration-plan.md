@@ -1,21 +1,25 @@
 # ReactiveMD 接入博客区方案（渲染器换代）
 
-> **状态：站内预适配已实现（2026-10-26），正式渲染切换等待上游补丁。方案 A 已定。**
-> 源码核对基线为相邻 ReactiveMD 仓库的 0.5.2；该版本已提供宿主组件协议。
-> 本次修订统一格式、回滚与引用规则，并列出 6 组上游补丁、2 类条件项及可提前实施的站内适配。
+> **状态：`reactive-md@0.5.3` 已交付并精确安装；M2–M6 已在本分支落地（阅读路径、引用适配、
+> 静态正文、编辑器预览与格式选择、摘要、对外契约与文档；M5 的组件目录 / 插入菜单未接入）。
+> reactive 写入已开放（发布前编译并由同事务快照把关），剩余 M7 灰度、全量语料分类与
+> 编辑器组件目录 / 插入菜单。方案 A 已定。**
+> 源码核对基线为 `reactive-md@0.5.3`；该版本提供宿主组件协议、拆分样式入口与
+> `reactive-md/authoring`。
+> 本次修订统一格式、回滚与引用规则，并列出 6 组上游补丁、2 类条件项及站内适配。
 >
 > 四条前置事实决定了这份计划的形状：
 > 1. ReactiveMD 不是「另一个 Markdown 渲染器」，而是一套**文档语言 + 组件模型 + 运行时**；
-> 2. **0.5.2（2026-10-26）已加上宿主组件扩展轴**（`hostComponents` / `hostComponent`
->    节点 / `hostData` / `hostRenderer`），方案 A 不再需要改协议形状，只需按实际 API 接入；
-> 3. 但**作者工具所需的组件目录仍未公开导出**（`LOCAL_COMPONENTS` / `NATIVE_COMPONENTS`
->    不在包的公开 entry 里），M5 的「插入组件」等待上游公开接口；
+> 2. **0.5.3 已包含宿主组件扩展轴**（`hostComponents` / `hostComponent` 节点 /
+>    `hostData` / `hostRenderer`），方案 A 不需要改协议形状；
+> 3. **作者工具入口已在 0.5.3 公开**（`reactive-md/authoring`）；站内已接入格式选择与
+>    预览，组件目录 / 「插入组件」菜单尚未接线（reactive 写入本阶段关闭）；
 > 4. 本站存量正文里已经有大量会被新语法**重新解释**的内容（单换行、`{{ }}`、HTML 标签、
 >    公式子集、`[@…]` 展开产物）。「编译通过」不等于「渲染正确」。
 >
-> §3 记录决策，§9 区分接入选择与待验证事项，§11 列上游交付，§12 列可提前做的适配。
-> 正式接入采用 **npm 精确版本**，版本号待所需补丁发布后填写；0.5.2 仅作核对和试验基线。
-> 当前核对的协议为 `component-protocol-2`，语法为 `local-draft-2`。发布渠道和最终版本在接入时验证。
+> §3 记录决策，§9 区分接入选择与待验证事项，§11 列上游交付，§12 列站内适配与当前状态。
+> 正式接入采用 **npm 精确版本**：`reactive-md@0.5.3`。
+> 当前协议为 `component-protocol-2`，语法为 `local-draft-2`。
 
 ## 1. 目标与非目标
 
@@ -64,7 +68,7 @@
 | 1 | 旧管线保留给「评论、故事和回滚」 | `MarkdownRenderer` 的三个消费者是博客详情、剪贴板详情、编辑器预览；评论走 `rich-text.ts`，故事走 `story-service.ts` | 博客旧管线用于未迁移 Markdown 与回退；`marked` / `dompurify` 仍有其他消费者 |
 | 2 | 需要补齐代码高亮、复制按钮、图片放大、外链加固 | ReactiveMD 已内置：`src/local/code-block.tsx`（lowlight + 复制）、`image-view.tsx`（`<dialog>` 放大）、`LocalDocumentView.tsx:1249-1252`（外链 `_blank` + `noopener noreferrer`） | 要做的是「迁移站点视觉与口径」，不是「从零实现」 |
 | 3 | 编译失败才 fallback | `class` / `style` / `on*` 会让整个 HTML 标签降级成源码文本（`parser.ts:670`）；`audio` / `video` / `input` / `button` 不是 P0 HTML，会走「未知组件」分支；这些情况 `ok === true` | fallback 判据必须包含 warning 白名单，不能只看 `ok` |
-| 4 | 插件/组件列表来自 ReactiveMD 的 schema | 0.5.2 已提供宿主组件协议，但公开导出仍缺 schema / 作者目录，作者工具也不接受编译选项 | 上游补目录、纯函数导出及选项贯通；见 §11 U3–U5 |
+| 4 | 插件/组件列表来自 ReactiveMD 的 schema | 0.5.3 已提供宿主组件协议与 `reactive-md/authoring` 公共入口；站内尚未接组件目录 / 插入菜单（§12.6） | 按实际导出接入作者工具；`site-embed` 仍不进作者目录 |
 | 5 | ReactiveMD 的编辑器可以「移植工具条/命令」到 CM6 | 编辑器是 textarea + overlay（`ReactiveMarkdownEditor.tsx:65`）；可复用的是纯函数 `analyzeLocalSource` / `completeLocalSource` / `renameLocalBinding` / `formatLocalSource` 与 `editor-commands.ts` | 高亮/补全/诊断的 UI 层要按 CM6 重写；计划要写清「哪些可移植」 |
 | 6 | 公开文章用 `staticFirst` 即可 | `staticFirst` 存在（`LocalDocumentView.tsx:4454`），但 `LocalReactiveDocument` 在 `useMemo` 里**同步编译**（`LocalDocumentView.tsx:4629`） | SSR 成本、编辑防抖、worker 都不会自动获得，要宿主自己接线 |
 | 7 | 外对接口只需要「别暴露组件标签」 | `spider-service.ts:173` 直接返回原始 `content`；`/api/blogs/[id]` 同样；`docs/bot/blog-bot.md:252` 明写「content = Markdown 源文」 | 这是一次对外契约变更，要加 `format` 字段并同步 bot 文档 |
@@ -254,14 +258,14 @@ ALTER TABLE "clipboards"   ADD COLUMN "renderer_override" TEXT;
 ### D5 编辑器与组件目录
 
 - 保留 `MarkdownEditor.tsx` 的 CM6、上传、草稿、Ctrl+S、自动保存、导出、textarea 回退。
-- M5 等待上游公开作者工具入口（建议名 `reactive-md/authoring`）：schema、
+- `reactive-md@0.5.3` 已公开作者工具入口 `reactive-md/authoring`：schema、
   `getNativeComponentCatalog(locale)`、`renderNativeSnippet`、`insertTemplate` 及相关类型。
-  分析、补全、重命名、格式化还须接受与预览一致的编译配置（见 §11 U4–U5）。
+  站内尚未接线这部分（§12.6）；分析、补全、重命名、格式化还须接受与预览一致的编译配置。
 - 站点只消费这份导出，不手抄组件列表；`site-embed` 不进作者目录。
 - 插入走 CM6 transaction（`view.dispatch({ changes, selection })`），保留撤销、选区、IME；
   插入前校验完整候选文档及新增诊断，支持依赖上下文的绑定和结构组件，不能只编译孤立片段。
-- 新建格式选择、Markdown → reactive 的预览确认、保存、草稿恢复和 API 写入都显式携带格式。
-  不根据标签猜格式；默认新建格式的切换须等 M6 与快照回滚验收，旧格式读取支持随存量保留。
+- 新建格式选择、草稿恢复、保存与 API 写入都显式携带格式（已接入）。不根据标签猜格式；
+  默认新建格式的切换与 reactive 发布仍须等 M6 / 持久快照与回滚验收。
 
 ## 4. 分阶段实施
 
@@ -326,8 +330,8 @@ ALTER TABLE "clipboards"   ADD COLUMN "renderer_override" TEXT;
 - B → 逐类决定：上游兼容选项、逐篇人工修、或让该篇留在旧渲染器；
 - C → 候选迁移集合。
 
-上游补丁前先做扫描器、旧管线基准、夹具和原始风险报告。0.5.2 编译只能生成试验报告，
-分类带 `provisional` 标记；补丁后的固定版本与选项重跑后，才能确认 C 类。
+上游补丁前先做扫描器、旧管线基准、夹具和原始风险报告。0.5.2 时的编译结论只能作为
+试验报告；0.5.3 接入后仍需用固定版本与选项重跑全量语料，分类才可确认（§12.6 仍待办）。
 报告以只读数据源运行，默认不输出私有正文，不把生产数据复制进仓库。
 
 退出条件：100% 文档有分类；B 类每一类都有明确处置（不是「以后再说」）；
@@ -347,7 +351,7 @@ ALTER TABLE "clipboards"   ADD COLUMN "renderer_override" TEXT;
 
 **站内改动**：
 
-- 依赖来源选 npm 精确版本；0.5.2 只用于临时隔离试验，正式接入等待所需补丁版。
+- 依赖来源为 npm 精确版本 `reactive-md@0.5.3`（已安装）；不 vendor 上游源码。
   验证安装包内含产物、Node >= 22.12、Next SSR 与 worker 构建，不依赖部署机现场构建上游。
 - `src/app/components/reactive/ReactiveDocument.tsx`（`'use client'`）：
   - 入参：`adaptedSource` 或已编译文档、`format`、`mode`、`staticFirst`、
@@ -720,7 +724,7 @@ X-Content-Renderer: legacy | reactive | reactive-fallback | reactive-static
 | 外链图片 | 保留博客现有能力；收紧策略单独讨论 | 历史 IP、相对地址、外链及导出 |
 | 索引 | 延续现有 public 可索引、link / internal 等非 public 不索引策略 | 无 JS 正文、robots 与权限一致；SSR 不等于新开放可见性 |
 | 嵌套剪贴板 | 按 M3 格式矩阵；reactive 统一链接卡片 | Markdown 内联的语义碰撞和来源诊断 |
-| 依赖 | npm 精确版本，等待补丁发布；不 vendor 上游源码 | 包产物、Node / Next / worker 兼容性及最终版本 |
+| 依赖 | npm 精确版本 `reactive-md@0.5.3`（已安装），不 vendor 上游源码 | 包产物、Node / Next / worker 兼容性及后续版本升级 |
 | 作者工具 | U4 公共入口 + U5 配置一致性 | CM6 撤销、选区、IME 与长文输入 |
 | 评论 / 讨论引用 | Markdown 保持首条引用展开，reactive 显示链接 | API 格式字段与缓存升级 |
 
@@ -755,7 +759,9 @@ X-Content-Renderer: legacy | reactive | reactive-fallback | reactive-static
 
 ## 11. 上游补丁交付清单
 
-本节是待实施要求。U1–U6 均未因本文修订而视为完成；入口名、参数名以最终发布接口为准。
+本节保留为上游交付的验收清单。`reactive-md@0.5.3` 已交付 U1–U6 所需的公共入口与
+诊断（宿主组件协议、拆分样式、公共导出、作者工具、选项贯通、数学诊断）；下表记录
+它们当初的范围与站内依赖阶段。入口名、参数名以实际安装的 0.5.3 为准。
 源码核对位置以 ReactiveMD 仓库相对路径列出，站点不从这些内部路径深导入。
 
 | 编号 | 补丁 | 上游范围 | 站内依赖阶段 |
@@ -824,8 +830,8 @@ X-Content-Renderer: legacy | reactive | reactive-fallback | reactive-static
 | C2 数学显示扩展 | M1 中实际文章因 `aligned`、矩阵、宏或历史定界符等无法等价迁移 | 按语料列支持集合与夹具，逐项实现或明确让对应 Markdown 文档留在 legacy |
 
 U1/U2/U3/U6 通过打包安装、声明、SSR 与 worker 验证后，才进入阅读灰度。
-M5 还要求 U4/U5。发布号在上游交付后填写；语法或协议是否升级按实际兼容性决定，
-不能把新能力写成现有 0.5.2 的能力。C1/C2 的未触发状态不阻塞其他工作。
+M5 还要求 U4/U5。实际接入版本为 `reactive-md@0.5.3`；语法或协议是否升级按实际兼容性
+决定，不把新能力写成旧版本的能力。C1/C2 的未触发状态不阻塞其他工作。
 
 ## 12. 现在可预先做的站内适配
 
@@ -878,15 +884,18 @@ P7 可先交付缓存键各字段和容量管理测试；真正调用上游选�
 P8 可先确定摘要/版本关联和存储接口；生成快照、同版本发布与失败拒绝必须在 M5 开放写入前集成。
 持久快照的存储位置、格式及失效规则定稿后，再实施对应迁移。
 
-### 12.3 等待上游后才能完成的工作
+### 12.3 上游交付后的状态（0.5.3）
 
-- 最终语料分类、自动兼容判定与灰度名单：等待 U1/U6 及精确版本重跑。
-- 正式阅读 wrapper、样式、SSR/hydration、worker 构建和运行时生命周期：等待 U1/U2/U3，
-  在真实 Next 环境验收；现有 `LocalDocumentView` 接口可先做隔离试验。
-- CM6 组件菜单、配置表单、完整诊断与重命名/格式化接线：等待 U4/U5。
-  先保留现有 CM6、上传、撤销、草稿和工具条，不手抄组件目录。
-- 静态快照实际生成、离线导出、reactive 摘要及开放新格式：等待编译/渲染接线与 M6 契约验收。
-- 切换默认格式、迁移文章和删除博客旧管线：等待语料、性能、浏览器与回滚验收。
+- **最终语料分类、自动兼容判定与灰度名单**：仍未完成。`reactive:corpus` 只用夹具验证，
+  未扫描业务库；报告仍是 provisional。
+- **正式阅读 wrapper、样式、SSR / hydration、worker 构建与运行时生命周期**：已接入
+  `ReactiveDocument` / `read-render` / `ReactivePreview`；真机与性能验收仍属 M7。
+- **CM6 组件菜单、配置表单、完整诊断与重命名 / 格式化**：`reactive-md/authoring` 已公开，
+  站内尚未接线；当前保留现有 CM6、上传、撤销、草稿和工具条。
+- **静态快照实际生成、同版本发布**：`snapshot.ts` 契约已由迁移 36
+  （`reactive_snapshots`）落地（存编译产物 JSON，不是 HTML）；正文与快照同事务写入；
+  离线导出与 reactive 摘要已接入。reactive 写入因此仍关闭。
+- **切换默认格式、迁移文章和删除博客旧管线**：仍未开始，等待语料、性能、浏览器与回滚验收。
 
 ### 12.4 预适配完成的判据
 
@@ -900,7 +909,7 @@ P8 可先确定摘要/版本关联和存储接口；生成快照、同版本发�
 
 | 项目 | 已交付 | 后续阶段边界 |
 |------|--------|--------------|
-| P1 格式数据层 | 手写迁移 35、Prisma 字段、博客/剪贴板 service 和 API 格式透传；新建默认、更新保留与拒写闸门 | 迁移尚未应用到业务库；reactive 写入关闭 |
+| P1 格式数据层 | 手写迁移 35、Prisma 字段、博客/剪贴板 service 和 API 格式透传；新建默认、更新保留与写入闸门 | 迁移尚未应用到业务库 |
 | P2 渲染选择 | `renderer-select.ts`、flags 解析、稳定 ID 分档、同版本快照选择 | 纯决策函数已交付，现有页面仍使用 legacy |
 | P3 引用与映射 | `ref-adapter.ts`、`source-map.ts`；五类引用、伪造标签转义、UTF-16 双向映射 | 剪贴板统一链接卡片；Markdown 内联须等语义验收；宿主 renderer 待 M3 |
 | P4 结构化取数 | `ref-reader.ts`、`prepare.ts`；成员/公开权限、公开剪贴板 DTO、共同内容版本和源码 hash | 没有客户端重复取数或会话共享缓存；页面接线待 M2–M4 |
@@ -908,7 +917,7 @@ P8 可先确定摘要/版本关联和存储接口；生成快照、同版本发�
 | P6 语料工具 | `reactive:corpus` 命令支持显式 JSON/JSONL 或 SQLite 只读输入；输出路径不能覆盖输入 | 仅以夹具验证；未扫描业务库，未形成全量语料分类；报告仍为 provisional |
 | P7 URL 与缓存 | 用途 URL 策略、完整编译版本键、复制并深冻结的 JSON LRU、字节容量统计 | 尚未接入 ReactiveMD 编译；上游选项签名由未来调用方传入 |
 | P8 快照契约 | `snapshot.ts` 的受信任生成器/存储接口、发布协调、版本与摘要校验、失败拒读 | 无生产表或真实快照生成器；服务端静态生成与同事务发布待 M6 |
-| P9 验证 | 格式/API、引用权限与预算、位置映射、缓存隔离、快照竞态、扫描只读夹具 | 无 JS、SSR/hydration、IME、移动端与发布闭环等待实际渲染/作者工具接线 |
+| P9 验证 | 格式/API、引用权限与预算、位置映射、缓存隔离、快照竞态、扫描只读夹具 | 无 JS、SSR/hydration、IME、移动端与发布闭环仍需真机验收；作者工具尚未接线 |
 
 整合修正包括：保留收藏夹与音频各自 3 条的显示预算；显式 null 格式不按旧 Markdown
 解释；统一公开/成员剪贴板内容版本；缓存不受输入对象后续修改影响；快照生成前固定版本，
@@ -920,3 +929,30 @@ P8 可先确定摘要/版本关联和存储接口；生成快照、同版本发�
 
 代码提交：`84e5b35f`（格式与选择）、`7da1fef1`（引用与权限）、`09e26819`（扫描/缓存/快照）、
 `1cd206e3`（格式落库/API/旧消费者及服务端准备入口）。均为本地 commit，未推送或合并。
+
+### 12.6 0.5.3 实施记录（2026-10-26）
+
+`reactive-md@0.5.3` 已精确安装。本分支在预适配之上接入了阅读与预览链路：
+
+| 阶段 | 已实现 | 文件落点 |
+|------|--------|----------|
+| M2 地基 | 服务端编译 + globalThis LRU + `mode="static"` 静态正文 + 宿主组件 schema + 诊断回退 + 管理员预览 | `src/lib/reactive/{compile,cache,host-components,diagnostics}.ts`、`src/app/components/reactive/ReactiveDocument.tsx`、`src/app/reactive-preview/[id]/page.tsx` |
+| M3 引用 | 五类引用适配、区间映射、external 零业务请求、三态宿主渲染 | `src/lib/reactive/{ref-adapter,ref-reader,prepare,source-map}.ts`、`src/app/components/reactive/{SiteEmbedView,site-embed-static}.tsx` |
+| M4 阅读页 | `read-render` 选择器、博客 / 剪贴板详情分叉、静态正文回退 | `src/lib/reactive/read-render.ts`、`src/app/blog/[id]/page.tsx`、`src/app/clipboard/[id]/page.tsx` |
+| M5 预览 | 客户端适配 + `LocalCompileScheduler`（worker 回退主线程）、只读宿主渲染、格式选择、草稿格式信封与恢复 | `src/lib/reactive/client-compile.ts`、`src/app/components/reactive/ReactivePreview.tsx`、`src/lib/md-editor/draft.ts`、`BlogForm.tsx` / `clipboard/upload/UploadForm.tsx` |
+| M6 摘要 / 契约 | AST 摘要、API / spider 的 `format` / `syntax_version`、导出按格式分派静态渲染 | `src/lib/blog-excerpt.ts`、`src/app/components/MarkdownEditor.tsx`、`src/app/components/markdown-editor/export.ts`、各 API route |
+| 样式 | `.reactive-document .md-document` 站点对齐、暗色、375px、打印 | `src/styles-scss/pages/blog/_reactive-md.scss` |
+
+**仍未完成 / 未验收：**
+
+1. **M7 灰度与回滚演练**：`off → shadow → 5% → 25% → 100%`，观察回退率、诊断码分布、
+   编译 p95、TTFB；`REACTIVE_MD_PERCENT` 默认 `0`，当前线上仍是 legacy。
+2. **持久快照**：生产表 `reactive_snapshots`（迁移 36）与「正文 + 快照同事务发布」已接通；
+   存的是 `LocalDocument` + external hostData（JSON），不是 HTML。读取优先同版本快照，
+   签名过期时回退到当前正文现编译。
+3. **语料分类**：`npm run reactive:corpus` 只用夹具验证，尚未扫描业务库，报告仍是
+   provisional；A/B/C 分桶与灰度名单未定。
+4. **编辑器作者工具**：格式选择、预览与草稿格式信封已接入；`reactive-md/authoring`
+   的组件目录、「插入组件」菜单与行内诊断尚未接线。
+5. **观测**：`data-content-renderer` 与结构化日志已落地；响应头
+   `X-Content-Renderer` 尚未接入。
