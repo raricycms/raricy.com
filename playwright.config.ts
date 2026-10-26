@@ -85,6 +85,7 @@ const RESPONSIVE_SPECS: RegExp[] = [
   /lumen\.spec\.ts$/,
   /yiwen\.spec\.ts$/,
   /hinge\.spec\.ts$/,
+  /hinge2\.spec\.ts$/,
   // 手工间三款都靠真实指针在 SVG / canvas 上作画，窄屏的工作台高度与触控可用性
   // 只有 mobile 那一遍量得到；导出也必须在两种视口都能下载。
   /craft-games\.spec\.ts$/,

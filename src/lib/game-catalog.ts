@@ -72,6 +72,17 @@ export const GAMES = [
     icon: 'marbling',
   },
   {
+    id: 'hinge2',
+    title: '合页 Demo 2',
+    description: '转动整张纸页，走进镜中道路，沿折痕对折空间。四张立体纸景，从单个机关到组合谜题。',
+    category: 'puzzle',
+    modes: ['solo'],
+    href: '/game/hinge2',
+    runtime: 'native',
+    collectionId: 'test',
+    icon: 'hinge',
+  },
+  {
     id: 'hinge',
     title: '合页 Demo',
     description: '滑动、转动承载房间的纸片，改变门之间的连接。五个练习与一张从开局就能尝试的主谜题。',

@@ -1,0 +1,96 @@
+@use '../../abstracts/mixins' as m;
+
+.h2-game {
+  padding-top: 28px; padding-bottom: 40px;
+  button { font-family: inherit; touch-action: manipulation; }
+  button:disabled { opacity: .4; cursor: default; }
+  button:focus-visible, a:focus-visible, section:focus-visible { outline: none; box-shadow: var(--shadow-focus-brand); }
+}
+.h2-header, .h2-brand, .h2-header-end, .h2-footer { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.h2-header { margin-bottom: 24px; }
+.h2-brand { justify-content: flex-start; gap: 12px; h1 { margin: 0; font-size: 1.65rem; font-weight: 600; letter-spacing: .08em; span { font-family: Georgia, serif; color: var(--color-text-secondary); font-weight: 400; margin-left: 4px; } } }
+.h2-demo { font-size: .72rem; color: var(--color-text-secondary); padding: 6px 10px; border-radius: 999px; background: var(--color-background-content); }
+.h2-completion { font-size: .78rem; color: var(--color-text-secondary); .numeric { margin-left: 6px; } }
+.h2-text-link { display: flex; align-items: center; gap: 4px; color: var(--color-text-secondary); font-size: .78rem; }
+.h2-primary, .h2-secondary, .h2-icon-button, .h2-chapter { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; font-size: .8rem; padding: 10px 16px; line-height: 1.4; }
+.h2-primary { @include m.btn-primary; }
+.h2-secondary, .h2-icon-button { @include m.btn-secondary; }
+.h2-icon-button { width: 44px; padding: 10px; flex-shrink: 0; }
+.h2-layout { display: grid; grid-template-columns: 180px minmax(0, 1fr); gap: 24px; align-items: start; }
+.h2-chapters { display: flex; flex-direction: column; gap: 8px; padding-top: 28px; min-width: 0; }
+.h2-chapter { @include m.btn-tab; justify-content: flex-start; text-align: left; padding: 18px 16px; gap: 12px; border-radius: 20px; width: 100%; > svg { margin-left: auto; flex-shrink: 0; width: 13px; } }
+.h2-chapter-number { font-size: .7rem; opacity: .75; }
+.h2-chapter-title { display: flex; flex-direction: column; gap: 6px; font-size: .95rem; font-weight: 600; small { font-weight: 400; font-size: .64rem; color: var(--color-text-secondary); white-space: nowrap; } }
+.h2-chapter-note { margin: 16px; color: var(--color-text-secondary); font-size: .7rem; line-height: 1.8; }
+.h2-workspace { background: var(--color-background-card); border-radius: 30px; overflow: hidden; min-width: 0; position: relative; }
+.h2-scene-heading { display: flex; justify-content: space-between; align-items: center; padding: 28px 32px 0; position: relative; z-index: 1; pointer-events: none; p { margin: 0 0 6px; font-size: .7rem; color: var(--color-text-secondary); } h2 { margin: 0; font-size: 1.4rem; font-weight: 500; letter-spacing: .14em; } }
+.h2-seal-count { display: flex; align-items: center; gap: 8px; color: var(--color-text-secondary); font-size: .7rem; > span:first-child { color: var(--color-accent-amber); font-size: 1.5rem; } }
+.h2-scene { display: block; width: 100%; height: auto; margin-top: -44px; overflow: visible; user-select: none; -webkit-tap-highlight-color: transparent; }
+// Artwork uses its own material colors; controls and page surfaces use the site theme.
+.h2-ground-shadow { fill: #78938c; opacity: .09; }
+.h2-orbit { stroke: #9da9a0; opacity: .34; }
+.h2-block--paper { .h2-block-top { fill: #ede4cc; } .h2-block-side { fill: #d5c9af; } .h2-block-front { fill: #e0d3b9; } }
+.h2-block--folded { .h2-block-top { fill: #d8e5dc; fill-opacity: .7; } .h2-block-side { fill: #b8cbc2; } .h2-block-front { fill: #c3d5cb; } }
+.h2-block--stone, .h2-block--ivory { .h2-block-top { fill: #fff9e8; } .h2-block-front { fill: #d6d4c1; } .h2-block-side { fill: #b9c2b6; } }
+.h2-block--glass { .h2-block-top { fill: #bce7df; fill-opacity: .85; } .h2-block-front { fill: #78aaa7; fill-opacity: .5; } .h2-block-side { fill: #8cbdb2; fill-opacity: .7; } }
+.h2-path-line { fill: none; stroke: #d7cbb1; stroke-width: 1; stroke-dasharray: 2 5; }
+.h2-glass-line { fill: none; stroke: #f5fffa; stroke-width: 1.5; stroke-dasharray: 5 7; }
+.h2-mirror-source { polyline { fill: none; stroke: #b79c70; stroke-width: 4; stroke-linecap: round; } circle { fill: #e9d8ae; stroke: #b79c70; stroke-width: 2; } opacity: .7; }
+.h2-door-light { fill: #c4bc9e; transition: fill .5s; }
+.h2-workspace[data-won='true'] .h2-door-light { fill: #f1cf7d; }
+.h2-landing { cursor: pointer; outline: none; .h2-landing-hit { fill: transparent; } .h2-landing-dot { fill: #aaa38e; stroke: #fff9e8; stroke-width: 1; transition: fill .2s; } .h2-landing-ring { fill: none; stroke: #937a56; stroke-width: 1.5; opacity: 0; transition: opacity .2s; } &:hover, &:focus-visible { .h2-landing-ring { opacity: 1; } .h2-landing-dot { fill: #9c7745; } } &.is-connected .h2-landing-dot { fill: #698f85; } &.is-reflection .h2-landing-dot { fill: #5d9695; } &[aria-disabled='true'] { cursor: default; } }
+.h2-seal { ellipse { fill: none; stroke: #c7a162; stroke-width: 1; } > path:first-of-type { fill: #deb96f; stroke: #b99253; stroke-width: 1; } &.is-collected { opacity: .24; > path { display: none; } } }
+.h2-handle { cursor: pointer; color: #577b77; text { fill: #697d75; text-anchor: middle; font-size: 12px; font-family: inherit; letter-spacing: 1px; } .h2-handle-disc { fill: #e2eee7; stroke: #b9cfc1; stroke-width: 1; transition: fill .2s; } &:hover .h2-handle-disc, &:focus-visible .h2-handle-disc { fill: #c7e4d7; } &:focus-visible { outline: none; filter: drop-shadow(0 0 4px #4d90b5); } &[aria-disabled='true'] { cursor: default; } }
+.h2-wheel text { fill: #8c7455; }
+.h2-compass { color: #9ca99e; text { text-anchor: middle; font-size: 11px; font-family: Georgia, serif; } }
+.h2-scene-caption { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: -8px 32px 20px; position: relative; color: var(--color-text-secondary); font-size: .66rem; span { display: flex; align-items: center; gap: 6px; } i { display: block; width: 5px; height: 5px; border-radius: 50%; background: #8a9e91; } }
+.h2-mechanisms { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 12px; padding: 0 24px; }
+.h2-control-pair { display: flex; align-items: center; gap: 0; background: var(--color-background-page); border-radius: 999px; padding: 4px; .h2-secondary { min-height: 40px; } }
+.h2-turn-value { min-width: 40px; text-align: center; font-size: .72rem; color: var(--color-text-secondary); }
+.h2-key { font-family: var(--font-mono); font-size: .6rem; opacity: .55; margin-left: 3px; }
+.h2-feedback { min-height: 82px; display: flex; align-items: center; justify-content: center; gap: 16px; padding: 20px 32px 12px; color: var(--color-text-secondary); font-size: .75rem; line-height: 1.9; text-align: center; &.is-won { color: var(--color-success-primary); > span { display: flex; align-items: center; gap: 6px; } > span:last-child { font-size: .7rem; } } }
+.h2-utilities { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 0 24px 16px; > div { display: flex; align-items: center; gap: 0; } .h2-secondary { font-size: .72rem; padding-inline: 12px; } }
+.h2-hint { margin: 0 24px 24px; display: flex; align-items: center; gap: 12px; padding: 16px; border-radius: 20px; background: var(--color-background-page); color: var(--color-text-secondary); font-size: .8rem; line-height: 1.8; > svg { flex-shrink: 0; color: var(--color-accent-amber); } p { flex: 1; margin: 0; } > button { flex-shrink: 0; } }
+.h2-destinations { margin: 0 24px 20px; padding: 12px; border-radius: 20px; background: var(--color-background-page); display: flex; flex-wrap: wrap; gap: 4px; .h2-secondary { font-size: .72rem; } p { font-size: .75rem; color: var(--color-text-secondary); } }
+.h2-footer { margin-top: 12px; margin-left: 204px; font-size: .7rem; color: var(--color-text-secondary); .h2-secondary { font-size: .7rem; } .is-open { transform: rotate(180deg); } svg { transition: transform .2s; } .h2-save-error { color: var(--color-warning-primary); } }
+.h2-rules { margin: 8px 0 0 204px; padding: 20px 24px; background: var(--color-background-card); border-radius: 20px; color: var(--color-text-secondary); font-size: .8rem; line-height: 1.9; p { margin: 0 0 8px; &:last-child { margin-bottom: 0; } } }
+@media (max-width: 991px) {
+  .h2-layout { grid-template-columns: 140px minmax(0, 1fr); gap: 16px; }
+  .h2-chapter { padding: 16px 12px; gap: 8px; > svg { display: none; } }
+  .h2-chapter-title small { font-size: .6rem; }
+  .h2-footer, .h2-rules { margin-left: 156px; }
+}
+@media (max-width: 767px) {
+  .h2-game { padding-top: 20px; }
+  .h2-header { margin-bottom: 16px; gap: 8px; }
+  .h2-brand { gap: 8px; h1 { font-size: 1.4rem; } }
+  .h2-demo { font-size: .6rem; padding: 5px 8px; }
+  .h2-header-end { gap: 10px; }
+  .h2-layout { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+  .h2-chapters { flex-direction: row; padding-top: 0; gap: 4px; }
+  .h2-chapter { padding: 10px 8px; justify-content: center; border-radius: 999px; gap: 6px; min-width: 0; .h2-chapter-title { font-size: .8rem; } small { display: none; } }
+  .h2-chapter-note { display: none; }
+  .h2-workspace { border-radius: 24px; }
+  .h2-scene-heading { padding: 24px 24px 0; h2 { font-size: 1.25rem; } }
+  .h2-scene { margin-top: -12px; }
+  .h2-scene-caption { margin: 0 24px 20px; font-size: .6rem; }
+  .h2-mechanisms { padding-inline: 16px; gap: 8px; .h2-primary, .h2-secondary { font-size: .72rem; gap: 5px; padding-inline: 12px; } }
+  .h2-key { display: none; }
+  .h2-feedback { padding: 16px 24px 8px; font-size: .72rem; }
+  .h2-utilities { padding-inline: 12px; .h2-secondary { padding-inline: 8px; gap: 5px; } }
+  .h2-footer, .h2-rules { margin-left: 0; }
+  .h2-footer { gap: 8px; font-size: .65rem; }
+  .h2-completion { font-size: .66rem; }
+  .h2-text-link { font-size: .66rem; }
+  .h2-hint { margin-inline: 16px; gap: 8px; padding: 12px; font-size: .72rem; .h2-secondary { padding-inline: 8px; } }
+}
+@media (max-width: 399px) {
+  .h2-header-end .h2-text-link { display: none; }
+  .h2-brand { gap: 4px; }
+  .h2-control-pair .h2-secondary { padding-inline: 10px; }
+  .h2-turn-value { min-width: 32px; }
+  .h2-mechanisms { gap: 6px; }
+  .h2-mechanisms .h2-primary { padding-inline: 10px; }
+  .h2-utilities .h2-icon-button { width: 38px; padding-inline: 8px; }
+}
+@media (prefers-reduced-motion: reduce) { .h2-game * { animation: none !important; transition: none !important; } }

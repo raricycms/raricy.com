@@ -1645,9 +1645,15 @@ MP3 的帧同步要核版本 / 层 / 位速率字段（只判 `0xFF` 打头太�
 （`/game/collections/<父>/<子>`），没有第二份 href 可漂；玩具首页只陈列顶层合集与
 ATÅMAS（益智、单人、原生组件），合集页陈列「直属游戏 + 子合集」，路由是 catch-all
 （`src/app/game/collections/[...slug]/page.tsx`）。顶层「测试」合集
-`/game/collections/test` 收录 Wand demo、Wand demo 2、公共空间、圈地运动、合页 Demo、
+`/game/collections/test` 收录 Wand demo、Wand demo 2、公共空间、圈地运动、合页 Demo、合页 Demo 2、
 异文 Demo、折光与双影，并挂着手工间子合集 `/game/collections/test/craft`
 （织布机、剪纸、水面印花）；旧的顶层地址 `/game/collections/craft` 永久跳到新路径。
+
+`/game/hinge2` 是独立的第二版合页：四张立体纸景分别引入整页旋转、可行走的镜中倒影、
+右半页对折，并在末关组合。`src/games/hinge2/engine.ts` 的坐标变换同时驱动渲染与道路
+连接；只有显式落点重合才跨表面连通，人物归属落点，随所在纸面或倒影一起移动。
+进度以动作历史保存在浏览器的 `hinge-demo-v2`，加载时逐步回放校验，与初版存档独立。
+`tests/unit/hinge2.test.ts` 穷举每关缺少一种机关时的可达状态，防止绕开核心机关的捷径。
 
 手工间三款游戏共用 `src/games/craft/` 下的外壳、音效、草稿钩子与导出：
 `CraftHull.tsx` 是页面外壳（页头、返回、静音、工作区 / 侧栏），`sound.ts` 是模块级

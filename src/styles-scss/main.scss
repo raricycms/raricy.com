@@ -58,6 +58,7 @@
 @use 'pages/game/lumen';
 @use 'pages/game/yiwen';
 @use 'pages/game/hinge';
+@use 'pages/game/hinge2';
 @use 'pages/game/craft';
 // 手工间三款游戏各自一份，共用的外壳留在 _craft.scss。
 // 拆开不只是"文件短一点"：三款游戏的美术是各自独立的，混在一个文件里改织布机
