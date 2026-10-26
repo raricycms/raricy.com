@@ -35,12 +35,15 @@
 // 再取出 innerHTML（见该函数头）。适配、编译、图片内联都在这里做，调用方只负责
 // 把结果交给 `buildExportHtml`。上游 `screen.css` 从这里 side-effect import ——
 // 编辑器页面因此一定会把它带进 head，`collectStyleMarkup` 才抄得到。
+// **不 import `print.css`**：它带全局 `@page`，站点的打印规则已经是作用域化的
+// （见 `src/styles-scss/pages/blog/_reactive-md.scss` 的 `@media print`），
+// 导出件不该再被第二套全局分页规则接管。
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { createElement } from 'react';
 import { flushSync } from 'react-dom';
 import { createRoot } from 'react-dom/client';
-import { compileLocal, createLocalRuntime } from 'reactive-md';
+import { compileLocal, createLocalRuntime, type LocalDocument, type LocalNode } from 'reactive-md';
 import { LocalDocumentView } from 'reactive-md/react/unstyled';
 import 'reactive-md/screen.css';
 
@@ -221,19 +224,62 @@ export function stripInteractiveShells(root: HTMLElement): void {
 export const REACTIVE_EXPORT_NOTE =
   'ReactiveMD 文档：导出件展示初始状态；交互控件在导出件中不可用。';
 
-/** Markdown 图片与原生 `<img>` —— 两处都要预取，漏一处那张图离线就裂。 */
-const MD_IMAGE_RE = /!\[[^\]]*\]\(\s*<?([^)\s>]+)>?(?:\s+["'][^"']*["'])?\s*\)/g;
-const HTML_IMAGE_RE = /<img\b[^>]*\bsrc\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/gi;
+/**
+ * 单张图片**从发出请求到读完 body** 的总上限。
+ *
+ * 与整体预算分开的两个理由：
+ *   · 一张外链图片的服务器完全不响应时，没有单图上限就只有一个整次导出的上限；
+ *   · 单图上限让「坏的那张」尽早让位，其他图片继续排队（并发闸门只有 4 格）。
+ */
+export const IMAGE_FETCH_TIMEOUT_MS = 8_000;
 
-function collectImageUrls(source: string): string[] {
+/**
+ * 整次导出的图片预取总预算。
+ *
+ * 从开始预取算起，到点后**不再发起新的图片**、在飞的也按剩余预算封顶。
+ * 这个数不是「等图片多久」，而是「导出最多被图片挡住多久」：预取之后还要
+ * 离屏 React 渲染一次，整段体验不能被一串慢外链无限拖长。
+ */
+export const IMAGE_PREFETCH_BUDGET_MS = 20_000;
+
+/**
+ * 单张图片允许读入内存的字节上限。
+ *
+ * 与图床上传的请求上限（`MAX_REQUEST_BYTES` = 12MiB）同量级：本站自己产出的
+ * 图片不会更大，外链图超过这个量级时导出件也不该为它撑爆内存。
+ */
+export const MAX_IMAGE_BYTES = 12 * 1024 * 1024;
+
+/**
+ * 所有图片**合计**允许读入的字节上限 —— 并发再高也不越过这一条。
+ *
+ * 单图上限挡不住「30 张各 10MB」：base64 还要再涨三分之一，全部驻留在同一个
+ * Map 里。图片是按需放弃的（超预算的那张保留 alt 回退），其余正文照常导出。
+ */
+export const MAX_TOTAL_IMAGE_BYTES = 32 * 1024 * 1024;
+
+/** `Promise.race` 里代表「到点了」的哨兵值（与 null / 正常结果区分开）。 */
+const PREFETCH_TIMEOUT = Symbol('image-prefetch-timeout');
+
+/**
+ * 从**编译成功的 AST** 里收集真正会被渲染的图片地址。
+ *
+ * 只认 `type === 'image'` 的节点：Markdown 图片与原生 `<img>` 编译后都是它，
+ * 而代码围栏 / 行内代码里的示例是 `code` / `inlineCode` 节点（值只是一段字符串）。
+ * 从源码跑正则会把这些示例也当图片去取 —— 既浪费整次导出的预算，又会在网络
+ * 面板里凭空多出几个请求；`[@…]` 适配后才出现的地址它也认不出来。
+ */
+export function collectDocumentImageUrls(document: Pick<LocalDocument, 'nodes'>): string[] {
   const urls = new Set<string>();
-  for (const match of source.matchAll(MD_IMAGE_RE)) {
-    if (match[1]) urls.add(match[1]);
-  }
-  for (const match of source.matchAll(HTML_IMAGE_RE)) {
-    const value = match[1] ?? match[2] ?? match[3];
-    if (value) urls.add(value);
-  }
+  const visit = (nodes: readonly LocalNode[]): void => {
+    for (const node of nodes) {
+      if (node.type === 'image' && typeof node.url === 'string' && node.url !== '') {
+        urls.add(node.url);
+      }
+      if (node.children?.length) visit(node.children);
+    }
+  };
+  visit(document.nodes);
   return [...urls];
 }
 
@@ -247,35 +293,167 @@ function bytesToBase64(bytes: Uint8Array): string {
   return btoa(binary);
 }
 
+interface ParsedImage {
+  mime: string;
+  bytes: Uint8Array;
+}
+
+/** 所有图片共享的一份剩余字节额度。读取在单线程里推进，减扣不会交错。 */
+interface ByteBudget {
+  remaining: number;
+}
+
+function fitsBudget(size: number, budget: ByteBudget): boolean {
+  return size > 0 && size <= MAX_IMAGE_BYTES && size <= budget.remaining;
+}
+
+/** 只取结构上需要的那一格，避免把 DOM 的流泛型卷进签名。 */
+interface CancellableReader {
+  cancel?: () => Promise<unknown>;
+}
+
+function cancelReader(reader: CancellableReader): void {
+  if (!reader.cancel) return;
+  void reader.cancel().catch(() => undefined);
+}
+
+/**
+ * 读完整个 body（有上限），或者返回 null 表示这张图放弃。
+ *
+ * 两条路径：
+ *   · 有 `response.body` —— 逐块读，**边读边扣总额度**，超了就停（不会先把
+ *     整个 body 收进内存再判断，那正是无界内存的来源）；
+ *   · 没有（测试桩 / 老环境）—— 退到 `arrayBuffer()`，读完再判断大小。
+ *
+ * 挂起由外层 `withPrefetchDeadline` 的 race 兜住；这里额外挂一个 abort 监听，
+ * 超时后尽力取消底层流（取消本身不做等待 —— 卡住的流可能连 cancel 都不回来）。
+ */
+async function readImageBody(
+  response: Response,
+  signal: AbortSignal,
+  budget: ByteBudget
+): Promise<ParsedImage | null> {
+  const mime = (response.headers.get('content-type') ?? '')
+    .split(';')[0]
+    .trim()
+    .toLowerCase();
+  if (!mime.startsWith('image/')) return null;
+
+  // Content-Length 可用时先否决：能省掉一次注定超预算的读取。
+  const declared = Number(response.headers.get('content-length'));
+  if (Number.isFinite(declared) && declared > 0 && !fitsBudget(declared, budget)) {
+    return null;
+  }
+
+  const stream = response.body;
+  if (!stream || typeof stream.getReader !== 'function') {
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    if (!fitsBudget(bytes.length, budget)) return null;
+    budget.remaining -= bytes.length;
+    return { mime, bytes };
+  }
+
+  const reader = stream.getReader();
+  const onAbort = () => cancelReader(reader);
+  signal.addEventListener('abort', onAbort, { once: true });
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (!value || value.length === 0) continue;
+      if (!fitsBudget(value.length, budget) || total + value.length > MAX_IMAGE_BYTES) {
+        cancelReader(reader);
+        return null;
+      }
+      total += value.length;
+      budget.remaining -= value.length;
+      chunks.push(value);
+    }
+  } finally {
+    signal.removeEventListener('abort', onAbort);
+  }
+  if (total === 0) return null;
+  const bytes = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.length;
+  }
+  return { mime, bytes };
+}
+
+/**
+ * 把一段工作包进「最多等 ms」的 race，到点 abort 并返回哨兵值。
+ *
+ * ★ 计时器**必须在工作完成时清掉** ★ 否则一次正常导出也会在后台留一串待触发的
+ * timer（长文档几十张图就是几十个），假时钟的用例还会被它们拖住。
+ */
+function withPrefetchDeadline<T>(
+  work: Promise<T>,
+  ms: number,
+  controller: AbortController
+): Promise<T | typeof PREFETCH_TIMEOUT> {
+  if (ms <= 0) {
+    controller.abort();
+    return Promise.resolve(PREFETCH_TIMEOUT);
+  }
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<typeof PREFETCH_TIMEOUT>((resolve) => {
+    timer = setTimeout(() => {
+      controller.abort();
+      resolve(PREFETCH_TIMEOUT);
+    }, ms);
+  });
+  return Promise.race([work, timeout]).finally(() => {
+    if (timer !== undefined) clearTimeout(timer);
+  });
+}
+
 /**
  * 把允许的图片**全部先取回来**，再交给同步的 `imageResolver`。
  *
  * 上游的 resolver 是同步签名 —— 渲染到那一张时才开始 fetch 就来不及了，只能
- * 返回 null、由渲染器显示 alt 回退。取不到的（私有图 / 网络失败 / 非图片）保持
- * 不在表里：那张图按上游的既定形态降级成 alt 文本，**不伪造一个空 data URL**。
+ * 返回 null、由渲染器显示 alt 回退。取不到的（私有图 / 网络失败 / 非图片 /
+ * 超时 / 超预算）保持不在表里：那张图按上游的既定形态降级成 alt 文本，
+ * **不伪造一个空 data URL**。
+ *
+ * 有界性有两层（缺一层就会「导出一直转圈」）：
+ *   · 单图 `IMAGE_FETCH_TIMEOUT_MS`：fetch 挂起与 body 挂起走同一个 race；
+ *   · 整体 `IMAGE_PREFETCH_BUDGET_MS`：到点后队列里的直接跳过，在飞的按剩余
+ *     预算封顶。单张失败只影响它自己，其他图片继续。
+ * 并发上限仍走站点统一的 `MAX_REF_CONCURRENCY`，与引用取数共用一套。
  */
 async function prefetchImages(urls: readonly string[], base?: string): Promise<Map<string, string>> {
   const resolved = new Map<string, string>();
+  if (urls.length === 0) return resolved;
   const schedule = createConcurrencyLimiter(MAX_REF_CONCURRENCY);
+  const pageUrl = pageBase(base);
+  const deadline = Date.now() + IMAGE_PREFETCH_BUDGET_MS;
+  const budget: ByteBudget = { remaining: MAX_TOTAL_IMAGE_BYTES };
+
   await Promise.all(
     urls.map((url) =>
       schedule(async () => {
-        try {
-          const response = await fetch(resolveUrl(url, pageBase(base)), {
+        const remaining = deadline - Date.now();
+        if (remaining <= 0) return;
+        const controller = new AbortController();
+        const work = (async () => {
+          const response = await fetch(resolveUrl(url, pageUrl), {
             credentials: 'same-origin',
+            signal: controller.signal,
           });
-          if (!response.ok) return;
-          const mime = (response.headers.get('content-type') ?? '')
-            .split(';')[0]
-            .trim()
-            .toLowerCase();
-          if (!mime.startsWith('image/')) return;
-          const bytes = new Uint8Array(await response.arrayBuffer());
-          if (bytes.length === 0) return;
-          resolved.set(url, `data:${mime};base64,${bytesToBase64(bytes)}`);
-        } catch {
-          // 单张失败只影响它自己。
-        }
+          if (!response.ok) return null;
+          return readImageBody(response, controller.signal, budget);
+        })().catch(() => null);
+        const result = await withPrefetchDeadline(
+          work,
+          Math.min(IMAGE_FETCH_TIMEOUT_MS, remaining),
+          controller
+        );
+        if (result === PREFETCH_TIMEOUT || result === null) return;
+        resolved.set(url, `data:${result.mime};base64,${bytesToBase64(result.bytes)}`);
       })
     )
   );
@@ -322,7 +500,9 @@ export async function renderStaticMarkup(input: ReactiveStaticMarkupInput): Prom
     throw new Error(codes ? `ReactiveMD 编译失败：${codes}` : 'ReactiveMD 编译失败');
   }
 
-  const imageUrls = collectImageUrls(adapted.adaptedSource).filter((url) =>
+  // 图片地址从**编译后的 AST** 取，不从源码跑正则：代码围栏 / 行内代码里的
+  // `![](...)` 只是字符串，不是会被渲染的图片节点。
+  const imageUrls = collectDocumentImageUrls(compiled.document).filter((url) =>
     isAllowedReactiveUrl(url, 'image')
   );
   const resolvedImages = await prefetchImages(imageUrls, input.base);
