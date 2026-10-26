@@ -87,6 +87,7 @@ const RESPONSIVE_SPECS: RegExp[] = [
   /yiwen\.spec\.ts$/,
   /hinge\.spec\.ts$/,
   /hinge2\.spec\.ts$/,
+  /hinge3\.spec\.ts$/,
   // 动效试验台：窄屏「变体列收成一列 + 整页不横向溢出」是按真视口宽度量出来的，
   // 曲线图与 cubic-bezier 长串最容易撑破这一条。桌面那一遍同样跑（重播、过冲、
   // 展开高度那些与视口无关）。

@@ -30,7 +30,8 @@ test('玩具入口：四张首页卡按故事、玩具、博客、工具排列�
 
   await page.locator('.game-collection[href="/game/collections/test"]').click();
   await expect(page).toHaveURL('/game/collections/test');
-  await expect(page.locator('.game-card')).toHaveCount(11);
+  await expect(page.locator('.game-card')).toHaveCount(12);
+  await expect(page.locator('.game-card[href="/game/hinge3"]')).toHaveCount(1);
   await expect(page.locator('.game-card[href="/game/hinge2"]')).toHaveCount(1);
   await expect(page.locator('.game-collection[href="/game/collections/test/craft"]')).toHaveCount(1);
   await expect(page.locator('.game-card[href="/game/lumen"]')).toHaveCount(1);
@@ -87,10 +88,10 @@ test('专注模式隐藏玩具入口，并拦住菜单及游戏直达', async ({
   await page.goto('/');
   await expect(page.locator('.home-grid .feature-card')).toHaveCount(3);
   await expect(page.locator('.site-nav a[href="/game"]')).toHaveCount(0);
-  for (const route of ['/game', '/game/atamas', '/game/collections/test', '/game/collections/test/craft', '/game/wand', '/game/wand2', '/game/public-space', '/game/quandi', '/game/twinshade', '/game/lumen', '/game/yiwen', '/game/hinge', '/game/hinge2', '/game/loom', '/game/papercut', '/game/marbling', '/game/motion']) {
+  for (const route of ['/game', '/game/atamas', '/game/collections/test', '/game/collections/test/craft', '/game/wand', '/game/wand2', '/game/public-space', '/game/quandi', '/game/twinshade', '/game/lumen', '/game/yiwen', '/game/hinge', '/game/hinge2', '/game/hinge3', '/game/loom', '/game/papercut', '/game/marbling', '/game/motion']) {
     await page.goto(route);
     await expect(page.getByRole('heading', { name: '已开启专注模式' })).toBeVisible();
-    await expect(page.locator('canvas, .game-card, .lm-game, .yw-game, .hy-game, .h2-game')).toHaveCount(0);
+    await expect(page.locator('canvas, .game-card, .lm-game, .yw-game, .hy-game, .h2-game, .h3-game')).toHaveCount(0);
     await expect(page.getByRole('link', { name: '前往设置' })).toHaveAttribute('href', '/settings#focus-mode');
   }
 });

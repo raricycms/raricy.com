@@ -1645,7 +1645,7 @@ MP3 的帧同步要核版本 / 层 / 位速率字段（只判 `0xFF` 打头太�
 （`/game/collections/<父>/<子>`），没有第二份 href 可漂；玩具首页只陈列顶层合集与
 ATÅMAS（益智、单人、原生组件），合集页陈列「直属游戏 + 子合集」，路由是 catch-all
 （`src/app/game/collections/[...slug]/page.tsx`）。顶层「测试」合集
-`/game/collections/test` 收录 Wand demo、Wand demo 2、公共空间、圈地运动、合页 Demo、合页 Demo 2、
+`/game/collections/test` 收录 Wand demo、Wand demo 2、公共空间、圈地运动、合页 Demo、合页 Demo 2、合页 Demo 3、
 异文 Demo、折光、折光 2 与双影，并挂着手工间子合集 `/game/collections/test/craft`
 （织布机、剪纸、水面印花）；旧的顶层地址 `/game/collections/craft` 永久跳到新路径。
 
@@ -1654,6 +1654,12 @@ ATÅMAS（益智、单人、原生组件），合集页陈列「直属游戏 + �
 连接；只有显式落点重合才跨表面连通，人物归属落点，随所在纸面或倒影一起移动。
 进度以动作历史保存在浏览器的 `hinge-demo-v2`，加载时逐步回放校验，与初版存档独立。
 `tests/unit/hinge2.test.ts` 穷举每关缺少一种机关时的可达状态，防止绕开核心机关的捷径。
+
+`/game/hinge3` 是双面纸转印谜题，代码住 `src/games/hinge3/`。折叠让当前朝上的同一材质面
+相互接触，外露的反面不参与这次压印；所有印痕的坐标与方向均由同一反射矩阵计算。
+一次压印读取湿墨快照：接触成功后原处变干，新印仍湿；落到镂空或纸外则不转印，也不消耗
+源墨。目标同时核对材质面、位置、颜色与朝向，展开后才完成。五张纸的动作历史独立保存在
+`hinge-demo-v3`，加载时回放验证；拖动纸角和按钮操作走同一状态机，支持撤销与重做。
 
 手工间三款游戏共用 `src/games/craft/` 下的外壳、音效、草稿钩子与导出：
 `CraftHull.tsx` 是页面外壳（页头、返回、静音、工作区 / 侧栏），`sound.ts` 是模块级

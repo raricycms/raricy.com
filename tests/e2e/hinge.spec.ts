@@ -20,7 +20,7 @@ test('五张练习可通过；切题、撤销重做与刷新续玩保留局面',
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(e.message));
   await page.goto('/game/collections/test');
-  await page.getByRole('link', { name: /合页 Demo(?! 2)/ }).click();
+  await page.locator('.game-card[href="/game/hinge"]').click();
   await expect(page.locator('.hy-game')).toHaveAttribute('data-ready', 'true');
   for (const id of ['01', '02', '03', '04', '05']) {
     await page.getByRole('button', { name: new RegExp(`^${id} `) }).click();

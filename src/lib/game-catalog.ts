@@ -72,6 +72,17 @@ export const GAMES = [
     icon: 'marbling',
   },
   {
+    id: 'hinge3',
+    title: '合页 Demo 3',
+    description: '折起双面纸，让湿墨留下真正的镜像印痕。五道关于转印方向、镂空与正反面的纸面谜题。',
+    category: 'puzzle',
+    modes: ['solo'],
+    href: '/game/hinge3',
+    runtime: 'native',
+    collectionId: 'test',
+    icon: 'hinge',
+  },
+  {
     id: 'hinge2',
     title: '合页 Demo 2',
     description: '转动整张纸页，走进镜中道路，沿折痕对折空间。四张立体纸景，从单个机关到组合谜题。',
