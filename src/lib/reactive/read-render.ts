@@ -36,6 +36,7 @@ import { selectContentRenderer, type RendererChoice } from '../renderer-select';
 import { parseReactiveFlags } from './flags';
 import { compileReactiveSource, type ReactiveCompileOutcome } from './compile';
 import { shouldFallbackToLegacy } from './diagnostics';
+import { hasMutableExternalReferences, hostDataEqual } from './snapshot-revalidation';
 import {
   reactiveContentVersion,
   readReactiveSnapshot,
@@ -62,7 +63,7 @@ export interface ReadRenderResult {
   bundle?: ReactiveCompileOutcome;
   /** 持久快照（仅 reactive-static 且版本匹配时）；优先于 bundle。 */
   snapshot?: SnapshotPayload;
-  failure?: 'compile' | 'snapshot-missing' | 'invalid-format' | 'invalid-override';
+  failure?: 'compile' | 'snapshot-missing' | 'snapshot-references' | 'invalid-format' | 'invalid-override';
   log: {
     renderer: string;
     reason: string;
@@ -119,12 +120,46 @@ function finish(
 }
 
 /**
- * reactive 的静态分支：先读**同版本持久快照**，读不到才按当前正文现编译一次。
+ * 用当前 external 权限重验快照里的引用是否仍然有效。
+ *
+ * 返回 `keep`    = 引用数据与快照一致，快照可用；
+ *      `replace` = 有变化（改私密 / 删除 / 改标题 / 改版本 / 新公开），旧快照作废；
+ *      `untrusted` = 读当前权限时失败 —— 这时**旧引用数据同样不可信**（可能正好是
+ *                    权限变动导致的那次故障），不能继续用快照，只能现编译。
+ *
+ * 没有剪贴板引用时直接 `keep`：音频 / 图床 / 投票 / 收藏夹的 external 形态不随
+ * 权限变化，快照快速路径一次库都不查。
+ */
+async function revalidateSnapshotReferences(
+  input: ReadRenderInput,
+  snapshotHostData: SnapshotPayload['hostData'],
+): Promise<'keep' | 'replace' | 'untrusted'> {
+  if (!hasMutableExternalReferences(input.source)) return 'keep';
+  try {
+    // 延迟加载：`prepare` 会拖进剪贴板 / 投票 / 收藏夹三个 service；只在真正
+    // 需要重验时付这份模块成本（与 publish.ts 的动态 import 同一理由）。
+    const { prepareReactiveDocument } = await import('./prepare');
+    const prepared = await prepareReactiveDocument(input.source, {
+      mode: 'external',
+      viewer: input.viewer,
+      clientIp: input.clientIp,
+    });
+    return hostDataEqual(prepared.hostData, snapshotHostData) ? 'keep' : 'replace';
+  } catch {
+    return 'untrusted';
+  }
+}
+
+/**
+ * reactive 的静态分支：先重验快照引用，再决定用快照还是现编译。
  *
  * 为什么先快照：快照是发布那一刻的可信产物，读取时不需要重编译；版本 / 编译签名
- * 不符的快照按 missing 处理，绝不拿旧正文冒充当前正文。为什么读不到还要现编译：
- * 现编译的结果也是**当前版本**（不是旧快照），在快照损坏 / 包升级后仍能让读者看到
- * 正文；真正编译不出来时才给 `unavailable`。
+ * 不符的快照按 missing 处理，绝不拿旧正文冒充当前正文。为什么还要重验引用：快照
+ * 里的公开剪贴板数据会随作者改权限 / 改标题而过期，见 `snapshot-revalidation.ts`。
+ *
+ * 引用不一致时按**当前 external 权限重新编译**，而不是修补旧 hostData —— 后者会
+ * 既留下旧标题、又把「改私密」的引用继续当可用；新公开的引用也只有重编译才会出现。
+ * 读失败时同样不用快照：那时无法确认任何引用数据仍然有效。
  *
  * 静态形态交给客户端组件的 `mode="static"`（SSR 首屏即静态正文，无 JS 也可读）。
  * 不在服务端调 `react-dom/server`：Next 的 RSC 编译链会拒绝它（构建期失败）。
@@ -135,15 +170,38 @@ async function buildStatic(
   format: ContentFormat,
   bundle: ReactiveCompileOutcome | undefined,
   compile: () => Promise<ReactiveCompileOutcome>,
+  compileExternal: () => Promise<ReactiveCompileOutcome>,
 ): Promise<ReadRenderResult> {
   const syntaxVersion =
     format === 'reactive' ? (input.syntaxVersion ?? LOCAL_SYNTAX_VERSION) : LOCAL_SYNTAX_VERSION;
   const contentVersion = reactiveContentVersion(format, syntaxVersion, input.source);
   const snapshot = await readReactiveSnapshot(input.kind, input.id, contentVersion);
   if (snapshot.status === 'ready') {
-    return finish({ renderer: 'reactive-static', reason: choice.reason }, format, bundle, {
-      snapshot: snapshot.payload,
-      snapshotStatus: 'ready',
+    const verdict = await revalidateSnapshotReferences(input, snapshot.payload.hostData);
+    if (verdict === 'keep') {
+      return finish({ renderer: 'reactive-static', reason: choice.reason }, format, bundle, {
+        snapshot: snapshot.payload,
+        snapshotStatus: 'ready',
+      });
+    }
+
+    // 旧快照的引用数据不可信 —— 按当前 external 权限重编一份替代它。
+    let replacement: ReactiveCompileOutcome | undefined;
+    try {
+      replacement = await compileExternal();
+    } catch {
+      replacement = undefined;
+    }
+    const snapshotStatus =
+      verdict === 'untrusted' ? 'untrusted-references' : 'stale-references';
+    if (replacement?.result.ok && replacement.result.document) {
+      return finish({ renderer: 'reactive-static', reason: choice.reason }, format, replacement, {
+        snapshotStatus,
+      });
+    }
+    return finish({ renderer: 'unavailable', reason: choice.reason }, format, replacement, {
+      failure: verdict === 'untrusted' ? 'snapshot-references' : 'compile',
+      snapshotStatus,
     });
   }
 
@@ -203,6 +261,8 @@ export async function resolveReadRender(input: ReadRenderInput): Promise<ReadRen
       clientIp: input.clientIp,
     });
 
+  const compileExternal = () => compileReactiveSource({ source: input.source, format, mode: 'external', viewer: input.viewer, clientIp: input.clientIp });
+
   if (format === 'markdown') {
     // flag 关 / override=legacy / 未命中灰度都在这一步直接落 legacy，不编译。
     const tentative = selectContentRenderer({ ...selectionBase, markdownCompatible: true });
@@ -242,9 +302,9 @@ export async function resolveReadRender(input: ReadRenderInput): Promise<ReadRen
     const choice = selectContentRenderer({ ...selectionBase, compilationFailed: failed });
     if (choice.renderer === 'reactive') return finish(choice, format, bundle);
     // 编译失败或语义不兼容 → 同版本静态快照，绝不退回旧 Markdown。
-    return buildStatic(input, choice, format, bundle, compile);
+    return buildStatic(input, choice, format, bundle, compile, compileExternal);
   }
 
   // flag 关 / 未命中灰度 / 脏 override：选择器已经判为 reactive-static。
-  return buildStatic(input, tentative, format, undefined, compile);
+  return buildStatic(input, tentative, format, undefined, compile, compileExternal);
 }
