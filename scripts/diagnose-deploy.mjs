@@ -57,9 +57,17 @@ console.log('\x1b[1m═══ web-next 部署自检 ═══\x1b[0m');
 // 且报错指向 ignore-listed frames，完全看不出根因。这类不匹配必须在自检里当场点名。
 head('0. 运行时版本');
 {
-  const nodeMajor = Number(process.versions.node.split('.')[0]);
-  if (nodeMajor < 20) {
-    bad(`Node ${process.versions.node} 过低（要求 ≥ 20）`, '升级 Node 到 20 或 22 LTS');
+  // 判到 minor 而不只是 major：`reactive-md` 要求 22.12+，22.0–22.11 会被只看 major 的判据放过去，
+  // 而它在**模块加载期**就炸（`reactive-md` 被 blog-excerpt.ts / read-render.ts 静态 import，
+  // 后者又被博客详情页静态 import）—— 于是自检打绿勾、部署文档也说没问题，线上却整页打不开。
+  // 宁可在这里卡住。
+  const [nodeMajor, nodeMinor] = process.versions.node.split('.').map(Number);
+  const nodeTooLow = nodeMajor < 22 || (nodeMajor === 22 && nodeMinor < 12);
+  if (nodeTooLow) {
+    bad(
+      `Node ${process.versions.node} 过低（要求 ≥ 22.12）`,
+      '升级 Node 到 22.12+ LTS（reactive-md 是 ESM-only 且要求 22.12；低了会在模块加载期直接抛错）'
+    );
   } else {
     ok(`Node ${process.versions.node}`);
   }
