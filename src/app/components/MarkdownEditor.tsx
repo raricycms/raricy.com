@@ -30,6 +30,7 @@ import {
   useState,
 } from 'react';
 import {
+  Compartment,
   EditorState,
   type Extension,
 } from '@codemirror/state';
@@ -37,9 +38,11 @@ import { EditorView, keymap } from '@codemirror/view';
 import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands';
 import { markdown } from '@codemirror/lang-markdown';
 import { RefreshCw } from 'lucide-react';
+import type { Diagnostic } from 'reactive-md';
 
 import Toolbar, { VIEW_MODES } from './markdown-editor/Toolbar';
 import ResourcePanel from './markdown-editor/ResourcePanel';
+import ReactiveAuthoringPanel from './markdown-editor/ReactiveAuthoringPanel';
 import { editorBaseTheme } from './markdown-editor/cm-theme';
 import {
   absolutizeSiteUrls,
@@ -61,6 +64,15 @@ import { renderBlogMarkdown } from '@/lib/blog-renderer';
 import { enhanceBlogContent } from '@/lib/blog-content-dom';
 import { IMAGE_ACCEPT, uploadImageFile } from '@/lib/image-client';
 import * as cmd from '@/lib/md-editor/commands';
+import {
+  applyReactiveCompletion,
+  formatReactiveDocument,
+  getReactiveCompletions,
+  reactiveAuthoring,
+  revealReactiveDiagnostic,
+  type AuthorAnalysis,
+  type AuthorCompletion,
+} from '@/lib/md-editor/reactive-authoring';
 import { createDraftStore, type DraftStore } from '@/lib/md-editor/draft';
 import { createInsertAnchor, type InsertAnchor } from '@/lib/md-editor/insert-anchor';
 import {
@@ -195,6 +207,26 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(
      */
     const formatSyncRef = useRef({ mounted: false, last: format });
     const [initFailed, setInitFailed] = useState(false);
+
+    // ── Reactive 作者工具 ───────────────────────────────────────────────────
+    /** 最近一次分析；切到 Markdown / 重新挂载扩展时清空（由扩展重新填）。 */
+    const [authoringAnalysis, setAuthoringAnalysis] = useState<AuthorAnalysis | null>(null);
+    /** null = 补全面板没开；[] = 开了但当前位置没有候选。 */
+    const [authoringCompletions, setAuthoringCompletions] = useState<AuthorCompletion[] | null>(
+      null
+    );
+    const [authoringStatus, setAuthoringStatus] = useState<string | null>(null);
+    /**
+     * 只装作者工具的那一格。**用 Compartment 而不是重建 EditorView**：
+     * 切格式时 dispatch 一次 reconfigure，正文、选区与撤销历史都留在原 state 里
+     * （重建 = 历史清空，而这一点不会报错）。
+     */
+    const reactiveCompartmentRef = useRef(new Compartment());
+    /**
+     * 代次：切走格式后，旧扩展迟到的回调不得把分析写回面板。
+     * 每次都从 1 开始递增，闭包里只认自己那一代。
+     */
+    const reactiveGenerationRef = useRef(0);
 
     /** 已取消 / 已销毁的批次 —— 迟到的上传结果据此丢弃，绝不插回正文。 */
     const abortedRef = useRef(new Set<number>());
@@ -375,6 +407,44 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(
       v.focus();
     }, []);
 
+    // ── Reactive 作者动作 ───────────────────────────────────────────────────
+    /** 「补全」按钮：候选按**当前光标**现取，面板展示后由用户挑一条。 */
+    const requestCompletions = useCallback(() => {
+      const v = viewRef.current;
+      if (!v || formatRef.current !== 'reactive') return;
+      setAuthoringStatus(null);
+      try {
+        setAuthoringCompletions(getReactiveCompletions(v) ?? []);
+      } catch {
+        // 面板说「没有候选」比静默无反应好 —— 用户至少知道按到了。
+        setAuthoringCompletions([]);
+      }
+    }, []);
+
+    const pickCompletion = useCallback((item: AuthorCompletion) => {
+      const v = viewRef.current;
+      if (!v) return;
+      const applied = applyReactiveCompletion(v, item);
+      setAuthoringCompletions(null);
+      setAuthoringStatus(applied ? null : '这条补全没有插入，请重新触发补全。');
+      if (applied) v.focus();
+    }, []);
+
+    const formatAuthoringDocument = useCallback(() => {
+      const v = viewRef.current;
+      if (!v) return;
+      const changed = formatReactiveDocument(v);
+      setAuthoringStatus(changed ? '已格式化，可一步撤销。' : '没有需要格式化的内容。');
+      v.focus();
+    }, []);
+
+    const revealDiagnostic = useCallback((diagnostic: Diagnostic) => {
+      const v = viewRef.current;
+      if (!v) return;
+      revealReactiveDiagnostic(v, diagnostic);
+      v.focus();
+    }, []);
+
     // ── CM6 生命周期 ────────────────────────────────────────────────────────
     useEffect(() => {
       const host = hostRef.current;
@@ -400,6 +470,9 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(
         EditorView.contentAttributes.of({ 'aria-describedby': kbHintId }),
         EditorView.lineWrapping,
         markdown(),
+        // Reactive 作者工具（高亮 / 分析 / Ctrl+Space 补全 / 诊断）由下面那条
+        // [format] effect 往这一格里 reconfigure；Markdown 模式这一格是空的。
+        reactiveCompartmentRef.current.of([]),
         ...editorBaseTheme,
         uploadBatchField,
         uploadChipDecorations,
@@ -433,6 +506,11 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(
           insertAnchorRef.current?.map(update.changes);
           const text = update.state.doc.toString();
           docRef.current = text;
+          if (formatRef.current === 'reactive') {
+            // 候选和诊断绑定于旧源码偏移；正文变化后先收起，再等待新分析。
+            setAuthoringCompletions(null);
+            setAuthoringAnalysis(null);
+          }
           bump();
           schedulePreview(text);
           draftRef.current?.schedule({ format: formatRef.current, text });
@@ -514,6 +592,36 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(
       // 只建一次：初始正文与扩展都在建实例那一刻定下来
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
+
+    // ── format → Reactive 作者扩展的启停 ────────────────────────────────────
+    // 用 Compartment 热替换：切格式**不重建 EditorState**（否则正文与撤销历史
+    // 一起没了，而且不报错）。分析 / 补全状态一并清空 —— 旧正文的诊断留在
+    // 新格式上就是假报警。
+    useEffect(() => {
+      const generation = (reactiveGenerationRef.current += 1);
+      setAuthoringAnalysis(null);
+      setAuthoringCompletions(null);
+      setAuthoringStatus(null);
+      const v = viewRef.current;
+      if (!v) return;
+
+      const extension =
+        format === 'reactive'
+          ? reactiveAuthoring({
+              onAnalysis: (next) => {
+                if (destroyedRef.current || reactiveGenerationRef.current !== generation) return;
+                setAuthoringAnalysis(next);
+              },
+              onCompletions: (items) => {
+                if (destroyedRef.current || reactiveGenerationRef.current !== generation) return;
+                setAuthoringCompletions(items);
+                setAuthoringStatus(null);
+              },
+            })
+          : [];
+
+      v.dispatch({ effects: reactiveCompartmentRef.current.reconfigure(extension) });
+    }, [format]);
 
     useEffect(() => () => draftRef.current?.dispose(), []);
 
@@ -709,11 +817,25 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(
         <Toolbar
           view={view}
           withMath={withMath}
+          reactive={format === 'reactive'}
+          onRequestCompletions={requestCompletions}
+          onFormat={formatAuthoringDocument}
           onPickFiles={() => fileInputRef.current?.click()}
           onOpenResources={openResources}
           onExportHtml={onExportHtml}
           onPrint={onPrint}
         />
+
+        {format === 'reactive' && (
+          <ReactiveAuthoringPanel
+            analysis={authoringAnalysis}
+            completions={authoringCompletions}
+            status={authoringStatus}
+            onSelectCompletion={pickCompletion}
+            onCloseCompletions={() => setAuthoringCompletions(null)}
+            onRevealDiagnostic={revealDiagnostic}
+          />
+        )}
 
         {resourcesOpen && <ResourcePanel onClose={closeResources} onInsert={insertResource} />}
 

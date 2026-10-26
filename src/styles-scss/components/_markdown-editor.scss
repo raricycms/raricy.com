@@ -677,3 +677,454 @@
   color: var(--color-text-secondary);
   font-size: .78rem;
 }
+
+// ── Reactive 作者工具（2026-10）──────────────────────────────────────────────
+//
+// 全部规则都嵌在 `.md-editor` 里：这些类是编辑器独占的，写成全局选择器会
+// 跟正文预览里的同名类撞车，而那种冲突只在某些页面上看得见。
+//
+// 高亮类由 CodeMirror 扩展输出（cm-reactive-*）；这里只给颜色与下划线，
+// 不碰布局 —— 行高、折行仍归 cm-theme.ts 的编辑器主题。
+.md-editor {
+  // 语法着色。基色全部取站点令牌，切主题当帧跟随（同 cm-theme.ts 的分工）。
+  .cm-reactive-tag {
+    color: var(--color-brand-primary);
+    font-weight: 600;
+  }
+
+  .cm-reactive-attribute {
+    color: var(--color-accent-cyan);
+  }
+
+  .cm-reactive-string {
+    color: var(--color-accent-amber);
+  }
+
+  .cm-reactive-expression {
+    color: var(--color-accent-violet);
+  }
+
+  .cm-reactive-binding {
+    color: var(--color-success-primary);
+  }
+
+  .cm-reactive-comment {
+    color: var(--color-text-secondary);
+    font-style: italic;
+  }
+
+  .cm-reactive-math {
+    color: var(--color-accent-blue);
+  }
+
+  .cm-reactive-code {
+    color: var(--color-text-secondary);
+    background: var(--color-background-content);
+    border-radius: 3px;
+  }
+
+  // 诊断：波浪下划线是「这里有问题」的通用读法，且不遮住字。
+  .cm-reactive-diagnostic--error {
+    text-decoration: underline wavy;
+    text-decoration-color: var(--color-warning-primary);
+    text-decoration-skip-ink: none;
+    text-underline-offset: 2px;
+  }
+
+  .cm-reactive-diagnostic--warning {
+    text-decoration: underline wavy;
+    text-decoration-color: var(--color-accent-amber);
+    text-decoration-skip-ink: none;
+    text-underline-offset: 2px;
+  }
+
+  // ── 分析 / 诊断 / 补全面板 ────────────────────────────────────────────────
+  .md-authoring {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 6px 10px;
+    background: var(--color-background-subtle);
+    border-bottom: 1px solid var(--color-border);
+  }
+
+  .md-authoring__summary {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 4px 10px;
+    color: var(--color-text-secondary);
+    font-size: .78rem;
+  }
+
+  .md-authoring__title {
+    color: var(--color-text-primary);
+    font-weight: 600;
+  }
+
+  .md-authoring__count.is-error {
+    color: var(--color-warning-primary);
+    font-weight: 600;
+  }
+
+  .md-authoring__count.is-warning {
+    color: var(--color-accent-amber);
+    font-weight: 600;
+  }
+
+  .md-authoring__diagnostics {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    max-height: 128px;
+    margin: 0;
+    padding: 0;
+    overflow-y: auto;
+    list-style: none;
+  }
+
+  .md-authoring__diagnostic {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    width: 100%;
+    padding: 4px 6px;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--color-text-primary);
+    font: inherit;
+    font-size: .78rem;
+    line-height: 1.45;
+    text-align: left;
+    cursor: pointer;
+
+    &:hover {
+      background: var(--color-background-content);
+    }
+  }
+
+  .md-authoring__severity {
+    flex: none;
+    font-weight: 600;
+  }
+
+  .md-authoring__diagnostic--error .md-authoring__severity {
+    color: var(--color-warning-primary);
+  }
+
+  .md-authoring__diagnostic--warning .md-authoring__severity {
+    color: var(--color-accent-amber);
+  }
+
+  .md-authoring__message {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  .md-authoring__position {
+    flex: none;
+    color: var(--color-text-secondary);
+    font-size: .72rem;
+    white-space: nowrap;
+  }
+
+  .md-authoring__completions {
+    padding: 6px;
+    border: 1px solid var(--color-border);
+    border-radius: 10px;
+    background: var(--color-background-page);
+  }
+
+  .md-authoring__completions-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0 2px 4px;
+  }
+
+  .md-authoring__completions-title {
+    color: var(--color-text-primary);
+    font-size: .78rem;
+    font-weight: 600;
+  }
+
+  .md-authoring__completions-count {
+    margin-left: auto;
+    color: var(--color-text-secondary);
+    font-size: .72rem;
+  }
+
+  .md-authoring__close {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: none;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--color-text-secondary);
+    cursor: pointer;
+
+    &:hover {
+      background: var(--color-background-content);
+      color: var(--color-brand-primary);
+    }
+  }
+
+  .md-authoring__completion-list {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    max-height: 180px;
+    overflow-y: auto;
+  }
+
+  .md-authoring__completion {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 6px 8px;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--color-text-primary);
+    font: inherit;
+    font-size: .8rem;
+    text-align: left;
+    cursor: pointer;
+
+    &:hover {
+      background: var(--color-background-content);
+      color: var(--color-brand-primary);
+    }
+  }
+
+  .md-authoring__kind {
+    flex: none;
+    padding: 0 6px;
+    border-radius: v.$radius-max;
+    background: var(--color-background-content);
+    color: var(--color-text-secondary);
+    font-size: .68rem;
+    line-height: 1.6;
+  }
+
+  .md-authoring__completion-label {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .md-authoring__completion-detail {
+    flex: none;
+    color: var(--color-text-secondary);
+    font-size: .72rem;
+  }
+
+  .md-authoring__empty,
+  .md-authoring__status {
+    margin: 0;
+    color: var(--color-text-secondary);
+    font-size: .78rem;
+  }
+
+  // ── 「插入组件」弹层 ──────────────────────────────────────────────────────
+  // 宽度用 100cqw（.md-toolbar 是容器）：窄屏下跟着编辑区收窄，不会被
+  // .md-editor 的 overflow: hidden 静默裁掉右边。
+  .md-toolbar__menu--components {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    width: min(380px, 100cqw);
+    max-height: min(440px, 70vh);
+    padding: 8px;
+    overflow: hidden;
+  }
+
+  .md-component-picker__head {
+    display: flex;
+    flex: none;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 0 2px;
+  }
+
+  .md-component-picker__title {
+    color: var(--color-text-primary);
+    font-size: .82rem;
+    font-weight: 600;
+  }
+
+  .md-component-picker__close {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: none;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--color-text-secondary);
+    cursor: pointer;
+
+    &:hover {
+      background: var(--color-background-content);
+      color: var(--color-brand-primary);
+    }
+  }
+
+  .md-component-picker__search {
+    display: flex;
+    flex: none;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 8px;
+    border: 1px solid var(--color-border);
+    border-radius: 8px;
+    background: var(--color-background-subtle);
+    color: var(--color-text-secondary);
+  }
+
+  .md-component-picker__search input {
+    flex: 1 1 auto;
+    width: 100%;
+    min-width: 0;
+    padding: 0;
+    border: none;
+    outline: none;
+    background: transparent;
+    color: var(--color-text-primary);
+    font: inherit;
+    font-size: .8rem;
+  }
+
+  .md-component-picker__scroll {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
+  .md-component-picker__group + .md-component-picker__group {
+    margin-top: 4px;
+    padding-top: 6px;
+    border-top: 1px solid var(--color-border);
+  }
+
+  .md-component-picker__group-title {
+    margin: 2px 6px 4px;
+    color: var(--color-text-secondary);
+    font-size: .7rem;
+    font-weight: 600;
+    letter-spacing: .04em;
+  }
+
+  .md-component-picker__item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    min-height: 40px;
+    padding: 6px 8px;
+    border: none;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--color-text-primary);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+
+    &:hover {
+      background: var(--color-background-content);
+      color: var(--color-brand-primary);
+    }
+  }
+
+  .md-component-picker__copy {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    gap: 1px;
+    min-width: 0;
+  }
+
+  .md-component-picker__label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--color-text-primary);
+    font-size: .8rem;
+    font-weight: 600;
+  }
+
+  .md-component-picker__badge {
+    padding: 0 4px;
+    border: 1px solid var(--color-border);
+    border-radius: 4px;
+    color: var(--color-text-secondary);
+    font-size: .62rem;
+    font-weight: 400;
+    line-height: 1.5;
+  }
+
+  .md-component-picker__desc {
+    display: block;
+    overflow: hidden;
+    color: var(--color-text-secondary);
+    font-size: .74rem;
+    line-height: 1.45;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .md-component-picker__add {
+    flex: none;
+    color: var(--color-text-secondary);
+    opacity: .5;
+  }
+
+  .md-component-picker__empty {
+    margin: 12px 0;
+    color: var(--color-text-secondary);
+    font-size: .8rem;
+    text-align: center;
+  }
+
+  @media (max-width: 767px) {
+    // 窄屏：Reactive 入口跟随其余次要分组收进「更多工具」。order 只在窄屏
+    // 设置 —— 放进宽屏会把这一组甩到工具条最右边（宽屏其余分组 order: 0）。
+    // 与「更多」同 order、且 DOM 排在它后面 ⇒ 展开时开关原地不动。
+    .md-toolbar__group--reactive {
+      order: 3;
+    }
+
+
+    // 触摸控件：菜单与诊断行至少 44px（WCAG 2.5.8 的 24px 之上留足余量）。
+    .md-authoring__diagnostic,
+    .md-authoring__completion,
+    .md-component-picker__item {
+      min-height: 44px;
+    }
+
+    .md-authoring__close,
+    .md-component-picker__close {
+      width: 44px;
+      height: 44px;
+    }
+
+    .md-component-picker__search input {
+      // iOS 聚焦 < 16px 的可编辑区会强制放大整页（同 _composer.scss）
+      font-size: 16px;
+    }
+  }
+}

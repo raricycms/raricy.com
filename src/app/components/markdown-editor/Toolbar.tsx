@@ -59,6 +59,7 @@ import {
   Link as LinkIcon,
   List,
   ListChecks,
+  ListFilter,
   ListOrdered,
   Minus,
   MoreHorizontal,
@@ -68,14 +69,18 @@ import {
   Redo2,
   Sigma,
   Smile,
+  Blocks,
   SquareCode,
   Strikethrough,
   Table,
   Undo2,
+  WandSparkles,
 } from 'lucide-react';
 import type { EditorView } from '@codemirror/view';
 import { redoDepth, undoDepth } from '@codemirror/commands';
 import * as cmd from '@/lib/md-editor/commands';
+import { applyReactiveTemplate } from '@/lib/md-editor/reactive-authoring';
+import { ReactiveComponentPicker } from './ReactiveAuthoringPanel';
 
 /** 表情面板里的完整表情：保留变体选择符，按码点拆开会产生不可见的空白按钮。 */
 const EMOJI = [
@@ -111,6 +116,12 @@ export interface ToolbarProps {
   onPrint: () => void;
   /** 是否给公式按钮（剪贴板有、博客没有 —— 与旧工具条一致）。 */
   withMath: boolean;
+  /** Reactive 模式：多出「插入组件 / 补全 / 格式化」三颗入口，其余一律不变。 */
+  reactive?: boolean;
+  /** 「补全」：由外壳读取当前候选并展示。 */
+  onRequestCompletions?: () => void;
+  /** 「格式化」：整理已识别 Reactive 标签内的空白。 */
+  onFormat?: () => void;
 }
 
 /** 点外面或按 Esc 关掉的小浮层。 */
@@ -141,15 +152,26 @@ export default function Toolbar({
   onExportHtml,
   onPrint,
   withMath,
+  reactive = false,
+  onRequestCompletions,
+  onFormat,
 }: ToolbarProps) {
   const [headingOpen, setHeadingOpen] = useState(false);
   const [emojiOpen, setEmojiOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
+  const [componentsOpen, setComponentsOpen] = useState(false);
   /** 窄屏的「更多工具」是否展开（宽屏那颗按钮整个不显示，这个状态也就不参与）。 */
   const [moreOpen, setMoreOpen] = useState(false);
   const headingRef = useDismiss(headingOpen, () => setHeadingOpen(false));
   const emojiRef = useDismiss(emojiOpen, () => setEmojiOpen(false));
   const exportRef = useDismiss(exportOpen, () => setExportOpen(false));
+  const componentsTriggerRef = useRef<HTMLButtonElement>(null);
+
+  // 切回 Markdown 时组件面板必须一起退场：Toolbar 本身不会卸载，
+  // 留着 true 下次切回 Reactive 会莫名其妙地自动弹开。
+  useEffect(() => {
+    if (!reactive) setComponentsOpen(false);
+  }, [reactive]);
 
   const disabled = !view;
   // 撤销 / 重做的可用态每次都按当前 state 现算。外壳把正文存在 state 里
@@ -166,6 +188,21 @@ export default function Toolbar({
 
   function insert(text: string) {
     run(cmd.insertText(text));
+  }
+
+  /** 关面板：Esc / 关闭按钮把焦点还给触发按钮，点外面则留给用户点的目标。 */
+  function closeComponents(restoreFocus: boolean) {
+    setComponentsOpen(false);
+    if (restoreFocus) componentsTriggerRef.current?.focus();
+  }
+
+  function insertComponent(componentId: string) {
+    setComponentsOpen(false);
+    if (!view) return;
+    // 模板与插入位置（含选中的文字、光标）全由 `applyReactiveTemplate` 在一个
+    // 事务里决定；插完把焦点交回正文，接着写下一段。
+    applyReactiveTemplate(view, componentId);
+    view.focus();
   }
 
   const btn = (label: string, Icon: typeof Bold, action: () => void, enabled = true) => (
@@ -244,6 +281,59 @@ export default function Toolbar({
           )}
         </button>
       </div>
+
+      {/* Reactive 专属入口。**只在 format === 'reactive' 时渲染** —— Markdown
+          模式连 DOM 都没有，「旧布局不变」是这一条的直接结果，不是样式补丁。
+          窄屏跟随其余次要分组收进「更多工具」（见文件头），弹层自己限宽限高。 */}
+      {reactive && (
+        <div className="md-toolbar__group md-toolbar__group--reactive">
+          <div className="md-toolbar__popover-host">
+            <button
+              type="button"
+              ref={componentsTriggerRef}
+              className="md-toolbar__btn"
+              title="插入组件（Components）"
+              aria-label="插入组件"
+              aria-haspopup="dialog"
+              aria-expanded={componentsOpen}
+              disabled={disabled}
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => setComponentsOpen((v) => !v)}
+            >
+              <Blocks size={16} strokeWidth={2} aria-hidden="true" />
+            </button>
+            {componentsOpen && (
+              <ReactiveComponentPicker
+                triggerRef={componentsTriggerRef}
+                onClose={closeComponents}
+                onInsert={insertComponent}
+              />
+            )}
+          </div>
+          <button
+            type="button"
+            className="md-toolbar__btn"
+            title="补全（Ctrl+Space）"
+            aria-label="补全"
+            disabled={disabled}
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => onRequestCompletions?.()}
+          >
+            <ListFilter size={16} strokeWidth={2} aria-hidden="true" />
+          </button>
+          <button
+            type="button"
+            className="md-toolbar__btn"
+            title="格式化 Reactive 标签内的空白"
+            aria-label="格式化"
+            disabled={disabled}
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => onFormat?.()}
+          >
+            <WandSparkles size={16} strokeWidth={2} aria-hidden="true" />
+          </button>
+        </div>
+      )}
 
       <div className="md-toolbar__group md-toolbar__group--format">
         <div className="md-toolbar__popover-host" ref={headingRef}>
