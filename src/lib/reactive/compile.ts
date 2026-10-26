@@ -26,12 +26,21 @@ import { prepareReactiveDocument } from './prepare';
 import { ReactiveLruCache, reactiveCompileCacheKey } from './cache';
 import {
   REACTIVE_COMPILER_VERSION,
+  REACTIVE_MAX_SYNTAX_NODES,
   reactiveCompileOptions,
 } from './host-components';
 import { reactiveDiagnosticCodes } from './diagnostics';
 import type { AdaptedSourceSegment } from './source-map';
 import type { ContentFormat } from '../content-format';
 import type { ReferenceMode, SiteHostData } from './ref-types';
+
+/**
+ * 慢编译告警阈值（毫秒）。
+ *
+ * 只影响日志，不改变任何行为。取 250 ms：实测真实文章 250 KB 约 206 ms，所以正常
+ * 内容不会触发；越过这条线就说明这份正文已经花到足以让同进程其它请求可感地排队。
+ */
+export const SLOW_COMPILE_WARN_MS = 250;
 
 export interface ReactiveCompileOutcome {
   result: LocalCompileResult;
@@ -165,6 +174,23 @@ export async function compileReactiveSource(
     '[reactive]',
     JSON.stringify({ cacheHit, compileMs, codes: reactiveDiagnosticCodes(result) })
   );
+  // 慢编译告警：`compileLocal` 是同步的，落在被 await 的渲染路径上，编译期间整个
+  // 进程的其它请求一起排队（见 host-components.ts 的 REACTIVE_MAX_SYNTAX_NODES）。
+  // 这条**只观测、不降级** —— 兜底交给编译器自己的 `local.budget`（预算超了直接
+  // 判 ok:false），在这里把「编译慢但成功」改成 unavailable 等于让一篇合法长文
+  // 永久打不开。留这条是为了让运维看得见真实分布，再决定要不要收紧预算。
+  if (!cacheHit && compileMs >= SLOW_COMPILE_WARN_MS) {
+    console.warn(
+      '[reactive-slow]',
+      JSON.stringify({
+        compileMs,
+        budget: REACTIVE_MAX_SYNTAX_NODES,
+        format: input.format,
+        mode: input.mode,
+        codes: reactiveDiagnosticCodes(result),
+      })
+    );
+  }
 
   return {
     result,
