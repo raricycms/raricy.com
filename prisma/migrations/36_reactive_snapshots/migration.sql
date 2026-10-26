@@ -25,7 +25,16 @@ CREATE TABLE IF NOT EXISTS "reactive_snapshots" (
   "generated_at" TEXT NOT NULL
 );
 
-CREATE UNIQUE INDEX IF NOT EXISTS "uq_reactive_snapshot_version"
+-- ⚠️ 唯一索引名必须是 **Prisma 的派生名** `<表>_<列...>_key`，不是 `uq_*`。
+--
+-- `schema.prisma` 里写的是 `@@unique([kind, contentId, contentVersion], name: ...)`，
+-- 但 **Prisma 在 SQLite 上忽略 `@@unique` 的 `name:`**，`prisma db push` 建出来的物理名
+-- 是派生的 `reactive_snapshots_kind_content_id_content_version_key`。两边名字不一致的话，
+-- `migrate diff` 会把它们判成漂移（RedefineIndex：DROP 再 CREATE），每次比对都报。
+--
+-- 仓库既有 4 个唯一索引全部照派生名手写，理由在 `26_blog_anonymous_comments` 的文件头；
+-- 这里跟它们保持一致（那条纪律的原话：「写成 uq_* 就会与 db push 漂移」）。
+CREATE UNIQUE INDEX IF NOT EXISTS "reactive_snapshots_kind_content_id_content_version_key"
   ON "reactive_snapshots" ("kind", "content_id", "content_version");
 CREATE INDEX IF NOT EXISTS "idx_reactive_snapshot_content"
   ON "reactive_snapshots" ("kind", "content_id");
