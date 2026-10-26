@@ -7,7 +7,8 @@
 
 ## 0. 一句话说清
 
-云剪贴板是**一段可复用的 Markdown 文本**，建成后换一个 **8 位 ID**：
+云剪贴板是**一段可复用的文本**，建成后换一个 **8 位 ID**。正文可以是 Markdown
+（默认）或 ReactiveMD；ReactiveMD 发布前会先编译并生成同版本快照：
 
 1. `POST /api/clipboard` —— 建一条，拿回 8 位 `id`；
 2. 在评论 / 讨论 / 博客正文里写 `[@<8位ID>]`，读者看到的就是**这段正文本身**
@@ -83,8 +84,9 @@ Content-Type: application/json
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|:----:|------|
 | `title` | string | 是 | 标题，**1–40 字符**（不 trim，按原样计） |
-| `content` | string | 是 | 正文，**Markdown 源文**，≤ **50000 字符** |
+| `content` | string | 是 | 正文**源文**，≤ **50000 字符**。默认 Markdown；`format='reactive'` 时是 ReactiveMD 源码 |
 | `publicity` | boolean | 是 | **必须显式传**。`true` = 公开（持有 ID 的 core+ 成员可读）；`false` = 私密保存，不公开分享 |
+| `format` | string | 否 | 正文语言：`markdown`（默认）或 `reactive`。未知值 `400`。reactive 发布前必须能编译，失败返回 `400 ReactiveMD 正文无法编译，已拒绝发布` |
 
 > ⚠️ **`publicity` 只认布尔**：缺字段、传 `"true"`、传 `1` 都会回
 > `400 wrong publicity format`。**没有默认值** —— 这是刻意的，
@@ -109,6 +111,8 @@ Content-Type: application/json
 | `publicity` 不是布尔 / 缺字段 | `400 wrong publicity format` |
 | `content` 不是字符串 / 超过 50000 | `400 content too long` |
 | `title` 不是字符串 / 空 / 超过 40 | `400 title too long` |
+| `format` 不在白名单 | `400 内容格式取值不合法，可选：markdown / reactive` |
+| `format='reactive'` | 先编译并生成同版本快照；无法编译时 `400 ReactiveMD 正文无法编译，已拒绝发布` |
 | 已有 200 条 | `400 一个用户只能发布200篇云剪贴板！` |
 
 > ⚠️ **报错文案是「英文键名」而不是中文说明**（`wrong publicity format` /
@@ -152,7 +156,7 @@ GET /api/clipboard/a1b2c3d4
 Cookie: raricy_session=<JWT>
 ```
 
-```json
+```jsonc
 {
   "code": 200,
   "message": "ok",
@@ -163,10 +167,21 @@ Cookie: raricy_session=<JWT>
     "author_name": "mybot",
     "publicity": true,
     "content": "## 常见问题\n\n- 问题一……",
+    "format": "markdown",          // markdown / reactive；认不出为 null
+    "syntax_version": null,        // 仅 reactive 有意义（语法版本，不是渲染开关）
+    "version": "…",                // 这份正文的稳定版本摘要（格式 + 标题 + 正文）
     "created_at": "2026-09-19T20:31:05.000Z"
   }
 }
 ```
+
+> ⚠️ **`content` 始终是源码，不是渲染结果。** 消费方必须按 `format` 分支：
+> `markdown` 可以交给 Markdown 渲染器；`reactive` **不能** —— ReactiveMD 有
+> `{{ }}`、组件标签等 Markdown 不认识的语法，按 Markdown 解释不会报错，只会把
+> 源码当普通文本显示出来。`format` 为 `null`（库里认不出）时也不要猜成 Markdown。
+>
+> `version` 是引用方判断「这份公开快照有没有变」的稳定标识；正文、标题或格式变化
+> 都会让它变化。
 
 | 情形 | 返回 |
 |------|------|
@@ -190,8 +205,14 @@ Content-Type: application/json
 { "title": "新标题", "content": "新正文", "publicity": false }
 ```
 
-- **请求字段与 §3 完全一致**（三个都必传，同样是那几档上限）
+- **请求字段与 §3 完全一致**（`title` / `content` / `publicity` 三个必传，`format` 可选，
+  同样是那几档上限）
 - 是**整体覆盖**，不是局部更新 —— 只想改标题也得把 `content` 原样带上
+- `format` **省略 = 保留库里原值**（不会把待改的正文打回 Markdown）；但**存量 reactive
+  无法编译的 reactive 写入被整笔拒绝**，返回 `400 ReactiveMD 正文无法编译，已拒绝发布`
+- `syntax_version` 与 `renderer_override` 是**只读**字段：写接口不消费它们
+  （传了会被忽略，不产生写入；`syntax_version` 由服务端在开放 reactive 写入后维护，
+  `renderer_override` 目前没有写入口）
 - 成功：`{ "code": 200, "message": "success", "id": "a1b2c3d4" }`
 
 | 情形 | 返回 |
@@ -232,14 +253,19 @@ Cookie: raricy_session=<JWT>
 ```
 
 读者看到的是**那段正文本身**（走与所在正文同一条净化管线），不是一个链接。
+**引用方必须先看 `format`**：`markdown` 可以内联（旧管线）或按各位置规则展开；
+`reactive` 与认不出的格式**不得内联**，只能生成安全的站内链接卡片
+（`[查看剪贴板](/clipboard/<id>)`）。在 ReactiveMD 正文里，**所有剪贴板引用首期都是
+链接卡片**，不嵌套编译，也不把另一种语言的源码拼进父文档。
+
 支持的位置与行为：
 
 | 位置 | 是否展开 |
 |------|:--------:|
-| **博客正文** | ✅（可以写很多条，也不截断） |
+| **博客正文** | ✅（可以写很多条，也不截断）；reactive 剪贴板只给链接卡片 |
 | **云剪贴板正文** | ✅（同上） |
-| **评论正文** | ✅（**一条评论最多展开 1 条**，多写的原样显示） |
-| **讨论消息** | ✅（同样最多 1 条） |
+| **评论正文** | ✅（**一条评论最多展开 1 条**，多写的原样显示）；reactive 剪贴板只给链接 |
+| **讨论消息** | ✅（同样最多 1 条）；reactive 剪贴板只给链接 |
 
 其余规则：
 
@@ -253,12 +279,14 @@ Cookie: raricy_session=<JWT>
 
 | 读者 | 看到什么 |
 |------|----------|
-| core+ 用户，引用的是**公开**剪贴板 | 正文（正常） |
-| core+ 用户，引用的是**有读取权限的私密**剪贴板 | 正文（正常） |
+| core+ 用户，引用的是**公开 Markdown** 剪贴板 | 正文（正常） |
+| core+ 用户，引用的是**有读取权限的私密 Markdown** 剪贴板 | 正文（正常） |
 | core+ 用户，引用的是**无读取权限的私密**剪贴板 | `[剪贴板 <ID> 加载失败]` |
+| core+ 用户，引用的是 **reactive** 剪贴板 | 链接卡片（不内联源码） |
 | 非 core / 未登录读者使用**站内引用接口** | `[剪贴板 <ID> 加载失败]` —— 读取接口要求 core+ |
-| 对外可读博客的站外视图，引用的是**公开**剪贴板 | 正文（由服务端展开） |
+| 对外可读博客的站外视图，引用的是**公开 Markdown** 剪贴板 | 旧管线内联正文；ReactiveMD 管线为链接卡片 |
 | 对外可读博客的站外视图，引用的是**私密**剪贴板 | `[@ID]` 引用原文 |
+| 对外可读博客的站外视图，引用的是 **reactive** 剪贴板 | 有服务端下发的公开数据时是链接卡片，否则 `[@ID]` 原文 |
 
 > 对外可读博客可以用公开剪贴板承载公共内容，但剪贴板详情页仍要求 core+。
 > 如果需要访客直接阅读这些内容，可把内容写进对外可读博客正文。
@@ -300,6 +328,8 @@ Cookie: raricy_session=<JWT>
 | `400 wrong publicity format` | 没传 `publicity`，或传的不是布尔（§3） |
 | `400 title too long` | 标题为空串、或超过 40 字符（文案不区分两种情况） |
 | `400 content too long` | 正文不是字符串、或超过 50000 字符 |
+| `400 内容格式取值不合法…` | `format` 只认 `markdown` / `reactive`；当前 reactive **写入**未开放（§3） |
+| 读到的 `format` 是 `reactive` | `content` 是 ReactiveMD 源码，不能按 Markdown 解析（§4.2） |
 | `400 一个用户只能发布200篇云剪贴板！` | 未软删的剪贴板满 200 条 —— 删掉不用的再建 |
 | `403 该剪贴板为私有内容` | 别人的私有条。**这条 ID 是存在的**，只是你看不到（§4.2） |
 | `403 您不是该文章作者，无法编辑！` | 改别人的剪贴板（站长也不行） |
@@ -325,6 +355,7 @@ const created = await (await fetch(`${BASE}/api/clipboard`, {
     title: '答疑模板',
     content: '## 常见问题\n\n- 问题一：……',
     publicity: true,                        // 显式指定，没有默认值
+    format: 'markdown',                     // 可省略；reactive 会先编译并生成同版本快照
   }),
 })).json();
 if (created.code !== 200) throw new Error(`建失败：${created.message}`);

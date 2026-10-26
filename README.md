@@ -12,13 +12,17 @@ Next.js 15 + Prisma + SQLite 主站，自有 `instance/` 数据目录；实时�
 - **框架**：Next.js 15 App Router + React 19 + TypeScript
 - **ORM**：Prisma 6，SQLite —— 开发库 `instance/database/dev.db`（见 `.env`），
   生产库 `db.db`（见 `.env.production.example`）。**两者是不同的文件**，别按文档去改错那个
+- **Node**：`>=22.12`（`package.json` 的 `engines`；`reactive-md` 要求）
 - **会话**：JWT（`jose`）+ `session_version` 失效机制
 - **认证**：密码哈希与历史 werkzeug **互通**，用户**无需重置密码**
 - **服务边界**：主站业务与鱼干账目保持单进程自洽。同仓 `services/realtime/` 是共同启动的
   独立实时进程，承载「测试」合集中的 Wand demo；主站签发一次性票据并复核账号权限。
   共用主站 `.env*`，内部凭据自动生成；`npm run dev` / `npm start` 同时管理两个进程。
   ATÅMAS 不依赖它。部署反代见 `docs/realtime.md`。
-- **前端**：服务端 / 客户端组件混用，marked + DOMPurify + highlight.js 渲染 Markdown
+- **前端**：服务端 / 客户端组件混用；Markdown 仍由 marked + DOMPurify + highlight.js 渲染
+- **ReactiveMD**：精确依赖 `reactive-md@0.5.3`（博客 / 剪贴板正文的第二种格式与渲染器，
+  见 `docs/architecture.md` §6.23）。灰度开关 `REACTIVE_MD_MODE=off|shadow|on`（默认
+  `off`）与 `REACTIVE_MD_PERCENT=0..100`（默认 `0`）；默认不改变现有渲染路径
 
 组件与子系统的关系见 `docs/architecture.md`。
 

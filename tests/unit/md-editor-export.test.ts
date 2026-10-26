@@ -17,11 +17,15 @@
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
+  IMAGE_FETCH_TIMEOUT_MS,
+  IMAGE_PREFETCH_BUDGET_MS,
   PRINT_READY_MAX_MS,
+  REACTIVE_EXPORT_NOTE,
   absolutizeSiteUrls,
   buildExportHtml,
   localizeFragmentLinks,
   printHtml,
+  renderStaticMarkup,
   resolveUrl,
   safeFilename,
   stripInteractiveShells,
@@ -32,6 +36,7 @@ const ORIGIN = 'https://example.test';
 afterEach(() => {
   vi.useRealTimers();
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
   document.body.innerHTML = '';
   document.head.querySelectorAll('style[data-test], link[data-test]').forEach((n) => n.remove());
 });
@@ -195,6 +200,247 @@ describe('导出文件本身', () => {
     expect(html).toContain(`url(${ORIGIN}/static/bg.png)`);
     // data: / https: / //cdn 一概不碰
     expect(html).not.toContain(`url("${ORIGIN}/https:`);
+  });
+});
+
+describe('ReactiveMD 静态导出', () => {
+  const jsonResponse = (body: unknown) =>
+    ({
+      ok: true,
+      headers: { get: () => 'application/json' },
+      json: async () => body,
+    }) as unknown as Response;
+
+  const imageResponse = () =>
+    ({
+      ok: true,
+      headers: { get: () => 'image/png' },
+      arrayBuffer: async () => new Uint8Array([0x89, 0x50, 0x4e, 0x47]).buffer,
+    }) as unknown as Response;
+
+  function stubReactiveFetch() {
+    const fetchMock = vi.fn(async (input: string | URL | Request) => {
+      const url = String(input);
+      if (url.includes('/api/clipboard/')) {
+        return jsonResponse({
+          code: 200,
+          clip: { title: '一段笔记', content: '不应内联的正文', format: 'markdown', version: 'v1' },
+        });
+      }
+      if (url.includes('/api/votes/')) {
+        return jsonResponse({
+          code: 200,
+          data: {
+            title: '投票标题',
+            is_locked: true,
+            total_votes: 3,
+            user_voted: null,
+            options: [{ id: 1, label: '甲', count: 2, percentage: 67 }],
+          },
+        });
+      }
+      if (url.includes('/api/spider/favorites/')) {
+        return jsonResponse({
+          title: '收藏夹标题',
+          author: 'raricy',
+          count: 1,
+          blogs: [{ id: 'blog-1', title: '被收藏的文章' }],
+        });
+      }
+      if (url.includes('/api/images/')) return imageResponse();
+      return { ok: false, headers: { get: () => null } } as unknown as Response;
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    return fetchMock;
+  }
+
+  const SOURCE = [
+    '# 导出测试',
+    '',
+    '剪贴板 [@AbCd1234]',
+    '',
+    '投票 [@AbCdEf123]',
+    '',
+    '收藏 [@123456]',
+    '',
+    '音频 [@音频/EeFfGgHh20]',
+    '',
+    '![示意图](/api/images/AaBbCcDd10/raw)',
+  ].join('\n');
+
+  it('★ 无语法残留、宿主卡片在、图片内联成 data URL ★', async () => {
+    stubReactiveFetch();
+    const html = await renderStaticMarkup({ source: SOURCE, format: 'reactive', base: ORIGIN });
+
+    // 语法 / 组件标签 / 引用 token 都不得泄漏到导出件里
+    expect(html).not.toContain('{{');
+    expect(html).not.toContain('<panel');
+    expect(html).not.toContain('[@');
+
+    // 四类宿主卡片按只读形态出现（剪贴板仍是链接卡片，不内联正文）
+    expect(html).toContain('site-embed-clipboard');
+    expect(html).toContain('一段笔记');
+    expect(html).not.toContain('不应内联的正文');
+    expect(html).toContain('vote-embed');
+    expect(html).toContain('favorite-embed');
+    expect(html).toContain('site-embed--audio');
+
+    // 图片先取回再同步映射，离线打开也有图
+    expect(html).toContain('data:image/png;base64,');
+    expect(html).toContain('初始状态');
+  });
+
+  it('取不到的图片保留 alt 回退，不让整篇失败', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: string | URL | Request) => {
+        const url = String(input);
+        if (url.includes('/api/images/')) {
+          return { ok: false, headers: { get: () => null } } as unknown as Response;
+        }
+        return { ok: false, headers: { get: () => null } } as unknown as Response;
+      })
+    );
+    const html = await renderStaticMarkup({
+      source: '![私图](/api/images/AaBbCcDd10/raw)',
+      format: 'reactive',
+      base: ORIGIN,
+    });
+    expect(html).not.toContain('data:image');
+    expect(html).toContain('私图');
+  });
+
+  it('★ fetch 永远不返回：单图超时后照常导出其余正文与图片 ★', async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.fn((input: string | URL | Request) => {
+      const url = String(input);
+      if (url.includes('/stuck-image.png')) return new Promise<Response>(() => {});
+      if (url.includes('/api/images/')) return Promise.resolve(imageResponse());
+      return Promise.resolve({ ok: false, headers: { get: () => null } } as unknown as Response);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const pending = renderStaticMarkup({
+      source: [
+        '![挂起的图](/stuck-image.png)',
+        '',
+        '![正常的图](/api/images/AaBbCcDd10/raw)',
+        '',
+        '导出正文照常出现',
+      ].join('\n'),
+      format: 'reactive',
+      base: ORIGIN,
+    });
+    // 先让适配 / 编译跑完、单图计时器挂上，再推过单图上限。
+    await vi.advanceTimersByTimeAsync(1);
+    await vi.advanceTimersByTimeAsync(IMAGE_FETCH_TIMEOUT_MS + 50);
+    const html = await pending;
+
+    expect(html).toContain('导出正文照常出现');
+    // 正常的那张仍然内联；挂起的那张退回 alt
+    expect(html).toContain('data:image/png;base64,');
+    expect(html).toContain('挂起的图');
+  });
+
+  it('整批慢图片到总预算即收尾，队列中的图片不再请求', async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.fn(() => new Promise<Response>(() => {}));
+    vi.stubGlobal('fetch', fetchMock);
+    const source = Array.from({ length: 20 }, (_, index) =>
+      `![图片${index}](https://images.example.test/${index}.png)`
+    ).join('\n\n');
+    const pending = renderStaticMarkup({ source: `${source}\n\n总预算后的正文`, format: 'reactive', base: ORIGIN });
+    await vi.advanceTimersByTimeAsync(1);
+    await vi.advanceTimersByTimeAsync(IMAGE_PREFETCH_BUDGET_MS + 50);
+    expect(await pending).toContain('总预算后的正文');
+    expect(fetchMock.mock.calls.length).toBeLessThan(20);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('★ body 读不完：fetch 已返回但读字节挂起，同样有界收尾 ★', async () => {
+    vi.useFakeTimers();
+    const hangingBody = {
+      getReader: () => ({
+        // 永远不兑现的 read —— 模拟连接还开着、字节却再也不来
+        read: () => new Promise<{ done: boolean; value?: Uint8Array }>(() => {}),
+        cancel: () => Promise.resolve(),
+      }),
+    };
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((input: string | URL | Request) => {
+        const url = String(input);
+        if (url.includes('/api/images/HangBody01/raw')) {
+          return Promise.resolve({
+            ok: true,
+            headers: { get: () => 'image/png' },
+            body: hangingBody,
+          } as unknown as Response);
+        }
+        if (url.includes('/api/images/')) return Promise.resolve(imageResponse());
+        return Promise.resolve({ ok: false, headers: { get: () => null } } as unknown as Response);
+      })
+    );
+
+    const pending = renderStaticMarkup({
+      source: [
+        '![读不完的图](/api/images/HangBody01/raw)',
+        '',
+        '![正常的图](/api/images/AaBbCcDd10/raw)',
+        '',
+        '读了正文还在',
+      ].join('\n'),
+      format: 'reactive',
+      base: ORIGIN,
+    });
+    await vi.advanceTimersByTimeAsync(1);
+    await vi.advanceTimersByTimeAsync(IMAGE_FETCH_TIMEOUT_MS + 50);
+    const html = await pending;
+
+    expect(html).toContain('读了正文还在');
+    expect(html).toContain('data:image/png;base64,');
+    expect(html).toContain('读不完的图');
+  });
+
+  it('★ 图片只从 AST 的 image 节点取：代码围栏 / 行内代码里的示例不发请求 ★', async () => {
+    const fetchMock = vi.fn(async (input: string | URL | Request) => {
+      const url = String(input);
+      if (url.includes('/api/images/')) return imageResponse();
+      return { ok: false, headers: { get: () => null } } as unknown as Response;
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const html = await renderStaticMarkup({
+      source: [
+        '```md',
+        '![代码围栏里的示例](/api/images/CodeOnly01/raw)',
+        '```',
+        '',
+        '行内示例 `![行内代码里的示例](/api/images/InlineCod1/raw)`',
+        '',
+        '![真实图片](/api/images/RealImage1/raw)',
+      ].join('\n'),
+      format: 'reactive',
+      base: ORIGIN,
+    });
+
+    const requested = fetchMock.mock.calls.map(([input]) => String(input));
+    expect(requested.some((url) => url.includes('CodeOnly01')), '代码围栏里的示例被当成图片请求了').toBe(false);
+    expect(requested.some((url) => url.includes('InlineCod1')), '行内代码里的示例被当成图片请求了').toBe(false);
+    expect(requested.some((url) => url.includes('RealImage1'))).toBe(true);
+    expect(html).toContain('data:image/png;base64,');
+    expect(html).toContain('真实图片');
+  });
+
+  it('导出说明可作为 footerNote 进导出件', () => {
+    const html = buildExportHtml({
+      title: 't',
+      bodyHtml: '<p>x</p>',
+      base: ORIGIN,
+      footerNote: REACTIVE_EXPORT_NOTE,
+    });
+    expect(html).toContain('class="export-note"');
+    expect(html).toContain('初始状态');
   });
 });
 

@@ -227,9 +227,30 @@ function svgFor(body) {
 
 fs.mkdirSync(OUT_DIR, { recursive: true });
 
-/** 文件内容的 sha256（十六进制）。 */
+/**
+ * 文件字节的 sha256（十六进制）。
+ *
+ * ★ 只给**产物**用（PNG / SVG 那些入库的素材）；脚本自身不要用它，见 generatorSha256 ★
+ */
 function sha256(file) {
   return createHash('sha256').update(fs.readFileSync(file)).digest('hex');
+}
+
+/**
+ * 脚本**自身**的 sha256 —— 先把行尾归一化成 LF 再取。
+ *
+ * 【为什么不是直接 sha256(自己)】Windows 上 core.autocrlf=true 的仓库把 .mjs 检出成
+ * CRLF，Linux/CI 上是 LF。同一个提交于是算出两个哈希，manifest 里的值只能对上一半
+ * 机器 —— 症状是 tests/unit/frame-assets.test.ts 在另一半机器上红，而**两边都没改过
+ * 任何东西**。2026-10 实测踩过：5b2d53af 在一个 CRLF 检出里重新生成了 manifest，把
+ * LF 哈希换成 CRLF 哈希，于是本机主工作区（LF）当场红。
+ *
+ * 归一化之后，这个哈希只表达「脚本内容是什么」，与检出平台无关。
+ * make-pwa-icons.mjs 的 generatorSha256 是同一个做法（那边早就这么写了）。
+ */
+function generatorSha256() {
+  const source = fs.readFileSync(fileURLToPath(import.meta.url), 'utf8').replace(/\r\n/g, '\n');
+  return createHash('sha256').update(source).digest('hex');
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -252,7 +273,7 @@ function sha256(file) {
 // ─────────────────────────────────────────────────────────────────────────────
 const manifest = {
   generator: 'scripts/make-frame-demos.mjs',
-  generatorSha256: sha256(fileURLToPath(import.meta.url)),
+  generatorSha256: generatorSha256(),
   frames: {},
 };
 

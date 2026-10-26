@@ -355,6 +355,12 @@ export const DOC_ENTRIES: readonly DocEntry[] = [
   },
   {
     group: 'dev',
+    slug: 'plan/reactive-md-migration-plan',
+    title: 'ReactiveMD 接入博客区方案（渲染器换代）',
+    summary: '分阶段替换博客 / 剪贴板渲染器：数据层、语料报告、引用组件、SSR、编辑器与回滚。',
+  },
+  {
+    group: 'dev',
     slug: 'README',
     title: '文档索引',
     summary: '本目录的索引与互指规范（给改文档的人）。',

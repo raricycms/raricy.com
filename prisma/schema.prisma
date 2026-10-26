@@ -324,6 +324,12 @@ model Blog {
   /// 序号本身存在 blog_anon_identities，这里只是发号器。
   anonIdentityCount      Int     @default(0) @map("anon_identity_count")
 
+  /// 渲染路径的逐篇覆盖：NULL（跟随全局开关）/ 'legacy' / 'reactive'。
+  /// **它不改变内容格式**（那在 blog_contents.format）。reactive 内容禁止设 legacy；
+  /// 存量脏值只能报警并按静态降级，绝不交给旧解析器。读写入口见
+  /// docs/plan/reactive-md-migration-plan.md §3 D2。
+  rendererOverride String? @map("renderer_override")
+
   author   User          @relation("BlogAuthor", fields: [authorId], references: [id])
   category Category?     @relation(fields: [categoryId], references: [id])
   content  BlogContent?
@@ -350,6 +356,13 @@ model BlogContent {
   blogId    String    @id @map("blog_id")
   content   String
   updatedAt DateTime? @map("updated_at")
+  // 正文语言：'markdown' | 'reactive'。默认 markdown —— 存量行不做任何内容改写。
+  // 白名单与写入闸门在 src/lib/content-format.ts（零依赖，客户端表单也要读）。
+  // 未识别的值**不能**当成 markdown：写入一律拒绝、读取按不可信处理。
+  format    String    @default("markdown")
+  // 仅 format='reactive' 时有意义：写入时的语法版本（LOCAL_SYNTAX_VERSION）。
+  // 它只用于升级审计与迁移提示，**不是渲染开关**。
+  syntaxVersion String? @map("syntax_version")
 
   blog Blog @relation(fields: [blogId], references: [id])
 
@@ -562,6 +575,9 @@ model ClipBoard {
   createdAt DateTime? @map("created_at")
   ignore    Boolean?  @default(false)
   publicity Boolean?  @default(true)
+  /// 渲染路径覆盖：NULL / 'legacy' / 'reactive'。语义与 blogs.renderer_override 相同，
+  /// 不改变内容格式（那在 clip_text.format）。
+  rendererOverride String? @map("renderer_override")
 
   author  User      @relation(fields: [authorId], references: [id])
   content ClipText?
@@ -579,6 +595,9 @@ model ClipText {
   clipId    String    @id @map("clip_id")
   content   String
   updatedAt DateTime? @map("updated_at")
+  // 与 BlogContent 同形：'markdown' | 'reactive'，默认 markdown；未识别的值不猜。
+  format    String    @default("markdown")
+  syntaxVersion String? @map("syntax_version")
 
   clipboard ClipBoard @relation(fields: [clipId], references: [id])
 
@@ -1303,4 +1322,28 @@ model ProfileBlock {
 
   @@index([userId], map: "ix_profile_blocks_user_id")
   @@map("profile_blocks")
+}
+
+// reactive 正文的同版本静态快照（迁移 36）。
+// 存的是可信编译产物（LocalDocument + hostData），不是作者上传的 HTML。
+// 正文与这一行必须在同一个事务里写入；编译签名不一致的旧行按 stale 拒读。
+model ReactiveSnapshot {
+  id              String @id
+  kind            String
+  contentId       String @map("content_id")
+  contentVersion  String @map("content_version")
+  format          String @default("reactive")
+  scope           String @default("external")
+  syntaxVersion   String @map("syntax_version")
+  compilerVersion String @map("compiler_version")
+  adapterVersion  String @map("adapter_version")
+  optionsKey      String @map("options_key")
+  documentJson    String @map("document_json")
+  hostDataJson    String @map("host_data_json")
+  digest          String
+  generatedAt     String @map("generated_at")
+
+  @@unique([kind, contentId, contentVersion], name: "uq_reactive_snapshot_version")
+  @@index([kind, contentId], name: "idx_reactive_snapshot_content")
+  @@map("reactive_snapshots")
 }

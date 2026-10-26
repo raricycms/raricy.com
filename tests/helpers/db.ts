@@ -118,6 +118,9 @@ export async function resetDb() {
     // 可见性变更记录引用 blogs 与 users —— 必须排在两者之前删
     // （见 migrations/19_blog_visibility_logs 头部：漏登记不报错，只表现为数据残留）
     'blog_visibility_logs',
+    // reactive 快照按 content_id 关联正文（无外键，但与正文同版本）；
+    // 漏登记会让快照在用例间残留，表现为「没写过却是 ready」。
+    'reactive_snapshots',
     'blog_contents', 'blogs', 'categories',
     'vote_records', 'vote_options', 'votes',
     'clip_text', 'clipboards', 'image_hosting',

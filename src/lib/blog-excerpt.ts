@@ -1,5 +1,5 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// blog-excerpt.ts —— 把 Markdown 正文压成一段纯文本摘要（零依赖、纯函数）
+// blog-excerpt.ts —— 把 Markdown / ReactiveMD 正文压成一段纯文本摘要（纯函数）
 //
 // 【只给主页的**高**卡片用】个人主页积木墙里，尺寸 h≥2 的文章块有第二行空间，用它
 // 填一段正文摘要；h=1 的矮卡片只放标题与日期，拿到的是空串（见 profile-service 的
@@ -10,8 +10,9 @@
 // 这与「存指针不存快照」是同一条口径（见 profile-service.ts 文件头第 2 条）。把摘要
 // 抄进 config 会得到「正文已经改了、名片上还是旧摘要」的洞，而且**永远不会报错**。
 //
-// 【它不是渲染】这里只做字符串变换：不 import rich-text / marked / prisma，也不做
-// HTML 白名单。产出是**纯文本**，React 直接当子节点画，不存在「摘要里带标签」的问题。
+// 【它不是渲染】Markdown 路径只做字符串变换：不 import rich-text / marked / prisma，
+// 也不做 HTML 白名单。reactive 路径只借用 `reactive-md` 的**编译产物与初始运行时**，
+// 不挂 React / DOM。产出是**纯文本**，React 直接当子节点画，不存在「摘要里带标签」的问题。
 // 反过来也刻意：正文管线里那些 `[@…]` 引用、播放器、卡片一律不展开 —— 摘要不该把
 // 一篇文章的资源清单拖到主页上。
 //
@@ -26,7 +27,18 @@
 //
 // 【截断】超过 max 个 UTF-16 码元就切到 max，再补一个 `…`（所以结果最多 max+1 个码元）。
 // 切点落在代理对中间时整个字符让出去 —— 半个 emoji 会变成 U+FFFD，比少一个字符难看。
+//
+// 【两种格式】`blogExcerpt` 保持原样，只处理 Markdown；`buildBlogExcerpt` 按
+// `ContentFormat` 分派。reactive 文档走编译后的 AST：容器（panel / card / tabs）里的
+// 文字保留，`computed` / `const` / `validation` / 宿主组件标签丢弃，`{{ }}` 用**初始**
+// 运行时状态求值（出错就整段省略，绝不回显表达式源码），脚注标记与 `[@…]` token 丢弃。
+// 编译失败返回空串 —— 宁可没有摘要，也不能把源码漏到主页上。
 // ─────────────────────────────────────────────────────────────────────────────
+
+import { compileLocal, createLocalRuntime } from 'reactive-md';
+import type { LocalNode, LocalRuntime } from 'reactive-md';
+import type { ContentFormat } from './content-format';
+import { reactiveCompileOptions, SITE_EMBED_TAG } from './reactive/host-components';
 
 /** 摘要默认长度（UTF-16 码元）。主页高卡片一行放得下的量级，也是本模块的调用口径。 */
 export const DEFAULT_EXCERPT_MAX = 280;
@@ -142,4 +154,112 @@ export function blogExcerpt(markdown: string, max = DEFAULT_EXCERPT_MAX): string
   const code = out.charCodeAt(cut - 1);
   if (code >= 0xd800 && code <= 0xdbff) cut -= 1;
   return out.slice(0, cut) + '…';
+}
+
+// ── ReactiveMD 摘要 ──────────────────────────────────────────────────────────
+
+/** 这些节点的内容/原文不进摘要（与 Markdown 口径一致：代码、图片、脚注、公式、未知回退）。 */
+const REACTIVE_SKIPPED_NODE_TYPES = new Set([
+  'code',
+  'inlineCode',
+  'image',
+  'footnoteReference',
+  'footnoteDefinition',
+  'inlineMath',
+  'math',
+  'fallback',
+]);
+
+/** 声明节点与宿主组件没有「读者可见的正文」，整棵子树丢掉。 */
+const REACTIVE_SKIPPED_COMPONENTS = new Set(['computed', 'const', 'validation', SITE_EMBED_TAG]);
+
+/**
+ * 叶子文本里可能残留的 token：`[@…]` 引用、脚注标记、未解析的 `{{ }}`、以及缺配的
+ * 原始标签。摘要不是安全边界（React 按纯文本渲染），但漏出来会让人以为主页坏了。
+ */
+function cleanReactiveText(value: string): string {
+  return value
+    .replace(/\[@[^\]\n]*\]/g, ' ')
+    .replace(/\[\^[^\]\n]*\]/g, ' ')
+    .replace(/\{\{[\s\S]*?\}\}/g, ' ')
+    .replace(/<\/?[a-zA-Z][^<>]*>/g, ' ');
+}
+
+/** 单个 `{{ }}` 求值。任何失败都返回空串 —— 绝不把表达式源码当文字放出去。 */
+function evaluateInterpolation(runtime: LocalRuntime, source: string): string {
+  if (!source.trim()) return '';
+  try {
+    return runtime.text(`{{ ${source} }}`);
+  } catch {
+    return '';
+  }
+}
+
+/** 深度优先收集读者可见文字；容器（panel / card / tabs / tab …）只保留子节点。 */
+function collectReactiveText(nodes: readonly LocalNode[], runtime: LocalRuntime, out: string[]): void {
+  for (const node of nodes) {
+    if (REACTIVE_SKIPPED_NODE_TYPES.has(node.type)) continue;
+
+    if (node.type === 'text') {
+      out.push(cleanReactiveText(node.value ?? ''));
+      continue;
+    }
+    if (node.type === 'interpolation') {
+      out.push(evaluateInterpolation(runtime, node.value ?? ''));
+      continue;
+    }
+    if (node.type === 'hostComponent') continue;
+    if (node.type === 'component' && REACTIVE_SKIPPED_COMPONENTS.has(node.name ?? '')) continue;
+
+    if (node.children?.length) collectReactiveText(node.children, runtime, out);
+  }
+}
+
+/**
+ * ReactiveMD 正文 → 纯文本摘要。编译或建运行时失败返回空串（不降级成源码）。
+ * 运行时只读初值，收集完立即 dispose。
+ */
+function reactiveExcerpt(source: string, max: number): string {
+  let result: ReturnType<typeof compileLocal>;
+  try {
+    result = compileLocal(source, reactiveCompileOptions('reactive'));
+  } catch {
+    return '';
+  }
+  if (!result.ok) return '';
+
+  let runtime: LocalRuntime | null = null;
+  try {
+    runtime = createLocalRuntime(result.document);
+    const chunks: string[] = [];
+    collectReactiveText(result.document.nodes, runtime, chunks);
+    // 复用 Markdown 那套收尾（标记清理 / 空白折叠 / 代理对安全截断）。
+    return blogExcerpt(chunks.join('\n'), max);
+  } catch {
+    return '';
+  } finally {
+    try {
+      runtime?.dispose();
+    } catch {
+      // dispose 幂等；这里失败不影响已经算出的摘要。
+    }
+  }
+}
+
+/**
+ * 按内容格式生成摘要（主页高卡片的调用口）。
+ *
+ * `reactive` 走 AST；`markdown`、`null` 与未识别值一律走原来的 `blogExcerpt` ——
+ * 未知格式**不猜**成 reactive（否则存量 Markdown 会被当成组件语法编译，轻则空串，
+ * 重则把源码当正文）。
+ */
+export function buildBlogExcerpt(
+  content: string,
+  format: ContentFormat | null | undefined,
+  max = DEFAULT_EXCERPT_MAX
+): string {
+  if (format !== 'reactive') return blogExcerpt(content, max);
+  if (typeof content !== 'string' || !content) return '';
+  if (!(max > 0)) return '';
+  return reactiveExcerpt(content, max);
 }

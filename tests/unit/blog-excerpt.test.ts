@@ -11,7 +11,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { describe, expect, it } from 'vitest';
-import { blogExcerpt } from '@/lib/blog-excerpt';
+import { blogExcerpt, buildBlogExcerpt } from '@/lib/blog-excerpt';
 
 describe('blogExcerpt：Markdown 标记与噪音清除', () => {
   it('围栏代码块整段丢掉，未闭合的丢到文末', () => {
@@ -106,5 +106,61 @@ describe('blogExcerpt：截断', () => {
   it('max ≤ 0 返回空串', () => {
     expect(blogExcerpt('abc', 0)).toBe('');
     expect(blogExcerpt('abc', -1)).toBe('');
+  });
+});
+
+describe('buildBlogExcerpt：按格式分派', () => {
+  const REACTIVE_FIXTURE = [
+    '<computed name="derived" value="{{ 2 * 2 }}" />',
+    '<const name="fixed" value="{{ 99 }}" />',
+    '<validation when="{{ amount > 0 }}" message="校验失败文案" fields="amount" />',
+    '',
+    '# 标题',
+    '',
+    '<panel title="面板">面板 **文字** {{ 2*3 }}</panel>',
+    '',
+    '<card title="卡片">卡片内容</card>',
+    '',
+    '<tabs bind="tab" initial="a">',
+    '<tab label="甲" value="a">标签甲 {{ 1/0 }}</tab>',
+    '<tab label="乙" value="b">标签乙</tab>',
+    '</tabs>',
+    '',
+    '脚注[^note]',
+    '',
+    '<site-embed kind="audio" ref="Abc123" />',
+    '',
+    '参考 [@8位abc] 结束',
+    '',
+    '<slider bind="amount" label="数量" initial="5" min="0" max="10" />',
+  ].join('\n');
+
+  it('保留容器文字，丢弃声明 / 组件标签 / 脚注 / 引用 token', () => {
+    const out = buildBlogExcerpt(REACTIVE_FIXTURE, 'reactive');
+    expect(out).toBe('标题 面板 文字 6 卡片内容 标签甲 标签乙 脚注 参考 结束');
+    expect(out).not.toContain('校验失败文案');
+    expect(out).not.toContain('99');
+    expect(out).not.toContain('{{');
+    expect(out).not.toContain('<panel');
+    expect(out).not.toContain('[@');
+  });
+
+  it('{{ 2*3 }} 按初始状态求值成 6，失败的表达式整段省略（不回显源码）', () => {
+    const out = buildBlogExcerpt(REACTIVE_FIXTURE, 'reactive');
+    expect(out).toContain('6');
+    expect(out).not.toContain('1/0');
+    expect(out).not.toContain('1 / 0');
+  });
+
+  it('编译失败返回空串（不把源码漏成摘要）', () => {
+    expect(buildBlogExcerpt('<panel>未闭合', 'reactive')).toBe('');
+    expect(buildBlogExcerpt('{{ 未闭合', 'reactive')).toBe('');
+  });
+
+  it('markdown / null / 未识别格式仍走原来的 Markdown 路径', () => {
+    const md = '# 标题\n\n**粗**体 [@8位abc]';
+    expect(buildBlogExcerpt(md, 'markdown')).toBe(blogExcerpt(md));
+    expect(buildBlogExcerpt(md, null)).toBe(blogExcerpt(md));
+    expect(buildBlogExcerpt(md, undefined)).toBe(blogExcerpt(md));
   });
 });

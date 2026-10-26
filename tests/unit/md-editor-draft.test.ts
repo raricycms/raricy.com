@@ -12,7 +12,11 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createDraftStore } from '@/lib/md-editor/draft';
+import {
+  createDraftStore,
+  encodeDraftValue,
+  parseDraftValue,
+} from '@/lib/md-editor/draft';
 
 const KEY = 'test-draft-key';
 
@@ -25,7 +29,7 @@ afterEach(() => {
 describe('读写', () => {
   it('没有草稿时读回 null', () => {
     const store = createDraftStore(KEY, { debounceMs: 5 });
-    expect(store.read()).toEqual({ ok: true, value: null });
+    expect(store.read()).toEqual({ ok: true, value: null, format: 'markdown' });
     store.dispose();
   });
 
@@ -159,8 +163,41 @@ describe('组件卸载（站内换页根本不发 pagehide）', () => {
   });
 });
 
-describe('localStorage 不可用', () => {
-  it('写失败时不抛出去，只回调一次', () => {
+describe('草稿格式：老草稿一律按 markdown 恢复', () => {
+  it('裸正文（Vditor 时代的老草稿）恢复成 markdown', () => {
+    expect(parseDraftValue('# 旧草稿')).toEqual({ format: 'markdown', text: '# 旧草稿' });
+  });
+
+  it('★ 看起来像 JSON 的旧正文也不猜成 reactive ★', () => {
+    const old = '{"format":"reactive","text":"这是正文"}';
+    expect(parseDraftValue(old)).toEqual({ format: 'markdown', text: old });
+  });
+
+  it('坏掉的信封不丢正文，仍按 markdown 恢复', () => {
+    const broken = 'raricy-md-draft:v1:{not json';
+    expect(parseDraftValue(broken)).toEqual({ format: 'markdown', text: broken });
+  });
+
+  it('reactive 草稿连格式一起落盘、一起恢复', () => {
+    vi.useFakeTimers();
+    const store = createDraftStore(KEY, { debounceMs: 500 });
+    store.schedule({ format: 'reactive', text: '人数：{{ people }}' });
+    vi.advanceTimersByTime(500);
+    expect(store.read()).toEqual({
+      ok: true,
+      value: '人数：{{ people }}',
+      format: 'reactive',
+    });
+    store.dispose();
+  });
+
+  it('markdown 的落盘形态一个字都没变（老草稿续用同一把键）', () => {
+    expect(encodeDraftValue({ format: 'markdown', text: '普通正文' })).toBe('普通正文');
+    expect(parseDraftValue('普通正文')).toEqual({ format: 'markdown', text: '普通正文' });
+  });
+});
+
+describe('localStorage 不可用', () => {  it('写失败时不抛出去，只回调一次', () => {
     vi.useFakeTimers();
     const onUnavailable = vi.fn();
     vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {

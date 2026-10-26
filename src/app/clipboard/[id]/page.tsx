@@ -2,6 +2,7 @@ import { requireCoreUser } from '@/lib/guard';
 import { forbidden, notFound } from 'next/navigation';
 import { getCurrentUser, isOwner } from '@/lib/auth';
 import { getClip } from '@/lib/clipboard-service';
+import { resolveReadRender } from '@/lib/reactive/read-render';
 import { ClipIdCopyButton, ClipActions, ClipContent } from './ClipDetailClient';
 import FooterCopyOverride from '@/app/components/FooterCopyOverride';
 
@@ -23,6 +24,24 @@ export default async function ClipDetailPage({ params }: { params: Promise<{ id:
   const isAuthor = !!user && user.id === clip.authorId;
   const canDelete = isAuthor || isOwner(user);
 
+  // 剪贴板详情页本身就是 core+（requireCoreUser），引用模式恒为 expand。
+  // 编译 / 决策在服务端完成，客户端只拿可序列化的 document / hostData。
+  const contentSource = clip.content ?? '';
+  const readRender = await resolveReadRender({
+    kind: 'clipboard',
+    id: clip.id,
+    source: contentSource,
+    format: clip.format,
+    override: clip.rendererOverride,
+    viewer: user ? { id: user.id, role: user.role, archivedAt: user.archivedAt } : null,
+    mode: 'expand',
+    syntaxVersion: clip.syntaxVersion,
+  });
+  const reactiveDocument =
+    readRender.snapshot?.document ??
+    (readRender.bundle?.result.ok ? readRender.bundle.result.document : null);
+  const hostData = readRender.snapshot?.hostData ?? readRender.bundle?.hostData;
+
   return (
     // ⚠️ 外面这层 .clipboard-page **不是可省的包装**：页边距 / 宽度阶梯 / 上下留白
     // 全住在它身上（_clipboard.scss 的 &-page）。.clipboard-detail 只是一张卡片，
@@ -43,7 +62,12 @@ export default async function ClipDetailPage({ params }: { params: Promise<{ id:
         </div>
 
         <div className="clipboard-detail__content">
-          <ClipContent content={clip.content ?? ''} />
+          <ClipContent
+            content={contentSource}
+            renderer={readRender.choice.renderer}
+            reactiveDocument={reactiveDocument}
+            hostData={hostData}
+          />
         </div>
 
         <ClipActions

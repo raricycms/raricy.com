@@ -39,7 +39,8 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { prisma } from './db';
-import { blogExcerpt } from './blog-excerpt';
+import { buildBlogExcerpt } from './blog-excerpt';
+import { parseContentFormat } from './content-format';
 import { nowForDb, isoWithOffset } from './db-time';
 import { generateShortId } from './short-id';
 import { EXTERNAL_VISIBLE_BLOG_WHERE } from './blog-service';
@@ -182,7 +183,7 @@ async function resolveViews(
             blogId: { in: excerptBlogIds },
             blog: { is: { authorId: userId, ignore: false, ...EXTERNAL_VISIBLE_BLOG_WHERE } },
           },
-          select: { blogId: true, content: true },
+          select: { blogId: true, content: true, format: true },
         })
       : Promise.resolve([]),
   ]);
@@ -190,7 +191,7 @@ async function resolveViews(
   const blogMap = new Map(blogRows.map((b) => [b.id, b]));
   const imageMap = new Map(imageRows.map((i) => [i.id, i]));
   const audioMap = new Map(audioRows.map((a) => [a.id, a]));
-  const excerptMap = new Map(excerptRows.map((r) => [r.blogId, r.content]));
+  const excerptMap = new Map(excerptRows.map((r) => [r.blogId, r]));
 
   return blocks.map((block) => {
     let view: BlockView | null = null;
@@ -206,7 +207,15 @@ async function resolveViews(
             // 只有高卡片要摘要；其余恒为空串（客户端据此决定画不画第二行）。
             // 正文没写 / 不在 excerptRows 里（理论上已被可见性挡掉）也回空串，不塞
             // description 冒充 —— 两者是不同的字段，混用会让「摘要」变成第二个来源。
-            excerpt: block.h >= 2 ? blogExcerpt(excerptMap.get(row.id) ?? '') : '',
+            excerpt:
+              block.h >= 2
+                ? buildBlogExcerpt(
+                    excerptMap.get(row.id)?.content ?? '',
+                    // 未识别的 format 按 Markdown 处理（`parseContentFormat` 返回 null），
+                    // 不猜成 reactive —— 存量正文不应被当成组件语法编译。
+                    parseContentFormat(excerptMap.get(row.id)?.format)
+                  )
+                : '',
             date: ymd(row.createdAt),
           };
         }

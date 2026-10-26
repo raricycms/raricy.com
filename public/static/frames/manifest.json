@@ -1,6 +1,6 @@
 {
   "generator": "scripts/make-frame-demos.mjs",
-  "generatorSha256": "837ce91729984450db65b1588f7c4d78f2f33c56f0f6f45dc4a3acf0c9a18f5d",
+  "generatorSha256": "0e906e693fa58ae1896bddeeaede6a525945aa4a951907208d82ab53d2a2b2be",
   "frames": {
     "ring": {
       "png": "fb60a99373e78f7d9d0ad039ab5036b8db21b5a8198f10431e40b50a430913a1",

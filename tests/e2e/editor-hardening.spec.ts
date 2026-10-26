@@ -466,8 +466,12 @@ test.describe('导出的正文是哪一份', () => {
     // 更不能加 <base>：那正好会把上面那条锚点也带回原站
     expect(text).not.toContain('<base');
     // 代码块的「复制」按钮是**站内页面才成立的空壳**（行为由 JS 挂），
-    // 留在死文件里就是一颗按不动的按钮
-    expect(text).not.toContain('copy-btn');
+    // 留在死文件里就是一颗按不动的按钮。
+    // ⚠️ 判的是**元素**，不是整份字符串里有没有 `copy-btn` 这几个字：样式表现在会
+    // 内联进导出件（离线可读），里面天然带着 `.copy-btn` 的规则 —— 用字符串包含
+    // 会把一条 CSS 选择器误判成一颗真按钮。
+    expect(text, '导出件里不该有复制按钮元素').not.toMatch(/class="[^"]*\bcopy-btn\b/);
+    expect(text).not.toMatch(/<button[^>]*copy-btn/);
     // 代码本身留着。**按纯文本判**：高亮会把 `const a = 1;` 切成好几颗 span，
     // 直接找那句话找不到，看着像「代码块没了」。
     expect(text).toContain('hljs');

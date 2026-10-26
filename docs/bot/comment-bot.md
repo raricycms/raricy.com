@@ -283,7 +283,7 @@ GET /api/spider/comments
 GET /api/spider/comments/:id     → 裸对象：**§10.1 公共字段 + 恒为空的 `children`**；
                                    ⚠️ **不含** §10.2 的 `content` / `image` / `blog` / `liked`；
                                    不存在或已删除 → 404 {code,message}
-GET /api/spider/blogs/:id        → { "meta": {…}, "content": "Markdown 正文" }；不存在 → 404
+GET /api/spider/blogs/:id        → { "meta": {…}, "content": "正文源码" }；不存在 → 404
 GET /api/spider/favorites/:id    → { "id","title","author","count","blogs" }；不存在 → 404 {code,message}
 ```
 
@@ -293,7 +293,13 @@ GET /api/spider/favorites/:id    → { "id","title","author","count","blogs" }�
 > 它**只读公开收藏夹**，且是 spider 系列里**唯一有限频**的一条。
 
 `meta` 里有 `title` / `author` / `category` / `comments_count` 等，方便机器人在
-回复时引用文章标题。
+回复时引用文章标题。它同时带 `format`（`markdown` / `reactive`，认不出为 `null`）
+与 `syntax_version`（仅 reactive 有意义）。
+
+> ⚠️ **`content` 始终是源码，不是渲染结果。** `format: "reactive"` 时不要把它交给
+> Markdown 解析器 —— ReactiveMD 的 `{{ }}`、组件标签等 Markdown 不认识，按 Markdown
+> 解释不会报错，只会把源码当普通文本显示出来。要么用 ReactiveMD 渲染，要么只做
+> 纯文本展示。`format` 为 `null` 时也不要猜成 Markdown。
 
 ---
 

@@ -10,6 +10,8 @@ import {
   getClip,
   updateClip,
   deleteClip,
+  resolveClipContentFormat,
+  clipContentWriteMessage,
   CLIP_TITLE_MAX,
   CLIP_CONTENT_MAX,
 } from '@/lib/clipboard-service';
@@ -40,6 +42,10 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
       author_name: clip.authorName,
       publicity: clip.publicity,
       content: clip.content,
+      // 正文语言。null = 库里认不出（或正文行缺失）—— 消费方不得当成 markdown。
+      format: clip.format,
+      syntax_version: clip.syntaxVersion,
+      version: clip.version,
       created_at: clip.createdAt?.toISOString() ?? null,
     },
   });
@@ -74,13 +80,26 @@ export async function PUT(req: Request, ctx: { params: Promise<{ id: string }> }
     return apiErr(400, 'title too long');
   }
 
-  const result = await updateClip(id, user.id, { title, content, publicity });
+  // 请求侧的格式语法先判一次；**省略时必须把 undefined 传下去** ——
+  // service 要据此保留库里的原格式（传 'markdown' 会变成一次静默转换）。
+  const requestedWrite = resolveClipContentFormat(data.format);
+  if (!requestedWrite.ok) return apiErr(400, clipContentWriteMessage(requestedWrite.reason));
+
+  const result = await updateClip(id, user.id, {
+    title,
+    content,
+    publicity,
+    format: data.format,
+  });
   if (!result.ok) {
     if (result.reason === 'forbidden') return apiErr(403, '您不是该文章作者，无法编辑！');
     // 长度类原因在这里理论上不可达（上面已先校验过），但 service 现在也自己设防，
     // 把它们如实映射成与上面同样的文案，避免被误报成「剪贴板不存在」。
     if (result.reason === 'title_too_long') return apiErr(400, 'title too long');
     if (result.reason === 'content_too_long') return apiErr(400, 'content too long');
+    if (result.reason === 'invalid_format' || result.reason === 'reactive_invalid') {
+      return apiErr(400, clipContentWriteMessage(result.reason));
+    }
     return apiErr(404, '剪贴板不存在');
   }
 

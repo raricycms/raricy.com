@@ -62,6 +62,14 @@ import {
   parseVisibility,
 } from './blog-visibility';
 import type { BlogVisibility } from './blog-visibility';
+import {
+  CONTENT_FORMAT_LABELS,
+  DEFAULT_CONTENT_FORMAT,
+  parseContentFormat,
+  resolveContentWriteFormat,
+} from './content-format';
+import type { ContentFormat } from './content-format';
+import { buildReactiveSnapshotForWrite, ReactivePublishError } from './reactive/publish';
 import type { Prisma } from '@prisma/client';
 import type { PersonalBlogScope } from './blog-directory';
 
@@ -470,11 +478,14 @@ export async function getBlogDetail(id: string, viewer: BlogViewer | null) {
       authorId: true,
       // 页面要拿它决定 robots 元数据与 OG 图，OG 图路由要拿它决定 X-Robots-Tag
       visibility: true,
+      // 逐篇渲染覆盖（NULL / legacy / reactive）。渲染器选择要读它，但不改变内容格式。
+      rendererOverride: true,
       // 评论区要拿它决定「匿名」勾选项给不给（服务端闸门在 comment-service.createComment）
       allowAnonymousComments: true,
       author: { select: { id: true, username: true, equippedFrameKey: true, equippedFrameExpiresAt: true } },
       category: { select: { name: true, slug: true, parentId: true, parent: { select: { name: true } } } },
-      content: { select: { content: true, updatedAt: true } },
+      // format / syntaxVersion 随详情一起出：渲染器选择与对外 API 的格式字段都靠它。
+      content: { select: { content: true, updatedAt: true, format: true, syntaxVersion: true } },
     },
   });
   if (!blog) return blog;
@@ -855,7 +866,42 @@ export const BLOG_ACCEPTED_KEYS = [
   'category_id',
   'visibility',
   'allow_anonymous_comments',
+  'format',
 ] as const;
+
+/** 正文写入闸门的失败原因。全部是**拒绝**，不是降级。 */
+export type ContentWriteFailure = 'invalid_format' | 'reactive_invalid';
+
+export type ContentWriteGate =
+  | { ok: true; format: ContentFormat }
+  | { ok: false; reason: ContentWriteFailure };
+
+/**
+ * 博客正文的**唯一写入闸门**（createBlog / updateBlog / 两个写接口都调它）。
+ *
+ * 与 `resolveContentWriteFormat` 的分工：那边只回答「请求值与当前值合不合法」，
+ * 这里先判**库里那个当前值**：未知存量值一律拒绝（绝不猜成 markdown —— 猜错就是
+ * 把另一种语言的源码交给旧解析器）。
+ *
+ * reactive 的「能不能发布」不在这里判：它要编译一次并生成同版本快照，属于
+ * `createBlog` / `updateBlog` 的发布步骤（见 `buildReactiveSnapshotForWrite`）。
+ */
+export function resolveBlogContentFormat(
+  requested: unknown,
+  stored: unknown = undefined
+): ContentWriteGate {
+  const current =
+    stored === undefined ? DEFAULT_CONTENT_FORMAT : parseContentFormat(stored);
+  if (current === null) return { ok: false, reason: 'invalid_format' };
+  return resolveContentWriteFormat(requested, current);
+}
+
+/** 写入闸门失败时的对外文案（route 层直接用它，避免两处措辞漂移）。 */
+export function contentWriteFailureMessage(reason: ContentWriteFailure): string {
+  return reason === 'invalid_format'
+    ? '内容格式取值不合法，可选：markdown / reactive'
+    : 'ReactiveMD 正文无法编译，已拒绝发布';
+}
 
 /**
  * 栏目字段的常见错写（一律小写比对，`categoryId` / `categoryID` 都能命中）。
@@ -894,6 +940,15 @@ export interface ValidatedBlogData {
    *  所以走 HTTP 的路径连 validate 的默认档都不会误用。）
    */
   allowAnonymousComments?: boolean;
+  /**
+   * 正文格式。**缺省 = 「没提这件事」**（与 allowAnonymousComments 同一语义）：
+   *   · createBlog → 默认 markdown；
+   *   · updateBlog → 保留库里原值（省略不等于打回默认档）。
+   * 类型上可选是为了让不认识这个字段的旧调用方继续工作；但一旦出现，就必须是
+   * 白名单里的值（validateBlogData 已经卡过）。reactive 的**写入闸门**不在这里判 ——
+   * 那条要看库里的当前值，见 resolveBlogContentFormat。
+   */
+  format?: ContentFormat;
 }
 
 export type ValidateBlogResult =
@@ -938,6 +993,18 @@ export async function validateBlogData(raw: unknown): Promise<ValidateBlogResult
   const title = (typeof data.title === 'string' ? data.title : '').trim();
   const description = (typeof data.description === 'string' ? data.description : '').trim();
   const content = typeof data.content === 'string' ? data.content : '';
+
+  // 内容格式：缺省 = 没提这件事（create 默认 markdown / update 保留原值），
+  // 显式值必须是白名单。**未知值直接 400，不静默当成 markdown** —— 那等于把
+  // 另一种语言的正文交给旧解析器。reactive 的写入闸门在 service 层（要看库里当前值）。
+  let format: ContentFormat | undefined;
+  if (data.format !== undefined) {
+    const parsed = parseContentFormat(data.format);
+    if (parsed === null) {
+      return { ok: false, message: contentWriteFailureMessage('invalid_format') };
+    }
+    format = parsed;
+  }
 
   // 可见性：缺省 internal；非白名单值直接 400，**不静默丢弃**（同下面那批未知字段）
   const visibility = parseVisibility(data.visibility);
@@ -987,7 +1054,15 @@ export async function validateBlogData(raw: unknown): Promise<ValidateBlogResult
 
   return {
     ok: true,
-    data: { title, description, content, categoryId, visibility, allowAnonymousComments },
+    data: {
+      title,
+      description,
+      content,
+      categoryId,
+      visibility,
+      allowAnonymousComments,
+      ...(format !== undefined ? { format } : {}),
+    },
   };
 }
 
@@ -1166,7 +1241,8 @@ export async function getBlogForEdit(blogId: string) {
       authorId: true,
       visibility: true,
       allowAnonymousComments: true,
-      content: { select: { content: true } },
+      rendererOverride: true,
+      content: { select: { content: true, format: true, syntaxVersion: true } },
     },
   });
   if (!blog) return null;
@@ -1182,6 +1258,11 @@ export async function getBlogForEdit(blogId: string) {
     visibility: parseVisibility(blog.visibility) ?? 'internal',
     allowAnonymousComments: blog.allowAnonymousComments,
     authorId: blog.authorId,
+    // 编辑表单目前不带格式字段（不切换渲染器）；列在这里是为了将来的编辑器与
+    // 回退路径能读到它。未知值给 null —— 绝不在读口猜成 markdown。
+    format: parseContentFormat(blog.content?.format) ?? null,
+    syntaxVersion: blog.content?.syntaxVersion ?? null,
+    rendererOverride: blog.rendererOverride ?? null,
     contentMarkdown: blog.content?.content ?? '',
   };
 }
@@ -1192,8 +1273,23 @@ export async function getBlogForEdit(blogId: string) {
  * 磁盘 instance/blogs/<id> 目录是历史遗留物（旧数据残留），正文已入库，本站不再创建。
  */
 export async function createBlog(authorId: string, data: ValidatedBlogData): Promise<string> {
+  // 服务层自己的闸门（route 已先判过）：绕过 HTTP 的调用方也不该能写非法格式。
+  const write = resolveBlogContentFormat(data.format);
+  if (!write.ok) throw new Error(contentWriteFailureMessage(write.reason));
+
   const blogId = crypto.randomUUID();
   const now = nowForDb();
+
+  // reactive 发布前先编译一次并生成同版本快照；编译不出来就**不落库**。
+  const snapshot =
+    write.format === 'reactive'
+      ? await buildReactiveSnapshotForWrite({ kind: 'blog', contentId: blogId, content: data.content })
+      : null;
+  if (snapshot && !snapshot.ok) {
+    throw new ReactivePublishError(contentWriteFailureMessage('reactive_invalid'));
+  }
+  const syntaxVersion = snapshot && snapshot.ok ? snapshot.syntaxVersion : null;
+
   await prisma.$transaction([
     prisma.blog.create({
       data: {
@@ -1208,9 +1304,32 @@ export async function createBlog(authorId: string, data: ValidatedBlogData): Pro
         createdAt: now,
       },
     }),
-    prisma.blogContent.create({ data: { blogId, content: data.content, updatedAt: now } }),
+    prisma.blogContent.create({
+      data: {
+        blogId,
+        content: data.content,
+        // 显式写格式：不依赖列默认值，免得「create 路径漏填 → 由默认值兜底」变成
+        // 一条只在将来改默认值时才暴露的静默差异。
+        format: write.format,
+        syntaxVersion,
+        updatedAt: now,
+      },
+    }),
+    ...(snapshot && snapshot.ok
+      ? [prisma.reactiveSnapshot.create({ data: snapshot.row })]
+      : []),
   ]);
   return blogId;
+}
+
+/**
+ * 更新博客的结果。`error` 只在**写入被闸门拒绝**时出现（非法 / reactive 未开放）；
+ * 成功路径保持原来的 `{ hasChanges, changesDetail }` 形状，旧调用方无需改。
+ */
+export interface UpdateBlogResult {
+  hasChanges: boolean;
+  changesDetail: string[];
+  error?: ContentWriteFailure;
 }
 
 /**
@@ -1222,7 +1341,7 @@ export async function updateBlog(
   blogId: string,
   data: ValidatedBlogData,
   actorId: string
-): Promise<{ hasChanges: boolean; changesDetail: string[] }> {
+): Promise<UpdateBlogResult> {
   const blog = await prisma.blog.findUnique({
     where: { id: blogId },
     select: {
@@ -1233,9 +1352,38 @@ export async function updateBlog(
       visibility: true,
       allowAnonymousComments: true,
       category: { select: { name: true } },
+      // 正文格式要在**写之前**读：省略 format 的旧调用方必须保留原值，
+      // 而 reactive 存量行的任何写入当前都要拒绝（见 resolveBlogContentFormat）。
+      content: { select: { content: true, format: true, syntaxVersion: true } },
     },
   });
   if (!blog) return { hasChanges: false, changesDetail: [] };
+
+  const contentRow = blog.content;
+  const oldContent = contentRow?.content ?? '';
+  const write = resolveBlogContentFormat(data.format, contentRow?.format);
+  if (!write.ok) return { hasChanges: false, changesDetail: [], error: write.reason };
+
+  // reactive 的发布检查：正文或格式变了就重新编译并生成同版本快照；
+  // 只改标题 / 摘要等元信息时沿用已有快照（内容版本没变）。
+  const oldFormat = contentRow ? parseContentFormat(contentRow.format) : null;
+  let snapshot: Awaited<ReturnType<typeof buildReactiveSnapshotForWrite>> | null = null;
+  if (write.format === 'reactive' && (oldFormat !== 'reactive' || oldContent !== data.content)) {
+    snapshot = await buildReactiveSnapshotForWrite({
+      kind: 'blog',
+      contentId: blogId,
+      content: data.content,
+    });
+    if (!snapshot.ok) {
+      return { hasChanges: false, changesDetail: [], error: 'reactive_invalid' };
+    }
+  }
+  const syntaxVersion =
+    write.format === 'reactive'
+      ? snapshot && snapshot.ok
+        ? snapshot.syntaxVersion
+        : contentRow?.syntaxVersion ?? null
+      : null;
 
   let hasChanges = false;
   const changesDetail: string[] = [];
@@ -1289,14 +1437,20 @@ export async function updateBlog(
     hasChanges = true;
   }
 
-  // 正文变化
-  const contentRow = await prisma.blogContent.findUnique({
-    where: { blogId },
-    select: { content: true },
-  });
-  const oldContent = contentRow?.content ?? '';
+  // 正文变化（contentRow / oldContent 在上面取格式时已经读过一次）
   if (oldContent !== data.content) {
     changesDetail.push('文章内容已更新');
+    hasChanges = true;
+  }
+
+  // 格式变化也是正文变化：同样的文字从 Markdown 换成 ReactiveMD（或反过来）时
+  // 旧管线 / 新管线的解释完全不同，不能因为「字符串没变」就静默返回。
+  const formatChanged = !!contentRow && oldFormat !== write.format;
+  if (formatChanged) {
+    changesDetail.push(
+      `正文格式从《${oldFormat ? CONTENT_FORMAT_LABELS[oldFormat] : '未知'}》` +
+        `改为《${CONTENT_FORMAT_LABELS[write.format]}》`
+    );
     hasChanges = true;
   }
 
@@ -1306,7 +1460,8 @@ export async function updateBlog(
     blog.title !== data.title ||
     blog.description !== data.description ||
     blog.categoryId !== data.categoryId ||
-    oldContent !== data.content;
+    oldContent !== data.content ||
+    formatChanged;
 
   const now = nowForDb();
   const ops: Prisma.PrismaPromise<unknown>[] = [
@@ -1326,10 +1481,53 @@ export async function updateBlog(
     prisma.blogContent.upsert({
       where: { blogId },
       // 补缺失的空正文行时保留发布时间，不把数据修复伪装成文章更新。
-      create: { blogId, content: data.content, updatedAt: articleChanged ? now : blog.createdAt },
-      update: { content: data.content, ...(articleChanged ? { updatedAt: now } : {}) },
+      // format 显式写回：省略 format 的旧调用方走的是「保留原值」语义（闸门已保证
+      // 原值只能是 markdown）。syntaxVersion 只在 reactive 时有意义，当前写入关闭，
+      // 这里清空脏值而不是让它跟 markdown 正文并存。
+      create: {
+        blogId,
+        content: data.content,
+        format: write.format,
+        syntaxVersion,
+        updatedAt: articleChanged ? now : blog.createdAt,
+      },
+      update: {
+        content: data.content,
+        format: write.format,
+        syntaxVersion,
+        ...(articleChanged ? { updatedAt: now } : {}),
+      },
     }),
   ];
+
+  // 正文与快照同一个事务：正文写成功而快照没写成，就会得到一个「reactive 但读不出」
+  // 的版本；反过来快照先落、正文失败则快照指向一个不存在的版本。两者都不可接受。
+  if (snapshot && snapshot.ok) {
+    ops.push(
+      prisma.reactiveSnapshot.upsert({
+        where: {
+          uq_reactive_snapshot_version: {
+            kind: 'blog',
+            contentId: blogId,
+            contentVersion: snapshot.contentVersion,
+          },
+        },
+        create: snapshot.row,
+        update: {
+          format: snapshot.row.format,
+          scope: snapshot.row.scope,
+          syntaxVersion: snapshot.row.syntaxVersion,
+          compilerVersion: snapshot.row.compilerVersion,
+          adapterVersion: snapshot.row.adapterVersion,
+          optionsKey: snapshot.row.optionsKey,
+          documentJson: snapshot.row.documentJson,
+          hostDataJson: snapshot.row.hostDataJson,
+          digest: snapshot.row.digest,
+          generatedAt: snapshot.row.generatedAt,
+        },
+      })
+    );
+  }
 
   // 可见性变更**与正文改动同事务**落账（见 migration 19 头部：public 不可逆，而这条
   // 路径此前不留任何痕迹）。放在同一个 $transaction 里是必须的 —— 分成两次写，

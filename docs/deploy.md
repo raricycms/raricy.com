@@ -11,7 +11,7 @@
 | 项 | 要求 | 备注 |
 |----|------|------|
 | OS | Linux（Debian/Ubuntu/CentOS 全适用） | |
-| Node.js | ≥ 20.0.0 | 项目在 22 上实测 |
+| Node.js | ≥ 22.12.0 | `reactive-md` 是 ESM-only 且要求 22.12+；低于此版本会在**模块加载期**炸（不是某个功能不可用，是博客详情页与个人主页直接打不开） |
 | npm | ≥ 10 | `npm ci` 需要 |
 | SQLite | 库本身系统自带 | 应用走 Prisma 自带的 sqlite 引擎；运维脚本走 Node 内置 `node:sqlite` —— **不依赖 `better-sqlite3`**。但 `npm run prepare:cutover`（§4）与备份验证（§10）都调用系统 `sqlite3` **命令行**，用这两条路径就得装它（`apt install sqlite3`） |
 | nginx | 可选（直连 `:3000` 也行） | 推荐，反代配 cookie/CSRF 关键头 |

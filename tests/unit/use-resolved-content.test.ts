@@ -145,6 +145,33 @@ describe('useResolvedContent', () => {
     expect(calls, '命中缓存不该再发请求').toHaveLength(1);
   });
 
+  it('★ reactive 剪贴板：绝不内联源码，只给一个安全的站内链接 ★', async () => {
+    const id = freshClipId();
+    stubFetch(() => ({ code: 200, message: 'ok', clip: { id, content: '# reactive 源码', format: 'reactive' } }));
+    mountHook(`看这个 [@${id}] 谢谢`);
+    await flush();
+    expect(out.value, 'reactive 源码不得进入讨论/评论的 Markdown 管线').toBe(
+      `看这个 [查看剪贴板](/clipboard/${id}) 谢谢`
+    );
+    expect(out.value).not.toContain('reactive 源码');
+  });
+
+  it.each(['weird', null])('未知格式 %s 降级成链接', async (format) => {
+    const id = freshClipId();
+    stubFetch(() => ({ code: 200, message: 'ok', clip: { id, content: '未知格式源码', format } }));
+    mountHook(`[@${id}]`);
+    await flush();
+    expect(out.value).toBe(`[查看剪贴板](/clipboard/${id})`);
+  });
+
+  it('缺 format 的旧响应仍按 markdown 内联（兼容）', async () => {
+    const id = freshClipId();
+    stubFetch(() => clipResponse('旧响应正文'));
+    mountHook(`[@${id}]`);
+    await flush();
+    expect(out.value).toBe('旧响应正文');
+  });
+
   it('★ 失败 → 显示失败文案，且**不缓存**（重新挂载会重试）', async () => {
     const id = freshClipId();
     let attempt = 0;

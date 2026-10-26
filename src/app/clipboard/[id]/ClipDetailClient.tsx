@@ -7,7 +7,11 @@
 // 正文渲染仍交给 MarkdownRenderer（不改该组件）。
 import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
+import type { LocalDocument } from 'reactive-md';
 import MarkdownRenderer from '@/app/components/MarkdownRenderer';
+import ReactiveDocument from '@/app/components/reactive/ReactiveDocumentLazy';
+import type { SiteHostData } from '@/lib/reactive/ref-types';
+import type { RendererChoice } from '@/lib/renderer-select';
 
 // 通用文本复制 + 按钮反馈（navigator.clipboard，不可用时落到 execCommand）
 async function copyText(text: string): Promise<boolean> {
@@ -127,11 +131,23 @@ export function ClipActions({
   );
 }
 
-// 正文容器 + 图片点击放大（正文本身由 MarkdownRenderer 渲染）
-export function ClipContent({ content }: { content: string }) {
+// 正文容器：legacy 走 MarkdownRenderer（保留旧图片放大）；reactive 用上游
+// LocalDocumentView（图片放大由上游 image-view 负责，**不要**再叠一层旧放大）。
+export function ClipContent({
+  content,
+  renderer,
+  reactiveDocument,
+  hostData,
+}: {
+  content: string;
+  renderer: RendererChoice['renderer'];
+  reactiveDocument: LocalDocument | null;
+  hostData?: SiteHostData;
+}) {
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    if (renderer !== 'legacy') return;
     const root = ref.current;
     if (!root) return;
 
@@ -163,10 +179,32 @@ export function ClipContent({ content }: { content: string }) {
     obs.observe(root, { childList: true, subtree: true });
     bind();
     return () => obs.disconnect();
-  }, []);
+  }, [renderer]);
+
+  if ((renderer === 'reactive' || renderer === 'reactive-static') && reactiveDocument) {
+    return (
+      <div className="clipboard-reactive-content" data-content-renderer={renderer}>
+        <ReactiveDocument
+          document={reactiveDocument}
+          hostData={hostData}
+          mode={renderer === 'reactive-static' ? 'static' : 'interactive'}
+          staticFirst={renderer === 'reactive'}
+          role="read"
+        />
+      </div>
+    );
+  }
+
+  if (renderer === 'unavailable') {
+    return (
+      <div className="clipboard-reactive-content" data-content-renderer="unavailable" role="alert">
+        <p>这条剪贴板暂时无法显示；正文格式或渲染器配置有误。</p>
+      </div>
+    );
+  }
 
   return (
-    <div className="clipboard-markdown-content" ref={ref}>
+    <div className="clipboard-markdown-content" ref={ref} data-content-renderer="legacy">
       {/* 剪贴板详情页是 core+（page.tsx 的 requireCoreUser），所以正文里的 `[@…]`
           照常展开 —— 与它首页那条 `<MarkdownRenderer>` 的档位一致。 */}
       <MarkdownRenderer content={content} contentRefs="expand" />

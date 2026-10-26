@@ -56,6 +56,7 @@ export default async function ClipEditPage({
           title: clip.title,
           content: clip.content ?? '',
           publicity: clip.publicity,
+          format: clip.format,
         }}
       />
     </div>

@@ -647,6 +647,31 @@ Markdown 正文与自由内容有独立的排版规则。新增表情、用户�
 按内联组件用途重置，避免把正文图片的外观套到头像或透明贴图上。
 内容引用、匿名与权限行为由服务与组件契约决定，不能因统一样式改变。
 
+### 7.6 ReactiveMD 正文
+
+ReactiveMD 正文由上游 `reactive-md/screen.css` 提供基础版式，站点对齐规则住在
+`src/styles-scss/pages/blog/_reactive-md.scss`（在 `main.scss` 的
+`pages/blog/reactive-md` 登记）。**所有覆写都限定在 `.reactive-document .md-document`
+下**，理由有两条：上游 CSS 由客户端组件 import，与全站样式的加载顺序不保证，多一层
+`.reactive-document` 把权重提到 0-2-x，胜负不靠顺序；站内其它地方将来若直接用
+`.md-document`，也不该被博客的排版口径污染。**不改上游 CSS，不写全局
+`.md-document` 规则。**
+
+- **令牌映射**：上游的 `--ink` / `--surface` / `--accent` 等在根上映射到站点
+  `--color-*` 令牌，`--document-bg` 设为透明（正文卡由页面提供底色）。颜色因此
+  自动跟随主题，不另写一套明暗配方。
+- **宽度与排版**：正文 `width: 100%`、`max-width: none`、`padding: 0`，由页面外壳
+  控制阅读宽度；字号 / 行高与站点正文对齐，标题、列表、引用、表格、任务列表按
+  §3.2 / §7.2 的口径覆写。音频控件只加 `max-width`，不要写 `width: 100%`。
+- **暗色**：跟随 `[data-theme='dark']`，并对原生控件设置 `color-scheme: dark`；
+  不额外建一套亮暗变量。
+- **375px**：字号与标题尺寸下调，表格在 `.md-table-scroll` 内横向滚动（表格自身
+  `min-width`），整页不出现横向溢出。
+- **打印**：上游 `screen.css` **不含 `@page`**，`print.css` 含；`ReactiveDocument.tsx`
+  当前同时引入两者。站点打印规则隐藏交互控件（`.vote-embed-submit`、
+  `.vote-embed-link`、`.site-embed--audio`），保留静态正文与投票结果。只想要屏幕
+  样式时可以只引 `screen.css`，是否接受上游的 `@page` 由宿主决定。
+
 ## 8. 实现约定与验收
 
 ### 8.1 样式入口与令牌来源
@@ -746,3 +771,4 @@ e2e 读取现有构建产物；修改源码后先构建，或使用 `npm run e2e
 | 评论与讨论输入、正文 | `src/styles-scss/components/_composer.scss`、`src/styles-scss/components/_markdown-body.scss` |
 | 后台与自由网格 | `src/app/components/AdminShell.tsx`、`src/styles-scss/pages/admin/_common.scss`、`src/styles-scss/pages/_profile.scss` |
 | 代码编辑与文档排版 | `src/styles-scss/components/_markdown-editor.scss`、`src/styles-scss/components/_doc-prose.scss` |
+| ReactiveMD 正文 | `src/styles-scss/pages/blog/_reactive-md.scss`、`src/app/components/reactive/ReactiveDocument.tsx` |

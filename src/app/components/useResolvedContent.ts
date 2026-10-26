@@ -27,6 +27,9 @@ import {
   replaceClipboardRef,
   truncateClipboardContent,
 } from '@/lib/content-refs';
+import { parseContentFormat } from '@/lib/content-format';
+import type { ContentFormat } from '@/lib/content-format';
+import { reactiveClipboardLink } from '@/lib/content-ref-resolver';
 
 /** 缓存条数上限（与 chat-markdown 的 CACHE_MAX 同量级即可）。 */
 const CACHE_MAX = 200;
@@ -36,12 +39,20 @@ const CACHE_MAX = 200;
  */
 const CACHE_TTL_MS = 5 * 60_000;
 
-const cache = new Map<string, { text: string; at: number }>();
-/** 并发去重：同一条剪贴板被多条消息同时引用时只发一次请求。 */
-const inflight = new Map<string, Promise<string>>();
+/** 一条剪贴板取数结果。**格式与正文一起缓存** —— 只存正文就分不出能不能内联。 */
+interface LoadedClip {
+  text: string;
+  /** null = 服务端给了个认不出的格式：已降级成安全链接，读取方别再当正文用。 */
+  format: ContentFormat | null;
+  version?: string;
+}
 
-/** 命中返回正文（可能是空串），未命中/过期返回 undefined。 */
-function readCache(id: string): string | undefined {
+const cache = new Map<string, LoadedClip & { at: number }>();
+/** 并发去重：同一条剪贴板被多条消息同时引用时只发一次请求。 */
+const inflight = new Map<string, Promise<LoadedClip>>();
+
+/** 命中返回结果，未命中/过期返回 undefined。 */
+function readCache(id: string): LoadedClip | undefined {
   const hit = cache.get(id);
   if (hit === undefined) return undefined;
   // 纯客户端缓存的新鲜度判断：两边都是真实时钟，与库内「UTC+8 墙上时间」无关
@@ -49,33 +60,46 @@ function readCache(id: string): string | undefined {
     cache.delete(id);
     return undefined;
   }
-  return hit.text;
+  return { text: hit.text, format: hit.format, version: hit.version };
 }
 
-function writeCache(id: string, text: string): void {
+function writeCache(id: string, value: LoadedClip): void {
   if (cache.size >= CACHE_MAX) {
     const oldest = cache.keys().next().value;
     if (oldest !== undefined) cache.delete(oldest);
   }
-  cache.set(id, { text, at: Date.now() });
+  cache.set(id, { ...value, at: Date.now() });
 }
 
 /** 取剪贴板正文；失败回落成与博客一致的失败文案，且不写缓存。 */
-function loadClipboard(id: string): Promise<string> {
+function loadClipboard(id: string): Promise<LoadedClip> {
   const existing = inflight.get(id);
   if (existing) return existing;
 
-  const task = (async () => {
+  const task = (async (): Promise<LoadedClip> => {
     try {
       const res = await fetch(`/api/clipboard/${id}`, { credentials: 'same-origin' });
       if (!res.ok) throw new Error('failed'); // 401/403/404 一视同仁
       const data: unknown = await res.json();
-      const clip = (data as { clip?: { content?: unknown } })?.clip;
-      const text = typeof clip?.content === 'string' ? clip.content : '';
-      writeCache(id, text);
-      return text;
+      const clip = (data as { clip?: { content?: unknown; format?: unknown; version?: unknown } })?.clip;
+      const raw = typeof clip?.content === 'string' ? clip.content : '';
+      // 未带 format 的旧响应按 markdown（兼容）；带了认不出的值**不猜 markdown**，
+      // 与博客侧 ContentRefResolver 同一口径：只给一个安全的站内链接。
+      const rawFormat = clip?.format;
+      const version = typeof clip?.version === 'string' ? clip.version : undefined;
+      const format =
+        rawFormat === undefined ? 'markdown' : parseContentFormat(rawFormat);
+      if (format !== 'markdown') {
+        const value: LoadedClip = { text: reactiveClipboardLink(id), format, version };
+        writeCache(id, value);
+        return value;
+      }
+      const value: LoadedClip = { text: raw, format, version };
+      writeCache(id, value);
+      return value;
     } catch {
-      return clipboardFailureText(id);
+      // 失败不进缓存（下次挂载重试）—— 与改动前一致。
+      return { text: clipboardFailureText(id), format: 'markdown' };
     } finally {
       inflight.delete(id);
     }
@@ -93,7 +117,7 @@ function loadClipboard(id: string): Promise<string> {
 export function useResolvedContent(content: string): string {
   const ref = useMemo(() => firstClipboardRef(content), [content]);
   const refId = ref?.id ?? null;
-  const [resolved, setResolved] = useState<{ id: string; text: string } | null>(null);
+  const [resolved, setResolved] = useState<({ id: string } & LoadedClip) | null>(null);
 
   useEffect(() => {
     if (!refId) return;
@@ -101,12 +125,12 @@ export function useResolvedContent(content: string): string {
 
     const cached = readCache(refId);
     if (cached !== undefined) {
-      setResolved({ id: refId, text: cached });
+      setResolved({ id: refId, ...cached });
       return;
     }
 
-    void loadClipboard(refId).then((text) => {
-      if (!cancelled) setResolved({ id: refId, text });
+    void loadClipboard(refId).then((value) => {
+      if (!cancelled) setResolved({ id: refId, ...value });
     });
     return () => {
       cancelled = true;
@@ -116,6 +140,12 @@ export function useResolvedContent(content: string): string {
   return useMemo(() => {
     // 竞态守卫：正文换成了另一个引用时，旧的展开结果不能套用在新正文上
     if (!ref || !resolved || resolved.id !== ref.id) return content;
-    return replaceClipboardRef(content, ref, truncateClipboardContent(resolved.text, ref.id));
+    // reactive 的结果已经是链接（不内联源码），不需要也不该按正文截断；
+    // markdown 才走原来的「过长截断 + 回原剪贴板链接」。
+    const replacement =
+      resolved.format === 'markdown'
+        ? truncateClipboardContent(resolved.text, ref.id)
+        : resolved.text;
+    return replaceClipboardRef(content, ref, replacement);
   }, [content, ref, resolved]);
 }
