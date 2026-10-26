@@ -182,6 +182,18 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(
     /** 最新的表单格式 —— 草稿落盘时随正文一起写，不读可能过期的闭包。 */
     const formatRef = useRef(format);
     formatRef.current = format;
+    /**
+     * 格式同步的「水位」：上一次见到的格式，以及是否已经过了挂载那一刻。
+     *
+     * 只切格式、正文一个字没动时，CM6 的 updateListener **不会**触发；没有下面
+     * 那条 effect，本地草稿里留着的还是旧格式 —— 下次恢复出来正文对上、格式对不上，
+     * 页面上不会有任何提示。两件事必须同时成立：
+     *   · **初次挂载不落盘**：新建页可能正留着一份旧草稿等用户在横幅里选，
+     *     这时写一份「当前正文 + 表单格式」上去会把那份草稿直接覆盖掉；
+     *   · 挂载之后的变化才是用户自己切的，正文没动也要把**新**格式存下去
+     *     （绝不能拿表单原来的旧格式回写，草稿里存的格式才是恢复时的真相）。
+     */
+    const formatSyncRef = useRef({ mounted: false, last: format });
     const [initFailed, setInitFailed] = useState(false);
 
     /** 已取消 / 已销毁的批次 —— 迟到的上传结果据此丢弃，绝不插回正文。 */
@@ -505,6 +517,27 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(
 
     useEffect(() => () => draftRef.current?.dispose(), []);
 
+    // ── 只切格式 = 一次草稿写入 ─────────────────────────────────────────────
+    // 正文没动时 updateListener 不会跑，格式本身也就没人落盘（见 formatSyncRef）。
+    // 这里只补「格式变了」这一种情况：草稿仍然只存正文与格式，不扩展别的状态。
+    useEffect(() => {
+      const sync = formatSyncRef.current;
+      if (!sync.mounted) {
+        // 初次挂载：正文与格式的初值来自草稿或服务端，不是用户刚改的。
+        sync.mounted = true;
+        sync.last = format;
+        return;
+      }
+      if (sync.last === format) return;
+      sync.last = format;
+      const store = draftRef.current;
+      const view = viewRef.current;
+      // 编辑器没起来（已回退 textarea）时正文不在 docRef 这面镜子里，别拿旧快照写草稿。
+      if (!store || !view) return;
+      // schedule 的语义就是「用这一份替换排队中的旧值」—— 正好是切换格式要的。
+      store.schedule({ format, text: view.state.doc.toString() });
+    }, [format]);
+
     // ── 并排视图的窄屏降级 ──────────────────────────────────────────────────
     useEffect(() => {
       if (typeof window === 'undefined' || !window.matchMedia) return;
@@ -636,9 +669,18 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(
           selection: { anchor: value.length },
         });
       }
-      if (restoredDraftFormatRef.current !== formatRef.current) {
-        onDraftFormatRestored?.(restoredDraftFormatRef.current);
+      // dispatch 会经 updateListener 先排一份「当前（旧）格式 + 恢复后的正文」。
+      // 表单若接受草稿的格式，那一份里的格式就是过期值 —— 恢复后立刻关页，
+      // 落盘的就是格式错位的那一份。这里明确再排一次，把**最终正文与最终格式
+      // 一起**写下去（schedule 替换掉前一份）；表单没接这个回调时，最终格式
+      // 仍是表单当前那一档，两份保持一致。
+      const restoredFormat = restoredDraftFormatRef.current;
+      let finalFormat = formatRef.current;
+      if (restoredFormat !== formatRef.current && onDraftFormatRestored) {
+        onDraftFormatRestored(restoredFormat);
+        finalFormat = restoredFormat;
       }
+      draftRef.current?.schedule({ format: finalFormat, text: value });
       setDraftChoice(null);
     }
 
