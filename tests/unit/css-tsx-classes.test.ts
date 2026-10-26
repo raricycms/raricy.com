@@ -217,6 +217,18 @@ const UNSTYLED: [string, string][] = [
   ['.loom-row', '纯语义包装：SVG 组的格子与纹理各自带填充/描边，落位动画由 .loom-row--settling 给'],
   ['.lm-portal', '纯语义包装：传送门图形全部用 SVG 内联属性画，组上不需要样式'],
   ['.lm-rays', '纯语义包装：光线图形全部用 SVG 内联属性画，组上不需要样式'],
+  // 2026-10 hinge2 / hinge3 玩具（首版就漏登记，红了 17 个会话才被当成「既有失败」翻出来）。
+  // 这一批是**同一个形状**：SVG 的 `<g>` 分组壳，外观要么由子元素的 Inline 属性画，
+  // 要么由修饰类给 —— 壳自己确实不该有声明（_hinge2.scss 头部："Artwork uses its own
+  // material colors; controls and page surfaces use the site theme."）。
+  ['.h2-block', '修饰类载体：外观全在 .h2-block--paper/--folded/--stone/--ivory/--glass 与三个面上（_hinge2.scss:32-35），裸类本身无声明'],
+  ['.h2-gate', '纯语义包装：城门图形（3 条 path + 门灯 .h2-door-light）全部用 SVG 内联 fill 画'],
+  ['.h2-pavilion', '纯语义包装：亭子图形全部用 SVG 内联 fill 画，只有 opacity 由内联属性给'],
+  ['.h2-pawn', '纯语义包装：棋子（ellipse + path）全部用 SVG 内联 fill 画'],
+  ['.h2-mirror-wall', '纯语义包装：镜面墙体（polygon + polyline）用内联 fill/stroke 与 url(#mirror) 渐变画'],
+  ['.h2-mirror-handle', '别名钩子：与 .h2-handle 成对出现（`className="h2-handle h2-mirror-handle"`），外观全由 .h2-handle 给'],
+  ['.h2-fold-handle', '别名钩子：同上，与 .h2-handle 成对出现'],
+  ['.h3-paper-face', '修饰类载体：外观全在 .h3-paper-face--back 与其子块（.h3-paper-material / .h3-margin-marks…）上，裸类本身无声明'],
 ];
 
 /** 刻意无样式，但**必须**在别处以选择器形态被消费 —— 否则这条豁免就是假的。 */
@@ -225,6 +237,7 @@ const CONSUMED: [string, string][] = [
   ['.pay-amount__error', 'tests/e2e/poster.spec.ts 断言余额不足文案'],
   ['.vote-embed', 'MarkdownRenderer 扫到就把这个占位换成 <VoteEmbed>，不参与样式'],
   ['.trade-card--quote', '练手盘的自选列表卡钩子：tests/e2e/fish-trade.spec.ts 用它定位/断言「行情卡在不在」，外观全由 .trade-card 与 .trade-watch 给'],
+  ['.h3-target', 'hinge3 落点钩子：tests/e2e/hinge3.spec.ts 用 `.h3-target[data-status="matched"]` 断言匹配态，外观全由 .h3-target--matched/--wrong 与 .h3-target-corners/-check 给'],
 ];
 
 // 名单里写作 `.foo`（读起来像选择器），比对时一律去点 —— used/defined 存的是裸类名。
