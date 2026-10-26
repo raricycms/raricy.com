@@ -180,6 +180,7 @@ export default function Loom() {
           onPointerUp={endDrag}
           onPointerCancel={endDrag}
         >
+          <LoomPatternDefs />
           <LoomFrame />
           <LoomCloth draft={draft} />
           {!draft.finished && canWeave(draft) ? <LoomShuttle draft={draft} /> : null}
@@ -316,16 +317,44 @@ function LoomFrame() {
 }
 
 /**
- * 平纹布面：连续的纬线打底，再把经线按"一上一下"压上去。
+ * 布的织纹 pattern。
+ *
+ * 一格 3px，横竖各一道极淡的暗线 —— 这是「布」的质感，不是「布」的图案。
+ * 图案（哪根经线什么颜色、哪行什么颜色）由上面那批 32px 的经线带与 24px 的纬线带给；
+ * 这一层只负责让它们看起来是**织在一起的**，而不是两块色板叠着。
+ *
+ * 频率必须远细于经线宽度（32px）：密到看不清单根线，才会融成一片混色 —— 这正是真布
+ * 远看时的样子。画在 pattern 里一次定义、整幅平铺（`<rect fill="url(#…)">`），
+ * 不用逐行逐列生成元素。
+ */
+function LoomPatternDefs() {
+  return (
+    <defs>
+      <pattern id="loom-weft-texture" width={3} height={3} patternUnits="userSpaceOnUse">
+        {/* 横向的纬线断面：一格一道，压在布面上。 */}
+        <line x1={0} y1={0.5} x2={3} y2={0.5} className="loom-weave__thread" />
+        {/* 纵向的经线断面：与横向错开半格，就是平纹的交织。 */}
+        <line x1={1.5} y1={0} x2={1.5} y2={3} className="loom-weave__thread" />
+      </pattern>
+    </defs>
+  );
+}
+
+/**
+ * 平纹布面：连续的纬线打底，再把经线**连续**压上去，最后铺一层细织纹。
  *
  * 【关键：一笔画整条，不要一格一格填】把每一格画成独立的方块，无论怎么圆角都读成
  * 棋盘格 —— 因为方块的边界在四个方向上都是断的。真实的布恰好相反：经线是一条一条
- * **连续**贯穿整幅的，只是在每一梭处轮流被压住/露出来。所以画法是：
+ * **连续**贯穿整幅的，纬线也是。所以画法是：
  *   1. 先铺横向的纬线带（每一行一条，贯穿整幅）；
- *   2. 再把每一根经线画成一条**贯穿整幅的竖带**，用虚线（一上一下）在纬线上开合，
- *      相邻两根相位错开半个循环。
- * 于是竖条纹是连的，横条纹也是连的，交叠处自然出现"织"的纹理 —— 和棋盘格正好
- * 在这点上相反：布有连续的经纬，棋盘没有。
+ *   2. 再把每一根经线画成一条**贯穿整幅的竖带**（连续，不开合）；
+ *   3. 最后铺一层 3px 的细织纹，把两者织在一起。
+ * 于是竖条纹是连的，横条纹也是连的 —— 和棋盘格正好在这点上相反：布有连续的经纬，
+ * 棋盘没有。
+ *
+ * 【别用虚线画「一上一下」】那样"语义"是对的，但在每根线 32px 宽的尺度上，每段虚实
+ * 就是一块 20×12px 的纯色方块，远看还是棋盘格。交织的节奏交给第 3 步那层细纹理 ——
+ * 它的频率可以做到远细于一根线，这才是织物质感应有的尺度。
  *
  * 布面与导出的成品共用这一份画法，所以屏幕上看到的和导出的不会是两种质感。
  */
@@ -371,7 +400,20 @@ function LoomWeave({
         />
       ))}
 
-      {/* 经线：每根一条贯穿整幅的竖带，虚线开合出"一上一下"，相邻错开半格。 */}
+      {/*
+        经线：每根一条**连续**贯穿整幅的竖带。
+
+        【为什么不用虚线画「一上一下」】这是这块布最难画对的一处。用 `strokeDasharray`
+        按格开合，看着"对"（确实是隔一格压上来一次），但在 12 根经线、每格 32px 的尺度上，
+        每一段虚实都是一块 20×12px 的纯色方块 —— 远看就是**棋盘格**，不是织出来的布。
+        真布远看是两种线**混**出来的颜色，因为交织频率远高过一根线的宽度；这里一根线
+        就占 32px，压根没有余地画出那种频率。硬画只会得到格子布。
+
+        【所以画真实的那个东西：经线是连续的】经线本来就不间断（断了的叫断经，是故障）。
+        一根连续的竖带 + 底下的纬色在缝里透出来，读出来就是"经线压在上面"，而且永远不会
+        碎成方块。交织的质感交给上面那层细纹理（`.loom-weave__texture`）—— 那层的频率
+        可以做到远细于一根线，这才是织物质感应有的尺度。
+      */}
       {Array.from({ length: LOOM_ENDS }, (_, end) => {
         const x = left + end * bandWidth + bandWidth / 2;
         return (
@@ -382,15 +424,28 @@ function LoomWeave({
             x2={x}
             y2={clothBottom}
             stroke={warpColor(draft, end)}
-            strokeWidth={bandWidth - 1.4}
+            strokeWidth={bandWidth * 0.62}
             strokeLinecap="butt"
-            strokeDasharray={`${LOOM_CELL_H} ${LOOM_CELL_H}`}
-            // 奇数根错开半格 —— 这就是平纹"一上一下、隔一根错开"本身。
-            strokeDashoffset={end % 2 === 0 ? 0 : LOOM_CELL_H}
             className="loom-weave__warpband"
           />
         );
       })}
+
+      {/*
+        织纹：一组 3px 一格的横竖细线，铺满整幅布。
+        这才是「织出来的」该有的尺度 —— 一根线就是 3px 的起伏，远看融成一片混色。
+        它和上面 32px 一根的经线是两码事：经线是**图案**（哪根什么颜色），
+        这层是**质感**（这是一块布，不是一块色板）。
+        用 pattern 平铺而不是逐行逐列画 —— 12 行 × 12 根会变成 144 个元素、每帧重建。
+      */}
+      <rect
+        x={left}
+        y={top}
+        width={width}
+        height={rows * LOOM_CELL_H}
+        fill="url(#loom-weft-texture)"
+        className="loom-weave__texture"
+      />
 
       {/* 经线在光下的隆起：每根竖带中间一道极淡的高光。这是"线"与"色块"的分界。 */}
       {Array.from({ length: LOOM_ENDS }, (_, end) => (
@@ -431,7 +486,13 @@ function LoomCloth({ draft }: { draft: LoomDraft }) {
   const fellY = rows > 0 ? rowY(rows - 1) : CLOTH_BOTTOM;
   return (
     <g className="loom-cloth">
-      {/* 未织的经线：12 根宽条，从织口一直绷到顶梁。与布面的格子同宽同色，织口处接得上。 */}
+      {/*
+        未织的经线：12 根，从织口一直绷到顶梁。与布面里那批经纱**同宽同色**，
+        织口处才接得上（布里的并经线是 `LOOM_CELL_W * 0.64`，这里跟它对齐）。
+
+        裸经线不必留缝 —— 这时后面没有纬线，露出来的就是机子的底色（白底/纸背），
+        本身已经能看出是一根一根的线。留了缝反而像梳子。
+      */}
       {Array.from({ length: LOOM_ENDS }, (_, end) => {
         const x = LOOM_CLOTH_LEFT + end * LOOM_CELL_W + LOOM_CELL_W / 2;
         // 梭口：按经线奇偶分组，隔一根抬起一根。
@@ -444,7 +505,7 @@ function LoomCloth({ draft }: { draft: LoomDraft }) {
             x2={x}
             y2={fellY}
             stroke={warpColor(draft, end)}
-            strokeWidth={LOOM_CELL_W - 1.2}
+            strokeWidth={LOOM_CELL_W * 0.64}
             strokeLinecap="butt"
             className={`loom-warp${isLifted ? ' is-lifted' : ''}`}
           />

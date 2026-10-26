@@ -57,7 +57,24 @@
   // `.loom-weave` 本身只是把这几层收在一起的容器，不接手势。
   .loom-weave { pointer-events: none; }
 
-  .loom-weave__warpband { opacity: 0.86; }
+  // 经线半透明：压在上面的经线也要让底下的纬色透一点上来。全不透明就回到
+  // 「一整块纯经色挨着一整块纯纬色」的棋盘格 —— 那是格子布，不是织出来的布。
+  .loom-weave__warpband { opacity: 0.8; }
+
+  // 细织纹：一格 3px 的横竖暗线。这一层不是图案（图案是经线带与纬线带），
+  // 它只负责让布看出来是织出来的 —— 密到看不清单根线，融成一片混色。
+  //
+  // 【透明度必须很低，否则浅色行会发灰】这一层压在**所有**纬色上，而浅色行（米白）
+  // 是最挑的那一档：暗线一浓，整行就从米白变成脏灰，看着像布放旧了。0.045 是能在
+  // 浅色上看出织纹、又不改色相的上限。想加强质感宁可加密（缩小 pattern 一格），
+  // 别加浓 —— 加浓改的是**颜色**，不是质感。
+  .loom-weave__texture { pointer-events: none; }
+
+  .loom-weave__thread {
+    stroke: rgba(48, 34, 16, 0.045);
+    stroke-width: 1;
+    stroke-linecap: butt;
+  }
 
   // 每一梭之间打紧留下的暗痕。
   .loom-weave__pick { stroke: rgba(48, 34, 16, 0.16); stroke-width: 1; }
