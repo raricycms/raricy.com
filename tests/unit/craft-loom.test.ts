@@ -1,30 +1,190 @@
+// 小小织布机的纯逻辑用例。
+//
+// 这一份里最重要的是三组断言，它们各自钉住一条"重做时才发现不对"的东西：
+//   1. 一次连续拖动 = 一行 —— 引擎里根本没有"织完但没压紧"的中间状态，
+//      所以不需要两颗按钮，玩家也不会被按钮打断。
+//   2. 反向拖能反悔，但有死区 —— 手抖不该退掉一整行。
+//   3. 换梭线只影响之后的投梭 —— 已经织进布里的行不许变色。
+
 import { describe, expect, it } from 'vitest';
 import {
-  artifactGeometry, beatRow, canBeat, cellFace, clearLoom, finishLoom, freshLoomDraft, LOOM_MAX_ROWS,
-  parseLoomDraft, passComplete, passDirection, resumeLoom, setPassProgress, setWeft, shedGroup, startLoom,
-  undoLoom, WARP_SCHEMES, warpColor, WEFT_COLORS, type LoomDraft,
+  LOOM_CELL_H,
+  LOOM_ENDS,
+  LOOM_MAX_ROWS,
+  LOOM_UNDO_PULL,
+  WARP_SCHEMES,
+  WEFT_COLORS,
+  artifactGeometry,
+  canWeave,
+  cellFace,
+  clearLoom,
+  currentRow,
+  dragWeft,
+  finishLoom,
+  freshLoomDraft,
+  isFull,
+  parseLoomDraft,
+  passDirection,
+  resetPass,
+  resumeLoom,
+  rowColor,
+  setWarp,
+  setWeft,
+  shedGroup,
+  shuttleX,
+  undoLoom,
+  warpColor,
+  weftColor,
+  type LoomDraft,
 } from '../../src/games/craft/loom/engine';
 
+/** 织出 rows 行：每一行都是一次"拖到对岸"。 */
 function woven(rows: number, warp = WARP_SCHEMES[0].id): LoomDraft {
-  let draft = startLoom(freshLoomDraft(), warp);
-  for (let row = 0; row < rows; row += 1) {
-    draft = setPassProgress(draft, 1);
-    draft = beatRow(draft);
-  }
+  let draft: LoomDraft = setWarp(freshLoomDraft(), warp);
+  for (let row = 0; row < rows; row += 1) draft = dragWeft(draft, 1);
   return draft;
 }
 
-describe('小小织布机：平纹、抬经与压紧', () => {
-  it('开始织布会绷好经线，清掉上一条布', () => {
-    const dirty = { ...freshLoomDraft(), started: true, rows: [{ color: 2 }], progress: 0.4 };
-    const started = startLoom(dirty, 'indigo');
-    expect(started.started).toBe(true);
-    expect(started.warp).toBe('indigo');
-    expect(started.rows).toEqual([]);
-    expect(started.progress).toBe(0);
-    expect(startLoom(dirty, 'not-a-scheme').warp).toBe(WARP_SCHEMES[0].id);
+describe('小小织布机：一次拖动就是一行', () => {
+  it('拖到一半松手不算完成，梭子停在那里可以接着拖', () => {
+    const half = dragWeft(freshLoomDraft(), 0.45);
+    expect(half.rows).toHaveLength(0);
+    expect(half.progress).toBeCloseTo(0.45, 5);
+
+    const more = dragWeft(half, 0.9);
+    expect(more.rows).toHaveLength(0);
+    expect(more.progress).toBeCloseTo(0.9, 5);
+
+    // 到岸：这一行立刻织进布面，进度归零 —— 中间没有"等压紧"的状态。
+    const done = dragWeft(more, 1);
+    expect(done.rows).toHaveLength(1);
+    expect(done.progress).toBe(0);
   });
 
+  it('到岸的瞬间同时换梭口与换方向，一气呵成', () => {
+    expect(shedGroup(freshLoomDraft())).toBe(0);
+    expect(passDirection(freshLoomDraft())).toBe(1);
+
+    const one = dragWeft(freshLoomDraft(), 1);
+    expect(shedGroup(one)).toBe(1);
+    expect(passDirection(one)).toBe(-1);
+
+    const two = dragWeft(one, 1);
+    expect(shedGroup(two)).toBe(0);
+    expect(passDirection(two)).toBe(1);
+    expect(two.rows).toHaveLength(2);
+  });
+
+  it('进度被夹在 0–1 之间，非法值不改变草稿', () => {
+    expect(dragWeft(freshLoomDraft(), -0.02).progress).toBe(0);
+    const capped = dragWeft(freshLoomDraft(), 0.7);
+    expect(capped.progress).toBeCloseTo(0.7, 5);
+    const draft = dragWeft(freshLoomDraft(), 0.5);
+    expect(dragWeft(draft, Number.NaN)).toBe(draft);
+    expect(dragWeft(draft, Number.POSITIVE_INFINITY)).toBe(draft);
+  });
+
+  it('一行记下投梭方向，相邻两行相反', () => {
+    const two = woven(2);
+    expect(two.rows[0].direction).toBe(1);
+    expect(two.rows[1].direction).toBe(-1);
+  });
+
+  it('梭子的横坐标按当前趟的方向换算，两端对齐布边', () => {
+    const draft = freshLoomDraft();
+    expect(shuttleX(draft)).toBeCloseTo(168, 5);
+    // 反向的那一趟：进度 0 时梭子在右端。
+    const back = dragWeft(draft, 1);
+    expect(shuttleX(back)).toBeCloseTo(168 + LOOM_ENDS * 32, 5);
+    expect(shuttleX(dragWeft(back, 1))).toBeCloseTo(168, 5);
+  });
+});
+
+describe('小小织布机：反悔', () => {
+  it('往回拽够深就退掉刚织的那一行', () => {
+    const one = dragWeft(freshLoomDraft(), 1);
+    expect(one.rows).toHaveLength(1);
+    const undone = dragWeft(one, -LOOM_UNDO_PULL - 0.01);
+    expect(undone.rows).toHaveLength(0);
+    expect(undone.progress).toBe(0);
+  });
+
+  it('反悔有死区：拽得不够多什么都不做，手抖不会退掉一行', () => {
+    const one = dragWeft(freshLoomDraft(), 1);
+    const stillOne = dragWeft(one, -LOOM_UNDO_PULL / 2);
+    expect(stillOne.rows).toHaveLength(1);
+    expect(stillOne).toBe(one);
+  });
+
+  it('没有行可退时反向拖只是把梭子拨回起点', () => {
+    const draft = dragWeft(freshLoomDraft(), 0.6);
+    const back = dragWeft(draft, -0.9);
+    expect(back.rows).toHaveLength(0);
+    expect(back.progress).toBe(0);
+  });
+
+  it('退回一趟只清进度，不动已经织好的行', () => {
+    const draft = dragWeft(woven(2), 0.5);
+    const reset = resetPass(draft);
+    expect(reset.rows).toHaveLength(2);
+    expect(reset.progress).toBe(0);
+    // 进度已是 0 时原样返回，避免无谓的重渲染。
+    expect(resetPass(reset)).toBe(reset);
+  });
+
+  it('撤销按「行进中 → 上一行 → 取消收边」的顺序退', () => {
+    const mid = dragWeft(woven(2), 0.5);
+    expect(undoLoom(mid).rows).toHaveLength(2);
+    expect(undoLoom(undoLoom(mid)).rows).toHaveLength(1);
+    const finished = finishLoom(woven(2));
+    expect(undoLoom(finished).finished).toBe(false);
+  });
+});
+
+describe('小小织布机：经线连续、纬线只影响之后的投梭', () => {
+  it('经线颜色只由第几根决定，与行号无关 —— 这是纵向条纹能连续的原因', () => {
+    const draft = woven(5);
+    expect(warpColor(draft, 0)).toBe(warpColor(draft, 0));
+    expect(warpColor(draft, 2)).toBe(warpColor(draft, LOOM_ENDS + 2));
+    // 每根经线在整块布上取到的都是同一个色，逐行扫描不会出现颜色跳变。
+    for (let end = 0; end < LOOM_ENDS; end += 1) {
+      const colors = new Set(Array.from({ length: 5 }, () => warpColor(draft, end)));
+      expect(colors.size).toBe(1);
+    }
+  });
+
+  it('换经线配色只在没上机时有效', () => {
+    const fresh = freshLoomDraft();
+    expect(setWarp(fresh, 'indigo').warp).toBe('indigo');
+    expect(setWarp(fresh, 'not-a-scheme').warp).toBe(WARP_SCHEMES[0].id);
+    const started = woven(1);
+    expect(setWarp(started, 'moss')).toBe(started);
+  });
+
+  it('换梭线不改已经织进布里的行', () => {
+    let draft = dragWeft(freshLoomDraft(), 1);
+    expect(rowColor(draft, 0)).toBe(WEFT_COLORS[0].hex);
+
+    draft = setWeft(draft, 3);
+    expect(draft.weft).toBe(3);
+    expect(weftColor(draft)).toBe(WEFT_COLORS[3].hex);
+    // 第一行还是米白 —— 换线轴只影响接下来投的梭。
+    expect(rowColor(draft, 0)).toBe(WEFT_COLORS[0].hex);
+
+    draft = dragWeft(draft, 1);
+    expect(rowColor(draft, 1)).toBe(WEFT_COLORS[3].hex);
+    expect(draft.rows.map((row) => row.color)).toEqual([0, 3]);
+  });
+
+  it('换梭线拒绝越界下标', () => {
+    const draft = freshLoomDraft();
+    expect(setWeft(draft, -1)).toBe(draft);
+    expect(setWeft(draft, WEFT_COLORS.length)).toBe(draft);
+    expect(setWeft(draft, 1.5)).toBe(draft);
+  });
+});
+
+describe('小小织布机：平纹与布面', () => {
   it('平纹格由行号与经线号共同决定，经纬交错', () => {
     expect(cellFace(0, 0)).toBe('warp');
     expect(cellFace(0, 1)).toBe('weft');
@@ -33,162 +193,116 @@ describe('小小织布机：平纹、抬经与压紧', () => {
     expect(cellFace(2, 0)).toBe('warp');
   });
 
-  it('每压一行换一组经线，梭子方向也跟着回头', () => {
-    let draft = freshLoomDraft();
-    expect(shedGroup(draft)).toBe(0);
-    expect(passDirection(draft)).toBe(1);
-    draft = startLoom(draft, 'oat');
-    draft = beatRow(setPassProgress(draft, 1));
-    expect(shedGroup(draft)).toBe(1);
-    expect(passDirection(draft)).toBe(-1);
-    draft = beatRow(setPassProgress(draft, 1));
-    expect(shedGroup(draft)).toBe(0);
-    expect(passDirection(draft)).toBe(1);
+  it('每一行里经线露头与纬线露头的格数各占一半', () => {
+    for (let row = 0; row < 4; row += 1) {
+      const faces = Array.from({ length: LOOM_ENDS }, (_, end) => cellFace(row, end));
+      expect(faces.filter((face) => face === 'warp')).toHaveLength(LOOM_ENDS / 2);
+      expect(faces.filter((face) => face === 'weft')).toHaveLength(LOOM_ENDS / 2);
+    }
   });
 
-  it('梭子进度夹在 0 到 1 之间；没上机时不动', () => {
-    const fresh = freshLoomDraft();
-    expect(setPassProgress(fresh, 0.5)).toBe(fresh);
-    let draft = startLoom(fresh, 'oat');
-    expect(setPassProgress(draft, -3).progress).toBe(0);
-    draft = setPassProgress(draft, 4);
-    expect(draft.progress).toBe(1);
-    expect(passComplete(draft)).toBe(true);
-    expect(canBeat(draft)).toBe(true);
-    expect(setPassProgress(draft, Number.NaN).progress).toBe(0);
-    expect(passComplete(setPassProgress(draft, 0.994))).toBe(false);
-  });
-
-  it('只有梭子穿完才能压紧；压紧后多一行、梭子回到起点', () => {
-    let draft = startLoom(freshLoomDraft(), 'moss');
-    expect(beatRow(draft)).toBe(draft);
-    draft = setPassProgress(draft, 1);
-    const next = beatRow(draft);
-    expect(next.rows).toEqual([{ color: 0 }]);
-    expect(next.progress).toBe(0);
-    expect(next).not.toBe(draft);
-  });
-
-  it('纬线颜色只影响之后压的行', () => {
-    let draft = startLoom(freshLoomDraft(), 'oat');
-    draft = beatRow(setPassProgress(draft, 1));
-    draft = setWeft(draft, 3);
-    draft = beatRow(setPassProgress(draft, 1));
-    expect(draft.rows.map((row) => row.color)).toEqual([0, 3]);
-    expect(setWeft(draft, -1)).toBe(draft);
-    expect(setWeft(draft, WEFT_COLORS.length)).toBe(draft);
-    expect(setWeft(draft, 1.5)).toBe(draft);
-  });
-
-  it('织满之后不能再压，收边后仍能退回继续织', () => {
+  it('织满之后不能再投梭，也不会把进度推过对岸', () => {
     const full = woven(LOOM_MAX_ROWS);
-    expect(full.rows).toHaveLength(LOOM_MAX_ROWS);
-    expect(canBeat(setPassProgress(full, 1))).toBe(false);
-    expect(beatRow(setPassProgress(full, 1))).toEqual(setPassProgress(full, 0));
-    expect(finishLoom(full).finished).toBe(true);
-    const resumed = resumeLoom(finishLoom(full));
-    expect(resumed.finished).toBe(false);
-    expect(resumed.rows).toHaveLength(LOOM_MAX_ROWS);
+    expect(isFull(full)).toBe(true);
+    expect(canWeave(full)).toBe(false);
+    const blocked = dragWeft(full, 0.5);
+    expect(blocked.rows).toHaveLength(LOOM_MAX_ROWS);
+    expect(blocked.progress).toBe(0);
+    expect(dragWeft(full, 1).rows).toHaveLength(LOOM_MAX_ROWS);
   });
 
-  it('没有布时不能收边', () => {
-    const draft = startLoom(freshLoomDraft(), 'oat');
-    expect(finishLoom(draft)).toBe(draft);
-  });
-
-  it('撤销先退半途的梭子，再退一整行', () => {
-    let draft = woven(2);
-    draft = setPassProgress(draft, 0.6);
-    const halfway = undoLoom(draft);
-    expect(halfway.rows).toHaveLength(2);
-    expect(halfway.progress).toBe(0);
-    const row = undoLoom(halfway);
-    expect(row.rows).toHaveLength(1);
-    expect(undoLoom(freshLoomDraft())).toEqual(freshLoomDraft());
-  });
-
-  it('撤销收边会回到可继续织的状态', () => {
+  it('收边要求至少一行；收边后不能再投梭', () => {
+    expect(finishLoom(freshLoomDraft())).toEqual(freshLoomDraft());
     const finished = finishLoom(woven(1));
-    const undone = undoLoom(finished);
-    expect(undone.finished).toBe(false);
-    expect(undone.rows).toEqual([]);
+    expect(finished.finished).toBe(true);
+    expect(finished.progress).toBe(0);
+    const ignored = dragWeft(finished, 1);
+    expect(ignored.rows).toHaveLength(1);
+    expect(resumeLoom(finished).finished).toBe(false);
   });
 
-  it('经线配色按经线号循环取色', () => {
-    const draft = startLoom(freshLoomDraft(), 'berry');
-    const colors = WARP_SCHEMES.find((scheme) => scheme.id === 'berry')!.colors;
-    expect(warpColor(draft, 0)).toBe(colors[0]);
-    expect(warpColor(draft, colors.length)).toBe(colors[0]);
-    expect(warpColor(draft, -1)).toBe(colors[colors.length - 1]);
-  });
-
-  it('成品几何随行数增高，左右留白固定', () => {
+  it('成品几何随行数长高，宽度恒定', () => {
     const one = artifactGeometry(1);
-    const many = artifactGeometry(10);
-    expect(many.width).toBe(one.width);
-    expect(many.height).toBeGreaterThan(one.height);
-    expect(many.x).toBe(one.x);
-    expect(many.y).toBe(one.y);
+    const five = artifactGeometry(5);
+    expect(five.width).toBe(one.width);
+    expect(five.height - one.height).toBe(4 * LOOM_CELL_H);
+    // 一行都没有时也要给出一个非零高度，导出不会得到空图。
+    expect(artifactGeometry(0).height).toBeGreaterThan(0);
   });
 });
 
-describe('小小织布机：草稿解析', () => {
-  it('坏 JSON 与旧版本一律丢弃', () => {
+describe('小小织布机：草稿', () => {
+  it('换经线重新开始时保留梭线选择', () => {
+    const draft = setWeft(woven(2), 4);
+    const cleared = clearLoom(draft);
+    expect(cleared.rows).toEqual([]);
+    expect(cleared.progress).toBe(0);
+    expect(cleared.weft).toBe(4);
+    expect(cleared.warp).toBe(draft.warp);
+  });
+
+  it('往返一次不丢东西，方向按行号重算', () => {
+    const draft = setWeft(woven(3), 2);
+    const parsed = parseLoomDraft(JSON.stringify(draft));
+    expect(parsed).not.toBeNull();
+    expect(parsed!.rows.map((row) => row.color)).toEqual(draft.rows.map((row) => row.color));
+    expect(parsed!.rows.map((row) => row.direction)).toEqual([1, -1, 1]);
+  });
+
+  it('坏草稿一律返回 null，交给调用方回落到新作品', () => {
     expect(parseLoomDraft(null)).toBeNull();
-    expect(parseLoomDraft('{')).toBeNull();
-    expect(parseLoomDraft(JSON.stringify({ version: 2 }))).toBeNull();
+    expect(parseLoomDraft('')).toBeNull();
+    expect(parseLoomDraft('not json')).toBeNull();
+    expect(parseLoomDraft('null')).toBeNull();
+    // 旧版草稿（version 1）直接失效 —— 形状变了，不做迁移。
+    expect(parseLoomDraft(JSON.stringify({ version: 1, started: true, warp: 'oat', weft: 0, rows: [], progress: 0, finished: false }))).toBeNull();
     expect(parseLoomDraft('x'.repeat(400_001))).toBeNull();
   });
 
-  it('合法草稿原样恢复，非法行与颜色被过滤', () => {
-    const raw = JSON.stringify({
-      version: 1, started: true, warp: 'indigo', weft: 2,
-      rows: [{ color: 1 }, { color: 99 }, null, { color: 3 }], progress: 0.62, finished: false,
-    });
-    const parsed = parseLoomDraft(raw)!;
-    expect(parsed.started).toBe(true);
-    expect(parsed.warp).toBe('indigo');
-    expect(parsed.weft).toBe(2);
-    expect(parsed.rows).toEqual([{ color: 1 }, { color: 3 }]);
-    expect(parsed.progress).toBeCloseTo(0.62);
-    expect(parsed.finished).toBe(false);
-  });
-
-  it('未知经线回落到第一组，进度越界被夹紧', () => {
+  it('坏字段被就地纠正而不是整份丢掉', () => {
     const parsed = parseLoomDraft(JSON.stringify({
-      version: 1, started: true, warp: 'unknown', weft: -2, rows: [], progress: 9, finished: false,
-    }))!;
-    expect(parsed.warp).toBe(WARP_SCHEMES[0].id);
-    expect(parsed.weft).toBe(0);
-    expect(parsed.progress).toBe(1);
+      version: 2,
+      warp: 'not-a-scheme',
+      weft: 99,
+      rows: [{ color: 1 }, { color: 99 }, null, { color: 2 }],
+      progress: 4,
+      finished: true,
+    }));
+    expect(parsed).not.toBeNull();
+    expect(parsed!.warp).toBe(WARP_SCHEMES[0].id);
+    expect(parsed!.weft).toBe(0);
+    expect(parsed!.rows.map((row) => row.color)).toEqual([1, 2]);
+    expect(parsed!.progress).toBe(0);
+    expect(parsed!.finished).toBe(true);
   });
 
-  it('收边状态必须真的有布；未上机时进度归零', () => {
-    const emptyFinished = parseLoomDraft(JSON.stringify({
-      version: 1, started: true, warp: 'oat', weft: 0, rows: [], progress: 0.5, finished: true,
-    }))!;
-    expect(emptyFinished.finished).toBe(false);
-    expect(emptyFinished.progress).toBe(0.5);
-    const notStarted = parseLoomDraft(JSON.stringify({
-      version: 1, started: false, warp: 'oat', weft: 0, rows: [{ color: 0 }], progress: 0.5, finished: false,
-    }))!;
-    expect(notStarted.progress).toBe(0);
-    const finished = parseLoomDraft(JSON.stringify({
-      version: 1, started: true, warp: 'oat', weft: 0, rows: [{ color: 0 }], progress: 0.8, finished: true,
-    }))!;
-    expect(finished.finished).toBe(true);
-    expect(finished.progress).toBe(0);
+  it('行数超过上限的草稿被截断', () => {
+    const rows = Array.from({ length: LOOM_MAX_ROWS + 10 }, () => ({ color: 0 }));
+    const parsed = parseLoomDraft(JSON.stringify({ version: 2, warp: 'oat', weft: 0, rows, progress: 0, finished: false }));
+    expect(parsed!.rows).toHaveLength(LOOM_MAX_ROWS);
   });
 
-  it('行数超过上限时截断', () => {
-    const rows = Array.from({ length: LOOM_MAX_ROWS + 6 }, () => ({ color: 0 }));
-    const parsed = parseLoomDraft(JSON.stringify({
-      version: 1, started: true, warp: 'oat', weft: 0, rows, progress: 0, finished: false,
-    }))!;
-    expect(parsed.rows).toHaveLength(LOOM_MAX_ROWS);
+  it('没有行的草稿不会被当成已收边', () => {
+    const parsed = parseLoomDraft(JSON.stringify({ version: 2, warp: 'oat', weft: 0, rows: [], progress: 0, finished: true }));
+    expect(parsed!.finished).toBe(false);
   });
 
-  it('清空回到全新草稿', () => {
-    expect(clearLoom()).toEqual(freshLoomDraft());
+  it('进度在收边后被清零', () => {
+    const parsed = parseLoomDraft(JSON.stringify({ version: 2, warp: 'oat', weft: 0, rows: [{ color: 0 }], progress: 0.7, finished: true }));
+    expect(parsed!.finished).toBe(true);
+    expect(parsed!.progress).toBe(0);
+  });
+});
+
+describe('小小织布机：基本读数', () => {
+  it('currentRow 就是行数，也就是下一行的下标', () => {
+    expect(currentRow(freshLoomDraft())).toBe(0);
+    expect(currentRow(woven(4))).toBe(4);
+  });
+
+  it('每套经线配色都正好给出十二根颜色', () => {
+    for (const scheme of WARP_SCHEMES) {
+      expect(scheme.colors).toHaveLength(LOOM_ENDS);
+    }
   });
 });

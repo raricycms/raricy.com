@@ -1,0 +1,163 @@
+@use '../../abstracts/mixins' as m;
+
+// 小小织布机：机架、布面、梭子、线轴架。
+// 共用外壳（标题、按钮、侧栏、台面说明条）在 _craft.scss，这里只写织布机自己的东西。
+
+.loom-game {
+  // ── 台面 ───────────────────────────────────────────────────────────────────
+  .loom-bench {
+    position: relative;
+    margin-top: 4px;
+    padding: 12px;
+    border-radius: 24px;
+    background:
+      radial-gradient(120% 90% at 50% 0%, rgba(255, 255, 255, 0.5), transparent 70%),
+      var(--craft-table);
+  }
+
+  .loom-stage {
+    display: block;
+    width: 100%;
+    height: auto;
+    // 拖梭子是横向手势：touch-action 必须是 none，否则触屏上会被当成滚动。
+    touch-action: none;
+    cursor: grab;
+    user-select: none;
+    -webkit-user-select: none;
+
+    &.is-dragging { cursor: grabbing; }
+  }
+
+  // ── 机架 ───────────────────────────────────────────────────────────────────
+  .loom-frame {
+    // SVG 分组本身没有视觉属性，但它承载"机架是一整块木头"这件事：
+    // 让子元素共用一条柔和的投影，比给每根立柱各写一遍要稳。
+    filter: drop-shadow(0 3px 6px rgba(74, 53, 31, 0.16));
+
+    &__beam { fill: #b08a5c; }
+    &__inside { fill: #c8a375; }
+    &__post { fill: #9a7549; }
+    &__roller { fill: #8a6740; }
+  }
+
+  // ── 经线 ───────────────────────────────────────────────────────────────────
+  // 抬起的这一组是梭口的缝：略亮一点，读起来像"被提起来了"。
+  .loom-warp.is-lifted { filter: brightness(1.12); }
+
+  // ── 布面 ───────────────────────────────────────────────────────────────────
+  .loom-cloth {
+    // 布面整体压在自己的层上，梭子与经线不会被它的阴影串味。
+    isolation: isolate;
+  }
+
+  .loom-cloth__seam { stroke: rgba(48, 34, 16, 0.2); stroke-width: 1; }
+
+  // 压上去的那几截经线。略透明，让底下的纬色透出来 —— 布是经纬混出来的色，
+  // 不是两色硬拼。这一道透明度是"织出来的"和"贴上去的"之间的差别。
+  .loom-weave__warpband { opacity: 0.86; }
+
+  // 每一梭之间打紧留下的暗痕。
+  .loom-weave__pick { stroke: rgba(48, 34, 16, 0.16); stroke-width: 1; }
+
+  // 竖带中间的高光：布面的纵向"线感"。
+  .loom-weave__gloss {
+    stroke: #fff;
+    opacity: 0.14;
+    pointer-events: none;
+  }
+
+  // 织口：最新一行与裸经线之间的界线。整台机子上唯一"活"的位置，所以给它一点分量。
+  .loom-cloth__fell {
+    stroke: rgba(48, 34, 16, 0.34);
+    stroke-width: 1.5;
+    stroke-dasharray: 5 4;
+  }
+
+  // 正在投的那一趟：比织好的行淡，因为它还没压紧。
+  .loom-cloth__pass { rx: 1.5px; }
+
+  // ── 梭子 ───────────────────────────────────────────────────────────────────
+  .loom-shuttle {
+    // 跟手拖动时不加过渡 —— 加了会有一帧的延迟，手感立刻变"黏"。
+    pointer-events: none;
+
+    &__shadow { fill: rgba(58, 40, 18, 0.22); }
+    &__body {
+      fill: #7d5a34;
+      stroke: #63461f;
+      stroke-width: 1;
+    }
+  }
+
+  // ── 线轴架 ─────────────────────────────────────────────────────────────────
+  .loom-spools {
+    padding-top: 4px;
+
+    .craft-swatch {
+      // 线轴比色块窄一点、高一点，像绕满线的梭芯。
+      width: 38px;
+      height: 38px;
+    }
+  }
+
+  // ── 经线配色（侧栏）──────────────────────────────────────────────────────
+  .loom-warps-choice {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .loom-warps-choice .craft-choice {
+    padding: 10px;
+    gap: 8px;
+
+    &:disabled { cursor: default; opacity: 0.5; }
+  }
+
+  .loom-warps-choice .craft-choice__swatches i { height: 22px; }
+
+  // ── 成品 ───────────────────────────────────────────────────────────────────
+  .loom-artifact {
+    margin-top: 20px;
+
+    svg {
+      display: block;
+      width: 100%;
+      max-width: 420px;
+      height: auto;
+      margin: 0 auto;
+      // 布下机之后不是悬空的：垫一层很淡的影。
+      filter: drop-shadow(0 4px 10px rgba(58, 40, 18, 0.14));
+    }
+  }
+
+  // ── 窄屏 ───────────────────────────────────────────────────────────────────
+  @media (max-width: 767px) {
+    .loom-bench { padding: 8px; border-radius: 18px; }
+    .loom-warps-choice { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .loom-spools .craft-swatch { width: 34px; height: 34px; }
+  }
+
+  @media (max-width: 479px) {
+    .loom-bench { padding: 6px; }
+    .loom-spools .craft-swatch { width: 32px; height: 32px; }
+    .loom-artifact svg { max-width: 100%; }
+  }
+}
+
+// 深色主题下机架与梭子要跟着压暗，否则在一块深色台面上像贴上去的亮片。
+[data-theme='dark'] .loom-game {
+  .loom-frame {
+    filter: drop-shadow(0 3px 6px rgba(0, 0, 0, 0.34));
+
+    &__beam { fill: #6b5539; }
+    &__inside { fill: #574430; }
+    &__post { fill: #4a3a28; }
+    &__roller { fill: #3f3122; }
+  }
+
+  .loom-shuttle__body { fill: #4e3a22; stroke: #63492c; }
+  .loom-shuttle__shadow { fill: rgba(0, 0, 0, 0.4); }
+
+  .loom-cloth__seam { stroke: rgba(0, 0, 0, 0.32); }
+}

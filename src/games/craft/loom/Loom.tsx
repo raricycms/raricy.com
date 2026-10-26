@@ -1,358 +1,582 @@
 'use client';
 
-import Link from 'next/link';
-import { useEffect, useRef, useState, type PointerEvent } from 'react';
-import { ArrowLeft, Check, Download, RotateCcw, Undo2, Volume2, VolumeX } from 'lucide-react';
+import { useRef, useState } from 'react';
+import { Check, Download, RefreshCw, Undo2 } from 'lucide-react';
+import { CraftHull, CraftPanel } from '../CraftHull';
 import { downloadSvg } from '../download';
 import { LoomIcon } from '../icons';
-import { useCraftSound } from '../sound';
 import { useCraftDraft } from '../use-draft';
-import { useReducedMotion } from '../use-reduced-motion';
+import { useCraftSound } from '../sound';
 import {
-  artifactGeometry, beatRow, canBeat, cellFace, clearLoom, finishLoom, freshLoomDraft, LOOM_CELL_H, LOOM_CELL_W,
-  LOOM_CLOTH_LEFT, LOOM_CLOTH_TOP, LOOM_CLOTH_WIDTH, LOOM_ENDS, LOOM_MAX_ROWS, LOOM_SAVE_KEY,
-  parseLoomDraft, passComplete, passDirection, resumeLoom, rowColor, setPassProgress, setWeft, shedGroup, startLoom,
-  undoLoom, WARP_SCHEMES, warpColor, WEFT_COLORS, type LoomDraft,
+  LOOM_CELL_H,
+  LOOM_CELL_W,
+  LOOM_CLOTH_HEIGHT,
+  LOOM_CLOTH_LEFT,
+  LOOM_CLOTH_TOP,
+  LOOM_CLOTH_WIDTH,
+  LOOM_ENDS,
+  LOOM_MAX_ROWS,
+  LOOM_SAVE_KEY,
+  WARP_SCHEMES,
+  WEFT_COLORS,
+  artifactGeometry,
+  canWeave,
+  cellFace,
+  currentRow,
+  dragWeft,
+  finishLoom,
+  freshLoomDraft,
+  isFull,
+  parseLoomDraft,
+  passDirection,
+  resumeLoom,
+  rowColor,
+  setWarp,
+  setWeft,
+  shedGroup,
+  undoLoom,
+  warpColor,
+  weftColor,
+  type LoomDraft,
 } from './engine';
 
 const VIEW_W = 720;
-const VIEW_H = 560;
-const SHUTTLE_START = LOOM_CLOTH_LEFT - 48;
-const SHUTTLE_END = LOOM_CLOTH_LEFT + LOOM_CLOTH_WIDTH + 48;
-const groupName = (group: 0 | 1) => group === 0 ? '甲组' : '乙组';
+const VIEW_H = 600;
 
-function LoomThreads({ draft, from, to, liftedOver }: { draft: LoomDraft; from: number; to: number; liftedOver?: boolean }) {
-  const shed = shedGroup(draft);
-  return <>
-    {Array.from({ length: LOOM_ENDS }, (_, end) => {
-      const lifted = end % 2 === shed;
-      if (liftedOver !== undefined && lifted !== liftedOver) return null;
-      const x = LOOM_CLOTH_LEFT + end * LOOM_CELL_W + LOOM_CELL_W / 2 + (lifted ? 3 : -3);
-      return <line key={end} x1={x} y1={from} x2={x} y2={to} stroke={warpColor(draft, end)}
-        strokeWidth={lifted ? 3.4 : 2.5} strokeLinecap="round" opacity={lifted ? 1 : 0.78} />;
-    })}
-  </>;
-}
+const BENCH_TOP = LOOM_CLOTH_TOP - 34;
+const BENCH_BOTTOM = LOOM_CLOTH_TOP + LOOM_CLOTH_HEIGHT + 26;
+/** 布面的下沿。第 0 行贴着这里，往上长（见 LoomCloth 的生长方向）。 */
+const CLOTH_BOTTOM = LOOM_CLOTH_TOP + LOOM_CLOTH_HEIGHT;
+const SHUTTLE_W = 42;
 
-function LoomCloth({ draft, x, y, settling }: { draft: LoomDraft; x: number; y: number; settling: number | null }) {
-  return <>
-    {draft.rows.map((_, index) => <g key={index} className={settling === index ? 'loom-row loom-row--settling' : 'loom-row'}>
-      {Array.from({ length: LOOM_ENDS }, (_, end) => {
-        const face = cellFace(index, end);
-        return <g key={end}>
-          <rect x={x + end * LOOM_CELL_W} y={y + index * LOOM_CELL_H} width={LOOM_CELL_W} height={LOOM_CELL_H}
-            fill={face === 'warp' ? warpColor(draft, end) : rowColor(draft, index)} />
-          {face === 'warp'
-            ? <path d={`M${x + end * LOOM_CELL_W + LOOM_CELL_W / 2} ${y + index * LOOM_CELL_H + 2}V${y + (index + 1) * LOOM_CELL_H - 2}`} stroke="#fff" strokeWidth="1" opacity=".16" />
-            : <path d={`M${x + end * LOOM_CELL_W + 2} ${y + index * LOOM_CELL_H + LOOM_CELL_H / 2}H${x + (end + 1) * LOOM_CELL_W - 2}`} stroke="#3b2c1c" strokeWidth="1" opacity=".13" />}
-        </g>;
-      })}
-      <path d={`M${x} ${y + (index + 1) * LOOM_CELL_H - 0.5}H${x + LOOM_CLOTH_WIDTH}`} stroke="#4a351f" strokeWidth=".6" opacity=".16" />
-    </g>)}
-  </>;
-}
-
-function ClothArtifact({ draft, svgRef }: { draft: LoomDraft; svgRef?: React.Ref<SVGSVGElement> }) {
-  const rows = draft.rows.length;
-  const geo = artifactGeometry(rows);
-  const rowHeight = rows * LOOM_CELL_H;
-  return <svg ref={svgRef} viewBox={`0 0 ${geo.width} ${geo.height}`} className="loom-artifact" role="img"
-    aria-label={`织好的布，${rows} 行，带流苏`} xmlns="http://www.w3.org/2000/svg">
-    <rect x={geo.x + 4} y={geo.y + 5} width={LOOM_CLOTH_WIDTH} height={rowHeight} fill="#5d4326" opacity=".12" />
-    {Array.from({ length: LOOM_ENDS }, (_, end) => {
-      const x = geo.x + end * LOOM_CELL_W + LOOM_CELL_W / 2;
-      const topLength = geo.fringe - (end % 3) * 3;
-      const bottomLength = geo.fringe - ((end + 2) % 3) * 3;
-      const color = warpColor(draft, end);
-      return <g key={end} stroke={color} strokeWidth="3" strokeLinecap="round">
-        <line x1={x} y1={geo.y - topLength} x2={x} y2={geo.y} />
-        <line x1={x} y1={geo.y + rowHeight} x2={x} y2={geo.y + rowHeight + bottomLength} />
-        <circle cx={x} cy={geo.y} r="2.1" fill={color} stroke="none" />
-        <circle cx={x} cy={geo.y + rowHeight} r="2.1" fill={color} stroke="none" />
-      </g>;
-    })}
-    <LoomCloth draft={draft} x={geo.x} y={geo.y} settling={null} />
-    <path d={`M${geo.x} ${geo.y}V${geo.y + rowHeight}M${geo.x + LOOM_CLOTH_WIDTH} ${geo.y}V${geo.y + rowHeight}`}
-      stroke="#4a351f" strokeWidth="1" opacity=".16" />
-  </svg>;
+/**
+ * 指针横坐标 → 用户的 x 坐标。viewBox 是默认的 xMidYMid meet，两侧可能有留白，
+ * 所以换算要按 min(宽比, 高比) 缩放，再减掉居中留下的偏移。
+ */
+function toUserX(svg: SVGSVGElement, clientX: number): number {
+  const box = svg.getBoundingClientRect();
+  const scale = Math.min(box.width / VIEW_W, box.height / VIEW_H);
+  const offsetX = (box.width - VIEW_W * scale) / 2;
+  return (clientX - box.left - offsetX) / scale;
 }
 
 export default function Loom() {
-  const { draft, setDraft, ready, saveFailed } = useCraftDraft<LoomDraft>(LOOM_SAVE_KEY, freshLoomDraft, parseLoomDraft);
+  const { draft, setDraft, ready, saveFailed } = useCraftDraft(LOOM_SAVE_KEY, freshLoomDraft, parseLoomDraft);
   const sound = useCraftSound();
-  const reduced = useReducedMotion();
-  const [notice, setNotice] = useState('');
-  const [settling, setSettling] = useState<number | null>(null);
+  const [note, setNote] = useState<string | null>(null);
+  const [exportFailed, setExportFailed] = useState(false);
   const [dragging, setDragging] = useState(false);
-  const [exporting, setExporting] = useState(false);
-  const stageRef = useRef<SVGSVGElement>(null);
-  const artifactRef = useRef<SVGSVGElement>(null);
-  const dragPointer = useRef<number | null>(null);
-  const settleTimer = useRef<number | null>(null);
-  const passFrame = useRef<number | null>(null);
+  const artifactRef = useRef<SVGSVGElement | null>(null);
+  const stageRef = useRef<SVGSVGElement | null>(null);
+  /** 上一次的指针 x。位移要按帧累加，所以必须记住上一帧在哪。 */
+  const lastXRef = useRef<number | null>(null);
+  /**
+   * 指针事件的权威状态。
+   *
+   * 一次拖动里会连续来几十个 pointermove，React 的渲染跟不上这个频率，闭包里的 `draft`
+   * 永远是「上一帧渲染时」的那份 —— 拿它算 progress 会让每一个事件都从同一个旧值起算，
+   * 结果进度要么原地打转、要么直接跳。所以手势一律读这个 ref（每次提交同步写回），
+   * 渲染仍然只用 `draft`。这是"手势跟手"与"React 是异步渲染"之间必须搭的那座桥。
+   */
+  const liveRef = useRef(draft);
+  liveRef.current = draft;
 
-  useEffect(() => () => {
-    if (settleTimer.current !== null) window.clearTimeout(settleTimer.current);
-    if (passFrame.current !== null) cancelAnimationFrame(passFrame.current);
-  }, []);
+  /** 提交一次手势结果：ref 与 state 一起更新，保证下一个事件看到的是最新的。 */
+  const commit = (next: LoomDraft) => {
+    liveRef.current = next;
+    setDraft(next);
+  };
 
   const rows = draft.rows.length;
-  const full = rows >= LOOM_MAX_ROWS;
-  const shed = shedGroup(draft);
-  const direction = passDirection(draft);
-  const complete = passComplete(draft);
-  const rowTop = LOOM_CLOTH_TOP + rows * LOOM_CELL_H;
-  const shuttleX = direction === 1
-    ? SHUTTLE_START + (SHUTTLE_END - SHUTTLE_START) * draft.progress
-    : SHUTTLE_END - (SHUTTLE_END - SHUTTLE_START) * draft.progress;
 
-  function begin() {
-    setDraft(startLoom(draft, draft.warp));
-    setNotice('经线已经绷好。拖梭子穿过经线，再把这一行压紧。');
-  }
+  /**
+   * 指针 x → 这一趟走了多少。**绝对映射**：梭子就在手底下，指针在布的那一头就是 0、
+   * 另一头就是 1（反向那一趟倒过来）。
+   *
+   * 【为什么用绝对映射而不是逐帧位移累加】累加看着更"跟手"，实际会坏在两处：
+   *   1. 到岸那一刻方向就翻面了，手却还在往同一个方向走 —— 多出来的位移在新方向上
+   *      正好是"往回拽"，刚织好的那一行会被自己退掉（实测行数在 1 和 0 之间反复抖）。
+   *   2. 每个事件都要从上一帧的 progress 起算，一旦丢了事件，误差会一直留着。
+   * 绝对映射没有这两个问题：丢一帧只是梭子停一下，下一帧自然对上；到岸后手继续往前
+   * 也只是停在岸边，不会误判成反悔。
+   */
+  const progressAt = (userX: number, direction: 1 | -1): number => {
+    const t = (userX - LOOM_CLOTH_LEFT) / LOOM_CLOTH_WIDTH;
+    const clamped = Math.max(0, Math.min(1, t));
+    return direction === 1 ? clamped : 1 - clamped;
+  };
 
-  function advance() {
-    if (canBeat(draft)) return;
-    if (reduced) {
-      setDraft({ ...draft, progress: 1 });
-      setNotice('梭子穿过了经线。压紧这一行，它就真正织进布面了。');
-      return;
-    }
-    const from = draft.progress;
-    const start = performance.now();
-    const tick = (now: number) => {
-      const t = Math.min(1, (now - start) / 320);
-      const eased = 1 - Math.pow(1 - t, 3);
-      setDraft((current) => setPassProgress(current, from + (1 - from) * eased));
-      if (t < 1) passFrame.current = requestAnimationFrame(tick);
-      else {
-        passFrame.current = null;
-        setNotice('梭子穿过了经线。压紧这一行，它就真正织进布面了。');
-      }
-    };
-    passFrame.current = requestAnimationFrame(tick);
-  }
+  const onPointerMove = (event: React.PointerEvent<SVGSVGElement>) => {
+    const svg = stageRef.current;
+    if (!svg || lastXRef.current === null) return;
+    const userX = toUserX(svg, event.clientX);
+    if (userX === lastXRef.current) return;
+    lastXRef.current = userX;
 
-  function beat() {
-    if (!canBeat(draft)) return;
-    const index = rows;
-    setDraft(beatRow(draft));
-    sound.play('click');
-    setNotice(index + 1 >= LOOM_MAX_ROWS ? '布面织满了。收边后可以导出成品。' : '压紧了。经线换到另一组，继续织下一行。');
-    setSettling(index);
-    if (settleTimer.current !== null) window.clearTimeout(settleTimer.current);
-    settleTimer.current = window.setTimeout(() => setSettling(null), 320);
-  }
+    const current = liveRef.current;
+    const next = dragWeft(current, progressAt(userX, passDirection(current)));
+    if (next.rows.length > current.rows.length) sound.play('thread');
+    commit(next);
+  };
 
-  function undo() {
-    if (!ready) return;
-    const hadPass = draft.progress > 0;
-    setDraft(undoLoom(draft));
-    setNotice(hadPass ? '退回了梭子。' : rows ? '退掉了一行。' : '还没有可以退的操作。');
-  }
-
-  function finish() {
-    if (!rows) return;
-    setDraft(finishLoom(draft));
-    setNotice('');
-  }
-
-  function newWork() {
-    if (rows > 0 || draft.progress > 0) {
-      if (!window.confirm('开始新作会清空当前草稿。已经织好的布请先导出成品。')) return;
-    }
-    setDraft(clearLoom());
-    setNotice('');
-  }
-
-  async function exportArtifact() {
-    const node = artifactRef.current;
-    if (!node || exporting) return;
-    setExporting(true);
-    const geo = artifactGeometry(rows);
-    const width = 1200;
-    const ok = await downloadSvg(node, width, Math.round(width * geo.height / geo.width), '聪明山-小小织布机.png');
-    setExporting(false);
-    setNotice(ok ? '成品已导出。' : '导出失败，请检查浏览器是否拦截了下载。');
-  }
-
-  function updatePass(event: PointerEvent<SVGRectElement>) {
-    if (!stageRef.current) return;
-    const rect = stageRef.current.getBoundingClientRect();
-    if (!rect.width) return;
-    const x = (event.clientX - rect.left) / rect.width * VIEW_W;
-    const raw = (x - SHUTTLE_START) / (SHUTTLE_END - SHUTTLE_START);
-    setDraft((current) => setPassProgress(current, passDirection(current) === 1 ? raw : 1 - raw));
-  }
-
-  function pointerDown(event: PointerEvent<SVGRectElement>) {
-    if (!ready || draft.finished || full || event.button !== 0) return;
-    dragPointer.current = event.pointerId;
-    event.currentTarget.setPointerCapture(event.pointerId);
+  const onPointerDown = (event: React.PointerEvent<SVGSVGElement>) => {
+    if (!ready || draft.finished) return;
+    const svg = stageRef.current;
+    if (!svg) return;
+    lastXRef.current = toUserX(svg, event.clientX);
     setDragging(true);
-    updatePass(event);
-  }
+    event.currentTarget.setPointerCapture(event.pointerId);
+  };
 
-  function pointerMove(event: PointerEvent<SVGRectElement>) {
-    if (dragPointer.current !== event.pointerId) return;
-    updatePass(event);
-  }
-
-  function pointerUp(event: PointerEvent<SVGRectElement>) {
-    if (dragPointer.current !== event.pointerId) return;
-    dragPointer.current = null;
+  const endDrag = (event: React.PointerEvent<SVGSVGElement>) => {
+    lastXRef.current = null;
     setDragging(false);
-    try { event.currentTarget.releasePointerCapture(event.pointerId); } catch { /* 已经释放 */ }
-  }
+    try { event.currentTarget.releasePointerCapture(event.pointerId); } catch { /* 已释放 */ }
+  };
 
-  const stepText = !complete
-    ? draft.progress > 0 ? '梭子走在半途：继续拖，或点「穿完这一行」。' : '拖动梭子，或点「穿完这一行」。'
-    : '梭子已经穿过：把这一行压紧。';
+  const handleExport = async () => {
+    const svg = artifactRef.current;
+    if (!svg) return;
+    const geometry = artifactGeometry(draft.rows.length);
+    const ok = await downloadSvg(svg, geometry.width, geometry.height, '织布.png');
+    setExportFailed(!ok);
+    setNote(ok ? '成品已导出。' : null);
+  };
 
-  return <div className="container craft-game loom-game" data-ready={ready} data-rows={rows} data-progress={draft.progress.toFixed(3)}
-    data-started={draft.started} data-finished={draft.finished}>
-    <header className="craft-header">
-      <div className="craft-title">
-        <Link className="craft-icon-button" href="/game/collections/test/craft" aria-label="返回手工间"><ArrowLeft size={20} /></Link>
-        <span className="craft-logo"><LoomIcon /></span>
-        <h1>小小织布机 <small>手工间</small></h1>
-      </div>
-      <div className="craft-actions">
-        <button type="button" className="craft-icon-button" onClick={sound.toggle} aria-label={sound.muted ? '开启音效' : '关闭音效'}>
-          {sound.muted ? <VolumeX size={19} /> : <Volume2 size={19} />}
-        </button>
-      </div>
-    </header>
+  const full = isFull(draft);
+  const status = !ready
+    ? '正在读取草稿…'
+    : draft.finished
+      ? '已经收边了。'
+      : full
+        ? '布面织满了，可以收边。'
+        : dragging
+          ? '拖到对岸就织好一行。'
+          : rows === 0
+            ? '按住布面拖过去，梭子跟着手走。'
+            : draft.progress > 0
+              ? '梭子还没走到对岸，接着拖。'
+              : '来回拖，一行一行织下去。';
 
-    <div className="craft-layout">
-      <section className="craft-workspace" aria-label="织布工作台">
-        <div className="craft-stage-heading">
-          <div>
-            <p className="craft-eyebrow">{draft.finished ? '成品' : draft.started ? `第 ${Math.min(rows + 1, LOOM_MAX_ROWS)} 行` : '准备经线'}</p>
-            <h2>{draft.finished ? '剪下来的小布块' : draft.started ? (full ? '布面织满了' : '上机织布') : '选一组经线'}</h2>
-          </div>
-          <span className="craft-status">已织 <span className="numeric">{rows}</span> / {LOOM_MAX_ROWS} 行</span>
+  const workspace = (
+    <>
+      <div className="craft-stage-heading">
+        <div>
+          <span className="craft-eyebrow">梭线</span>
+          <h2>{WEFT_COLORS[draft.weft]?.name ?? WEFT_COLORS[0].name}</h2>
         </div>
+        <p className="craft-status">{status}</p>
+      </div>
 
-        {!draft.started ? <div className="loom-setup">
-          <p className="loom-setup__lead">经线决定纵向的颜色，之后每一行的纬线可以单独换。</p>
-          <div className="loom-warps" aria-label="选择经线配色">
-            {WARP_SCHEMES.map((scheme) => <button key={scheme.id} type="button"
+      <div className="loom-bench">
+        <svg
+          ref={stageRef}
+          className={`loom-stage${dragging ? ' is-dragging' : ''}`}
+          viewBox={`0 0 ${VIEW_W} ${VIEW_H}`}
+          role="img"
+          aria-label="织布机台面"
+          onPointerDown={onPointerDown}
+          onPointerMove={onPointerMove}
+          onPointerUp={endDrag}
+          onPointerCancel={endDrag}
+        >
+          <LoomFrame />
+          <LoomCloth draft={draft} />
+          {!draft.finished && canWeave(draft) ? <LoomShuttle draft={draft} /> : null}
+        </svg>
+      </div>
+
+      <div className="craft-caption">
+        <span className="craft-gesture-hint">
+          {rows === 0 ? '左右拖动织第一行' : '拖到对岸织一行 · 往回拽反悔一行'}
+        </span>
+        <span>
+          {rows} / {LOOM_MAX_ROWS} 行
+        </span>
+      </div>
+
+      {/* 线轴架就在机架下方：换线在手边，视线不用在台面和侧栏之间来回。 */}
+      <div className="craft-inline-controls loom-spools">
+        <span className="craft-inline-label">梭线</span>
+        <div className="craft-swatches">
+          {WEFT_COLORS.map((color, index) => (
+            <button
+              key={color.name}
+              type="button"
+              className={`craft-swatch${draft.weft === index ? ' is-active' : ''}`}
+              style={{ backgroundColor: color.hex }}
+              onClick={() => { setDraft((current) => setWeft(current, index)); sound.play('click'); }}
+              aria-label={color.name}
+              aria-pressed={draft.weft === index}
+            />
+          ))}
+        </div>
+      </div>
+
+      <div className="craft-toolbar">
+        <button
+          type="button"
+          className="craft-secondary"
+          onClick={() => { setDraft(undoLoom); sound.play('click'); }}
+          disabled={draft.progress === 0 && rows === 0 && !draft.finished}
+        >
+          <Undo2 size={16} /> 退回一趟
+        </button>
+        {draft.finished ? (
+          <>
+            <button type="button" className="craft-secondary" onClick={() => { setDraft(resumeLoom); sound.play('click'); }}>
+              <RefreshCw size={16} /> 接着织
+            </button>
+            <button type="button" className="craft-primary" onClick={handleExport}>
+              <Download size={16} /> 导出 PNG
+            </button>
+          </>
+        ) : (
+          <button
+            type="button"
+            className="craft-primary"
+            onClick={() => { setDraft(finishLoom); sound.play('done'); }}
+            disabled={rows === 0}
+          >
+            <Check size={16} /> 收边完成
+          </button>
+        )}
+      </div>
+      {note ? <p className="craft-status">{note}</p> : null}
+      {exportFailed ? <p className="craft-status">导出没有成功，请再试一次。</p> : null}
+
+      {rows > 0 ? <LoomArtifact draft={draft} artifactRef={artifactRef} /> : null}
+    </>
+  );
+
+  const sidebar = (
+    <>
+      <CraftPanel title="经线">
+        <div className="loom-warps-choice">
+          {WARP_SCHEMES.map((scheme) => (
+            <button
+              key={scheme.id}
+              type="button"
               className={`craft-choice${draft.warp === scheme.id ? ' is-active' : ''}`}
-              aria-pressed={draft.warp === scheme.id} onClick={() => setDraft({ ...draft, warp: scheme.id })}>
-              <span className="craft-choice__swatches" aria-hidden="true">
-                {scheme.colors.map((color, index) => <i key={index} style={{ background: color }} />)}
+              onClick={() => { setDraft((current) => setWarp(current, scheme.id)); sound.play('click'); }}
+              disabled={rows > 0 || draft.progress > 0}
+              aria-pressed={draft.warp === scheme.id}
+            >
+              <span className="craft-choice__swatches">
+                {scheme.colors.slice(0, 6).map((hex, index) => (
+                  <i key={index} style={{ backgroundColor: hex }} />
+                ))}
               </span>
               <span className="craft-choice__label">{scheme.name}</span>
-            </button>)}
-          </div>
-          <button type="button" className="craft-primary loom-begin" onClick={begin} disabled={!ready}><Check size={17} />开始织布</button>
-        </div> : draft.finished ? <div className="loom-result">
-          <div className="loom-result__stage">
-            <ClothArtifact draft={draft} svgRef={artifactRef} />
-          </div>
-          <div className="loom-result__actions">
-            <button type="button" className="craft-primary" onClick={exportArtifact} disabled={exporting}>
-              <Download size={17} />{exporting ? '正在导出…' : '导出 PNG'}
             </button>
-            {rows < LOOM_MAX_ROWS && <button type="button" className="craft-secondary" onClick={() => { setDraft(resumeLoom(draft)); setNotice('可以接着织。'); }}>继续织</button>}
-            <button type="button" className="craft-secondary" onClick={newWork}><RotateCcw size={16} />开始新作</button>
-          </div>
-        </div> : <div className="loom-board-wrap">
-          <svg ref={stageRef} className="loom-stage" viewBox={`0 0 ${VIEW_W} ${VIEW_H}`} role="img"
-            aria-label={`织布机，已织 ${rows} 行。${full ? '布面已满。' : `抬起${groupName(shed)}经线，梭子从${direction === 1 ? '左' : '右'}边出发。`}`}>
-            <defs>
-              <linearGradient id="loom-wood" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0" stopColor="#c29768" /><stop offset=".55" stopColor="#b48755" /><stop offset="1" stopColor="#9c7044" />
-              </linearGradient>
-              <linearGradient id="loom-bed" x1="0" y1="0" x2="1" y2="1">
-                <stop offset="0" stopColor="#f4ead7" /><stop offset="1" stopColor="#e8d9be" />
-              </linearGradient>
-              <clipPath id="loom-clip"><rect x="96" y="58" width="528" height="448" rx="12" /></clipPath>
-            </defs>
-            <rect x="52" y="44" width="616" height="480" rx="26" fill="url(#loom-wood)" />
-            <rect x="68" y="58" width="584" height="448" rx="18" fill="#8c633c" opacity=".32" />
-            <rect x="96" y="58" width="528" height="448" rx="12" fill="url(#loom-bed)" />
-            <rect x="112" y="70" width="496" height="18" rx="9" fill="#8e6439" />
-            <rect x="112" y="456" width="496" height="18" rx="9" fill="#8e6439" />
-            <g clipPath="url(#loom-clip)">
-              <LoomThreads draft={draft} from={LOOM_CLOTH_TOP} to={470} />
-              {!full && <>
-                <rect x={LOOM_CLOTH_LEFT} y={rowTop} width={LOOM_CLOTH_WIDTH} height={LOOM_CELL_H} fill="#fbf4e4" opacity=".55" />
-                <LoomThreads draft={draft} from={rowTop} to={rowTop + LOOM_CELL_H} liftedOver={false} />
-                <path d={direction === 1
-                  ? `M${SHUTTLE_START} ${rowTop + LOOM_CELL_H / 2}H${shuttleX}`
-                  : `M${shuttleX} ${rowTop + LOOM_CELL_H / 2}H${SHUTTLE_END}`}
-                  stroke={WEFT_COLORS[draft.weft].hex} strokeWidth="4.2" strokeLinecap="round" />
-                <LoomThreads draft={draft} from={rowTop} to={rowTop + LOOM_CELL_H} liftedOver />
-              </>}
-              <LoomCloth draft={draft} x={LOOM_CLOTH_LEFT} y={LOOM_CLOTH_TOP} settling={settling} />
-              {rows > 0 && <path d={`M${LOOM_CLOTH_LEFT} ${LOOM_CLOTH_TOP + rows * LOOM_CELL_H - .5}H${LOOM_CLOTH_LEFT + LOOM_CLOTH_WIDTH}`} stroke="#5b4127" strokeWidth="1.4" opacity=".4" />}
-              {!full && <g className={dragging ? 'loom-shuttle loom-shuttle--drag' : 'loom-shuttle'}
-                style={{ transform: `translate(${shuttleX}px, ${rowTop + LOOM_CELL_H / 2}px) scale(${direction} 1)` }}>
-                <path d="M-27 0Q-19-10 1-9L22-1 22 1 1 9Q-19 10-27 0Z" fill="#a9773f" stroke="#6f4a26" strokeWidth="1.3" />
-                <rect x="-13" y="-4" width="25" height="8" rx="4" fill={WEFT_COLORS[draft.weft].hex} stroke="#6f4a26" strokeWidth=".7" />
-                <path d="M-20 0h-5" stroke="#f0d8a8" strokeWidth="1.3" strokeLinecap="round" />
-              </g>}
-              {!full && draft.progress === 0 && <g transform={`translate(${direction === 1 ? SHUTTLE_START - 18 : SHUTTLE_END + 18} ${rowTop + LOOM_CELL_H / 2})`}>
-                <path d={direction === 1 ? 'M0-8 8 0 0 8' : 'M0-8-8 0 0 8'} fill="none" stroke="#8a6c48" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" opacity=".65" />
-              </g>}
-              {!full && <rect x="100" y={rowTop - 12} width="520" height="68" fill="transparent" className="loom-drag"
-                onPointerDown={pointerDown} onPointerMove={pointerMove} onPointerUp={pointerUp} onPointerCancel={pointerUp} />}
+          ))}
+        </div>
+        {rows > 0 || draft.progress > 0
+          ? <p className="craft-note">已经上机了，经线不能再换。</p>
+          : null}
+      </CraftPanel>
+
+      <CraftPanel title="草稿">
+        <p className="craft-note">织了几行会自动记住，刷新后接着织。</p>
+        {saveFailed ? <p className="craft-note craft-note--warn">这台浏览器没能保存草稿，刷新后可能丢失。</p> : null}
+      </CraftPanel>
+    </>
+  );
+
+  return (
+    <CraftHull
+      icon={<LoomIcon />}
+      title="小小织布机"
+      gameClass="loom-game"
+      attrs={{
+        'data-ready': ready ? 'true' : 'false',
+        'data-rows': rows,
+        'data-progress': draft.progress.toFixed(3),
+        'data-finished': draft.finished ? 'true' : 'false',
+      }}
+      workspace={workspace}
+      sidebar={sidebar}
+    />
+  );
+}
+
+/** 机架：两根立柱、上下横梁、经线辊。纯装饰，不接手势。 */
+function LoomFrame() {
+  const left = LOOM_CLOTH_LEFT - 44;
+  const right = LOOM_CLOTH_LEFT + LOOM_CLOTH_WIDTH + 44;
+  return (
+    <g className="loom-frame">
+      <rect x={left} y={BENCH_TOP} width={right - left} height={BENCH_BOTTOM - BENCH_TOP} rx={12} className="loom-frame__beam" />
+      <rect x={left + 10} y={BENCH_TOP + 10} width={right - left - 20} height={BENCH_BOTTOM - BENCH_TOP - 20} rx={8} className="loom-frame__inside" />
+      <rect x={left - 12} y={BENCH_TOP - 10} width={16} height={BENCH_BOTTOM - BENCH_TOP + 20} rx={6} className="loom-frame__post" />
+      <rect x={right - 4} y={BENCH_TOP - 10} width={16} height={BENCH_BOTTOM - BENCH_TOP + 20} rx={6} className="loom-frame__post" />
+      <rect x={left - 18} y={BENCH_TOP - 20} width={right - left + 36} height={14} rx={7} className="loom-frame__roller" />
+    </g>
+  );
+}
+
+/**
+ * 平纹布面：连续的纬线打底，再把经线按"一上一下"压上去。
+ *
+ * 【关键：一笔画整条，不要一格一格填】把每一格画成独立的方块，无论怎么圆角都读成
+ * 棋盘格 —— 因为方块的边界在四个方向上都是断的。真实的布恰好相反：经线是一条一条
+ * **连续**贯穿整幅的，只是在每一梭处轮流被压住/露出来。所以画法是：
+ *   1. 先铺横向的纬线带（每一行一条，贯穿整幅）；
+ *   2. 再把每一根经线画成一条**贯穿整幅的竖带**，用虚线（一上一下）在纬线上开合，
+ *      相邻两根相位错开半个循环。
+ * 于是竖条纹是连的，横条纹也是连的，交叠处自然出现"织"的纹理 —— 和棋盘格正好
+ * 在这点上相反：布有连续的经纬，棋盘没有。
+ *
+ * 布面与导出的成品共用这一份画法，所以屏幕上看到的和导出的不会是两种质感。
+ */
+function LoomWeave({
+  draft,
+  rows,
+  left,
+  top,
+  width,
+}: {
+  draft: LoomDraft;
+  rows: number;
+  left: number;
+  top: number;
+  width: number;
+}) {
+  /** 一条经线占的宽度。整幅均分 12 份，与未织的裸经线一一对应。 */
+  const bandWidth = width / LOOM_ENDS;
+  const clothBottom = top + rows * LOOM_CELL_H;
+  return (
+    <g className="loom-weave">
+      {/* 纬线：每一行一条贯穿整幅的横带。 */}
+      {Array.from({ length: rows }, (_, row) => (
+        <rect
+          key={`weft${row}`}
+          x={left}
+          y={top + row * LOOM_CELL_H}
+          width={width}
+          height={LOOM_CELL_H}
+          fill={rowColor(draft, row)}
+        />
+      ))}
+
+      {/* 每一梭之间压出的暗痕：纬线是一行一行打紧的，这些横线就是打纬的痕迹。 */}
+      {Array.from({ length: Math.max(0, rows - 1) }, (_, index) => (
+        <line
+          key={`pick${index}`}
+          x1={left}
+          y1={top + (index + 1) * LOOM_CELL_H}
+          x2={left + width}
+          y2={top + (index + 1) * LOOM_CELL_H}
+          className="loom-weave__pick"
+        />
+      ))}
+
+      {/* 经线：每根一条贯穿整幅的竖带，虚线开合出"一上一下"，相邻错开半格。 */}
+      {Array.from({ length: LOOM_ENDS }, (_, end) => {
+        const x = left + end * bandWidth + bandWidth / 2;
+        return (
+          <line
+            key={`warp${end}`}
+            x1={x}
+            y1={top}
+            x2={x}
+            y2={clothBottom}
+            stroke={warpColor(draft, end)}
+            strokeWidth={bandWidth - 1.4}
+            strokeLinecap="butt"
+            strokeDasharray={`${LOOM_CELL_H} ${LOOM_CELL_H}`}
+            // 奇数根错开半格 —— 这就是平纹"一上一下、隔一根错开"本身。
+            strokeDashoffset={end % 2 === 0 ? 0 : LOOM_CELL_H}
+            className="loom-weave__warpband"
+          />
+        );
+      })}
+
+      {/* 经线在光下的隆起：每根竖带中间一道极淡的高光。这是"线"与"色块"的分界。 */}
+      {Array.from({ length: LOOM_ENDS }, (_, end) => (
+        <line
+          key={`gloss${end}`}
+          x1={left + end * bandWidth + bandWidth * 0.36}
+          y1={top}
+          x2={left + end * bandWidth + bandWidth * 0.36}
+          y2={clothBottom}
+          className="loom-weave__gloss"
+          strokeWidth={bandWidth * 0.16}
+        />
+      ))}
+    </g>
+  );
+}
+
+/**
+ * 布面 + 经线。
+ *
+ * 【生长方向】布从下往上长：第 0 行贴在底梁上，新织的行压在前一行**上面**。
+ * 这是立式框织机的真实情形 —— 织的人坐在下首，布在身前越织越高，没织到的经线
+ * 仍然绷在布的上方通向顶梁。反过来画（布堆在顶梁、裸线垂在下面）虽然也自洽，
+ * 但看起来像布"吊"在半空、线"散"在下方，不像一台机子。
+ *
+ * 【经线必须是同一批】未织的裸经线和织进布里的经纱是同一根线 —— 所以两处用同一个
+ * 宽度（一格一根、同色）。分开画（裸线一批、布里另一批）会在织口处对不上，
+ * 看着像两块不同的东西接在一起。
+ *
+ * 抬起的那一组经线略亮：这是梭口的缝，玩家从起伏就能看出该往哪边送梭。
+ */
+function LoomCloth({ draft }: { draft: LoomDraft }) {
+  const rows = currentRow(draft);
+  const lifted = shedGroup(draft);
+  /** 第 row 行的上沿。第 0 行在最下面，序号越大越靠上。 */
+  const rowY = (row: number) => CLOTH_BOTTOM - (row + 1) * LOOM_CELL_H;
+  /** 织好之后布的上沿 —— 裸经线到此为止。 */
+  const fellY = rows > 0 ? rowY(rows - 1) : CLOTH_BOTTOM;
+  return (
+    <g className="loom-cloth">
+      {/* 未织的经线：12 根宽条，从织口一直绷到顶梁。与布面的格子同宽同色，织口处接得上。 */}
+      {Array.from({ length: LOOM_ENDS }, (_, end) => {
+        const x = LOOM_CLOTH_LEFT + end * LOOM_CELL_W + LOOM_CELL_W / 2;
+        // 梭口：按经线奇偶分组，隔一根抬起一根。
+        const isLifted = end % 2 === lifted;
+        return (
+          <line
+            key={`bare${end}`}
+            x1={x}
+            y1={LOOM_CLOTH_TOP}
+            x2={x}
+            y2={fellY}
+            stroke={warpColor(draft, end)}
+            strokeWidth={LOOM_CELL_W - 1.2}
+            strokeLinecap="butt"
+            className={`loom-warp${isLifted ? ' is-lifted' : ''}`}
+          />
+        );
+      })}
+
+      {/* 织进去的部分：按纱的密度画平纹，不是按格子填色。 */}
+      {rows > 0 ? (
+        <LoomWeave
+          draft={draft}
+          rows={rows}
+          left={LOOM_CLOTH_LEFT}
+          top={rowY(rows - 1)}
+          width={LOOM_CLOTH_WIDTH}
+        />
+      ) : null}
+
+      {/* 打纬的细缝：压紧过的布在行与行之间有一条暗痕。 */}
+      {Array.from({ length: Math.max(0, rows - 1) }, (_, index) => (
+        <line
+          key={`seam${index}`}
+          x1={LOOM_CLOTH_LEFT}
+          y1={rowY(index)}
+          x2={LOOM_CLOTH_LEFT + LOOM_CLOTH_WIDTH}
+          y2={rowY(index)}
+          className="loom-cloth__seam"
+        />
+      ))}
+
+      {/* 织口：已织好的布与未织经线之间的那条线，是整台机子上唯一"活"的位置。 */}
+      {rows > 0 ? (
+        <line
+          x1={LOOM_CLOTH_LEFT}
+          y1={rowY(rows - 1)}
+          x2={LOOM_CLOTH_LEFT + LOOM_CLOTH_WIDTH}
+          y2={rowY(rows - 1)}
+          className="loom-cloth__fell"
+        />
+      ) : null}
+
+      {/* 正在投的那一趟：一条还没压紧的纬线，从起点铺到梭子现在的位置。 */}
+      {draft.progress > 0 && rows < LOOM_MAX_ROWS ? <LoomInProgress draft={draft} /> : null}
+    </g>
+  );
+}
+
+/** 走到一半的纬线。比织好的行淡一点 —— 它还没被压紧。 */
+function LoomInProgress({ draft }: { draft: LoomDraft }) {
+  const row = currentRow(draft);
+  const direction = passDirection(draft);
+  const span = LOOM_CLOTH_WIDTH * draft.progress;
+  const x = direction === 1 ? LOOM_CLOTH_LEFT : LOOM_CLOTH_LEFT + LOOM_CLOTH_WIDTH - span;
+  // 这一趟织的是第 row 行，也就是压在前一行上面的那一条（见 LoomCloth 的生长方向）。
+  const y = CLOTH_BOTTOM - (row + 1) * LOOM_CELL_H + LOOM_CELL_H * 0.13;
+  return (
+    <rect
+      x={x}
+      y={y}
+      width={span}
+      height={LOOM_CELL_H * 0.74}
+      fill={weftColor(draft)}
+      opacity={0.6}
+      className="loom-cloth__pass"
+    />
+  );
+}
+
+/** 梭子。位置由 progress 反推，所以它和布面上那根纬线的末端永远对齐。 */
+function LoomShuttle({ draft }: { draft: LoomDraft }) {
+  const row = currentRow(draft);
+  const direction = passDirection(draft);
+  const t = direction === 1 ? draft.progress : 1 - draft.progress;
+  const x = LOOM_CLOTH_LEFT + t * LOOM_CLOTH_WIDTH;
+  const y = CLOTH_BOTTOM - (row + 1) * LOOM_CELL_H + LOOM_CELL_H / 2;
+  return (
+    <g className="loom-shuttle" transform={`translate(${x} ${y})`}>
+      <ellipse cx={1} cy={3} rx={SHUTTLE_W * 0.5} ry={SHUTTLE_W * 0.24} className="loom-shuttle__shadow" />
+      <rect
+        x={-SHUTTLE_W / 2}
+        y={-SHUTTLE_W * 0.26}
+        width={SHUTTLE_W}
+        height={SHUTTLE_W * 0.52}
+        rx={SHUTTLE_W * 0.26}
+        className="loom-shuttle__body"
+      />
+      {/* 梭子中间缠着的线：就是这一趟正在织进去的颜色。 */}
+      <rect
+        x={-SHUTTLE_W * 0.32}
+        y={-SHUTTLE_W * 0.14}
+        width={SHUTTLE_W * 0.64}
+        height={SHUTTLE_W * 0.28}
+        rx={SHUTTLE_W * 0.14}
+        fill={weftColor(draft)}
+      />
+    </g>
+  );
+}
+
+/**
+ * 成品：收边后（或织了至少一行）在台面下方给出的实物图，也是导出的来源。
+ * 流苏是下机之后才有的 —— 每根经线两端各留一截散线。
+ */
+function LoomArtifact({ draft, artifactRef }: { draft: LoomDraft; artifactRef: React.RefObject<SVGSVGElement | null> }) {
+  const { width, x, y, fringe } = artifactGeometry(draft.rows.length);
+  const height = y + draft.rows.length * LOOM_CELL_H + fringe;
+  return (
+    <div className="loom-artifact">
+      <svg
+        ref={artifactRef}
+        viewBox={`0 0 ${width} ${height}`}
+        role="img"
+        aria-label="织好的布"
+        preserveAspectRatio="xMidYMid meet"
+      >
+        {Array.from({ length: LOOM_ENDS }, (_, end) => {
+          const cx = x + end * LOOM_CELL_W + LOOM_CELL_W / 2;
+          const color = warpColor(draft, end);
+          return (
+            <g key={`fringe${end}`}>
+              <line x1={cx} y1={y - fringe} x2={cx} y2={y} stroke={color} strokeWidth={3.2} />
+              <line x1={cx} y1={y + draft.rows.length * LOOM_CELL_H} x2={cx} y2={y + draft.rows.length * LOOM_CELL_H + fringe} stroke={color} strokeWidth={3.2} />
             </g>
-          </svg>
-          <div className="loom-board-caption">
-            <span>抬起 {groupName(shed)} 经线 · 梭子从{direction === 1 ? '左' : '右'}往{direction === 1 ? '右' : '左'}</span>
-            <span className="numeric">{Math.round(draft.progress * 100)}%</span>
-          </div>
-        </div>}
-
-        {draft.started && !draft.finished && <div className="craft-toolbar">
-          <button type="button" className="craft-primary" onClick={complete ? beat : advance} disabled={!ready || full}>
-            {complete ? <Check size={17} /> : null}{complete ? '压紧这一行' : '穿完这一行'}
-          </button>
-          <button type="button" className="craft-secondary" onClick={undo} disabled={!ready || (!rows && !draft.progress)}><Undo2 size={16} />撤销</button>
-          <button type="button" className="craft-secondary loom-finish" onClick={finish} disabled={!ready || !rows}>收边完成</button>
-        </div>}
-
-        <p className={draft.finished ? 'craft-status loom-status--result' : 'craft-status'} role="status" aria-live="polite">
-          {notice || (draft.finished ? '成品可以导出，或者继续织几行。' : draft.started ? stepText : '先选经线配色，再开始。')}
-        </p>
-      </section>
-
-      <aside className="craft-sidebar">
-        <section className="craft-panel">
-          <h2>纬线颜色</h2>
-          <div className="craft-swatches" aria-label="选择这一行的纬线颜色">
-            {WEFT_COLORS.map((color, index) => <button key={color.name} type="button"
-              className={`craft-swatch${draft.weft === index ? ' is-active' : ''}`} style={{ background: color.hex }}
-              aria-label={color.name} aria-pressed={draft.weft === index}
-              onClick={() => { setDraft(setWeft(draft, index)); if (draft.started) setNotice('换好了颜色，这一行的纬线会用它。'); }}>
-              {draft.weft === index && <Check size={15} />}
-            </button>)}
-          </div>
-          <p className="craft-note">当前：{WEFT_COLORS[draft.weft].name}</p>
-        </section>
-
-        <section className="craft-panel">
-          <h2>怎么织</h2>
-          <ol className="craft-steps">
-            <li>拖梭子横穿经线，或点「穿完这一行」。</li>
-            <li>点「压紧这一行」把它织进布面。</li>
-            <li>压紧后经线会自动换组，再换一种纬线就是条纹。</li>
-            <li>随时可以收边；成品带流苏，可导出 PNG。</li>
-          </ol>
-          <p className="craft-note">每压一行，布面就多一条横向的线；交错的格子是平纹的经线与纬线。</p>
-        </section>
-
-        <section className="craft-panel">
-          <h2>草稿</h2>
-          <p className={saveFailed ? 'craft-note craft-note--warn' : 'craft-note'}>
-            {saveFailed ? '浏览器存储不可用：刷新后这份草稿会丢失，请先收边并导出成品。' : '草稿自动保存在此浏览器，刷新可以接着织。'}
-          </p>
-          {draft.started && <button type="button" className="craft-text-button" onClick={newWork}><RotateCcw size={15} />开始新作</button>}
-        </section>
-      </aside>
+          );
+        })}
+        {/* 成品与屏幕上的布面共用同一份画法：导出的质感不会和看到的不一样。 */}
+        {draft.rows.length > 0 ? (
+          <LoomWeave draft={draft} rows={draft.rows.length} left={x} top={y} width={LOOM_CLOTH_WIDTH} />
+        ) : null}
+      </svg>
+      <p className="craft-note">
+        {draft.finished ? '这块布已经收边，可以导出。' : '继续织，成品会跟着长。'}
+      </p>
     </div>
-  </div>;
+  );
 }
