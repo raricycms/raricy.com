@@ -216,6 +216,97 @@ describe('persistent snapshot reference revalidation', () => {
   });
 });
 
+describe('shadow mode', () => {
+  beforeEach(() => {
+    process.env.REACTIVE_MD_MODE = 'shadow';
+  });
+
+  it('compiles the candidate but keeps legacy visible', async () => {
+    compileMock.mockResolvedValue(outcome());
+
+    const result = await resolveReadRender(input({ override: null }));
+
+    expect(result.choice).toEqual({ renderer: 'legacy', reason: 'flag' });
+    expect(result.bundle).toBeUndefined();
+    expect(compileMock).toHaveBeenCalledTimes(1);
+    expect(result.shadow).toMatchObject({
+      renderer: 'reactive',
+      reason: 'format',
+      compatible: true,
+      codes: ['local.ok'],
+      compileMs: 7,
+      cacheHit: false,
+      legacyMath: false,
+    });
+    // 读者看到的日志仍是 legacy。
+    expect(result.log.renderer).toBe('legacy');
+    expect(result.log.codes).toEqual([]);
+  });
+
+  it('respects the percent gate and does not compile outside the cohort', async () => {
+    process.env.REACTIVE_MD_PERCENT = '0';
+
+    const result = await resolveReadRender(input());
+
+    expect(result.choice.renderer).toBe('legacy');
+    expect(result.shadow).toBeUndefined();
+    expect(compileMock).not.toHaveBeenCalled();
+  });
+
+  it('respects a per-document legacy override', async () => {
+    const result = await resolveReadRender(input({ override: 'legacy' }));
+
+    expect(result.choice).toEqual({ renderer: 'legacy', reason: 'flag' });
+    expect(result.shadow).toBeUndefined();
+    expect(compileMock).not.toHaveBeenCalled();
+  });
+
+  it('records diagnostics-driven incompatibility without showing it', async () => {
+    compileMock.mockResolvedValue(
+      outcome({
+        result: {
+          ok: true,
+          document: { kind: 'document', children: [] },
+          diagnostics: [{ code: 'local.html' }],
+        },
+      }),
+    );
+
+    const result = await resolveReadRender(input());
+
+    expect(result.choice.renderer).toBe('legacy');
+    expect(result.shadow).toMatchObject({
+      renderer: 'legacy',
+      reason: 'fallback',
+      compatible: false,
+      codes: ['local.html'],
+    });
+  });
+
+  it('marks a thrown shadow compile as an observation error only', async () => {
+    compileMock.mockRejectedValue(new Error('boom'));
+
+    const result = await resolveReadRender(input());
+
+    expect(result.choice).toEqual({ renderer: 'legacy', reason: 'flag' });
+    expect(result.shadow).toMatchObject({ compatible: false, error: 'compile' });
+  });
+
+  it('flags legacy math in the shadow observation', async () => {
+    compileMock.mockResolvedValue(outcome());
+
+    const result = await resolveReadRender(input({ source: String.raw`行内 \(x_1+y_2\)` }));
+
+    expect(result.choice.renderer).toBe('legacy');
+    expect(result.shadow).toMatchObject({
+      renderer: 'legacy',
+      reason: 'fallback',
+      compatible: false,
+      legacyMath: true,
+    });
+  });
+});
+
 describe('legacy backslash math', () => {
   const cases: Array<[string, boolean]> = [
     [String.raw`行内 \(x_1+y_2\)`, true],

@@ -17,15 +17,23 @@
 //
 // 【2】reactive 的静态正文**优先读同版本持久快照**（`reactive_snapshots`），读不到
 //   才按**当前正文**现编译一次。两者都不会把旧版本正文冒充成当前正文：版本 /
-//   编译签名不符的快照在 `snapshot-store.ts` 里按 stale 拒读。绝不在服务端用
-//   `react-dom/server` 现拼 HTML（Next 的 RSC 编译链会拒绝）。
+//   编译签名不符的快照在 `snapshot-store.ts` 里按 stale 拒读。**用快照前还要按
+//   当前 external 权限重验引用**（`snapshot-revalidation.ts`）：公开剪贴板改私密 /
+//   删除 / 改标题 / 改版本后，旧快照的 hostData 与当前不一致，必须重编译而不是
+//   继续展示旧标题；重验读失败时旧引用同样不可信，也不得使用快照。绝不在服务端
+//   用 `react-dom/server` 现拼 HTML（Next 的 RSC 编译链会拒绝）。
 //
 // 【3】markdown 只有在**候选**（override=reactive 或命中灰度）时才编译。候选之外
 //   的 markdown 直接 legacy —— 否则每一次阅读都要为一次「反正会回退」的编译付费。
+//   `REACTIVE_MD_MODE=shadow` 是例外：读者看 legacy，但对候选做一次影子编译，只留
+//   诊断 / 耗时 / cacheHit 观测（`shadow` 字段 + `[reactive-shadow]` 日志行），
+//   影子产物绝不用于渲染；percent 与逐篇 override=legacy 照常生效，`off` 不编译。
 //
 // 【4】`markdownCompatible` 必须由 `shouldFallbackToLegacy` 给出，不能只看 `ok`。
 //   `local.html` / `local.component.unknown` 会在 `ok: true` 的情况下静默改变可见
-//   内容（HTML 标签降级成源码文本），这正是 D4 的判据。
+//   内容（HTML 标签降级成源码文本），这正是 D4 的判据。**旧反斜线数学**（`\(…\)` /
+//   `\[…\]`）是同一类静默降级，但上游 0.5.3 不给诊断，只能从原文判断
+//   （`legacy-math.ts`，排除围栏 / 行内代码）。
 //
 // 【5】日志只写结构化字段（renderer / reason / codes / 耗时 / 缓存命中 / 快照状态），
 //   **不写正文、不写标题**。这些是运维台账，不是内容副本。
@@ -33,7 +41,7 @@
 
 import { parseContentFormat, type ContentFormat } from '../content-format';
 import { selectContentRenderer, type RendererChoice } from '../renderer-select';
-import { parseReactiveFlags } from './flags';
+import { parseReactiveFlags, type ReactiveFlags } from './flags';
 import { compileReactiveSource, type ReactiveCompileOutcome } from './compile';
 import { shouldFallbackToLegacy } from './diagnostics';
 import { hasLegacyMathDelimiters } from './legacy-math';
@@ -58,13 +66,38 @@ export interface ReadRenderInput {
   syntaxVersion?: string | null;
 }
 
+/**
+ * 影子编译的观测结果（`REACTIVE_MD_MODE=shadow`）。
+ *
+ * **只进日志与测试**：读者看到的仍然是 `choice` 给出的 legacy。`renderer` / `reason`
+ * 是「若灰度真的生效会落到哪里」；`compatible` 为 false 时它就是 legacy + fallback。
+ */
+export interface ShadowObservation {
+  renderer: RendererChoice['renderer'];
+  reason: RendererChoice['reason'];
+  compatible: boolean;
+  codes: string[];
+  compileMs: number;
+  cacheHit: boolean;
+  legacyMath: boolean;
+  /** 影子编译本身失败 / 没有产物（不影响读者看到的 legacy）。 */
+  error?: 'compile';
+}
+
 export interface ReadRenderResult {
   choice: RendererChoice;
   /** 本次编译产物；reactive 与 reactive-static 都由它渲染。 */
   bundle?: ReactiveCompileOutcome;
-  /** 持久快照（仅 reactive-static 且版本匹配时）；优先于 bundle。 */
+  /** 持久快照（仅 reactive-static 且版本 / 引用都匹配时）；优先于 bundle。 */
   snapshot?: SnapshotPayload;
-  failure?: 'compile' | 'snapshot-missing' | 'snapshot-references' | 'invalid-format' | 'invalid-override';
+  /** 影子观测；仅 shadow 模式且命中灰度候选时存在，绝不用于渲染。 */
+  shadow?: ShadowObservation;
+  failure?:
+    | 'compile'
+    | 'snapshot-missing'
+    | 'snapshot-references'
+    | 'invalid-format'
+    | 'invalid-override';
   log: {
     renderer: string;
     reason: string;
@@ -96,6 +129,7 @@ function finish(
     failure?: ReadRenderResult['failure'];
     snapshot?: SnapshotPayload;
     snapshotStatus?: string;
+    shadow?: ShadowObservation;
     legacyMath?: boolean;
   },
 ): ReadRenderResult {
@@ -114,11 +148,16 @@ function finish(
   };
   // 只写结构化字段：不打印 source / 标题 / 任何正文片段。
   console.info('[reactive-read]', JSON.stringify(log));
+  // 影子观测单独一行：它**不是读者的渲染结果**，别混进上面那条。
+  if (extra?.shadow) {
+    console.info('[reactive-shadow]', JSON.stringify({ ...extra.shadow, format }));
+  }
   return {
     choice,
     log,
     ...(bundle ? { bundle } : {}),
     ...(extra?.snapshot ? { snapshot: extra.snapshot } : {}),
+    ...(extra?.shadow ? { shadow: extra.shadow } : {}),
     ...(extra?.failure ? { failure: extra.failure } : {}),
   };
 }
@@ -232,6 +271,58 @@ async function buildStatic(
   });
 }
 
+/**
+ * `REACTIVE_MD_MODE=shadow`：读者仍看 legacy，但对**灰度候选**做一次影子编译，
+ * 只记录「如果灰度真的生效会怎样」。
+ *
+ * 候选判定复用 `selectContentRenderer`（把 mode 临时当 `on`），**不在这里复制**
+ * cohort / override 规则：`override=legacy` 与未命中 percent 的正文一次都不编译。
+ * 影子产物绝不挂到返回结果的 `bundle` 上，页面没有任何路径能拿到它。
+ */
+async function observeShadowCandidate(
+  input: ReadRenderInput,
+  selectionBase: Parameters<typeof selectContentRenderer>[0],
+  flags: ReactiveFlags,
+  compile: () => Promise<ReactiveCompileOutcome>,
+): Promise<ShadowObservation | undefined> {
+  if (flags.mode !== 'shadow') return undefined;
+
+  const candidateFlags: ReactiveFlags = { ...flags, mode: 'on' };
+  const candidate = selectContentRenderer({
+    ...selectionBase,
+    flags: candidateFlags,
+    markdownCompatible: true,
+  });
+  if (candidate.renderer !== 'reactive') return undefined;
+
+  const legacyMath = hasLegacyMathDelimiters(input.source);
+  let bundle: ReactiveCompileOutcome | undefined;
+  try {
+    bundle = await compile();
+  } catch {
+    bundle = undefined;
+  }
+  const compatible =
+    !!bundle && bundle.result.ok && !shouldFallbackToLegacy(bundle.result) && !legacyMath;
+  const wouldBe = selectContentRenderer({
+    ...selectionBase,
+    flags: candidateFlags,
+    markdownCompatible: compatible,
+  });
+
+  const observation: ShadowObservation = {
+    renderer: wouldBe.renderer,
+    reason: wouldBe.reason,
+    compatible,
+    codes: bundle?.result.diagnostics.map((diagnostic) => diagnostic.code) ?? [],
+    compileMs: bundle?.compileMs ?? 0,
+    cacheHit: bundle?.cacheHit ?? false,
+    legacyMath,
+  };
+  if (!bundle) observation.error = 'compile';
+  return observation;
+}
+
 export async function resolveReadRender(input: ReadRenderInput): Promise<ReadRenderResult> {
   const flags = parseReactiveFlags(process.env);
   const format = parseContentFormat(input.format);
@@ -256,22 +347,27 @@ export async function resolveReadRender(input: ReadRenderInput): Promise<ReadRen
     );
   }
 
-  const compile = () =>
-    compileReactiveSource({
-      source: input.source,
-      format,
-      mode: input.mode,
-      viewer: input.viewer,
-      clientIp: input.clientIp,
-    });
-
-  const compileExternal = () => compileReactiveSource({ source: input.source, format, mode: 'external', viewer: input.viewer, clientIp: input.clientIp });
+  const compileWith =
+    (mode: ReadRenderInput['mode']) => () =>
+      compileReactiveSource({
+        source: input.source,
+        format,
+        mode,
+        viewer: input.viewer,
+        clientIp: input.clientIp,
+      });
+  const compile = compileWith(input.mode);
+  // 快照固定按 external 生成；引用过期后的替代编译也必须同范围。
+  const compileExternal = compileWith('external');
 
   if (format === 'markdown') {
     // flag 关 / override=legacy / 未命中灰度都在这一步直接落 legacy，不编译。
     const tentative = selectContentRenderer({ ...selectionBase, markdownCompatible: true });
     if (tentative.renderer !== 'reactive') {
+      // shadow 也走这条出口：读者可见的仍是 legacy，影子编译只留观测。
+      const shadow = await observeShadowCandidate(input, selectionBase, flags, compile);
       return finish(tentative, format, undefined, {
+        ...(shadow ? { shadow } : {}),
         ...(tentative.reason === 'invalid-override' ? { failure: 'invalid-override' } : {}),
       });
     }
@@ -282,9 +378,11 @@ export async function resolveReadRender(input: ReadRenderInput): Promise<ReadRen
     } catch {
       bundle = undefined;
     }
-    // 编译失败 / 命中回退码 → markdownCompatible=false → 选择器给回 legacy。
+    // 编译失败 / 命中回退码 / 旧反斜线数学 → markdownCompatible=false → 选择器给回
+    // legacy。数学那一项只能看原文：上游 0.5.3 对它没有任何诊断（见 legacy-math.ts）。
     const legacyMath = hasLegacyMathDelimiters(input.source);
-    const compatible = !!bundle && bundle.result.ok && !shouldFallbackToLegacy(bundle.result) && !legacyMath;
+    const compatible =
+      !!bundle && bundle.result.ok && !shouldFallbackToLegacy(bundle.result) && !legacyMath;
     const choice = selectContentRenderer({ ...selectionBase, markdownCompatible: compatible });
     return finish(choice, format, bundle, {
       legacyMath,
