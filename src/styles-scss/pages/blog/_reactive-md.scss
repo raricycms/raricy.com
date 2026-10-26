@@ -178,10 +178,26 @@
     font-size: 0.9em;
   }
 
+  // 压过博客的通用 code 规则及全局 hljs 主题；行内代码仍保留自己的背景。
+  .md-code-block > .md-code > code,
+  .md-code > code {
+    padding: 0;
+    border-radius: 0;
+    background: transparent;
+    color: var(--code-ink);
+    font-size: inherit;
+  }
+
   .md-code-block,
   .md-code {
     max-width: 100%;
     border-radius: 6px;
+  }
+
+  // 代码底色显式恢复：页面通用 `pre` 规则（0,1,1）会盖过上游的 `.md-code`（0,1,0）。
+  .md-code {
+    background: var(--code-bg);
+    color: var(--code-ink);
   }
 
   .md-table-scroll {
