@@ -45,7 +45,7 @@ const POOL = { x: 88, y: 76, w: 544, h: 380 };
  * 网格本身已经是 480×336；再乘 1 就够（SVG 的 `<image>` 会做平滑放大）。乘大多
  * 只是把内存翻倍 —— 颜料是无损放大的，多出来的像素不会更清晰。
  */
-const SUPERSAMPLE = 1;
+const SUPERSAMPLE = 2;
 
 const WATER_RGB: [number, number, number] = [222, 236, 233];
 const PAPER_RGB: [number, number, number] = [244, 237, 221];
@@ -87,40 +87,74 @@ function layAtStageY(stageY: number): number {
   return (stageY - POOL.y) / POOL.h;
 }
 
-/** 网格 → canvas；`print` 为真时按"颜料吸在纸上"混合。 */
+/**
+ * 网格 → canvas；`print` 为真时按"颜料吸在纸上"混合。
+ *
+ * 【每个像素要跨格混色，不能直接取最近的那一格】网格是一格一份颜色，而一格在台面上
+ * 是 1px 多一点。按最近格取色 = 每格画成一个硬边方块，颜料岛的边缘就会是一圈台阶
+ * （梳子梳过之后尤其明显：梳齿把边界拉成斜的，台阶就全暴露了）。真实的颜料在水里
+ * 是**渐次**过渡的，没有硬边。
+ *
+ * 所以每个像素按双线性在四邻格之间插值。空（`0`）也当作一种颜色参与插值 —— 它的
+ * 权重就是"这一像素有多少比例是水"，于是岛的边缘自然晕开，而不是被切齐。这也是
+ * 为什么这里不用 `SUPERSAMPLE` 去堆像素：靠采样解决边缘，比靠分辨率便宜得多。
+ */
 function paintCanvas(canvas: HTMLCanvasElement, grid: Uint8Array, print: boolean): string {
   canvas.width = MARBLING_W * SUPERSAMPLE;
   canvas.height = MARBLING_H * SUPERSAMPLE;
   const context = canvas.getContext('2d');
   if (!context) return '';
   const image = context.createImageData(canvas.width, canvas.height);
+  /**
+   * 每个取值 → rgb 的查表。alueHex + parseInt 放进内层循环是几百万次字符串解析，
+   * 每帧都要重算一遍水面（拖针 / 铺纸时每秒几十帧）。表只有 25 项，一次建好。
+   */
+  const base = print ? PAPER_RGB : WATER_RGB;
+  const maxValue = MARBLING_COLORS.length;
+  const lut = new Float32Array((maxValue + 1) * 3);
+  for (let value = 0; value <= maxValue; value += 1) {
+    const hex = valueHex(value);
+    if (!hex) {
+      lut[value * 3] = base[0];
+      lut[value * 3 + 1] = base[1];
+      lut[value * 3 + 2] = base[2];
+      continue;
+    }
+    const r = parseInt(hex.slice(1, 3), 16);
+    const g = parseInt(hex.slice(3, 5), 16);
+    const b = parseInt(hex.slice(5, 7), 16);
+    // 印在纸上时颜料是半透明的：以纸色为底做一次正片叠底，白纸处的留白才不是死白。
+    lut[value * 3] = print ? (r * base[0]) / 255 : r;
+    lut[value * 3 + 1] = print ? (g * base[1]) / 255 : g;
+    lut[value * 3 + 2] = print ? (b * base[2]) / 255 : b;
+  }
   for (let y = 0; y < canvas.height; y += 1) {
-    const gy = Math.min(MARBLING_H - 1, Math.floor(y / SUPERSAMPLE));
+    // 采样点落在格心，插值才对称（落格角会把整幅往左上半格偏）。
+    const sy = Math.min(MARBLING_H - 1, Math.max(0, (y + 0.5) / SUPERSAMPLE - 0.5));
+    const y0 = Math.floor(sy);
+    const y1 = Math.min(MARBLING_H - 1, y0 + 1);
+    const fy = sy - y0;
     for (let x = 0; x < canvas.width; x += 1) {
-      const gx = Math.min(MARBLING_W - 1, Math.floor(x / SUPERSAMPLE));
-      const hex = valueHex(grid[gy * MARBLING_W + gx]);
+      const sx = Math.min(MARBLING_W - 1, Math.max(0, (x + 0.5) / SUPERSAMPLE - 0.5));
+      const x0 = Math.floor(sx);
+      const x1 = Math.min(MARBLING_W - 1, x0 + 1);
+      const fx = sx - x0;
+      // 四邻格加权。空格的权重就是"这里是水"，所以岛的边缘会晕开而不是被切齐。
+      const w00 = (1 - fx) * (1 - fy);
+      const w10 = fx * (1 - fy);
+      const w01 = (1 - fx) * fy;
+      const w11 = fx * fy;
+      const v00 = grid[y0 * MARBLING_W + x0] * 3;
+      const v10 = grid[y0 * MARBLING_W + x1] * 3;
+      const v01 = grid[y1 * MARBLING_W + x0] * 3;
+      const v11 = grid[y1 * MARBLING_W + x1] * 3;
       const offset = (y * canvas.width + x) * 4;
       // 纸纤维：一点点确定性噪点，让成品看起来是吸在纸上的，而不是打印的色块。
       const fiber = (((x * 7 + y * 13) % 11) / 11 - 0.5) * (print ? 7 : 3);
-      if (!hex) {
-        const base = print ? PAPER_RGB : WATER_RGB;
-        image.data[offset] = base[0] + fiber;
-        image.data[offset + 1] = base[1] + fiber;
-        image.data[offset + 2] = base[2] + fiber;
-      } else {
-        const r = parseInt(hex.slice(1, 3), 16);
-        const g = parseInt(hex.slice(3, 5), 16);
-        const b = parseInt(hex.slice(5, 7), 16);
-        if (print) {
-          // 颜料是半透明的：以纸色为底做一次正片叠底，白纸处的留白才不是死白。
-          image.data[offset] = (r * PAPER_RGB[0]) / 255 + fiber;
-          image.data[offset + 1] = (g * PAPER_RGB[1]) / 255 + fiber;
-          image.data[offset + 2] = (b * PAPER_RGB[2]) / 255 + fiber;
-        } else {
-          image.data[offset] = r + fiber;
-          image.data[offset + 1] = g + fiber;
-          image.data[offset + 2] = b + fiber;
-        }
+      for (let channel = 0; channel < 3; channel += 1) {
+        image.data[offset + channel] =
+          lut[v00 + channel] * w00 + lut[v10 + channel] * w10 +
+          lut[v01 + channel] * w01 + lut[v11 + channel] * w11 + fiber;
       }
       image.data[offset + 3] = 255;
     }
