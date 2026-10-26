@@ -41,7 +41,7 @@ export const GAMES = [
   {
     id: 'loom',
     title: '小小织布机',
-    description: '选择经线配色，拖动梭子一行行织出小布块。可逐行换色、撤销与导出。',
+    description: '拖着梭子在经线间走一个来回就是一行，压紧、换梭口都会自己发生。可逐行换色、反悔与导出。',
     category: 'craft',
     modes: ['solo'],
     href: '/game/loom',
@@ -52,7 +52,7 @@ export const GAMES = [
   {
     id: 'papercut',
     title: '剪纸窗花',
-    description: '在折好的纸上随手剪几刀，展开成对称窗花。支持两折、三折与透明底导出。',
+    description: '在折好的纸上剪几刀，把纸拉开就是一朵镜像对称的窗花。两折、三折，透明底导出。',
     category: 'craft',
     modes: ['solo'],
     href: '/game/papercut',
@@ -63,7 +63,7 @@ export const GAMES = [
   {
     id: 'marbling',
     title: '水面印花',
-    description: '滴入颜料，用针或梳子拖出纹理，再用纸吸起花纹。支持撤销与图片导出。',
+    description: '滴颜料、拖出纹理，再把纸放进水里吸起花纹。可撤销与导出。',
     category: 'craft',
     modes: ['solo'],
     href: '/game/marbling',
