@@ -49,6 +49,25 @@ function sha256(file: string): string {
   return createHash('sha256').update(fs.readFileSync(file)).digest('hex');
 }
 
+/**
+ * 脚本**自身**的 sha256 —— 必须先按 LF 归一化再取。
+ *
+ * 【为什么不能直接用 sha256(GENERATOR)】Windows 上 `core.autocrlf=true` 的仓库把 `.mjs`
+ * 检出成 CRLF，Linux / CI 上是 LF。同一份提交于是算出两个哈希，而 manifest 里只有一个值
+ * —— 于是这个守卫在**一半的机器上红**，而两边谁都没改过任何东西。
+ *
+ * 2026-10 实测踩过：`5b2d53af` 在一个 CRLF 检出里重跑了出图脚本，manifest 的
+ * `generatorSha256` 被换成了 CRLF 哈希，本机主工作区（LF）当场判红，而脚本与素材
+ * 一个字节都没变。所以归一化是**这个守卫能不能被信任**的前提，不是洁癖。
+ *
+ * 归一化口径必须与 `scripts/make-frame-demos.mjs` 的 `generatorSha256()` 完全一致
+ * （那边也是 `replace(/\r\n/g, '\n')` 后取 sha256）—— 两份算法漂了，守卫会假红。
+ */
+function generatorSha256(file: string): string {
+  const source = fs.readFileSync(file, 'utf8').replace(/\r\n/g, '\n');
+  return createHash('sha256').update(source).digest('hex');
+}
+
 /** 重跑出图脚本的命令 —— 报错里要给人这一句，而不是让他去猜。 */
 const REMEDY = '跑一次 `node scripts/make-frame-demos.mjs`，把 public/static/frames/ 的改动一起提交。';
 
@@ -72,7 +91,7 @@ describe('入库的头像框素材', () => {
 
   it('★ 出图脚本没被改过（改了就得重跑，否则站点还在用旧图）', () => {
     expect(
-      sha256(GENERATOR),
+      generatorSha256(GENERATOR),
       `scripts/make-frame-demos.mjs 变了，而素材还是上一次生成的 —— 站点会继续显示旧图，` +
         `且不报任何错。${REMEDY}`
     ).toBe(manifest.generatorSha256);
