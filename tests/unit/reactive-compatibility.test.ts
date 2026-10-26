@@ -12,6 +12,7 @@ import { resolveReadRender, type ReadRenderInput } from '@/lib/reactive/read-ren
 import { compileReactiveSource } from '@/lib/reactive/compile';
 import { readReactiveSnapshot } from '@/lib/reactive/snapshot-store';
 import { prepareReactiveDocument } from '@/lib/reactive/prepare';
+import { hasLegacyMathDelimiters } from '@/lib/reactive/legacy-math';
 
 const compileMock = vi.mocked(compileReactiveSource);
 const snapshotMock = vi.mocked(readReactiveSnapshot);
@@ -212,5 +213,52 @@ describe('persistent snapshot reference revalidation', () => {
     expect(result.choice.renderer).toBe('unavailable');
     expect(result.failure).toBe('snapshot-references');
     expect(result.snapshot).toBeUndefined();
+  });
+});
+
+describe('legacy backslash math', () => {
+  const cases: Array<[string, boolean]> = [
+    [String.raw`行内 \(x_1+y_2\)`, true],
+    [String.raw`块级 \[x^2+y^2\]`, true],
+    ['`\\(x\\)` 放在行内代码里', false],
+    ['```\n\\(x\\)\n```', false],
+    [String.raw`\\(x\\)`, false],
+    [String.raw`孤立 \( 不算数学`, false],
+    ['普通正文 $x^2$', false],
+  ];
+
+  it.each(cases)('%s → %s', (source, expected) => {
+    expect(hasLegacyMathDelimiters(source)).toBe(expected);
+  });
+
+  it('keeps a markdown candidate with backslash math on legacy', async () => {
+    process.env.REACTIVE_MD_MODE = 'on';
+    compileMock.mockResolvedValue(outcome());
+
+    const result = await resolveReadRender(
+      input({ override: 'reactive', source: String.raw`行内 \(x_1+y_2\)` }),
+    );
+
+    expect(result.choice).toEqual({ renderer: 'legacy', reason: 'fallback' });
+    expect(result.log.legacyMath).toBe(true);
+    expect(compileMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not treat math-shaped text inside code as math', async () => {
+    process.env.REACTIVE_MD_MODE = 'on';
+    compileMock.mockResolvedValue(outcome());
+
+    const inline = await resolveReadRender(
+      input({ override: 'reactive', source: '`\\(x\\)` 是示例' }),
+    );
+    expect(inline.choice.renderer).toBe('reactive');
+    expect(inline.log.legacyMath).toBe(false);
+
+    compileMock.mockClear();
+    const fenced = await resolveReadRender(
+      input({ override: 'reactive', source: '```\n\\(x\\)\n```' }),
+    );
+    expect(fenced.choice.renderer).toBe('reactive');
+    expect(fenced.log.legacyMath).toBe(false);
   });
 });

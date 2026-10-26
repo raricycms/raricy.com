@@ -36,6 +36,7 @@ import { selectContentRenderer, type RendererChoice } from '../renderer-select';
 import { parseReactiveFlags } from './flags';
 import { compileReactiveSource, type ReactiveCompileOutcome } from './compile';
 import { shouldFallbackToLegacy } from './diagnostics';
+import { hasLegacyMathDelimiters } from './legacy-math';
 import { hasMutableExternalReferences, hostDataEqual } from './snapshot-revalidation';
 import {
   reactiveContentVersion,
@@ -72,6 +73,7 @@ export interface ReadRenderResult {
     compileMs: number;
     cacheHit: boolean;
     snapshotStatus: string;
+    legacyMath: boolean;
   };
 }
 
@@ -94,6 +96,7 @@ function finish(
     failure?: ReadRenderResult['failure'];
     snapshot?: SnapshotPayload;
     snapshotStatus?: string;
+    legacyMath?: boolean;
   },
 ): ReadRenderResult {
   const codes = bundle?.result.diagnostics
@@ -107,6 +110,7 @@ function finish(
     compileMs: bundle?.compileMs ?? 0,
     cacheHit: bundle?.cacheHit ?? false,
     snapshotStatus: extra?.snapshotStatus ?? 'none',
+    legacyMath: extra?.legacyMath ?? false,
   };
   // 只写结构化字段：不打印 source / 标题 / 任何正文片段。
   console.info('[reactive-read]', JSON.stringify(log));
@@ -279,9 +283,11 @@ export async function resolveReadRender(input: ReadRenderInput): Promise<ReadRen
       bundle = undefined;
     }
     // 编译失败 / 命中回退码 → markdownCompatible=false → 选择器给回 legacy。
-    const compatible = !!bundle && bundle.result.ok && !shouldFallbackToLegacy(bundle.result);
+    const legacyMath = hasLegacyMathDelimiters(input.source);
+    const compatible = !!bundle && bundle.result.ok && !shouldFallbackToLegacy(bundle.result) && !legacyMath;
     const choice = selectContentRenderer({ ...selectionBase, markdownCompatible: compatible });
     return finish(choice, format, bundle, {
+      legacyMath,
       ...(choice.reason === 'fallback' && (!bundle || !bundle.result.ok)
         ? { failure: 'compile' as const }
         : {}),
