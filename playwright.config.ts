@@ -86,6 +86,10 @@ const RESPONSIVE_SPECS: RegExp[] = [
   /yiwen\.spec\.ts$/,
   /hinge\.spec\.ts$/,
   /hinge2\.spec\.ts$/,
+  // 动效试验台：窄屏「变体列收成一列 + 整页不横向溢出」是按真视口宽度量出来的，
+  // 曲线图与 cubic-bezier 长串最容易撑破这一条。桌面那一遍同样跑（重播、过冲、
+  // 展开高度那些与视口无关）。
+  /motion\.spec\.ts$/,
   // 手工间三款都靠真实指针在 SVG / canvas 上作画，窄屏的工作台高度与触控可用性
   // 只有 mobile 那一遍量得到；导出也必须在两种视口都能下载。
   /craft-games\.spec\.ts$/,

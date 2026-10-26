@@ -1,0 +1,602 @@
+@use '../../abstracts/variables' as v;
+@use '../../abstracts/mixins' as m;
+@use '../../abstracts/breakpoints' as bp;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 动效试验台（/game/motion）的全部样式
+//
+// 这个页面的用途是**比较**：同一个场景摆几列，只有速度曲线和时长不同，其余结构
+// 完全一样。所以这里的样式有一个反常规的地方 —— 时长与曲线一律从 CSS 自定义属性
+// `--mo-duration` / `--mo-easing` 读，由组件按变体内联写入，**不在这里写死**。
+// 写死的话「改一条曲线看效果」就得改 SCSS 重新编译，这个页面也就没法当试验台用了。
+// 兜底值只是「忘了传」时的保险，不是任何一条变体的实际取值。
+//
+// 三条纪律，与 docs/frontend-styles.md §6 同源：
+//   · 不用颜色过渡来演曲线差异 —— base/_reset.scss 给全站元素挂了 .3s 的
+//     color/background-color 过渡，用它比较曲线时量到的是那条过渡，不是变体的曲线。
+//     所以每一格动的都是 transform / opacity / box-shadow / grid-template-rows。
+//   · 展开面板走 grid-template-rows 0fr → 1fr，不猜 max-height（猜错就截断内容）。
+//   · 悬停只改 box-shadow 与底色，不做垂直位移。
+// ─────────────────────────────────────────────────────────────────────────────
+
+.mo-lab {
+  padding-top: v.$space-6;
+  padding-bottom: v.$space-8;
+
+  @include bp.down(bp.$bp-md) {
+    padding-top: v.$space-4;
+  }
+}
+
+// ── 页头 ─────────────────────────────────────────────────────────────────────
+.mo-lab__header {
+  margin-bottom: v.$space-6;
+
+  h1 {
+    margin: v.$space-3 0 v.$space-2;
+    font-size: 2rem;
+    font-weight: 700;
+  }
+
+  @include bp.down(bp.$bp-md) {
+    h1 { font-size: 1.6rem; }
+  }
+}
+
+.mo-lab__lead {
+  margin: 0;
+  max-width: 68ch;
+  line-height: 1.8;
+  color: var(--color-text-secondary);
+}
+
+.mo-lab__toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: v.$space-2;
+  margin-top: v.$space-4;
+}
+
+.mo-lab__toolbar-label {
+  font-size: 0.875rem;
+  color: var(--color-text-secondary);
+}
+
+// ── 曲线总览 ─────────────────────────────────────────────────────────────────
+.mo-overview {
+  display: grid;
+  grid-template-columns: minmax(0, 300px) minmax(0, 1fr);
+  gap: v.$space-6;
+  align-items: start;
+  padding: v.$space-6;
+  margin-bottom: v.$space-6;
+  border-radius: v.$radius-card;
+  background: var(--color-background-card);
+
+  @include bp.down(bp.$bp-lg) {
+    grid-template-columns: minmax(0, 1fr);
+    gap: v.$space-4;
+  }
+}
+
+.mo-overview__figure {
+  margin: 0;
+}
+
+.mo-overview__plot {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+
+.mo-plot__frame {
+  fill: none;
+  stroke: var(--color-border);
+  stroke-width: 0.6;
+}
+
+.mo-plot__grid {
+  stroke: var(--color-border);
+  stroke-width: 0.4;
+  stroke-dasharray: 1.6 1.6;
+}
+
+.mo-plot__diagonal {
+  stroke: var(--color-border);
+  stroke-width: 0.5;
+  stroke-dasharray: 2 2;
+}
+
+.mo-plot__path {
+  fill: none;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  transition: opacity 0.2s ease, stroke-width 0.2s ease;
+}
+
+.mo-plot__path--adopt { stroke: var(--color-brand-primary); }
+.mo-plot__path--candidate { stroke: var(--color-text-secondary); }
+.mo-plot__path--avoid { stroke: var(--color-warning-primary); }
+
+// 点中某一条图例后，其它曲线压暗而不是消失 —— 还要留着当参照。
+.mo-plot__path--dim { opacity: 0.18; }
+.mo-plot__path--pick { stroke-width: 2.6; }
+
+.mo-overview__caption {
+  margin: v.$space-2 0 0;
+  font-size: 0.8125rem;
+  line-height: 1.7;
+  color: var(--color-text-secondary);
+}
+
+.mo-legend {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: v.$space-1;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+
+  @include bp.up(bp.$bp-md) {
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 250px), 1fr));
+  }
+}
+
+.mo-legend__item {
+  display: grid;
+  grid-template-columns: 10px minmax(0, 1fr);
+  gap: v.$space-2;
+  width: 100%;
+  padding: v.$space-2;
+  border: none;
+  border-radius: v.$radius-large;
+  background: transparent;
+  color: var(--color-text-primary);
+  text-align: left;
+  cursor: pointer;
+
+  &:hover:not(.is-active) {
+    background: var(--color-background-subtle);
+  }
+
+  // 选中态用底色标出来，不靠位移。
+  &.is-active {
+    background: var(--color-background-content);
+  }
+}
+
+.mo-legend__swatch {
+  width: 10px;
+  height: 10px;
+  margin-top: 7px;
+  border-radius: v.$radius-max;
+  background: var(--color-text-secondary);
+
+  &--adopt { background: var(--color-brand-primary); }
+  &--candidate { background: var(--color-text-secondary); }
+  &--avoid { background: var(--color-warning-primary); }
+}
+
+.mo-legend__body {
+  min-width: 0;
+}
+
+.mo-legend__name {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: v.$space-2;
+  font-size: 0.9375rem;
+  font-weight: 600;
+}
+
+.mo-legend__badge {
+  padding: 1px v.$space-2;
+  border-radius: v.$radius-max;
+  background: var(--color-background-subtle);
+  font-size: 0.6875rem;
+  font-weight: 400;
+  color: var(--color-text-secondary);
+}
+
+.mo-legend__css {
+  display: block;
+  margin-top: 2px;
+  overflow-wrap: anywhere;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--color-text-secondary);
+}
+
+.mo-legend__note {
+  display: block;
+  margin-top: v.$space-1;
+  font-size: 0.8125rem;
+  line-height: 1.7;
+  color: var(--color-text-secondary);
+}
+
+// ── 场景 ─────────────────────────────────────────────────────────────────────
+.mo-scenario {
+  padding: v.$space-6;
+  margin-bottom: v.$space-4;
+  border-radius: v.$radius-card;
+  background: var(--color-background-card);
+
+  @include bp.down(bp.$bp-md) {
+    padding: v.$space-4;
+  }
+}
+
+.mo-scenario__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: v.$space-2 v.$space-3;
+  margin-bottom: v.$space-2;
+}
+
+.mo-scenario__title {
+  margin: 0;
+  font-size: 1.25rem;
+}
+
+.mo-scenario__meta {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--color-text-secondary);
+}
+
+.mo-scenario__hint {
+  margin: 0 0 v.$space-4;
+  max-width: 80ch;
+  font-size: 0.875rem;
+  line-height: 1.8;
+  color: var(--color-text-secondary);
+}
+
+.mo-variants {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 230px), 1fr));
+  gap: v.$space-3;
+}
+
+// ── 变体卡 ───────────────────────────────────────────────────────────────────
+.mo-variant {
+  display: flex;
+  flex-direction: column;
+  gap: v.$space-2;
+  min-width: 0;
+  padding: v.$space-3;
+  border-radius: v.$radius-field;
+  background: var(--color-background-content);
+}
+
+// 标签与读数**上下叠**而不是左右并排：cubic-bezier 那一串最长有 30 多字符，
+// 并排时它 flex: none 抢走整行宽度，中文标签被压成每行一个字。
+.mo-variant__head {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.mo-variant__label {
+  font-size: 0.875rem;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.mo-variant__readout {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 0.6875rem;
+  line-height: 1.5;
+  color: var(--color-text-secondary);
+  overflow-wrap: anywhere;
+}
+
+.mo-variant__spark {
+  display: block;
+  width: 100%;
+  height: 36px;
+}
+
+.mo-spark__frame {
+  fill: none;
+  stroke: var(--color-border);
+  stroke-width: 0.8;
+}
+
+.mo-spark__line {
+  fill: none;
+  stroke: var(--color-brand-primary);
+  stroke-width: 1.6;
+  stroke-linecap: round;
+}
+
+.mo-spark__line--plain { stroke: var(--color-text-secondary); }
+.mo-spark__line--risky { stroke: var(--color-warning-primary); }
+
+.mo-variant__stage {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: v.$space-2;
+  min-height: 132px;
+  padding: v.$space-2;
+  overflow: hidden;
+  border-radius: v.$radius-large;
+  background: var(--color-background-card);
+}
+
+// 重播按钮一律贴着卡片底部：各场景的舞台高度天然不同（展开那一格里还有一个
+// 「展开面板」按钮），不钉住的话同一行里几颗按钮会错开。
+.mo-variant__controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: v.$space-2;
+  margin-top: auto;
+}
+
+// ── 各场景的舞台 ─────────────────────────────────────────────────────────────
+// 展开面板：外壳是 grid 容器，内层裁切。0fr → 1fr 按内容真实高度伸展。
+.mo-expand {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows var(--mo-duration, #{v.$motion-expand-duration}) var(--mo-easing, #{v.$motion-expand-easing});
+
+  &.is-open {
+    grid-template-rows: 1fr;
+  }
+}
+
+.mo-expand__inner {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.mo-expand__body {
+  display: flex;
+  flex-direction: column;
+  gap: v.$space-1;
+  padding-bottom: v.$space-2;
+  font-size: 0.8125rem;
+  line-height: 1.7;
+  color: var(--color-text-secondary);
+}
+
+// 入场：位移 12px + 淡入。用动画而不是过渡 —— 重播靠换 key 让它从头上场。
+.mo-rise {
+  display: grid;
+  place-items: center;
+  gap: v.$space-1;
+  padding: v.$space-3;
+  border-radius: v.$radius-large;
+  background: var(--color-background-content);
+  animation: mo-rise var(--mo-duration, #{v.$motion-expand-duration}) var(--mo-easing, #{v.$motion-expand-easing}) backwards;
+}
+
+.mo-rise__dot {
+  width: 28px;
+  height: 28px;
+  border-radius: v.$radius-max;
+  background: var(--color-brand-secondary);
+}
+
+.mo-rise__text {
+  font-size: 0.8125rem;
+  color: var(--color-text-secondary);
+}
+
+// 逐条入场：同一段动画、不同延迟。
+.mo-stagger {
+  display: grid;
+  gap: v.$space-1;
+}
+
+.mo-stagger__item {
+  padding: 6px v.$space-2;
+  border-radius: v.$radius-small;
+  background: var(--color-background-content);
+  font-size: 0.8125rem;
+  animation: mo-rise var(--mo-duration, #{v.$motion-expand-duration}) var(--mo-easing, #{v.$motion-expand-easing}) backwards;
+  animation-delay: var(--mo-delay, 0ms);
+}
+
+// 弹层：底板淡入 + 面板从自身中心放大。不飞入、不位移。
+.mo-stage--overlay {
+  position: relative;
+  min-height: 96px;
+  border-radius: v.$radius-large;
+  background: var(--color-background-content);
+}
+
+.mo-overlay__scrim {
+  position: absolute;
+  inset: 0;
+  border-radius: v.$radius-large;
+  background: var(--color-brand-secondary);
+  animation: mo-fade var(--mo-duration, #{v.$motion-collapse-duration}) var(--mo-easing, #{v.$motion-collapse-easing}) backwards;
+}
+
+.mo-overlay__panel {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  min-width: 60%;
+  padding: v.$space-3;
+  border-radius: v.$radius-large;
+  background: var(--color-background-card);
+  box-shadow: var(--shadow-card-brand);
+  font-size: 0.8125rem;
+  text-align: center;
+  translate: -50% -50%;
+  animation: mo-pop var(--mo-duration, #{v.$motion-collapse-duration}) var(--mo-easing, #{v.$motion-collapse-easing}) backwards;
+}
+
+// 悬停光晕：只改 box-shadow。
+.mo-hover {
+  display: grid;
+  gap: v.$space-1;
+  padding: v.$space-3;
+  border-radius: v.$radius-large;
+  background: var(--color-background-card);
+  font-size: 0.8125rem;
+  text-align: center;
+  color: var(--color-text-secondary);
+  transition: box-shadow var(--mo-duration, 200ms) var(--mo-easing, ease);
+
+  &:hover,
+  &:focus-visible {
+    box-shadow: var(--shadow-card-brand);
+  }
+}
+
+// 分段滑块：只有滑块那一条 transform 是我们比较的对象。
+.mo-slider {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  padding: v.$space-1;
+  border-radius: v.$radius-max;
+  background: var(--color-background-content);
+}
+
+.mo-slider__thumb {
+  position: absolute;
+  top: v.$space-1;
+  bottom: v.$space-1;
+  left: v.$space-1;
+  width: calc((100% - #{v.$space-2}) / 4);
+  border-radius: v.$radius-max;
+  background: var(--color-brand-secondary);
+  pointer-events: none;
+  transform: translateX(calc(var(--mo-i, 0) * 100%));
+  transition: transform var(--mo-duration, 250ms) var(--mo-easing, ease);
+}
+
+.mo-slider__opt {
+  position: relative;
+  z-index: 1;
+  padding: 6px 0;
+  border: none;
+  border-radius: v.$radius-max;
+  background: transparent;
+  font-size: 0.8125rem;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+
+  &.is-active {
+    color: var(--color-brand-primary);
+    font-weight: 600;
+  }
+}
+
+// 数字递增：由 JS 按同一条曲线算中间值。字体走 utilities/_numeric.scss 的 `.numeric`。
+.mo-counter {
+  text-align: center;
+
+  output {
+    display: block;
+    font-size: 1.75rem;
+    font-weight: 700;
+  }
+}
+
+.mo-counter__cap {
+  font-size: 0.75rem;
+  color: var(--color-text-secondary);
+}
+
+// 进度条：用 transform: scaleX 而不是 width —— 前者不触发重排。
+.mo-bar {
+  height: 10px;
+  overflow: hidden;
+  border-radius: v.$radius-max;
+  background: var(--color-background-content);
+}
+
+.mo-bar__fill {
+  height: 100%;
+  border-radius: v.$radius-max;
+  background: var(--color-brand-primary);
+  transform-origin: left center;
+  animation: mo-grow var(--mo-duration, 1200ms) var(--mo-easing, linear) backwards;
+}
+
+.mo-bar__cap {
+  margin-top: v.$space-2;
+  font-size: 0.75rem;
+  text-align: center;
+  color: var(--color-text-secondary);
+}
+
+// 切页淡入：唯一动的属性就是 opacity。
+.mo-fade {
+  display: grid;
+  place-items: center;
+  padding: v.$space-4;
+  border-radius: v.$radius-large;
+  background: var(--color-background-content);
+  font-size: 0.8125rem;
+  color: var(--color-text-secondary);
+  animation: mo-fade var(--mo-duration, 160ms) var(--mo-easing, ease) backwards;
+}
+
+// ── 关键帧 ───────────────────────────────────────────────────────────────────
+// 四个都是「从偏移状态回到元素本身的静止状态」，所以元素自身的样式不必写
+// opacity: 0 之类的初值 —— 减少动态效果时把动画整段关掉，元素直接落在终态上。
+@keyframes mo-rise {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes mo-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes mo-pop {
+  from {
+    opacity: 0;
+    scale: 0.96;
+  }
+  to {
+    opacity: 1;
+    scale: 1;
+  }
+}
+
+@keyframes mo-grow {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
+
+// ── 减少动态效果 ─────────────────────────────────────────────────────────────
+// 整页的动效一起关掉：不是「调快」，是「不演」。元素的样子仍然是做完之后的那个样子
+// （关键帧的终点就是元素自身的样式），所以关掉动画不会留下「淡到一半」的中间态。
+@media (prefers-reduced-motion: reduce) {
+  .mo-expand,
+  .mo-slider__thumb,
+  .mo-hover,
+  .mo-plot__path {
+    transition: none;
+  }
+
+  .mo-rise,
+  .mo-stagger__item,
+  .mo-fade,
+  .mo-overlay__scrim,
+  .mo-overlay__panel,
+  .mo-bar__fill {
+    animation: none;
+  }
+}

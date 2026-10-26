@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { Grid2X2, Wand2, Flag } from 'lucide-react';
+import { Grid2X2, Wand2, Flag, Activity } from 'lucide-react';
 import { AtamasRingIcon } from '@/games/atamas/icons';
 import { TwinShadeIcon } from '@/games/twinshade/icons';
 import { LumenIcon } from '@/games/lumen/icons';
@@ -20,6 +20,7 @@ function GameIcon({ icon }: { icon: GameEntry['icon'] }) {
   if (icon === 'twinshade') return <TwinShadeIcon />;
   if (icon === 'public-space') return <Grid2X2 />;
   if (icon === 'quandi') return <Flag />;
+  if (icon === 'motion') return <Activity />;
   return <Wand2 />;
 }
 

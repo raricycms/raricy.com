@@ -34,7 +34,7 @@ export interface GameEntry {
   href: string;
   runtime: 'native' | 'embedded' | 'external';
   collectionId: GameCollectionId | null;
-  icon: 'atamas' | 'wand' | 'public-space' | 'quandi' | 'twinshade' | 'lumen' | 'yiwen' | 'hinge' | 'loom' | 'papercut' | 'marbling';
+  icon: 'atamas' | 'wand' | 'public-space' | 'quandi' | 'twinshade' | 'lumen' | 'yiwen' | 'hinge' | 'loom' | 'papercut' | 'marbling' | 'motion';
 }
 
 export const GAMES = [
@@ -180,6 +180,17 @@ export const GAMES = [
     runtime: 'native',
     collectionId: 'test',
     icon: 'wand',
+  },
+  {
+    id: 'motion',
+    title: '动效试验台',
+    description: '同一段动画按不同速度曲线与时长并排播放，用来挑全站动效要用的曲线。',
+    category: 'puzzle',
+    modes: ['solo'],
+    href: '/game/motion',
+    runtime: 'native',
+    collectionId: 'test',
+    icon: 'motion',
   },
 ] as const satisfies readonly GameEntry[];
 

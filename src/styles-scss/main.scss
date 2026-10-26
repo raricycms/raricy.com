@@ -69,6 +69,8 @@
 @use 'pages/game/wand';
 @use 'pages/game/wand2';
 @use 'pages/game/public-space';
+// 动效试验台（/game/motion）—— 挑曲线用的对照页，与任何一款玩具无关，单独一份。
+@use 'pages/game/motion';
 @use 'pages/blog/blog';
 @use 'pages/blog/reactive-md';
 // 博客评论区（文章详情页）。从 _blog.scss 拆出来单列 —— 它是一整套卡片版式，
