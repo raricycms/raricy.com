@@ -72,10 +72,13 @@ npm run dev                              # http://localhost:3000
 | 命令 | 作用 |
 |------|------|
 | `npm run dev` / `start` | 本地开发 / 生产启动，主站与实时服务共同启停 |
-| `npm run build` | 生产构建 |
+| `npm run build` | 生产构建。**会先删 `.next/types`** 再 build —— 陈旧的路由类型会让类型检查报幻影错误，而「跑一次 build」这个解药正好就是它本身（见 `scripts/build.mjs` 头部） |
+| `npm run typecheck` | 只查源码类型（`tsconfig.typecheck.json`，**不读 `.next/types`**）。想确认自己改的代码对不对时用这个，别用 `npx tsc --noEmit` —— 后者会读构建产物、对已删路由报错 |
 | `npm test` | vitest 单测 |
+| `npm run test:related` | 只跑与改动文件相关的用例（`vitest related --run`）。改一个功能时用它，全量留给提交前 |
 | `npm run e2e` | 端到端（直接跑 Playwright，**不**自动 build —— 见下方警告） |
 | `npm run e2e:ci` | 同上，但先 build（CI / 全新环境用） |
+| `npm run probe:page -- /路径` | **看一眼**某个页面（起真浏览器 → 打开 → 可选等选择器 / 截图 / 打印 HTML / 打印 console 报错）。要登录加 `--as core`。**不做断言、不算测试** —— 要断言就写进 `tests/e2e/*.spec.ts` |
 | `npm run smoke` | 只读冒烟（登录态/列表/详情/图床/**音频床**/CSRF/指南页等，**不含签到** —— 打的是生产站，不做任何写操作。条数不写死在这儿：加到脚本里的检查会自动出现在输出里） |
 | `npm run diagnose` | 部署自检（版本 / .env / 库 / 密钥）；报红就别往下走 |
 | `npm run check:secrets` | 密钥与生产数据是否进过版本库 |
