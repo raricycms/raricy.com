@@ -148,7 +148,8 @@ export async function POST(req: Request) {
   if (!v.ok) return apiErr(400, v.message);
 
   // 内容格式写入闸门（API 层也要判一次；service 层还有同一道 —— 两边都设防）。
-  // 新建省略 format = 默认 markdown；reactive 尚未开放，直接 400 而不是落库一半。
+  // 新建省略 format = 默认 markdown；reactive 已开放，但**编译不过就整篇拒绝**（400），
+  // 而不是落库一半 —— 正文与快照必须同生共死，见 publish.ts 与 createBlog。
   const contentWrite = resolveBlogContentFormat(v.data.format);
   if (!contentWrite.ok) return apiErr(400, contentWriteFailureMessage(contentWrite.reason));
 
