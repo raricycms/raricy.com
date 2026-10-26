@@ -295,6 +295,12 @@ export const DOC_ENTRIES: readonly DocEntry[] = [
   },
   {
     group: 'dev',
+    slug: 'known-red',
+    title: '已知长期红 / 必然失败的命令',
+    summary: '哪些红是既有的、哪些是自己弄坏的：判据、原因与修法。碰到红先查这里，别重新调研。',
+  },
+  {
+    group: 'dev',
     slug: 'instance-restore',
     title: '从 instance.zip 还原数据目录与数据库',
     summary: '灾备：从备份包还原出可运行的 instance/。',

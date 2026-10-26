@@ -175,6 +175,105 @@ raricy.com（聪明山）—— 个人博客 / 故事 / 工具集 / 剪贴板 / 
 - **改 `RULES` 的数值要同步对外文档** —— `docs/bot/` 三份与 `docs/guide/` 的投票 / 图床指南
   刻意复述了配额（站外读者要自包含），不同步就是下一次 drift。
 
+## 验证纪律
+
+> 这一节是**实测出来的**，不是风格偏好：157 个会话 / 424.8 h 里 pwsh 总耗时 13.0 h
+> （vitest 210 min、build 86、tsc 50），全量 vitest 单次中位数 132 s、最长 550 s。
+> 每一段对应一次**重复踩过的坑**，括号里是实测数字 —— 别当建议看，当判据用。
+
+### 改一个功能的最小验证闭环
+
+1. 改完先跑**相关文件**：`npx vitest run <受影响文件>`。
+   不知道影响谁就用 `npm run test:related -- <文件>`（`vitest related --run`）。
+2. 再跑 `npm run typecheck`（**不读 `.next/types`**，见「常用命令」第 2 条）。
+3. **全量 vitest（`npm test`）只在提交前跑一次**，且必须输出到文件（见下一条）。
+4. 全量出现红色时，**先看是不是并发或超时**（下面两条），别急着改代码。
+
+**为什么不是每次都全量**：当前全量是 266 个文件 / 5,286 个用例 / **943 s**。
+改一个样式类名要等 16 分钟，而它证明的事情 `vitest related` 与 `typecheck` 已经证明过了。
+实测有 132 次全量级尝试，其中**只有 15 次真的跑完了全套**。
+
+### 测试输出绝不许截断
+
+- **禁止** `… | Select-Object -First/-Last N`、`| Out-Null`、`| tail`。
+  实测 **78% 的全量运行、91% 的单文件运行**被这样截断；**57 次全量既被截断又没摘要**，
+  合计 **44.2 min 的输出等于没跑**，只能重跑一遍。这是最纯粹的浪费。
+- 正确写法（先落盘，再在**文件**上搜）：
+
+  ```powershell
+  npx vitest run *> "$env:TEMP\vt.log"
+  Select-String -Path "$env:TEMP\vt.log" -Pattern "Test Files|Tests  |FAIL "
+  ```
+
+- 只想知道「过没过」，就只看退出码：`$LASTEXITCODE`。
+
+### 不要在同一仓库里并发跑两套测试
+
+`tests/global-setup.ts` 要给各测试文件准备模板库 `tests/.tmp/template.db`，
+而各文件的 `ensureSchema()` 是 `copyFile` 它。**两个 vitest 进程同时跑时**，
+后启动的那个会重建模板，先启动的那个正好拷到半成品 → 满屏
+`The table main.users does not exist`。
+
+- 实测确定性复现：A 跑到 12 s 时启动 B，A 得到 **686 个 DB 错误、14 个文件红**，
+  而 B 自己全绿；**A 一个用例都没改**。
+- 现在已改成「schema 哈希没变就跳过重建 + 构建到临时名再原子 rename」，
+  同一次实验变成 **0 个 DB 错误 / 172 全绿**。但**纪律仍然成立**：
+  并发还会抢 `.next/`（两个 `next build` 互相删产物）与 `tests/.tmp/`。
+- 症状是「同一个用例刚才还绿，什么都没改就红了」→ **先确认有没有第二个进程**
+  （`Get-CimInstance Win32_Process -Filter "Name='node.exe'"` 看命令行），
+  也看看是不是**另一个 agent** 在同一个工作区里干活（`git log`、`git stash list`
+  有没有你没做过的东西）。**别去改代码。**
+
+### 进程管理
+
+- **禁止** `Get-Process node | Stop-Process -Force` / `taskkill /F /IM node.exe`。
+  实测用过 **76 次 / 29 个会话**，直接造成 9 次
+  `EPERM: operation not permitted, rename '…\node_modules\.prisma\client…'`
+  （Prisma 重新生成撞上还在跑的 `next start`）与 8 次 `webServer was not able to start`。
+- 要清端口就精确杀：`Get-NetTCPConnection -LocalPort 3000 | Select-Object -ExpandProperty OwningProcess`
+  拿到 pid 再 `Stop-Process -Id <pid>`；或按命令行匹配到具体那条。
+
+### e2e
+
+- 默认**一次只跑一个 spec** 且 `--project=desktop`：`npx playwright test tests/e2e/xxx.spec.ts --project=desktop`。
+  每次调用有 **12–16 s 的 webServer 冷启动**（e2e 中位数 15 s），跑 89 次探针 spec
+  的成本远大于被测的那点行为。
+- **一次性探针 spec 放 `tests/.tmp/`**（已 gitignore、已被 vitest `exclude`），配自己的
+  `--config`；**绝不往 `tests/e2e/` 里写 `zz-*.spec.ts` / `tmp*.spec.ts`**。
+  实测历史上有 **23 个**这种文件写进了 `tests/e2e/`、被跑了 **62 次**。
+- 想「打开一个页面看看」用 `npm run probe:page -- <路径>`（加 `--as core` 登录、
+  `--wait` 等选择器、`--shot` 截图到 %TEMP%）。**别再手写内联 `chromium.launch()`
+  heredoc** —— 历史上有 **126 段**。
+- 同一个 spec 别反复重跑：实测 **51 组「同一会话同一 spec 跑 ≥3 次」= 222 次冗余执行**，
+  最坏一个把 `blog-directory.spec.ts` 跑了 **29 遍**。红了就去看日志，别赌它下一次会绿。
+- `npm run e2e` **不** build。改过 `src/` 必须先 build（`npm run build`），
+  否则测的是 `.next` 里的旧产物 —— 症状是刚加的日志一行都不打。
+
+### 文档与源码按需读，别整篇重读
+
+- `docs/frontend-styles.md` 被整篇读了 **310 次**、`docs/architecture.md` 97 次、
+  `README.md` 34 次。按节读：样式查 §3 / §4 / §7.2 / §8.4；架构按 §6.x 定位。
+- `page.tsx` 被整篇重读 **171 次**、`route.ts` 71 次、`playwright.config.ts` 31 次。
+  先用 grep 定位行号，再带 offset/limit 读那一段。
+- 本文件（37.5 KB）本身在 123 个会话里被重复注入 **172 次**。
+  **别在回答里复述它** —— 引用行号或小节名即可。
+
+### 命令别重复跑
+
+- 实测 25 组「同一会话同一命令 ≥3 次」= 73 次冗余；`tsc` ≥5 次的会话 13 个
+  （最坏 51 次），`build` ≥3 次的有 24 个。连续失败两次就**停下来想**，
+  第三次重跑同一个命令不会得到不同结果。
+- 临时文件（日志、截图、探针、备份）一律写 `%TEMP%`，**绝不落仓库根**。
+
+### 已知长期红 / 必然失败的命令
+
+- 别把「意料之外的红」当成「既有失败」一句话带过 —— 也**别逐个重新调研**。
+  先对 `docs/known-red.md`，对上了就引用那一行；对不上才值得查。
+- **`npm run lint` 已删除**（它是 `next lint` 的死脚本：eslint 依赖从未进过 lockfile、
+  仓库里也没有任何 eslint 配置，一跑就弹交互式菜单并由 `next lint` 弃用警告收场，
+  实测 10 次调用 **100% 失败**）。别再把它加回来当门禁 —— 真要 lint 就先把
+  `eslint` + `eslint-config-next` 装进 devDependencies 并落一份配置。
+
 ## 关键约定
 
 各节的**展开不在这里** —— 按下面的指针去读。碰对应子系统之前先读过去。
