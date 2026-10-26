@@ -33,6 +33,9 @@
   --accent-text: var(--color-brand-primary);
   --neutral-soft: var(--color-background-content);
   --font-sans: var(--font-body);
+  --code-bg: #fff;
+  --code-bg-deep: var(--color-background-subtle);
+  --code-ink: var(--color-text-primary);
   --leading-relaxed: 2;
   --text-md: 1rem;
 
@@ -194,6 +197,18 @@
     border-radius: 6px;
   }
 
+  .md-code-block {
+    --md-code-token-comment: #6a737d;
+    --md-code-token-keyword: #d73a49;
+    --md-code-token-string: #032f62;
+    --md-code-token-number: #005cc5;
+    --md-code-token-title: #6f42c1;
+    --md-code-token-attr: #005cc5;
+    --md-code-token-meta: #6f42c1;
+    --md-code-token-addition: #22863a;
+    --md-code-token-deletion: #b31d28;
+  }
+
   // 代码底色显式恢复：页面通用 `pre` 规则（0,1,1）会盖过上游的 `.md-code`（0,1,0）。
   .md-code {
     background: var(--code-bg);
@@ -238,6 +253,21 @@
 // 暗色下让原生控件（复选框 / 滚动条）也跟随站点主题。
 [data-theme='dark'] .reactive-document .md-document {
   color-scheme: dark;
+  --code-bg: #0f172a;
+  --code-bg-deep: #0b1220;
+  --code-ink: #dce6ff;
+
+  .md-code-block {
+    --md-code-token-comment: #93a4bd;
+    --md-code-token-keyword: #c7a4ff;
+    --md-code-token-string: #9fdb9a;
+    --md-code-token-number: #f2c879;
+    --md-code-token-title: #8fc7ff;
+    --md-code-token-attr: #ffb3c8;
+    --md-code-token-meta: #d2b4ff;
+    --md-code-token-addition: #8fe3c8;
+    --md-code-token-deletion: #ff9daa;
+  }
 }
 
 // ── 站点引用组件 ────────────────────────────────────────────────────────────
