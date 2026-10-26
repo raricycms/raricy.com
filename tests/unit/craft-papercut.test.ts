@@ -1,221 +1,363 @@
 import { describe, expect, it } from 'vitest';
 import {
-  addCut, analyzeStroke, clampToWedge, cleanPoints, cutMaskShape, cutRegionPoints,
-  EDGE_SNAP, FOLD_OPTIONS, foldOption, freshPaperDraft, insideWedge, KERF_WIDTH, layerAngle, layerCount,
-  MAX_CUTS, MAX_POINTS, PAPER_COLORS, PAPER_RADIUS, paperColor, parsePaperDraft,
-  pathLength, polygonArea, restartPaper, setPaperView, simplifyPoints, smoothPath, startPaper,
-  undoCuts, wedgeBoundary, type PaperCut, type PaperPoint,
+  FOLD_OPTIONS,
+  MAX_CUTS,
+  PAPER_RADIUS,
+  PAPER_SAVE_KEY,
+  addCut,
+  axisCount,
+  axisStep,
+  clampToWedge,
+  cleanPoints,
+  clearCuts,
+  foldOption,
+  freshPaperDraft,
+  insideWedge,
+  layerCount,
+  layerTransform,
+  parsePaperDraft,
+  pathLength,
+  setPaperColor,
+  setPaperFolds,
+  setUnfold,
+  simplifyPoints,
+  transformPoint,
+  undoCuts,
+  unfoldStroke,
+  wedgeAngle,
+  wedgeAngleOf,
+  wedgeBoundary,
+  type PaperPoint,
 } from '../../src/games/craft/papercut/engine';
 
-const HALF45 = Math.PI / 4;
+/** 楔形内的一条竖切口：沿着靠竖直折痕的一侧从纸心往上。 */
+function verticalKerf(folds: 2 | 3, radius = 300): PaperPoint[] {
+  // 楔形是 [0, θ]；取 0.2θ，靠近竖直的那条折痕。
+  const angle = wedgeAngle(folds) * 0.2;
+  const points: PaperPoint[] = [];
+  for (let i = 0; i <= 12; i += 1) {
+    const r = (radius * i) / 12;
+    points.push({ x: r * Math.sin(angle), y: -r * Math.cos(angle) });
+  }
+  return points;
+}
 
-describe('剪纸窗花：折层与楔形纸', () => {
-  it('两折四层、三折八层，层角匀分一整圈', () => {
+function approx(a: PaperPoint, b: PaperPoint, tolerance = 1e-6): boolean {
+  return Math.hypot(a.x - b.x, a.y - b.y) < tolerance;
+}
+
+describe('剪纸窗花：折数与层数', () => {
+  it('层数是 2 的折数次方', () => {
     expect(layerCount(2)).toBe(4);
     expect(layerCount(3)).toBe(8);
     expect(foldOption(2)).toEqual(FOLD_OPTIONS[0]);
-    expect(foldOption(3).angle).toBe(45);
-    expect(layerAngle(2, 3)).toBe(270);
-    expect(layerAngle(3, 7)).toBe(315);
+    expect(foldOption(3).layers).toBe(8);
   });
 
-  it('楔形纸的边界从圆心出发，最远不超过纸半径', () => {
+  it('镜像轴数 = 层数 / 2，相邻轴相距 2π/层数', () => {
+    expect(axisCount(2)).toBe(2);
+    expect(axisCount(3)).toBe(4);
+    // 4 层：两条轴（竖、横），相距 90°。
+    expect(axisStep(2)).toBeCloseTo(Math.PI / 2, 10);
+    // 8 层：四条轴，相距 45°。
+    expect(axisStep(3)).toBeCloseTo(Math.PI / 4, 10);
+  });
+
+  it('楔形张角 = 2π/层数（4 层是 90° 的象限，8 层是 45°）', () => {
+    expect(wedgeAngle(2)).toBeCloseTo(Math.PI / 2, 10);
+    expect(wedgeAngle(3)).toBeCloseTo(Math.PI / 4, 10);
+  });
+
+  it('楔形纸的边界从圆心出发，最远不超过纸半径，且落在两条折痕之间', () => {
     for (const folds of [2, 3] as const) {
       const boundary = wedgeBoundary(folds);
+      const theta = wedgeAngle(folds);
       expect(boundary[0]).toEqual({ x: 0, y: 0 });
       expect(boundary.some((point) => Math.abs(Math.hypot(point.x, point.y) - PAPER_RADIUS) < 0.5)).toBe(true);
       for (const point of boundary) expect(Math.hypot(point.x, point.y)).toBeLessThanOrEqual(PAPER_RADIUS + 1e-9);
-      const half = foldOption(folds).angle * Math.PI / 360;
+      // 楔形的角度区间是 [0, θ]，两条直边都是折痕。
       for (const point of boundary) {
         if (Math.hypot(point.x, point.y) < 1) continue;
-        expect(Math.abs(Math.atan2(point.x, -point.y))).toBeLessThanOrEqual(half + 1e-9);
+        const angle = wedgeAngleOf(point.x, point.y);
+        expect(angle).toBeGreaterThanOrEqual(-1e-9);
+        expect(angle).toBeLessThanOrEqual(theta + 1e-9);
+      }
+    }
+  });
+});
+
+describe('剪纸窗花：展开是镜像对称，不是旋转对称', () => {
+  it('一条切口展开后关于竖轴镜像对称（这是折叠出来的必然结果）', () => {
+    for (const folds of [2, 3] as const) {
+      const unfolded = unfoldStroke(verticalKerf(folds), folds).flat();
+      for (const point of unfolded) {
+        const mirrored = { x: -point.x, y: point.y };
+        const hit = unfolded.some((other) => approx(other, mirrored, 1e-6));
+        expect(hit, `folds=${folds} 点 (${point.x.toFixed(2)}, ${point.y.toFixed(2)}) 的镜像不在展开结果里`).toBe(true);
       }
     }
   });
 
-  it('判定纸内会同时看半径与张角', () => {
+  it('一条切口展开后也关于横轴镜像对称（4 层时横轴也是折痕）', () => {
+    for (const folds of [2, 3] as const) {
+      const unfolded = unfoldStroke(verticalKerf(folds), folds).flat();
+      for (const point of unfolded) {
+        const mirrored = { x: point.x, y: -point.y };
+        const hit = unfolded.some((other) => approx(other, mirrored, 1e-6));
+        expect(hit, `folds=${folds} 点 (${point.x.toFixed(2)}, ${point.y.toFixed(2)}) 的横轴镜像不在展开结果里`).toBe(true);
+      }
+    }
+  });
+
+  it('展开后的层数正好铺满整圈，每层落在自己的角度扇区里', () => {
+    for (const folds of [2, 3] as const) {
+      const layers = layerCount(folds);
+      const unfolded = unfoldStroke(verticalKerf(folds), folds);
+      expect(unfolded).toHaveLength(layers);
+      for (let index = 0; index < layers; index += 1) {
+        const center = transformPoint({ x: 0, y: -100 }, folds, index);
+        const angle = Math.atan2(center.x, -center.y);
+        const step = (Math.PI * 2) / layers;
+        const ratio = (((angle % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2)) / step;
+        expect(Math.abs(ratio - Math.round(ratio)) * step).toBeLessThan(1e-9);
+      }
+    }
+  });
+
+  it('层变换串与算术一致：奇数层带镜像，偶数层不带', () => {
+    for (const folds of [2, 3] as const) {
+      for (let index = 0; index < layerCount(folds); index += 1) {
+        const text = layerTransform(folds, index);
+        expect(text).toMatch(/^rotate\(/);
+        if (index % 2 === 1) expect(text).toMatch(/scale\(-1 1\)$/);
+        else expect(text).not.toMatch(/scale/);
+      }
+    }
+  });
+
+  it('变换保持半径（等距）', () => {
+    for (const folds of [2, 3] as const) {
+      for (let index = 0; index < layerCount(folds); index += 1) {
+        const point = { x: 37, y: -211 };
+        const moved = transformPoint(point, folds, index);
+        expect(Math.hypot(moved.x, moved.y)).toBeCloseTo(Math.hypot(point.x, point.y), 9);
+      }
+    }
+  });
+});
+
+describe('剪纸窗花：楔形内的坐标', () => {
+  it('楔形内的点判为在内，楔形外的判为在外', () => {
+    // 4 层时楔形是 [0°, 90°] 这一个象限：正上方到正右方。
     expect(insideWedge(0, -100, 2)).toBe(true);
+    expect(insideWedge(60, -60, 2)).toBe(true);
+    expect(insideWedge(100, 0, 2)).toBe(true);
+    // 正左方与正下方都在别的层上。
+    expect(insideWedge(-60, -60, 2)).toBe(false);
     expect(insideWedge(0, 100, 2)).toBe(false);
-    expect(insideWedge(100, -100, 2)).toBe(true);
-    expect(insideWedge(100, -100, 3)).toBe(false);
-    expect(insideWedge(30, -82.4, 3)).toBe(true);
-    expect(insideWedge(0, -PAPER_RADIUS - 1, 2)).toBe(false);
   });
 
-  it('画到纸外时沿半径与折边夹回，不丢点', () => {
-    const clamped = clampToWedge(200, -100, 2);
-    const radius = Math.hypot(200, 100);
-    expect(clamped.x).toBeCloseTo(radius * Math.sin(HALF45));
-    expect(clamped.y).toBeCloseTo(-radius * Math.cos(HALF45));
-    expect(clampToWedge(0, -1000, 2)).toEqual({ x: 0, y: -PAPER_RADIUS });
-    expect(clampToWedge(Number.NaN, 10, 2)).toEqual({ x: 0, y: 0 });
-    const inside = clampToWedge(10, -100, 2);
-    expect(inside.x).toBeCloseTo(10);
-    expect(inside.y).toBeCloseTo(-100);
+  it('画到纸外的点被夹回纸内', () => {
+    const clamped = clampToWedge(1000, -1000, 2);
+    expect(Math.hypot(clamped.x, clamped.y)).toBeLessThanOrEqual(PAPER_RADIUS + 1e-9);
+    expect(insideWedge(clamped.x, clamped.y, 2)).toBe(true);
   });
 
-  it('清理笔画会舍入、夹回并去掉过密的点', () => {
-    const points = cleanPoints([
-      { x: 0, y: -100.04 },
-      { x: 0, y: -101 },
-      { x: 400, y: -400 },
-      { x: 400, y: -400 },
-    ], 2);
-    expect(points[0]).toEqual({ x: 0, y: -100 });
-    expect(points).toHaveLength(2);
-    expect(Math.hypot(points[1].x, points[1].y)).toBeLessThanOrEqual(PAPER_RADIUS + 0.1);
-    expect(cleanPoints(Array.from({ length: MAX_POINTS + 30 }, (_, index) => ({ x: index % 2, y: -index })), 2).length)
-      .toBeLessThanOrEqual(MAX_POINTS);
-  });
-
-  it('折线简化保留转折、去掉共线抖动', () => {
-    const straight = Array.from({ length: 10 }, (_, index) => ({ x: 0, y: -index * 10 }));
-    expect(simplifyPoints(straight)).toEqual([straight[0], straight[straight.length - 1]]);
-    const corner = [{ x: 0, y: 0 }, { x: 50, y: 0 }, { x: 50, y: 50 }];
-    expect(simplifyPoints(corner)).toEqual(corner);
-    expect(pathLength(corner)).toBe(100);
+  it('非有限数不会漏进来', () => {
+    expect(clampToWedge(Number.NaN, 0, 2)).toEqual({ x: 0, y: 0 });
+    expect(clampToWedge(0, Number.POSITIVE_INFINITY, 2)).toEqual({ x: 0, y: 0 });
+    expect(cleanPoints([{ x: Number.NaN, y: 5 }], 2)).toEqual([{ x: 0, y: 0 }]);
   });
 });
 
-describe('剪纸窗花：一笔怎么变成一刀', () => {
-  it('太短的一笔不算剪切', () => {
-    expect(analyzeStroke([{ x: 0, y: -100 }, { x: 0, y: -108 }], 2)).toBeNull();
-    expect(analyzeStroke([{ x: 0, y: -100 }], 2)).toBeNull();
+describe('剪纸窗花：折痕摆在楔形的两条直边上', () => {
+  it('楔形的一条直边是竖直的（第一次对折留下的折痕）', () => {
+    const boundary = wedgeBoundary(2);
+    // 第一条折痕边上的点全部 x = 0（正上方）。
+    const firstEdge = boundary.filter((point) => point.y < 0 && Math.abs(point.x) < 1e-9);
+    expect(firstEdge.length).toBeGreaterThan(0);
   });
 
-  it('闭合且够长的一笔是孔洞', () => {
-    const cut = analyzeStroke([
-      { x: 0, y: -100 }, { x: 60, y: -100 }, { x: 60, y: -160 }, { x: 0, y: -160 }, { x: 0, y: -100 },
-    ], 2)!;
-    expect(cut.kind).toBe('hole');
-    expect(cutMaskShape(cut).mode).toBe('fill');
-    expect(cutMaskShape(cut).d.endsWith('Z')).toBe(true);
+  it('两条直边的方位角正好是 0 与 θ', () => {
+    for (const folds of [2, 3] as const) {
+      const theta = wedgeAngle(folds);
+      const boundary = wedgeBoundary(folds);
+      const angles = boundary
+        .filter((point) => Math.hypot(point.x, point.y) > 1)
+        .map((point) => wedgeAngleOf(point.x, point.y));
+      const min = Math.min(...angles);
+      const max = Math.max(...angles);
+      expect(min).toBeCloseTo(0, 6);
+      expect(max).toBeCloseTo(theta, 6);
+    }
   });
 
-  it('闭合但周长不够的一笔退成细缝', () => {
-    const cut = analyzeStroke([{ x: 0, y: -50 }, { x: 20, y: -50 }, { x: 20, y: -70 }, { x: 0, y: -70 }], 2)!;
-    expect(cut.kind).toBe('kerf');
-    expect(cutMaskShape(cut).mode).toBe('stroke');
+  it('2^折数 层各占一个互不重叠的扇区，合起来铺满整圈', () => {
+    for (const folds of [2, 3] as const) {
+      const layers = layerCount(folds);
+      const theta = wedgeAngle(folds);
+      // 取楔形正中一点，看每层把它转到第几个扇区里。
+      const mid = { x: 100 * Math.sin(theta / 2), y: -100 * Math.cos(theta / 2) };
+      const sectors = new Set<number>();
+      for (let index = 0; index < layers; index += 1) {
+        const moved = transformPoint(mid, folds, index);
+        const angle = wedgeAngleOf(moved.x, moved.y);
+        // 归一化到 [0, 2π)，再换算成扇区序号（扇区 j 覆盖 [jθ, (j+1)θ)）。
+        const wrapped = ((angle % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
+        sectors.add(Math.floor((wrapped + 1e-6) / theta) % layers);
+      }
+      // 每层落在不同扇区 —— 若铺法错了（楔形居中到 ±θ/2），这里只有一半。
+      expect(sectors.size).toBe(layers);
+    }
+  });
+});
+
+describe('剪纸窗花：一笔剪口的分类', () => {
+  it('太短的一笔不算剪口', () => {
+    const draft = addCut(freshPaperDraft(), [{ x: 0, y: -10 }, { x: 1, y: -12 }]);
+    expect(draft.cuts).toHaveLength(0);
   });
 
-  it('两端都贴纸边的一笔是连边切块，沿较近的纸边闭合', () => {
-    const start: PaperPoint = { x: -100 * Math.sin(HALF45), y: -100 * Math.cos(HALF45) };
-    const end: PaperPoint = { x: 100 * Math.sin(HALF45), y: -100 * Math.cos(HALF45) };
-    const cut = analyzeStroke([start, { x: 0, y: -70.7 }, end], 2)!;
-    expect(cut.kind).toBe('pocket');
-    expect(cut.boundary?.length).toBeGreaterThan(2);
-    expect(cutRegionPoints(cut).length).toBeGreaterThan(cut.points.length);
-    const shape = cutMaskShape(cut);
-    expect(shape.mode).toBe('fill');
-    expect(shape.d.endsWith('Z')).toBe(true);
-    expect(Math.abs(polygonArea(cutRegionPoints(cut)))).toBeGreaterThan(40);
+  it('沿楔形划一条长线得到一条细缝', () => {
+    const draft = addCut(freshPaperDraft(), verticalKerf(2, 280));
+    expect(draft.cuts).toHaveLength(1);
+    expect(draft.cuts[0].kind).toBe('kerf');
+    expect(draft.cuts[0].id).toBe(1);
   });
 
-  it('远离纸边的一笔是细缝，掩膜按剪刀宽度描边', () => {
-    const cut = analyzeStroke([{ x: 0, y: -100 }, { x: 0, y: -260 }], 2)!;
-    expect(cut.kind).toBe('kerf');
-    expect(cut.boundary).toBeUndefined();
-    expect(KERF_WIDTH).toBeGreaterThan(0);
-    expect(EDGE_SNAP).toBeLessThan(PAPER_RADIUS);
-  });
-
-  it('切块与孔洞沿折线重复；撤销退回上一刀', () => {
-    let draft = startPaper(freshPaperDraft(), 3, 'indigo');
-    draft = addCut(draft, [
-      { x: 0, y: -100 }, { x: 60, y: -100 }, { x: 60, y: -160 }, { x: 0, y: -160 }, { x: 0, y: -100 },
+  it('不管画到纸外多远，剪口都夹在纸内', () => {
+    const draft = addCut(freshPaperDraft(), [
+      { x: 0, y: 0 },
+      { x: 5, y: -2000 },
+      { x: 2000, y: -2000 },
     ]);
-    draft = addCut(draft, [{ x: 0, y: -200 }, { x: 0, y: -320 }]);
-    expect(draft.cuts.map((cut) => cut.kind)).toEqual(['hole', 'kerf']);
-    expect(draft.cuts.map((cut) => cut.id)).toEqual([1, 2]);
-    expect(draft.color).toBe('indigo');
-    expect(undoCuts(draft).cuts).toHaveLength(1);
-    expect(undoCuts(freshPaperDraft()).cuts).toHaveLength(0);
+    expect(draft.cuts).toHaveLength(1);
+    for (const point of draft.cuts[0].points) {
+      expect(Math.hypot(point.x, point.y)).toBeLessThanOrEqual(PAPER_RADIUS + 1);
+    }
   });
 
-  it('剪满之后不再增加刀数', () => {
-    const cuts: PaperCut[] = Array.from({ length: MAX_CUTS }, (_, index) => ({
-      id: index + 1, kind: 'kerf', points: [{ x: 0, y: -10 }, { x: 0, y: -20 }],
-    }));
-    const draft = { ...freshPaperDraft(), cuts };
-    expect(addCut(draft, [{ x: 0, y: -200 }, { x: 0, y: -320 }])).toBe(draft);
-  });
-
-  it('路径生成：开口不闭合、孔洞闭合、单点合法', () => {
-    const points = [{ x: 0, y: 0 }, { x: 10, y: 10 }];
-    expect(smoothPath(points).startsWith('M0 0')).toBe(true);
-    expect(smoothPath(points).endsWith('Z')).toBe(false);
-    expect(smoothPath(points, true).endsWith('Z')).toBe(true);
-    expect(smoothPath([{ x: 5, y: 6 }])).toBe('M5 6');
-    expect(smoothPath([])).toBe('');
-  });
-
-  it('换纸会丢掉剪法，换视图不会', () => {
-    let draft = startPaper(freshPaperDraft(), 2, 'pine');
-    draft = addCut(draft, [{ x: 0, y: -100 }, { x: 0, y: -260 }]);
-    const windowed = setPaperView(draft, 'window');
-    expect(windowed.view).toBe('window');
-    expect(windowed.cuts).toHaveLength(1);
-    const restarted = restartPaper(draft);
-    expect(restarted.started).toBe(false);
-    expect(restarted.cuts).toHaveLength(0);
-    expect(restarted.view).toBe('trim');
+  it('最多 MAX_CUTS 刀，多余的加不进去', () => {
+    let draft = freshPaperDraft();
+    for (let i = 0; i < MAX_CUTS + 5; i += 1) draft = addCut(draft, verticalKerf(2, 60 + i * 3));
+    expect(draft.cuts.length).toBeLessThanOrEqual(MAX_CUTS);
   });
 });
 
-describe('剪纸窗花：草稿解析', () => {
-  it('坏数据一律丢弃', () => {
+describe('剪纸窗花：几何小工具', () => {
+  it('折线长度', () => {
+    expect(pathLength([{ x: 0, y: 0 }, { x: 3, y: 4 }])).toBeCloseTo(5, 10);
+    expect(pathLength([])).toBe(0);
+  });
+
+  it('简化保留转折、去掉抖动', () => {
+    const noisy = [
+      { x: 0, y: 0 },
+      { x: 0.2, y: 0.1 },
+      { x: 100, y: 0 },
+      { x: 100.1, y: 0.2 },
+      { x: 100, y: 100 },
+    ];
+    const simplified = simplifyPoints(noisy, 2.2);
+    expect(simplified.length).toBeLessThan(noisy.length);
+    expect(simplified[0]).toEqual({ x: 0, y: 0 });
+    expect(simplified[simplified.length - 1]).toEqual({ x: 100, y: 100 });
+  });
+});
+
+describe('剪纸窗花：草稿', () => {
+  it('新草稿是空的、还折着、在修剪视图', () => {
+    const draft = freshPaperDraft();
+    expect(draft.version).toBe(2);
+    expect(draft.cuts).toHaveLength(0);
+    expect(draft.unfold).toBe(0);
+    expect(draft.view).toBe('trim');
+    expect(draft.folds).toBe(2);
+  });
+
+  it('展开进度夹在 0..1，非有限数不动', () => {
+    const base = freshPaperDraft();
+    expect(setUnfold(base, 0.4).unfold).toBeCloseTo(0.4, 10);
+    expect(setUnfold(base, -3).unfold).toBe(0);
+    expect(setUnfold(base, 9).unfold).toBe(1);
+    expect(setUnfold(base, Number.NaN)).toBe(base);
+    expect(setUnfold(base, Number.POSITIVE_INFINITY)).toBe(base);
+  });
+
+  it('已经有刀口时换折法被拒绝（换了层数，旧刀口对不上）', () => {
+    const cut = addCut(freshPaperDraft(), verticalKerf(2, 280));
+    expect(cut.cuts).toHaveLength(1);
+    expect(setPaperFolds(cut, 3).folds).toBe(2);
+    expect(setPaperFolds(freshPaperDraft(), 3).folds).toBe(3);
+  });
+
+  it('撤销一刀 / 清空刀口', () => {
+    let draft = addCut(freshPaperDraft(), verticalKerf(2, 280));
+    draft = addCut(draft, verticalKerf(2, 240));
+    expect(draft.cuts).toHaveLength(2);
+    expect(undoCuts(draft).cuts).toHaveLength(1);
+    expect(undoCuts(freshPaperDraft())).toEqual(freshPaperDraft());
+    expect(clearCuts(draft).cuts).toHaveLength(0);
+    expect(clearCuts(draft).unfold).toBe(0);
+  });
+
+  it('纸色只接受登记过的名字', () => {
+    expect(setPaperColor(freshPaperDraft(), 'indigo').color).toBe('indigo');
+    expect(setPaperColor(freshPaperDraft(), 'not-a-color').color).toBe('vermilion');
+  });
+
+  it('草稿键带版本号', () => {
+    expect(PAPER_SAVE_KEY).toBe('craft-papercut-v2');
+  });
+
+  it('解析：坏数据、旧版本、坏刀口都被挡掉', () => {
     expect(parsePaperDraft(null)).toBeNull();
     expect(parsePaperDraft('not json')).toBeNull();
-    expect(parsePaperDraft(JSON.stringify({ version: 2 }))).toBeNull();
-    expect(parsePaperDraft('x'.repeat(3_000_001))).toBeNull();
-  });
+    expect(parsePaperDraft(JSON.stringify({ version: 1, cuts: [] }))).toBeNull();
 
-  it('恢复纸色、折法、视图与三类刀口', () => {
-    const raw = JSON.stringify({
-      version: 1, started: true, folds: 3, color: 'calendula', view: 'window',
+    const parsed = parsePaperDraft(JSON.stringify({
+      version: 2,
+      folds: 7,
+      color: 'nope',
+      unfold: 2,
+      view: 'wat',
       cuts: [
-        { id: 1, kind: 'kerf', points: [{ x: 0, y: -100 }, { x: 0, y: -260 }] },
-        { id: 2, kind: 'hole', points: [{ x: 0, y: -100 }, { x: 40, y: -100 }, { x: 40, y: -140 }] },
-        { id: 3, kind: 'pocket', points: [{ x: 0, y: -100 }, { x: 50, y: -100 }], boundary: [{ x: 0, y: 0 }, { x: -10, y: -10 }] },
+        { kind: 'kerf', points: [{ x: 0, y: 0 }, { x: 0, y: -100 }] },
+        { kind: 'bogus', points: [{ x: 0, y: 0 }, { x: 0, y: -100 }] },
+        { kind: 'kerf', points: [] },
+        { kind: 'pocket', points: [{ x: 0, y: 0 }, { x: 0, y: -100 }] },
       ],
-    });
-    const parsed = parsePaperDraft(raw)!;
-    expect(parsed.started).toBe(true);
-    expect(parsed.folds).toBe(3);
-    expect(parsed.color).toBe('calendula');
-    expect(parsed.view).toBe('window');
-    expect(parsed.cuts.map((cut) => cut.kind)).toEqual(['kerf', 'hole', 'pocket']);
-    expect(parsed.cuts.map((cut) => cut.id)).toEqual([1, 2, 3]);
-    expect(parsed.cuts[2].boundary).toHaveLength(2);
-  });
-
-  it('非法刀口、越界点与缺边界的切块被丢掉', () => {
-    const raw = JSON.stringify({
-      version: 1, started: true, folds: 2, color: 'unknown', view: 'trim',
-      cuts: [
-        { kind: 'scratch', points: [{ x: 0, y: 0 }, { x: 1, y: 1 }] },
-        { kind: 'kerf', points: [{ x: 0, y: 0 }, { x: 9999, y: 0 }] },
-        { kind: 'pocket', points: [{ x: 0, y: -100 }, { x: 10, y: -100 }] },
-        { kind: 'hole', points: 'bad' },
-      ],
-    });
-    const parsed = parsePaperDraft(raw)!;
+    }))!;
     expect(parsed.folds).toBe(2);
-    expect(parsed.color).toBe(PAPER_COLORS[0].id);
-    expect(parsed.cuts).toHaveLength(0);
+    expect(parsed.color).toBe('vermilion');
+    expect(parsed.unfold).toBe(1);
+    expect(parsed.view).toBe('trim');
+    // 只有第一条是合法的细缝：坏 kind / 空点集 / 缺边界的切块都被丢掉。
+    expect(parsed.cuts).toHaveLength(1);
+    expect(parsed.cuts[0].kind).toBe('kerf');
   });
 
-  it('未开始的草稿不允许停在展开视图', () => {
-    const raw = JSON.stringify({
-      version: 1, started: false, folds: 3, color: 'rice', view: 'unfolded', cuts: [],
-    });
-    expect(parsePaperDraft(raw)!.view).toBe('trim');
-    expect(parsePaperDraft(raw)!.folds).toBe(3);
+  it('解析：纸外的点被丢掉', () => {
+    const parsed = parsePaperDraft(JSON.stringify({
+      version: 2,
+      folds: 2,
+      color: 'vermilion',
+      unfold: 0,
+      view: 'trim',
+      cuts: [{ kind: 'kerf', points: [{ x: 0, y: 0 }, { x: 99_999, y: 0 }, { x: 0, y: -100 }] }],
+    }))!;
+    expect(parsed.cuts[0].points).toHaveLength(2);
   });
+});
 
-  it('纸色与折法的取值都走白名单', () => {
-    expect(paperColor('vermilion').fill).toBe(PAPER_COLORS[0].fill);
-    expect(paperColor('nope')).toBe(PAPER_COLORS[0]);
-    expect(paperColor('pine').name).toBe('松绿');
+describe('剪纸窗花：折叠选项', () => {
+  it('只有两折与三折，层数与轴数自洽', () => {
+    expect(FOLD_OPTIONS).toHaveLength(2);
+    for (const option of FOLD_OPTIONS) {
+      expect(option.layers).toBe(layerCount(option.folds));
+      expect(option.axisCount).toBe(layerCount(option.folds) / 2);
+      // 楔形张角 × 层数 = 整圈。
+      expect(wedgeAngle(option.folds) * option.layers).toBeCloseTo(Math.PI * 2, 10);
+    }
   });
 });

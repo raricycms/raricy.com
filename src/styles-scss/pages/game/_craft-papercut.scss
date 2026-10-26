@@ -1,0 +1,141 @@
+@use '../../abstracts/mixins' as m;
+@use '../../abstracts/variables' as v;
+@use '../../abstracts/breakpoints' as bp;
+
+// 剪纸窗花：折好的那叠纸、剪口、展开后的窗花、窗景。
+// 只为 .paper-game 作用域写规则；共用的外壳在 _craft.scss 里。
+//
+// 这一款的颜色都从纸本身取（_craft.scss 的 --craft-paper / --craft-ink），
+// 不再另起一套变量 —— 三款游戏摆在一起时才像同一个房间里的东西。
+.paper-game {
+  // ── 台面 ───────────────────────────────────────────────────────────────────
+  .paper-stage {
+    position: relative;
+    border-radius: v.$radius-card;
+    overflow: hidden;
+    background: var(--color-background-subtle);
+  }
+
+  // 贴到窗上时台面换成玻璃色 —— 背景由 .paper-window 那张玻璃承担。
+  .paper-stage--window {
+    background: var(--color-accent-cyan-soft);
+  }
+
+  // 手势面：剪刀在这里走，所以光标是十字准星。
+  // touch-action 必须是 none —— 否则手机上单指拖动会被浏览器当成滚页面，
+  // pointermove 在中途就断了，一刀变成一段。
+  .paper-drag {
+    display: block;
+    width: 100%;
+    height: auto;
+    touch-action: none;
+    cursor: crosshair;
+    user-select: none;
+  }
+
+  // 案面：木色台面 + 纸下的影子。
+  // 这两个 <g> 是整块背景的容器，不接手势，只把子元素收在一起。
+  .paper-desk,
+  .paper-window { pointer-events: none; }
+
+  .paper-desk__table { fill: var(--craft-table); }
+  .paper-desk__shadow { fill: var(--craft-table-line); opacity: 0.5; }
+
+  // ── 一叠纸 ─────────────────────────────────────────────────────────────────
+  // 折着的纸有几层，屏幕上就画几层（重合在一起）—— "折了几折"因此是看得见的，
+  // 而不是只在展开后才出现的一个数字。
+  .paper-layer {
+    // 层与层之间的接缝要干净，别让抗锯齿糊成一团。
+    shape-rendering: geometricPrecision;
+  }
+
+  // 折痕：两条直边就是展开后的镜像轴。
+  .paper-layer__crease {
+    stroke: rgba(255, 255, 255, 0.34);
+    stroke-width: 1.2;
+    stroke-linejoin: round;
+  }
+
+  // ── 窗景 ───────────────────────────────────────────────────────────────────
+  // 放到窗前：纸的花纹透光，所以那边是亮的玻璃而不是深色桌面。
+  .paper-window__glass { fill: var(--color-accent-cyan-soft); }
+  .paper-window__frame {
+    fill: none;
+    stroke: var(--color-border);
+    stroke-width: 10;
+  }
+  .paper-window__frame line { stroke-width: 4; }
+
+  // ── 展开进度 ───────────────────────────────────────────────────────────────
+  // 一条朴素的范围滑杆：这是"把纸拉开"的那个动作，没有别的东西要表达。
+  .paper-unfold {
+    flex: 1;
+    min-width: 0;
+    height: 6px;
+    appearance: none;
+    border-radius: v.$radius-max;
+    background: var(--color-background-highlight);
+    cursor: pointer;
+
+    &::-webkit-slider-thumb {
+      appearance: none;
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      background: var(--color-brand-primary);
+      border: none;
+      cursor: grab;
+    }
+
+    &::-moz-range-thumb {
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      background: var(--color-brand-primary);
+      border: none;
+      cursor: grab;
+    }
+
+    &:focus-visible {
+      outline: none;
+      box-shadow: var(--shadow-focus-brand);
+    }
+  }
+
+  // ── 侧栏的折法 ─────────────────────────────────────────────────────────────
+  .paper-folds {
+    display: grid;
+    gap: v.$space-2;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .paper-folds .craft-choice {
+    // 两行文字（名字 + 层数），所以不用 craft-choice 的居中竖排。
+    align-items: flex-start;
+    text-align: left;
+  }
+
+  .paper-folds__meta {
+    color: var(--color-text-tertiary);
+    font-size: 0.72rem;
+    line-height: 1.4;
+  }
+
+  .paper-folds .craft-choice.is-active .paper-folds__meta {
+    color: var(--color-text-secondary);
+  }
+
+  // ── 窄屏 ───────────────────────────────────────────────────────────────────
+  @include bp.down(bp.$bp-md) {
+    .paper-unfold {
+      height: 4px;
+    }
+
+    .paper-unfold::-webkit-slider-thumb { width: 18px; height: 18px; }
+    .paper-unfold::-moz-range-thumb { width: 18px; height: 18px; }
+  }
+
+  @include bp.down(bp.$bp-sm) {
+    .paper-stage { border-radius: v.$radius-field; }
+  }
+}

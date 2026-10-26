@@ -1,4 +1,5 @@
-// 剪纸窗花的纯几何：折叠层、楔形区域、笔画分类（细缝 / 孔洞 / 连边切块）与掩膜路径。
+// 剪纸窗花的纯几何：折叠层、楔形区域、笔画分类（细缝 / 孔洞 / 连边切块）、
+// 展开时的镜像变换与掩膜路径。
 // 全程只用纸面坐标（圆心为 0,0，半径 PAPER_RADIUS，向上为 -y），组件负责缩放与指针换算。
 // 零 DOM / 零 React —— tests/unit/craft-papercut.test.ts 直接 import 这一份。
 
@@ -6,9 +7,10 @@ export const PAPER_RADIUS = 400;
 export const KERF_WIDTH = 8;
 export const EDGE_SNAP = 28;
 export const MIN_POINT_GAP = 2.4;
+export const MIN_STROKE = 14;
 export const MAX_POINTS = 700;
 export const MAX_CUTS = 60;
-export const PAPER_SAVE_KEY = 'craft-papercut-v1';
+export const PAPER_SAVE_KEY = 'craft-papercut-v2';
 
 export interface PaperPoint { x: number; y: number }
 
@@ -28,10 +30,25 @@ export const PAPER_COLORS: readonly PaperColor[] = [
   { id: 'rice', name: '米白', fill: '#e8dec7', light: '#f7f0e1', shade: '#c5b694' },
 ] as const;
 
-export interface FoldOption { folds: 2 | 3; name: string; layers: number; angle: number }
+export interface FoldOption { folds: 2 | 3; name: string; layers: number; axisCount: number }
+/**
+ * 两种折法的层数与镜像轴数。
+ *
+ * 【为什么是镜像、不是旋转】纸是真的折起来再剪的：折一次，剪口在两层上留下的
+ * 是彼此的镜像；再折一次，这个「镜像对」又被镜像一次。所以展开后的图形由**反射**
+ * 生成，不是把剪口绕着圆心转几份。
+ *
+ *   · 两折 → 4 层 → 二面体群 D₂：一条竖轴 + 一条横轴，相邻轴相距 90°；
+ *   · 三折 → 8 层 → 二面体群 D₄：四条镜像轴，相邻轴相距 45°。
+ *
+ * 一般地，折数为 f 时层数 = 2^f，镜像轴数 n = 2^(f-1)，相邻轴相距 π/n，
+ * 楔形半角只有它的一半（π/2n）—— 楔形夹在相邻两轴的正中间。
+ * 写成「旋转 k×90°」会得到一个风车（C₄），它关于竖轴**不对称**，
+ * 而任何真的折过的纸关于折痕必然对称。这条差别就是判据。
+ */
 export const FOLD_OPTIONS: readonly FoldOption[] = [
-  { folds: 2, name: '两折', layers: 4, angle: 90 },
-  { folds: 3, name: '三折', layers: 8, angle: 45 },
+  { folds: 2, name: '两折', layers: 4, axisCount: 2 },
+  { folds: 3, name: '三折', layers: 8, axisCount: 4 },
 ] as const;
 
 export type CutKind = 'kerf' | 'hole' | 'pocket';
@@ -45,12 +62,13 @@ export interface PaperCut {
 }
 
 export interface PaperDraft {
-  version: 1;
-  started: boolean;
+  version: 2;
   folds: 2 | 3;
   color: string;
   cuts: PaperCut[];
-  view: 'trim' | 'unfolded' | 'window';
+  /** 展开进度 0..1：0 还是一叠折好的纸，1 完全摊平。 */
+  unfold: number;
+  view: 'trim' | 'window';
 }
 
 export function foldOption(folds: 2 | 3): FoldOption {
@@ -65,24 +83,122 @@ export function layerCount(folds: 2 | 3): number {
   return 2 ** folds;
 }
 
-export function layerAngle(folds: 2 | 3, index: number): number {
-  return index * foldOption(folds).angle;
+/** 展开后图形的镜像轴数 n（二面体群 D_n 的 n）。 */
+export function axisCount(folds: 2 | 3): number {
+  return foldOption(folds).axisCount;
+}
+
+/**
+ * 楔形张角（弧度）。
+ *
+ * 【楔形是"折完留下来的那一块"，不是一条居中的扇形】圆纸沿一条直线对折，剩下的
+ * 半圆有**一条**直边（折痕）；再对折，得到四分之一圆，有**两条**直边 —— 两条都是
+ * 折痕。所以折完的那一块总是**由两条折痕夹住**的，张角 = 2π/层数：
+ * 4 层是 90°（一个象限），8 层是 45°。
+ *
+ * 楔形在纸面坐标里的角度区间是 `[0, θ]`（角度从正上方起算、顺时针为正，见
+ * `wedgeAngleOf`）—— **两条直边都落在镜像轴上**，一条朝正上、一条偏开 θ。
+ * 这个"不正中对齐"的摆法是有意的：折第一次就是沿竖直线对折，留下的一条边必然
+ * 是竖直的；把它摆正才是折过纸的样子。若为了好看的对称而把楔形居中到 ±θ/2，
+ * 两条边就不再是镜像轴，`layerTransform` 的铺法会**整块重叠**（4 层只剩 2 块，
+ * 展开后是半张纸）—— 这个坑踩过。
+ */
+export function wedgeAngle(folds: 2 | 3): number {
+  return (Math.PI * 2) / layerCount(folds);
+}
+
+/** 相邻两条镜像轴之间的夹角（弧度）。 */
+export function axisStep(folds: 2 | 3): number {
+  return wedgeAngle(folds);
+}
+
+/** 纸面坐标 (x, y) 的方位角：从正上方起算、顺时针为正，落在 [−π, π]。 */
+export function wedgeAngleOf(x: number, y: number): number {
+  return Math.atan2(x, -y);
+}
+
+/**
+ * 第 index 层在展开纸上的变换。
+ *
+ * 折两次（或三次）得到的 2^folds 层，是把楔形按 2θ 的步长绕圆心铺一圈、奇偶层
+ * 交替镜像出来的：
+ *
+ *   · k 为偶数 —— 直接转到 k·θ；
+ *   · k 为奇数 —— 先把楔形关于竖轴翻转（落进 [−θ, 0]），再转到 (k+1)·θ。
+ *
+ * 结果是 layers 块首尾相接铺满整圈，且**相邻两块隔着一条折痕、互为镜像** ——
+ * 也就是二面体群 D_(layers/2)。
+ *
+ * 【对照：错误的写法】若每层只做 `rotate(kθ)` 而不镜像，得到的是把剪口旋转拷贝
+ * 一圈的**风车**（C_n）—— 风车关于任何一条折痕都不对称，而真的折过的纸必然对称。
+ * 这条差别就是判据，`tests/unit/craft-papercut.test.ts` 钉着它。
+ *
+ * 返回 SVG transform 的片段，视图直接拼进 `<g>`。
+ * ⚠️ SVG 的 transform 列表从右往左作用，所以奇数层写 `rotate(…) scale(…)`。
+ */
+export function layerTransform(folds: 2 | 3, index: number): string {
+  const theta = (wedgeAngle(folds) * 180) / Math.PI;
+  const degrees = (value: number) => Number(value.toFixed(4));
+  if (index % 2 === 0) return `rotate(${degrees(index * theta)})`;
+  return `rotate(${degrees((index + 1) * theta)}) scale(-1 1)`;
+}
+
+/**
+ * 把楔形内的一个点按第 index 层的变换铺到整张纸上。
+ *
+ * 与 `layerTransform` 必须一致 —— 视图走 SVG transform，这里走算术，
+ * 两处算出来必须是同一个点（单测拿这条对齐两者）。
+ */
+export function transformPoint(point: PaperPoint, folds: 2 | 3, index: number): PaperPoint {
+  const theta = wedgeAngle(folds);
+  const angle = index % 2 === 0 ? index * theta : (index + 1) * theta;
+  // 奇数层先关于竖轴翻转，再旋转。
+  const x = index % 2 === 1 ? -point.x : point.x;
+  const y = point.y;
+  const cos = Math.cos(angle);
+  const sin = Math.sin(angle);
+  return { x: x * cos - y * sin, y: x * sin + y * cos };
+}
+
+/** 一笔剪口在展开纸上铺开后的所有折线（每层一条）。 */
+export function unfoldStroke(points: PaperPoint[], folds: 2 | 3): PaperPoint[][] {
+  const layers = layerCount(folds);
+  const out: PaperPoint[][] = [];
+  for (let index = 0; index < layers; index += 1) {
+    out.push(points.map((point) => transformPoint(point, folds, index)));
+  }
+  return out;
 }
 
 export function freshPaperDraft(): PaperDraft {
-  return { version: 1, started: false, folds: 2, color: PAPER_COLORS[0].id, cuts: [], view: 'trim' };
+  return { version: 2, folds: 2, color: PAPER_COLORS[0].id, cuts: [], unfold: 0, view: 'trim' };
 }
 
-export function startPaper(draft: PaperDraft, folds: 2 | 3, color: string): PaperDraft {
-  return { ...draft, started: true, folds, color: paperColor(color).id, cuts: [], view: 'trim' };
+export function setPaperFolds(draft: PaperDraft, folds: 2 | 3): PaperDraft {
+  if (draft.folds === folds) return draft;
+  // 换折法等于重新折一张纸，之前剪的口子对不上新的层数 —— 有刀口时拒绝换。
+  if (draft.cuts.length) return draft;
+  return { ...draft, folds };
 }
 
-export function restartPaper(draft: PaperDraft): PaperDraft {
-  return { ...draft, started: false, cuts: [], view: 'trim' };
+export function setPaperColor(draft: PaperDraft, color: string): PaperDraft {
+  return { ...draft, color: paperColor(color).id };
 }
 
 export function setPaperView(draft: PaperDraft, view: PaperDraft['view']): PaperDraft {
   return { ...draft, view };
+}
+
+/**
+ * 设置展开进度。0..1，非有限数当作不变。
+ *
+ * 展开是连续的：折着的纸与摊平的纸之间是无数个中间态，不是"点一下翻过去"。
+ */
+export function setUnfold(draft: PaperDraft, value: number): PaperDraft {
+  if (!Number.isFinite(value)) return draft;
+  const unfold = Math.max(0, Math.min(1, value));
+  if (unfold === draft.unfold) return draft;
+  return { ...draft, unfold };
 }
 
 export function undoCuts(draft: PaperDraft): PaperDraft {
@@ -90,23 +206,28 @@ export function undoCuts(draft: PaperDraft): PaperDraft {
   return { ...draft, cuts: draft.cuts.slice(0, -1) };
 }
 
+export function clearCuts(draft: PaperDraft): PaperDraft {
+  if (!draft.cuts.length) return draft;
+  return { ...draft, cuts: [], unfold: 0 };
+}
+
 /** 指针是否落在折好的楔形纸上（用于决定从哪一笔开始画）。 */
 export function insideWedge(x: number, y: number, folds: 2 | 3): boolean {
   const r = Math.hypot(x, y);
   if (r > PAPER_RADIUS) return false;
-  const angle = Math.atan2(x, -y);
-  return Math.abs(angle) <= foldOption(folds).angle * Math.PI / 360;
+  const angle = wedgeAngleOf(x, y);
+  return angle >= -1e-9 && angle <= wedgeAngle(folds) + 1e-9;
 }
 
 /** 把坐标夹回楔形纸内；画到纸外时沿纸边继续，而不是丢掉这一点。 */
 export function clampToWedge(x: number, y: number, folds: 2 | 3): PaperPoint {
-  const half = foldOption(folds).angle * Math.PI / 360;
+  const theta = wedgeAngle(folds);
   let r = Math.hypot(x, y);
   if (!Number.isFinite(r)) return { x: 0, y: 0 };
   if (r > PAPER_RADIUS) r = PAPER_RADIUS;
-  let angle = Math.atan2(x, -y);
+  let angle = wedgeAngleOf(x, y);
   if (!Number.isFinite(angle)) angle = 0;
-  angle = Math.max(-half, Math.min(half, angle));
+  angle = Math.max(0, Math.min(theta, angle));
   return { x: r * Math.sin(angle), y: -r * Math.cos(angle) };
 }
 
@@ -157,23 +278,31 @@ function distanceToSegment(point: PaperPoint, a: PaperPoint, b: PaperPoint): num
   return Math.hypot(point.x - (a.x + t * dx), point.y - (a.y + t * dy));
 }
 
-/** 楔形纸的边界折线：中心 → 左折边 → 外弧 → 右折边 → 中心。 */
+/**
+ * 楔形纸的边界折线：中心 → 折痕边（角度 0）→ 外弧 → 另一条折痕边（角度 θ）→ 中心。
+ *
+ * 楔形张角 = 2π/层数（见 `wedgeAngle`）：层数为 4 时是 90° 的象限，层数为 8 时
+ * 是 45°。**两条直边都是折痕，也就是展开时的镜像轴** —— 一条竖直朝上，一条偏开 θ。
+ */
 export function wedgeBoundary(folds: 2 | 3): PaperPoint[] {
-  const half = foldOption(folds).angle * Math.PI / 360;
+  const theta = wedgeAngle(folds);
   const radialSteps = 18;
   const arcSteps = 48;
   const out: PaperPoint[] = [{ x: 0, y: 0 }];
+  // 沿角度 0（正上方）这条折痕往外走。
   for (let i = 1; i <= radialSteps; i += 1) {
     const r = PAPER_RADIUS * i / radialSteps;
-    out.push({ x: -r * Math.sin(half), y: -r * Math.cos(half) });
+    out.push({ x: 0, y: -r });
   }
+  // 外弧，从角度 0 扫到 θ。
   for (let i = 1; i < arcSteps; i += 1) {
-    const angle = -half + (2 * half) * i / arcSteps;
+    const angle = (theta * i) / arcSteps;
     out.push({ x: PAPER_RADIUS * Math.sin(angle), y: -PAPER_RADIUS * Math.cos(angle) });
   }
+  // 沿角度 θ 这条折痕回到圆心。
   for (let i = radialSteps; i >= 1; i -= 1) {
     const r = PAPER_RADIUS * i / radialSteps;
-    out.push({ x: r * Math.sin(half), y: -r * Math.cos(half) });
+    out.push({ x: r * Math.sin(theta), y: -r * Math.cos(theta) });
   }
   return out;
 }
@@ -250,7 +379,7 @@ export function analyzeStroke(rawPoints: PaperPoint[], folds: 2 | 3): Omit<Paper
     }
   }
 
-  if (length < 14) return null;
+  if (length < MIN_STROKE) return null;
   return { kind: 'kerf', points };
 }
 
@@ -300,10 +429,13 @@ export function parsePaperDraft(raw: string | null): PaperDraft | null {
   if (!raw || raw.length > 3_000_000) return null;
   try {
     const data = JSON.parse(raw) as Partial<PaperDraft> | null;
-    if (!data || data.version !== 1) return null;
+    if (!data || data.version !== 2) return null;
     const folds: 2 | 3 = data.folds === 3 ? 3 : 2;
     const color = PAPER_COLORS.some((entry) => entry.id === data.color) ? data.color! : PAPER_COLORS[0].id;
-    const view = data.view === 'unfolded' || data.view === 'window' ? data.view : 'trim';
+    const view = data.view === 'window' ? 'window' : 'trim';
+    const unfold = typeof data.unfold === 'number' && Number.isFinite(data.unfold)
+      ? Math.max(0, Math.min(1, data.unfold))
+      : 0;
     const cuts: PaperCut[] = [];
     if (Array.isArray(data.cuts)) {
       for (const rawCut of data.cuts.slice(0, MAX_CUTS)) {
@@ -317,7 +449,7 @@ export function parsePaperDraft(raw: string | null): PaperDraft | null {
         cuts.push({ id: cuts.length + 1, kind, points, ...(boundary ? { boundary } : {}) });
       }
     }
-    return { version: 1, started: data.started === true, folds, color, cuts, view: data.started === true ? view : 'trim' };
+    return { version: 2, folds, color, cuts, unfold, view };
   } catch {
     return null;
   }

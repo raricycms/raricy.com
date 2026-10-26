@@ -1,512 +1,486 @@
 'use client';
 
-import Link from 'next/link';
-import { useEffect, useId, useMemo, useRef, useState, type CSSProperties, type PointerEvent } from 'react';
-import { ArrowLeft, Check, Download, Eye, RotateCcw, Scissors, Undo2, Volume2, VolumeX } from 'lucide-react';
+import { useId, useRef, useState } from 'react';
+import { Download, Undo2 } from 'lucide-react';
+import { CraftHull, CraftPanel } from '../CraftHull';
 import { downloadSvg } from '../download';
 import { PaperCutIcon } from '../icons';
-import { useCraftSound } from '../sound';
 import { useCraftDraft } from '../use-draft';
-import { useReducedMotion } from '../use-reduced-motion';
+import { useCraftSound } from '../sound';
 import {
-  addCut, analyzeStroke, clampToWedge, cutMaskShape, FOLD_OPTIONS, foldOption, freshPaperDraft, insideWedge,
-  KERF_WIDTH, layerAngle, layerCount, MAX_CUTS, PAPER_COLORS, PAPER_RADIUS, PAPER_SAVE_KEY, paperColor,
-  parsePaperDraft, restartPaper, roundTenth, setPaperView, smoothPath, startPaper, undoCuts, wedgeBoundary,
-  type PaperCut, type PaperDraft, type PaperPoint,
+  FOLD_OPTIONS,
+  KERF_WIDTH,
+  PAPER_COLORS,
+  PAPER_RADIUS,
+  PAPER_SAVE_KEY,
+  addCut,
+  axisCount,
+  clampToWedge,
+  clearCuts,
+  cutMaskShape,
+  foldOption,
+  freshPaperDraft,
+  layerCount,
+  layerTransform,
+  paperColor,
+  parsePaperDraft,
+  setPaperColor,
+  setPaperFolds,
+  setPaperView,
+  setUnfold,
+  undoCuts,
+  wedgeAngle,
+  wedgeBoundary,
+  type PaperCut,
+  type PaperDraft,
+  type PaperPoint,
 } from './engine';
 
+/**
+ * 台面尺寸。
+ *
+ * 纸面坐标是半径 400 的整圆，而台面比它大不了多少 —— 所以台面上的纸要缩一点
+ * （`PAPER_SCALE`），否则纸缘会被台面裁掉。缩放放在绘制那一层，纸面坐标本身
+ * 保持 1:1，缝宽之类的几何常量因此不用跟着改。
+ */
 const VIEW_W = 720;
 const VIEW_H = 640;
-// 修剪时楔形纸的尖角留在工作台上方；展开后整张圆纸在画面中央。
-// 两个姿态共用一条插值，展开动画才会像同一张纸在长开。
-const TRIM_CENTER = { x: 360, y: 466 };
-const TRIM_SCALE = 0.78;
-const RESULT_CENTER = { x: 360, y: 326 };
-const RESULT_SCALE = 0.7;
-const WINDOW_CENTER = { x: 360, y: 300 };
-const WINDOW_SCALE = 0.55;
+const CENTER_X = 360;
+const CENTER_Y = 320;
+const PAPER_SCALE = 0.72;
 
-function stageTransform(spread: number): string {
-  const y = TRIM_CENTER.y + (RESULT_CENTER.y - TRIM_CENTER.y) * spread;
-  const scale = TRIM_SCALE + (RESULT_SCALE - TRIM_SCALE) * spread;
-  return `translate(${TRIM_CENTER.x} ${y}) scale(${scale})`;
+/** 指针的客户端坐标 → 台面 viewBox 坐标（保持 meet 的留白与缩放）。 */
+function toStagePoint(svg: SVGSVGElement, clientX: number, clientY: number): PaperPoint {
+  const box = svg.getBoundingClientRect();
+  const scale = Math.min(box.width / VIEW_W, box.height / VIEW_H) || 1;
+  const offsetX = (box.width - VIEW_W * scale) / 2;
+  const offsetY = (box.height - VIEW_H * scale) / 2;
+  return { x: (clientX - box.left - offsetX) / scale, y: (clientY - box.top - offsetY) / scale };
 }
 
-function polygonPath(points: PaperPoint[]): string {
+/** 纸面坐标（圆心 0,0）的折线 → SVG 路径串。 */
+function pathOf(points: PaperPoint[], closed = false): string {
   if (!points.length) return '';
-  return `M${points.map((point) => `${roundTenth(point.x)} ${roundTenth(point.y)}`).join('L')}Z`;
+  const head = `M${points[0].x.toFixed(1)} ${points[0].y.toFixed(1)}`;
+  const tail = points.slice(1).map((point) => `L${point.x.toFixed(1)} ${point.y.toFixed(1)}`).join('');
+  return `${head}${tail}${closed ? 'Z' : ''}`;
 }
 
-function FoldFan({ folds, color }: { folds: 2 | 3; color: string }) {
-  const info = paperColor(color);
-  const angle = foldOption(folds).angle;
-  const half = angle * Math.PI / 360;
-  const r = 52;
-  const wedge = `M0 0L${(-r * Math.sin(half)).toFixed(1)} ${(-r * Math.cos(half)).toFixed(1)}A${r} ${r} 0 0 1 ${(r * Math.sin(half)).toFixed(1)} ${(-r * Math.cos(half)).toFixed(1)}Z`;
-  return <svg viewBox="-60 -60 120 120" aria-hidden="true" className="paper-fold__art">
-    {Array.from({ length: layerCount(folds) }, (_, index) => <path key={index} d={wedge}
-      transform={`rotate(${index * angle})`} fill={index % 2 ? info.light : info.fill} stroke={info.shade} strokeWidth=".8" />)}
-  </svg>;
+/**
+ * 第 index 层在**展开过程中**的变换（0=还折着，1=完全摊平）。
+ *
+ * 摊平时它必须与 engine 的 `layerTransform` 逐字对上：偶数层 `rotate(kθ)`，
+ * 奇数层 `rotate((k+1)θ) scale(-1 1)`。中间态插值三件事：
+ *
+ *   · 旋转角从 0 长到它的目标角 —— 纸被一圈圈转开；
+ *   · 奇数层的横向缩放从 1 走到 -1，用 `cos(π·spread)` —— 折在下面的那一层是绕着
+ *     折痕翻开的，投影到平面就是"宽度先缩到 0（纸侧对着你）、再以镜像的样子张开"。
+ *     这条曲线不是凑出来的缓动，而是「绕折痕转 180°」在平面上的样子；
+ *   · 折着时每层再偏开一点点（`STACK_FAN`），让"这是一叠纸"看得见 —— 完全对齐的
+ *     话 4 层会糊成一块，折了几折就成了屏幕上看不出的数字。
+ *
+ * 只插值角度、不做那条缩放是不行的：那样奇数层一开始就是镜像的，一叠纸的刀口
+ * 会立刻分成两份，"还没折开"这个状态就消失了。
+ */
+const STACK_FAN = 0.7;
+
+function layerTransformDuring(folds: 2 | 3, index: number, spread: number): string {
+  const theta = (wedgeAngle(folds) * 180) / Math.PI;
+  const target = index % 2 === 0 ? index * theta : (index + 1) * theta;
+  const fan = index * STACK_FAN * (1 - spread);
+  const angle = target * spread + fan;
+  if (index % 2 === 0) return `rotate(${angle.toFixed(3)})`;
+  const squash = Math.cos(Math.PI * spread);
+  return `rotate(${angle.toFixed(3)}) scale(${squash.toFixed(4)} 1)`;
 }
 
-interface SheetProps {
-  uid: string;
-  folds: 2 | 3;
-  color: string;
-  cuts: PaperCut[];
-  spread: number;
-  stack?: boolean;
+/**
+ * 台面整体的显示旋转（度）。
+ *
+ * 纸面坐标里楔形占 `[0, θ]` —— 一条折痕竖直朝上，这是对折的物理结果，画出来
+ * 就歪在右上方。这里把**整组**纸绕圆心转 −θ/2，让折着的那一叠看起来是一个正对
+ * 观众的、尖朝上的扇形。这是纯显示变换：整组一起转是刚性的，铺法、镜像轴、
+ * 刀口位置全都不变（扇区只是整体挪了 θ/2）。
+ *
+ * 代价是手势坐标与导出成品都要跟着反向旋转，见 `pushPoint` 与 `PaperArtifact`。
+ */
+function displayRotationOf(folds: 2 | 3): number {
+  return -((wedgeAngle(folds) * 180) / Math.PI) / 2;
 }
 
-function PaperSheet({ uid, folds, color, cuts, spread, stack = false }: SheetProps) {
-  const info = paperColor(color);
-  const wedge = useMemo(() => polygonPath(wedgeBoundary(folds)), [folds]);
-  const maskId = `${uid}-mask`;
-  const cutMaskId = `${uid}-cut`;
-  const fillId = `${uid}-fill`;
-  const pieces = cuts.map((cut) => cutMaskShape(cut));
-  const layers = layerCount(folds);
-  const rimCount = Math.min(layers, 4);
-  return <>
-    <defs>
-      <radialGradient id={fillId} gradientUnits="userSpaceOnUse" cx="0" cy="-40" r={PAPER_RADIUS}>
-        <stop offset="0" stopColor={info.light} />
-        <stop offset=".58" stopColor={info.fill} />
-        <stop offset="1" stopColor={info.fill} />
-      </radialGradient>
-      <mask id={maskId} maskUnits="userSpaceOnUse" x={-PAPER_RADIUS} y={-PAPER_RADIUS}
-        width={PAPER_RADIUS * 2} height={PAPER_RADIUS * 2}>
-        <path d={wedge} fill="#fff" />
-        {pieces.map((piece, index) => piece.mode === 'stroke'
-          ? <path key={index} d={piece.d} fill="none" stroke="#000" strokeWidth={KERF_WIDTH} strokeLinecap="round" strokeLinejoin="round" />
-          : <path key={index} d={piece.d} fill="#000" />)}
-      </mask>
-      {/* 叠层只让剪口对齐：每片纸的错位边要留着，但洞口必须一起透到台面去。 */}
-      <mask id={cutMaskId} maskUnits="userSpaceOnUse" x={-PAPER_RADIUS} y={-PAPER_RADIUS}
-        width={PAPER_RADIUS * 2} height={PAPER_RADIUS * 2}>
-        <rect x={-PAPER_RADIUS} y={-PAPER_RADIUS} width={PAPER_RADIUS * 2} height={PAPER_RADIUS * 2} fill="#fff" />
-        {pieces.map((piece, index) => piece.mode === 'stroke'
-          ? <path key={index} d={piece.d} fill="none" stroke="#000" strokeWidth={KERF_WIDTH} strokeLinecap="round" strokeLinejoin="round" />
-          : <path key={index} d={piece.d} fill="#000" />)}
-      </mask>
-    </defs>
-    {stack && <g opacity=".55" mask={`url(#${cutMaskId})`}>
-      {Array.from({ length: rimCount }, (_, index) => {
-        const offset = (rimCount - index) * 5;
-        return <path key={index} d={wedge} transform={`translate(${offset} ${offset})`}
-          fill={index === 0 ? info.shade : info.fill} />;
-      })}
-    </g>}
-    {Array.from({ length: layers }, (_, index) => {
-      const angle = layerAngle(folds, index) * spread;
-      return <g key={index} transform={`rotate(${angle})`}>
-        <g mask={`url(#${maskId})`}>
-          <path d={wedge} fill={`url(#${fillId})`} />
-          <g stroke={info.light} strokeWidth="1" opacity=".22">
-            {[-320, -240, -160, -80, 0, 80, 160, 240, 320].map((y) => <path key={y} d={`M-430 ${y}H430`} />)}
-          </g>
-        </g>
-        <g mask={`url(#${maskId})`}>
-          <path d={wedge} fill="none" stroke={info.shade} strokeWidth="1.2" opacity=".38" />
-        </g>
-      </g>;
-    })}
-  </>;
-}
-
-function CutPreview({ cut }: { cut: Omit<PaperCut, 'id'> }) {
-  const shape = cutMaskShape(cut);
-  return shape.mode === 'stroke'
-    ? <path d={shape.d} fill="none" stroke="#f7b64a" strokeWidth={KERF_WIDTH + 7} strokeLinecap="round" strokeLinejoin="round" opacity=".42" />
-    : <path d={shape.d} fill="#f7b64a" fillOpacity=".32" stroke="#8a5300" strokeWidth="2" strokeLinejoin="round" />;
-}
-
-function FoldIntro({ uid, folds, color, onDone }: { uid: string; folds: 2 | 3; color: string; onDone: () => void }) {
-  const [progress, setProgress] = useState(1);
-  const doneRef = useRef(onDone);
-  doneRef.current = onDone;
-  useEffect(() => {
-    let frame = 0;
-    const start = performance.now();
-    const tick = (now: number) => {
-      const t = Math.min(1, (now - start) / 900);
-      setProgress(1 - (1 - Math.pow(1 - t, 3)));
-      if (t < 1) frame = requestAnimationFrame(tick);
-      else doneRef.current();
-    };
-    frame = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(frame);
-  }, []);
-  return <div className="paper-intro" onPointerDown={onDone} aria-hidden="true">
-    <svg viewBox={`0 0 ${VIEW_W} ${VIEW_H}`}>
-      <g transform={stageTransform(progress)}>
-        <PaperSheet uid={`${uid}-intro`} folds={folds} color={color} cuts={[]} spread={progress} />
-      </g>
-    </svg>
-    <span className="paper-intro__caption">折好了 · 开始剪</span>
-  </div>;
-}
-
-interface Scrap { id: number; left: number; top: number; color: string; drift: number; spin: number; delay: number }
-
-export default function PaperCutGame() {
-  const { draft, setDraft, ready, saveFailed } = useCraftDraft<PaperDraft>(PAPER_SAVE_KEY, freshPaperDraft, parsePaperDraft);
+export default function PaperCut() {
+  const { draft, setDraft, ready, saveFailed } = useCraftDraft(PAPER_SAVE_KEY, freshPaperDraft, parsePaperDraft);
   const sound = useCraftSound();
-  const reduced = useReducedMotion();
-  const uid = useId().replace(/[^a-zA-Z0-9_-]/g, '');
-  const [notice, setNotice] = useState('');
+  const [note, setNote] = useState<string | null>(null);
+  const [exportFailed, setExportFailed] = useState(false);
+  const stageRef = useRef<SVGSVGElement | null>(null);
+  const artifactRef = useRef<SVGSVGElement | null>(null);
+  const maskId = useId().replace(/:/g, '');
+
+  /**
+   * 正在剪的这一笔。
+   *
+   * 【为什么独立于草稿】这一笔还没落定：手还在纸上走，它随时可能成为一条细缝、
+   * 一个孔洞，或者什么都不算（太短）。写进草稿会让撤销栈塞满半成品，也会让
+   * localStorage 每 220ms 存一次没意义的数据。松手时才 `addCut` 落定。
+   */
   const [stroke, setStroke] = useState<PaperPoint[]>([]);
-  const [spread, setSpread] = useState(0);
-  const [intro, setIntro] = useState(false);
-  const [scraps, setScraps] = useState<Scrap[]>([]);
-  const [exporting, setExporting] = useState(false);
-  const stageRef = useRef<SVGSVGElement>(null);
-  const artifactRef = useRef<SVGSVGElement>(null);
-  const strokeRef = useRef<PaperPoint[]>([]);
-  const drawing = useRef<number | null>(null);
-  const lastView = useRef<PaperDraft['view']>('trim');
-  const scrapTimers = useRef<number[]>([]);
-  const scrapId = useRef(0);
 
-  useEffect(() => () => { for (const timer of scrapTimers.current) window.clearTimeout(timer); }, []);
+  const folds = draft.folds;
+  const color = paperColor(draft.color);
+  const layers = layerCount(folds);
+  const wedgePath = pathOf(wedgeBoundary(folds), true);
+  const spread = draft.unfold;
 
-  useEffect(() => {
-    if (!ready) return;
-    const previous = lastView.current;
-    lastView.current = draft.view;
-    if (draft.view === 'trim') { setSpread(0); return; }
-    if (draft.view === 'window' || previous === 'window') { setSpread(1); return; }
-    if (previous === 'trim') {
-      if (reduced) { setSpread(1); return; }
-      setSpread(0);
-      let frame = 0;
-      const start = performance.now();
-      const tick = (now: number) => {
-        const t = Math.min(1, (now - start) / 820);
-        setSpread(1 - Math.pow(1 - t, 3));
-        if (t < 1) frame = requestAnimationFrame(tick);
-      };
-      frame = requestAnimationFrame(tick);
-      return () => cancelAnimationFrame(frame);
-    }
-    setSpread(1);
-  }, [draft.view, ready, reduced]);
+  /**
+   * 台面整体的显示旋转 —— 见 `displayRotationOf`。手势坐标要反着转回来。
+   */
+  const displayRotation = displayRotationOf(folds);
 
-  const option = foldOption(draft.folds);
-  const info = paperColor(draft.color);
-  const layers = layerCount(draft.folds);
-  const preview = useMemo(() => stroke.length >= 2 ? analyzeStroke(stroke, draft.folds) : null, [stroke, draft.folds]);
-  const cutLabel = draft.cuts.length ? `已剪 ${draft.cuts.length} 刀` : '还没下剪刀';
-
-  function dismissIntro() {
-    setIntro(false);
-  }
-
-  function begin() {
-    if (!ready) return;
-    setDraft(startPaper(draft, draft.folds, draft.color));
-    setIntro(!reduced);
-    setSpread(0);
-    setNotice('纸已经折好。在楔形纸上画线，松开手就剪下这一刀。');
-  }
-
-  function restart() {
-    if (draft.cuts.length && !window.confirm('换一张纸会丢掉这一张的剪法。先导出成品再换？')) return;
-    setDraft(restartPaper(draft));
-    setIntro(false);
-    setSpread(0);
-    setStroke([]);
-    strokeRef.current = [];
-    setNotice('');
-  }
-
-  function undo() {
-    if (!draft.cuts.length) return;
-    setDraft(undoCuts(draft));
-    sound.play('click');
-    setNotice('把最后一刀补回去了。');
-  }
-
-  function toUnfolded() {
-    if (!ready) return;
-    sound.play('lift');
-    setDraft(setPaperView(draft, 'unfolded'));
-    setNotice(draft.cuts.length
-      ? '沿折线翻开的每一层都带着同一道切口，转一圈就成了对称的花纹。'
-      : '还没有剪过。展开是一张完整的圆纸，回去剪几刀再看看。');
-  }
-
-  function toWindow() {
-    sound.play('lift');
-    setDraft(setPaperView(draft, 'window'));
-    setNotice('贴到窗上了。透光的地方就是剪掉的纸。');
-  }
-
-  function toTrim() {
-    sound.play('click');
-    setDraft(setPaperView(draft, 'trim'));
-    setNotice('回到折好的纸上，可以继续剪。');
-  }
-
-  async function exportArtifact() {
-    const node = artifactRef.current;
-    if (!node || exporting) return;
-    setExporting(true);
-    const ok = await downloadSvg(node, 1200, 1200, '聪明山-剪纸窗花.png');
-    setExporting(false);
-    setNotice(ok ? '透明背景的窗花已导出。' : '导出失败，请检查浏览器是否拦截了下载。');
-  }
-
-  function toPaper(event: PointerEvent<SVGSVGElement>): PaperPoint {
-    const node = stageRef.current ?? event.currentTarget;
-    const rect = node.getBoundingClientRect();
-    const scale = Math.min(rect.width / VIEW_W, rect.height / VIEW_H) || 1;
-    const offsetX = (rect.width - VIEW_W * scale) / 2;
-    const offsetY = (rect.height - VIEW_H * scale) / 2;
-    const vx = (event.clientX - rect.left - offsetX) / scale;
-    const vy = (event.clientY - rect.top - offsetY) / scale;
-    return { x: (vx - TRIM_CENTER.x) / TRIM_SCALE, y: (vy - TRIM_CENTER.y) / TRIM_SCALE };
-  }
-
-  function spawnScraps(point: PaperPoint) {
-    if (reduced) return;
-    const batch: Scrap[] = Array.from({ length: 6 }, (_, index) => ({
-      id: (scrapId.current += 1),
-      left: (TRIM_CENTER.x + point.x * TRIM_SCALE) / VIEW_W * 100 + (Math.random() - .5) * 2.4,
-      top: (TRIM_CENTER.y + point.y * TRIM_SCALE) / VIEW_H * 100 + (Math.random() - .5) * 1.6,
-      color: index % 3 === 0 ? info.light : index % 3 === 1 ? info.fill : info.shade,
-      drift: 10 + Math.random() * 34,
-      spin: 120 + Math.random() * 320,
-      delay: Math.random() * 140,
-    }));
-    setScraps((current) => [...current, ...batch].slice(-24));
-    const timer = window.setTimeout(() => {
-      const ids = new Set(batch.map((scrap) => scrap.id));
-      setScraps((current) => current.filter((scrap) => !ids.has(scrap.id)));
-    }, 1_100);
-    scrapTimers.current.push(timer);
-  }
-
-  function pointerDown(event: PointerEvent<SVGSVGElement>) {
-    if (!ready || intro || draft.view !== 'trim' || event.button !== 0) return;
-    const point = toPaper(event);
-    if (!insideWedge(point.x, point.y, draft.folds)) return;
-    const start = clampToWedge(point.x, point.y, draft.folds);
-    drawing.current = event.pointerId;
-    strokeRef.current = [start];
-    setStroke([start]);
-    try { event.currentTarget.setPointerCapture(event.pointerId); } catch { /* 某些浏览器不支持 */ }
-  }
-
-  function pointerMove(event: PointerEvent<SVGSVGElement>) {
-    if (drawing.current !== event.pointerId) return;
-    const point = toPaper(event);
-    const clamped = clampToWedge(point.x, point.y, draft.folds);
+  const pushPoint = (stage: PaperPoint) => {
+    // 台面 → 纸面：先减掉纸心、除以台面缩放，再把显示旋转反着转回去。
+    const dx = (stage.x - CENTER_X) / PAPER_SCALE;
+    const dy = (stage.y - CENTER_Y) / PAPER_SCALE;
+    const cos = Math.cos((-displayRotation * Math.PI) / 180);
+    const sin = Math.sin((-displayRotation * Math.PI) / 180);
+    const raw = { x: dx * cos - dy * sin, y: dx * sin + dy * cos };
+    const paper = clampToWedge(raw.x, raw.y, folds);
     setStroke((current) => {
-      if (current.length >= 700) return current;
       const last = current[current.length - 1];
-      if (last && Math.hypot(clamped.x - last.x, clamped.y - last.y) < 2.4) return current;
-      const next = [...current, { x: roundTenth(clamped.x), y: roundTenth(clamped.y) }];
-      strokeRef.current = next;
+      if (last && Math.hypot(paper.x - last.x, paper.y - last.y) < 2.4) return current;
+      return [...current, paper];
+    });
+  };
+
+  const onPointerDown = (event: React.PointerEvent<SVGSVGElement>) => {
+    if (!ready) return;
+    const svg = stageRef.current;
+    if (!svg) return;
+    // 摊平之后看的是成品，不再往"折好的纸"上下刀 —— 要接着剪就先把纸折回去。
+    if (spread > 0.98) return;
+    setStroke([]);
+    pushPoint(toStagePoint(svg, event.clientX, event.clientY));
+    event.currentTarget.setPointerCapture(event.pointerId);
+  };
+
+  const onPointerMove = (event: React.PointerEvent<SVGSVGElement>) => {
+    if (!stroke.length) return;
+    const svg = stageRef.current;
+    if (!svg) return;
+    pushPoint(toStagePoint(svg, event.clientX, event.clientY));
+  };
+
+  const endStroke = (event: React.PointerEvent<SVGSVGElement>) => {
+    const points = stroke;
+    setStroke([]);
+    try { event.currentTarget.releasePointerCapture(event.pointerId); } catch { /* 已释放 */ }
+    if (points.length < 2) return;
+    setDraft((current) => {
+      const next = addCut(current, points);
+      if (next.cuts.length > current.cuts.length) sound.play('snip');
       return next;
     });
-  }
+  };
 
-  function pointerUp(event: PointerEvent<SVGSVGElement>) {
-    if (drawing.current !== event.pointerId) return;
-    drawing.current = null;
-    try { event.currentTarget.releasePointerCapture(event.pointerId); } catch { /* 已经释放 */ }
-    const points = strokeRef.current;
-    strokeRef.current = [];
-    setStroke([]);
-    if (points.length < 2) return;
-    const cut = analyzeStroke(points, draft.folds);
-    if (!cut) { setNotice('这一笔太短，或者没有剪到纸上。再画长一点。'); return; }
-    if (draft.cuts.length >= MAX_CUTS) { setNotice('这一张已经剪满了。展开看看，或者换一张纸。'); return; }
-    sound.play('snip');
-    spawnScraps(points[points.length - 1]);
-    setDraft((current) => addCut(current, points));
-    setNotice(cut.kind === 'hole' ? '剪出一个孔洞。接下来它会沿折线重复成一圈。'
-      : cut.kind === 'pocket' ? '从纸边剪掉了一块。展开时会变成对称的缺口。'
-        : '剪开一道细缝。细缝展开后会变成放射状的花纹。');
-  }
+  const handleExport = async () => {
+    const svg = artifactRef.current;
+    if (!svg) return;
+    const size = PAPER_RADIUS * 2 + 40;
+    const ok = await downloadSvg(svg, size, size, '窗花.png');
+    setExportFailed(!ok);
+    setNote(ok ? '透明背景的窗花已导出。' : null);
+  };
 
-  const trimLabel = `折好的${info.name}纸，${option.name}，${layers} 层，${cutLabel}`;
+  const status = !ready
+    ? '正在读取草稿…'
+    : draft.cuts.length === 0
+      ? '在折好的纸上划几刀。'
+      : spread > 0.98
+        ? '完全展开了。'
+        : spread > 0
+          ? '正在拉开。'
+          : `剪了 ${draft.cuts.length} 刀，往右拖把纸拉开。`;
 
-  return <div className="container craft-game paper-game" data-ready={ready} data-started={draft.started}
-    data-view={draft.view} data-cuts={draft.cuts.length}>
-    <header className="craft-header">
-      <div className="craft-title">
-        <Link className="craft-icon-button" href="/game/collections/test/craft" aria-label="返回手工间"><ArrowLeft size={20} /></Link>
-        <span className="craft-logo"><PaperCutIcon /></span>
-        <h1>剪纸窗花 <small>手工间</small></h1>
+  const workspace = (
+    <>
+      <div className="craft-stage-heading">
+        <div>
+          <span className="craft-eyebrow">纸色</span>
+          <h2>{color.name}</h2>
+        </div>
+        <p className="craft-status">{status}</p>
       </div>
-      <div className="craft-actions">
-        <button type="button" className="craft-icon-button" onClick={sound.toggle} aria-label={sound.muted ? '开启音效' : '关闭音效'}>
-          {sound.muted ? <VolumeX size={19} /> : <Volume2 size={19} />}
+
+      <div className={`paper-stage${draft.view === 'window' ? ' paper-stage--window' : ''}`}>
+        <svg
+          ref={stageRef}
+          className="paper-drag"
+          viewBox={`0 0 ${VIEW_W} ${VIEW_H}`}
+          role="img"
+          aria-label="折好的纸与剪口"
+          onPointerDown={onPointerDown}
+          onPointerMove={onPointerMove}
+          onPointerUp={endStroke}
+          onPointerCancel={endStroke}
+        >
+          <defs>
+            {/*
+              被剪掉的地方要从纸里"透"出去（透明底导出靠的就是这个），所以用掩膜而不是
+              涂一块背景色。掩膜定义在纸面坐标里（外层 translate 到纸心、掩膜随引用它的
+              元素走同一套变换），于是同一张掩膜能把每一层都挖对。
+            */}
+            <mask id={maskId} maskUnits="userSpaceOnUse" x={-PAPER_RADIUS} y={-PAPER_RADIUS} width={PAPER_RADIUS * 2} height={PAPER_RADIUS * 2}>
+              <rect x={-PAPER_RADIUS} y={-PAPER_RADIUS} width={PAPER_RADIUS * 2} height={PAPER_RADIUS * 2} fill="#fff" />
+              {draft.cuts.map((cut) => {
+                const shape = cutMaskShape(cut);
+                return shape.mode === 'fill'
+                  ? <path key={cut.id} d={pathOf(cut.points, true)} fill="#000" />
+                  : <path key={cut.id} d={pathOf(cut.points)} stroke="#000" strokeWidth={KERF_WIDTH} fill="none" strokeLinecap="round" strokeLinejoin="round" />;
+              })}
+              {/* 正在剪的这一笔也算进掩膜 —— 边拖边见口子，不用松手才看到效果。 */}
+              {stroke.length > 1
+                ? <path d={pathOf(stroke)} stroke="#000" strokeWidth={KERF_WIDTH} fill="none" strokeLinecap="round" strokeLinejoin="round" />
+                : null}
+            </mask>
+          </defs>
+
+          {draft.view === 'window' ? <WindowScene /> : <DeskSurface />}
+
+          <g transform={`translate(${CENTER_X} ${CENTER_Y}) scale(${PAPER_SCALE}) rotate(${displayRotation.toFixed(3)})`}>
+            {Array.from({ length: layers }, (_, index) => (
+              <g key={index} className="paper-layer" transform={layerTransformDuring(folds, index, spread)}>
+                {/* 纸缘厚度：比纸面低一点点的一条深色，读起来才是"一叠纸"而不是一张贴图。
+                    它也要一起被挖穿 —— 只给纸面打掩膜的话，刀口上会残留一道深色描边，
+                    看着像画了条线，而不是把纸剪透了。 */}
+                <g mask={`url(#${maskId})`}>
+                  <path d={wedgePath} fill={color.shade} transform="translate(0 1.8)" />
+                  <path d={wedgePath} fill={color.fill} />
+                </g>
+                {/* 两条直边是折痕（也就是展开后的镜像轴），画一道淡线让玩家看见。
+                    摊平后折痕就该淡下去 —— 成品是一张纸，不是一张画了格线的图。 */}
+                <path
+                  d={wedgePath}
+                  fill="none"
+                  className="paper-layer__crease"
+                  opacity={(1 - spread * 0.85).toFixed(3)}
+                />
+              </g>
+            ))}
+          </g>
+        </svg>
+      </div>
+
+      <div className="craft-caption">
+        <span className="craft-gesture-hint">
+          {spread > 0.98 ? '刀口已全部摊开' : '在纸上划一刀 · 往右拖把纸拉开'}
+        </span>
+        <span>{layerCount(folds)} 层 · {layerCount(folds) / 2} 条折痕</span>
+      </div>
+
+      {/* 展开进度就在纸下方：手不用在纸和侧栏之间来回。 */}
+      <div className="craft-inline-controls">
+        <span className="craft-inline-label">展开</span>
+        <input
+          type="range"
+          className="paper-unfold"
+          min={0}
+          max={100}
+          step={1}
+          value={Math.round(spread * 100)}
+          onChange={(event) => setDraft((current) => setUnfold(current, Number(event.target.value) / 100))}
+          aria-label="展开进度"
+        />
+      </div>
+
+      <div className="craft-toolbar">
+        <button
+          type="button"
+          className="craft-secondary"
+          onClick={() => { setDraft(undoCuts); sound.play('click'); }}
+          disabled={draft.cuts.length === 0}
+        >
+          <Undo2 size={16} /> 撤销一刀
+        </button>
+        <button
+          type="button"
+          className="craft-secondary"
+          onClick={() => {
+            setDraft((current) => setPaperView(current, current.view === 'window' ? 'trim' : 'window'));
+            sound.play('click');
+          }}
+        >
+          {draft.view === 'window' ? '回到案上' : '放到窗前'}
+        </button>
+        <button
+          type="button"
+          className="craft-primary"
+          onClick={handleExport}
+          disabled={draft.cuts.length === 0}
+        >
+          <Download size={16} /> 导出 PNG
         </button>
       </div>
-    </header>
+      {note ? <p className="craft-status">{note}</p> : null}
+      {exportFailed ? <p className="craft-status">导出没有成功，请再试一次。</p> : null}
 
-    <div className="craft-layout">
-      <section className="craft-workspace" aria-label="剪纸工作台">
-        <div className="craft-stage-heading">
-          <div>
-            <p className="craft-eyebrow">{!draft.started ? '准备纸样' : draft.view === 'trim' ? '修剪' : draft.view === 'unfolded' ? '展开' : '窗前'}</p>
-            <h2>{!draft.started ? '选纸与折法' : draft.view === 'trim' ? '在折好的纸上剪' : draft.view === 'unfolded' ? '展开的样子' : '贴上窗'}</h2>
-          </div>
-          <span className="craft-status">{draft.started ? <>{cutLabel} · <span className="numeric">{layers}</span> 层</> : `${option.name} · ${layers} 层`}</span>
+      <PaperArtifact draft={draft} artifactRef={artifactRef} />
+    </>
+  );
+
+  const sidebar = (
+    <>
+      <CraftPanel title="折法">
+        <div className="paper-folds">
+          {FOLD_OPTIONS.map((option) => (
+            <button
+              key={option.folds}
+              type="button"
+              className={`craft-choice${folds === option.folds ? ' is-active' : ''}`}
+              onClick={() => { setDraft((current) => setPaperFolds(current, option.folds)); sound.play('click'); }}
+              disabled={draft.cuts.length > 0}
+              aria-pressed={folds === option.folds}
+            >
+              <span className="craft-choice__label">{option.name}</span>
+              <span className="paper-folds__meta">{option.layers} 层 · {option.axisCount} 条折痕</span>
+            </button>
+          ))}
         </div>
-
-        {!draft.started ? <div className="paper-setup">
-          <p className="paper-setup__lead">折得越多，展开后的花纹越密。先选一张纸，再选折法。</p>
-          <div className="paper-folds" aria-label="选择折法">
-            {FOLD_OPTIONS.map((entry) => <button key={entry.folds} type="button"
-              className={`craft-choice paper-fold${draft.folds === entry.folds ? ' is-active' : ''}`}
-              aria-pressed={draft.folds === entry.folds} onClick={() => setDraft({ ...draft, folds: entry.folds })}>
-              <FoldFan folds={entry.folds} color={draft.color} />
-              <span className="paper-fold__label">{entry.name}</span>
-              <span className="paper-fold__meta">{entry.layers} 层 · 每层 {entry.angle}°</span>
-            </button>)}
-          </div>
-          <h3 className="paper-setup__label">纸色</h3>
-          <div className="craft-swatches" aria-label="选择纸色">
-            {PAPER_COLORS.map((color) => <button key={color.id} type="button"
-              className={`craft-swatch${draft.color === color.id ? ' is-active' : ''}`}
-              style={{ background: color.fill }} aria-label={color.name} aria-pressed={draft.color === color.id}
-              onClick={() => setDraft({ ...draft, color: color.id })}>
-              {draft.color === color.id && <Check size={15} />}
-            </button>)}
-          </div>
-          <button type="button" className="craft-primary paper-begin" onClick={begin} disabled={!ready}><Scissors size={17} />开始剪</button>
-        </div> : draft.view === 'trim' ? <>
-          <div className="paper-stage-wrap">
-            <svg ref={stageRef} className="paper-stage" viewBox={`0 0 ${VIEW_W} ${VIEW_H}`} role="img" aria-label={trimLabel}
-              onPointerDown={pointerDown} onPointerMove={pointerMove} onPointerUp={pointerUp} onPointerCancel={pointerUp}>
-              <g transform={stageTransform(0)}>
-                <PaperSheet uid={`${uid}-trim`} folds={draft.folds} color={draft.color} cuts={draft.cuts} spread={0} stack />
-                {stroke.length > 1 && <path d={smoothPath(stroke)} fill="none" stroke="#7a4d14" strokeWidth="2.4"
-                  strokeDasharray="7 6" strokeLinecap="round" opacity=".7" />}
-                {preview && <CutPreview cut={preview} />}
-              </g>
-            </svg>
-            <div className="paper-scraps" aria-hidden="true">
-              {scraps.map((scrap) => <i key={scrap.id} className="paper-scrap" style={{
-                left: `${scrap.left}%`, top: `${scrap.top}%`, background: scrap.color,
-                '--scrap-drift': `${scrap.drift}px`, '--scrap-spin': `${scrap.spin}deg`, '--scrap-delay': `${scrap.delay}ms`,
-              } as CSSProperties} />)}
-            </div>
-            {intro && <FoldIntro uid={uid} folds={draft.folds} color={draft.color} onDone={dismissIntro} />}
-          </div>
-          <div className="paper-board-caption">
-            <span>在纸上下笔 · 松开剪刀完成剪切</span>
-            <span className="numeric">{draft.cuts.length} / {MAX_CUTS} 刀</span>
-          </div>
-          <div className="craft-toolbar">
-            <button type="button" className="craft-primary" onClick={toUnfolded} disabled={!ready}><Eye size={17} />展开看看</button>
-            <button type="button" className="craft-secondary" onClick={undo} disabled={!draft.cuts.length}><Undo2 size={16} />撤销这一刀</button>
-            <button type="button" className="craft-secondary" onClick={restart}><RotateCcw size={16} />换一张纸</button>
-          </div>
-        </> : draft.view === 'unfolded' ? <div className="paper-result">
-          <div className="paper-result__stage">
-            <svg className="paper-stage paper-stage--result" viewBox={`0 0 ${VIEW_W} ${VIEW_H}`} role="img"
-              aria-label={`${info.name}窗花展开图，${option.name}，${cutLabel}`}>
-              <g transform={stageTransform(spread)}>
-                <PaperSheet uid={`${uid}-view`} folds={draft.folds} color={draft.color} cuts={draft.cuts} spread={spread} />
-              </g>
-            </svg>
-          </div>
-          <div className="craft-toolbar">
-            <button type="button" className="craft-primary" onClick={toWindow}><Eye size={17} />放到窗前</button>
-            <button type="button" className="craft-secondary" onClick={toTrim}><Scissors size={16} />返回修剪</button>
-            <button type="button" className="craft-secondary" onClick={exportArtifact} disabled={exporting}><Download size={16} />{exporting ? '正在导出…' : '导出 PNG'}</button>
-          </div>
-        </div> : <div className="paper-result">
-          <div className="paper-window">
-            <svg className="paper-window__scene" viewBox={`0 0 ${VIEW_W} ${VIEW_H}`} role="img"
-              aria-label={`${info.name}窗花贴在窗上的样子`}>
-              <defs>
-                <linearGradient id={`${uid}-sky`} x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0" stopColor="#a8d8ef" /><stop offset="1" stopColor="#eaf6f9" />
-                </linearGradient>
-                <linearGradient id={`${uid}-wood`} x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0" stopColor="#9a744c" /><stop offset="1" stopColor="#7c5a3a" />
-                </linearGradient>
-              </defs>
-              <rect width={VIEW_W} height={VIEW_H} fill="#ded3c0" />
-              <rect width={VIEW_W} height={VIEW_H} fill="#7a644a" opacity=".06" />
-              <rect x="52" y="40" width="616" height="470" rx="10" fill="url(#${uid}-wood)" />
-              <rect x="78" y="66" width="564" height="418" rx="4" fill="url(#${uid}-sky)" />
-              <circle cx="540" cy="146" r="38" fill="#f6d488" opacity=".85" />
-              <g fill="#fff" opacity=".7">
-                <ellipse cx="196" cy="150" rx="62" ry="22" /><ellipse cx="236" cy="134" rx="40" ry="19" />
-                <ellipse cx="430" cy="214" rx="52" ry="17" /><ellipse cx="464" cy="202" rx="32" ry="15" />
-              </g>
-              <path d="M78 420q120-64 240-18t324-26v108H78Z" fill="#b7d6c0" opacity=".55" />
-              <path d="M78 452q150-38 300-6t264-16v54H78Z" fill="#8bb59a" opacity=".45" />
-              <rect x="360" y="66" width="7" height="418" fill="url(#${uid}-wood)" opacity=".9" />
-              <rect x="78" y="272" width="564" height="7" fill="url(#${uid}-wood)" opacity=".9" />
-              <g transform={`translate(${WINDOW_CENTER.x} ${WINDOW_CENTER.y}) scale(${WINDOW_SCALE})`}>
-                <PaperSheet uid={`${uid}-window`} folds={draft.folds} color={draft.color} cuts={draft.cuts} spread={1} />
-              </g>
-              <rect x="38" y="500" width="644" height="26" rx="6" fill="#8a6644" />
-              <rect x="38" y="500" width="644" height="8" rx="4" fill="#a9835c" />
-            </svg>
-          </div>
-          <div className="craft-toolbar">
-            <button type="button" className="craft-primary" onClick={exportArtifact} disabled={exporting}><Download size={17} />{exporting ? '正在导出…' : '导出 PNG'}</button>
-            <button type="button" className="craft-secondary" onClick={toTrim}><Scissors size={16} />取下继续剪</button>
-            <button type="button" className="craft-secondary" onClick={toUnfolded}><Eye size={16} />看展开图</button>
-          </div>
-          <p className="paper-window__caption">透明背景导出只带窗花本身，阴影与窗景不会跟着走。</p>
-        </div>}
-
-        <p className="craft-status" role="status" aria-live="polite">
-          {notice || (!draft.started ? '选好纸色和折法，开始剪第一张。'
-            : draft.view === 'trim' ? (draft.cuts.length ? '继续剪，或者展开看看对称的花纹。' : '从纸边剪到纸边，或者画一个闭合的圈。')
-              : draft.view === 'unfolded' ? '剪掉的部分会透出背景。满意就放到窗前，或者回去再补几刀。'
-                : '窗景只是预览；导出的图片是透明背景的窗花。')}
+        {draft.cuts.length > 0 ? <p className="craft-note">已经下刀了，折法不能再换。</p> : null}
+        <p className="craft-note">
+          折痕就是展开后的镜像轴：{axisCount(folds)} 条，隔 {Math.round(180 / axisCount(folds))}° 一条。
+          所以剪一刀会同时出现在每一层上，展开后互为镜像。
         </p>
-      </section>
+      </CraftPanel>
 
-      <aside className="craft-sidebar">
-        {draft.started && <section className="craft-panel">
-          <h2>这一张</h2>
-          <div className="paper-info">
-            <span className="paper-info__swatch" style={{ background: info.fill }} aria-hidden="true" />
-            <div>
-              <strong>{info.name}纸</strong>
-              <p>{option.name} · <span className="numeric">{layers}</span> 层 · <span className="numeric">{draft.cuts.length}</span> 刀</p>
-            </div>
-          </div>
-          <button type="button" className="craft-text-button" onClick={restart}><RotateCcw size={15} />换一张纸</button>
-        </section>}
+      <CraftPanel title="纸色">
+        <div className="craft-swatches">
+          {PAPER_COLORS.map((entry) => (
+            <button
+              key={entry.id}
+              type="button"
+              className={`craft-swatch${draft.color === entry.id ? ' is-active' : ''}`}
+              style={{ backgroundColor: entry.fill }}
+              onClick={() => { setDraft((current) => setPaperColor(current, entry.id)); sound.play('click'); }}
+              aria-label={entry.name}
+              aria-pressed={draft.color === entry.id}
+            />
+          ))}
+        </div>
+      </CraftPanel>
 
-        <section className="craft-panel">
-          <h2>怎么剪</h2>
-          <ol className="craft-steps">
-            <li>在折好的楔形纸上下笔，线要落在纸内。</li>
-            <li>从一边纸边剪到另一边，会切掉靠得近的那一侧。</li>
-            <li>画一个闭合的圈，纸中间就多一个孔洞。</li>
-            <li>展开后每一层都重复同一道切口，对称花纹就是这样来的。</li>
-          </ol>
-          <p className="craft-note">笔画会经过剪刀的自动修整；剪歪了随时撤销这一刀。</p>
-        </section>
+      <CraftPanel title="草稿">
+        <p className="craft-note">剪过的刀口会自动记住，刷新后接着剪。</p>
+        {draft.cuts.length > 0
+          ? (
+            <button
+              type="button"
+              className="craft-text-button"
+              onClick={() => { setDraft(clearCuts); sound.play('click'); }}
+            >
+              换一张新纸
+            </button>
+          )
+          : null}
+        {saveFailed ? <p className="craft-note craft-note--warn">这台浏览器没能保存草稿，刷新后可能丢失。</p> : null}
+      </CraftPanel>
+    </>
+  );
 
-        <section className="craft-panel">
-          <h2>草稿</h2>
-          <p className={saveFailed ? 'craft-note craft-note--warn' : 'craft-note'}>
-            {saveFailed ? '浏览器存储不可用：刷新后这张纸会丢失，满意时请先导出 PNG。' : '剪法自动保存在此浏览器，刷新可以接着剪。'}
-          </p>
-          {draft.started && draft.view !== 'trim' && <button type="button" className="craft-text-button" onClick={toTrim}><Scissors size={15} />回到修剪</button>}
-        </section>
-      </aside>
-    </div>
+  return (
+    <CraftHull
+      icon={<PaperCutIcon />}
+      title="剪纸窗花"
+      gameClass="paper-game"
+      attrs={{
+        'data-ready': ready ? 'true' : 'false',
+        'data-folds': folds,
+        'data-cuts': draft.cuts.length,
+        'data-unfold': spread.toFixed(3),
+        'data-view': draft.view,
+      }}
+      workspace={workspace}
+      sidebar={sidebar}
+    />
+  );
+}
 
-    <svg ref={artifactRef} className="paper-export" width="1200" height="1200"
-      viewBox={`${-PAPER_RADIUS - 40} ${-PAPER_RADIUS - 40} ${(PAPER_RADIUS + 40) * 2} ${(PAPER_RADIUS + 40) * 2}`}
-      xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-      <PaperSheet uid={`${uid}-export`} folds={draft.folds} color={draft.color} cuts={draft.cuts} spread={1} />
+/** 案面：一块木色台面，纸放上去。纯装饰。 */
+function DeskSurface() {
+  return (
+    <g className="paper-desk">
+      <rect x={0} y={0} width={VIEW_W} height={VIEW_H} rx={24} className="paper-desk__table" />
+      <ellipse
+        cx={CENTER_X}
+        cy={CENTER_Y + 10}
+        rx={PAPER_RADIUS * PAPER_SCALE * 0.98}
+        ry={PAPER_RADIUS * PAPER_SCALE * 0.98}
+        className="paper-desk__shadow"
+      />
+    </g>
+  );
+}
+
+/** 窗景：一块带格子的窗玻璃与透进来的光。纯装饰，只为看花纹透光的样子。 */
+function WindowScene() {
+  return (
+    <g className="paper-window">
+      <rect x={0} y={0} width={VIEW_W} height={VIEW_H} rx={24} className="paper-window__glass" />
+      <g className="paper-window__frame">
+        <rect x={0} y={0} width={VIEW_W} height={VIEW_H} rx={24} />
+        <line x1={VIEW_W / 2} y1={0} x2={VIEW_W / 2} y2={VIEW_H} />
+        <line x1={0} y1={VIEW_H / 2} x2={VIEW_W} y2={VIEW_H / 2} />
+        <line x1={VIEW_W / 4} y1={0} x2={VIEW_W / 4} y2={VIEW_H} />
+        <line x1={(VIEW_W * 3) / 4} y1={0} x2={(VIEW_W * 3) / 4} y2={VIEW_H} />
+      </g>
+    </g>
+  );
+}
+
+/**
+ * 成品：完全摊平后的窗花，透明底。
+ *
+ * 与屏幕共用同一份几何（`layerTransform` + `cutMaskShape` + `pathOf`），
+ * 所以导出的就是看到的 —— 差异只有"摊平"这一个必然的姿态。
+ */
+function PaperArtifact({
+  draft,
+  artifactRef,
+}: {
+  draft: PaperDraft;
+  artifactRef: React.RefObject<SVGSVGElement | null>;
+}) {
+  const size = PAPER_RADIUS * 2 + 40;
+  const color = paperColor(draft.color);
+  const wedgePath = pathOf(wedgeBoundary(draft.folds), true);
+  const maskId = 'paper-export-mask';
+
+  return (
+    <svg
+      ref={artifactRef}
+      className="craft-export-svg"
+      viewBox={`0 0 ${size} ${size}`}
+      width={size}
+      height={size}
+      aria-hidden="true"
+    >
+      <defs>
+        <mask id={maskId} maskUnits="userSpaceOnUse" x={-PAPER_RADIUS} y={-PAPER_RADIUS} width={PAPER_RADIUS * 2} height={PAPER_RADIUS * 2}>
+          <rect x={-PAPER_RADIUS} y={-PAPER_RADIUS} width={PAPER_RADIUS * 2} height={PAPER_RADIUS * 2} fill="#fff" />
+          {draft.cuts.map((cut) => {
+            const shape = cutMaskShape(cut);
+            return shape.mode === 'fill'
+              ? <path key={cut.id} d={pathOf(cut.points, true)} fill="#000" />
+              : <path key={cut.id} d={pathOf(cut.points)} stroke="#000" strokeWidth={KERF_WIDTH} fill="none" strokeLinecap="round" strokeLinejoin="round" />;
+          })}
+        </mask>
+      </defs>
+      <g transform={`translate(${size / 2} ${size / 2}) rotate(${displayRotationOf(draft.folds).toFixed(3)})`}>
+        {Array.from({ length: layerCount(draft.folds) }, (_, index) => (
+          <g key={index} transform={layerTransform(draft.folds, index)}>
+            <path d={wedgePath} fill={color.fill} mask={`url(#${maskId})`} />
+          </g>
+        ))}
+      </g>
     </svg>
-  </div>;
+  );
 }
