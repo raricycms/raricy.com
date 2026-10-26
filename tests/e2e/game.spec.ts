@@ -30,10 +30,11 @@ test('玩具入口：四张首页卡按故事、玩具、博客、工具排列�
 
   await page.locator('.game-collection[href="/game/collections/test"]').click();
   await expect(page).toHaveURL('/game/collections/test');
-  await expect(page.locator('.game-card')).toHaveCount(10);
+  await expect(page.locator('.game-card')).toHaveCount(11);
   await expect(page.locator('.game-card[href="/game/hinge2"]')).toHaveCount(1);
   await expect(page.locator('.game-collection[href="/game/collections/test/craft"]')).toHaveCount(1);
   await expect(page.locator('.game-card[href="/game/lumen"]')).toHaveCount(1);
+  await expect(page.locator('.game-card[href="/game/lumen2"]')).toHaveCount(1);
   await expect(page.locator('.game-card[href="/game/twinshade"]')).toHaveCount(1);
 });
 

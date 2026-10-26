@@ -83,6 +83,7 @@ const RESPONSIVE_SPECS: RegExp[] = [
   // project 里都该跑，而 testMatch 只能到文件粒度（见上方注释）。
   /twinshade\.spec\.ts$/,
   /lumen\.spec\.ts$/,
+  /lumen2\.spec\.ts$/,
   /yiwen\.spec\.ts$/,
   /hinge\.spec\.ts$/,
   /hinge2\.spec\.ts$/,

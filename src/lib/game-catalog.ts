@@ -105,6 +105,17 @@ export const GAMES = [
     icon: 'yiwen',
   },
   {
+    id: 'lumen2',
+    title: '折光 2',
+    description: '有限的镜片，两束相互牵制的光。12 道关于放置、留空与共用的光路谜题，不计步数，只看解法。',
+    category: 'puzzle',
+    modes: ['solo'],
+    href: '/game/lumen2',
+    runtime: 'native',
+    collectionId: 'test',
+    icon: 'lumen',
+  },
+  {
     id: 'lumen',
     title: '折光',
     description: '转动镜片，让光线分流、交汇、穿过传送门。22 个循序渐进的光路谜题，支持提示、撤销与进度保存。',
