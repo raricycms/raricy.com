@@ -275,6 +275,6 @@ export async function reviewQuote(quoteId: string, adminId: string, action: unkn
       ...auditAction, adminId, targetUserId: quote.submitterId,
       objectType: 'daily_quote', objectId: quoteId, reason: trimmed || null,
       visibility: 'internal', hideTarget: quote.signature === 'anonymous', createdAt: nowForDb(),
-    } });
+    }, select: { id: true } }); // 不回读 extra（JSON 列）
   });
 }
