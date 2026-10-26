@@ -1,0 +1,31 @@
+{
+  "//": [
+    "`npm run typecheck` 用的配置 —— 与 tsconfig.json 的唯一差别是**不 include .next/types**。",
+    "",
+    "【为什么要单独一份】根 tsconfig 的 include 里有 \".next/types/**/*.ts\"（Next 需要它才能",
+    "把生成的路由类型喂给 `next build` 的类型检查）。它是**构建产物**，不随源码删改而即时更新，",
+    "于是 `npx tsc --noEmit` 会在 .next 过期时报出一批指向**早已删除的路由**的",
+    "`Cannot find module '.../page.js'` —— 实测踩过 4 条指向已删除 photowall 路由的幻影错误，",
+    "跑一次 `npm run build` 后自行消失。更糟的是同一个陈旧状态会让 `build` 自己挂在类型检查那步",
+    "(CLAUDE.md「常用命令」第 2 条记着整件事)。",
+    "",
+    "所以「我只想确认自己改的代码类型对不对」这件事，不该被构建产物的陈旧度污染。",
+    "这份配置只查源码（src / tests / scripts / services），不读任何 .next 产物。",
+    "",
+    "实测（本机 8 核）：npm run typecheck 168.8s（exit 0）；只查 src 的变体 18.8s。",
+    "改完一个文件想快速看一眼时，用 `npx tsc -p tsconfig.typecheck.json --noEmit` 仍然慢，",
+    "那就先跑相关单测 —— 见 CLAUDE.md「验证纪律」。"
+  ],
+  "extends": "./tsconfig.json",
+  "include": [
+    "next-env.d.ts",
+    "src/**/*.ts",
+    "src/**/*.tsx",
+    "tests/**/*.ts",
+    "tests/**/*.tsx",
+    "scripts/**/*.ts",
+    "scripts/**/*.mjs",
+    "services/**/*.ts"
+  ],
+  "exclude": ["node_modules", ".next", "services/realtime/dist"]
+}
