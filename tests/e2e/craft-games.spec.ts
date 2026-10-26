@@ -65,40 +65,52 @@ test('手工间合集：从测试合集进入，三件手工都能从卡片打�
   await expect(page).toHaveURL('/game/collections/test/craft');
 });
 
-test('小小织布机：选经线、穿梭、压紧、撤销、刷新续织与导出', async ({ page }) => {
+test('小小织布机：拖一趟就是一行、换色只影响之后的行、撤销、刷新续织与导出', async ({ page }) => {
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));
   await page.goto('/game/loom');
   const game = page.locator('.loom-game');
   await expect(game).toHaveAttribute('data-ready', 'true');
-
-  await page.getByRole('button', { name: '靛青' }).click();
-  await page.getByRole('button', { name: '开始织布' }).click();
-  await expect(game).toHaveAttribute('data-started', 'true');
   await expect(game).toHaveAttribute('data-rows', '0');
 
-  await page.getByRole('button', { name: '穿完这一行' }).click();
-  await expect(page.getByRole('button', { name: '压紧这一行' })).toBeEnabled();
-  await page.getByRole('button', { name: '压紧这一行' }).click();
-  await expect(game).toHaveAttribute('data-rows', '1');
+  // 布面在 viewBox 里的横向跨度是 168..552（左端到右端）。拖动要比这更宽一点：
+  // 进度是按指针的绝对位置算的，没走到对岸就不成行。
+  //
+  // ⚠️ 每趟都**现算**落点：点侧栏的梭线按钮会触发自动滚动，页面一滚旧坐标就偏了。
+  const pass = async (fromX: number, toX: number) => {
+    const from = await viewBoxPoint(page, '.loom-stage', 720, 600, fromX, 200);
+    const to = await viewBoxPoint(page, '.loom-stage', 720, 600, toX, 200);
+    await drag(page, from, to);
+  };
 
-  await page.getByRole('button', { name: '靛蓝', exact: true }).click();
-  await page.getByRole('button', { name: '穿完这一行' }).click();
-  await page.getByRole('button', { name: '压紧这一行' }).click();
+  // 一来一回两趟 = 两行，中间不需要点任何按钮 —— 这正是"连贯"的那个要求。
+  await pass(120, 630);
+  await expect(game).toHaveAttribute('data-rows', '1');
+  await pass(630, 120);
   await expect(game).toHaveAttribute('data-rows', '2');
 
-  await page.getByRole('button', { name: '撤销' }).click();
-  await expect(game).toHaveAttribute('data-rows', '1');
+  // 换梭线之后再织两行：前两行的颜色不该被改掉。
+  await page.getByRole('button', { name: '茜红' }).click();
+  await pass(120, 630);
+  await expect(game).toHaveAttribute('data-rows', '3');
+  await pass(630, 120);
+  await expect(game).toHaveAttribute('data-rows', '4');
+  await expect.poll(() => page.evaluate(() => {
+    const draft = JSON.parse(localStorage.getItem('craft-loom-v2') ?? '{}');
+    return Array.isArray(draft.rows) ? draft.rows.map((row: { color: number }) => row.color) : [];
+  })).toEqual([0, 0, 2, 2]);
+
+  await page.getByRole('button', { name: '退回一趟' }).click();
+  await expect(game).toHaveAttribute('data-rows', '3');
   // 草稿写入有 220ms 防抖；刷新前等到盘上确实是这一行。
   await expect.poll(() => page.evaluate(() => {
-    const draft = JSON.parse(localStorage.getItem('craft-loom-v1') ?? '{}');
+    const draft = JSON.parse(localStorage.getItem('craft-loom-v2') ?? '{}');
     return Array.isArray(draft.rows) ? draft.rows.length : -1;
-  })).toBe(1);
+  })).toBe(3);
 
   await page.reload();
   await expect(game).toHaveAttribute('data-ready', 'true');
-  await expect(game).toHaveAttribute('data-rows', '1');
-  await expect(game).toHaveAttribute('data-started', 'true');
+  await expect(game).toHaveAttribute('data-rows', '3');
 
   await page.getByRole('button', { name: '收边完成' }).click();
   await expect(game).toHaveAttribute('data-finished', 'true');
@@ -109,62 +121,85 @@ test('小小织布机：选经线、穿梭、压紧、撤销、刷新续织与�
   expect(errors).toEqual([]);
 });
 
-test('剪纸窗花：剪一刀、撤销、补一刀、展开与透明底导出', async ({ page }) => {
+test('剪纸窗花：折好的纸上一刀剪穿四层，展开是镜像对称的窗花', async ({ page }) => {
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));
   await page.goto('/game/papercut');
   const game = page.locator('.paper-game');
   await expect(game).toHaveAttribute('data-ready', 'true');
-
-  await page.getByRole('button', { name: '姜黄' }).click();
-  await page.getByRole('button', { name: '开始剪' }).click();
-  await expect(game).toHaveAttribute('data-started', 'true');
+  // 两折 = 四层，这是默认折法。
+  await expect(game).toHaveAttribute('data-folds', '2');
   await expect(game).toHaveAttribute('data-cuts', '0');
 
-  const cutStart = await viewBoxPoint(page, '.paper-stage', 720, 640, 360, 466 - 160 * 0.78);
-  const cutEnd = await viewBoxPoint(page, '.paper-stage', 720, 640, 360, 466 - 320 * 0.78);
-  await drag(page, cutStart, cutEnd);
+  /**
+   * 剪口的落点要落在**折好的楔形**里。
+   *
+   * 楔形在展开坐标里跨 `[0, θ]`（θ = 2π/4 = 90°），屏幕上按 `displayRotation`
+   * 立成朝上的一片，所以竖直向上（x = CENTER_X，y 比圆心小）一定在楔形内。
+   */
+  const cut = async (fromY: number, toY: number) => {
+    const start = await viewBoxPoint(page, '.paper-stage', 720, 640, 360, fromY);
+    const end = await viewBoxPoint(page, '.paper-stage', 720, 640, 360, toY);
+    await drag(page, start, end);
+  };
+
+  await cut(320 - 120, 320 - 210);
   await expect(game).toHaveAttribute('data-cuts', '1');
 
-  await page.getByRole('button', { name: '撤销这一刀' }).click();
+  await page.getByRole('button', { name: '撤销一刀' }).click();
   await expect(game).toHaveAttribute('data-cuts', '0');
 
-  const hole = [
-    { x: 360, y: 466 - 200 * 0.78 },
-    { x: 360 + 50 * 0.78, y: 466 - 200 * 0.78 },
-    { x: 360 + 50 * 0.78, y: 466 - 250 * 0.78 },
-    { x: 360, y: 466 - 250 * 0.78 },
-    { x: 360, y: 466 - 200 * 0.78 },
+  // 一个闭合的小方孔：一笔画圈，走完回到起点才算闭合。
+  const square = [
+    { x: 360, y: 320 - 200 },
+    { x: 360 + 34, y: 320 - 200 },
+    { x: 360 + 34, y: 320 - 250 },
+    { x: 360, y: 320 - 250 },
+    { x: 360, y: 320 - 200 },
   ];
-  const starts = await Promise.all(hole.map((point) => viewBoxPoint(page, '.paper-stage', 720, 640, point.x, point.y)));
-  await page.mouse.move(starts[0].x, starts[0].y);
+  const points = await Promise.all(square.map((point) => viewBoxPoint(page, '.paper-stage', 720, 640, point.x, point.y)));
+  await page.mouse.move(points[0].x, points[0].y);
   await page.mouse.down();
-  for (const point of starts.slice(1)) await page.mouse.move(point.x, point.y, { steps: 8 });
+  for (const point of points.slice(1)) await page.mouse.move(point.x, point.y, { steps: 8 });
   await page.mouse.up();
   await expect(game).toHaveAttribute('data-cuts', '1');
 
-  await page.getByRole('button', { name: '展开看看' }).click();
-  await expect(game).toHaveAttribute('data-view', 'unfolded');
-  await expect(page.locator('.paper-stage--result')).toBeVisible();
+  /**
+   * 纸默认是**折好**的（`unfold` 从 0 开始）—— 这正是"沉浸"的要求：先在折好的
+   * 一叠上剪，剪完再决定摊开多少。所以展开是滑杆，不是"展开看看"按钮。
+   */
+  await expect(game).toHaveAttribute('data-unfold', '0.000');
+  await expect(page.locator('.paper-unfold')).toBeVisible();
   await expect.poll(() => page.evaluate(() => {
-    const draft = JSON.parse(localStorage.getItem('craft-papercut-v1') ?? '{}');
-    return draft.view === 'unfolded' && Array.isArray(draft.cuts) ? draft.cuts.length : -1;
+    const draft = JSON.parse(localStorage.getItem('craft-papercut-v2') ?? '{}');
+    return Array.isArray(draft.cuts) ? draft.cuts.length : -1;
   })).toBe(1);
+
+  // 拖滑杆把纸摊平 —— 摊平之后看到的就是镜像对称的整朵窗花。
+  await page.locator('.paper-unfold').fill('100');
+  await expect(game).toHaveAttribute('data-unfold', '1.000');
+
+  // 折过、剪过了就不能再换折法 —— 会改变已经剪下的层数关系。
+  await expect(page.getByRole('button', { name: /三折/ })).toBeDisabled();
+
+  await page.getByRole('button', { name: '放到窗前' }).click();
+  await expect(game).toHaveAttribute('data-view', 'window');
+  await expect(page.locator('.paper-window')).toBeVisible();
 
   await page.reload();
   await expect(game).toHaveAttribute('data-ready', 'true');
-  await expect(game).toHaveAttribute('data-view', 'unfolded');
+  await expect(game).toHaveAttribute('data-view', 'window');
   await expect(game).toHaveAttribute('data-cuts', '1');
 
   await expectPngDownload(page, () => page.getByRole('button', { name: '导出 PNG' }).click());
   await expect(page.getByText('透明背景的窗花已导出。')).toBeVisible();
-  await page.getByRole('button', { name: '返回修剪' }).click();
+  await page.getByRole('button', { name: '回到案上' }).click();
   await expect(game).toHaveAttribute('data-view', 'trim');
   await expectNoOverflow(page);
   expect(errors).toEqual([]);
 });
 
-test('水面印花：滴颜料、拖针、撤销、铺纸、揭起、刷新与导出', async ({ page }) => {
+test('水面印花：滴颜料、梳出纹理、铺纸、揭起、刷新与导出', async ({ page }) => {
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));
   await page.goto('/game/marbling');
@@ -173,53 +208,65 @@ test('水面印花：滴颜料、拖针、撤销、铺纸、揭起、刷新与�
   await expect(game).toHaveAttribute('data-stage', 'water');
   await expect(game).toHaveAttribute('data-painted', 'false');
 
-  const canvas = page.locator('.marbling-canvas');
-  await canvas.scrollIntoViewIfNeeded();
-  const box = (await canvas.boundingBox())!;
-  await canvas.click({ position: { x: box.width * 0.46, y: box.height * 0.5 } });
+  /**
+   * 水面是 SVG（不是 canvas），颜料画在 `<image>` 里。
+   * 落点用 viewBox 坐标换算，别用 boundingBox 的百分比 —— 留白会让后者偏。
+   */
+  const POOL = { x: 88, y: 76, w: 544, h: 380 };
+  const poolPoint = (fx: number, fy: number) =>
+    viewBoxPoint(page, '.marbling-drag', 720, 560, POOL.x + POOL.w * fx, POOL.y + POOL.h * fy);
+
+  // 同一处连滴，颜色交替 —— 每滴把上一圈往外推，于是长出一圈套一圈的花纹。
+  /**
+   * ⚠️ 每次都**现算**落点：点侧栏按钮会让 Playwright 自动滚到按钮，页面一滚，
+   * 之前算好的屏幕坐标就全偏了（1280×720 下实测滚出 458px，滴不到水面上）。
+   */
+  const tapPool = async (fx: number, fy: number) => {
+    const point = await poolPoint(fx, fy);
+    await page.mouse.click(point.x, point.y);
+  };
+  for (const name of ['深青', '朱砂', '姜黄']) {
+    await page.getByRole('button', { name }).click();
+    await tapPool(0.5, 0.5);
+  }
   await expect(game).toHaveAttribute('data-painted', 'true');
 
-  await page.getByRole('button', { name: '针', exact: true }).click();
-  await expect(game).toHaveAttribute('data-tool', 'needle');
-  await canvas.scrollIntoViewIfNeeded();
-  const dragBox = (await canvas.boundingBox())!;
-  const before = await canvas.evaluate((node) => (node as HTMLCanvasElement).toDataURL());
-  await drag(page,
-    { x: dragBox.x + dragBox.width * 0.3, y: dragBox.y + dragBox.height * 0.45 },
-    { x: dragBox.x + dragBox.width * 0.7, y: dragBox.y + dragBox.height * 0.55 });
-  const after = await canvas.evaluate((node) => (node as HTMLCanvasElement).toDataURL());
-  expect(after).not.toBe(before);
+  // 梳子横扫：把同心环搓成波纹。
+  await page.getByRole('button', { name: '梳子' }).click();
+  await expect(game).toHaveAttribute('data-tool', 'comb');
+  await drag(page, await poolPoint(0.1, 0.5), await poolPoint(0.9, 0.5));
 
-  await page.getByRole('button', { name: '撤销' }).click();
-  await expect(page.getByRole('button', { name: '撤销' })).toBeEnabled();
-  await page.getByRole('button', { name: '撤销' }).click();
-  await expect(page.getByRole('button', { name: '撤销' })).toBeDisabled();
+  await page.getByRole('button', { name: '撤销一步' }).click();
+  await expect(page.getByRole('button', { name: '撤销一步' })).toBeEnabled();
 
-  await page.getByRole('button', { name: '滴管', exact: true }).click();
-  await canvas.click({ position: { x: box.width * 0.54, y: box.height * 0.42 } });
-  await expect(game).toHaveAttribute('data-painted', 'true');
-  await page.getByRole('button', { name: '铺纸' }).click();
+  // 铺纸：抓住纸沿往下拖到底（绝对映射，拖到哪铺到哪）。
+  await drag(page, await poolPoint(0.5, 0), await poolPoint(0.5, 1));
+  await expect(game).toHaveAttribute('data-lay', '1.000');
   await expect(game).toHaveAttribute('data-stage', 'paper');
-  await page.getByRole('button', { name: '揭起纸' }).click();
+
+  // 揭起来才是成品。
+  await drag(page, await poolPoint(0.5, 1), await poolPoint(0.5, 0));
+  await expect(game).toHaveAttribute('data-print', 'true');
   await expect(game).toHaveAttribute('data-stage', 'print');
-  await expect(page.locator('.marbling-print__canvas')).toBeVisible();
+  await expect(page.locator('.marbling-paper')).toHaveCount(0);
+
   await expect.poll(() => page.evaluate(() => {
-    const draft = JSON.parse(localStorage.getItem('craft-marbling-v1') ?? '{}');
+    const draft = JSON.parse(localStorage.getItem('craft-marbling-v2') ?? '{}');
     return draft.stage === 'print' && draft.print ? 'print' : draft.stage;
   })).toBe('print');
 
   await page.reload();
   await expect(game).toHaveAttribute('data-ready', 'true');
   await expect(game).toHaveAttribute('data-stage', 'print');
-  await expect(page.locator('.marbling-print__canvas')).toBeVisible();
+  await expect(game).toHaveAttribute('data-print', 'true');
 
   await expectPngDownload(page, () => page.getByRole('button', { name: '导出 PNG' }).click());
-  await expect(page.getByText('印张已导出。')).toBeVisible();
+  await expect(page.getByText('成品已导出。')).toBeVisible();
 
-  page.once('dialog', (dialog) => dialog.accept());
-  await page.locator('.marbling-result').getByRole('button', { name: '再印一张' }).click();
+  // 再印一张：水面留着，纸收起来 —— 没有确认弹窗。
+  await page.getByRole('button', { name: '再印一张' }).click();
   await expect(game).toHaveAttribute('data-stage', 'water');
-  await expect(game).toHaveAttribute('data-painted', 'false');
+  await expect(game).toHaveAttribute('data-painted', 'true');
   await expectNoOverflow(page);
   expect(errors).toEqual([]);
 });
