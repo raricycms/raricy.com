@@ -1,429 +1,538 @@
 'use client';
 
-import Link from 'next/link';
-import { useEffect, useMemo, useRef, useState, type PointerEvent } from 'react';
-import { ArrowLeft, Check, Download, Droplet, Layers, RotateCcw, Undo2, Volume2, VolumeX } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Download, RefreshCw, Undo2 } from 'lucide-react';
+import { CraftHull, CraftPanel } from '../CraftHull';
 import { downloadCanvas } from '../download';
-import { CombIcon, MarblingIcon, NeedleIcon } from '../icons';
-import { useCraftSound } from '../sound';
+import { MarblingIcon } from '../icons';
 import { useCraftDraft } from '../use-draft';
+import { useCraftSound } from '../sound';
 import {
-  combStroke, decodeGrid, dropPaint, emptyGrid, freshMarbling, gridHasPaint,
-  MARBLING_EMPTY, MARBLING_H, MARBLING_MAX_HISTORY, MARBLING_PALETTES, MARBLING_SAVE_KEY, MARBLING_W,
-  encodeGrid, marblingPalette, needleStroke, parseMarblingDraft, printMarbling, setMarblingColor,
-  setMarblingPalette, setMarblingTool, type MarblingDraft, type MarblingPrint, type MarblingTool,
+  MARBLING_COLORS,
+  MARBLING_H,
+  MARBLING_PALETTES,
+  MARBLING_SAVE_KEY,
+  MARBLING_W,
+  clearMarbling,
+  colorValueAt,
+  combStroke,
+  decodeGrid,
+  dropPaint,
+  freshMarbling,
+  gridHasPaint,
+  marblingPalette,
+  needleStroke,
+  parseMarblingDraft,
+  reprintMarbling,
+  setMarblingColor,
+  setMarblingLay,
+  setMarblingPalette,
+  setMarblingTool,
+  undoMarbling,
+  valueHex,
+  withGrid,
+  type MarblingTool,
 } from './engine';
 
-type RGB = [number, number, number];
-const WATER: RGB = [222, 236, 233];
-const PAPER: RGB = [244, 237, 221];
-
-const TOOLS: { id: MarblingTool; name: string; hint: string }[] = [
-  { id: 'drop', name: '滴管', hint: '点一下水面滴入一滴颜料。后滴的颜色会把先前的花纹推开。' },
-  { id: 'needle', name: '针', hint: '按住拖动，针尖会拉出局部的弧线。' },
-  { id: 'comb', name: '梳子', hint: '按住拖动，梳齿会拉出一排平行的纹理。' },
-];
-
-function hexToRgb(hex: string): RGB {
-  const value = Number.parseInt(hex.slice(1), 16);
-  return [(value >> 16) & 255, (value >> 8) & 255, value & 255];
-}
-
+/** 台面尺寸。水面与纸共用这一块。 */
+const VIEW_W = 720;
+const VIEW_H = 560;
+/** 水面在台面上的矩形。 */
+const POOL = { x: 88, y: 76, w: 544, h: 380 };
 /**
- * 把低分辨率色格放大成水盆或纸上的画面。水盆保留底色与水光；印张走纸底 + 正片叠底，
- * 空白格保持纸面，最后补一层纸纤维。导出的画布走同一份函数，屏幕上与文件里不会两样。
+ * 画布相对网格的放大倍率。
+ *
+ * 网格本身已经是 480×336；再乘 1 就够（SVG 的 `<image>` 会做平滑放大）。乘大多
+ * 只是把内存翻倍 —— 颜料是无损放大的，多出来的像素不会更清晰。
  */
-function paintGrid(target: HTMLCanvasElement, buffer: HTMLCanvasElement, grid: Uint8Array,
-  paletteId: string, mode: 'water' | 'print'): void {
-  const colors = marblingPalette(paletteId).colors.map(hexToRgb);
-  buffer.width = MARBLING_W;
-  buffer.height = MARBLING_H;
-  const bufferContext = buffer.getContext('2d');
-  if (!bufferContext) return;
-  const image = bufferContext.createImageData(MARBLING_W, MARBLING_H);
-  const data = image.data;
-  for (let i = 0; i < grid.length; i += 1) {
-    const value = grid[i];
-    const offset = i * 4;
-    if (value === MARBLING_EMPTY) {
-      if (mode === 'print') { data[offset + 3] = 0; continue; }
-      data[offset] = WATER[0]; data[offset + 1] = WATER[1]; data[offset + 2] = WATER[2]; data[offset + 3] = 255;
-    } else {
-      const rgb = colors[value] ?? WATER;
-      data[offset] = rgb[0]; data[offset + 1] = rgb[1]; data[offset + 2] = rgb[2]; data[offset + 3] = 255;
-    }
-  }
-  bufferContext.putImageData(image, 0, 0);
-  const context = target.getContext('2d');
-  if (!context) return;
-  const width = target.width;
-  const height = target.height;
-  context.setTransform(1, 0, 0, 1, 0, 0);
-  context.clearRect(0, 0, width, height);
-  context.imageSmoothingEnabled = true;
-  context.imageSmoothingQuality = 'high';
-  if (mode === 'print') {
-    context.fillStyle = '#f4eddd';
-    context.fillRect(0, 0, width, height);
-    context.globalCompositeOperation = 'multiply';
-    context.globalAlpha = 0.96;
-    context.drawImage(buffer, 0, 0, width, height);
-    context.globalAlpha = 1;
-    context.globalCompositeOperation = 'source-over';
-    context.strokeStyle = 'rgba(120, 98, 62, .08)';
-    context.lineWidth = Math.max(1, width / 1000);
-    for (let line = 0; line < 22; line += 1) {
-      const y = (line + 0.5) / 22 * height;
-      context.beginPath();
-      context.moveTo(0, y);
-      context.lineTo(width, y + Math.sin(line * 1.7) * 3);
-      context.stroke();
-    }
-    context.strokeStyle = 'rgba(120, 98, 62, .16)';
-    context.lineWidth = Math.max(1, width / 800);
-    context.strokeRect(0.5, 0.5, width - 1, height - 1);
-  } else {
-    context.drawImage(buffer, 0, 0, width, height);
-    const sheen = context.createLinearGradient(0, 0, width, height);
-    sheen.addColorStop(0, 'rgba(255, 255, 255, .2)');
-    sheen.addColorStop(0.45, 'rgba(255, 255, 255, 0)');
-    sheen.addColorStop(1, 'rgba(23, 58, 52, .08)');
-    context.fillStyle = sheen;
-    context.fillRect(0, 0, width, height);
-  }
+const SUPERSAMPLE = 1;
+
+const WATER_RGB: [number, number, number] = [222, 236, 233];
+const PAPER_RGB: [number, number, number] = [244, 237, 221];
+
+/** 指针的客户端坐标 → 网格坐标 + 纵向比例。 */
+function toGrid(svg: SVGSVGElement, clientX: number, clientY: number) {
+  const box = svg.getBoundingClientRect();
+  const scale = Math.min(box.width / VIEW_W, box.height / VIEW_H) || 1;
+  const offsetX = (box.width - VIEW_W * scale) / 2;
+  const offsetY = (box.height - VIEW_H * scale) / 2;
+  const stageX = (clientX - box.left - offsetX) / scale;
+  const stageY = (clientY - box.top - offsetY) / scale;
+  return {
+    x: ((stageX - POOL.x) / POOL.w) * MARBLING_W,
+    y: ((stageY - POOL.y) / POOL.h) * MARBLING_H,
+    stageX,
+    stageY,
+    inside: stageX >= POOL.x && stageX <= POOL.x + POOL.w && stageY >= POOL.y && stageY <= POOL.y + POOL.h,
+  };
+}
+/**
+ * 纸的下沿在台面上的 y —— 也就是 `lay` 与手指位置的唯一换算关系。
+ *
+ * lay=0 时下沿正好在水面顶边（纸只露在水面上方一道），lay=1 时下沿压到水面底边
+ * （整张纸盖住了水）。于是"抓纸沿从水面顶拖到水面底"就是 0 → 1，手感与画面同一件事。
+ */
+const PAPER_EDGE = 26;
+/** 抓纸的容差（台面单位）。比纸沿本身宽一点，手指按不准也能抓住。 */
+const GRAB_SLOP = 34;
+/** 松手时的吸附：差这么一点就算拖到底 / 揭到底，不用手指精确停在边上。 */
+const LAY_SNAP = 0.09;
+
+function paperBottomY(lay: number): number {
+  return POOL.y + lay * POOL.h;
 }
 
-function PrintSheet({ print }: { print: MarblingPrint }) {
-  const ref = useRef<HTMLCanvasElement>(null);
-  const buffer = useRef<HTMLCanvasElement | null>(null);
-  const grid = useMemo(() => decodeGrid(print.cells), [print.cells]);
-  useEffect(() => {
-    if (!ref.current || !grid) return;
-    if (!buffer.current) buffer.current = document.createElement('canvas');
-    paintGrid(ref.current, buffer.current, grid, print.palette, 'print');
-  }, [grid, print.palette]);
-  return <canvas ref={ref} width={1000} height={700} className="marbling-print__canvas"
-    role="img" aria-label="印好的水面印花" />;
+/** `paperBottomY` 的逆函数：手指的台面 y → 纸的覆盖进度。 */
+function layAtStageY(stageY: number): number {
+  return (stageY - POOL.y) / POOL.h;
+}
+
+/** 网格 → canvas；`print` 为真时按"颜料吸在纸上"混合。 */
+function paintCanvas(canvas: HTMLCanvasElement, grid: Uint8Array, print: boolean): string {
+  canvas.width = MARBLING_W * SUPERSAMPLE;
+  canvas.height = MARBLING_H * SUPERSAMPLE;
+  const context = canvas.getContext('2d');
+  if (!context) return '';
+  const image = context.createImageData(canvas.width, canvas.height);
+  for (let y = 0; y < canvas.height; y += 1) {
+    const gy = Math.min(MARBLING_H - 1, Math.floor(y / SUPERSAMPLE));
+    for (let x = 0; x < canvas.width; x += 1) {
+      const gx = Math.min(MARBLING_W - 1, Math.floor(x / SUPERSAMPLE));
+      const hex = valueHex(grid[gy * MARBLING_W + gx]);
+      const offset = (y * canvas.width + x) * 4;
+      // 纸纤维：一点点确定性噪点，让成品看起来是吸在纸上的，而不是打印的色块。
+      const fiber = (((x * 7 + y * 13) % 11) / 11 - 0.5) * (print ? 7 : 3);
+      if (!hex) {
+        const base = print ? PAPER_RGB : WATER_RGB;
+        image.data[offset] = base[0] + fiber;
+        image.data[offset + 1] = base[1] + fiber;
+        image.data[offset + 2] = base[2] + fiber;
+      } else {
+        const r = parseInt(hex.slice(1, 3), 16);
+        const g = parseInt(hex.slice(3, 5), 16);
+        const b = parseInt(hex.slice(5, 7), 16);
+        if (print) {
+          // 颜料是半透明的：以纸色为底做一次正片叠底，白纸处的留白才不是死白。
+          image.data[offset] = (r * PAPER_RGB[0]) / 255 + fiber;
+          image.data[offset + 1] = (g * PAPER_RGB[1]) / 255 + fiber;
+          image.data[offset + 2] = (b * PAPER_RGB[2]) / 255 + fiber;
+        } else {
+          image.data[offset] = r + fiber;
+          image.data[offset + 1] = g + fiber;
+          image.data[offset + 2] = b + fiber;
+        }
+      }
+      image.data[offset + 3] = 255;
+    }
+  }
+  context.putImageData(image, 0, 0);
+  return canvas.toDataURL('image/png');
 }
 
 export default function Marbling() {
-  const { draft, setDraft, ready, saveFailed } = useCraftDraft<MarblingDraft>(MARBLING_SAVE_KEY, freshMarbling, parseMarblingDraft);
+  const { draft, setDraft, ready, saveFailed } = useCraftDraft(MARBLING_SAVE_KEY, freshMarbling, parseMarblingDraft);
   const sound = useCraftSound();
-  const [version, setVersion] = useState(0);
-  const [historyDepth, setHistoryDepth] = useState(0);
-  const [notice, setNotice] = useState('');
-  const [exporting, setExporting] = useState(false);
-  const waterRef = useRef<HTMLCanvasElement>(null);
-  const bufferRef = useRef<HTMLCanvasElement | null>(null);
-  const gridRef = useRef<Uint8Array>(emptyGrid());
-  const history = useRef<Uint8Array[]>([]);
-  const drag = useRef<{ pointer: number; last: { x: number; y: number }; tool: 'needle' | 'comb'; started: boolean } | null>(null);
-
-  useEffect(() => {
-    if (!ready) return;
-    const decoded = decodeGrid(draft.cells);
-    if (decoded) {
-      gridRef.current = decoded;
-      setVersion((value) => value + 1);
-      setHistoryDepth(history.current.length);
-    }
-  }, [ready, draft.cells]);
-
-  useEffect(() => {
-    if (!ready || !waterRef.current) return;
-    if (!bufferRef.current) bufferRef.current = document.createElement('canvas');
-    paintGrid(waterRef.current, bufferRef.current, gridRef.current, draft.palette, 'water');
-  }, [ready, version, draft.palette, draft.stage]);
+  const [note, setNote] = useState<string | null>(null);
+  const [exportFailed, setExportFailed] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [dragging, setDragging] = useState(false);
+  const stageRef = useRef<SVGSVGElement | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const printRef = useRef<HTMLCanvasElement | null>(null);
+  /** 上一次的网格坐标（拖拽用）。 */
+  const lastRef = useRef<{ x: number; y: number } | null>(null);
+  /** 铺纸手势的起点进度；非 null 表示当前手势在铺/揭纸。 */
+  const layRef = useRef<number | null>(null);
 
   const palette = marblingPalette(draft.palette);
-  const tool = TOOLS.find((entry) => entry.id === draft.tool) ?? TOOLS[0];
-  const painted = gridHasPaint(gridRef.current);
-  const print = draft.print;
-  const printedGrid = useMemo(() => print ? decodeGrid(print.cells) : null, [print]);
+  /** 当前网格。草稿里存的是游程编码，渲染与手势都要真数组。 */
+  const grid = useMemo(() => decodeGrid(draft.cells) ?? new Uint8Array(MARBLING_W * MARBLING_H), [draft.cells]);
+  const printedGrid = useMemo(() => (draft.print ? decodeGrid(draft.print) : null), [draft.print]);
 
-  function redraw(grid: Uint8Array) {
-    if (!waterRef.current) return;
-    if (!bufferRef.current) bufferRef.current = document.createElement('canvas');
-    paintGrid(waterRef.current, bufferRef.current, grid, draft.palette, 'water');
-  }
+  /**
+   * 水面与成品两幅位图。
+   *
+   * 【为什么先画进 canvas 再以 `<image>` 引用】SVG 里放不了 canvas，而逐格画四万个
+   * `<rect>` 既慢又是马赛克。网格先铺进一块小 canvas，再让 SVG 平滑放大 —— 边界
+   * 自然融开，正是水面上颜料该有的样子。
+   *
+   * 【为什么用 state 存 data URL】渲染期读 ref 会拿到上一帧的图像。改成"画完存进
+   * state"，画面就与网格严格同一步。
+   */
+  const [waterUrl, setWaterUrl] = useState('');
+  const [printUrl, setPrintUrl] = useState('');
 
-  function remember(grid: Uint8Array) {
-    history.current.push(grid);
-    if (history.current.length > MARBLING_MAX_HISTORY) history.current.shift();
-    setHistoryDepth(history.current.length);
-  }
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (canvas) setWaterUrl(paintCanvas(canvas, grid, false));
+  }, [grid]);
 
-  function commit(grid: Uint8Array) {
-    gridRef.current = grid;
-    setDraft((current) => ({ ...current, cells: encodeGrid(grid) }));
-    setVersion((value) => value + 1);
-  }
+  useEffect(() => {
+    const canvas = printRef.current;
+    if (!canvas) return;
+    setPrintUrl(printedGrid ? paintCanvas(canvas, printedGrid, true) : '');
+  }, [printedGrid]);
 
-  function pointAt(event: PointerEvent<HTMLCanvasElement>) {
-    const rect = event.currentTarget.getBoundingClientRect();
-    return {
-      x: Math.max(0, Math.min(MARBLING_W, (event.clientX - rect.left) / rect.width * MARBLING_W)),
-      y: Math.max(0, Math.min(MARBLING_H, (event.clientY - rect.top) / rect.height * MARBLING_H)),
-    };
-  }
+  /** 提交一次改动画面的手势（滴、针、梳）—— 记一步历史。 */
+  const applyGrid = (next: Uint8Array) => {
+    setDraft((current) => withGrid(current, next));
+  };
 
-  function pointerDown(event: PointerEvent<HTMLCanvasElement>) {
-    if (!ready || draft.stage !== 'water' || event.button !== 0) return;
-    event.preventDefault();
-    const point = pointAt(event);
-    if (draft.tool === 'drop') {
-      const next = dropPaint(gridRef.current, point.x, point.y, draft.color);
-      remember(gridRef.current);
-      redraw(next);
-      commit(next);
-      sound.play('drop');
-      setNotice('滴入一滴颜料。再滴别的颜色，会把这一圈往外推开。');
+  const onPointerDown = (event: React.PointerEvent<SVGSVGElement>) => {
+    if (!ready) return;
+    const svg = stageRef.current;
+    if (!svg) return;
+    event.currentTarget.setPointerCapture(event.pointerId);
+    const point = toGrid(svg, event.clientX, event.clientY);
+
+    /**
+     * 【怎么分清"改颜料"和"铺纸"】两者都在同一块画面上，靠**抓在哪儿**分：
+     * 落在纸的下沿附近（或纸已经盖住水面时落在纸上）就是抓纸，其余都是往水里下工具。
+     *
+     * 不靠 `stage` 分，因为纸在 lay=0 时也是一直挂在那里的 —— 玩家随时能把它拖下来，
+     * 不需要先按一个"铺纸"按钮把状态切过去。这正是这一款最该连贯的地方。
+     */
+    const grabLine = paperBottomY(draft.lay);
+    const onPaper = draft.stage === 'print'
+      || Math.abs(point.stageY - grabLine) <= GRAB_SLOP
+      // 纸已经盖住一部分时，落在纸身上也算抓纸 —— 手在纸中间往下压同样自然。
+      || (draft.lay > 0.02 && point.stageY <= grabLine);
+    if (onPaper) {
+      layRef.current = draft.lay;
+      setDragging(true);
       return;
     }
-    drag.current = { pointer: event.pointerId, last: point, tool: draft.tool, started: false };
-    try { event.currentTarget.setPointerCapture(event.pointerId); } catch { /* 某些浏览器不支持 */ }
-  }
 
-  function pointerMove(event: PointerEvent<HTMLCanvasElement>) {
-    const state = drag.current;
-    if (!state || state.pointer !== event.pointerId) return;
-    const point = pointAt(event);
-    if (Math.hypot(point.x - state.last.x, point.y - state.last.y) < 1.2) return;
-    if (!state.started) {
-      remember(gridRef.current);
-      state.started = true;
+    if (!point.inside) return;
+    lastRef.current = { x: point.x, y: point.y };
+
+    if (draft.tool === 'drop') {
+      const value = colorValueAt(draft.palette, draft.color);
+      applyGrid(dropPaint(grid, point.x, point.y, value));
+      sound.play('drop');
+    } else {
+      sound.play('swish');
     }
-    const next = state.tool === 'needle'
-      ? needleStroke(gridRef.current, state.last, point)
-      : combStroke(gridRef.current, state.last, point);
-    gridRef.current = next;
-    redraw(next);
-    state.last = point;
-  }
+  };
 
-  function pointerUp(event: PointerEvent<HTMLCanvasElement>) {
-    const state = drag.current;
-    if (!state || state.pointer !== event.pointerId) return;
-    drag.current = null;
-    try { event.currentTarget.releasePointerCapture(event.pointerId); } catch { /* 已经释放 */ }
-    if (!state.started) return;
-    commit(gridRef.current);
-    sound.play('swish');
-    setNotice(state.tool === 'needle' ? '针尖拖出了一道弧线。继续拖，或者换梳子。' : '梳齿拉出了一排平行的纹理。');
-  }
+  const onPointerMove = (event: React.PointerEvent<SVGSVGElement>) => {
+    const svg = stageRef.current;
+    if (!svg) return;
+    const point = toGrid(svg, event.clientX, event.clientY);
 
-  function undo() {
-    const previous = history.current.pop();
-    if (!previous) return;
-    setHistoryDepth(history.current.length);
-    gridRef.current = previous;
-    redraw(previous);
-    setDraft((current) => ({ ...current, cells: encodeGrid(previous) }));
-    setVersion((value) => value + 1);
-    sound.play('click');
-    setNotice('退回上一笔。');
-  }
+    /**
+     * 铺纸/揭纸：**绝对映射** —— 纸的下沿就跟着手指走。
+     *
+     * `paperBottomY` 的逆函数：手指在哪，纸的下沿就到哪。与织布机、剪纸的展开滑杆
+     * 同理，逐帧累加会在方向翻转时把进度拽回去。
+     *
+     * 手指拖出画面上下边界时，`lay` 自己会被夹到 0 或 1 —— 所以"一路拖到底"
+     * 不需要手指精确停在池边，甩出去就算数。
+     */
+    if (layRef.current !== null) {
+      const lay = layAtStageY(point.stageY);
+      setDraft((current) => setMarblingLay(current, lay));
+      return;
+    }
 
-  function clearWater() {
-    if (!painted) { setNotice('水面已经是干净的。'); return; }
-    if (!window.confirm('清空水面会丢掉这一盆颜料。满意的话先用纸印下来。')) return;
-    const empty = emptyGrid();
-    history.current = [];
-    setHistoryDepth(0);
-    gridRef.current = empty;
-    redraw(empty);
-    setDraft((current) => ({ ...current, cells: encodeGrid(empty), print: null, stage: 'water' }));
-    setVersion((value) => value + 1);
-    setNotice('水面已经清空。');
-  }
+    if (!lastRef.current) return;
+    const from = lastRef.current;
+    const next = { x: point.x, y: point.y };
+    if (Math.hypot(next.x - from.x, next.y - from.y) < 0.6) return;
+    lastRef.current = next;
+    applyGrid(draft.tool === 'comb' ? combStroke(grid, from, next) : needleStroke(grid, from, next));
+  };
 
-  function choosePalette(id: string) {
-    if (id === draft.palette) return;
-    setDraft(setMarblingPalette(draft, id));
-    sound.play('click');
-    setNotice('换了配色；水里已有的颜料会一起变色。');
-  }
+  const endStroke = (event: React.PointerEvent<SVGSVGElement>) => {
+    try { event.currentTarget.releasePointerCapture(event.pointerId); } catch { /* 已释放 */ }
+    if (layRef.current !== null) {
+      layRef.current = null;
+      setDragging(false);
+      /**
+       * 松手时吸附到两头。
+       *
+       * 拖到 0.93 就停手是最常见的情况，差这一点点却会留在"纸还盖着一半"的中间态上，
+       * 而那个状态既没有成品、也不方便再下工具 —— 一次干净的吸附把"拖到底"变成
+       * 一个不需要瞄准的动作。中间区间（0.09..0.91）则老老实实停在那里。
+       */
+      setDraft((current) => {
+        if (current.lay >= 1 - LAY_SNAP) return setMarblingLay(current, 1);
+        if (current.lay <= LAY_SNAP) return setMarblingLay(current, 0);
+        return current;
+      });
+      if (draft.stage === 'print') sound.play('peel');
+      else if (draft.lay > 0.5) sound.play('lay');
+    }
+    lastRef.current = null;
+  };
 
-  function chooseColor(color: number) {
-    setDraft(setMarblingColor(draft, color));
-    sound.play('click');
-  }
+  const handleExport = async () => {
+    const canvas = printRef.current;
+    if (!canvas) return;
+    setBusy(true);
+    const ok = await downloadCanvas(canvas, '水面印花.png');
+    setBusy(false);
+    setExportFailed(!ok);
+    setNote(ok ? '成品已导出。' : null);
+  };
 
-  function chooseTool(next: MarblingTool) {
-    setDraft(setMarblingTool(draft, next));
-    sound.play('click');
-    setNotice(TOOLS.find((entry) => entry.id === next)?.hint ?? '');
-  }
+  const painted = gridHasPaint(grid);
+  const hasPrint = draft.print !== null;
 
-  function layPaper() {
-    if (!ready || draft.stage !== 'water') return;
-    if (!painted) { setNotice('水面还是空的，先滴几滴颜料。'); return; }
-    sound.play('click');
-    setDraft((current) => ({ ...current, stage: 'paper' }));
-    setNotice('纸覆在水面上，颜料被吸进了纸里。揭起来看看。');
-  }
+  const status = !ready
+    ? '正在读取草稿…'
+    : draft.stage === 'print' && hasPrint
+      ? '这张已经揭起来了。'
+      : draft.lay > 0.98
+        ? '纸贴住了水面，往上拖揭起来。'
+        : draft.lay > 0.02
+          ? '纸正盖下去，拖到底再往上揭。'
+          : painted
+            ? '再滴几滴，或用针和梳子拉出纹理。'
+            : '先在水面上滴几滴颜料。';
 
-  function liftPaper() {
-    sound.play('lift');
-    const snapshot = printMarbling(gridRef.current, draft.palette);
-    setDraft((current) => ({ ...current, stage: 'print', print: snapshot }));
-    setNotice('揭起来就是这张印张。可以导出，或者再印一张。');
-  }
-
-  function newPrint() {
-    if (!window.confirm('再印一张会清空水面和这张印张；满意的话先导出 PNG。')) return;
-    const empty = emptyGrid();
-    history.current = [];
-    setHistoryDepth(0);
-    gridRef.current = empty;
-    setDraft((current) => ({ ...current, cells: encodeGrid(empty), print: null, stage: 'water' }));
-    setNotice('换了一盆清水，重新滴颜料吧。');
-  }
-
-  async function exportPrint() {
-    if (!print || !printedGrid || exporting) return;
-    setExporting(true);
-    const canvas = document.createElement('canvas');
-    canvas.width = 1600;
-    canvas.height = 1120;
-    const buffer = document.createElement('canvas');
-    paintGrid(canvas, buffer, printedGrid, print.palette, 'print');
-    const ok = await downloadCanvas(canvas, '聪明山-水面印花.png');
-    setExporting(false);
-    setNotice(ok ? '印张已导出。' : '导出失败，请检查浏览器是否拦截了下载。');
-  }
-
-  const heading = draft.stage === 'water' ? '滴颜料，拖出纹理' : draft.stage === 'paper' ? '纸吸住了花纹' : '揭起来的样子';
-  const eyebrow = draft.stage === 'water' ? '水盆' : draft.stage === 'paper' ? '覆纸' : '印张';
-
-  return <div className="container craft-game marbling-game" data-ready={ready} data-stage={draft.stage}
-    data-tool={draft.tool} data-painted={painted}>
-    <header className="craft-header">
-      <div className="craft-title">
-        <Link className="craft-icon-button" href="/game/collections/test/craft" aria-label="返回手工间"><ArrowLeft size={20} /></Link>
-        <span className="craft-logo"><MarblingIcon /></span>
-        <h1>水面印花 <small>手工间</small></h1>
-      </div>
-      <div className="craft-actions">
-        <button type="button" className="craft-icon-button" onClick={sound.toggle} aria-label={sound.muted ? '开启音效' : '关闭音效'}>
-          {sound.muted ? <VolumeX size={19} /> : <Volume2 size={19} />}
-        </button>
-      </div>
-    </header>
-
-    <div className="craft-layout">
-      <section className="craft-workspace" aria-label="水面印花工作台">
-        <div className="craft-stage-heading">
-          <div>
-            <p className="craft-eyebrow">{eyebrow}</p>
-            <h2>{heading}</h2>
-          </div>
-          <span className="craft-status">{palette.name} · {painted ? '水面有颜料' : '清水'}</span>
+  const workspace = (
+    <>
+      <div className="craft-stage-heading">
+        <div>
+          <span className="craft-eyebrow">{palette.name}</span>
+          <h2>{colorName(palette.colors[draft.color])}</h2>
         </div>
+        <p className="craft-status">{status}</p>
+      </div>
 
-        {(draft.stage === 'water' || draft.stage === 'paper') && <>
-          <div className="marbling-tray">
-            <canvas ref={waterRef} width={1000} height={700} className="marbling-canvas" role="img"
-              aria-label={`水面。当前工具：${tool.name}。${tool.hint}`}
-              onPointerDown={pointerDown} onPointerMove={pointerMove} onPointerUp={pointerUp} onPointerCancel={pointerUp} />
-            {draft.stage === 'paper' && <div className="marbling-paper" aria-hidden="true" />}
-          </div>
-          <div className="marbling-caption">
-            <span>{draft.stage === 'paper' ? '纸已经覆在水面上 · 揭起后颜料转到纸上' : tool.hint}</span>
-            <span className="numeric">{painted ? '已上色' : '清水'}</span>
-          </div>
-        </>}
+      <div className="marbling-stage">
+        <svg
+          ref={stageRef}
+          className={`marbling-drag${dragging ? ' is-dragging' : ''}`}
+          viewBox={`0 0 ${VIEW_W} ${VIEW_H}`}
+          role="img"
+          aria-label="水面与纸"
+          onPointerDown={onPointerDown}
+          onPointerMove={onPointerMove}
+          onPointerUp={endStroke}
+          onPointerCancel={endStroke}
+        >
+          <defs>
+            <clipPath id="marbling-pool-clip">
+              <rect x={POOL.x} y={POOL.y} width={POOL.w} height={POOL.h} rx={14} />
+            </clipPath>
+          </defs>
 
-        {draft.stage === 'water' && <div className="craft-toolbar">
-          <button type="button" className="craft-primary marbling-lay" onClick={layPaper} disabled={!ready}><Layers size={17} />铺纸</button>
-          <button type="button" className="craft-secondary" onClick={undo} disabled={!historyDepth}><Undo2 size={16} />撤销</button>
-          <button type="button" className="craft-secondary" onClick={clearWater} disabled={!painted}><RotateCcw size={16} />清空水面</button>
-        </div>}
+          {/* 盆：一圈厚边，里面是水。 */}
+          <rect x={POOL.x - 20} y={POOL.y - 20} width={POOL.w + 40} height={POOL.h + 40} rx={26} className="marbling-tray" />
+          <rect x={POOL.x} y={POOL.y} width={POOL.w} height={POOL.h} rx={14} className="marbling-water" />
 
-        {draft.stage === 'paper' && <div className="craft-toolbar">
-          <button type="button" className="craft-primary" onClick={liftPaper}><Layers size={17} />揭起纸</button>
-        </div>}
+          {/* 颜料。铺满水面矩形，靠平滑放大融开边界。
+              纸画在它上面，所以盖住的那一段自然看不见 —— "纸把花纹吸走了"。 */}
+          <g clipPath="url(#marbling-pool-clip)">
+            {waterUrl ? (
+              <image
+                href={waterUrl}
+                x={POOL.x}
+                y={POOL.y}
+                width={POOL.w}
+                height={POOL.h}
+                preserveAspectRatio="none"
+              />
+            ) : null}
+          </g>
 
-        {draft.stage === 'print' && <div className="marbling-result">
-          <div className="marbling-print">
-            {print && printedGrid ? <PrintSheet print={print} /> : <p className="craft-note">这张印张没有存下来，请再印一张。</p>}
-          </div>
-          <div className="craft-toolbar">
-            <button type="button" className="craft-primary" onClick={exportPrint} disabled={exporting || !printedGrid}><Download size={17} />{exporting ? '正在导出…' : '导出 PNG'}</button>
-            <button type="button" className="craft-secondary" onClick={newPrint}><RotateCcw size={16} />再印一张</button>
-          </div>
-          <p className="marbling-print__note">印张带着纸的底色和纤维；导出的是 1600 × 1120 的 PNG。</p>
-        </div>}
+          {/* 纸：一直挂在画面上方，下沿跟着手指走。 */}
+          {draft.stage !== 'print' ? <PaperOverlay lay={draft.lay} /> : null}
 
-        <p className="craft-status" role="status" aria-live="polite">
-          {notice || (draft.stage === 'water' ? '先滴几滴颜料，再用针或梳子拖出纹理。'
-            : draft.stage === 'paper' ? '纸已经盖住水面，点「揭起纸」把花纹转到纸上。'
-              : '这张印张已经可以导出，或者再印一张新的。')}
-        </p>
-      </section>
+          {/* 成品：贴在台面中央的一张纸。 */}
+          {draft.stage === 'print' && printUrl ? (
+            <g className="marbling-print">
+              <rect x={POOL.x - 8} y={POOL.y - 8} width={POOL.w + 16} height={POOL.h + 16} rx={18} className="marbling-print__frame" />
+              <image href={printUrl} x={POOL.x} y={POOL.y} width={POOL.w} height={POOL.h} preserveAspectRatio="none" />
+            </g>
+          ) : null}
+        </svg>
 
-      <aside className="craft-sidebar">
-        <section className="craft-panel">
-          <h2>配色</h2>
-          <div className="marbling-palettes">
-            {MARBLING_PALETTES.map((entry) => <button key={entry.id} type="button"
-              className={`marbling-palette${entry.id === draft.palette ? ' is-active' : ''}`}
-              aria-pressed={entry.id === draft.palette} onClick={() => choosePalette(entry.id)}>
-              <span className="marbling-palette__dots" aria-hidden="true">
-                {entry.colors.map((color) => <i key={color} style={{ background: color }} />)}
-              </span>
-              <span className="marbling-palette__name">{entry.name}</span>
-              {entry.id === draft.palette && <Check size={14} />}
-            </button>)}
-          </div>
-          <p className="craft-note">换配色会同时改变水里已有的颜料，花纹的位置不变。</p>
-        </section>
+        {/* 离屏画布：网格与成品都画在这里，再以 data URL 引用。 */}
+        <canvas ref={canvasRef} className="marbling-offscreen" aria-hidden="true" />
+        <canvas ref={printRef} className="marbling-offscreen" aria-hidden="true" />
+      </div>
 
-        <section className="craft-panel">
-          <h2>颜料</h2>
-          <div className="craft-swatches" aria-label="选择颜料">
-            {palette.colors.map((color, index) => <button key={color} type="button"
+      <div className="craft-caption">
+        <span className="craft-gesture-hint">
+          {draft.stage === 'print'
+            ? '换一盆清水可以再印一张'
+            : dragging
+              ? '往下拖盖住水面 · 往上拖揭起来'
+              : '点一下滴一滴 · 按住拖动拉纹理 · 抓纸沿上下拖'}
+        </span>
+        <span>{painted ? '水面已有颜料' : '水面还空着'}</span>
+      </div>
+
+      {/* 工具就在水盆下方：手不离画面就能换。 */}
+      <div className="craft-inline-controls marbling-tools">
+        {MARBLING_TOOL_LIST.map((tool) => (
+          <button
+            key={tool.id}
+            type="button"
+            className={`marbling-tool${draft.tool === tool.id ? ' is-active' : ''}`}
+            onClick={() => { setDraft((current) => setMarblingTool(current, tool.id)); sound.play('click'); }}
+            aria-pressed={draft.tool === tool.id}
+          >
+            {tool.label}
+          </button>
+        ))}
+        <div className="craft-swatches">
+          {palette.colors.map((hex, index) => (
+            <button
+              key={hex}
+              type="button"
               className={`craft-swatch${draft.color === index ? ' is-active' : ''}`}
-              style={{ background: color }} aria-label={`第 ${index + 1} 种颜料`} aria-pressed={draft.color === index}
-              onClick={() => chooseColor(index)}>
-              {draft.color === index && <Check size={15} />}
-            </button>)}
-          </div>
-          <p className="craft-note">滴管每次只落一滴；颜色选好后点水面。</p>
-        </section>
+              style={{ backgroundColor: hex }}
+              onClick={() => { setDraft((current) => setMarblingColor(current, index)); sound.play('click'); }}
+              aria-label={colorName(hex)}
+              aria-pressed={draft.color === index}
+            />
+          ))}
+        </div>
+      </div>
 
-        <section className="craft-panel">
-          <h2>工具</h2>
-          <div className="marbling-tools" role="group" aria-label="选择工具">
-            {TOOLS.map((entry) => <button key={entry.id} type="button"
-              className={`marbling-tool${draft.tool === entry.id ? ' is-active' : ''}`}
-              aria-pressed={draft.tool === entry.id} onClick={() => chooseTool(entry.id)}>
-              {entry.id === 'drop' ? <Droplet size={19} /> : entry.id === 'needle' ? <NeedleIcon /> : <CombIcon />}
-              <span>{entry.name}</span>
-            </button>)}
-          </div>
-          <p className="craft-note">{tool.hint}</p>
-        </section>
+      <div className="craft-toolbar">
+        <button
+          type="button"
+          className="craft-secondary"
+          onClick={() => { setDraft(undoMarbling); sound.play('click'); }}
+          disabled={draft.history.length === 0}
+        >
+          <Undo2 size={16} /> 撤销一步
+        </button>
+        {draft.stage === 'print' ? (
+          <>
+            <button
+              type="button"
+              className="craft-secondary"
+              onClick={() => { setDraft(reprintMarbling); sound.play('click'); }}
+            >
+              <RefreshCw size={16} /> 再印一张
+            </button>
+            <button type="button" className="craft-primary" onClick={handleExport} disabled={busy}>
+              <Download size={16} /> 导出 PNG
+            </button>
+          </>
+        ) : (
+          <button
+            type="button"
+            className="craft-secondary"
+            onClick={() => { setDraft(clearMarbling); sound.play('click'); }}
+            disabled={!painted && draft.lay === 0}
+          >
+            <RefreshCw size={16} /> 换一盆清水
+          </button>
+        )}
+      </div>
+      {note ? <p className="craft-status">{note}</p> : null}
+      {exportFailed ? <p className="craft-status">导出没有成功，请再试一次。</p> : null}
+    </>
+  );
 
-        <section className="craft-panel">
-          <h2>怎么印</h2>
-          <ol className="craft-steps">
-            <li>点水面滴入颜料；后滴的颜色会推开先前的。</li>
-            <li>针拖出弧线，梳子拉出一排平行纹理。</li>
-            <li>点「铺纸」把纸覆在水面，再「揭起纸」。</li>
-            <li>满意就导出 PNG；不满意可以回到清水重来。</li>
-          </ol>
-        </section>
+  const sidebar = (
+    <>
+      <CraftPanel title="调色板">
+        <div className="marbling-palettes">
+          {MARBLING_PALETTES.map((entry) => (
+            <button
+              key={entry.id}
+              type="button"
+              className={`craft-choice${draft.palette === entry.id ? ' is-active' : ''}`}
+              onClick={() => { setDraft((current) => setMarblingPalette(current, entry.id)); sound.play('click'); }}
+              aria-pressed={draft.palette === entry.id}
+            >
+              <span className="craft-choice__swatches">
+                {entry.colors.map((hex) => <i key={hex} style={{ backgroundColor: hex }} />)}
+              </span>
+              <span className="craft-choice__label">{entry.name}</span>
+            </button>
+          ))}
+        </div>
+        <p className="craft-note">换调色板只影响下一滴 —— 已经落在水里的颜料不会变色。</p>
+      </CraftPanel>
 
-        <section className="craft-panel">
-          <h2>草稿</h2>
-          <p className={saveFailed ? 'craft-note craft-note--warn' : 'craft-note'}>
-            {saveFailed ? '浏览器存储不可用：刷新后这一盆水会丢失，满意时请先印下并导出。' : '水面与印张自动保存在此浏览器，刷新可以接着印。'}
-          </p>
-          {draft.stage === 'water' && painted && <button type="button" className="craft-text-button" onClick={clearWater}><RotateCcw size={15} />换一盆清水</button>}
-          {draft.stage === 'print' && <button type="button" className="craft-text-button" onClick={newPrint}><RotateCcw size={15} />再印一张</button>}
-        </section>
-      </aside>
-    </div>
-  </div>;
+      <CraftPanel title="水面">
+        <p className="craft-note">水面上的颜料会自动记住，刷新后接着画。</p>
+        <p className="craft-note">
+          水面上共 {MARBLING_COLORS.length} 种颜色，分在 {MARBLING_PALETTES.length} 组调色板里。
+        </p>
+        {saveFailed ? <p className="craft-note craft-note--warn">这台浏览器没能保存草稿，刷新后可能丢失。</p> : null}
+      </CraftPanel>
+    </>
+  );
+
+  return (
+    <CraftHull
+      icon={<MarblingIcon />}
+      title="水面印花"
+      gameClass="marbling-game"
+      attrs={{
+        'data-ready': ready ? 'true' : 'false',
+        'data-stage': draft.stage,
+        'data-tool': draft.tool,
+        'data-painted': painted ? 'true' : 'false',
+        'data-lay': draft.lay.toFixed(3),
+        'data-print': hasPrint ? 'true' : 'false',
+      }}
+      workspace={workspace}
+      sidebar={sidebar}
+    />
+  );
+}
+
+const MARBLING_TOOL_LIST: { id: MarblingTool; label: string }[] = [
+  { id: 'drop', label: '滴管' },
+  { id: 'needle', label: '针' },
+  { id: 'comb', label: '梳子' },
+];
+
+/** 调色板里的每个颜色配一个中文名（只用于可读标签，不影响渲染）。 */
+const COLOR_NAMES: Record<string, string> = {
+  '#0f766e': '深青', '#14b8a6': '碧绿', '#0ea5e9': '天蓝', '#f0c04a': '姜黄', '#e85d4a': '朱砂', '#f3ede0': '米白',
+  '#b23a48': '绛红', '#e76f51': '珊瑚', '#f4a261': '杏橙', '#e9c46a': '沙金', '#2a9d8f': '松绿', '#f6f1e6': '浅米',
+  '#1e3a8a': '夜蓝', '#2563eb': '靛蓝', '#38bdf8': '浅蓝', '#a7f3d0': '薄荷', '#f5f3ff': '雪白', '#fbbf24': '琥珀',
+  '#9d174d': '梅红', '#db2777': '桃红', '#f472b6': '粉红', '#fbcfe8': '藕粉', '#7c3aed': '紫罗兰', '#fef3c7': '奶黄',
+};
+
+function colorName(hex: string): string {
+  return COLOR_NAMES[hex.toLowerCase()] ?? '颜料';
+}
+
+/**
+ * 水面上的那张纸。
+ *
+ * 它**一直挂在那里**（不是按状态出现/消失）：下沿就是可以抓的那条线，往上拖是揭、
+ * 往下拖是盖。`lay` 只决定纸盖住了水面的多少，所以纸的位置与手势进度是同一件事。
+ *
+ * 纸画在水面之上（`marbling-print` 之外的顺序），所以盖住的部分看不见颜料 ——
+ * 这正好是“纸把花纹吸走了”的视觉：印花落在纸上，水面那一片就露白。
+ */
+function PaperOverlay({ lay }: { lay: number }) {
+  const bottom = paperBottomY(lay);
+  // 纸从画面上方垂下来，一直盖到它的下沿；下沿之上是纸，之下是水面。
+  const top = -PAPER_EDGE * 2;
+  return (
+    <g className="marbling-paper">
+      <rect
+        x={POOL.x - 12}
+        y={top}
+        width={POOL.w + 24}
+        height={bottom - top}
+        className="marbling-paper__sheet"
+        transform={`rotate(${(1 - lay) * -2.2} ${POOL.x + POOL.w / 2} ${bottom})`}
+      />
+      {/* 纸沿：一条略深的横线，就是能抓的那条线。 */}
+      <line
+        x1={POOL.x - 12}
+        y1={bottom}
+        x2={POOL.x + POOL.w + 12}
+        y2={bottom}
+        className="marbling-paper__edge"
+        transform={`rotate(${(1 - lay) * -2.2} ${POOL.x + POOL.w / 2} ${bottom})`}
+      />
+    </g>
+  );
 }

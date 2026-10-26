@@ -1,0 +1,113 @@
+@use '../../abstracts/mixins' as m;
+@use '../../abstracts/variables' as v;
+@use '../../abstracts/breakpoints' as bp;
+
+// 水面印花：水盆、水面、盖下去的纸、揭起来的成品。
+// 只为 .marbling-game 作用域写规则；共用的外壳在 _craft.scss 里。
+//
+// 颜料本身不进 CSS —— 它是 canvas 里的像素。这里只管盆、水和那张纸。
+.marbling-game {
+  // ── 台面 ───────────────────────────────────────────────────────────────────
+  .marbling-stage {
+    position: relative;
+    border-radius: v.$radius-card;
+    overflow: hidden;
+    background: var(--color-background-subtle);
+  }
+
+  // 手势面：水里下工具、纸上铺/揭，都要跟着手指走。
+  // touch-action 必须是 none —— 否则手机上单指拖动变成滚页面，pointermove 中途断掉。
+  .marbling-drag {
+    display: block;
+    width: 100%;
+    height: auto;
+    touch-action: none;
+    cursor: crosshair;
+    user-select: none;
+  }
+
+  // 拖纸时换成抓住的手势 —— 这一步是"我现在抓的是纸，不是水"的唯一反馈。
+  .marbling-drag.is-dragging { cursor: grabbing; }
+
+  // 盆：一圈比水面更亮的厚边，读起来是"一个盛水的浅盆"。
+  .marbling-tray { fill: var(--craft-table); }
+
+  // 水：池底的颜色。颜料没盖到的地方露出来的就是它。
+  .marbling-water { fill: var(--craft-table-line); }
+
+  // ── 纸 ─────────────────────────────────────────────────────────────────────
+  // 盖在水面上的那张纸：半透明的米色，看得出水下的花纹在往下透。
+  .marbling-paper { pointer-events: none; }
+
+  .marbling-paper__sheet {
+    fill: var(--craft-paper);
+    // 纸沿：让"一张纸压在水面上"有边界，不然是一片糊开的浅色。
+    stroke: var(--craft-table-line);
+    stroke-width: 2;
+  }
+
+  // 能抓的那条线：比纸沿略深一点，手指按上去之前就看得见它在哪。
+  .marbling-paper__edge {
+    stroke: var(--craft-table-line);
+    stroke-width: 3;
+    stroke-linecap: round;
+  }
+
+  // ── 成品 ───────────────────────────────────────────────────────────────────
+  // 揭起来的那张纸：一只手画的相框，把画面从台面上"端"出来。
+  .marbling-print { pointer-events: none; }
+
+  .marbling-print__frame {
+    fill: var(--craft-paper);
+    stroke: var(--color-border);
+    stroke-width: 2;
+  }
+
+  // 离屏画布：网格与成品画在这里，再以 data URL 引用。
+  // 不能 display:none —— 有些浏览器会因此不给它 2D 上下文。
+  .marbling-offscreen {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    left: -9999px;
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  // ── 工具 ───────────────────────────────────────────────────────────────────
+  // 滴管 / 针 / 梳子就在水盆下方，手不用离开画面去侧栏。
+  // 三档都走 btn-tab 的形状语言（同组的互斥选项），不是三颗普通按钮。
+  .marbling-tools {
+    gap: v.$space-1;
+  }
+
+  .marbling-tool {
+    @include m.btn-tab;
+    padding: 0 v.$space-3;
+    font-size: 0.82rem;
+  }
+
+  // ── 侧栏调色板 ─────────────────────────────────────────────────────────────
+  .marbling-palettes {
+    display: grid;
+    gap: v.$space-2;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .marbling-palettes .craft-choice {
+    align-items: flex-start;
+    text-align: left;
+  }
+
+  // ── 窄屏 ───────────────────────────────────────────────────────────────────
+  @include bp.down(bp.$bp-md) {
+    .marbling-tool {
+      padding: 0 v.$space-2;
+      font-size: 0.78rem;
+    }
+  }
+
+  @include bp.down(bp.$bp-sm) {
+    .marbling-stage { border-radius: v.$radius-field; }
+  }
+}
