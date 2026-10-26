@@ -19,7 +19,47 @@
 import { execSync } from 'node:child_process';
 import path from 'node:path';
 import fs from 'node:fs';
-import { TMP_DIR, TEMPLATE_DB, SQLITE_SIDECARS } from './helpers/db-template';
+import crypto from 'node:crypto';
+import { TMP_DIR, TEMPLATE_DB, TEMPLATE_HASH, SQLITE_SIDECARS } from './helpers/db-template';
+
+/** 模板库「建好了」的最小体积。真实结构库 800KB+，空文件是 0 字节。 */
+const MIN_TEMPLATE_BYTES = 4096;
+
+/** 当前 schema.prisma 的哈希 —— 模板是否还有效，只认这一个判据。 */
+function schemaHash(): string {
+  const schema = fs.readFileSync(path.resolve(import.meta.dirname, '../prisma/schema.prisma'));
+  return crypto.createHash('sha256').update(schema).digest('hex');
+}
+
+/**
+ * 模板库能不能直接复用。
+ *
+ * 【为什么可以复用】模板只由 schema.prisma 决定，与工作树里改了什么代码无关。
+ * schema 哈希一样 → 建出来的表就一样，没有任何理由重建。
+ */
+function templateUsable(want: string): boolean {
+  try {
+    if (fs.statSync(TEMPLATE_DB).size < MIN_TEMPLATE_BYTES) return false;
+    return fs.readFileSync(TEMPLATE_HASH, 'utf8').trim() === want;
+  } catch {
+    return false; // 模板或发布戳缺一个 → 得建
+  }
+}
+
+/** 删掉本进程可能留下的中间产物（构建中 / 待发布）。 */
+function sweepOwnArtifacts() {
+  for (const f of fs.readdirSync(TMP_DIR)) {
+    if (!/^template\.(db|hash)\./.test(f)) continue;
+    const pid = /\.(\d+)$/.exec(f);
+    // 只清自己这次留下的；别人的中间产物由它自己的 finally 收。
+    if (pid && Number(pid[1]) !== process.pid) continue;
+    try {
+      fs.rmSync(path.join(TMP_DIR, f), { force: true });
+    } catch {
+      /* 并发下已被删掉，忽略 */
+    }
+  }
+}
 
 /** 判定不了归属时的兜底回收线：库名不合规 / pid 已复用，只能按年龄算。 */
 const STALE_MS = 24 * 60 * 60 * 1000;
@@ -89,19 +129,58 @@ function sweepStale() {
 export default function globalSetup() {
   fs.mkdirSync(TMP_DIR, { recursive: true });
   sweepStale();
+  sweepOwnArtifacts();
 
-  for (const suffix of ['', ...SQLITE_SIDECARS]) {
-    fs.rmSync(TEMPLATE_DB + suffix, { force: true });
+  const want = schemaHash();
+
+  // 【为什么不再无条件重建】旧实现每次启动都 rm + writeFileSync('') + db push。
+  // 那个空文件窗口（db push 要 ~3s 才建完表）是**跨进程**可见的，而各测试文件的
+  // ensureSchema() 正是 copyFile 这个模板 —— 于是「同时有两个 vitest 进程」时，
+  // 后启动的那个会把先启动的那个弄成满屏 `The table main.users does not exist`。
+  // 实测确定性复现：A 跑到 12s 时启动 B，A 直接 686 个 DB 错误、124 次采到 size=0
+  // 的模板；B 自己全绿。而 A 一个用例都没改。
+  //
+  // schema 没变就跳过重建，等于把这个窗口从「每次运行」缩到「改过 schema 才出现」，
+  // 顺带省掉每次 ~3s 的 prisma CLI 冷启动。
+  if (templateUsable(want)) return;
+
+  // 构建到**本进程专属**的临时文件，建完再原子 rename 到 TEMPLATE_DB。
+  // 这样 TEMPLATE_DB 任何时刻要么是旧的完整库、要么是新的完整库，永远不会是空文件。
+  const staging = `${TEMPLATE_DB}.${process.pid}`;
+  try {
+    for (const suffix of ['', ...SQLITE_SIDECARS]) {
+      fs.rmSync(staging + suffix, { force: true });
+    }
+    // Windows 的 Prisma 引擎对尚不存在的 SQLite 文件可能只报空的 Schema engine error ——
+    // 先建空文件（是 staging 这个临时名，不是 TEMPLATE_DB）。
+    fs.writeFileSync(staging, '');
+
+    // execSync 默认走 shell（POSIX /bin/sh、Windows cmd.exe），跨平台都能解析 npx。
+    // 命令参数全是固定字面量，无注入面。（同 helpers/db.ts 的既有注解）
+    execSync('npx prisma db push --skip-generate --accept-data-loss', {
+      cwd: path.resolve(import.meta.dirname, '..'),
+      env: { ...process.env, DATABASE_URL: `file:${staging}` },
+      stdio: 'pipe',
+    });
+
+    // 伴生文件（-wal/-shm）不能跟着 rename，先落进主库再发布：
+    // 直接 rename 主文件时若还有 WAL，副本会缺最新事务。db push 退出后连接已关，
+    // 正常没有伴生文件；有的话说明结构已 checkpoint 进主文件，删掉即可。
+    for (const suffix of SQLITE_SIDECARS) {
+      fs.rmSync(staging + suffix, { force: true });
+    }
+
+    // 发布戳**先于**主库写：宁可「哈希新、库旧」被下一次判为不可用再重建，
+    // 也不要「库新、哈希旧」这种永远判不出问题的组合。
+    fs.writeFileSync(TEMPLATE_HASH, want);
+    fs.renameSync(staging, TEMPLATE_DB);
+  } finally {
+    for (const suffix of ['', ...SQLITE_SIDECARS]) {
+      try {
+        fs.rmSync(staging + suffix, { force: true });
+      } catch {
+        /* 已 rename 掉（ENOENT）或被并发删，忽略 */
+      }
+    }
   }
-  // Windows 的 Prisma 引擎对尚不存在的 SQLite 文件可能只报空的 Schema engine error。
-  // 先建空文件，再由 db push 建表；这条路径始终是上面定义的临时模板库。
-  fs.writeFileSync(TEMPLATE_DB, '');
-
-  // execSync 默认走 shell（POSIX /bin/sh、Windows cmd.exe），跨平台都能解析 npx。
-  // 命令参数全是固定字面量，无注入面。（同 helpers/db.ts 的既有注解）
-  execSync('npx prisma db push --skip-generate --accept-data-loss', {
-    cwd: path.resolve(import.meta.dirname, '..'),
-    env: { ...process.env, DATABASE_URL: `file:${TEMPLATE_DB}` },
-    stdio: 'pipe',
-  });
 }

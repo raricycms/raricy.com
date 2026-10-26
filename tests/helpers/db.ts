@@ -77,9 +77,7 @@ export function ensureSchema() {
     const f = dbPath + suffix;
     if (fs.existsSync(f)) fs.rmSync(f);
   }
-  if (fs.existsSync(TEMPLATE_DB)) {
-    fs.copyFileSync(TEMPLATE_DB, dbPath);
-  } else {
+  if (!copyTemplate(dbPath)) {
     fs.writeFileSync(dbPath, ''); // 同 global-setup：Windows 引擎需要已存在的空 SQLite 文件。
     // 兜底：globalSetup 没跑成（比如模板被手工删掉、或有人在跳过 config 的场景下
     // 单独 import 本模块）时退回自建，保证用例仍能跑。
@@ -93,6 +91,38 @@ export function ensureSchema() {
     });
   }
   schemaReady = true;
+}
+
+/**
+ * 从模板库拷一份自己的，成功返回 true。
+ *
+ * 【为什么要校验大小】模板库一旦是 0 字节（历史上 global-setup 先
+ * `writeFileSync('')` 再 `db push`，中间约 3s 是空的），拷过来就是一个没有任何表的
+ * 空库，症状是满屏 `The table main.users does not exist` —— **看着像业务 bug**。
+ * global-setup 已改成原子发布（模板永远是完整的旧库或完整的新库），这里再加一道
+ * 「拷完验大小」的保险：万一模板是坏的，宁可退回自建，也不要拿空库跑出一个假红。
+ */
+function copyTemplate(dbPath: string): boolean {
+  // 真实结构库 800KB+；一个只有 SQLite 文件头 / 空页的小文件不可能是模板。
+  const MIN_BYTES = 4096;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      if (fs.statSync(TEMPLATE_DB).size < MIN_BYTES) {
+        sleepSync(200); // 模板正在被别的进程重建，稍等再看
+        continue;
+      }
+      fs.copyFileSync(TEMPLATE_DB, dbPath);
+      if (fs.statSync(dbPath).size >= MIN_BYTES) return true;
+    } catch {
+      sleepSync(200); // 模板暂时缺席，同上
+    }
+  }
+  return false;
+}
+
+/** 同步小睡 —— ensureSchema 是同步 API，不能 await。 */
+function sleepSync(ms: number) {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
 }
 
 /** 清空所有业务表（保留结构）。每个用例前调用，保证互不干扰。 */

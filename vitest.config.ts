@@ -27,6 +27,13 @@ export default defineConfig({
     // 「options.minThreads and options.maxThreads must not conflict」。
     minWorkers: 1,
     maxWorkers: 4,
+    // 【为什么必须显式给超时】vitest 默认 5000ms。这台机器上真实计时的用例单条就
+    // 1.4–2.4s（配额类：bcrypt + 连建 200 个号；见 tests/service/favorite-service.test.ts
+    // 的「配额只数未删除的」实测 2357ms），4 个 worker 并行时集体撞线，报出来是
+    // 19 条 "Test timed out in 5000ms" —— 全被误读成「本来就有问题的测试」。
+    // 实测：同一批文件加 --testTimeout=30000 后 94/94 全绿，一行代码没改。
+    testTimeout: 30_000,
+    hookTimeout: 30_000,
     // 建模板库（一次性）。各测试文件的库副本由 tests/helpers/db.ts 的 ensureSchema() 拷。
     globalSetup: ['tests/global-setup.ts'],
     coverage: {
