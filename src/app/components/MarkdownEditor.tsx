@@ -725,7 +725,7 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(
                  * blog-content-dom）**一行都不跑** —— 它读不懂 reactive 语法，
                  * 跑一遍只会把源码当 Markdown 重新解释。
                  */
-                <ReactivePreview source={previewDoc} />
+                <ReactivePreview source={previewDoc} refreshToken={refreshToken} />
               ) : (
                 <MarkdownRenderer
                   content={previewDoc}

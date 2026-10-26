@@ -18,6 +18,10 @@
 //
 // 【预览不写服务】`preview` 一路传到 `SiteEmbedView`，投票控件只读；本组件自身
 // 只调用 `compileLocal` / 适配器（后者只发 GET）。
+//
+// 【刷新引用 = 换一份 reader】`refreshToken` 变化时重建会话级 reader（成功与失败的
+// 缓存都在它身上），对同一份源码重新适配、重新编译；代次守卫保证旧的在飞结果
+// 不会覆盖新结果。普通按键仍复用同一份 reader（同样的引用只取一次）。
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useEffect, useRef, useState } from 'react';
@@ -52,11 +56,20 @@ export interface ReactivePreviewProps {
   source: string;
   /** 适配防抖；调度器自身还会再合并 150ms（上游默认）。 */
   debounceMs?: number;
+  /**
+   * 「刷新引用」按钮的计数器。
+   *
+   * 变化时**重建本组件的会话级 reader** —— 成功与失败的缓存都挂在它上面，不换掉
+   * 就等于「点刷新也永远读到同一份旧数据」（失败更是永远不会重试）；换掉之后
+   * 同一份源码也会重新取数、重新编译。普通按键仍然复用同一份 reader（缓存去重）。
+   */
+  refreshToken?: number;
 }
 
 export default function ReactivePreview({
   source,
   debounceMs = DEFAULT_DEBOUNCE_MS,
+  refreshToken = 0,
 }: ReactivePreviewProps) {
   const [rendered, setRendered] = useState<RenderedPreview | null>(null);
   const [errors, setErrors] = useState<Diagnostic[]>([]);
@@ -70,6 +83,8 @@ export default function ReactivePreview({
   /** 会话级 reader（缓存 + 在飞去重）；每次挂载一份，卸载即释放。 */
   const readerRef = useRef<ReturnType<typeof createClientReferenceReader> | null>(null);
   if (!readerRef.current) readerRef.current = createClientReferenceReader();
+  /** 上一次看到的刷新代次 —— 只在它真的变了时重建 reader。 */
+  const refreshTokenRef = useRef(refreshToken);
 
   // ── 调度器：整个挂载期一个 ────────────────────────────────────────────────
   useEffect(() => {
@@ -99,13 +114,28 @@ export default function ReactivePreview({
     };
   }, []);
 
+  // ── 「刷新引用」：换一份会话级 reader ────────────────────────────────────
+  // ⚠️ 不能只让适配「再跑一遍」：缓存本身就挂在 reader 上，成功与失败都在里面。
+  // 不换 reader，同样的引用永远读到同一份旧结果；失败的那几条更是**永远不会重试**。
+  // 新 reader 也丢掉在飞去重那一层，于是刷新之后同一引用会真的再发一次 GET。
+  // ⚠️ 这条 effect 必须排在下一条之前：同一提交里先换 reader，下一条才用得上新的。
+  useEffect(() => {
+    if (refreshTokenRef.current === refreshToken) return;
+    refreshTokenRef.current = refreshToken;
+    readerRef.current = createClientReferenceReader();
+  }, [refreshToken]);
+
   // ── 防抖 → 适配 → 调度 ───────────────────────────────────────────────────
   useEffect(() => {
+    // 每一轮（源码变化 / 刷新引用）都推进代次：晚到的旧适配结果据此丢弃，
+    // 绝不能把旧引用数据排进调度器去覆盖新结果。
     const generation = (generationRef.current += 1);
+    // 取**这一代**的 reader（刷新会换掉 readerRef；旧一代的任务不该用新 reader）。
+    const reader = readerRef.current!;
     const timer = window.setTimeout(() => {
       void (async () => {
         try {
-          const adapted = await adaptReactivePreview(source, readerRef.current!);
+          const adapted = await adaptReactivePreview(source, reader);
           if (generation !== generationRef.current) return;
           const store = hostDataBySourceRef.current;
           store.set(adapted.adaptedSource, adapted.hostData);
@@ -125,7 +155,7 @@ export default function ReactivePreview({
     }, Math.max(0, debounceMs));
 
     return () => window.clearTimeout(timer);
-  }, [source, debounceMs]);
+  }, [source, debounceMs, refreshToken]);
 
   return (
     <div
