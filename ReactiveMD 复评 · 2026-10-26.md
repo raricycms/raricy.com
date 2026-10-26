@@ -24,7 +24,7 @@
 | 所有交互失效整篇白屏（all-or-nothing） | **已改为分区容错**：局部表达式错误就地显示，其余内容继续更新 |
 | 浏览器里一次性 ~68 KB gzip，且无懒加载路径 | **有独立 IIFE 单文件产物**（1.12 MB / 330 KB gzip）可完全甩进 iframe；React 侧仍 ~286 KB gzip（见 §3.3） |
 
-**真正的变化是三件事，且都朝本站有利：**
+**真正的变化是四件事，且都朝本站有利：**
 
 1. **`reactive-md/editor` 独立成包**（108.6 KB / 29 KB gzip）——创作端可以在本站里给 core+ 用，而不必把
    渲染器塞进正文页。
@@ -32,6 +32,10 @@
    `hydrate`、`staticFirst`，让「沙箱 iframe 里跑一份完整运行时」从「自己拼」变成「官方支持的用法」。
 3. **HTML 路径的隔离是硬编码的**：`allow-same-origin` 在 `sanitizeSandbox()` 里**被无条件剔除**，
    作者永远拿不到宿主同源。这消灭了上版最大的未知项（「开了 HTML 会不会变成同源 XSS」）。
+4. **新增的 HTML 开关是「整篇分流」而非「逐项增强」**（本机实测，§2.1.1）：只要开了 `enableCss`
+   / `enableJavaScript` / `enableExtendedHtml` 中**任何一个**，整篇文档就**停止解析 Markdown 与
+   ReactiveMD**，交互组件全部失效。所以「让作者调调样式」这条路在 0.5.3 上**根本不存在** ——
+   这不是限制，反而替我们把「要不要开开关」这个决策**替我们做完了**。
 
 **仍然不建议「直接嵌进主文档」的三个理由（都没变）：**
 
@@ -96,6 +100,40 @@
 在 iframe 内部仍然可以 `fetch` 同源地址（iframe 的 origin 是 opaque，`connect-src` 得靠**我们自己的
 route handler 发 CSP 头**来关掉）。也就是说：**隔离的上半场由库保证，下半场必须由本站的 CSP 头保证**，
 两边都得做。P1 建议**只开 P0**，不开三个开关中的任何一个。
+
+#### 2.1.1 三个开关是「整篇分流」，不是「逐项增强」（重要）
+
+`htmlActive = enableCss || enableJavaScript || enableExtendedHtml`（`src/local/options.ts:364`），
+为真时 `compileLocal` 走 `compileHtmlLocal`，**整篇文档停止解析 Markdown 与 ReactiveMD**
+（`src/local/compiler.ts:320-322`；官方 `docs/html-compatibility-ch.md` 也明写这是「暂时性分流策略」）。
+
+本机实测（同一份 `<panel>` + `# 标题` 源文）：
+
+| 编译选项 | `document.html` | 含义 |
+|---|---|---|
+| 三个全关 | `null` | 走 Markdown / ReactiveMD 路径，组件可用 |
+| `{enableCss:true}` | `{enableCss:true,…}` | **整篇转原生 HTML**：`# 标题` 变纯文本，`<panel>` 不再建绑定 |
+| `{enableJavaScript:true}` | `{…,enableJavaScript:true}` | 同上 |
+| `{enableExtendedHtml:true}` | `{…,enableExtendedHtml:true}` | 同上 |
+
+**这意味着一件事：不存在「让作者调点颜色但组件照旧能用」的中间档。**
+开了 `enableCss` 就等于放弃 Markdown 和全部交互组件。所以 P1 阶段
+**三个开关必须全部保持 `false`** —— 这不是保守，而是产品上唯一自洽的选择。
+
+#### 2.1.2 若将来要开任一开关：外层 CSP 必须放行 `frame-src`
+
+原生 HTML 路径的产物本身就是一个 **`srcdoc` iframe**（`LocalDocumentView.tsx:4491-4501`），
+而 `srcdoc` 继承父级 CSP、其 URL 是 `about:srcdoc`。若我们 route handler 只发
+`default-src 'none'` 而**不带 `frame-src`**，`frame-src` 回落到 `default-src`，
+**会把这个 iframe 自己拦掉** —— 表现为**整块空白、控制台一条 CSP 违规**，而代码看起来完全正常。
+
+库自己就是因为这个原因才在外层加 `frame-src about:`（`src/shareable.ts:228-230`、
+`html.ts:317`）。**`reactive-md build` 导出的单文件 HTML 用的正是 `createShareableHtml()`**，
+它的外层 CSP 已经把这一条带上了 —— 所以若我们直接复用官方导出的 HTML，
+**不要再自己叠一层 `default-src 'none'` 而漏掉 `frame-src`**。
+
+**对 P1（三开关全关）不适用**：默认路径根本不产生 iframe 嵌套，
+`frame-src` 不必开（保持 `frame-src 'none'` 更安全）。这条只在「将来开 CSS/JS」时生效。
 
 ### 2.2 分发与工程成熟度：从「不可用」到「正常开源项目」
 
@@ -245,9 +283,12 @@ blob worker 会被拦，需要额外开 `worker-src blob:`）。
 5. **CSP 必须由我们发**：`route.ts` 参照 `src/app/game/quandi/play/route.ts`，但把
    `script-src 'self' 'unsafe-inline'` 收窄成 `script-src 'unsafe-inline'`（我们是内联 bundle），
    并保留 `default-src 'none'; connect-src 'none'; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'`。
+   ⚠️ 若将来开任一 HTML 开关，`frame-src 'none'` 必须改成 `frame-src about:`，否则库自己的
+   `srcdoc` iframe 会被我们自己的 CSP 拦掉（见 §2.1.2）。**三开关全关时不要加这一条。**
 6. **route handler 绕过 root layout**：所以没有 Navbar/Footer/`FrameBuster` —— 与游戏页同理。
 7. **只开 P0**：`compileOptions` 三个开关**全部保持 false**。这样即使未来库有净化器漏洞，
-   受影响面也只是 P0 标签，而不是任意 CSS/JS。
+   受影响面也只是 P0 标签，而不是任意 CSS/JS。**注意这不是「保守选项」而是唯一自洽选项**：
+   任一开关为真都会让整篇文档放弃 Markdown 与 ReactiveMD（见 §2.1.1），交互块直接失效。
 
 ### 4.3 仍然存在的能力取舍（必须让站长知道）
 
@@ -306,7 +347,9 @@ blob worker 会被拦，需要额外开 `worker-src blob:`）。
    立刻能让 core+ 写出带交互的文档），用 D 产出的内容喂 B，B 上线时就有现成内容。
 2. **对外视图怎么处理**：交互文档在 `link`/`public` 档下是「渲染成静态占位」还是「也允许 iframe」
    （后者会破「外部读者零客户端请求」的既有承诺）。
-3. **要不要开 `enableCss`**：开了排版自由度高很多，但仍建议 P1 阶段只开 P0。
+3. **要不要开 `enableCss`**：**这个问题在 0.5.3 上其实不存在**——任一开关为真都会让整篇放弃
+   Markdown 与 ReactiveMD（§2.1.1），所以「开 CSS 让排版好看点」与「交互块能用」不可兼得。
+   P1 阶段必须三开关全关；真要开，得先接受「这篇文档不再是 Markdown」。
 4. **谁维护接缝**：R9 是真实风险，需要有一个人认领「库升级后跑一遍」的职责。
 
 ---
@@ -333,6 +376,16 @@ blob worker 会被拦，需要额外开 `worker-src blob:`）。
 | standalone API | `src/standalone/index.tsx` → `mount`/`mountAll`/`<reactive-md-doc>`/`parseMountPayload` |
 | payload 约束 | `src/standalone/payload.ts` → target 正则、`MAX_IMAGES = 64`、40 MiB 预算、仅 raster data URL |
 | 节点上限可配 | `src/local/limits.ts` 注释 + `tests/local-compile-options.test.ts`（25 用例） |
+| 三开关是「整篇分流」 | `src/local/options.ts:364` `htmlActive = …`；`src/local/compiler.ts:320-322` 分流 |
+| 开关实测（关键） | 同一份 `<panel>`+`# 标题`：三关 ⇒ `document.html = null`（组件可用）；**任一开 ⇒ 非 null（整篇转原生 HTML，组件失效）** |
+| `<style>` 需 `enableCss` | 默认路径 `<style>` 不保留；`{enableCss:true}` 才出现 `document.html` |
+| 原生路径自带 iframe | `LocalDocumentView.tsx:4491-4501` `srcDoc` + `sandbox` |
+| 库自己补 `frame-src about:` | `src/local/html.ts:317`；`src/shareable.ts:228-230` `envelopePolicy()` |
+| 内层 CSP 全文 | `html.ts:305-320` `localHtmlContentSecurityPolicy()`：`default-src 'none'` + 按开关放行 `style-src`/`script-src`/`frame-src` |
+| 单文件导出走这里的 CSP | `src/shareable.ts:220` 模板串 + `:363` `localHtmlSandbox(staticPolicy)` |
+| 未导出净化器 | 实测 core 入口 `Object.keys()` 无 `sanitizeLocalHtmlDocument`/`localHtmlContentSecurityPolicy`（非公开 API，只能通过组件观察） |
+| 默认路径拒绝原始 HTML | `src/local/parser.ts:1516-1525` `error('local.html', 'Raw HTML is not part of the local interaction syntax.')` |
+| 默认路径 P0 标签表 | `src/local/html-names.ts:3-12`（`b/strong/i/em/s/del/u/mark/sup/sub/br/hr/img/p/h1-h6/div/span/details/summary/blockquote/code/pre/ul/ol/li/a`，**无 script/style/link**） |
 | 容量实测 | 1,200 panel 通过 / 1,300 失败 `local.budget`；纯 MD 26.9 KB 通过 |
 | 体积实测 | `npm run build` 输出（见 §3.3 表） |
 | 本站围栏会被摘掉 | `src/lib/blog-excerpt.ts:44` `stripFencedCode()` |
@@ -352,6 +405,8 @@ blob worker 会被拦，需要额外开 `worker-src blob:`）。
 | 浏览器体积 | 107 KB gzip | **286 KB gzip**（React 路径）/ **330 KB gzip**（standalone，隔离在 iframe） |
 | 容量 | 「50–60 KB 就失败」 | **修正**：纯 MD 27 KB 通过；瓶颈是组件数（~1,200） |
 | HTML | 不支持 | **支持，但 `allow-same-origin` 硬剔除** |
+| HTML 开关语义 | — | **整篇分流**：任一开关为真即放弃 Markdown/ReactiveMD（§2.1.1） |
+| 外层 CSP | — | **开 HTML 时须 `frame-src about:`**，否则库自己的 `srcdoc` iframe 被拦（§2.1.2） |
 | 白屏 | all-or-nothing | **已分区容错** |
 | 测试 | 165 用例 | **1022 用例** |
 | 工程 | private / 无 CI / 无 tag | **npm 已发布 / CI 双 job / 8 tag** |
