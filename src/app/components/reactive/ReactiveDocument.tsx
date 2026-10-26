@@ -13,10 +13,16 @@
 // 第二次 setup 拿到的就是已经死掉的 runtime。这里用一个 ref 做「还持有吗」的
 // 令牌，把真正的 dispose 推迟到宏任务：同步的重挂载会重置令牌，只有真正的卸载
 // 才会走到 dispose。
+//
+// 【样式从哪来】组件的 JS 走 `reactive-md/react/unstyled` —— 它不替调用方引入
+// 任何全局 CSS；版式由这里显式 import 的 `screen.css` 提供。**不再 import
+// `print.css`**：那份 CSS 带全局 `@page`，会连坐整站打印；站点自己的打印规则
+// 已经按 `.reactive-document` 作用域写好（见
+// `src/styles-scss/pages/blog/_reactive-md.scss` 的 `@media print`）。
+// 独立导出的 HTML 也不依赖任何全局 `@page`（见 `markdown-editor/export.ts`）。
 // ─────────────────────────────────────────────────────────────────────────────
 
 import 'reactive-md/screen.css';
-import 'reactive-md/print.css';
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { createLocalRuntime, type LocalDocument, type LocalRuntime } from 'reactive-md';
@@ -25,7 +31,7 @@ import {
   type LocalHostData,
   type LocalHostRenderer,
   type LocalLocale,
-} from 'reactive-md/react';
+} from 'reactive-md/react/unstyled';
 import { isAllowedReactiveUrl } from '@/lib/reactive/url-policy';
 import { SiteEmbedView } from './SiteEmbedView';
 

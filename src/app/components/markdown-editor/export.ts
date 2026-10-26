@@ -41,7 +41,7 @@ import { createElement } from 'react';
 import { flushSync } from 'react-dom';
 import { createRoot } from 'react-dom/client';
 import { compileLocal, createLocalRuntime } from 'reactive-md';
-import { LocalDocumentView } from 'reactive-md/react';
+import { LocalDocumentView } from 'reactive-md/react/unstyled';
 import 'reactive-md/screen.css';
 
 import { renderSiteEmbedStatic } from '@/app/components/reactive/site-embed-static';
