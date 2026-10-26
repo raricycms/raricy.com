@@ -64,4 +64,60 @@ describe('每日一言的HTTP权限、隐私与输入', () => {
     expect((await (await mine()).json()).submissions).toEqual([]);
     expect(JSON.stringify(data)).not.toContain(author.id);
   });
+
+  // 审核的三条成功路径。**这里的价值在「真的写了一条审计日志」**：早先只测了 401/403/400，
+  // 一条都没走到 adminActionLog.create，于是「create 没带 select、真库回读 JSON 列抛 P2023、
+  // 整个事务回滚」这个线上故障在测试里全程是绿的（见 tests/unit/audit-json-column-guard.test.ts）。
+  it('审核通过与拒绝写入状态与内部审计日志，匿名拒绝不外泄当事人', async () => {
+    const admin = await makeUser({ role: 'admin' });
+    const author = await makeUser({ role: 'core' });
+    const named = await submitQuote(author.id, { ...input, signature: 'nickname' });
+    const anon = await submitQuote(author.id, { ...input, content: '匿名投稿的一句话', signature: 'anonymous' });
+    await login(admin.id);
+
+    expect((await review(body({ action: 'approve' }, 'PATCH'), ctx(named.id))).status).toBe(200);
+    expect((await review(body({ action: 'reject', reason: '不予收录' }, 'PATCH'), ctx(anon.id))).status).toBe(200);
+
+    const rows = await prisma.dailyQuote.findMany({
+      where: { id: { in: [named.id, anon.id] } }, select: { id: true, status: true, reviewReason: true, reviewerId: true },
+    });
+    expect(rows.find((r) => r.id === named.id)).toMatchObject({ status: 'approved', reviewerId: admin.id });
+    expect(rows.find((r) => r.id === anon.id)).toMatchObject({ status: 'rejected', reviewReason: '不予收录' });
+
+    const logs = await prisma.adminActionLog.findMany({
+      where: { objectType: 'daily_quote', objectId: { in: [named.id, anon.id] } },
+      select: { action: true, visibility: true, hideTarget: true, targetUserId: true },
+    });
+    expect(logs).toHaveLength(2);
+    // 待审内容与拒绝原因属作者隐私：只进内部日志，不进 /audit 公示面
+    expect(logs.every((l) => l.visibility === 'internal')).toBe(true);
+    expect(logs.find((l) => l.action === 'daily_quote_approve')).toMatchObject({ hideTarget: false, targetUserId: author.id });
+    // 匿名稿件的那条日志必须打上 hideTarget，否则 /audit 详情会把作者交代出去
+    expect(logs.find((l) => l.action === 'daily_quote_reject')).toMatchObject({ hideTarget: true, targetUserId: author.id });
+
+    // 已通过的稿件不能再通过（状态 CAS），且不去重写日志
+    expect((await review(body({ action: 'approve' }, 'PATCH'), ctx(named.id))).status).toBe(409);
+  });
+
+  it('内置稿件可下架，且拒绝与下架必须填原因', async () => {
+    const admin = await makeUser({ role: 'admin' });
+    await prisma.dailyQuote.create({ data: {
+      id: 'builtin-probe', kind: 'builtin', content: '待下架的内置原文', contentKey: quoteContentKey('待下架的内置原文'),
+      category: '哲思', sourceType: 'quotation', sourceName: '典籍', authorName: '古人', status: 'approved', createdAt: nowForDb(),
+    } });
+    const pending = await submitQuote((await makeUser({ role: 'core' })).id, input);
+    await login(admin.id);
+
+    expect((await review(body({ action: 'retire', reason: '  ' }, 'PATCH'), ctx('builtin-probe'))).status).toBe(400);
+    expect((await review(body({ action: 'retire', reason: '内容重复' }, 'PATCH'), ctx('builtin-probe'))).status).toBe(200);
+    expect((await review(body({ action: 'reject', reason: '' }, 'PATCH'), ctx(pending.id))).status).toBe(400);
+
+    const builtin = await prisma.dailyQuote.findUnique({ where: { id: 'builtin-probe' }, select: { status: true } });
+    expect(builtin?.status).toBe('retired');
+    // 内置稿件没有投稿人 → 日志的 targetUserId 是 null（也因此不可申诉）
+    const log = await prisma.adminActionLog.findFirst({
+      where: { objectType: 'daily_quote', objectId: 'builtin-probe' }, select: { action: true, targetUserId: true },
+    });
+    expect(log).toMatchObject({ action: 'daily_quote_retire', targetUserId: null });
+  });
 });
