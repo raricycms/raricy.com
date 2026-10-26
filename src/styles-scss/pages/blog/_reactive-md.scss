@@ -112,6 +112,12 @@
     }
   }
 
+  // jump 按钮也是链接，不能继承普通链接的透明下边框。
+  a.local-jump-button,
+  a.local-jump-button:hover {
+    border-bottom-color: var(--local-accent, var(--line-strong));
+  }
+
   ul,
   ol,
   .md-list {
