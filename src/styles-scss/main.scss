@@ -59,6 +59,12 @@
 @use 'pages/game/yiwen';
 @use 'pages/game/hinge';
 @use 'pages/game/craft';
+// 手工间三款游戏各自一份，共用的外壳留在 _craft.scss。
+// 拆开不只是"文件短一点"：三款游戏的美术是各自独立的，混在一个文件里改织布机
+// 极易顺手改坏剪纸的某条同名规则（.craft-toolbar 之类），拆开后作用域各归各的。
+@use 'pages/game/craft-loom';
+@use 'pages/game/craft-papercut';
+@use 'pages/game/craft-marbling';
 @use 'pages/game/wand';
 @use 'pages/game/wand2';
 @use 'pages/game/public-space';
