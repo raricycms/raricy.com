@@ -3,8 +3,8 @@
 //
 // 【为什么不能只看 `ok`】ReactiveMD 对一批「内容解释不了」的情况仍然返回
 // `ok: true`，只给 warning。两类最危险：
-//   · `local.html`          —— HTML 标签/属性降级成源码文本（class/style/on*）；
-//   · `local.component.unknown` —— 未知标签（audio/video/input/button…）被当成未知组件；
+//   · `local.html.fallback` —— 原生 HTML 标签/属性降级成源码文本；
+//   · `local.component.unknown` —— 未知标签被当成未知组件；
 // 它们会**静默改变可见内容**。数学显示降级（`local.math.display`）同理：公式按
 // 字面量显示，编译却成功。计划 D4 因此把 warning 白名单也作为回退条件。
 //
@@ -12,9 +12,8 @@
 // 具体降级种类在 `diagnostic.messageKey`（`local.math.display.unsupported-command`
 // 等）。两处都查，升级上游时不会因为只改其中一处而静默漏判。
 //
-// 【反斜线数学不在本模块里】`\(…\)` / `\[…\]` 在上游 0.5.3 不产生任何诊断，却会
-// 以普通文本出现。它只能从**原文**判断（排除围栏 / 行内代码），见 `legacy-math.ts`。
-// `shouldFallbackToLegacy` 的签名刻意保持只看编译结果 —— 阅读侧把两个判据并列使用。
+// 【格式差异】Markdown 遇到 HTML 降级须回退旧渲染器以保留原有显示；Reactive
+// 则保留安全的局部源码回退，未知组件及数学降级仍须拒绝。
 //
 // 本模块零运行时依赖（只 import 类型），服务端与客户端都能用。
 // ─────────────────────────────────────────────────────────────────────────────
@@ -30,6 +29,7 @@ import type { LocalCompileResult } from 'reactive-md';
  */
 export const REACTIVE_FALLBACK_CODES: readonly string[] = Object.freeze([
   'local.html',
+  'local.html.fallback',
   'local.component.unknown',
   'local.options.invalid',
   'local.budget',
@@ -75,4 +75,10 @@ export function shouldFallbackToLegacy(result: LocalCompileResult): boolean {
     if (diagnostic.messageKey && FALLBACK_CODE_SET.has(diagnostic.messageKey)) return true;
   }
   return false;
+}
+
+/** Reactive 接受惰性 HTML 源码，但不放过同篇文档中的其他降级。 */
+export function shouldRejectReactive(result: LocalCompileResult): boolean {
+  if (!result.ok) return true;
+  return reactiveFallbackReasons(result).some((reason) => reason !== 'local.html.fallback');
 }

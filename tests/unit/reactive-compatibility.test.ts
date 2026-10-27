@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { compileLocal } from 'reactive-md';
 
 // 纯决策层：编译、快照、external 重验全部替身。不碰 prisma / React / 上游运行时。
 vi.mock('@/lib/reactive/compile', () => ({ compileReactiveSource: vi.fn() }));
@@ -13,6 +14,7 @@ import { compileReactiveSource } from '@/lib/reactive/compile';
 import { readReactiveSnapshot } from '@/lib/reactive/snapshot-store';
 import { prepareReactiveDocument } from '@/lib/reactive/prepare';
 import { hasLegacyMathDelimiters } from '@/lib/reactive/legacy-math';
+import { reactiveCompileOptions } from '@/lib/reactive/host-components';
 
 const compileMock = vi.mocked(compileReactiveSource);
 const snapshotMock = vi.mocked(readReactiveSnapshot);
@@ -292,18 +294,33 @@ describe('shadow mode', () => {
     expect(result.shadow).toMatchObject({ compatible: false, error: 'compile' });
   });
 
-  it('flags legacy math in the shadow observation', async () => {
+  it('records backslash math without treating supported math as incompatible', async () => {
     compileMock.mockResolvedValue(outcome());
 
     const result = await resolveReadRender(input({ source: String.raw`行内 \(x_1+y_2\)` }));
 
     expect(result.choice.renderer).toBe('legacy');
     expect(result.shadow).toMatchObject({
-      renderer: 'legacy',
-      reason: 'fallback',
-      compatible: false,
+      renderer: 'reactive',
+      reason: 'format',
+      compatible: true,
       legacyMath: true,
     });
+  });
+});
+
+describe('HTML 局部回退的阅读决策', () => {
+  it('相同的安全回退：Markdown 使用旧渲染器，Reactive 保持交互', async () => {
+    process.env.REACTIVE_MD_MODE = 'on';
+    const source = '<div style="color:red">{{ missing }}\n\n<counter bind="n" label="N" initial="2">';
+    const result = compileLocal(source, reactiveCompileOptions('reactive'));
+    expect(result.ok).toBe(true);
+    compileMock.mockResolvedValue(outcome({ result }));
+
+    const markdown = await resolveReadRender(input({ format: 'markdown', source }));
+    expect(markdown.choice).toEqual({ renderer: 'legacy', reason: 'fallback' });
+    const reactive = await resolveReadRender(input({ format: 'reactive', source }));
+    expect(reactive.choice.renderer).toBe('reactive');
   });
 });
 
@@ -322,7 +339,7 @@ describe('legacy backslash math', () => {
     expect(hasLegacyMathDelimiters(source)).toBe(expected);
   });
 
-  it('keeps a markdown candidate with backslash math on legacy', async () => {
+  it('renders a markdown candidate with supported backslash math', async () => {
     process.env.REACTIVE_MD_MODE = 'on';
     compileMock.mockResolvedValue(outcome());
 
@@ -330,7 +347,7 @@ describe('legacy backslash math', () => {
       input({ override: 'reactive', source: String.raw`行内 \(x_1+y_2\)` }),
     );
 
-    expect(result.choice).toEqual({ renderer: 'legacy', reason: 'fallback' });
+    expect(result.choice.renderer).toBe('reactive');
     expect(result.log.legacyMath).toBe(true);
     expect(compileMock).toHaveBeenCalledTimes(1);
   });

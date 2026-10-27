@@ -2,17 +2,18 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 // 纯决策层：编译、诊断与静态渲染全部替身，测试不碰 prisma / React / 上游包。
 vi.mock('@/lib/reactive/compile', () => ({ compileReactiveSource: vi.fn() }));
-vi.mock('@/lib/reactive/diagnostics', () => ({ shouldFallbackToLegacy: vi.fn(() => false) }));
+vi.mock('@/lib/reactive/diagnostics', () => ({ shouldFallbackToLegacy: vi.fn(() => false), shouldRejectReactive: vi.fn(() => false) }));
 vi.mock('@/lib/reactive/snapshot-store', () => ({
   reactiveContentVersion: () => 'content-version',
   readReactiveSnapshot: vi.fn(async () => ({ status: 'missing' })),
 }));
 import { resolveReadRender, type ReadRenderInput } from '@/lib/reactive/read-render';
 import { compileReactiveSource } from '@/lib/reactive/compile';
-import { shouldFallbackToLegacy } from '@/lib/reactive/diagnostics';
+import { shouldFallbackToLegacy, shouldRejectReactive } from '@/lib/reactive/diagnostics';
 
 const compileMock = vi.mocked(compileReactiveSource);
 const fallbackMock = vi.mocked(shouldFallbackToLegacy);
+const rejectReactiveMock = vi.mocked(shouldRejectReactive);
 
 function outcome(overrides: Record<string, unknown> = {}) {
   return {
@@ -54,6 +55,8 @@ beforeEach(() => {
   compileMock.mockReset();
   fallbackMock.mockReset();
   fallbackMock.mockReturnValue(false);
+  rejectReactiveMock.mockReset();
+  rejectReactiveMock.mockReturnValue(false);
   process.env.REACTIVE_MD_MODE = 'off';
   process.env.REACTIVE_MD_PERCENT = '100';
   vi.spyOn(console, 'info').mockImplementation(() => {});
@@ -94,7 +97,7 @@ describe('resolveReadRender', () => {
   it('reactive + fallback diagnostics → reactive-static with the current compile', async () => {
     process.env.REACTIVE_MD_MODE = 'on';
     compileMock.mockResolvedValue(outcome());
-    fallbackMock.mockReturnValue(true);
+    rejectReactiveMock.mockReturnValue(true);
     const result = await resolveReadRender(input({ format: 'reactive' }));
     expect(result.choice.renderer).toBe('reactive-static');
     expect(result.choice.reason).toBe('fallback');

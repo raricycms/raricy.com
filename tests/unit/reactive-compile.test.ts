@@ -22,6 +22,7 @@ import {
   REACTIVE_FALLBACK_CODES,
   reactiveDiagnosticCodes,
   reactiveFallbackReasons,
+  shouldRejectReactive,
   shouldFallbackToLegacy,
 } from '@/lib/reactive/diagnostics';
 import {
@@ -102,16 +103,34 @@ describe('回退判据', () => {
     expect(reactiveFallbackReasons(result)).toEqual([]);
   });
 
-  it('local.html（HTML 属性降级）会回退', () => {
-    const result = compileLocal('<div class="x">hi</div>', options);
-    expect(reactiveDiagnosticCodes(result)).toContain('local.html');
+  it.each([
+    '<div class="x">hi</div>',
+    '<table><tr><td colspan="bad">x</td></tr></table>',
+    '<div style="color:red">{{ missing }}',
+  ])('原生 HTML 局部降级：Markdown 回退，Reactive 可发布 %s', (source) => {
+    const result = compileLocal(`${source}\n\n<counter bind="n" label="N" initial="2">`, options);
+    expect(result.ok).toBe(true);
+    expect(reactiveDiagnosticCodes(result)).toContain('local.html.fallback');
     expect(shouldFallbackToLegacy(result)).toBe(true);
+    expect(shouldRejectReactive(result)).toBe(false);
+    if (result.ok) {
+      expect(collectNodes(result.document.nodes, 'fallback')[0]?.value).toBe(source);
+      expect(result.document.bindings.n).toBeDefined();
+    }
   });
 
   it('local.component.unknown（未知标签）会回退', () => {
     const result = compileLocal('<audio controls></audio>', options);
     expect(reactiveDiagnosticCodes(result)).toContain('local.component.unknown');
     expect(shouldFallbackToLegacy(result)).toBe(true);
+    expect(shouldRejectReactive(result)).toBe(true);
+  });
+
+  it('安全 HTML 回退不能掩盖同一篇里的未知组件', () => {
+    const result = compileLocal('<div class="x">hi</div>\n\n<my-widget />', options);
+    expect(result.ok).toBe(true);
+    expect(reactiveDiagnosticCodes(result)).toEqual(expect.arrayContaining(['local.html.fallback', 'local.component.unknown']));
+    expect(shouldRejectReactive(result)).toBe(true);
   });
 
   it('数学显示降级（粗码与细分 messageKey）都会回退', () => {
@@ -120,6 +139,7 @@ describe('回退判据', () => {
     expect(reactiveDiagnosticCodes(command)).toContain('local.math.display');
     expect(reactiveFallbackReasons(command)).toContain('local.math.display.unsupported-command');
     expect(shouldFallbackToLegacy(command)).toBe(true);
+    expect(shouldRejectReactive(command)).toBe(true);
 
     const environment = compileLocal(
       String.raw`$$\begin{unknown}x\end{unknown}$$`,
@@ -131,8 +151,18 @@ describe('回退判据', () => {
     expect(shouldFallbackToLegacy(environment)).toBe(true);
   });
 
+  it('反斜线行内和块级公式能编译为数学节点', () => {
+    const result = compileLocal(String.raw`行内 \(x^2\)` + '\n\n' + String.raw`\[y^2\]`, reactiveCompileOptions('markdown'));
+    expect(result.ok).toBe(true);
+    expect(shouldFallbackToLegacy(result)).toBe(false);
+    if (result.ok) {
+      expect(collectNodes(result.document.nodes, 'inlineMath')).toHaveLength(1);
+      expect(collectNodes(result.document.nodes, 'math')).toHaveLength(1);
+    }
+  });
+
   it('ok:false 一定回退，即使没有命中白名单', () => {
-    const result = compileLocal('<table><tr><td>x</td></tr></table>', options);
+    const result = compileLocal('<panel title="x">', options);
     expect(result.ok).toBe(false);
     expect(shouldFallbackToLegacy(result)).toBe(true);
   });
@@ -140,6 +170,7 @@ describe('回退判据', () => {
   it('白名单包含契约要求的全部码', () => {
     for (const code of [
       'local.html',
+      'local.html.fallback',
       'local.component.unknown',
       'local.options.invalid',
       'local.budget',
@@ -183,6 +214,29 @@ describe('compileReactiveSource 缓存', () => {
     expect(second.cacheHit).toBe(true);
     expect(second.cacheKey).toBe(first.cacheKey);
     expect(stats()).toMatchObject({ hits: 1, misses: 1, entries: 1 });
+  });
+
+  it('首次编译和缓存命中都返回可跨 RSC 边界的普通数据', async () => {
+    const input = {
+      source: '<counter bind="n" label="N" initial="2">\n\n当前 {{ n }}',
+      format: 'reactive' as const,
+      mode: 'external' as const,
+      viewer: null,
+    };
+    const first = await compileReactiveSource(input);
+    const second = await compileReactiveSource(input);
+    expect(first.cacheHit).toBe(false);
+    expect(second.cacheHit).toBe(true);
+    expect(first.compilerVersion).toBe('reactive-md/0.6.0');
+    const visited = new Set<object>();
+    const expectPlain = (value: unknown): void => {
+      if (!value || typeof value !== 'object' || visited.has(value)) return;
+      visited.add(value);
+      expect(Object.getPrototypeOf(value)).toBe(Array.isArray(value) ? Array.prototype : Object.prototype);
+      Object.values(value).forEach(expectPlain);
+    };
+    expectPlain(first.result);
+    expectPlain(second.result);
   });
 
   it('format 变化（选项键变化）必须 miss', async () => {
