@@ -160,7 +160,7 @@ describe('博客格式：validateBlogData / 落库 / 读出口', () => {
     });
     const snapshot = await prisma.reactiveSnapshot.findFirst({ where: { kind: 'blog', contentId: id } });
     expect(snapshot).not.toBeNull();
-    expect(snapshot!.compilerVersion).toBe('reactive-md/0.6.0');
+    expect(snapshot!.compilerVersion).toBe('reactive-md/0.6.1');
     const document = JSON.parse(snapshot!.documentJson);
     expect(document.nodes[0]).toMatchObject({ type: 'fallback', value: '<div style="color:red">{{ missing }}' });
     expect(document.bindings.n).toBeDefined();
