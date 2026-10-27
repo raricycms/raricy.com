@@ -24,12 +24,17 @@ import {
   curveById,
   type CurveVerdict,
 } from '../../src/games/motion/curves';
+import {
+  MOTION_SCENARIOS,
+  INTERACTION_CURVE_ID,
+  INTERACTION_DURATION,
+} from '../../src/games/motion/scenarios';
 
 const LINEAR: BezierPoints = [0, 0, 1, 1];
 /** CSS 默认 `ease`。 */
 const EASE: BezierPoints = [0.25, 0.1, 0.25, 1];
-/** 展开档：起步极快、尾巴拖长。 */
-const EXPAND: BezierPoints = [0.16, 1, 0.3, 1];
+/** 交互动画：起步极快、尾巴拖长。交互产生的一切反馈统一用它。 */
+const INTERACTION: BezierPoints = [0.16, 1, 0.3, 1];
 /** 回弹（过冲）：y 中途超过 1。 */
 const OVERSHOOT: BezierPoints = [0.34, 1.56, 0.64, 1];
 
@@ -40,7 +45,7 @@ function sampleYs(bezier: BezierPoints, n = 200): number[] {
 
 describe('sampleEasing（按 x 反解 t 再取 y）', () => {
   it('端点被夹住：x=0 → 0、x=1 → 1、x<0 → 0、x>1 → 1', () => {
-    for (const curve of [LINEAR, EASE, EXPAND, OVERSHOOT]) {
+    for (const curve of [LINEAR, EASE, INTERACTION, OVERSHOOT]) {
       expect(sampleEasing(curve, 0)).toBe(0);
       expect(sampleEasing(curve, 1)).toBe(1);
       expect(sampleEasing(curve, -0.5)).toBe(0);
@@ -66,13 +71,13 @@ describe('sampleEasing（按 x 反解 t 再取 y）', () => {
     expect(sampleEasing(EASE, 0.5)).toBeCloseTo(0.8024, 3);
   });
 
-  it('展开档 [0.16, 1, 0.3, 1] 单调不减，且前 25% 已走完过半', () => {
-    const ys = sampleYs(EXPAND, 200);
+  it('交互动画 [0.16, 1, 0.3, 1] 单调不减，且前 25% 已走完过半', () => {
+    const ys = sampleYs(INTERACTION, 200);
     for (let i = 1; i < ys.length; i++) {
       expect(ys[i]).toBeGreaterThanOrEqual(ys[i - 1] - 1e-9);
     }
     // 「起步极快」这一族的判据：四分之一的时间点已经过半。
-    expect(sampleEasing(EXPAND, 0.25)).toBeGreaterThan(0.5);
+    expect(sampleEasing(INTERACTION, 0.25)).toBeGreaterThan(0.5);
   });
 
   it('回弹 [0.34, 1.56, 0.64, 1] 中途超过 1（y 没有被夹进 [0, 1]）', () => {
@@ -91,7 +96,7 @@ describe('sampleEasing（按 x 反解 t 再取 y）', () => {
 
 describe('sampleEasingPoints（图上那条折线的点集）', () => {
   it('返回 steps + 1 个点，x 从 0 到 1 严格递增', () => {
-    const points = sampleEasingPoints(EXPAND, 12);
+    const points = sampleEasingPoints(INTERACTION, 12);
     expect(points).toHaveLength(13);
     expect(points[0][0]).toBe(0);
     expect(points[points.length - 1][0]).toBe(1);
@@ -101,7 +106,7 @@ describe('sampleEasingPoints（图上那条折线的点集）', () => {
   });
 
   it('首尾 y 分别是 0 与 1', () => {
-    for (const curve of [LINEAR, EASE, EXPAND, OVERSHOOT]) {
+    for (const curve of [LINEAR, EASE, INTERACTION, OVERSHOOT]) {
       const points = sampleEasingPoints(curve, 48);
       expect(points[0][1]).toBe(0);
       expect(points[points.length - 1][1]).toBe(1);
@@ -109,7 +114,7 @@ describe('sampleEasingPoints（图上那条折线的点集）', () => {
   });
 
   it('默认 steps 是 48 —— 得到 49 个点', () => {
-    expect(sampleEasingPoints(EXPAND)).toHaveLength(49);
+    expect(sampleEasingPoints(INTERACTION)).toHaveLength(49);
   });
 
   it('每一步的 y 都等于同一点上用 sampleEasing 取到的值', () => {
@@ -190,7 +195,7 @@ describe('MOTION_CURVES（速度曲线清单）', () => {
   });
 
   it('curveCss 输出形如 cubic-bezier(0.16, 1, 0.3, 1)', () => {
-    expect(curveCss(curveById('expressive'))).toBe('cubic-bezier(0.16, 1, 0.3, 1)');
+    expect(curveCss(curveById('interaction'))).toBe('cubic-bezier(0.16, 1, 0.3, 1)');
   });
 
   it('curveCss 对每一条都给出可解析的四元组', () => {
@@ -200,6 +205,76 @@ describe('MOTION_CURVES（速度曲线清单）', () => {
       expect(match).not.toBeNull();
       const numbers = match!.slice(1).map(Number);
       expect(numbers).toEqual([...curve.points]);
+    }
+  });
+});
+
+// 「交互产生的反馈动画统一用一条曲线」这件事已经定了，所以它不能再是「碰巧对了」——
+// 曲线改名、默认时长变化、某个场景忘了跟，都是静默的：页面照常渲染，只是那一格在演示
+// 一条已经不用的曲线。
+describe('交互动画（交互反馈的统一曲线与默认时长）', () => {
+  it('清单里有一条 id / 显示名都叫「交互动画」的曲线，且被标为已采用', () => {
+    const curve = curveById(INTERACTION_CURVE_ID);
+    expect(curve.name).toBe('交互动画');
+    expect(curve.verdict).toBe('adopt');
+    expect([...curve.points]).toEqual([0.16, 1, 0.3, 1]);
+  });
+
+  it('默认时长是 600ms', () => {
+    expect(INTERACTION_DURATION).toBe(600);
+  });
+
+  it('每个交互反馈场景恰有一列被标成「统一取值」，且用它自己的默认时长', () => {
+    // 两格**刻意的例外**，都不属于「交互产生的反馈动画」：
+    //   · progress —— 进度条的宽度就是「已完成多少」，必须匀速，否则会让人高估前期进度。
+    //   · fade —— 整页切换由 docs/plan/page-transition-plan.md 单独管（只动 opacity、
+    //            120–160ms），时长与统一值无关，所以它不挂「统一取值」。
+    const outOfScope = new Set(['progress', 'fade']);
+    for (const scenario of MOTION_SCENARIOS) {
+      const adopted = scenario.variants.filter((variant) => variant.adopted === true);
+      if (outOfScope.has(scenario.id)) {
+        expect(adopted, `${scenario.id} 不该挂「统一取值」`).toHaveLength(0);
+        continue;
+      }
+      expect(adopted, `${scenario.id} 的「统一取值」列数`).toHaveLength(1);
+      const [variant] = adopted;
+      expect(variant.curveId, `${scenario.id} 的统一列用了别的曲线`).toBe(INTERACTION_CURVE_ID);
+      expect(variant.duration, `${scenario.id} 的统一列不是默认时长`).toBe(INTERACTION_DURATION);
+    }
+  });
+
+  it('进度条与切页两格不跟着统一取值走（各自的规矩更硬）', () => {
+    const progress = MOTION_SCENARIOS.find((scenario) => scenario.id === 'progress')!;
+    expect(progress.variants[0].curveId).toBe('linear');
+    for (const variant of progress.variants) expect(variant.curveId).not.toBe(INTERACTION_CURVE_ID);
+
+    // 切页允许摆一列「统一曲线压到短时长」当对照（能直接看出在这一格统一会多慢），
+    // 但它不能是「统一取值」那一列，且任何一列都不得超过 160ms 那一档太多。
+    const fade = MOTION_SCENARIOS.find((scenario) => scenario.id === 'fade')!;
+    for (const variant of fade.variants) {
+      expect(variant.duration, `切页 ${variant.key} 超出短时长那一档`).toBeLessThanOrEqual(240);
+      expect(variant.duration).toBeLessThan(INTERACTION_DURATION);
+    }
+  });
+
+  it('展示标签里的 ms 数与 duration 一致（改时长忘了改文案会自相矛盾）', () => {
+    for (const scenario of MOTION_SCENARIOS) {
+      for (const variant of scenario.variants) {
+        // 「间隔 Nms」写的是 stagger，别把它当成时长核。
+        const staggerShown = /间隔\s*(\d+)ms/.exec(variant.label);
+        if (staggerShown) expect(Number(staggerShown[1])).toBe(variant.stagger);
+        const durationPart = variant.label.replace(/间隔\s*\d+ms/g, '');
+        for (const shown of [...durationPart.matchAll(/(\d+)ms\b/g)].map((match) => Number(match[1]))) {
+          expect(shown, `${scenario.id}/${variant.key} 标签写 ${shown}ms`).toBe(variant.duration);
+        }
+      }
+    }
+  });
+
+  it('曲线清单里不再出现旧名「展开档」', () => {
+    for (const curve of MOTION_CURVES) expect(curve.name).not.toContain('展开档');
+    for (const scenario of MOTION_SCENARIOS) {
+      for (const variant of scenario.variants) expect(variant.label).not.toContain('展开档');
     }
   });
 });

@@ -2,9 +2,9 @@ import type { BezierPoints } from './bezier';
 
 // 备选速度曲线清单 —— 这份表就是后面全站加动效时挑曲线的唯一来源。
 //
-// `adopt` 是站内已经在用的三条（`docs/frontend-styles.md` §6.2）：展开档、收起档、
-// 以及 150–250ms 反馈档的 `ease`。另外几条是候选，**加进这个清单 ≠ 已经采用** ——
-// 它们只是摆在页面上让人对着同一段动画比较。
+// `adopt` 是站内已经在用的三条：交互动画（交互反馈统一用它）、收起档、
+// 以及 150–250ms 反馈档的 `ease`。`ease` 正在被交互动画取代，暂时留在这里作对照。
+// 另外几条是候选，**加进这个清单 ≠ 已经采用** —— 它们只是摆在页面上让人对着同一段动画比较。
 //
 // 曲线一律写成 CSS 的 `cubic-bezier()` 四元组，页面上那张图与「逐帧递增」区块都用同一个
 // 元组现算（见 `bezier.ts`），所以图上看到的形状就是 CSS 真正会走的形状。
@@ -20,10 +20,10 @@ export interface MotionCurve {
 
 export const MOTION_CURVES: readonly MotionCurve[] = [
   {
-    id: 'expressive',
-    name: '展开档',
+    id: 'interaction',
+    name: '交互动画',
     points: [0.16, 1, 0.3, 1],
-    note: '起步极快、尾巴拖长。展开与入场用它，480ms 走完全程；反过来当收起用会显得「先冲一下」。',
+    note: '交互产生的一切反馈统一用它，默认 600ms 走完全程。起步极快、尾巴拖长，所以「点了马上有反应」；反过来当收起用会显得「先冲一下」。',
     verdict: 'adopt',
   },
   {
@@ -37,7 +37,7 @@ export const MOTION_CURVES: readonly MotionCurve[] = [
     id: 'ease',
     name: 'ease（现行反馈）',
     points: [0.25, 0.1, 0.25, 1],
-    note: 'CSS 默认值。站内按钮、滑块、卡片光晕的 150–250ms 反馈现在都用它。',
+    note: 'CSS 默认值。站内按钮、滑块、卡片光晕的原取值（150–250ms）。交互反馈已统一改走交互动画，这条留作对照 —— 同样的短时长下，它比交互动画「温」一些。',
     verdict: 'adopt',
   },
   {
@@ -51,7 +51,7 @@ export const MOTION_CURVES: readonly MotionCurve[] = [
     id: 'ease-out',
     name: 'ease-out',
     points: [0, 0, 0.58, 1],
-    note: '起步就最快、一路减速。和展开档同一族但没那么极端，适合 200ms 上下的入场。',
+    note: '起步就最快、一路减速。和交互动画同一族但没那么极端，适合 200ms 上下的入场。',
     verdict: 'candidate',
   },
   {
@@ -86,7 +86,7 @@ export const MOTION_CURVES: readonly MotionCurve[] = [
     id: 'swift-out',
     name: '快出缓停',
     points: [0.22, 1, 0.36, 1],
-    note: '比展开档再快一档的「瞬间起步」。480ms 展开嫌慢时，用它把时长压到 320ms 观感接近。',
+    note: '比交互动画再快一档的「瞬间起步」。600ms 嫌慢、又不想换曲线时，用它把时长压到 320ms 观感接近。',
     verdict: 'candidate',
   },
   {

@@ -274,6 +274,13 @@
   background: var(--color-background-content);
 }
 
+// 「统一取值」那一列加一道边 —— 每场景都有一列是它，靠位置猜不合适。
+// 边用 inset box-shadow 而不是 border：border 会让这一格比同行高 2px，
+// 四张卡的展开面板底边就错开了。
+.mo-variant--adopted {
+  box-shadow: inset 0 0 0 1px var(--color-brand-primary);
+}
+
 // 标签与读数**上下叠**而不是左右并排：cubic-bezier 那一串最长有 30 多字符，
 // 并排时它 flex: none 抢走整行宽度，中文标签被压成每行一个字。
 .mo-variant__head {
@@ -286,6 +293,19 @@
   font-size: 0.875rem;
   font-weight: 600;
   line-height: 1.4;
+}
+
+.mo-variant__flag {
+  display: inline-block;
+  margin-inline-end: v.$space-2;
+  padding: 1px v.$space-2;
+  border-radius: v.$radius-small;
+  background: var(--color-brand-primary);
+  color: #fff;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  line-height: 1.5;
+  vertical-align: 1px;
 }
 
 .mo-variant__readout {

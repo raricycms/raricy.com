@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState, type CSSProperties } from 'react';
 import Link from 'next/link';
 import { sampleEasing, sampleEasingPoints, easingRange, type BezierPoints } from './bezier';
 import { MOTION_CURVES, curveCss, curveById, type MotionCurve } from './curves';
-import { MOTION_SCENARIOS, type MotionScenario, type MotionVariant, type ScenarioKind } from './scenarios';
+import { MOTION_SCENARIOS, INTERACTION_CURVE_ID, INTERACTION_DURATION, type MotionScenario, type MotionVariant, type ScenarioKind } from './scenarios';
 import { useReducedMotion } from './use-reduced-motion';
 
 // 动效试验台：同一个场景摆几列，除「哪条曲线、走多久」以外完全一样。
@@ -55,6 +55,8 @@ function motionStyle(curve: MotionCurve, duration: number): CSSProperties {
 }
 
 function verdictLabel(curve: MotionCurve) {
+  // 统一的交互曲线要说得比「已采用」更肯定 —— 它是这一轮定下来的那一条。
+  if (curve.id === INTERACTION_CURVE_ID) return '已统一采用';
   if (curve.verdict === 'adopt') return '已采用';
   if (curve.verdict === 'avoid') return '不建议';
   return '候选';
@@ -332,10 +334,17 @@ function VariantCard({ scenario, variant, reduce }: { scenario: MotionScenario; 
   // 悬停与滑块不能靠重播看：一个要真鼠标、一个要自己点选项。
   const replayable = scenario.id !== 'hover' && scenario.id !== 'segment';
 
+  // 统一的取值要一眼能找到 —— 每场景都有一列是它，靠序号猜不合适。
+  // 读数据里那个显式标记，别按「曲线 + 时长」推：逐条入场那格有两列都是 600ms。
+  const adopted = variant.adopted === true;
+
   return (
-    <article className="mo-variant">
+    <article className={adopted ? 'mo-variant mo-variant--adopted' : 'mo-variant'}>
       <div className="mo-variant__head">
-        <span className="mo-variant__label">{variant.label}</span>
+        <span className="mo-variant__label">
+          {adopted && <span className="mo-variant__flag">统一取值</span>}
+          {variant.label}
+        </span>
         <span className="mo-variant__readout numeric">{readout}</span>
       </div>
       <svg className="mo-variant__spark" viewBox={`0 0 ${PLOT_SIZE} ${SPARK_HEIGHT}`} preserveAspectRatio="none" aria-hidden="true">
@@ -389,8 +398,10 @@ export default function MotionLab() {
         <Link className="game-back" href="/game/collections/test">返回测试合集</Link>
         <h1>动效试验台</h1>
         <p className="mo-lab__lead">
-          同一个场景、同一段动画，每列只换速度曲线和时长。挑出各场景要用的那一条之后，
-          再把结论写进动效规范一节。
+          同一个场景、同一段动画，每列只换速度曲线和时长。已定：交互产生的反馈动画统一走
+          「交互动画」（<span className="numeric">{curveCss(curveById(INTERACTION_CURVE_ID))}</span>，
+          默认 {INTERACTION_DURATION}ms），所以每个场景的第一列就是它。其余列留着对照 ——
+          用来发现哪些场景其实不该跟这条统一取值。
         </p>
         <div className="mo-lab__toolbar">
           <button type="button" className="btn btn-secondary" onClick={() => setEpoch((value) => value + 1)}>

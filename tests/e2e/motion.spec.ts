@@ -18,6 +18,16 @@ test('动效试验台：九个场景各摆多列，曲线与时长可对照，�
     expect(await variants.count()).toBeGreaterThanOrEqual(3);
   }
 
+  // 「统一取值」那一列每个交互场景各一个（进度条与切页是刻意的例外，共 7 个）。
+  await expect(page.locator('.mo-variant--adopted')).toHaveCount(7);
+  // 它必须真的用交互动画那条曲线，并且是 600ms —— 角标和读数不能自相矛盾。
+  const adoptedReadouts = await page.locator('.mo-variant--adopted .mo-variant__readout').allTextContents();
+  expect(adoptedReadouts).toHaveLength(7);
+  for (const readout of adoptedReadouts) {
+    expect(readout).toContain('cubic-bezier(0.16, 1, 0.3, 1)');
+    expect(readout).toContain('600ms');
+  }
+
   // 曲线总览：11 条备选曲线都在图上，图例也是 11 条。
   await expect(page.locator('.mo-plot__path')).toHaveCount(11);
   await expect(page.locator('.mo-legend__item')).toHaveCount(11);
