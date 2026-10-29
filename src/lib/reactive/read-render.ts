@@ -30,10 +30,9 @@
 //   影子产物绝不用于渲染；percent 与逐篇 override=legacy 照常生效，`off` 不编译。
 //
 // 【4】`markdownCompatible` 必须由 `shouldFallbackToLegacy` 给出，不能只看 `ok`。
-//   `local.html` / `local.component.unknown` 会在 `ok: true` 的情况下静默改变可见
-//   内容（HTML 标签降级成源码文本），这正是 D4 的判据。**旧反斜线数学**（`\(…\)` /
-//   `\[…\]`）是同一类静默降级，但上游 0.5.3 不给诊断，只能从原文判断
-//   （`legacy-math.ts`，排除围栏 / 行内代码）。
+//   `local.html.fallback` / `local.component.unknown` 会在 `ok: true` 的情况下改变
+//   内容；Markdown 须退回旧渲染器，Reactive 则可保留安全的 HTML 局部源码回退。
+//   反斜线数学已由上游支持，`legacyMath` 仅作为观察字段。
 //
 // 【5】日志只写结构化字段（renderer / reason / codes / 耗时 / 缓存命中 / 快照状态），
 //   **不写正文、不写标题**。这些是运维台账，不是内容副本。
@@ -43,7 +42,7 @@ import { parseContentFormat, type ContentFormat } from '../content-format';
 import { selectContentRenderer, type RendererChoice } from '../renderer-select';
 import { parseReactiveFlags, type ReactiveFlags } from './flags';
 import { compileReactiveSource, type ReactiveCompileOutcome } from './compile';
-import { shouldFallbackToLegacy } from './diagnostics';
+import { shouldFallbackToLegacy, shouldRejectReactive } from './diagnostics';
 import { hasLegacyMathDelimiters } from './legacy-math';
 import { hasMutableExternalReferences, hostDataEqual } from './snapshot-revalidation';
 import {
@@ -303,7 +302,7 @@ async function observeShadowCandidate(
     bundle = undefined;
   }
   const compatible =
-    !!bundle && bundle.result.ok && !shouldFallbackToLegacy(bundle.result) && !legacyMath;
+    !!bundle && bundle.result.ok && !shouldFallbackToLegacy(bundle.result);
   const wouldBe = selectContentRenderer({
     ...selectionBase,
     flags: candidateFlags,
@@ -378,11 +377,11 @@ export async function resolveReadRender(input: ReadRenderInput): Promise<ReadRen
     } catch {
       bundle = undefined;
     }
-    // 编译失败 / 命中回退码 / 旧反斜线数学 → markdownCompatible=false → 选择器给回
-    // legacy。数学那一项只能看原文：上游 0.5.3 对它没有任何诊断（见 legacy-math.ts）。
+    // 编译失败 / 命中回退码 → markdownCompatible=false → 选择器给回 legacy。
+    // 反斜线数学已受支持，扫描结果只用于观测。
     const legacyMath = hasLegacyMathDelimiters(input.source);
     const compatible =
-      !!bundle && bundle.result.ok && !shouldFallbackToLegacy(bundle.result) && !legacyMath;
+      !!bundle && bundle.result.ok && !shouldFallbackToLegacy(bundle.result);
     const choice = selectContentRenderer({ ...selectionBase, markdownCompatible: compatible });
     return finish(choice, format, bundle, {
       legacyMath,
@@ -402,7 +401,7 @@ export async function resolveReadRender(input: ReadRenderInput): Promise<ReadRen
     } catch {
       bundle = undefined;
     }
-    const failed = !bundle || !bundle.result.ok || shouldFallbackToLegacy(bundle.result);
+    const failed = !bundle || !bundle.result.ok || shouldRejectReactive(bundle.result);
     const choice = selectContentRenderer({ ...selectionBase, compilationFailed: failed });
     if (choice.renderer === 'reactive') return finish(choice, format, bundle);
     // 编译失败或语义不兼容 → 同版本静态快照，绝不退回旧 Markdown。

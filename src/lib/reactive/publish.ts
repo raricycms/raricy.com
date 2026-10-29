@@ -12,7 +12,7 @@
 
 import { LOCAL_SYNTAX_VERSION } from 'reactive-md';
 import { isoWithOffset, nowForDb } from '../db-time';
-import { shouldFallbackToLegacy } from './diagnostics';
+import { shouldRejectReactive } from './diagnostics';
 import {
   reactiveContentVersion,
   toSnapshotRow,
@@ -73,7 +73,7 @@ export async function buildReactiveSnapshotForWrite(
       codes: bundle.result.diagnostics.map((diagnostic) => diagnostic.code),
     };
   }
-  if (shouldFallbackToLegacy(bundle.result)) {
+  if (shouldRejectReactive(bundle.result)) {
     return {
       ok: false,
       reason: 'fallback',

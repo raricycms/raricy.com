@@ -3,7 +3,7 @@ import { requireAdmin } from '@/lib/guard';
 import { getBlogDetail } from '@/lib/blog-service';
 import { compileReactiveSource } from '@/lib/reactive/compile';
 import { parseContentFormat } from '@/lib/content-format';
-import { shouldFallbackToLegacy } from '@/lib/reactive/diagnostics';
+import { shouldFallbackToLegacy, shouldRejectReactive } from '@/lib/reactive/diagnostics';
 import ReactiveDocument from '@/app/components/reactive/ReactiveDocumentLazy';
 import FooterCopyOverride from '@/app/components/FooterCopyOverride';
 
@@ -38,7 +38,9 @@ export default async function ReactivePreviewPage({ params }: { params: Promise<
     viewer: user,
   });
 
-  const fallback = shouldFallbackToLegacy(bundle.result);
+  const fallback = format === 'markdown'
+    ? shouldFallbackToLegacy(bundle.result)
+    : shouldRejectReactive(bundle.result);
   const codes = bundle.result.diagnostics.map((d) => d.code);
 
   return (
@@ -50,7 +52,7 @@ export default async function ReactivePreviewPage({ params }: { params: Promise<
             <p className="reactive-preview__meta">
               预览模式 · 渲染器 reactive · 缓存 {bundle.cacheHit ? '命中' : '未命中'} ·{' '}
               {bundle.compileMs} ms
-              {fallback ? ' · 正式灰度会回退旧渲染器' : ''}
+              {fallback ? (format === 'markdown' ? ' · 正式灰度会回退旧渲染器' : ' · 正式路径会尝试使用静态正文') : ''}
             </p>
           </header>
 
@@ -69,7 +71,7 @@ export default async function ReactivePreviewPage({ params }: { params: Promise<
             </div>
           ) : (
             <div className="blog-content-container" id="userContentContainer">
-              <p>这篇文档无法用 ReactiveMD 解释，正式路径会回退旧渲染器。</p>
+              <p>{format === 'markdown' ? '这篇文档无法用 ReactiveMD 解释，正式路径会回退旧渲染器。' : '这篇文档无法用 ReactiveMD 解释。'}</p>
             </div>
           )}
 

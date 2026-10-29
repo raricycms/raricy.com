@@ -20,8 +20,9 @@ Next.js 15 + Prisma + SQLite 主站，自有 `instance/` 数据目录；实时�
   共用主站 `.env*`，内部凭据自动生成；`npm run dev` / `npm start` 同时管理两个进程。
   ATÅMAS 不依赖它。部署反代见 `docs/realtime.md`。
 - **前端**：服务端 / 客户端组件混用；Markdown 仍由 marked + DOMPurify + highlight.js 渲染
-- **ReactiveMD**：精确依赖 `reactive-md@0.5.3`（博客 / 剪贴板正文的第二种格式与渲染器，
-  见 `docs/architecture.md` §6.23）。灰度开关 `REACTIVE_MD_MODE=off|shadow|on`（默认
+- **ReactiveMD**：精确依赖 `reactive-md@0.6.1`（博客 / 剪贴板正文的第二种格式与渲染器，
+  公式由 KaTeX 排版并随包提供离线字体，见 `docs/architecture.md` §6.23）。
+  灰度开关 `REACTIVE_MD_MODE=off|shadow|on`（默认
   `off`）与 `REACTIVE_MD_PERCENT=0..100`（默认 `0`）；默认不改变现有渲染路径
 
 组件与子系统的关系见 `docs/architecture.md`。

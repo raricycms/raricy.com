@@ -1933,7 +1933,7 @@ bot 接口，私密夹也能**复制成公开**、能导出 JSON —— 它的�
 ### 6.23 ReactiveMD 渲染器（博客 / 剪贴板，2026-10）
 
 博客详情与剪贴板详情现在有**两条正文管线**：§6.7 的旧 Markdown 管线，与
-`reactive-md@0.5.3` 的新管线。逐篇选择的唯一入口是 `src/lib/reactive/read-render.ts`
+`reactive-md@0.6.1` 的新管线。逐篇选择的唯一入口是 `src/lib/reactive/read-render.ts`
 （阅读页）；编辑器预览的分叉在 `MarkdownEditor.tsx`。页面不自己判灰度，也**绝不把
 reactive 源码交给旧 Markdown 解析器** —— 那不会抛错，只会把 `{{ }}` 与组件标签当
 普通文本显示出来。
@@ -1959,9 +1959,10 @@ reactive 源码交给旧 Markdown 解析器** —— 那不会抛错，只会把
 #### 回退（D4）
 
 判据在 `src/lib/reactive/diagnostics.ts` 的 `shouldFallbackToLegacy`：**不只看
-`ok`**，还查 `REACTIVE_FALLBACK_CODES` —— `local.html`（HTML 属性降级）、
-`local.component.unknown`（未知标签）、`local.options.invalid`、`local.budget`，
-以及数学显示降级的各码（粗分类 `local.math.display` 与细分 `messageKey` 都查）。
+`ok`**，还查 `REACTIVE_FALLBACK_CODES` —— `local.html` / `local.html.fallback`
+（HTML 属性降级）、`local.component.unknown`（未知标签）、`local.options.invalid`、
+`local.budget`，以及数学显示降级的各码（粗分类 `local.math.display` 与细分
+`messageKey` 都查）。
 这些情况 `compileLocal` 常常返回 `ok: true`，却会**静默改变可见内容**。
 
 - `markdown` 编译失败或不兼容 → 回 `legacy`；
@@ -2021,7 +2022,7 @@ external 权限下的 `hostData`，均为 JSON），不是作者上传的 HTML�
 #### 编译缓存
 
 `src/lib/reactive/compile.ts` 的缓存键是
-`sha256(adaptedSource):LOCAL_SYNTAX_VERSION:reactive-md/0.5.3:adapterVersion:localCompileOptionsKey(options)`；
+`sha256(adaptedSource):LOCAL_SYNTAX_VERSION:reactive-md/0.6.1:adapterVersion:localCompileOptionsKey(options)`；
 选项由 `reactiveCompileOptions(format)` 固定（`markdownBreaks` 仅 markdown 为 true）。
 LRU 挂在 `globalThis` 上（Next 的独立 compilation 会有多份模块实例），按估算字节数
 计容（64MB / 500 条）；只缓存 `{ ok, document?, diagnostics }`，`hostData` / `segments` /
