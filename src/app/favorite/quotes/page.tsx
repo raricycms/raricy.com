@@ -4,6 +4,8 @@ import { listSavedQuotes } from '@/lib/daily-quote-service';
 import SitePager from '@/app/components/SitePager';
 import DailyQuoteNav from '@/app/components/DailyQuoteNav';
 import SavedQuotes from './SavedQuotes';
+import { hasPublishedBlog } from '@/lib/checkin-service';
+import QuoteBlogRequired from '@/app/components/QuoteBlogRequired';
 
 export const dynamic = 'force-dynamic';
 
@@ -13,6 +15,7 @@ export default async function QuoteFavoritesPage({
   searchParams: Promise<{ page?: string }>;
 }) {
   const user = await requireCoreUser();
+  if (!(await hasPublishedBlog(user.id))) return <QuoteBlogRequired />;
   const { page } = await searchParams;
   const result = await listSavedQuotes(user.id, Number(page ?? 1));
 
@@ -26,7 +29,7 @@ export default async function QuoteFavoritesPage({
       <DailyQuoteNav current="saved" />
 
       <p className="daily-quote-page__note">
-        仅自己可见，共 {result.total} 条。日期为最近入选日期，不是收藏时间。
+        仅自己可见，共 {result.total} 条。按收藏时间排序；内容下架后仅保留占位。
       </p>
 
       {result.total ? (

@@ -3,7 +3,7 @@ const { session } = vi.hoisted(() => ({ session: { token: undefined as string | 
 vi.mock('next/headers', () => ({ cookies: async () => ({ get: (name: string) =>
   name === 'raricy_session' && session.token ? { value: session.token } : undefined }) }));
 
-import { resetDb, makeUser, prisma } from '../helpers/db';
+import { resetDb, makeUser as makeBareUser, makeBlog, prisma } from '../helpers/db';
 import { createSessionToken } from '@/lib/session';
 import { checkIn } from '@/lib/checkin-service';
 import { submitQuote, quoteContentKey, quoteReviewVersion } from '@/lib/daily-quote-service';
@@ -17,9 +17,14 @@ import { PATCH as review } from '@/app/api/admin/daily-quotes/[id]/route';
 import { POST as resonate } from '@/app/api/daily-quotes/[id]/resonance/route';
 import { POST as favorite, DELETE as unfavorite } from '@/app/api/daily-quotes/[id]/favorite/route';
 
+async function makeUser(opts: Parameters<typeof makeBareUser>[0] = {}) {
+  const user = await makeBareUser(opts);
+  if (user.role !== 'user') await makeBlog({ authorId: user.id });
+  return user;
+}
 const ctx = (id: string) => ({ params: Promise.resolve({ id }) });
 const body = (data: unknown, method = 'POST') => new Request('http://localhost/api/daily-quotes/submissions', {
-  method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data),
+  method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(method === 'PATCH' && data && typeof data === 'object' && 'content' in data ? { version: 1, ...data } : data),
 });
 const historyRequest = (search = '') => new Request(`http://localhost/api/daily-quotes/history${search}`);
 const input = { content: '接口测试的一句话', category: '治愈', source_type: 'original', signature: 'anonymous' };
@@ -34,6 +39,35 @@ const pastDay = (n: number) => new Date(dayStart(todayStr()).getTime() - n * 864
 beforeEach(async () => { await resetDb(); __resetRateLimitStore(); session.token = undefined; });
 
 describe('每日一言的HTTP权限、隐私与输入', () => {
+  it('没有博客的 core 与管理员无法绕过页面直接使用各接口', async () => {
+    const user = await makeBareUser({ role: 'core' }); await login(user.id);
+    const handlers = [() => today(), () => history(historyRequest()), () => mine(), () => submit(body(input)),
+      () => edit(body({ ...input, version: 1 }, 'PATCH'), ctx('missing')), () => resonate(body({ max_fish: 0 }), ctx('missing')),
+      () => favorite(body({}), ctx('missing')), () => unfavorite(body({}, 'DELETE'), ctx('missing'))];
+    for (const handler of handlers) {
+      const response = await handler(); expect(response.status).toBe(403);
+      expect(await response.json()).toMatchObject({ reason: 'BLOG_REQUIRED' });
+    }
+    const admin = await makeBareUser({ role: 'admin' }); await login(admin.id);
+    expect(await (await review(body({ action: 'approve', version: 'old' }, 'PATCH'), ctx('missing'))).json()).toMatchObject({ reason: 'BLOG_REQUIRED' });
+  });
+
+  it('共鸣接口必须确认金额；不能收款的社区稿返回零扣款，恢复资格后不补扣', async () => {
+    const author = await makeUser({ role: 'core' }); const reader = await makeUser({ role: 'core' });
+    const quote = await submitQuote(author.id, input);
+    await prisma.dailyQuote.update({ where: { id: quote.id }, data: { status: 'approved', firstSelectedDay: pastDay(1) } });
+    await prisma.dailyQuoteEdition.create({ data: { day: pastDay(1), quoteId: quote.id, createdAt: nowForDb() } });
+    await login(reader.id);
+    expect((await resonate(body({}), ctx(quote.id))).status).toBe(400);
+    expect((await resonate(body({ max_fish: 0 }), ctx(quote.id))).status).toBe(409);
+    await prisma.user.update({ where: { id: author.id }, data: { role: 'user' } });
+    const free = await resonate(body({ max_fish: 0 }), ctx(quote.id));
+    expect(free.status).toBe(200); expect(await free.json()).toMatchObject({ charged_fish: 0, resonance_count: 1 });
+    await prisma.user.update({ where: { id: author.id }, data: { role: 'core' } });
+    expect(await (await resonate(body({ max_fish: 0 }), ctx(quote.id))).json()).toMatchObject({ already_resonated: true, charged_fish: 0 });
+    expect(await prisma.fishTransaction.count()).toBe(0);
+  });
+
   it('所有接口未登录401，普通用户403；core不能审核', async () => {
     const handlers = [() => today(), () => history(historyRequest()), () => mine(), () => submit(body(input)),
       () => edit(body(input, 'PATCH'), ctx('missing')), () => review(body({ action: 'approve' }, 'PATCH'), ctx('missing')),

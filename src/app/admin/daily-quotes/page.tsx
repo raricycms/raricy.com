@@ -5,13 +5,18 @@ import { QUOTE_STATUSES, QUOTE_STATUS_LABELS } from '@/lib/daily-quote';
 import { ymdhms } from '@/lib/format';
 import AdminPageHeader from '@/app/components/AdminPageHeader';
 import AdminDailyQuoteReview from '@/app/components/AdminDailyQuoteReview';
+import { hasPublishedBlog } from '@/lib/checkin-service';
+import { isCurrentlyBanned } from '@/lib/auth';
+import QuoteBlogRequired from '@/app/components/QuoteBlogRequired';
+import QuoteRevisionHistory from '@/app/components/QuoteRevisionHistory';
 
 export const dynamic = 'force-dynamic';
 
 export default async function DailyQuoteAdminPage({ searchParams }: { searchParams: Promise<{ status?: string; page?: string }> }) {
-  await requireAdmin();
+  const user = await requireAdmin();
+  if (!(await hasPublishedBlog(user.id))) return <QuoteBlogRequired />;
   const params = await searchParams;
-  const result = await listReviewQuotes(params.status ?? 'pending', Number(params.page ?? 1));
+  const result = await listReviewQuotes(params.status ?? 'pending', Number(params.page ?? 1), user.id);
   return <>
     <AdminPageHeader title="每日一言审核" />
     <nav className="daily-quote-pagination" aria-label="稿件状态">
@@ -26,8 +31,11 @@ export default async function DailyQuoteAdminPage({ searchParams }: { searchPara
         <p>投稿人：{quote.submitter?.username ?? quote.authorName}；展示署名：{quote.signature === 'anonymous' ? '匿名' : '昵称'}</p>
         <p>{quote.sourceType === 'original' ? '原创' : `引用自：${quote.sourceName}`}</p>
         <p className="daily-quote-card__hint numeric">{ymdhms(quote.createdAt)}</p>
+        {quote.firstSelectedDay && <p className="daily-quote-card__hint numeric">选登于 {quote.firstSelectedDay}</p>}
+        {quote.candidate_unavailable && <p className="daily-quote-card__hint">{quote.candidate_unavailable}</p>}
         {quote.reviewReason && <p>审核说明：{quote.reviewReason}</p>}
-        <AdminDailyQuoteReview id={quote.id} status={quote.status} version={quoteReviewVersion(quote)} />
+        {quote.kind === 'community' && <QuoteRevisionHistory revisions={quote.revisions} />}
+        {!isCurrentlyBanned(user) && <AdminDailyQuoteReview id={quote.id} status={quote.status} version={quoteReviewVersion(quote)} />}
       </article>)}
       {!result.quotes.length && <p>当前没有这类稿件。</p>}
     </div>

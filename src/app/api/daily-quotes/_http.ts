@@ -1,6 +1,6 @@
-import { getCurrentUser, hasAdminRights, isCoreUser, isCurrentlyBanned, type SafeUser } from '@/lib/auth';
+import { getCurrentUser, type SafeUser } from '@/lib/auth';
 import { apiErr } from '@/lib/format';
-import { QuoteError } from '@/lib/daily-quote-service';
+import { QuoteError, requireQuoteParticipant } from '@/lib/daily-quote-service';
 
 export async function quoteRequest(
   action: (user: SafeUser) => Promise<Response>,
@@ -9,14 +9,12 @@ export async function quoteRequest(
   try {
     const user = await getCurrentUser();
     if (!user) return apiErr(401, '请先登录');
-    if (!isCoreUser(user)) return apiErr(403, '需要核心用户权限');
-    if (options.admin && !hasAdminRights(user)) return apiErr(403, '需要管理员权限');
-    if (options.write && isCurrentlyBanned(user)) return apiErr(403, '禁言期间暂时无法操作');
+    await requireQuoteParticipant(user.id, options);
     const response = await action(user);
     response.headers.set('Cache-Control', 'private, no-store');
     return response;
   } catch (error) {
-    if (error instanceof QuoteError) return apiErr(error.status, error.message);
+    if (error instanceof QuoteError) return apiErr(error.status, error.message, { reason: error.reason, ...error.extra });
     console.error('[daily-quotes] 操作失败:', error);
     return apiErr(500, '操作失败，请稍后重试');
   }

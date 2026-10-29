@@ -1,10 +1,10 @@
 import { redirect, forbidden } from 'next/navigation';
-import Link from 'next/link';
 import { getCurrentUser, isCoreUser, isCurrentlyBanned } from '@/lib/auth';
 import { loginUrlWithNext } from '@/lib/safe-url';
 import { getTodayStatus, getCountLeaderboard } from '@/lib/checkin-service';
 import CheckinCard, { CheckinLeaderboards } from '@/app/components/CheckinCard';
 import DailyQuoteNav from '@/app/components/DailyQuoteNav';
+import QuoteBlogRequired from '@/app/components/QuoteBlogRequired';
 
 // 签到 = 每日领鱼干，档位是 **core+**（与投喂、点赞、剪贴板同档）。
 //
@@ -18,11 +18,6 @@ import DailyQuoteNav from '@/app/components/DailyQuoteNav';
 // `next=/`，登录完被扔回首页而不是签到页。这里与 /fish/* 各页同款 —— 路径是已知的，
 // 直接写死进 next。access-control.spec 把这条钉死了（`next=%2Fcheckin`）。
 export const dynamic = 'force-dynamic';
-
-// 引导态那条链的落点：博客目录 + 预填「自我介绍」的搜索。
-// 不是 /blog/upload —— 新人还不知道该写什么，先让他看见别人怎么写；目录页右侧
-// 就有「创建文章」入口。搜索词的编码必须与 SearchForm 的 GET 表单一致（`search`）。
-const INTRO_SEARCH_HREF = `/blog?search=${encodeURIComponent('自我介绍')}`;
 
 export default async function CheckinPage() {
   const user = await getCurrentUser();
@@ -52,20 +47,13 @@ export default async function CheckinPage() {
             <span className="checkin-card__greeting">你好，{user.username}</span>
             <span className="checkin-card__date numeric">{status.today}</span>
           </div>
-          <div className="checkin-reward-hint" style={{ marginBottom: 16 }}>
-            签到只对<b>发布过文章</b>的用户开放。你名下还没有未删除的文章（发过又全部删除
-            也算没有）。不妨先发一篇<b>自我介绍</b> —— 让大家认识你，发完就能来签到，
-            每天领 <span className="numeric">{status.rewardFish}</span> 条小鱼干。
-          </div>
-          <Link href={INTRO_SEARCH_HREF} className="btn btn-primary">
-            看看大家的「自我介绍」
-          </Link>
+          <div className="checkin-reward-hint">签到与每日一言需先发表博客；发过又全部删除也算没有。</div>
+          <QuoteBlogRequired embedded />
         </div>
       )}
 
-      {/* 三个入口放在签到状态分支**之外**：没签到、甚至还没发文不具备签到资格的人
-          也能回看往期、翻一言集、查自己的投稿。今日内容仍要签到后在弹窗里看。 */}
-      <DailyQuoteNav />
+      {/* 已发文但未签到的人可以使用往期等入口；没发文时统一先走引导。 */}
+      {status.canCheckIn && <DailyQuoteNav />}
 
       <CheckinLeaderboards countEntries={countLb} currentUserId={user.id} />
     </div>

@@ -91,10 +91,10 @@ export interface CheckinStatus {
  * 软删 = `Blog.ignore = true`（schema 里叫 ignore，是文章域的软删标志，见 blog-service
  * 头部）—— 删掉的不算，所以「全删光」等于「没发过」。
  *
- * 与档位判定一样，这是**给页面与路由用的**：checkIn() 不调用它（理由见文件头）。
+ * 签到页面与路由校验它，一言服务也在事务内复核；checkIn() 不调用它（理由见文件头）。
  */
-export async function hasPublishedBlog(userId: string): Promise<boolean> {
-  const n = await prisma.blog.count({ where: { authorId: userId, ignore: false } });
+export async function hasPublishedBlog(userId: string, client: Pick<Prisma.TransactionClient, 'blog'> = prisma): Promise<boolean> {
+  const n = await client.blog.count({ where: { authorId: userId, ignore: false } });
   return n > 0;
 }
 

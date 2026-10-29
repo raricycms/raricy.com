@@ -13,7 +13,7 @@ export const TMP_DIR = path.resolve(import.meta.dirname, '..', '.tmp');
 export const TEMPLATE_DB = path.join(TMP_DIR, 'template.db');
 
 /**
- * 模板库的**发布戳**：建库那次算出的 schema.prisma 哈希。
+ * 模板库的**发布戳**：建库那次算出的 schema.prisma 与手写约束 SQL 的联合哈希。
  *
  * 存在且与当前 schema 哈希相等 → 模板可直接复用，连 `prisma db push` 都不跑。
  * 见 tests/global-setup.ts 的「为什么不再无条件重建」。

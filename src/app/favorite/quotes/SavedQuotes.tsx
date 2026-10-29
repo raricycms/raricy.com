@@ -4,10 +4,10 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import type { DailyQuoteView, SavedQuoteEntry } from '@/lib/daily-quote';
 import DailyQuoteCard from '@/app/components/DailyQuoteCard';
+import QuoteBlogRequired from '@/app/components/QuoteBlogRequired';
 
 /**
- * 一言集的列表。日期是「最近一次入选」而不是收藏时间 —— 收藏本身没有日期可讲，
- * 用户要的是这句话和「每日」怎么对上（页顶也说明了这一点）。
+ * 一言集按收藏时间排序，首次选登日仅作辅助；经典重播不改变收藏日期。
  *
  * 同 quoteId 的互动状态在页内共享（同往期列表）；取消收藏由卡片自己的切换完成，
  * 之后整页 `router.refresh()` 让服务层给出收敛后的有效页（取消末页最后一条时，
@@ -18,6 +18,7 @@ export default function SavedQuotes({ rows }: { rows: SavedQuoteEntry[] }) {
   const [states, setStates] = useState<Record<string, DailyQuoteView>>({});
   const [error, setError] = useState('');
   const [busy, setBusy] = useState<string | null>(null);
+  const [blogRequired, setBlogRequired] = useState(false);
 
   async function remove(id: string) {
     setBusy(id);
@@ -26,7 +27,11 @@ export default function SavedQuotes({ rows }: { rows: SavedQuoteEntry[] }) {
       const response = await fetch(`/api/daily-quotes/${encodeURIComponent(id)}/favorite`, {
         method: 'DELETE',
       });
-      if (!response.ok) throw new Error((await response.json()).message || '移出失败');
+      if (!response.ok) {
+        const data = await response.json();
+        if (data.reason === 'BLOG_REQUIRED') setBlogRequired(true);
+        throw new Error(data.message || '移出失败');
+      }
       router.refresh();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : '移出失败');
@@ -35,6 +40,7 @@ export default function SavedQuotes({ rows }: { rows: SavedQuoteEntry[] }) {
     }
   }
 
+  if (blogRequired) return <QuoteBlogRequired embedded />;
   return (
     <div className="daily-quote-list">
       {error && (
@@ -50,7 +56,8 @@ export default function SavedQuotes({ rows }: { rows: SavedQuoteEntry[] }) {
               key={row.id}
               mode="list"
               quote={quote}
-              dateLabel={row.last_day ? `最近入选 ${row.last_day}` : undefined}
+              dateLabel={`收藏于 ${row.saved_at.slice(0, 10)}`}
+              dateHint={row.first_selected_day ? `${quote.kind === 'builtin' ? '首次选登' : '选登于'} ${row.first_selected_day}` : undefined}
               onChange={(next) => setStates((current) => ({ ...current, [next.id]: next }))}
               onRemoved={() => router.refresh()}
             />
@@ -60,7 +67,7 @@ export default function SavedQuotes({ rows }: { rows: SavedQuoteEntry[] }) {
           <article key={row.id} className="daily-quote-card daily-quote-card--list daily-quote-card--unavailable">
             <div className="daily-quote-card__meta">
               <span className="daily-quote-card__date numeric">
-                {row.last_day ? `最近入选 ${row.last_day}` : '入选日期未知'}
+                收藏于 {row.saved_at.slice(0, 10)}
               </span>
             </div>
             <p className="daily-quote-card__unavailable">这句一言已下架。</p>

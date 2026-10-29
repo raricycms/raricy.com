@@ -10,6 +10,7 @@ import { prisma } from '@/lib/db';
 import { nowForDb } from '@/lib/db-time';
 import { fishToUnits } from '@/lib/fish-units';
 import { TEMPLATE_DB } from './db-template';
+import { installTestConstraints } from './db-constraints';
 
 // 测试库路径由 tests/setup.ts 生成为 tests/.tmp/test-<pid>-<rand>.db —— 每进程独立，
 // 避免多个 vitest 进程共用一个文件、互相 rmSync 重建（会随机报 no such table /
@@ -90,6 +91,7 @@ export function ensureSchema() {
       stdio: 'pipe',
     });
   }
+  installTestConstraints(dbPath);
   schemaReady = true;
 }
 
@@ -137,7 +139,7 @@ export async function resetDb() {
     // 累计共鸣资格表引用 daily_quotes 与 users —— 必须排在两者之前删。
     // ⚠️ 漏登记**不报错**（下面那条 DELETE 的 catch 会吞掉），表现为「上个用例的
     // 共鸣资格残留」，症状是某些用例莫名其妙显示「已共鸣」。
-    'daily_quote_resonance_once',
+    'daily_quote_revisions', 'daily_quote_resonance_once',
     'daily_quote_resonances', 'daily_quote_favorites', 'daily_quote_editions', 'daily_quotes',
     // 保存箱引用 users 与 chat_messages —— 必须排在两者之前删。
     // ⚠️ 漏登记不报错（下面那条 DELETE 的 catch 会吞掉），表现为数据在用例间残留。

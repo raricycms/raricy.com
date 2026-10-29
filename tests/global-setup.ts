@@ -21,21 +21,21 @@ import path from 'node:path';
 import fs from 'node:fs';
 import crypto from 'node:crypto';
 import { TMP_DIR, TEMPLATE_DB, TEMPLATE_HASH, SQLITE_SIDECARS } from './helpers/db-template';
+import { CONSTRAINT_SQL_PATH, installTestConstraints } from './helpers/db-constraints';
 
 /** 模板库「建好了」的最小体积。真实结构库 800KB+，空文件是 0 字节。 */
 const MIN_TEMPLATE_BYTES = 4096;
 
-/** 当前 schema.prisma 的哈希 —— 模板是否还有效，只认这一个判据。 */
+/** schema 与手写约束共同决定模板；SQL 改变也必须使缓存失效。 */
 function schemaHash(): string {
   const schema = fs.readFileSync(path.resolve(import.meta.dirname, '../prisma/schema.prisma'));
-  return crypto.createHash('sha256').update(schema).digest('hex');
+  return crypto.createHash('sha256').update(schema).update(fs.readFileSync(CONSTRAINT_SQL_PATH)).digest('hex');
 }
 
 /**
  * 模板库能不能直接复用。
  *
- * 【为什么可以复用】模板只由 schema.prisma 决定，与工作树里改了什么代码无关。
- * schema 哈希一样 → 建出来的表就一样，没有任何理由重建。
+ * 【为什么可以复用】模板只由 schema 与手写约束决定，与业务代码变化无关。
  */
 function templateUsable(want: string): boolean {
   try {
@@ -163,6 +163,7 @@ export default function globalSetup() {
       stdio: 'pipe',
     });
 
+    installTestConstraints(staging);
     // 伴生文件（-wal/-shm）不能跟着 rename，先落进主库再发布：
     // 直接 rename 主文件时若还有 WAL，副本会缺最新事务。db push 退出后连接已关，
     // 正常没有伴生文件；有的话说明结构已 checkpoint 进主文件，删掉即可。

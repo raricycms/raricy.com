@@ -1,10 +1,10 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// 每日一言：全站 UTC+8 每日固定一句，社区优先，90 天内不重新选用同一内容。
+// 每日一言：全站 UTC+8 每日固定一句。社区只选登一次，经典在社区候选耗尽后循环。
 // 签到到账与一言读取独立：展示失败不能回滚签到，也不能改变当天已选定的一句。
 //
 // 【共鸣资格 = 每人每句一生一次，不按日】2026-10 起资格由
 // `daily_quote_resonance_once` 的联合主键 (quote_id, user_id) 决定：换日、取消再收藏、
-// 90 天后再次入选都不会重置。`daily_quote_resonances` 退化成**明细 / 审计**（哪天共鸣
+// 经典再次入选都不会重置。`daily_quote_resonances` 退化成**明细 / 审计**（哪天共鸣
 // 的、付了多少），它的行数**不再**决定按钮状态或显示人数 —— 存量里跨日重复的行原样
 // 保留，所以「你去重一次」不能靠它，否则同一人会被重复计数。
 //
@@ -20,7 +20,7 @@
 // 【往期列表是纯读】它不调用 selectEdition / getTodayQuote：惰性选句只在「首次读取今日
 // 一言」发生，历史查询不能替今天或过去补抽，否则会凭空造出「那天选中过」的记录。
 //
-// 【钱的边界】社区稿共鸣由付款者出 1 条鱼干、全额交给投稿人，经典免费；两侧记账与
+// 【钱的边界】可收款社区稿共鸣由付款者出 1 条鱼干、全额交给投稿人；失格与经典免费。两侧记账与
 // 资格行、明细行在**同一个事务**里提交，余额不足全部回滚。匿名稿件的读口不返回投稿人
 // 账号 ID / 昵称，付款流水的关联收款人置空。
 // ─────────────────────────────────────────────────────────────────────────────
@@ -32,15 +32,16 @@ import { hasAdminRights, isCoreUser, isCurrentlyBanned } from './auth';
 import { postEntry, InsufficientFishError } from './fish-service';
 import { fishToUnits, unitsToFish } from './fish-units';
 import { rateLimit, RULES } from './rate-limit';
+import { hasPublishedBlog } from './checkin-service';
 import {
-  QUOTE_CATEGORIES, QUOTE_CONTENT_MAX, QUOTE_HISTORY_PAGE_SIZE, QUOTE_NO_REPEAT_DAYS,
+  QUOTE_BLOG_REQUIRED, QUOTE_CATEGORIES, QUOTE_CONTENT_MAX, QUOTE_HISTORY_PAGE_SIZE,
   QUOTE_RESONANCE_FISH, QUOTE_SAVED_PAGE_SIZE, QUOTE_STATUSES, canEditQuoteSubmission, normalizeQuotePage, quoteLength,
   type DailyQuoteHistoryEntry, type DailyQuoteResonanceResult, type DailyQuoteView,
-  type SavedQuoteEntry,
+  quoteDisplayStatus, type SavedQuoteEntry,
 } from './daily-quote';
 
 export class QuoteError extends Error {
-  constructor(public status: number, message: string) { super(message); }
+  constructor(public status: number, message: string, public reason?: string, public extra: object = {}) { super(message); }
 }
 
 export function quoteContentKey(content: string): string {
@@ -60,37 +61,54 @@ const state = globalThis as unknown as { __dailyQuotePending: Map<string, Promis
 state.__dailyQuotePending ??= new Map();
 
 async function selectEdition(day: string): Promise<string> {
-  const existing = await prisma.dailyQuoteEdition.findUnique({ where: { day } });
-  if (existing) return existing.quoteId;
-  try {
-    return await prisma.$transaction(async (tx) => {
-      const previous = new Date(dayStart(day).getTime() - QUOTE_NO_REPEAT_DAYS * 86400000).toISOString().slice(0, 10);
-      const recent = await tx.dailyQuoteEdition.findMany({
-        where: { day: { gte: previous, lt: day } }, select: { quoteId: true },
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const existing = await prisma.dailyQuoteEdition.findUnique({ where: { day } });
+    if (existing) return existing.quoteId;
+    try {
+      return await prisma.$transaction(async (tx) => {
+        const rows = await tx.dailyQuote.findMany({
+          where: { status: 'approved', kind: 'community', firstSelectedDay: null, editions: { none: {} },
+            submitter: { archivedAt: null, role: { in: ['core', 'admin', 'owner'] }, blogs: { some: { ignore: false } } } },
+          select: { id: true, submitterId: true, submitter: { select: { isBanned: true, banUntil: true } } },
+          orderBy: [{ reviewedAt: 'asc' }, { id: 'asc' }],
+        });
+        const candidates = rows.filter((row) => !isCurrentlyBanned(row.submitter));
+        const yesterday = new Date(dayStart(day).getTime() - 86400000).toISOString().slice(0, 10);
+        const prior = await tx.dailyQuoteEdition.findUnique({ where: { day: yesterday }, select: { quote: { select: { submitterId: true } } } });
+        const community = candidates.find((row) => row.submitterId !== prior?.quote.submitterId) ?? candidates[0];
+        let quoteId: string;
+        if (community) {
+          // 条件写入 + edition 同事务：不能跨日重复认领，失败也不能把稿件凭空用掉。
+          const claimed = await tx.dailyQuote.updateMany({
+            where: { id: community.id, status: 'approved', firstSelectedDay: null, editions: { none: {} } },
+            data: { firstSelectedDay: day },
+          });
+          if (!claimed.count) throw new QuoteError(409, '选登状态变化，请重试', 'SELECTION_CHANGED');
+          quoteId = community.id;
+        } else {
+          const classics = await tx.dailyQuote.findMany({ where: { kind: 'builtin', status: 'approved' }, select: { id: true } });
+          if (!classics.length) throw new QuoteError(503, '今日暂无可用的一言，请稍后再试');
+          const used = await tx.dailyQuoteEdition.groupBy({ by: ['quoteId'],
+            where: { quoteId: { in: classics.map((q) => q.id) }, day: { lt: day } }, _max: { day: true } });
+          const last = new Map(used.map((row) => [row.quoteId, row._max.day ?? '']));
+          const oldest = classics.reduce((min, q) => (last.get(q.id) ?? '') < min ? (last.get(q.id) ?? '') : min, '9999-12-31');
+          const pool = classics.filter((q) => (last.get(q.id) ?? '') === oldest);
+          quoteId = pool[randomInt(pool.length)].id;
+        }
+        await tx.dailyQuoteEdition.create({ data: { day, quoteId, createdAt: nowForDb() } });
+        return quoteId;
       });
-      const eligible = {
-        status: 'approved', id: { notIn: recent.map((item) => item.quoteId) },
-        ...activeSubmitter,
-      } satisfies Prisma.DailyQuoteWhereInput;
-      let candidates = await tx.dailyQuote.findMany({
-        where: { ...eligible, kind: 'community', submitter: { archivedAt: null, role: { in: ['core', 'admin', 'owner'] } } },
-        select: { id: true },
-      });
-      if (!candidates.length) candidates = await tx.dailyQuote.findMany({
-        where: { ...eligible, kind: 'builtin' }, select: { id: true },
-      });
-      if (!candidates.length) throw new QuoteError(503, '今日暂无可用的一言，请稍后再试');
-      const quoteId = candidates[randomInt(candidates.length)].id;
-      await tx.dailyQuoteEdition.create({ data: { day, quoteId, createdAt: nowForDb() } });
-      return quoteId;
-    });
-  } catch (error) {
-    if (uniqueViolation(error)) {
-      const winner = await prisma.dailyQuoteEdition.findUnique({ where: { day } });
-      if (winner) return winner.quoteId;
+    } catch (error) {
+      if (uniqueViolation(error) || (error as { code?: string })?.code === 'P2034' ||
+        (error instanceof QuoteError && error.reason === 'SELECTION_CHANGED')) {
+        const winner = await prisma.dailyQuoteEdition.findUnique({ where: { day } });
+        if (winner) return winner.quoteId;
+        if (attempt < 2) continue;
+      }
+      throw error;
     }
-    throw error;
   }
+  throw new QuoteError(503, '选登暂时繁忙，请稍后重试');
 }
 
 async function editionQuoteId(day: string): Promise<string> {
@@ -102,8 +120,8 @@ async function editionQuoteId(day: string): Promise<string> {
   finally { state.__dailyQuotePending.delete(day); }
 }
 
-async function checkedIn(userId: string, day: string) {
-  return Boolean(await prisma.dailyCheckIn.findUnique({
+async function checkedIn(userId: string, day: string, tx: Prisma.TransactionClient = prisma) {
+  return Boolean(await tx.dailyCheckIn.findUnique({
     where: { uq_user_checkin_date: { userId, checkinDate: dayStart(day) } }, select: { id: true },
   }));
 }
@@ -129,6 +147,7 @@ async function buildQuoteViews(quotes: DailyQuote[], userId: string): Promise<Ma
   if (quotes.length === 0) return views;
 
   const quoteIds = [...new Set(quotes.map((quote) => quote.id))];
+  const viewer = await prisma.user.findUnique({ where: { id: userId }, select: { isBanned: true, banUntil: true } });
   const submitterIds = [...new Set(quotes.map((quote) => quote.submitterId).filter((id): id is string => Boolean(id)))];
   const [submitters, resonatedRows, favoriteRows, countRows] = await Promise.all([
     // `id: { in: [] }` 合法且返回空集，不必为「本页全是经典」分叉一条查询。
@@ -152,10 +171,8 @@ async function buildQuoteViews(quotes: DailyQuote[], userId: string): Promise<Ma
     const submitter = quote.submitterId ? submitterById.get(quote.submitterId) ?? null : null;
     // 归属判断留在服务端：只下发 can_resonate 与原因，匿名时不带任何投稿人标识。
     let unavailable: string | null = null;
-    if (quote.submitterId === userId) unavailable = '不能给自己的投稿共鸣';
-    else if (quote.kind === 'community' && (!submitter || !isCoreUser(submitter) || isCurrentlyBanned(submitter))) {
-      unavailable = '投稿人当前无法接收投喂';
-    }
+    if (isCurrentlyBanned(viewer)) unavailable = '禁言期间暂时无法操作';
+    else if (quote.submitterId === userId) unavailable = '不能给自己的投稿共鸣';
     const resonatedOnce = resonated.has(quote.id);
     const name = quote.kind === 'builtin' ? quote.authorName ?? '佚名'
       : quote.signature === 'anonymous' ? '匿名' : submitter?.username ?? '已注销用户';
@@ -166,9 +183,10 @@ async function buildQuoteViews(quotes: DailyQuote[], userId: string): Promise<Ma
       resonance_count: resonanceCounts.get(quote.id) ?? 0,
       resonated: resonatedOnce,
       favorited: favorited.has(quote.id),
-      resonance_fish: quote.kind === 'community' ? QUOTE_RESONANCE_FISH : 0,
+      resonance_fish: quote.kind === 'community' && canReceive(submitter) ? QUOTE_RESONANCE_FISH : 0,
       // 终身资格：已共鸣之后按钮永远不可再点（不提供取消，也没有「明天再来」）。
       can_resonate: !unavailable && !resonatedOnce,
+      can_favorite: !isCurrentlyBanned(viewer),
       resonance_unavailable: unavailable,
     });
   }
@@ -185,30 +203,39 @@ export async function quoteView(quote: DailyQuote, userId: string): Promise<Dail
   return view;
 }
 
-export async function getTodayQuote(userId: string): Promise<{ day: string; quote: DailyQuoteView | null }> {
+export async function getTodayQuote(userId: string): Promise<{ day: string; quote: DailyQuoteView | null; can_submit: boolean }> {
+  const actor = await requireQuoteParticipant(userId);
   const day = todayStr();
   if (!(await checkedIn(userId, day))) throw new QuoteError(403, '完成今日签到后可查看每日一言');
   const id = await editionQuoteId(day);
   const quote = await prisma.dailyQuote.findFirst({ where: { id, status: 'approved', ...activeSubmitter } });
   // 下架不重新抽取，避免同一天不同人看到两句；保留当天占位及历史选择记录。
-  return { day, quote: quote ? await quoteView(quote, userId) : null };
+  return { day, quote: quote ? await quoteView(quote, userId) : null, can_submit: !isCurrentlyBanned(actor) };
 }
 
-async function publishedQuote(quoteId: string, tx: Prisma.TransactionClient = prisma) {
+async function publishedQuote(quoteId: string, userId: string, tx: Prisma.TransactionClient = prisma) {
+  const day = todayStr();
+  const hasTodayAccess = await checkedIn(userId, day, tx);
   const quote = await tx.dailyQuote.findFirst({
-    where: { id: quoteId, status: 'approved', editions: { some: {} }, ...activeSubmitter },
+    where: { id: quoteId, status: 'approved', editions: { some: { day: { [hasTodayAccess ? 'lte' : 'lt']: day } } }, ...activeSubmitter },
   });
   if (!quote) throw new QuoteError(404, '一言不存在或已下架');
   return quote;
 }
 
-async function requireActor(userId: string, tx: Prisma.TransactionClient = prisma) {
+export async function requireQuoteParticipant(userId: string, options: { write?: boolean; admin?: boolean } = {}, tx: Prisma.TransactionClient = prisma) {
   const user = await tx.user.findUnique({ where: { id: userId }, select: {
     id: true, role: true, archivedAt: true, isBanned: true, banUntil: true, driedFish: true,
   } });
   if (!user || !isCoreUser(user)) throw new QuoteError(403, '需要核心用户权限');
-  if (isCurrentlyBanned(user)) throw new QuoteError(403, '禁言期间暂时无法操作');
+  if (options.admin && !hasAdminRights(user)) throw new QuoteError(403, '需要管理员权限');
+  if (options.write && isCurrentlyBanned(user)) throw new QuoteError(403, '禁言期间暂时无法操作', 'BANNED');
+  if (!(await hasPublishedBlog(userId, tx))) throw new QuoteError(403, QUOTE_BLOG_REQUIRED, 'BLOG_REQUIRED');
   return user;
+}
+
+function canReceive(user: { role?: string; archivedAt?: Date | null; isBanned?: boolean | null; banUntil?: Date | null } | null) {
+  return isCoreUser(user) && !isCurrentlyBanned(user);
 }
 
 /** 权威人数：只数累计资格表，并沿用账号归档边界（归档账号不计入显示人数）。 */
@@ -221,9 +248,10 @@ async function resonanceCountOf(quoteId: string, client: Prisma.TransactionClien
  * `can_resonate` 恒为 false（既没有取消，也没有「明天再来」）。
  * `resonance_unavailable` 也恒定 null —— 已共鸣的说明优先于「作者当前不能收款」。
  */
-function resonanceResult(already: boolean, resonanceCount: number, balance: number): DailyQuoteResonanceResult {
+function resonanceResult(already: boolean, resonanceCount: number, balance: number, chargedFish = 0): DailyQuoteResonanceResult {
   return {
     already_resonated: already,
+    charged_fish: chargedFish,
     resonated: true,
     can_resonate: false,
     resonance_count: resonanceCount,
@@ -246,22 +274,22 @@ function resonanceResult(already: boolean, resonanceCount: number, balance: numb
  * 重复请求（含跨日、跨标签页）不增加人数、不产生鱼干流水，返回权威的
  * `resonance_count` 与当前余额，客户端据此回填而不许自己 +1。
  */
-export async function resonateQuote(quoteId: string, userId: string): Promise<DailyQuoteResonanceResult> {
+export async function resonateQuote(quoteId: string, userId: string, maxFish: unknown): Promise<DailyQuoteResonanceResult> {
   try {
     return await prisma.$transaction(async (tx) => {
-      const actor = await requireActor(userId, tx);
-      const quote = await publishedQuote(quoteId, tx);
+      const actor = await requireQuoteParticipant(userId, { write: true }, tx);
+      const quote = await publishedQuote(quoteId, userId, tx);
       const prior = await tx.dailyQuoteResonanceOnce.findUnique({
         where: { uq_daily_quote_resonance_once: { quoteId, userId } }, select: { quoteId: true },
       });
       if (prior) return resonanceResult(true, await resonanceCountOf(quoteId, tx), unitsToFish(actor.driedFish));
       if (quote.submitterId === userId) throw new QuoteError(400, '不能给自己的投稿共鸣');
 
-      const paidUnits = quote.kind === 'community' ? fishToUnits(QUOTE_RESONANCE_FISH) : 0;
-      if (paidUnits) {
-        if (!quote.submitterId) throw new QuoteError(400, '投稿人当前无法接收投喂');
-        await requireActor(quote.submitterId, tx);
-      }
+      if (maxFish !== 0 && maxFish !== 1) throw new QuoteError(400, '请刷新后确认共鸣费用', 'FEE_REQUIRED');
+      const recipient = quote.submitterId ? await tx.user.findUnique({ where: { id: quote.submitterId }, select: submitterSelect }) : null;
+      const fee = quote.kind === 'community' && canReceive(recipient) ? QUOTE_RESONANCE_FISH : 0;
+      if (fee > maxFish) throw new QuoteError(409, '共鸣费用已变化，请刷新后再次点击', 'FEE_CHANGED', { resonance_fish: fee });
+      const paidUnits = fishToUnits(fee);
 
       // 资格行先写：并发重复在这里撞主键，唯一约束是最终防线。
       await tx.dailyQuoteResonanceOnce.create({ data: { quoteId, userId, firstResonatedAt: nowForDb() } });
@@ -279,7 +307,7 @@ export async function resonateQuote(quoteId: string, userId: string): Promise<Da
           description: '每日一言收到共鸣投喂', referenceType: 'daily_quote', referenceId: quoteId, relatedUserId: userId,
         });
       }
-      return resonanceResult(false, await resonanceCountOf(quoteId, tx), unitsToFish(actor.driedFish - paidUnits));
+      return resonanceResult(false, await resonanceCountOf(quoteId, tx), unitsToFish(actor.driedFish - paidUnits), fee);
     });
   } catch (error) {
     if (uniqueViolation(error)) {
@@ -297,16 +325,21 @@ export async function resonateQuote(quoteId: string, userId: string): Promise<Da
 }
 
 export async function saveQuote(quoteId: string, userId: string, saved: boolean) {
-  await requireActor(userId);
-  if (saved) await publishedQuote(quoteId);
-  // 移出收藏也允许作用于下架内容，以免私密分类里留下无法清理的条目。
-  if (saved) await prisma.dailyQuoteFavorite.upsert({
-    where: { uq_daily_quote_favorite: { userId, quoteId } },
-    create: { userId, quoteId, createdAt: nowForDb() },
-    update: { deleted: false, deletedAt: null, createdAt: nowForDb() },
-  });
-  else await prisma.dailyQuoteFavorite.updateMany({
-    where: { userId, quoteId, deleted: false }, data: { deleted: true, deletedAt: nowForDb() },
+  return prisma.$transaction(async (tx) => {
+    await requireQuoteParticipant(userId, { write: true }, tx);
+    if (saved) await publishedQuote(quoteId, userId, tx);
+    const previous = saved ? await tx.dailyQuoteFavorite.findUnique({ where: { uq_daily_quote_favorite: { userId, quoteId } } }) : null;
+    // 网络重试不会改写收藏时间；仅首次加入或取消后重新加入记为新的收藏。
+    if (previous && !previous.deleted) return;
+    // 移出收藏也允许作用于下架内容，以免私密分类里留下无法清理的条目。
+    if (saved) await tx.dailyQuoteFavorite.upsert({
+      where: { uq_daily_quote_favorite: { userId, quoteId } },
+      create: { userId, quoteId, createdAt: nowForDb() },
+      update: { deleted: false, deletedAt: null, createdAt: nowForDb() },
+    });
+    else await tx.dailyQuoteFavorite.updateMany({
+      where: { userId, quoteId, deleted: false }, data: { deleted: true, deletedAt: nowForDb() },
+    });
   });
 }
 
@@ -326,6 +359,7 @@ export async function listQuoteHistory(
   userId: string,
   page = 1,
 ): Promise<{ page: number; pages: number; total: number; editions: DailyQuoteHistoryEntry[] }> {
+  await requireQuoteParticipant(userId);
   const where: Prisma.DailyQuoteEditionWhereInput = { day: { lt: todayStr() } };
   const total = await prisma.dailyQuoteEdition.count({ where });
   const { page: currentPage, pages } = normalizeQuotePage(page, total, QUOTE_HISTORY_PAGE_SIZE);
@@ -352,8 +386,8 @@ export async function listQuoteHistory(
 /**
  * 私密一言集：本人未取消的收藏，按收藏时间倒序分页。
  *
- * `last_day` 是这条内容**最近一次入选**的日期（不是收藏时间），用一次 groupBy 取
- * _max(day)，不做逐条查询。下架内容保留占位（`quote: null`）与 `last_day`，仍可移出
+ * 收藏时间与首次选登日期分开；经典重播不改变收藏时间，也不透露今日期次。
+ * 下架内容保留占位（`quote: null`）与日期，仍可移出
  * —— 否则私密分类里会留下无法清理的条目。
  *
  * 页码按 `normalizeQuotePage` 收敛：取消末页最后一条后再刷新会回到有效末页。
@@ -362,6 +396,7 @@ export async function listSavedQuotes(
   userId: string,
   page = 1,
 ): Promise<{ total: number; page: number; pages: number; quotes: SavedQuoteEntry[] }> {
+  await requireQuoteParticipant(userId);
   const where: Prisma.DailyQuoteFavoriteWhereInput = { userId, deleted: false };
   const total = await prisma.dailyQuoteFavorite.count({ where });
   const { page: currentPage, pages } = normalizeQuotePage(page, total, QUOTE_SAVED_PAGE_SIZE);
@@ -369,21 +404,22 @@ export async function listSavedQuotes(
 
   const rows = await prisma.dailyQuoteFavorite.findMany({
     where,
-    orderBy: { createdAt: 'desc' },
+    orderBy: [{ createdAt: 'desc' }, { quoteId: 'asc' }],
     skip: (currentPage - 1) * QUOTE_SAVED_PAGE_SIZE,
     take: QUOTE_SAVED_PAGE_SIZE,
-    select: { quoteId: true },
+    select: { quoteId: true, createdAt: true },
   });
   const quoteIds = rows.map((row) => row.quoteId);
   const [quotes, lastDays] = await Promise.all([
     prisma.dailyQuote.findMany({ where: { id: { in: quoteIds }, status: 'approved', ...activeSubmitter } }),
-    prisma.dailyQuoteEdition.groupBy({ by: ['quoteId'], where: { quoteId: { in: quoteIds } }, _max: { day: true } }),
+    prisma.dailyQuoteEdition.groupBy({ by: ['quoteId'], where: { quoteId: { in: quoteIds } }, _min: { day: true } }),
   ]);
   const views = await buildQuoteViews(quotes, userId);
-  const lastDayByQuote = new Map(lastDays.map((row) => [row.quoteId, row._max.day ?? null]));
+  const firstDayByQuote = new Map(lastDays.map((row) => [row.quoteId, row._min.day ?? null]));
   const entries: SavedQuoteEntry[] = rows.map((row) => ({
     id: row.quoteId,
-    last_day: lastDayByQuote.get(row.quoteId) ?? null,
+    saved_at: row.createdAt.toISOString(),
+    first_selected_day: firstDayByQuote.get(row.quoteId) ?? null,
     quote: views.get(row.quoteId) ?? null,
   }));
   return { total, page: currentPage, pages, quotes: entries };
@@ -414,80 +450,111 @@ function validateSubmission(input: Record<string, unknown>) {
   };
 }
 
-function createSubmission(userId: string, data: ReturnType<typeof validateSubmission>, tx: Prisma.TransactionClient = prisma) {
-  return tx.dailyQuote.create({ data: {
+function revisionData(quote: DailyQuote) {
+  return { quoteId: quote.id, revision: quote.revision, content: quote.content, category: quote.category,
+    signature: quote.signature, sourceType: quote.sourceType, sourceName: quote.sourceName,
+    status: quote.status, reviewReason: quote.reviewReason, reviewerId: quote.reviewerId,
+    reviewedAt: quote.reviewedAt, createdAt: nowForDb() };
+}
+
+async function createSubmission(userId: string, data: ReturnType<typeof validateSubmission>, tx: Prisma.TransactionClient) {
+  const quote = await tx.dailyQuote.create({ data: {
     ...data, id: randomUUID(), kind: 'community', submitterId: userId,
     status: 'pending', createdAt: nowForDb(),
-  }, select: { id: true, status: true } });
+  } });
+  await tx.dailyQuoteRevision.create({ data: revisionData(quote) });
+  return { id: quote.id, status: quote.status, version: quote.revision };
 }
 
 export async function submitQuote(userId: string, input: Record<string, unknown>) {
-  await requireActor(userId);
-  consumeSubmissionQuota(userId);
-  const data = validateSubmission(input);
   try {
-    return await createSubmission(userId, data);
+    return await prisma.$transaction(async (tx) => {
+      await requireQuoteParticipant(userId, { write: true }, tx);
+      const data = validateSubmission(input);
+      consumeSubmissionQuota(userId);
+      return createSubmission(userId, data, tx);
+    });
   } catch (error) {
-    if (uniqueViolation(error)) throw new QuoteError(409, '这句内容已收录或已被拒绝，不能重复投稿');
+    if (uniqueViolation(error)) throw new QuoteError(409, '这句内容正在审核或已收录，不能重复投稿', 'DUPLICATE_CONTENT');
     throw error;
   }
 }
 
 /**
- * 作者只能修改自己的未通过稿件。待审原位保存；拒稿保留原文与审核记录，修改后另投新稿，
- * 沿用投稿配额和正文唯一约束，不能只改标点或署名就把已拒内容重新送审。
+ * 待审编辑及未通过重审都沿用原 ID，新增不可覆盖的版本。只修元信息也可以重新送审。
  * 权限、状态复核与写入放在同一事务，审核先完成时保存必须失败，不能改写已通过的正文。
  */
 export async function editQuoteSubmission(quoteId: string, userId: string, input: Record<string, unknown>) {
   try {
     return await prisma.$transaction(async (tx) => {
-      await requireActor(userId, tx);
+      await requireQuoteParticipant(userId, { write: true }, tx);
       const quote = await tx.dailyQuote.findFirst({ where: { id: quoteId, submitterId: userId, kind: 'community' } });
       if (!quote) throw new QuoteError(404, '投稿不存在');
       if (!canEditQuoteSubmission(quote.status)) throw new QuoteError(409, '稿件已通过审核或已下架，不能编辑，请刷新');
       const data = validateSubmission(input);
-      if (quote.status === 'rejected') {
-        consumeSubmissionQuota(userId);
-        return createSubmission(userId, data, tx);
-      }
+      if (input.version !== undefined && input.version !== quote.revision) throw new QuoteError(409, '稿件版本已变化，请刷新后编辑', 'VERSION_CHANGED');
+      const changed = data.content !== quote.content || data.category !== quote.category || data.signature !== quote.signature ||
+        data.sourceType !== quote.sourceType || data.sourceName !== quote.sourceName;
+      if (!changed && quote.status === 'rejected') throw new QuoteError(400, '请先修改稿件后重新提交', 'CHANGE_REQUIRED');
+      if (!changed) return { id: quoteId, status: quote.status, version: quote.revision };
+      if (quote.status === 'rejected') consumeSubmissionQuota(userId);
+      // 保全旧版本，包括旧库或运维导入的记录，不能在重审时覆盖旧审核意见。
+      await tx.dailyQuoteRevision.upsert({ where: { quoteId_revision: { quoteId, revision: quote.revision } },
+        create: revisionData(quote), update: {} });
       const updated = await tx.dailyQuote.updateMany({
-        where: { id: quoteId, submitterId: userId, kind: 'community', status: 'pending' },
-        data,
+        where: { id: quoteId, submitterId: userId, kind: 'community', status: quote.status, revision: quote.revision },
+        data: { ...data, revision: { increment: 1 }, status: 'pending', reviewerId: null, reviewedAt: null, reviewReason: null },
       });
       if (!updated.count) throw new QuoteError(409, '稿件状态已变化，请刷新');
-      return { id: quoteId, status: 'pending' };
+      const current = await tx.dailyQuote.findUniqueOrThrow({ where: { id: quoteId } });
+      await tx.dailyQuoteRevision.create({ data: revisionData(current) });
+      return { id: quoteId, status: 'pending', version: current.revision };
     });
   } catch (error) {
-    if (uniqueViolation(error)) throw new QuoteError(409, '这句内容已收录或已被拒绝，不能重复投稿');
+    if (uniqueViolation(error)) throw new QuoteError(409, '这句内容正在审核或已收录，不能重复投稿', 'DUPLICATE_CONTENT');
     throw error;
   }
 }
 
 export async function listSubmissions(userId: string) {
-  return prisma.dailyQuote.findMany({
-    where: { submitterId: userId, kind: 'community' }, orderBy: { createdAt: 'desc' }, take: 100,
-    select: { id: true, content: true, category: true, signature: true, sourceType: true, sourceName: true, status: true, reviewReason: true, createdAt: true },
+  await requireQuoteParticipant(userId);
+  const quotes = await prisma.dailyQuote.findMany({
+    where: { submitterId: userId, kind: 'community' }, orderBy: [{ createdAt: 'desc' }, { id: 'asc' }], take: 100,
+    select: { id: true, content: true, category: true, signature: true, sourceType: true, sourceName: true, status: true,
+      revision: true, firstSelectedDay: true, reviewReason: true, createdAt: true,
+      revisions: { orderBy: { revision: 'desc' }, select: { revision: true, content: true, category: true, signature: true,
+        sourceType: true, sourceName: true, status: true, reviewReason: true, reviewedAt: true, createdAt: true, isBaseline: true } } },
   });
+  return quotes.map((quote) => ({ ...quote, display_status: quoteDisplayStatus(quote), version: quote.revision }));
 }
 
-export async function listReviewQuotes(status: string, page: number) {
+export async function listReviewQuotes(status: string, page: number, adminId: string) {
+  await requireQuoteParticipant(adminId, { admin: true });
   const selected = (QUOTE_STATUSES as readonly string[]).includes(status) ? status : 'pending';
   const current = Number.isSafeInteger(page) ? Math.max(1, page) : 1;
-  const where = { status: selected, ...activeSubmitter };
+  const where: Prisma.DailyQuoteWhereInput = { ...activeSubmitter,
+    ...(selected === 'builtin' ? { kind: 'builtin', status: 'approved' } : selected === 'retired' ? { status: 'retired' } :
+      { kind: 'community', status: selected === 'selected' ? 'approved' : selected,
+        ...(selected === 'approved' ? { firstSelectedDay: null } : selected === 'selected' ? { firstSelectedDay: { not: null } } : {}) }) };
   const [total, quotes] = await Promise.all([
     prisma.dailyQuote.count({ where }),
     prisma.dailyQuote.findMany({
       where, orderBy: { createdAt: 'desc' }, skip: (current - 1) * 30, take: 30,
-      include: { submitter: { select: { username: true } } },
+      include: { submitter: { select: { username: true, role: true, isBanned: true, banUntil: true,
+        _count: { select: { blogs: { where: { ignore: false } } } } } },
+        revisions: { orderBy: { revision: 'desc' } } },
     }),
   ]);
-  return { total, page: current, pages: Math.ceil(total / 30), status: selected, quotes };
+  return { total, page: current, pages: Math.ceil(total / 30), status: selected, quotes: quotes.map((quote) => ({ ...quote,
+    display_status: quoteDisplayStatus(quote), candidate_unavailable: quote.kind !== 'community' || quote.status !== 'approved' || quote.firstSelectedDay ? null :
+      !isCoreUser(quote.submitter) ? '投稿人当前不是核心用户，暂停候选' : isCurrentlyBanned(quote.submitter) ? '投稿人当前被禁言，暂停候选' :
+        !quote.submitter?._count.blogs ? '投稿人当前没有未删除的博客，暂停候选' : null })) };
 }
 
 /** 审核页面所见的可编辑字段快照；署名与来源变化同样需要重新确认。 */
-export function quoteReviewVersion(quote: Pick<DailyQuote, 'content' | 'category' | 'signature' | 'sourceType' | 'sourceName'>): string {
+export function quoteReviewVersion(quote: Pick<DailyQuote, 'revision' | 'content' | 'category' | 'signature' | 'sourceType' | 'sourceName'>): string {
   return createHash('sha256').update(JSON.stringify([
-    quote.content, quote.category, quote.signature, quote.sourceType, quote.sourceName,
+    quote.revision, quote.content, quote.category, quote.signature, quote.sourceType, quote.sourceName,
   ])).digest('hex');
 }
 
@@ -498,17 +565,19 @@ export async function reviewQuote(quoteId: string, adminId: string, action: unkn
   const expected = action === 'retire' ? 'approved' : 'pending';
   const next = action === 'approve' ? 'approved' : action === 'reject' ? 'rejected' : 'retired';
   await prisma.$transaction(async (tx) => {
-    const reviewer = await requireActor(adminId, tx);
-    if (!hasAdminRights(reviewer)) throw new QuoteError(403, '需要管理员权限');
+    await requireQuoteParticipant(adminId, { write: true, admin: true }, tx);
     const quote = await tx.dailyQuote.findFirst({ where: { id: quoteId, status: expected, ...activeSubmitter } });
-    if (!quote) throw new QuoteError(409, '稿件状态已变化，已拒绝的稿件不能重新通过');
+    if (!quote) throw new QuoteError(409, '稿件状态已变化，请刷新后重新审核');
     if (expectedVersion !== undefined && quoteReviewVersion(quote) !== expectedVersion) {
-      throw new QuoteError(409, '稿件已被作者修改，请刷新后重新审核');
+      throw new QuoteError(409, '稿件已被作者修改，请刷新后重新审核', 'VERSION_CHANGED');
     }
     const updated = await tx.dailyQuote.updateMany({
-      where: { id: quoteId, status: expected }, data: { status: next, reviewReason: trimmed || null, reviewerId: adminId, reviewedAt: nowForDb() },
+      where: { id: quoteId, status: expected, revision: quote.revision }, data: { status: next, reviewReason: trimmed || null, reviewerId: adminId, reviewedAt: nowForDb() },
     });
     if (!updated.count) throw new QuoteError(409, '稿件状态已变化，请刷新');
+    if (action !== 'retire') await tx.dailyQuoteRevision.upsert({ where: { quoteId_revision: { quoteId, revision: quote.revision } },
+      create: { ...revisionData(quote), status: next, reviewerId: adminId, reviewReason: trimmed || null, reviewedAt: nowForDb() },
+      update: { status: next, reviewerId: adminId, reviewReason: trimmed || null, reviewedAt: nowForDb() } });
     const auditAction = action === 'approve' ? { action: 'daily_quote_approve' }
       : action === 'reject' ? { action: 'daily_quote_reject' } : { action: 'daily_quote_retire' };
     // 待审稿件与拒绝原因属于作者隐私，只记内部日志，避免公示出尚未发布的内容。

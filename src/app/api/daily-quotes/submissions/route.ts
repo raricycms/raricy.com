@@ -7,6 +7,11 @@ export async function GET() {
     id: item.id, content: item.content, category: item.category, signature: item.signature,
     source_type: item.sourceType, source_name: item.sourceName, status: item.status,
     review_reason: item.reviewReason, created_at: item.createdAt.toISOString(),
+    version: item.version, display_status: item.display_status, first_selected_day: item.firstSelectedDay,
+    history: item.revisions.map((revision) => ({ version: revision.revision, content: revision.content,
+      category: revision.category, signature: revision.signature, source_type: revision.sourceType, source_name: revision.sourceName,
+      status: revision.status, review_reason: revision.reviewReason, reviewed_at: revision.reviewedAt?.toISOString() ?? null,
+      created_at: revision.createdAt.toISOString(), is_baseline: revision.isBaseline })),
   })) }));
 }
 

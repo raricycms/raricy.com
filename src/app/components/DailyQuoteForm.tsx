@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { CircleCheck, LoaderCircle } from 'lucide-react';
 import { QUOTE_CATEGORIES, QUOTE_CONTENT_MAX, quoteLength, type QuoteSubmissionDraft } from '@/lib/daily-quote';
+import QuoteBlogRequired from './QuoteBlogRequired';
 import ExpandSelect from './ExpandSelect';
 
 export default function DailyQuoteForm({ submission, onSaved, onCancel }: {
@@ -21,6 +22,7 @@ export default function DailyQuoteForm({ submission, onSaved, onCancel }: {
   const [sourceType, setSourceType] = useState(submission?.source_type ?? 'original');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [blogRequired, setBlogRequired] = useState(false);
   const [done, setDone] = useState(false);
 
   useEffect(() => {
@@ -41,10 +43,13 @@ export default function DailyQuoteForm({ submission, onSaved, onCancel }: {
       const response = await fetch(submission
         ? `/api/daily-quotes/submissions/${encodeURIComponent(submission.id)}` : '/api/daily-quotes/submissions', {
         method: submission ? 'PATCH' : 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(Object.fromEntries(form)),
+        body: JSON.stringify({ ...Object.fromEntries(form), ...(submission ? { version: submission.version } : {}) }),
       });
       const data = await response.json();
-      if (!response.ok) throw new Error(data.message || '保存失败，请稍后重试');
+      if (!response.ok) {
+        if (data.reason === 'BLOG_REQUIRED') setBlogRequired(true);
+        throw new Error(data.message || '保存失败，请稍后重试');
+      }
       if (submission) onSaved?.();
       else setDone(true);
       router.refresh();
@@ -60,6 +65,7 @@ export default function DailyQuoteForm({ submission, onSaved, onCancel }: {
     setDone(false);
   }
 
+  if (blogRequired) return <QuoteBlogRequired embedded />;
   if (done) return <div className="daily-quote-form">
     <div ref={doneBox} tabIndex={-1} className="daily-quote-form__done">
       <CircleCheck size={30} aria-hidden="true" />
@@ -109,13 +115,13 @@ export default function DailyQuoteForm({ submission, onSaved, onCancel }: {
     </div>
     <p className="daily-quote-form__hint">{submission
       ? submission.status === 'rejected'
-        ? '修改正文后重新投稿，计入每天5次投稿额度；原拒稿及审核说明保留。同一内容只改标点不能重投。'
+        ? '修改后可重新提交审核，也可以只修正出处或署名；计入24小时5次投稿额度，旧版本与审核意见保留。'
         : '保存后仍需管理员审核，不占用新的投稿次数。'
-      : '每天最多投稿5次。通过审核后进入内容池；未通过的稿件可在「我的投稿」中编辑。匿名仅隐藏对其他用户的署名，管理员仍可查看投稿人。'}</p>
+      : '24小时最多投稿5次。审核通过后等待选登，每条投稿最多选登一次。匿名仅隐藏对其他用户的署名，管理员仍可查看投稿人。'}</p>
     {error && <p className="daily-quote-error" role="alert">{error}</p>}
     <button type="submit" className="daily-quote-primary daily-quote-form__submit" disabled={busy || !content.trim() || tooLong} aria-busy={busy}>
       {busy ? <><LoaderCircle className="daily-quote-spin" size={18} aria-hidden="true" />保存中…</>
-        : submission ? submission.status === 'rejected' ? '修改后重新投稿' : '保存修改' : '提交投稿'}
+        : submission ? submission.status === 'rejected' ? '修改并重新提交' : '保存修改' : '提交投稿'}
     </button>
     {onCancel && <button type="button" className="daily-quote-secondary" disabled={busy} onClick={onCancel}>取消编辑</button>}
   </form>;

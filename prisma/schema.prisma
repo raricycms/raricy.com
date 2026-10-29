@@ -115,6 +115,7 @@ model User {
   checkins              DailyCheckIn[]
   dailyQuotes           DailyQuote[] @relation("DailyQuoteSubmitter")
   dailyQuoteReviews     DailyQuote[] @relation("DailyQuoteReviewer")
+  dailyQuoteRevisionReviews DailyQuoteRevision[] @relation("DailyQuoteRevisionReviewer")
   quoteResonances       DailyQuoteResonance[]
   quoteResonancesOnce   DailyQuoteResonanceOnce[]
   quoteFavorites        DailyQuoteFavorite[]
@@ -178,12 +179,13 @@ model BlogVisibilityLog {
   @@map("blog_visibility_logs")
 }
 
-/// 每日一言内容池。投稿一经提交不可改写，拒绝是终态；内置语录由手写迁移导入。
+/// 一言当前版本。未通过可原稿重审；社区首次选登标记与 edition 必须同事务写入。
 model DailyQuote {
   id           String   @id
   kind         String
   content      String
-  contentKey   String   @unique @map("content_key")
+  /// 活动正文唯一性由迁移中的条件唯一索引保证；未通过稿件不占名额。
+  contentKey   String   @map("content_key")
   category     String
   signature    String   @default("nickname")
   sourceType   String   @map("source_type")
@@ -196,6 +198,8 @@ model DailyQuote {
   reviewerId   String?  @map("reviewer_id")
   createdAt    DateTime @map("created_at")
   reviewedAt   DateTime? @map("reviewed_at")
+  revision     Int      @default(1)
+  firstSelectedDay String? @map("first_selected_day")
 
   submitter  User? @relation("DailyQuoteSubmitter", fields: [submitterId], references: [id])
   reviewer   User? @relation("DailyQuoteReviewer", fields: [reviewerId], references: [id])
@@ -203,13 +207,37 @@ model DailyQuote {
   resonances     DailyQuoteResonance[]
   resonancesOnce DailyQuoteResonanceOnce[]
   favorites      DailyQuoteFavorite[]
+  revisions      DailyQuoteRevision[]
 
+  @@index([contentKey], map: "ix_daily_quotes_content_key")
   @@index([kind, status], map: "ix_daily_quotes_pool")
   @@index([submitterId, createdAt], map: "ix_daily_quotes_submitter")
   @@map("daily_quotes")
 }
 
-/// UTC+8 日历日的全站唯一选择。保存选用记录，让重启、并发和90天去重共用同一真相。
+/// 稿件版本及对应审核结论。后续修改只新增版本，不能覆盖已审核的快照。
+model DailyQuoteRevision {
+  quoteId      String @map("quote_id")
+  revision     Int
+  content      String
+  category     String
+  signature    String
+  sourceType   String @map("source_type")
+  sourceName   String? @map("source_name")
+  status       String @default("pending")
+  reviewReason String? @map("review_reason")
+  reviewerId   String? @map("reviewer_id")
+  reviewedAt   DateTime? @map("reviewed_at")
+  createdAt    DateTime @map("created_at")
+  isBaseline   Boolean @default(false) @map("is_baseline")
+  quote        DailyQuote @relation(fields: [quoteId], references: [id], onDelete: Restrict)
+  reviewer     User? @relation("DailyQuoteRevisionReviewer", fields: [reviewerId], references: [id], onDelete: Restrict)
+
+  @@id([quoteId, revision])
+  @@map("daily_quote_revisions")
+}
+
+/// UTC+8 日历日的全站唯一选择。保留所有历史，包括旧社区重复及经典循环。
 model DailyQuoteEdition {
   day       String   @id
   quoteId   String   @map("quote_id")

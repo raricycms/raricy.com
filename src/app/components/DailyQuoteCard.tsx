@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { Heart, LoaderCircle, Star } from 'lucide-react';
 import type { DailyQuoteResonanceResult, DailyQuoteView } from '@/lib/daily-quote';
+import QuoteBlogRequired from './QuoteBlogRequired';
 
 /**
  * 一条一言的展示与互动。
@@ -30,7 +31,7 @@ export default function DailyQuoteCard({
 }: {
   quote: DailyQuoteView;
   mode?: 'today' | 'list';
-  /** 辅助层日期。往期页是入选日；一言集是「最近入选 <last_day>」。 */
+  /** 往期为选登日，一言集为收藏时间；首次选登日可放在 dateHint。 */
   dateLabel?: string;
   /** 日期的补充说明，需要时才给（例如「不是收藏时间」）。 */
   dateHint?: string;
@@ -40,6 +41,7 @@ export default function DailyQuoteCard({
   const [pending, setPending] = useState<'resonance' | 'favorite' | null>(null);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
+  const [blogRequired, setBlogRequired] = useState(false);
 
   const listMode = mode === 'list';
 
@@ -52,9 +54,14 @@ export default function DailyQuoteCard({
       const removing = kind === 'favorite' && quote.favorited;
       const response = await fetch(`/api/daily-quotes/${encodeURIComponent(quote.id)}/${kind}`, {
         method: removing ? 'DELETE' : 'POST',
+        ...(kind === 'resonance' ? { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ max_fish: quote.resonance_fish }) } : {}),
       });
       const data = await response.json();
-      if (!response.ok) throw new Error(data.message || '操作失败，请稍后重试');
+      if (!response.ok) {
+        if (data.reason === 'BLOG_REQUIRED') setBlogRequired(true);
+        if (data.reason === 'FEE_CHANGED') onChange?.({ ...quote, resonance_fish: data.resonance_fish });
+        throw new Error(data.message || '操作失败，请稍后重试');
+      }
       if (kind === 'resonance') {
         const result = data as DailyQuoteResonanceResult;
         onChange?.({
@@ -67,7 +74,7 @@ export default function DailyQuoteCard({
         setMessage(
           result.already_resonated
             ? '已共鸣'
-            : quote.resonance_fish
+            : result.charged_fish
               ? '已共鸣，已向投稿人投喂 1 条鱼干'
               : '已共鸣'
         );
@@ -91,7 +98,7 @@ export default function DailyQuoteCard({
     : quote.resonance_unavailable ??
       (quote.resonance_fish
         ? '共鸣投喂 1 条鱼干给投稿人，全额转交；每人每句限一次。'
-        : '经典语录共鸣免费；每人每句限一次。');
+        : quote.kind === 'builtin' ? '经典语录共鸣免费；每人每句限一次。' : '本次共鸣不扣鱼干；每人每句限一次。');
   const note = error || message;
 
   const meta = (
@@ -152,7 +159,7 @@ export default function DailyQuoteCard({
         type="button"
         className={`daily-quote-card__action daily-quote-card__action--favorite${quote.favorited ? ' is-active' : ''}`}
         onClick={() => void action('favorite')}
-        disabled={pending !== null}
+        disabled={pending !== null || !quote.can_favorite}
         aria-busy={pending === 'favorite'}
         aria-pressed={quote.favorited}
         aria-label={quote.favorited ? '已收藏' : '收藏'}
@@ -177,6 +184,7 @@ export default function DailyQuoteCard({
     </p>
   );
 
+  if (blogRequired) return <QuoteBlogRequired embedded />;
   if (listMode) {
     return (
       <article className="daily-quote-card daily-quote-card--list">

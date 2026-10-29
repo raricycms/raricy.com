@@ -1,14 +1,21 @@
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
-import { resetDb, makeUser, prisma } from '../helpers/db';
+import { resetDb, makeUser as makeBareUser, makeBlog, prisma } from '../helpers/db';
 import { expectLedgerConsistent } from '../helpers/fish-ledger';
 import { checkIn } from '@/lib/checkin-service';
 import { dayStart, nowForDb, todayStr } from '@/lib/db-time';
 import { __resetRateLimitStore } from '@/lib/rate-limit';
 import { unitsToFish } from '@/lib/fish-units';
 import {
-  getTodayQuote, quoteContentKey, quoteView, resonateQuote, submitQuote,
+  getTodayQuote, quoteContentKey, quoteView, resonateQuote as resonateActual, submitQuote,
   reviewQuote, saveQuote, listSavedQuotes, listQuoteHistory, listSubmissions, editQuoteSubmission,
 } from '@/lib/daily-quote-service';
+
+async function makeUser(opts: Parameters<typeof makeBareUser>[0] = {}) {
+  const user = await makeBareUser(opts);
+  if (user.role !== 'user') await makeBlog({ authorId: user.id });
+  return user;
+}
+const resonateQuote = (id: string, userId: string, maxFish = 1) => resonateActual(id, userId, maxFish);
 
 beforeEach(async () => {
   await resetDb(); __resetRateLimitStore();
@@ -40,7 +47,7 @@ async function publish(day: string, quoteId: string) {
 }
 async function published(submitterId: string, signature = 'nickname') {
   const quote = await community(submitterId, signature);
-  await publish('2026-10-21', quote.id);
+  await publish('2026-10-20', quote.id);
   return quote;
 }
 /** 造 n 个连续过去的日期（含 endDay），用于分页夹具。 */
@@ -73,7 +80,7 @@ describe('全站每日选取与90天去重', () => {
     expect(JSON.stringify(results[0])).not.toContain(author.username);
     expect(await prisma.dailyQuoteEdition.count()).toBe(1);
   });
-  it('社区用过后启用经典兜底；第90天不重，第91天可重新使用', async () => {
+  it('经典先选从未使用内容，再选最久未使用的内容', async () => {
     const user = await makeUser({ role: 'core' });
     const old = await builtin('旧日一言');
     const fresh = await builtin('新的经典');
@@ -89,8 +96,9 @@ describe('全站每日选取与90天去重', () => {
   it('当天内容被下架只显示占位，不重新抽取；归档作者不可见', async () => {
     const author = await makeUser({ role: 'core' });
     const reader = await makeUser({ role: 'core' });
-    const quote = await published(author.id);
+    const quote = await community(author.id);
     await builtin(); await checkIn(reader.id);
+    expect((await getTodayQuote(reader.id)).quote?.id).toBe(quote.id);
     await prisma.dailyQuote.update({ where: { id: quote.id }, data: { status: 'retired' } });
     expect((await getTodayQuote(reader.id)).quote).toBeNull();
     expect(await prisma.dailyQuoteEdition.count()).toBe(1);
@@ -125,30 +133,27 @@ describe('共鸣：每人每句一生一次、全额投喂、匿名与回滚', (
     expect(dto.resonated).toBe(true); expect(dto.can_resonate).toBe(false); expect(dto.resonance_count).toBe(1);
     await expectLedgerConsistent();
   });
-  it('余额不足全部回滚，补足后仍可共鸣；作者入账失败也不扣钱', async () => {
+  it('余额不足全部回滚，真正的入账故障也不会变成免费共鸣', async () => {
     const author = await makeUser({ role: 'core' });
     const reader = await makeUser({ role: 'core' });
     const quote = await published(author.id);
     await expect(resonateQuote(quote.id, reader.id)).rejects.toMatchObject({ status: 400 });
-    expect(await prisma.dailyQuoteResonance.count()).toBe(0);
     expect(await prisma.dailyQuoteResonanceOnce.count()).toBe(0);
-    expect(await prisma.fishTransaction.count()).toBe(0);
     await checkIn(reader.id);
-    await prisma.user.update({ where: { id: author.id }, data: { role: 'user' } });
-    await expect(resonateQuote(quote.id, reader.id)).rejects.toMatchObject({ status: 403 });
-    expect(await prisma.dailyQuoteResonance.count()).toBe(0);
+    await prisma.$executeRawUnsafe("CREATE TRIGGER quote_income_failure BEFORE UPDATE OF dried_fish ON users WHEN NEW.dried_fish > OLD.dried_fish BEGIN SELECT RAISE(ABORT,'income unavailable'); END");
+    try { await expect(resonateQuote(quote.id, reader.id)).rejects.toThrow(); }
+    finally { await prisma.$executeRawUnsafe('DROP TRIGGER quote_income_failure'); }
     expect(await prisma.dailyQuoteResonanceOnce.count()).toBe(0);
-    expect(await prisma.fishTransaction.count()).toBe(1); // 只有签到那一笔
-    // 恢复作者资格后仍能首访成功，且钱只扣一次。
-    await prisma.user.update({ where: { id: author.id }, data: { role: 'core' } });
-    expect(await resonateQuote(quote.id, reader.id)).toMatchObject({ already_resonated: false, resonance_count: 1 });
-    expect(unitsToFish((await prisma.user.findUniqueOrThrow({ where: { id: author.id } })).driedFish)).toBe(1);
+    expect(await prisma.dailyQuoteResonance.count()).toBe(0);
+    expect(await prisma.fishTransaction.count()).toBe(1);
+    expect(unitsToFish((await prisma.user.findUniqueOrThrow({ where: { id: reader.id } })).driedFish)).toBe(3);
+    expect(await resonateQuote(quote.id, reader.id)).toMatchObject({ already_resonated: false, charged_fish: 1 });
     await expectLedgerConsistent();
   });
   it('经典免费；跨 UTC+8 零点仍幂等；不能给自己投喂', async () => {
     const reader = await makeUser({ role: 'core' });
     const quote = await builtin();
-    await publish('2026-10-21', quote.id);
+    await publish('2026-10-20', quote.id);
     expect(await resonateQuote(quote.id, reader.id)).toMatchObject({ already_resonated: false, resonance_count: 1 });
     vi.setSystemTime(new Date('2026-10-21T16:00:00Z')); // 跨过 UTC+8 零点 → 2026-10-22
     expect(todayStr()).toBe('2026-10-22');
@@ -157,7 +162,7 @@ describe('共鸣：每人每句一生一次、全额投喂、匿名与回滚', (
     expect(await prisma.dailyQuoteResonanceOnce.count()).toBe(1);
     expect(await prisma.fishTransaction.count()).toBe(0);
     const own = await community(reader.id);
-    await publish('2026-10-22', own.id);
+    await publish('2026-10-21', own.id);
     await expect(resonateQuote(own.id, reader.id)).rejects.toMatchObject({ status: 400 });
     await expectLedgerConsistent();
   });
@@ -312,7 +317,7 @@ describe('投稿审核与私密一言集', () => {
     const before = await prisma.dailyQuote.findUniqueOrThrow({ where: { id: original.id } });
     for (let i = 0; i < 4; i++) await submitQuote(user.id, { ...editInput, content: `占用投稿次数${i}` });
     expect(await editQuoteSubmission(original.id, user.id, { ...editInput, content: '  修改后\n 的一句话  ', status: 'approved', submitterId: 'someone-else' }))
-      .toEqual({ id: original.id, status: 'pending' });
+      .toMatchObject({ id: original.id, status: 'pending', version: 2 });
     expect(await prisma.dailyQuote.findUniqueOrThrow({ where: { id: original.id } })).toMatchObject({
       content: '修改后 的一句话', contentKey: quoteContentKey('修改后 的一句话'), category: '哲思',
       signature: 'anonymous', sourceType: 'quotation', sourceName: '修改后的出处',
@@ -324,25 +329,22 @@ describe('投稿审核与私密一言集', () => {
     await expect(submitQuote(user.id, { ...editInput, content: '第六条' })).rejects.toMatchObject({ status: 429 });
   });
 
-  it('拒稿修改后另建待审稿件，保留拒稿原文、去重占位和审核记录', async () => {
+  it('未通过只改出处即可原稿重审，旧版本与审核意见保留，重审计入配额', async () => {
     const user = await makeUser({ role: 'core' });
     const admin = await makeUser({ role: 'admin' });
-    const original = await submitQuote(user.id, { ...editInput, content: '拒稿原文。' });
-    await reviewQuote(original.id, admin.id, 'reject', '请调整内容');
-    const before = await prisma.dailyQuote.findUniqueOrThrow({ where: { id: original.id } });
-    const revised = await editQuoteSubmission(original.id, user.id, editInput);
-    expect(revised.id).not.toBe(original.id);
-    expect(revised.status).toBe('pending');
-    expect(await prisma.dailyQuote.findUniqueOrThrow({ where: { id: original.id } })).toEqual(before);
-    expect(await prisma.dailyQuote.findUniqueOrThrow({ where: { id: revised.id } })).toMatchObject({
-      content: editInput.content, submitterId: user.id, reviewerId: null, reviewedAt: null, reviewReason: null,
-    });
-    await expect(editQuoteSubmission(original.id, user.id, { ...editInput, content: '拒稿原文！' })).rejects.toMatchObject({ status: 409 });
-    await expect(editQuoteSubmission(original.id, user.id, { ...editInput, content: '拒稿原文。', signature: 'nickname' })).rejects.toMatchObject({ status: 409 });
-    expect(await prisma.adminActionLog.count({ where: { objectId: original.id } })).toBe(1);
-    expect(await prisma.dailyQuote.count()).toBe(2);
-    await submitQuote(user.id, { ...editInput, content: '用完第五次投稿额度' });
-    await expect(editQuoteSubmission(original.id, user.id, { ...editInput, content: '额度用尽的改稿' })).rejects.toMatchObject({ status: 429 });
+    const original = await submitQuote(user.id, editInput);
+    await reviewQuote(original.id, admin.id, 'reject', '请修正出处');
+    await expect(editQuoteSubmission(original.id, user.id, editInput)).rejects.toMatchObject({ status: 400 });
+    const revised = await editQuoteSubmission(original.id, user.id, { ...editInput, source_name: '正确出处' });
+    expect(revised).toEqual({ id: original.id, status: 'pending', version: 2 });
+    const history = (await listSubmissions(user.id))[0];
+    expect(history.reviewReason).toBeNull();
+    expect(history.revisions).toHaveLength(2);
+    expect(history.revisions[1]).toMatchObject({ revision: 1, status: 'rejected', reviewReason: '请修正出处', sourceName: editInput.source_name });
+    expect(await prisma.dailyQuote.count()).toBe(1);
+    await reviewQuote(original.id, admin.id, 'reject', '再次调整');
+    for (let i = 0; i < 3; i++) await submitQuote(user.id, { ...editInput, content: '其他投稿' + i });
+    await expect(editQuoteSubmission(original.id, user.id, { ...editInput, source_name: '再次修正' })).rejects.toMatchObject({ status: 429 });
   });
 
   it('拒绝他人、内置与不存在稿件；管理员也不能代改；已通过和已下架不能改', async () => {
@@ -386,7 +388,7 @@ describe('投稿审核与私密一言集', () => {
     await expect(editQuoteSubmission(original.id, author.id, editInput)).rejects.toMatchObject({ status: 403 });
   });
 
-  it('50字按 Unicode 字符计数；引用必填出处；重复内容不能绕过永久拒绝', async () => {
+  it('50字按 Unicode 字符计数；引用必填出处；未通过不永久占位，已收录内容仍去重', async () => {
     const user = await makeUser({ role: 'core' }); const admin = await makeUser({ role: 'admin' });
     const input = { category: '治愈', signature: 'anonymous', source_type: 'original' };
     await expect(submitQuote(user.id, { ...input, content: '字'.repeat(51) })).rejects.toMatchObject({ status: 400 });
@@ -398,8 +400,9 @@ describe('投稿审核与私密一言集', () => {
     const smaller = await submitQuote(user.id, { ...input, content: '同一句话。' });
     await reviewQuote(smaller.id, admin.id, 'reject', '不合适');
     __resetRateLimitStore();
-    await expect(submitQuote(user.id, { ...input, content: '同一句话！' })).rejects.toMatchObject({ status: 409 });
-    expect((await listSubmissions(user.id))[0].reviewReason).toBe('不合适');
+    await submitQuote(user.id, { ...input, content: '同一句话！' });
+    await expect(submitQuote(user.id, { ...input, content: '同一句话，' })).rejects.toMatchObject({ status: 409 });
+    expect((await listSubmissions(user.id)).find((item) => item.id === smaller.id)?.reviewReason).toBe('不合适');
   });
   it('只能收藏已发布内容；收藏归本人，取消再加可恢复；下架可移出', async () => {
     const a = await makeUser({ role: 'core' }); const b = await makeUser({ role: 'core' });
@@ -411,14 +414,14 @@ describe('投稿审核与私密一言集', () => {
     expect((await listSavedQuotes(b.id)).total).toBe(0);
     await saveQuote(quote.id, a.id, false); await saveQuote(quote.id, a.id, true);
     expect(await prisma.dailyQuoteFavorite.count()).toBe(1);
-    expect((await listSavedQuotes(a.id)).quotes[0]).toMatchObject({ id: quote.id, last_day: '2026-10-20' });
+    expect((await listSavedQuotes(a.id)).quotes[0]).toMatchObject({ id: quote.id, first_selected_day: '2026-10-20' });
     await prisma.dailyQuote.update({ where: { id: quote.id }, data: { status: 'retired' } });
     // 下架：内容不可展示，但日期与「可移出」的能力都保留。
-    expect((await listSavedQuotes(a.id)).quotes[0]).toMatchObject({ id: quote.id, quote: null, last_day: '2026-10-20' });
+    expect((await listSavedQuotes(a.id)).quotes[0]).toMatchObject({ id: quote.id, quote: null, first_selected_day: '2026-10-20' });
     await saveQuote(quote.id, a.id, false);
     expect((await listSavedQuotes(a.id)).total).toBe(0);
   });
-  it('一言集带最近入选日期；分页收敛；批量状态与今日入口一致', async () => {
+  it('一言集带收藏时间与首次选登日期；分页收敛；批量状态与今日入口一致', async () => {
     const reader = await makeUser({ role: 'core' });
     const days = daysBefore('2026-10-20', 21);
     const quotes = [];
@@ -432,7 +435,7 @@ describe('投稿审核与私密一言集', () => {
         createdAt: new Date(Date.parse('2026-10-01T00:00:00.000Z') + i * 60000),
       } });
     }
-    // 最近入选日期 = 该内容所有 edition 里最大的 day（不是收藏时间）。
+    // 经典重播不改变首次选登日或收藏时间。
     await publish('2026-10-21', quotes[20].id);
     await resonateQuote(quotes[20].id, reader.id);
 
@@ -440,9 +443,9 @@ describe('投稿审核与私密一言集', () => {
     expect(first).toMatchObject({ page: 1, pages: 2, total: 21 });
     expect(first.quotes).toHaveLength(20);
     expect(first.quotes[0]).toMatchObject({
-      id: quotes[20].id, last_day: '2026-10-21', quote: { resonated: true, can_resonate: false, favorited: true, resonance_count: 1 },
+      id: quotes[20].id, first_selected_day: days[20], saved_at: '2026-10-01T00:20:00.000Z', quote: { resonated: true, can_resonate: false, favorited: true, resonance_count: 1 },
     });
-    expect(first.quotes[1]).toMatchObject({ id: quotes[19].id, last_day: '2026-10-01' });
+    expect(first.quotes[1]).toMatchObject({ id: quotes[19].id, first_selected_day: '2026-10-01' });
 
     const last = await listSavedQuotes(reader.id, 2);
     expect(last).toMatchObject({ page: 2, pages: 2, total: 21 });

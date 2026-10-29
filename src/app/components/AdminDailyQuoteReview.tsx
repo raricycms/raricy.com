@@ -28,7 +28,7 @@ export default function AdminDailyQuoteReview({ id, status, version }: { id: str
     <div className="daily-quote-card__actions">
       {status === 'pending' && <button type="button" className="daily-quote-primary" onClick={() => void review('approve')} disabled={busy}>通过</button>}
       <button type="button" className="daily-quote-primary" onClick={() => void review(status === 'pending' ? 'reject' : 'retire')} disabled={busy || !reason.trim()}>
-        {status === 'pending' ? '永久拒绝' : '下架'}
+        {status === 'pending' ? '未通过' : '下架'}
       </button>
     </div>
     {error && <p className="daily-quote-error" role="alert">{error}</p>}

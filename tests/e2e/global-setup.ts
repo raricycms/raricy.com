@@ -18,6 +18,7 @@ import { hashPassword } from '../../src/lib/password';
 import { nowForDb } from '../../src/lib/db-time';
 import { fishToUnits } from '../../src/lib/fish-units';
 import classicQuotes from '../../src/data/daily-quote-classics.json';
+import { CONSTRAINT_SQL_PATH } from '../helpers/db-constraints';
 import {
   E2E_STICKERS,
   DIRECTORY_SEED,
@@ -227,6 +228,8 @@ export default async function globalSetup() {
   // 显式传 url：本进程的 .env 指向 prod.db，不能靠环境变量兜底
   const prisma = new PrismaClient({ datasources: { db: { url } } });
   try {
+    // Playwright 的模块钩子不支持 node:sqlite；经 Prisma 执行与模板完全相同的 SQL。
+    await prisma.$executeRawUnsafe(fs.readFileSync(CONSTRAINT_SQL_PATH, 'utf8'));
     await prisma.dailyQuote.createMany({ data: classicQuotes.map((quote) => ({
       id: quote.id, kind: 'builtin', content: quote.content, contentKey: quote.content_key,
       category: quote.category, sourceType: 'quotation', sourceName: quote.source, sourceUrl: quote.source_url,

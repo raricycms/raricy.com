@@ -7,6 +7,7 @@ import { ArrowLeft, LoaderCircle, PenLine, X } from 'lucide-react';
 import type { DailyQuoteView } from '@/lib/daily-quote';
 import DailyQuoteCard from './DailyQuoteCard';
 import DailyQuoteForm from './DailyQuoteForm';
+import QuoteBlogRequired from './QuoteBlogRequired';
 
 // 与 abstracts/_variables.scss 的 $motion-collapse-duration 同值：关闭时内容先退（150ms），
 // 外壳与遮罩随后收（220ms），收完才真正 close()。
@@ -21,8 +22,9 @@ export default function DailyQuoteModal({ onClose, returnFocus }: { onClose: () 
   const previousFocus = useRef<HTMLElement | null>(null);
   const previousOverflow = useRef('');
   const [submission, setSubmission] = useState(false);
-  const [result, setResult] = useState<{ day: string; quote: DailyQuoteView | null } | null>(null);
+  const [result, setResult] = useState<{ day: string; quote: DailyQuoteView | null; can_submit: boolean } | null>(null);
   const [error, setError] = useState('');
+  const [blogRequired, setBlogRequired] = useState(false);
   const [attempt, setAttempt] = useState(0);
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
@@ -51,8 +53,11 @@ export default function DailyQuoteModal({ onClose, returnFocus }: { onClose: () 
     void fetch('/api/daily-quotes/today', { signal: controller.signal, cache: 'no-store' })
       .then(async (response) => {
         const data = await response.json();
-        if (!response.ok) throw new Error(data.message || '一言加载失败');
-        setResult({ day: data.day, quote: data.quote });
+        if (!response.ok) {
+          if (data.reason === 'BLOG_REQUIRED') setBlogRequired(true);
+          throw new Error(data.message || '一言加载失败');
+        }
+        setResult({ day: data.day, quote: data.quote, can_submit: data.can_submit });
       }).catch((cause) => {
         if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : '一言加载失败');
       });
@@ -103,7 +108,7 @@ export default function DailyQuoteModal({ onClose, returnFocus }: { onClose: () 
       </header>
 
       <div className="daily-quote-dialog__stage" key={stageKey}>
-        {submission ? <DailyQuoteForm /> : error ? (
+        {blogRequired ? <QuoteBlogRequired embedded /> : submission ? <DailyQuoteForm /> : error ? (
           <div className="daily-quote-state">
             <p className="daily-quote-error" role="alert">{error}</p>
             <button type="button" className="daily-quote-secondary" onClick={() => setAttempt((value) => value + 1)}>重新加载</button>
@@ -128,7 +133,7 @@ export default function DailyQuoteModal({ onClose, returnFocus }: { onClose: () 
           <Link href="/checkin/quotes">往期一言</Link><Link href="/favorite/quotes">一言集</Link>
         </nav>
         {/* 投稿模式与阅读模式共用这一颗按钮：文案与图标换，位置、焦点与外壳不变。 */}
-        <button type="button" className="daily-quote-dialog__mode" onClick={() => setSubmission((value) => !value)}>
+        <button type="button" className="daily-quote-dialog__mode" disabled={blogRequired || result?.can_submit === false} onClick={() => setSubmission((value) => !value)}>
           {submission ? <><ArrowLeft size={18} aria-hidden="true" />返回每日一言</>
             : <><PenLine size={18} aria-hidden="true" />我也要投稿</>}
         </button>
