@@ -325,6 +325,12 @@ export const DOC_ENTRIES: readonly DocEntry[] = [
   },
   {
     group: 'dev',
+    slug: 'plan/daily-quote-refactor-plan',
+    title: '每日一言重构计划',
+    summary: '社区一次选登、博客门槛、拒稿重审、免费共鸣与收藏日期；待审查（2026-10-30）。',
+  },
+  {
+    group: 'dev',
     slug: 'plan/daily-quote-repair-plan',
     title: '每日一言修复方案',
     summary: '往期回看、累计一次共鸣、旧记录保留与界面整理；已实施（2026-10-29）。',
