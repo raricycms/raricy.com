@@ -327,7 +327,7 @@ export const DOC_ENTRIES: readonly DocEntry[] = [
     group: 'dev',
     slug: 'plan/daily-quote-refactor-plan',
     title: '每日一言重构计划',
-    summary: '社区一次选登、博客门槛、拒稿重审、免费共鸣与收藏日期；待审查（2026-10-30）。',
+    summary: '社区一次选登、博客门槛、拒稿重审、免费共鸣与收藏日期；本地验收完成，待发布。',
   },
   {
     group: 'dev',
