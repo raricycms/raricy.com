@@ -8,8 +8,9 @@ import { createSessionToken } from '@/lib/session';
 import { checkIn } from '@/lib/checkin-service';
 import { submitQuote, quoteContentKey } from '@/lib/daily-quote-service';
 import { __resetRateLimitStore } from '@/lib/rate-limit';
-import { nowForDb } from '@/lib/db-time';
+import { dayStart, nowForDb, todayStr } from '@/lib/db-time';
 import { GET as today } from '@/app/api/daily-quotes/today/route';
+import { GET as history } from '@/app/api/daily-quotes/history/route';
 import { GET as mine, POST as submit } from '@/app/api/daily-quotes/submissions/route';
 import { PATCH as review } from '@/app/api/admin/daily-quotes/[id]/route';
 import { POST as resonate } from '@/app/api/daily-quotes/[id]/resonance/route';
@@ -19,14 +20,17 @@ const ctx = (id: string) => ({ params: Promise.resolve({ id }) });
 const body = (data: unknown, method = 'POST') => new Request('http://localhost/api/daily-quotes/submissions', {
   method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data),
 });
+const historyRequest = (search = '') => new Request(`http://localhost/api/daily-quotes/history${search}`);
 const input = { content: '接口测试的一句话', category: '治愈', source_type: 'original', signature: 'anonymous' };
 async function login(id: string) { session.token = await createSessionToken({ uid: id, sv: 0 }); }
+/** 第 n 天前的 UTC+8 日期（按本站时钟算，不写死具体日期 —— 用例不会随真实日期漂移变红）。 */
+const pastDay = (n: number) => new Date(dayStart(todayStr()).getTime() - n * 86400000).toISOString().slice(0, 10);
 
 beforeEach(async () => { await resetDb(); __resetRateLimitStore(); session.token = undefined; });
 
 describe('每日一言的HTTP权限、隐私与输入', () => {
   it('所有接口未登录401，普通用户403；core不能审核', async () => {
-    const handlers = [() => today(), () => mine(), () => submit(body(input)),
+    const handlers = [() => today(), () => history(historyRequest()), () => mine(), () => submit(body(input)),
       () => review(body({ action: 'approve' }, 'PATCH'), ctx('missing')),
       () => resonate(body({}), ctx('missing')), () => favorite(body({}), ctx('missing')), () => unfavorite(body({}, 'DELETE'), ctx('missing'))];
     for (const handler of handlers) expect((await handler()).status).toBe(401);
@@ -41,6 +45,8 @@ describe('每日一言的HTTP权限、隐私与输入', () => {
     expect((await resonate(body({}), ctx('missing'))).status).toBe(403);
     expect((await favorite(body({}), ctx('missing'))).status).toBe(403);
     expect((await unfavorite(body({}, 'DELETE'), ctx('missing'))).status).toBe(403);
+    // 只读的往期接口不受禁言影响：禁言是「不能说话」，不是「不能回看历史」。
+    expect((await history(historyRequest())).status).toBe(200);
     await prisma.user.update({ where: { id: user.id }, data: { isBanned: false } });
     expect((await submit(new Request('http://localhost', { method: 'POST', body: '{' }))).status).toBe(400);
     for (let i = 0; i < 5; i++) expect((await submit(body({ ...input, content: `${input.content}${i}` }))).status).toBe(200);
@@ -63,6 +69,44 @@ describe('每日一言的HTTP权限、隐私与输入', () => {
     expect(data.quote).not.toHaveProperty('submitterId');
     expect((await (await mine()).json()).submissions).toEqual([]);
     expect(JSON.stringify(data)).not.toContain(author.id);
+  });
+
+  it('往期接口：core+ 分页结构、no-store、排除今天，且不泄露投稿人身份', async () => {
+    // 显式给用户名：默认用户名是 `u_<id>`，含 id 子串，会让「响应不含投稿人 id」的断言失效。
+    const author = await makeUser({ role: 'core', username: 'history-author' });
+    const classic = { id: 'history-classic', kind: 'builtin', content: '往期经典', contentKey: quoteContentKey('往期经典'),
+      category: '哲思', sourceType: 'quotation', sourceName: '典籍', authorName: '古人' };
+    const named = { id: 'history-named', kind: 'community', content: '往期署名投稿', contentKey: quoteContentKey('往期署名投稿'),
+      category: '治愈', signature: 'nickname', sourceType: 'original', submitterId: author.id };
+    const anon = { id: 'history-anon', kind: 'community', content: '往期匿名投稿', contentKey: quoteContentKey('往期匿名投稿'),
+      category: '治愈', signature: 'anonymous', sourceType: 'original', submitterId: author.id };
+    for (const quote of [classic, named, anon]) {
+      await prisma.dailyQuote.create({ data: { ...quote, status: 'approved', createdAt: nowForDb() } });
+    }
+    await prisma.dailyQuoteEdition.create({ data: { day: pastDay(1), quoteId: classic.id, createdAt: nowForDb() } });
+    await prisma.dailyQuoteEdition.create({ data: { day: pastDay(2), quoteId: named.id, createdAt: nowForDb() } });
+    await prisma.dailyQuoteEdition.create({ data: { day: pastDay(3), quoteId: anon.id, createdAt: nowForDb() } });
+    // 今天的期不属于往期（否则它就是绕过签到的今日读口）。
+    await prisma.dailyQuoteEdition.create({ data: { day: todayStr(), quoteId: classic.id, createdAt: nowForDb() } });
+
+    const reader = await makeUser({ role: 'core' }); await login(reader.id);
+    const response = await history(historyRequest());
+    expect(response.status).toBe(200);
+    expect(response.headers.get('Cache-Control')).toContain('no-store');
+    const data = await response.json();
+    expect(data).toMatchObject({ code: 200, page: 1, pages: 1, total: 3 });
+    expect(data.editions.map((item: { day: string }) => item.day)).toEqual([pastDay(1), pastDay(2), pastDay(3)]);
+    expect(data.editions.every((item: { quote: unknown }) => item.quote !== null)).toBe(true);
+    expect(JSON.stringify(data)).not.toContain('submitterId');
+    expect(JSON.stringify(data)).not.toContain(author.id);
+    const anonymousEntry = data.editions.find((item: { quote: { id: string } | null }) => item.quote?.id === anon.id);
+    expect(anonymousEntry.quote).toMatchObject({ author: '匿名', submitter_name: '匿名' });
+    expect(JSON.stringify(anonymousEntry)).not.toContain(author.username);
+
+    // 页码非法 / 越界都由服务层收敛到有效页，不返回空列表也不 500。
+    expect((await (await history(historyRequest('?page=999'))).json()).page).toBe(1);
+    expect((await (await history(historyRequest('?page=abc'))).json()).page).toBe(1);
+    expect((await (await history(historyRequest('?page=-2'))).json()).page).toBe(1);
   });
 
   // 审核的三条成功路径。**这里的价值在「真的写了一条审计日志」**：早先只测了 401/403/400，

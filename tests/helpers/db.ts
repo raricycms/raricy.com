@@ -134,6 +134,10 @@ export async function resetDb() {
   await assertConnectedTestDb();
   // 顺序：先删子表再删父表，避免外键约束
   const tables = [
+    // 累计共鸣资格表引用 daily_quotes 与 users —— 必须排在两者之前删。
+    // ⚠️ 漏登记**不报错**（下面那条 DELETE 的 catch 会吞掉），表现为「上个用例的
+    // 共鸣资格残留」，症状是某些用例莫名其妙显示「已共鸣」。
+    'daily_quote_resonance_once',
     'daily_quote_resonances', 'daily_quote_favorites', 'daily_quote_editions', 'daily_quotes',
     // 保存箱引用 users 与 chat_messages —— 必须排在两者之前删。
     // ⚠️ 漏登记不报错（下面那条 DELETE 的 catch 会吞掉），表现为数据在用例间残留。

@@ -116,6 +116,7 @@ model User {
   dailyQuotes           DailyQuote[] @relation("DailyQuoteSubmitter")
   dailyQuoteReviews     DailyQuote[] @relation("DailyQuoteReviewer")
   quoteResonances       DailyQuoteResonance[]
+  quoteResonancesOnce   DailyQuoteResonanceOnce[]
   quoteFavorites        DailyQuoteFavorite[]
   fishTransactions      FishTransaction[]   @relation("FishTxUser")
   fishTransactionsPeer  FishTransaction[]   @relation("FishTxRelated")
@@ -198,9 +199,10 @@ model DailyQuote {
 
   submitter  User? @relation("DailyQuoteSubmitter", fields: [submitterId], references: [id])
   reviewer   User? @relation("DailyQuoteReviewer", fields: [reviewerId], references: [id])
-  editions   DailyQuoteEdition[]
-  resonances DailyQuoteResonance[]
-  favorites  DailyQuoteFavorite[]
+  editions       DailyQuoteEdition[]
+  resonances     DailyQuoteResonance[]
+  resonancesOnce DailyQuoteResonanceOnce[]
+  favorites      DailyQuoteFavorite[]
 
   @@index([kind, status], map: "ix_daily_quotes_pool")
   @@index([submitterId, createdAt], map: "ix_daily_quotes_submitter")
@@ -218,7 +220,12 @@ model DailyQuoteEdition {
   @@map("daily_quote_editions")
 }
 
-/// 共鸣记录与扣款、入账同事务创建。三元唯一键保证同一句每人每天只生效一次。
+/// 共鸣**明细**：每次实际发生的共鸣一条，记录发生日期与当次付款额。
+///
+/// 【它不再是权限判据】2026-10 起「共鸣资格」由 `DailyQuoteResonanceOnce` 决定 ——
+/// 每家用户对每句一言一生最多一次。这张表只服务历史审计（哪天共鸣的、付了多少），
+/// 新增写入只可能发生在「首次共鸣」那一刻，所以日期列不再进任何去重判断。
+/// 三元主键保留原样：存量里可能已有跨日的多条记录（旧规则明确允许），不能删。
 model DailyQuoteResonance {
   quoteId   String   @map("quote_id")
   userId    String   @map("user_id")
@@ -231,6 +238,27 @@ model DailyQuoteResonance {
   @@id([quoteId, userId, day], name: "uq_daily_quote_resonance")
   @@index([userId], map: "ix_daily_quote_resonances_user")
   @@map("daily_quote_resonances")
+}
+
+/// 累计共鸣资格：同一用户对同一句一言**一生最多一次**。
+///
+/// 【为什么另起一张表而不是给明细加二元唯一索引】旧规则是 (quote, user, day) 三元
+/// 去重 —— 换日、取消收藏、90 天后再次入选都能再共鸣一次。存量里若已存在跨日重复，
+/// 直接加二元唯一索引会让迁移失败；删掉重复明细又会丢掉真实行为记录与历史转账的
+/// 对应关系。所以明细原样保留，这张表只负责「资格 / 共鸣人数」这一件事。
+///
+/// 回填取每组最早的明细时间（见迁移 `37_daily_quote_resonance_once`）；此后新共鸣
+/// 在同一事务里写这一行 + 明细行 + 两侧记账。**读本人状态与统计人数都只查这张表。**
+model DailyQuoteResonanceOnce {
+  quoteId          String   @map("quote_id")
+  userId           String   @map("user_id")
+  firstResonatedAt DateTime @map("first_resonated_at")
+  quote            DailyQuote @relation(fields: [quoteId], references: [id])
+  user             User       @relation(fields: [userId], references: [id])
+
+  @@id([quoteId, userId], name: "uq_daily_quote_resonance_once")
+  @@index([userId], map: "ix_daily_quote_resonance_once_user")
+  @@map("daily_quote_resonance_once")
 }
 
 /// 一言集固定为所有者私密分类，不生成公开句柄；取消收藏只写软删标记。

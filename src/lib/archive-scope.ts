@@ -26,7 +26,7 @@ export function withArchiveScope(client: PrismaClient): PrismaClient {
           switch (model) {
             case 'User': scope = active; break;
             case 'DailyQuote': scope = { OR: [{ kind: 'builtin' }, { submitter: active }] }; break;
-            case 'DailyQuoteFavorite': case 'DailyQuoteResonance': scope = user; break;
+            case 'DailyQuoteFavorite': case 'DailyQuoteResonance': case 'DailyQuoteResonanceOnce': scope = user; break;
             case 'Blog': case 'ImageHosting': case 'AudioHosting': case 'ClipBoard': case 'Vote': scope = author; break;
             case 'BlogContent': scope = { blog: author }; break;
             case 'Favorite': case 'FishApiToken': case 'FishWebhookEndpoint': case 'FishWebhookDelivery':

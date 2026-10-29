@@ -109,7 +109,7 @@ export default function DailyQuoteModal({ onClose, returnFocus }: { onClose: () 
             <button type="button" className="daily-quote-secondary" onClick={() => setAttempt((value) => value + 1)}>重新加载</button>
           </div>
         ) : result ? result.quote ? (
-          <DailyQuoteCard key={result.quote.id} initialQuote={result.quote}
+          <DailyQuoteCard key={result.quote.id} quote={result.quote}
             onChange={(quote) => setResult((current) => (current ? { ...current, quote } : current))} />
         ) : (
           <div className="daily-quote-state"><p>今日一言已下架。</p></div>
@@ -122,8 +122,10 @@ export default function DailyQuoteModal({ onClose, returnFocus }: { onClose: () 
       </div>
 
       <footer className="daily-quote-dialog__footer">
+        {/* 「我的投稿」不再放这里：投稿成功态（DailyQuoteForm 的完成区）已经有入口，
+            三个相关页面也由 DailyQuoteNav 统一交代 —— 弹窗底栏只留「去别处看」的两项。 */}
         <nav className="daily-quote-dialog__links" aria-label="每日一言相关">
-          <Link href="/favorite/quotes">一言集</Link><Link href="/checkin/submissions">我的投稿</Link>
+          <Link href="/checkin/quotes">往期一言</Link><Link href="/favorite/quotes">一言集</Link>
         </nav>
         {/* 投稿模式与阅读模式共用这一颗按钮：文案与图标换，位置、焦点与外壳不变。 */}
         <button type="button" className="daily-quote-dialog__mode" onClick={() => setSubmission((value) => !value)}>

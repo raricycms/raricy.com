@@ -4,6 +4,7 @@ import { getCurrentUser, isCoreUser, isCurrentlyBanned } from '@/lib/auth';
 import { loginUrlWithNext } from '@/lib/safe-url';
 import { getTodayStatus, getCountLeaderboard } from '@/lib/checkin-service';
 import CheckinCard, { CheckinLeaderboards } from '@/app/components/CheckinCard';
+import DailyQuoteNav from '@/app/components/DailyQuoteNav';
 
 // 签到 = 每日领鱼干，档位是 **core+**（与投喂、点赞、剪贴板同档）。
 //
@@ -61,6 +62,10 @@ export default async function CheckinPage() {
           </Link>
         </div>
       )}
+
+      {/* 三个入口放在签到状态分支**之外**：没签到、甚至还没发文不具备签到资格的人
+          也能回看往期、翻一言集、查自己的投稿。今日内容仍要签到后在弹窗里看。 */}
+      <DailyQuoteNav />
 
       <CheckinLeaderboards countEntries={countLb} currentUserId={user.id} />
     </div>

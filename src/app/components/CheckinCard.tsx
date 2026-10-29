@@ -190,7 +190,8 @@ export default function CheckinCard({
       )}
       {done && <div className="checkin-quote-links">
         <button ref={quoteTrigger} type="button" className="daily-quote-primary" onClick={() => setQuoteOpen(true)}>查看今日一言</button>
-        <Link href="/checkin/submissions">我的投稿</Link>
+        {/* 「往期一言 / 一言集 / 我的投稿」由签到页的 DailyQuoteNav 统一给，这里不再
+            重复一颗「我的投稿」——同一页出现两份入口会让人以为它们去的地方不同。 */}
       </div>}
       {quoteOpen && <DailyQuoteModal onClose={() => setQuoteOpen(false)} returnFocus={quoteTrigger} />}
     </div>

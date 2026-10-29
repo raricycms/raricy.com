@@ -220,7 +220,8 @@
 .daily-quote-primary,
 .daily-quote-secondary,
 .daily-quote-card__action,
-.daily-quote-dialog__mode {
+.daily-quote-dialog__mode,
+.daily-quote-nav__item {
   &:focus-visible {
     outline: none;
     box-shadow: var(--shadow-focus-brand);
@@ -390,6 +391,68 @@
       animation: daily-quote-content-in .18s ease;
     }
   }
+
+  &__date {
+    font-size: .8125rem;
+    line-height: 1.6;
+  }
+
+  &__date-hint {
+    color: var(--color-text-secondary);
+    font-size: .8125rem;
+    line-height: 1.6;
+  }
+
+  // 费用贴在操作行右端：付款前不悬停也能看见「投喂 1 条鱼干 / 免费」。
+  &__fee {
+    margin-left: auto;
+    color: var(--color-text-secondary);
+    font-size: .8125rem;
+    line-height: 1.6;
+  }
+
+  // 下架 / 归档的占位：只留日期与一句说明，不显示原文、出处或身份。
+  &__unavailable {
+    margin: 12px 0 0;
+    color: var(--color-text-secondary);
+    line-height: 1.7;
+  }
+
+  // ── 列表模式：单层卡片底色，引文不再套第二层内容底块 ──────────────────────
+  // 今日弹窗里那张卡是「一层内容块」，列表里每一条再套一层壳就会变成三层内距。
+  &--list {
+    min-width: 0;
+    padding: 28px;
+    border-radius: v.$radius-card;
+    background: var(--color-background-card);
+    overflow-wrap: anywhere;
+
+    .daily-quote-card__text {
+      margin-top: 16px;
+      font-size: clamp(1.1rem, 2.4vw, 1.3rem);
+      line-height: 1.8;
+    }
+
+    .daily-quote-card__byline {
+      margin-top: 12px;
+    }
+
+    .daily-quote-card__actions {
+      margin-top: 20px;
+    }
+
+    // 列表不常驻空反馈行：只有真的有结果或错误时才占位。
+    .daily-quote-card__note {
+      min-height: 0;
+      margin-top: 8px;
+    }
+  }
+
+  &--unavailable {
+    .daily-quote-card__unavailable {
+      margin-top: 12px;
+    }
+  }
 }
 
 .daily-quote-form {
@@ -503,6 +566,29 @@
   overflow-wrap: anywhere;
 }
 
+// 三个页面入口共用的一组导航（往期一言 / 一言集 / 我的投稿）。当前项是
+// `<span aria-current="page">`，外观走切页档的选中态，指针保持默认。
+.daily-quote-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 16px;
+
+  &__item {
+    @include m.btn-tab;
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+    padding: 10px 16px;
+    font-size: .9rem;
+    text-decoration: none;
+
+    &.is-active {
+      cursor: default;
+    }
+  }
+}
+
 .daily-quote-page {
   padding-top: 32px;
   padding-bottom: 40px;
@@ -520,6 +606,15 @@
       margin: 0;
       font-size: 1.75rem;
     }
+  }
+
+  // 页级说明：通用规则 / 日期口径。列表顶部说一次，卡内不再重复长段规则。
+  &__note {
+    margin: 0;
+    color: var(--color-text-secondary);
+    font-size: .875rem;
+    line-height: 1.7;
+    overflow-wrap: anywhere;
   }
 }
 
@@ -586,6 +681,20 @@
   .daily-quote-dialog {
     margin: calc(12px + var(--safe-top)) auto auto;
   }
+
+  .daily-quote-page {
+    padding-top: 24px;
+  }
+
+  // 窄屏紧凑条目：与博客目录的卡片同一档（30px → 18px），内距随视口收紧。
+  .daily-quote-card--list {
+    padding: 20px;
+    border-radius: 18px;
+
+    .daily-quote-card__text {
+      font-size: 1.1rem;
+    }
+  }
 }
 
 @media (max-width: 576px) {
@@ -600,6 +709,24 @@
 
   .daily-quote-panel {
     border-radius: 18px;
+  }
+
+  .daily-quote-card--list {
+    padding: 18px 16px;
+  }
+
+  // 极窄屏操作行会换行：费用另起一行左对齐，不留在上一行右端悬着。
+  .daily-quote-card__fee {
+    flex-basis: 100%;
+    margin-left: 0;
+  }
+
+  .daily-quote-nav__item {
+    padding: 8px 12px;
+  }
+
+  .daily-quote-page__header h1 {
+    font-size: 1.5rem;
   }
 }
 
