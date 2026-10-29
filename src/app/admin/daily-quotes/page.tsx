@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { requireAdmin } from '@/lib/guard';
-import { listReviewQuotes } from '@/lib/daily-quote-service';
+import { listReviewQuotes, quoteReviewVersion } from '@/lib/daily-quote-service';
 import { QUOTE_STATUSES, QUOTE_STATUS_LABELS } from '@/lib/daily-quote';
 import { ymdhms } from '@/lib/format';
 import AdminPageHeader from '@/app/components/AdminPageHeader';
@@ -27,7 +27,7 @@ export default async function DailyQuoteAdminPage({ searchParams }: { searchPara
         <p>{quote.sourceType === 'original' ? '原创' : `引用自：${quote.sourceName}`}</p>
         <p className="daily-quote-card__hint numeric">{ymdhms(quote.createdAt)}</p>
         {quote.reviewReason && <p>审核说明：{quote.reviewReason}</p>}
-        <AdminDailyQuoteReview id={quote.id} status={quote.status} />
+        <AdminDailyQuoteReview id={quote.id} status={quote.status} version={quoteReviewVersion(quote)} />
       </article>)}
       {!result.quotes.length && <p>当前没有这类稿件。</p>}
     </div>

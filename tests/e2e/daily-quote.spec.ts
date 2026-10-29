@@ -306,6 +306,80 @@ test('弹窗投稿→管理员审核→匿名全额投喂与重复保护', async
   expect((await (await page.request.get('/api/fish/balance')).json()).balance).toBe(4);
 });
 
+test('最近投稿可回填、取消与保存；拒稿修改后重投，审核后的稿件不可覆盖', async ({ page }) => {
+  async function openEditor(card: Locator) {
+    // SSR 按钮可能先于水合出现；只重复「打开」这一单调操作，不重复保存请求。
+    await expect(async () => {
+      if (await card.getByRole('form', { name: '编辑一言投稿' }).count()) return;
+      await card.getByRole('button', { name: '编辑投稿' }).click();
+      await expect(card.getByRole('form', { name: '编辑一言投稿' })).toBeVisible({ timeout: 2_000 });
+    }).toPass({ timeout: 20_000 });
+  }
+  await registerCoreUser(page);
+  const content = `待编辑稿件${uniqueTag()}`;
+  const created = await page.request.post('/api/daily-quotes/submissions', { data: {
+    content, category: '哲思', signature: 'anonymous', source_type: 'quotation', source_name: '原作品出处',
+  } });
+  expect(created.status()).toBe(200);
+  const { submission } = await created.json();
+  await page.goto('/checkin/submissions');
+  const row = page.locator('article.daily-quote-panel').filter({ hasText: content });
+  await openEditor(row);
+  // 正文在编辑时会变化，表单按固定名称定位，不能继续依赖卡片的旧正文。
+  const form = page.getByRole('form', { name: '编辑一言投稿' });
+  await expect(form.getByLabel('一言内容')).toHaveValue(content);
+  await expect(form.locator('[name="category"]')).toHaveValue('哲思');
+  await expect(form.locator('[name="signature"]')).toHaveValue('anonymous');
+  await expect(form.locator('[name="source_type"]')).toHaveValue('quotation');
+  await expect(form.getByLabel('原作者或出处')).toHaveValue('原作品出处');
+  await form.getByLabel('一言内容').fill('取消时不应保存');
+  await form.getByRole('button', { name: '取消编辑' }).click();
+  await expect(row.getByRole('button', { name: '编辑投稿' })).toBeFocused();
+  await expect(row.locator('.daily-quote-submission-text')).toHaveText(content);
+
+  await openEditor(row);
+  await expect(form.getByLabel('一言内容')).toHaveValue(content);
+  const changed = `保存后的稿件${uniqueTag()}`;
+  await form.getByLabel('一言内容').fill(changed);
+  for (const [field, option] of [['类型', '励志'], ['署名方式', '昵称'], ['来源', '原创']]) {
+    await form.getByRole('button', { name: field, exact: true }).click();
+    await form.getByRole('option', { name: option, exact: true }).click();
+  }
+  await form.getByRole('button', { name: '保存修改' }).click();
+  const changedRow = page.locator('article.daily-quote-panel').filter({ hasText: changed });
+  await expect(changedRow.getByRole('status')).toHaveText('修改已保存，等待管理员审核。');
+  const saved = (await (await page.request.get('/api/daily-quotes/submissions')).json()).submissions;
+  expect(saved).toEqual([expect.objectContaining({
+    id: submission.id, content: changed, category: '励志', signature: 'nickname', source_type: 'original', source_name: null, status: 'pending',
+  })]);
+  await expectNoHorizontalScroll(page);
+
+  // 直接构造拒稿状态；审核接口及审计日志的成功路径由本文件上一个用例覆盖。
+  await e2eDb().dailyQuote.update({ where: { id: submission.id }, data: { status: 'rejected', reviewReason: '请修改正文' } });
+  await page.reload();
+  await openEditor(changedRow);
+  const revised = `拒稿修改后${uniqueTag()}`;
+  await form.getByLabel('一言内容').fill(revised);
+  await form.getByRole('button', { name: '修改后重新投稿' }).click();
+  await expect(changedRow).toContainText('原拒稿记录已保留');
+  await expect(changedRow).toContainText('审核说明：请修改正文');
+  const revisedRow = page.locator('article.daily-quote-panel').filter({ hasText: revised });
+  await expect(revisedRow).toContainText('待审核');
+  const submissions = (await (await page.request.get('/api/daily-quotes/submissions')).json()).submissions;
+  const revisedId = submissions.find((item: { content: string }) => item.content === revised).id;
+  expect(revisedId).not.toBe(submission.id);
+
+  await openEditor(revisedRow);
+  await form.getByLabel('一言内容').fill('审核后不能替换正文');
+  await e2eDb().dailyQuote.update({ where: { id: revisedId }, data: { status: 'approved' } });
+  await form.getByRole('button', { name: '保存修改' }).click();
+  await expect(form.getByRole('alert')).toContainText('稿件已通过审核或已下架，不能编辑');
+  await page.reload();
+  await expect(revisedRow.getByRole('button', { name: '编辑投稿' })).toHaveCount(0);
+  await expect(revisedRow).toContainText('已通过');
+  await expect(revisedRow.locator('.daily-quote-submission-text')).toHaveText(revised);
+});
+
 test('一言加载失败可单独重试，签到奖励已到账', async ({ page }) => {
   await registerCoreUser(page); await publishBlog(page);
   await page.route('**/api/daily-quotes/today', (route) => route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ code: 503, message: '一言加载测试失败' }) }));

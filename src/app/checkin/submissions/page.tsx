@@ -5,6 +5,7 @@ import { QUOTE_STATUS_LABELS } from '@/lib/daily-quote';
 import { ymdhms } from '@/lib/format';
 import DailyQuoteForm from '@/app/components/DailyQuoteForm';
 import DailyQuoteNav from '@/app/components/DailyQuoteNav';
+import DailyQuoteSubmissionEditor from '@/app/components/DailyQuoteSubmissionEditor';
 
 export const dynamic = 'force-dynamic';
 
@@ -19,10 +20,15 @@ export default async function QuoteSubmissionsPage() {
       {!submissions.length && <p>还没有投稿。</p>}
       {submissions.map((quote) => <article className="daily-quote-panel" key={quote.id}>
         <div className="daily-quote-card__meta"><span>{QUOTE_STATUS_LABELS[quote.status]}</span><span>{quote.category}</span><span>{quote.signature === 'anonymous' ? '匿名' : '昵称'}</span></div>
-        <p className="daily-quote-submission-text">{quote.content}</p>
-        <p className="daily-quote-card__hint">{quote.sourceType === 'original' ? '原创' : `引用自：${quote.sourceName}`}</p>
-        <p className="daily-quote-card__hint numeric">{ymdhms(quote.createdAt)}</p>
-        {quote.reviewReason && <p>审核说明：{quote.reviewReason}</p>}
+        <DailyQuoteSubmissionEditor submission={{
+          id: quote.id, content: quote.content, category: quote.category, signature: quote.signature,
+          source_type: quote.sourceType, source_name: quote.sourceName, status: quote.status,
+        }}>
+          <p className="daily-quote-submission-text">{quote.content}</p>
+          <p className="daily-quote-card__hint">{quote.sourceType === 'original' ? '原创' : `引用自：${quote.sourceName}`}</p>
+          <p className="daily-quote-card__hint numeric">{ymdhms(quote.createdAt)}</p>
+          {quote.reviewReason && <p>审核说明：{quote.reviewReason}</p>}
+        </DailyQuoteSubmissionEditor>
       </article>)}
     </section>
   </div>;

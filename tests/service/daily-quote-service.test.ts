@@ -7,7 +7,7 @@ import { __resetRateLimitStore } from '@/lib/rate-limit';
 import { unitsToFish } from '@/lib/fish-units';
 import {
   getTodayQuote, quoteContentKey, quoteView, resonateQuote, submitQuote,
-  reviewQuote, saveQuote, listSavedQuotes, listQuoteHistory, listSubmissions,
+  reviewQuote, saveQuote, listSavedQuotes, listQuoteHistory, listSubmissions, editQuoteSubmission,
 } from '@/lib/daily-quote-service';
 
 beforeEach(async () => {
@@ -304,6 +304,88 @@ describe('往期一言：只读、按日倒序、缺日不补、批量状态', (
 });
 
 describe('投稿审核与私密一言集', () => {
+  const editInput = { content: '修改后的一句话', category: '哲思', signature: 'anonymous', source_type: 'quotation', source_name: '修改后的出处' };
+
+  it('待审稿件可修改全部表单字段，保留id与投稿时间，不占新增投稿次数', async () => {
+    const user = await makeUser({ role: 'core' });
+    const original = await submitQuote(user.id, { ...editInput, content: '初次投稿', source_type: 'original' });
+    const before = await prisma.dailyQuote.findUniqueOrThrow({ where: { id: original.id } });
+    for (let i = 0; i < 4; i++) await submitQuote(user.id, { ...editInput, content: `占用投稿次数${i}` });
+    expect(await editQuoteSubmission(original.id, user.id, { ...editInput, content: '  修改后\n 的一句话  ', status: 'approved', submitterId: 'someone-else' }))
+      .toEqual({ id: original.id, status: 'pending' });
+    expect(await prisma.dailyQuote.findUniqueOrThrow({ where: { id: original.id } })).toMatchObject({
+      content: '修改后 的一句话', contentKey: quoteContentKey('修改后 的一句话'), category: '哲思',
+      signature: 'anonymous', sourceType: 'quotation', sourceName: '修改后的出处',
+      status: 'pending', submitterId: user.id, createdAt: before.createdAt,
+    });
+    await editQuoteSubmission(original.id, user.id, { ...editInput, source_type: 'original' });
+    expect((await prisma.dailyQuote.findUniqueOrThrow({ where: { id: original.id } })).sourceName).toBeNull();
+    expect(await prisma.dailyQuote.count()).toBe(5);
+    await expect(submitQuote(user.id, { ...editInput, content: '第六条' })).rejects.toMatchObject({ status: 429 });
+  });
+
+  it('拒稿修改后另建待审稿件，保留拒稿原文、去重占位和审核记录', async () => {
+    const user = await makeUser({ role: 'core' });
+    const admin = await makeUser({ role: 'admin' });
+    const original = await submitQuote(user.id, { ...editInput, content: '拒稿原文。' });
+    await reviewQuote(original.id, admin.id, 'reject', '请调整内容');
+    const before = await prisma.dailyQuote.findUniqueOrThrow({ where: { id: original.id } });
+    const revised = await editQuoteSubmission(original.id, user.id, editInput);
+    expect(revised.id).not.toBe(original.id);
+    expect(revised.status).toBe('pending');
+    expect(await prisma.dailyQuote.findUniqueOrThrow({ where: { id: original.id } })).toEqual(before);
+    expect(await prisma.dailyQuote.findUniqueOrThrow({ where: { id: revised.id } })).toMatchObject({
+      content: editInput.content, submitterId: user.id, reviewerId: null, reviewedAt: null, reviewReason: null,
+    });
+    await expect(editQuoteSubmission(original.id, user.id, { ...editInput, content: '拒稿原文！' })).rejects.toMatchObject({ status: 409 });
+    await expect(editQuoteSubmission(original.id, user.id, { ...editInput, content: '拒稿原文。', signature: 'nickname' })).rejects.toMatchObject({ status: 409 });
+    expect(await prisma.adminActionLog.count({ where: { objectId: original.id } })).toBe(1);
+    expect(await prisma.dailyQuote.count()).toBe(2);
+    await submitQuote(user.id, { ...editInput, content: '用完第五次投稿额度' });
+    await expect(editQuoteSubmission(original.id, user.id, { ...editInput, content: '额度用尽的改稿' })).rejects.toMatchObject({ status: 429 });
+  });
+
+  it('拒绝他人、内置与不存在稿件；管理员也不能代改；已通过和已下架不能改', async () => {
+    const author = await makeUser({ role: 'core' });
+    const other = await makeUser({ role: 'core' });
+    const admin = await makeUser({ role: 'admin' });
+    const quote = await submitQuote(author.id, editInput);
+    for (const actor of [other.id, admin.id]) {
+      await expect(editQuoteSubmission(quote.id, actor, editInput)).rejects.toMatchObject({ status: 404 });
+    }
+    await expect(editQuoteSubmission('missing', author.id, editInput)).rejects.toMatchObject({ status: 404 });
+    await expect(editQuoteSubmission((await builtin()).id, author.id, editInput)).rejects.toMatchObject({ status: 404 });
+    await reviewQuote(quote.id, admin.id, 'approve', '');
+    for (const status of ['approved', 'retired']) {
+      if (status === 'retired') await reviewQuote(quote.id, admin.id, 'retire', '下架原因');
+      const before = await prisma.dailyQuote.findUniqueOrThrow({ where: { id: quote.id } });
+      await expect(editQuoteSubmission(quote.id, author.id, { ...editInput, content: '审核后不许替换' })).rejects.toMatchObject({ status: 409 });
+      expect(await prisma.dailyQuote.findUniqueOrThrow({ where: { id: quote.id } })).toEqual(before);
+    }
+  });
+
+  it('编辑沿用内容校验与去重，失败不改变稿件；服务层复核禁言和角色', async () => {
+    const author = await makeUser({ role: 'core' });
+    const original = await submitQuote(author.id, { ...editInput, content: '待编辑原文' });
+    await submitQuote(author.id, editInput);
+    const before = await prisma.dailyQuote.findUniqueOrThrow({ where: { id: original.id } });
+    for (const invalid of [
+      { content: '' }, { content: '字'.repeat(51) }, { content: '包含\u200b隐藏字符' },
+      { content: '？！' }, { category: '无效类型' }, { signature: 'invalid' },
+      { source_type: 'invalid' }, { source_name: '' }, { source_name: '字'.repeat(101) },
+    ]) {
+      await expect(editQuoteSubmission(original.id, author.id, { ...editInput, ...invalid })).rejects.toMatchObject({ status: 400 });
+    }
+    await expect(editQuoteSubmission(original.id, author.id, editInput)).rejects.toMatchObject({ status: 409 });
+    expect(await prisma.dailyQuote.findUniqueOrThrow({ where: { id: original.id } })).toEqual(before);
+    await prisma.user.update({ where: { id: author.id }, data: { isBanned: true } });
+    await expect(editQuoteSubmission(original.id, author.id, editInput)).rejects.toMatchObject({ status: 403 });
+    await prisma.user.update({ where: { id: author.id }, data: { isBanned: false, role: 'user' } });
+    await expect(editQuoteSubmission(original.id, author.id, editInput)).rejects.toMatchObject({ status: 403 });
+    await prisma.user.update({ where: { id: author.id }, data: { role: 'core', archivedAt: nowForDb() } });
+    await expect(editQuoteSubmission(original.id, author.id, editInput)).rejects.toMatchObject({ status: 403 });
+  });
+
   it('50字按 Unicode 字符计数；引用必填出处；重复内容不能绕过永久拒绝', async () => {
     const user = await makeUser({ role: 'core' }); const admin = await makeUser({ role: 'admin' });
     const input = { category: '治愈', signature: 'anonymous', source_type: 'original' };

@@ -10,6 +10,21 @@ export const QUOTE_STATUS_LABELS: Record<string, string> = {
   pending: '待审核', approved: '已通过', rejected: '已拒绝', retired: '已下架',
 };
 
+export function canEditQuoteSubmission(status: string): boolean {
+  return status === 'pending' || status === 'rejected';
+}
+
+/** 作者编辑用的表单初值，仅由本人的投稿读口提供。 */
+export interface QuoteSubmissionDraft {
+  id: string;
+  content: string;
+  category: string;
+  signature: string;
+  source_type: string;
+  source_name: string | null;
+  status: string;
+}
+
 /**
  * 一条一言对某个查看者的完整展示状态。
  *

@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 
-export default function AdminDailyQuoteReview({ id, status }: { id: string; status: string }) {
+export default function AdminDailyQuoteReview({ id, status, version }: { id: string; status: string; version: string }) {
   const router = useRouter();
   const [reason, setReason] = useState('');
   const [busy, setBusy] = useState(false);
@@ -13,7 +13,7 @@ export default function AdminDailyQuoteReview({ id, status }: { id: string; stat
     setBusy(true); setError('');
     try {
       const response = await fetch(`/api/admin/daily-quotes/${encodeURIComponent(id)}`, {
-        method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action, reason }),
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action, reason, version }),
       });
       if (!response.ok) throw new Error((await response.json()).message || '审核失败');
       router.refresh();

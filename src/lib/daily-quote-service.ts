@@ -34,7 +34,7 @@ import { fishToUnits, unitsToFish } from './fish-units';
 import { rateLimit, RULES } from './rate-limit';
 import {
   QUOTE_CATEGORIES, QUOTE_CONTENT_MAX, QUOTE_HISTORY_PAGE_SIZE, QUOTE_NO_REPEAT_DAYS,
-  QUOTE_RESONANCE_FISH, QUOTE_SAVED_PAGE_SIZE, QUOTE_STATUSES, normalizeQuotePage, quoteLength,
+  QUOTE_RESONANCE_FISH, QUOTE_SAVED_PAGE_SIZE, QUOTE_STATUSES, canEditQuoteSubmission, normalizeQuotePage, quoteLength,
   type DailyQuoteHistoryEntry, type DailyQuoteResonanceResult, type DailyQuoteView,
   type SavedQuoteEntry,
 } from './daily-quote';
@@ -389,10 +389,12 @@ export async function listSavedQuotes(
   return { total, page: currentPage, pages, quotes: entries };
 }
 
-export async function submitQuote(userId: string, input: Record<string, unknown>) {
-  await requireActor(userId);
+function consumeSubmissionQuota(userId: string) {
   const gate = rateLimit(`quote:submit:${userId}`, RULES.quoteSubmitDaily);
   if (!gate.allowed) throw new QuoteError(429, '今日投稿次数已用完，请明天再来');
+}
+
+function validateSubmission(input: Record<string, unknown>) {
   const { content, category, signature, source_type, source_name } = input;
   if (typeof content !== 'string' || /[\p{Cc}\p{Cf}]/u.test(content.replace(/[\r\n\t]/g, ''))) {
     throw new QuoteError(400, '请输入有效的一言内容');
@@ -406,13 +408,55 @@ export async function submitQuote(userId: string, input: Record<string, unknown>
   if (source_type !== 'original' && source_type !== 'quotation') throw new QuoteError(400, '请选择原创或引用');
   const source = typeof source_name === 'string' ? source_name.trim() : '';
   if (source_type === 'quotation' && (!source || quoteLength(source) > 100)) throw new QuoteError(400, '引用请填写100字以内的原作者或出处');
+  return {
+    content: text, contentKey: quoteContentKey(text), category: category as string, signature,
+    sourceType: source_type, sourceName: source_type === 'quotation' ? source : null,
+  };
+}
+
+function createSubmission(userId: string, data: ReturnType<typeof validateSubmission>, tx: Prisma.TransactionClient = prisma) {
+  return tx.dailyQuote.create({ data: {
+    ...data, id: randomUUID(), kind: 'community', submitterId: userId,
+    status: 'pending', createdAt: nowForDb(),
+  }, select: { id: true, status: true } });
+}
+
+export async function submitQuote(userId: string, input: Record<string, unknown>) {
+  await requireActor(userId);
+  consumeSubmissionQuota(userId);
+  const data = validateSubmission(input);
   try {
-    return await prisma.dailyQuote.create({ data: {
-      id: randomUUID(), kind: 'community', content: text, contentKey: quoteContentKey(text),
-      category: category as string, signature, sourceType: source_type,
-      sourceName: source_type === 'quotation' ? source : null, submitterId: userId,
-      status: 'pending', createdAt: nowForDb(),
-    }, select: { id: true, status: true } });
+    return await createSubmission(userId, data);
+  } catch (error) {
+    if (uniqueViolation(error)) throw new QuoteError(409, '这句内容已收录或已被拒绝，不能重复投稿');
+    throw error;
+  }
+}
+
+/**
+ * 作者只能修改自己的未通过稿件。待审原位保存；拒稿保留原文与审核记录，修改后另投新稿，
+ * 沿用投稿配额和正文唯一约束，不能只改标点或署名就把已拒内容重新送审。
+ * 权限、状态复核与写入放在同一事务，审核先完成时保存必须失败，不能改写已通过的正文。
+ */
+export async function editQuoteSubmission(quoteId: string, userId: string, input: Record<string, unknown>) {
+  try {
+    return await prisma.$transaction(async (tx) => {
+      await requireActor(userId, tx);
+      const quote = await tx.dailyQuote.findFirst({ where: { id: quoteId, submitterId: userId, kind: 'community' } });
+      if (!quote) throw new QuoteError(404, '投稿不存在');
+      if (!canEditQuoteSubmission(quote.status)) throw new QuoteError(409, '稿件已通过审核或已下架，不能编辑，请刷新');
+      const data = validateSubmission(input);
+      if (quote.status === 'rejected') {
+        consumeSubmissionQuota(userId);
+        return createSubmission(userId, data, tx);
+      }
+      const updated = await tx.dailyQuote.updateMany({
+        where: { id: quoteId, submitterId: userId, kind: 'community', status: 'pending' },
+        data,
+      });
+      if (!updated.count) throw new QuoteError(409, '稿件状态已变化，请刷新');
+      return { id: quoteId, status: 'pending' };
+    });
   } catch (error) {
     if (uniqueViolation(error)) throw new QuoteError(409, '这句内容已收录或已被拒绝，不能重复投稿');
     throw error;
@@ -440,7 +484,14 @@ export async function listReviewQuotes(status: string, page: number) {
   return { total, page: current, pages: Math.ceil(total / 30), status: selected, quotes };
 }
 
-export async function reviewQuote(quoteId: string, adminId: string, action: unknown, reason: unknown) {
+/** 审核页面所见的可编辑字段快照；署名与来源变化同样需要重新确认。 */
+export function quoteReviewVersion(quote: Pick<DailyQuote, 'content' | 'category' | 'signature' | 'sourceType' | 'sourceName'>): string {
+  return createHash('sha256').update(JSON.stringify([
+    quote.content, quote.category, quote.signature, quote.sourceType, quote.sourceName,
+  ])).digest('hex');
+}
+
+export async function reviewQuote(quoteId: string, adminId: string, action: unknown, reason: unknown, expectedVersion?: string) {
   const trimmed = typeof reason === 'string' ? reason.trim() : '';
   if (!['approve', 'reject', 'retire'].includes(action as string)) throw new QuoteError(400, '审核操作无效');
   if (quoteLength(trimmed) > 200 || (action !== 'approve' && !trimmed)) throw new QuoteError(400, '请填写200字以内的原因');
@@ -451,6 +502,9 @@ export async function reviewQuote(quoteId: string, adminId: string, action: unkn
     if (!hasAdminRights(reviewer)) throw new QuoteError(403, '需要管理员权限');
     const quote = await tx.dailyQuote.findFirst({ where: { id: quoteId, status: expected, ...activeSubmitter } });
     if (!quote) throw new QuoteError(409, '稿件状态已变化，已拒绝的稿件不能重新通过');
+    if (expectedVersion !== undefined && quoteReviewVersion(quote) !== expectedVersion) {
+      throw new QuoteError(409, '稿件已被作者修改，请刷新后重新审核');
+    }
     const updated = await tx.dailyQuote.updateMany({
       where: { id: quoteId, status: expected }, data: { status: next, reviewReason: trimmed || null, reviewerId: adminId, reviewedAt: nowForDb() },
     });

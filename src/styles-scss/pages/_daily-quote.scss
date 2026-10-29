@@ -459,6 +459,10 @@
   display: grid;
   gap: 16px;
 
+  &--edit {
+    margin-top: 16px;
+  }
+
   &__field {
     display: grid;
     gap: 8px;
