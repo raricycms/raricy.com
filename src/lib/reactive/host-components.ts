@@ -51,7 +51,7 @@ export const SITE_EMBED_TAG = 'site-embed';
 export const REACTIVE_MAX_SYNTAX_NODES = 15_000;
 
 /** 精确编译包版本（进缓存键与诊断上报，不是 semver 范围）。 */
-export const REACTIVE_COMPILER_VERSION = 'reactive-md/0.5.3';
+export const REACTIVE_COMPILER_VERSION = 'reactive-md/0.6.1';
 
 /**
  * 宿主组件 schema。`kind` 是枚举、`ref` 是受限字符串，两者都静态（拒绝 `{{ }}`）。

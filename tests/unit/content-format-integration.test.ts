@@ -152,6 +152,20 @@ describe('博客格式：validateBlogData / 落库 / 读出口', () => {
     expect(typeof snap?.documentJson).toBe('string');
   });
 
+  it('Reactive 原生 HTML 安全回退可与交互内容一起发布并存入快照', async () => {
+    const u = await makeUser();
+    const content = '<div style="color:red">{{ missing }}\n\n<counter bind="n" label="N" initial="2">';
+    const id = await createBlog(u.id, {
+      ...BLOG_BASE, content, categoryId: null, visibility: 'internal', format: 'reactive',
+    });
+    const snapshot = await prisma.reactiveSnapshot.findFirst({ where: { kind: 'blog', contentId: id } });
+    expect(snapshot).not.toBeNull();
+    expect(snapshot!.compilerVersion).toBe('reactive-md/0.6.1');
+    const document = JSON.parse(snapshot!.documentJson);
+    expect(document.nodes[0]).toMatchObject({ type: 'fallback', value: '<div style="color:red">{{ missing }}' });
+    expect(document.bindings.n).toBeDefined();
+  });
+
   it('★ 绕过 HTTP 直接调 createBlog 写无法编译的 reactive → 抛错且什么都不落库 ★', async () => {
     const u = await makeUser();
     await expect(
