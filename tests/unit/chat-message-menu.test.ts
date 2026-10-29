@@ -1,15 +1,6 @@
 // @vitest-environment jsdom
 // ─────────────────────────────────────────────────────────────────────────────
-// chat-message-menu.test.ts —— 消息操作菜单（保存 / 回复 / 删除）的两半：
-//   · ChatMessageItem 的手势层：右键 / 长按 → onOpenMenu，鼠标按住不算，滑动取消，
-//     长按后的那一次 click 要吞掉（否则顺带点开图片）；
-//   · ChatMessageMenu 的菜单项：按 canSave / canReply / canDelete 组合渲染，点一项
-//     先 onClose 再执行动作。
-//
-// 【为什么值得单测】手势是「计时器 + 三个指针事件 + 一个 click 捕获」的组合，写错
-// 任何一处都不会报错 —— 症状只是「长按没反应」「长按后图片被放大」「滚列表时误弹
-// 菜单」，e2e 里还得靠真触摸才看得见。菜单项的显隐组合（大区没有保存、拍一拍没有
-// 回复、已删消息没有删除）同样是静默的。
+// chat-message-menu.test.ts —— 更多按钮 / 桌面右键、触屏原生选字、菜单项与键盘焦点。
 //
 // 【环境】照 chat-message-dom.test.ts：不用 @testing-library（本仓没有这个依赖），
 // createRoot + act 直接驱动；jsdom 不排版，几何由 e2e 负责。
@@ -18,7 +9,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, createElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
-import ChatMessageItem, { MESSAGE_LONG_PRESS_MS } from '@/app/chat/ChatMessageItem';
+import ChatMessageItem from '@/app/chat/ChatMessageItem';
 import ChatMessageMenu from '@/app/chat/ChatMessageMenu';
 import type { ChatMessageDTO } from '@/lib/chat-shared';
 
@@ -98,7 +89,7 @@ afterEach(async () => {
 /** 挂一条消息，返回根节点与几个 spy。 */
 async function mountMessage(
   msg: ChatMessageDTO,
-  opts: { canDelete?: boolean; canSave?: boolean; isMine?: boolean; onImageClick?: () => void } = {}
+  opts: { canDelete?: boolean; canSave?: boolean; isMine?: boolean; menuOpen?: boolean; onImageClick?: () => void } = {}
 ) {
   const onOpenMenu = vi.fn();
   const onImageClick = opts.onImageClick ?? vi.fn();
@@ -110,17 +101,18 @@ async function mountMessage(
       currentUserId: 'u1',
       currentUsername: '小明',
       canSave: opts.canSave ?? false,
+      menuOpen: opts.menuOpen ?? false,
       onOpenMenu,
       onAvatarClick: () => {},
       onJumpToReply: () => {},
       onImageClick,
     })
   );
-  const row = container.querySelector<HTMLElement>('.chat-msg')!;
+  const row = container.querySelector<HTMLElement>('.chat-msg, .chat-pat')!;
   return { row, onOpenMenu, onImageClick };
 }
 
-describe('消息手势：右键 / 长按唤出菜单', () => {
+describe('消息操作入口与原生触屏行为', () => {
   beforeEach(() => {
     vi.useFakeTimers();
   });
@@ -129,7 +121,7 @@ describe('消息手势：右键 / 长按唤出菜单', () => {
     const { row, onOpenMenu } = await mountMessage(dto());
     const ev = fire(row, new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 120, clientY: 80 }));
     expect(onOpenMenu).toHaveBeenCalledTimes(1);
-    expect(onOpenMenu.mock.calls[0][1]).toEqual({ x: 120, y: 80 });
+    expect(onOpenMenu.mock.calls[0][1]).toMatchObject({ x: 120, y: 80 });
     expect(ev.defaultPrevented, '不 preventDefault 的话原生菜单会盖在自定义菜单上').toBe(true);
   });
 
@@ -137,40 +129,53 @@ describe('消息手势：右键 / 长按唤出菜单', () => {
     const { row, onOpenMenu } = await mountMessage(dto());
     fire(row, new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
     expect(onOpenMenu).toHaveBeenCalledTimes(1);
-    expect(onOpenMenu.mock.calls[0][1]).toEqual({ x: 12, y: 12 });
+    expect(onOpenMenu.mock.calls[0][1]).toMatchObject({ x: 12, y: 12 });
   });
 
-  it('触屏长按 → 到时长才开菜单', async () => {
+  it('更多按钮用自身下沿定位，不依赖点击事件的指针坐标', async () => {
     const { row, onOpenMenu } = await mountMessage(dto());
-    fire(row, pointerEvent('pointerdown', { clientX: 30, clientY: 40, pointerType: 'touch' }));
-    act(() => {
-      vi.advanceTimersByTime(MESSAGE_LONG_PRESS_MS - 1);
-    });
-    expect(onOpenMenu, '没到时长就弹菜单').not.toHaveBeenCalled();
-    act(() => {
-      vi.advanceTimersByTime(10);
-    });
+    const more = row.querySelector<HTMLButtonElement>('.chat-msg__more')!;
+    vi.spyOn(more, 'getBoundingClientRect').mockReturnValue({ left: 120, bottom: 80 } as DOMRect);
+    fire(more, new MouseEvent('click', { bubbles: true }));
     expect(onOpenMenu).toHaveBeenCalledTimes(1);
-    expect(onOpenMenu.mock.calls[0][1]).toEqual({ x: 30, y: 40 });
+    expect(onOpenMenu.mock.calls[0][1]).toEqual({ x: 120, y: 80, trigger: more });
+    expect(more.getAttribute('aria-haspopup')).toBe('menu');
+    expect(more.getAttribute('aria-label')).toBe('消息操作');
   });
 
-  it('长按过程中手指滑动（滚列表）→ 取消，不弹菜单', async () => {
+  it('触屏长按与随后的原生菜单不打开消息操作，也不清掉文字选区', async () => {
     const { row, onOpenMenu } = await mountMessage(dto());
+    const range = document.createRange();
+    range.selectNodeContents(row.querySelector('.chat-msg__content')!);
+    window.getSelection()!.addRange(range);
+    const selected = window.getSelection()!.toString();
     fire(row, pointerEvent('pointerdown', { clientX: 30, clientY: 40, pointerType: 'touch' }));
-    fire(row, pointerEvent('pointermove', { clientX: 60, clientY: 40, pointerType: 'touch' }));
-    act(() => {
-      vi.advanceTimersByTime(MESSAGE_LONG_PRESS_MS + 50);
-    });
+    act(() => vi.advanceTimersByTime(1000));
+    // 部分浏览器的 contextmenu 没有 pointerType，用前一次 pointerdown 作兜底。
+    const ev = fire(row, new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 30, clientY: 40 }));
     expect(onOpenMenu).not.toHaveBeenCalled();
+    expect(ev.defaultPrevented).toBe(false);
+    expect(window.getSelection()!.toString()).toBe(selected);
+    expect(selected).toContain('一条消息');
   });
 
-  it('鼠标按住不动不算长按（长按只给触屏）', async () => {
+  it('原生 contextmenu 自带触屏类型时直接放行', async () => {
     const { row, onOpenMenu } = await mountMessage(dto());
-    fire(row, pointerEvent('pointerdown', { clientX: 30, clientY: 40, pointerType: 'mouse' }));
-    act(() => {
-      vi.advanceTimersByTime(MESSAGE_LONG_PRESS_MS + 50);
-    });
+    const ev = fire(row, pointerEvent('contextmenu', { clientX: 30, clientY: 40, pointerType: 'touch' }));
     expect(onOpenMenu).not.toHaveBeenCalled();
+    expect(ev.defaultPrevented).toBe(false);
+  });
+
+  it('菜单打开时按钮报告展开态，对应消息保持操作态', async () => {
+    const { row } = await mountMessage(dto(), { menuOpen: true });
+    expect(row.classList.contains('chat-msg--menu-open')).toBe(true);
+    expect(row.querySelector('.chat-msg__more')?.getAttribute('aria-expanded')).toBe('true');
+  });
+
+  it('拍一拍的删除同样有更多按钮', async () => {
+    const { row, onOpenMenu } = await mountMessage(dto({ pat: { target_id: 'u2', target_name: '小红' } }));
+    fire(row.querySelector('.chat-msg__more')!, new MouseEvent('click', { bubbles: true }));
+    expect(onOpenMenu).toHaveBeenCalledTimes(1);
   });
 
   it('没有可做的动作（别人的已删消息）→ 不拦原生右键菜单', async () => {
@@ -181,29 +186,21 @@ describe('消息手势：右键 / 长按唤出菜单', () => {
     const ev = fire(row, new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 10, clientY: 10 }));
     expect(onOpenMenu).not.toHaveBeenCalled();
     expect(ev.defaultPrevented).toBe(false);
+    expect(row.querySelector('.chat-msg__more')).toBeNull();
   });
 
-  it('长按弹出的那一次 click 被吞掉；下一次正常点击仍然生效', async () => {
+  it('普通点击正文不打开菜单，图片点击照常放大', async () => {
     const onImageClick = vi.fn();
-    const { row } = await mountMessage(
-      dto({ content: '', image: { id: 'i1', url: '/api/images/i1', mime_type: 'image/png' } }),
+    const { row, onOpenMenu } = await mountMessage(
+      dto({ image: { id: 'i1', url: '/api/images/i1', mime_type: 'image/png' } }),
       { onImageClick }
     );
     const img = row.querySelector<HTMLElement>('.chat-msg__image')!;
 
-    // 长按（气泡里点图）→ 菜单开 → 抬手那次 click 不该放大图片
-    fire(img, pointerEvent('pointerdown', { clientX: 30, clientY: 40, pointerType: 'touch' }));
-    act(() => {
-      vi.advanceTimersByTime(MESSAGE_LONG_PRESS_MS + 10);
-    });
-    fire(img, new MouseEvent('click', { bubbles: true, cancelable: true }));
-    expect(onImageClick, '长按后的 click 顺带把图片放大了').not.toHaveBeenCalled();
-
-    // 新手势开始即解禁 → 正常点击照旧放大
-    fire(img, pointerEvent('pointerdown', { clientX: 30, clientY: 40, pointerType: 'touch' }));
-    fire(img, pointerEvent('pointerup', { clientX: 30, clientY: 40, pointerType: 'touch' }));
+    fire(row.querySelector('.chat-msg__content')!, new MouseEvent('click', { bubbles: true }));
     fire(img, new MouseEvent('click', { bubbles: true, cancelable: true }));
     expect(onImageClick).toHaveBeenCalledTimes(1);
+    expect(onOpenMenu).not.toHaveBeenCalled();
   });
 });
 
@@ -272,5 +269,25 @@ describe('菜单项：按消息语境组合', () => {
     });
     expect(onClose).toHaveBeenCalledTimes(1);
     expect(onDelete).not.toHaveBeenCalled();
+  });
+
+  it('进入菜单后聚焦第一项，方向键 / Home / End 可以选择', async () => {
+    await mountMenu({ canSave: true });
+    const items = [...document.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')];
+    expect(document.activeElement).toBe(items[0]);
+    for (const [key, index] of [['ArrowUp', 3], ['ArrowDown', 0], ['End', 3], ['Home', 0], ['ArrowDown', 1]] as const) {
+      fire(document.activeElement!, new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
+      expect(document.activeElement).toBe(items[index]);
+    }
+  });
+
+  it('Esc 关闭后焦点回到消息的更多按钮', async () => {
+    const trigger = document.createElement('button');
+    document.body.appendChild(trigger);
+    const { onClose } = await mountMenu({ anchor: { x: 40, y: 40, trigger } });
+    fire(document.activeElement!, new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    expect(onClose).toHaveBeenCalledTimes(1);
+    act(() => roots.pop()!.unmount());
+    expect(document.activeElement).toBe(trigger);
   });
 });

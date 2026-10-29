@@ -714,16 +714,13 @@
 
 // 消息气泡
 //
-// 右键 / 长按唤出操作菜单（保存 / 回复 / 删除，见 ChatMessageItem 的
-// useMessageMenuTrigger）。-webkit-touch-callout 压掉 iOS 长按链接 / 图片时弹的
-// 原生 callout —— 那一下已经由我们自己的长按菜单接管；不设这条的话，链接上会先
-// 弹一个「打开 / 拷贝」的原生菜单再叠出我们的。正文选中不受影响（长按触发菜单时
-// JS 会把选区收掉）。
+// 更多按钮独立占位，显示时不改变布局；触屏长按保留原生选字与链接 / 图片菜单。
 .chat-msg {
   display: flex;
   gap: 10px;
   max-width: 78%;
-  -webkit-touch-callout: none;
+  border-radius: 10px;
+  transition: background-color 0.15s ease;
 }
 .chat-msg--mine {
   align-self: flex-end;
@@ -765,8 +762,7 @@
 // 挂到气泡外侧的空位上 —— 这是「两条气泡贴得住」的前提（见上面 -11px 的来路）。
 // 名字与时间在后继上 display:none，所以浮层里实际只剩私聊的「已读 / 未读」回执。
 //
-// 【操作按钮不在这一行】保存 / 回复 / 删除住进右键 / 长按唤出的 .chat-menu 里
-// （ChatMessageMenu），消息上没有任何常驻按钮 —— 原先的 hover 工具条已删。
+// 更多按钮独立于这一行；这层浮层只承载回执。
 //
 // 【为什么挂外侧而不是压在气泡上】气泡是 fit-content 宽度，浮层压上去会盖住正文，
 // 短消息上尤其明显。
@@ -795,6 +791,85 @@
   right: 100%;
   padding-left: 0;
   padding-right: 8px;
+}
+
+// 回执仍贴气泡边；只有带回执的后继消息额外给它留宽，避免与更多按钮重叠。
+.chat-msg--mine.chat-msg--grouped:has(.chat-msg__receipt) > .chat-msg__more {
+  margin-right: calc(1.44rem + 8px);
+}
+
+.chat-msg__more {
+  @include m.btn-secondary($pointer-hover-only: true);
+  flex: none;
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  opacity: 1;
+  transition: opacity 0.15s ease, color 0.25s ease, background-color 0.25s ease;
+
+  svg {
+    width: 18px;
+    height: 18px;
+  }
+
+  &:focus-visible {
+    outline: none;
+    box-shadow: var(--shadow-focus-brand);
+  }
+
+  &[aria-expanded='true'] {
+    background-color: var(--color-brand-secondary);
+    color: var(--color-brand-primary);
+  }
+}
+.chat-msg:not(.chat-msg--grouped) > .chat-msg__more {
+  margin-top: 20px;
+}
+
+.chat-msg--actionable:focus-within,
+.chat-msg--menu-open,
+.chat-pat--actionable:focus-within,
+.chat-pat--menu-open {
+  background-color: var(--color-brand-secondary);
+}
+.chat-msg--highlight.chat-msg--menu-open {
+  animation: none;
+}
+
+// 只在确有鼠标悬停能力时隐藏；opacity 保留 Tab 入口，聚焦后立即显示。
+@media (hover: hover) and (pointer: fine) {
+  .chat-msg__more {
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  .chat-msg--actionable:hover,
+  .chat-pat--actionable:hover {
+    background-color: var(--color-brand-secondary);
+  }
+
+  .chat-msg:hover > .chat-msg__more,
+  .chat-msg:focus-within > .chat-msg__more,
+  .chat-msg--menu-open > .chat-msg__more,
+  .chat-pat:hover > .chat-msg__more,
+  .chat-pat:focus-within > .chat-msg__more,
+  .chat-pat--menu-open > .chat-msg__more {
+    opacity: 1;
+    pointer-events: auto;
+  }
+}
+
+@media (any-pointer: coarse) {
+  .chat-msg__more {
+    width: 44px;
+    height: 44px;
+    opacity: 1;
+    pointer-events: auto;
+  }
 }
 // 触屏没有 hover：分组消息的头像常显，否则没法打开头像菜单
 @media (hover: none) {
@@ -1278,8 +1353,7 @@
 }
 
 // 拍一拍：微信/QQ 式的居中系统行（无头像、无气泡、灰字）。
-// 它的「删除」也走右键 / 长按唤出的操作菜单（同 .chat-msg），所以同样压掉
-// iOS 长按的原生 callout。
+// 它的「删除」也有更多按钮，触屏常显。
 .chat-pat {
   align-self: center;
   max-width: 90%;
@@ -1289,7 +1363,8 @@
   padding: 2px 10px;
   font-size: 0.78rem;
   color: var(--color-text-secondary);
-  -webkit-touch-callout: none;
+  border-radius: 999px;
+  transition: background-color 0.15s ease;
   text-align: center;
   word-break: break-word;
 }
@@ -1964,7 +2039,7 @@
     }
   }
 
-  // 长按唤出的菜单在触屏上要按得中（§3.5）：条目行高抬到 44px。
+  // 菜单在触屏上要按得中（§3.5）：条目行高抬到 44px。
   .chat-menu__item {
     min-height: 44px;
   }
@@ -1983,6 +2058,11 @@
 // ── 减少动态效果（§6.5）────────────────────────────────────────────────────
 // 折叠伸缩、标题淡出与列表交叉淡入直接到终态；功能与焦点不依赖动画结束。
 @media (prefers-reduced-motion: reduce) {
+  .chat-msg,
+  .chat-pat,
+  .chat-msg__more {
+    transition: none;
+  }
   .chat-sidebar,
   .chat-page--collapsed .chat-sidebar,
   .chat-page--drawer-open .chat-sidebar,

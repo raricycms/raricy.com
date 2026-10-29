@@ -33,6 +33,7 @@
 import { Fragment, memo } from 'react';
 import type { ChatMessageDTO } from '@/lib/chat-shared';
 import ChatMessageItem, { dayKey, fmtDay } from './ChatMessageItem';
+import type { MessageMenuAnchor } from './ChatMessageMenu';
 
 export interface ChatMessageListProps {
   /** 要渲染的那一段（头部已折叠）。**必须是 useMemo 的稳定引用**。 */
@@ -48,6 +49,8 @@ export interface ChatMessageListProps {
   newCount: number;
   /** 被跳转命中高亮的那条（见 ChatApp 的 jumpToMessage）。 */
   highlightId: number | null;
+  /** 正在操作的消息，只让对应消息持续高亮。 */
+  menuMessageId?: number | null;
   /** 我发的最后一条 —— 只有它画送达状态。 */
   lastMineId: number | null;
   /** 私聊：对方读到哪了。 */
@@ -63,8 +66,8 @@ export interface ChatMessageListProps {
   /** 「已折叠 N 条 · 展开更早」——放回一页由 ChatApp 定（REVEAL_STEP 住那边）。 */
   onRevealOlder: () => void;
   onLoadOlder: () => void;
-  /** 右键 / 长按某条消息 → 打开操作菜单（保存 / 回复 / 删除）。 */
-  onOpenMenu: (m: ChatMessageDTO, anchor: { x: number; y: number }) => void;
+  /** 更多按钮 / 桌面右键 → 打开操作菜单（保存 / 回复 / 删除）。 */
+  onOpenMenu: (m: ChatMessageDTO, anchor: MessageMenuAnchor) => void;
   onAvatarClick: (m: ChatMessageDTO, el: HTMLButtonElement) => void;
   /** 点回复摘要 → 跳到被引用的原消息。 */
   onJumpToReply: (messageId: number) => void;
@@ -81,6 +84,7 @@ function ChatMessageListInner({
   unreadAnchor,
   newCount,
   highlightId,
+  menuMessageId = null,
   lastMineId,
   peerLastRead,
   currentUserId,
@@ -136,6 +140,7 @@ function ChatMessageListInner({
               currentUserId={currentUserId}
               currentUsername={currentUsername}
               highlighted={highlightId === m.id}
+              menuOpen={menuMessageId === m.id}
               grouped={grouped}
               receipt={m.id === lastMineId && isDirect ? (peerLastRead >= m.id ? 'read' : 'unread') : null}
               canSave={isDirect && !m.is_deleted && !m.pat}

@@ -11,6 +11,8 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { expect, test } from '@playwright/test';
+import os from 'node:os';
+import path from 'node:path';
 import { loginViaApi, registerFreshUser, uniqueTag } from './helpers';
 import { SEED_USERS } from './seed';
 
@@ -126,7 +128,7 @@ test.describe('讨论功能：链接 / 跳转 / 搜索 / 日期分隔', () => {
     await loginViaApi(page, SEED_USERS.core.username);
     await page.goto(`/chat?channel=${LOBBY}`);
 
-    // 消息上没有常驻按钮：右键唤出操作菜单，再点「回复」（见 ChatMessageMenu）
+    // 桌面右键快捷入口唤出操作菜单，再点「回复」（见 ChatMessageMenu）
     const origRow = msgRow(page, orig);
     await expect(origRow).toBeVisible();
     await origRow.click({ button: 'right' });
@@ -286,6 +288,9 @@ test.describe('连续消息合并', () => {
     if (!isMobile) {
       await expect(secondRow.locator('.chat-msg__avatar')).toHaveCSS('opacity', '0');
     }
+    const moreBox = (await secondRow.locator('.chat-msg__more').boundingBox())!;
+    const receiptBox = (await secondRow.locator('.chat-msg__receipt').boundingBox())!;
+    expect(moreBox.x + moreBox.width, '更多按钮不能盖住回执').toBeLessThanOrEqual(receiptBox.x);
   });
 
   /**
@@ -296,7 +301,7 @@ test.describe('连续消息合并', () => {
    * max(引用块, 自己的块) —— 修法是让浮层住进只装自己那几块的 .chat-msg__own-blocks。
    * 结构那半边在 tests/unit/chat-message-dom.test.ts；这里量真渲染出来的几何。
    *
-   * 【为什么量的是表头行本身】保存 / 回复 / 删除已从这一行挪进右键 / 长按菜单
+   * 【为什么量的是表头行本身】保存 / 回复 / 删除由独立的更多按钮打开菜单
    * （ChatMessageMenu），浮层里只剩回执；但「浮层贴谁」这条契约没变 —— 挂错层时
    * 表头行的 box 边会跟着引用块走。空行也照样有 box（padding 撑出来的宽度）。
    *
@@ -358,13 +363,11 @@ test.describe('连续消息合并', () => {
   });
 });
 
-test.describe('消息操作菜单（右键 / 长按）', () => {
-  // 消息上不再有常驻按钮：菜单由 ChatMessageItem 的 useMessageMenuTrigger 唤出，
-  // 菜单本体是 portal + fixed 的 ChatMessageMenu。这里覆盖两条真浏览器才看得见的链路：
-  // 触屏长按（Playwright 没有长按 API，直接派发 pointerdown 让计时器接管）与删除。
+test.describe('消息操作菜单（更多按钮 / 桌面右键）', () => {
+  // 真视口验证：桌面悬停 / 聚焦显示、触屏常显且 44px、消息高亮、菜单边界与焦点恢复。
 
-  test('触屏长按 → 菜单落在指针落点，Esc 收起', async ({ page }) => {
-    const marker = `e2e-hold-${uniqueTag()}`;
+  test('更多按钮可发现且不挤动布局，打开后高亮消息，Esc 返回按钮', async ({ page, isMobile }, testInfo) => {
+    const marker = `e2e-menu-${uniqueTag()}`;
     await registerFreshUser(page, { core: true });
     await postLobby(page, marker);
     await page.goto(`/chat?channel=${LOBBY}`);
@@ -372,37 +375,87 @@ test.describe('消息操作菜单（右键 / 长按）', () => {
     const row = msgRow(page, marker);
     await expect(row).toBeVisible();
 
-    // 长按：真浏览器里是手指按住不动 500ms；这里派发 pointerdown 后等计时器自己响
-    await row.evaluate((el) => {
-      el.dispatchEvent(
-        new PointerEvent('pointerdown', {
-          bubbles: true,
-          pointerType: 'touch',
-          button: 0,
-          clientX: 140,
-          clientY: 120,
-        })
-      );
-    });
+    const more = row.getByRole('button', { name: '消息操作', exact: true });
+    const before = (await row.boundingBox())!;
+    if (isMobile) {
+      await expect(more).toHaveCSS('opacity', '1');
+      const hit = (await more.boundingBox())!;
+      expect(hit.width).toBeGreaterThanOrEqual(44);
+      expect(hit.height).toBeGreaterThanOrEqual(44);
+      await more.tap();
+    } else {
+      await page.mouse.move(0, 0);
+      await expect(more).toHaveCSS('opacity', '0');
+      await row.hover();
+      await expect(more).toHaveCSS('opacity', '1');
+      expect((await row.boundingBox())!.width).toBeCloseTo(before.width, 0);
+      await page.mouse.move(0, 0);
+      await more.focus();
+      await expect(more).toHaveCSS('opacity', '1');
+      await more.press('Enter');
+    }
 
     const menu = page.locator('.chat-menu');
     await expect(menu).toBeVisible();
+    await expect(row).toHaveClass(/chat-msg--menu-open/);
+    await expect(more).toHaveAttribute('aria-expanded', 'true');
     // 大区里自己发的消息：没有「保存」（保存箱只收私聊），有回复与删除
     await expect(menu.getByRole('menuitem')).toHaveText(['回复', '删除', '取消']);
-    // 菜单是 fixed 定位的 portal：落在落点附近，且完整落在视口内
+    // 菜单是 fixed 定位的 portal，完整落在视口内。
     const box = (await menu.boundingBox())!;
     const vp = page.viewportSize()!;
-    expect(Math.abs(box.x - 142), '菜单没贴住长按落点').toBeLessThanOrEqual(1);
     expect(box.x).toBeGreaterThanOrEqual(0);
     expect(box.y).toBeGreaterThanOrEqual(0);
     expect(box.x + box.width).toBeLessThanOrEqual(vp.width);
     expect(box.y + box.height).toBeLessThanOrEqual(vp.height);
+    await testInfo.attach('message-menu', {
+      body: await page.screenshot({ path: path.join(os.tmpdir(), `raricy-chat-menu-${testInfo.project.name}.png`) }),
+      contentType: 'image/png',
+    });
 
     await page.keyboard.press('Escape');
     await expect(menu).toHaveCount(0);
+    await expect(row).not.toHaveClass(/chat-msg--menu-open/);
+    await expect(more).toHaveAttribute('aria-expanded', 'false');
+    await expect(more).toBeFocused();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   });
 
-  test('右键自己的消息 → 删除（走菜单，不再是 hover 按钮）', async ({ page }) => {
+  test('触屏文字保留选区与原生菜单', async ({ page, isMobile }) => {
+    test.skip(!isMobile, '触屏原生行为只在移动端验证');
+    const marker = `e2e-select-${uniqueTag()}`;
+    await registerFreshUser(page, { core: true });
+    await postLobby(page, marker);
+    await page.goto(`/chat?channel=${LOBBY}`);
+    const row = msgRow(page, marker);
+    await expect(row).toBeVisible();
+    const selection = await row.evaluate((el) => {
+      const content = el.querySelector<HTMLElement>('.chat-msg__content')!;
+      const range = document.createRange();
+      range.selectNodeContents(content);
+      window.getSelection()!.removeAllRanges();
+      window.getSelection()!.addRange(range);
+      // 合成事件只检查我们的处理器放行，不声称模拟了系统选字手柄。
+      content.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerType: 'touch', button: 0 }));
+      const event = new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 40, clientY: 40 });
+      content.dispatchEvent(event);
+      const style = getComputedStyle(content);
+      return {
+        text: window.getSelection()!.toString(),
+        prevented: event.defaultPrevented,
+        userSelect: style.userSelect,
+        callout: getComputedStyle(el).getPropertyValue('-webkit-touch-callout'),
+      };
+    });
+    expect(selection.text.trim()).toBe(marker);
+    expect(selection.prevented).toBe(false);
+    expect(selection.userSelect).not.toBe('none');
+    expect(selection.callout).not.toBe('none');
+    await expect(page.getByRole('menu', { name: '消息操作', exact: true })).toHaveCount(0);
+  });
+
+  test('桌面右键自己的消息 → 删除', async ({ page, isMobile }) => {
+    test.skip(isMobile, '触屏通过更多按钮操作');
     const marker = `e2e-del-${uniqueTag()}`;
     await loginViaApi(page, SEED_USERS.core.username);
     const messageId = await postLobby(page, marker);
