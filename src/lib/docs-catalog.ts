@@ -321,7 +321,7 @@ export const DOC_ENTRIES: readonly DocEntry[] = [
     group: 'dev',
     slug: 'plan/README',
     title: '未完成计划索引',
-    summary: '当前计划、剩余范围、已完成内容去向与更新约定。',
+    summary: '按状态查找剩余工作、相关实施记录与更新约定。',
   },
   {
     group: 'dev',
@@ -333,7 +333,7 @@ export const DOC_ENTRIES: readonly DocEntry[] = [
     group: 'dev',
     slug: 'plan/craft-games-design',
     title: '手工间小游戏设计',
-    summary: '织布机、剪纸、水面印花的设计草案：核心玩法、首版范围、共用体验与推进顺序。',
+    summary: '织布机、剪纸、水面印花的设计与落地记录；后续扩展尚未排期。',
   },
   {
     group: 'dev',
@@ -369,7 +369,7 @@ export const DOC_ENTRIES: readonly DocEntry[] = [
     group: 'dev',
     slug: 'plan/reactive-md-migration-plan',
     title: 'ReactiveMD 接入博客区方案（渲染器换代）',
-    summary: '分阶段替换博客 / 剪贴板渲染器：数据层、语料报告、引用组件、SSR、编辑器与回滚。',
+    summary: 'ReactiveMD 接入与实施记录；灰度、语料分类、作者工具与观测仍有后续工作。',
   },
   {
     group: 'dev',
