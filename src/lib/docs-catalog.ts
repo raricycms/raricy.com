@@ -325,6 +325,12 @@ export const DOC_ENTRIES: readonly DocEntry[] = [
   },
   {
     group: 'dev',
+    slug: 'plan/daily-quote-repair-plan',
+    title: '每日一言修复方案（待审查）',
+    summary: '往期回看、累计一次共鸣、旧记录保留、界面整理与验收方案；功能尚未修改。',
+  },
+  {
+    group: 'dev',
     slug: 'plan/craft-games-design',
     title: '手工间小游戏设计',
     summary: '织布机、剪纸、水面印花的设计草案：核心玩法、首版范围、共用体验与推进顺序。',
