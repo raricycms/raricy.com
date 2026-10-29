@@ -326,8 +326,8 @@ export const DOC_ENTRIES: readonly DocEntry[] = [
   {
     group: 'dev',
     slug: 'plan/daily-quote-repair-plan',
-    title: '每日一言修复方案（待审查）',
-    summary: '往期回看、累计一次共鸣、旧记录保留、界面整理与验收方案；功能尚未修改。',
+    title: '每日一言修复方案',
+    summary: '往期回看、累计一次共鸣、旧记录保留与界面整理；已实施（2026-10-29）。',
   },
   {
     group: 'dev',
