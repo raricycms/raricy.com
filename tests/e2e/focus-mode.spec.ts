@@ -247,22 +247,15 @@ test.describe('专注模式（设置 → 各处生效）', () => {
     await expect(page.locator('.fish-card__info-link', { hasText: '练手盘统计' })).toHaveCount(0);
     // ★ 引导语也得走：只藏链接会在卡片里留下两句悬空的引子（而 `p + p` 的行距照旧生效
     //   —— 所以条件必须包住整段 <p>，不能只让链接自己不渲染）。
-    const info = page.locator('.fish-card__info');
+    const info = page.locator('.fish-card');
     await expect(info).not.toContainText('碰碰运气');
     await expect(info).not.toContainText('打过的仗');
-    // 没被误伤：商城入口照旧（专注模式不禁商城），行动条仍是 3 颗（fish-layout.spec 钉的）
-    await expect(page.locator('.fish-card__info-link', { hasText: '鱼干商城' })).toBeVisible();
-    await expect(page.locator('.fish-card__actions > *')).toHaveCount(3);
-
-    // /fish/market 页脚那条入口同理（它是练手盘在 /fish 之外的唯一入口）——
-    // 藏的是那一个 <p>，同页另两条页脚入口不受影响
-    await page.goto('/fish/market');
-    await expect(page.locator('.market-foot__link', { hasText: '鱼干练手盘' })).toHaveCount(0);
-    await expect(page.locator('.market-foot__link', { hasText: '查看转账记录' })).toBeVisible();
-    await expect(page.locator('.market-foot__link', { hasText: '接口 / 机器人接入' })).toBeVisible();
+    await expect(page.getByRole('link',{name:'商城',exact:true})).toBeVisible();
+    await page.goto('/fish/transfer');
+    await expect(page.getByRole('link',{name:'转账记录',exact:true})).toBeVisible();
 
     // 直连 URL：两页都原地 403（不是跳登录页 —— 他是登录着的）
-    for (const p of ['/fish/trade', '/fish/trade/stats']) {
+    for (const p of ['/fish/trade', '/fish/trade/stats', '/fish/trade/history']) {
       const res = await page.goto(p);
       expect(res?.status(), p).toBe(403);
     }

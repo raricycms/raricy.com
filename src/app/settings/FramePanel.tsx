@@ -135,7 +135,7 @@ export default function FramePanel({ userId, onAlert }: Props) {
         //    有一款框是**用户自己租**的。指向商城而不是说「等站长发」。
         <p className="frame-panel__hint">
           你还没有任何头像框。可以通过活动获得，也可以去{' '}
-          <a className="frame-panel__hint-link" href="/fish/market">
+          <a className="frame-panel__hint-link" href="/fish/shop?category=frame#shop">
             鱼干商城
           </a>
           用小鱼干租一款。

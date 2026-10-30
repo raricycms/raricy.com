@@ -31,6 +31,7 @@ import {
   closePosition,
   listOpenPositions,
   listSettledPositions,
+  settledPositionCount,
   MARKET_BUY_TYPE,
   MARKET_SELL_TYPE,
   MARKET_FEE_RATE,
@@ -866,5 +867,18 @@ describe('listSettledPositions（最近结清）', () => {
     expect(list).toHaveLength(1);
     expect(list[0].payout).toBeNull();
     expect(list[0].profit).toBeNull();
+  });
+});
+
+describe('完整交易记录分页',()=>{
+  it('按结清时间和 ID 稳定分页，计入爆仓及零实发，仅返回本人',async()=>{
+    const user=await makeUser(),other=await makeUser();
+    const closedAt=nowForDb();
+    for(const [id,userId,status] of [['history-a',user.id,'closed'],['history-b',user.id,'liquidated'],['history-c',user.id,'closed'],['history-other',other.id,'closed']] as const){
+      await prisma.marketPosition.create({data:{id,userId,symbol:'BTCUSDT',stakeUnits:10000,entryPrice:80000,entryQuoteAt:closedAt,leverage:1,liquidationPrice:0,openKey:id,status,exitPrice:80000,exitQuoteAt:closedAt,payoutUnits:0,closedAt,createdAt:closedAt}});
+    }
+    expect(await settledPositionCount(user.id)).toBe(3);
+    expect((await listSettledPositions(user.id,2,0)).map(r=>r.id)).toEqual(['history-c','history-b']);
+    expect((await listSettledPositions(user.id,2,2)).map(r=>r.id)).toEqual(['history-a']);
   });
 });

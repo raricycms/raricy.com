@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import TradeNav from './TradeNav';
 import LegacyPositions from './LegacyPositions';
 import { redirect, forbidden } from 'next/navigation';
 import { getCurrentUser, isCoreUser } from '@/lib/auth';
@@ -45,22 +46,18 @@ export default async function FishTradePage() {
   const user = await getCurrentUser();
   if (!user) redirect(loginUrlWithNext('/fish/trade'));
   if (user.archivedAt) forbidden();
+  if (isFocusFishTradeBlocked(user)) forbidden();
   if (!isCoreUser(user)) {
     const positions = await listOpenPositions(user.id);
     return <div className="container py-4">
       <h1>历史持仓</h1>
       <p>当前账号未取得成员资格，可以查询和平仓。</p>
-      <LegacyPositions positions={positions.map(p => ({ id: p.id, symbol: p.symbol, stake: p.stake, direction: p.direction }))} />
-      <Link href="/fish/trade/stats" className="button button-secondary">统计</Link>{' '}
+      <TradeNav current="trade" />
+      <LegacyPositions feePercent={MARKET_FEE_RATE * 100} positions={positions.map(p => ({ id: p.id, symbol: p.symbol, stake: p.stake, direction: p.direction }))} />
       <Link href="/authentic" className="button button-secondary">认证成员资格</Link>{' '}
       <Link href="/fish" className="button button-secondary">返回账户</Link>
     </div>;
   }
-  // 专注模式屏蔽了练手盘：与上面那条同款（原地 403，不跳登录）。forbidden() 是
-  // Next 内建的、收不了文案，所以这里给不出「因为专注模式」这句话 —— 而入口
-  // （/fish 卡片与 /fish/market 页脚那三处）在屏蔽时**整段不渲染**，所以解释
-  // 只剩一处：/settings 的专注模式说明。直连 URL 进来的看到的是 403 页那句通用「权限不足」。
-  if (isFocusFishTradeBlocked(user)) forbidden();
 
   const [balance, positions, settled, quoteData, candleEntries] = await Promise.all([
     getBalance(user.id),
@@ -118,15 +115,11 @@ export default async function FishTradePage() {
         <span className="icon icon-market" aria-hidden="true" style={{ marginRight: '0.5rem' }}></span>
         鱼干练手盘
       </h1>
-      <p className="trade-subtitle">
-        投入小鱼干做多 / 做空 BTC、ETH，价格按真实行情走 —— 看对方向赚鱼干，看错亏鱼干。
-        可自选 1–100 倍杠杆，亏损封顶在投入的那几根鱼干，不会变成欠账。
-        这是练习盘，练的是手感，亏掉的是鱼干不是钱。
-        <br />
-        <Link href="/fish/trade/stats" className="trade-stats-link">
-          看看我的战绩
-        </Link>
-      </p>
+      <TradeNav current="trade" />
+      <details className="trade-subtitle"><summary>交易规则</summary>
+        <p>使用小鱼干做多或做空真实行情。杠杆放大盈亏，投入可能全部亏损；不产生欠款。
+        平仓手续费为名义本金的 {MARKET_FEE_RATE * 100}%，成交时获取实时价格。</p>
+      </details>
 
       <TradePanel
         balance={balance}
@@ -171,13 +164,13 @@ function SettledList({ rows, hasMore }: { rows: SettledPositionView[]; hasMore: 
     <section className="trade-card trade-settled">
       <div className="trade-settled__head">
         <h2 className="trade-settled__title">最近结清</h2>
-        <Link href="/fish/trade/stats" className="trade-settled__more">
-          完整战绩
+        <Link href="/fish/trade/history" className="trade-settled__more">
+          全部交易记录
         </Link>
       </div>
       {rows.length === 0 ? (
         <p className="trade-settled__empty">
-          还没有结清的仓位。平仓或爆仓之后，这里会留下每一笔的记录。
+          还没有已结清的交易。
         </p>
       ) : (
         <>

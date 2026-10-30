@@ -355,7 +355,8 @@ export interface SettledPositionView {
  */
 export async function listSettledPositions(
   userId: string,
-  limit = 10
+  limit = 10,
+  offset = 0
 ): Promise<SettledPositionView[]> {
   const rows = await prisma.marketPosition.findMany({
     where: { userId, status: { in: [...SETTLED_STATUSES] } },
@@ -365,8 +366,9 @@ export async function listSettledPositions(
       payoutUnits: true, status: true, closedAt: true,
     },
     // closedAt 为空的老行排最后（SQLite 的 NULL 在 DESC 下最后）—— 不让异常行顶掉真实记录
-    orderBy: { closedAt: 'desc' },
+    orderBy: [{ closedAt: 'desc' }, { id: 'desc' }],
     take: Math.max(1, limit),
+    skip: Math.max(0, offset),
   });
   return rows.map((p) => {
     const payoutUnits = p.payoutUnits;
@@ -786,4 +788,9 @@ async function getBalanceFish(userId: string): Promise<number> {
     select: { driedFish: true },
   });
   return unitsToFish(row?.driedFish ?? 0);
+}
+
+/** 完整交易记录按当前用户分页，强平的零实发记录也保留。 */
+export async function settledPositionCount(userId: string): Promise<number> {
+  return prisma.marketPosition.count({ where: { userId, status: { in: [...SETTLED_STATUSES] } } });
 }

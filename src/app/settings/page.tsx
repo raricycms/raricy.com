@@ -359,7 +359,7 @@ export default function SettingsPage() {
         <p className="settings-card__desc">
           戴上你拥有的头像框，它会显示在顶栏、评论区、讨论区与你的个人主页。
           除了活动发放的，也可以去{' '}
-          <a className="frame-panel__hint-link" href="/fish/market">
+          <a className="frame-panel__hint-link" href="/fish/shop?category=frame#shop">
             鱼干商城
           </a>
           用小鱼干租一款。限时的头像框到期后会自动消失，不需要手动摘。
@@ -391,7 +391,7 @@ export default function SettingsPage() {
         <p className="settings-card__desc">
           在讨论大区和私聊中使用你选的气泡，历史消息也会跟随当前选择。
           到期后自动恢复默认款。购买后在这里选择使用，{' '}
-          <a className="frame-panel__hint-link" href="/fish/market#shop">去鱼干商城</a>。
+          <a className="frame-panel__hint-link" href="/fish/shop?category=frame#shop">去鱼干商城</a>。
         </p>
         {state.id && <BubblePanel />}
       </div>

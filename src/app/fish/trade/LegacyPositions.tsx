@@ -4,13 +4,13 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 
 /** 取消资格后仍可退出既有持仓；此视图没有开仓入口。成交价由 sell 接口现取。 */
-export default function LegacyPositions({ positions }: { positions: { id: string; symbol: string; stake: number; direction: string }[] }) {
+export default function LegacyPositions({ positions, feePercent }: { feePercent: number; positions: { id: string; symbol: string; stake: number; direction: string }[] }) {
   const router = useRouter();
   const [busy, setBusy] = useState<string | null>(null);
   const [message, setMessage] = useState('');
   async function close(id: string) {
     if (busy) return;
-    if (!window.confirm('按当前行情平仓？结算时收取既有手续费，投入可能全部亏损。')) return;
+    if (!window.confirm(`按当前行情平仓？手续费为名义本金的 ${feePercent}%，投入可能全部亏损。`)) return;
     setBusy(id);
     try {
       const res = await fetch('/api/fish/trade/sell', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ position_id: id }) });

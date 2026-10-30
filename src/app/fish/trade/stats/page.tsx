@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import TradeNav from '../TradeNav';
 import { redirect, forbidden } from 'next/navigation';
 import { getCurrentUser } from '@/lib/auth';
 import { isFocusFishTradeBlocked } from '@/lib/focus-mode';
@@ -120,9 +121,8 @@ export default async function FishTradeStatsPage() {
       </h1>
       {/* ★ 副标题里**不写币名**：CLAUDE.md 的「加一个标的要改四处」已经列了三个页面的
           副标题，这里再写一遍就成了第五处 —— 而那四处是靠人记着的，不是靠编译。 */}
-      <p className="tstats-subtitle">
-        把已结清的战绩按标的与杠杆拆开看 —— 平仓与爆仓都算，盈亏已扣平仓手续费。
-      </p>
+      <TradeNav current="stats" />
+      <p className="tstats-subtitle">盈亏包含平仓手续费，平仓与爆仓均计入统计。</p>
 
       <div className="tstats-kpis">
         <div className="tstats-kpi" data-kpi="pnl">
@@ -179,9 +179,7 @@ export default async function FishTradeStatsPage() {
         </>
       ) : (
         <p className="tstats-empty">
-          还没有已结清的战绩。去
-          <Link href="/fish/trade" className="tstats-back">练手盘</Link>
-          买第一笔，平掉之后这里就有数了。
+          还没有已结清的交易。
         </p>
       )}
 

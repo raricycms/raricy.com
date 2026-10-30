@@ -1,107 +1,31 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { ReceiptText } from 'lucide-react';
+import { ArrowLeftRight, ReceiptText, ShoppingBag, TrendingUp } from 'lucide-react';
 import { getCurrentUser } from '@/lib/auth';
 import { isFocusFishTradeBlocked } from '@/lib/focus-mode';
 import { loginUrlWithNext } from '@/lib/safe-url';
-import { getBalance, getTodayCheckinFish } from '@/lib/fish-service';
+import { getBalance } from '@/lib/fish-service';
 import { fmtFish } from '@/lib/fish-amount';
 import PosterModal from '@/app/components/PosterModal';
-
-// 小鱼干余额页 — fish-card 一套类名
 export const dynamic = 'force-dynamic';
 
 export default async function FishPage() {
   const user = await getCurrentUser();
   if (!user) redirect(loginUrlWithNext('/fish'));
-
-  const [driedFish, todayFish] = await Promise.all([
-    getBalance(user.id),
-    getTodayCheckinFish(user.id),
-  ]);
-
-  return (
-    <div className="container" style={{ paddingTop: '2rem', paddingBottom: '2rem' }}>
-      <div className="fish-card">
-        <div className="fish-card__header">
-          <span className="fish-card__title"><span className="icon icon-fish" aria-hidden="true" style={{ marginRight: '0.5rem' }}></span>小鱼干</span>
+  const balance = await getBalance(user.id);
+  return <div className="container" style={{paddingTop:'2rem',paddingBottom:'2rem'}}>
+    <div className="fish-card">
+      <div className="fish-card__header"><h1 className="fish-card__title">小鱼干</h1></div>
+      <div className="fish-card__body">
+        <div className="fish-card__balance"><span className="fish-card__balance-number numeric">{fmtFish(balance)}</span><span className="fish-card__balance-label">小鱼干</span></div>
+        <div className="fish-card__actions">
+          <Link href="/fish/transfer" className="fish-card__link fish-card__link--primary"><ArrowLeftRight aria-hidden="true"/>转账</Link>
+          <Link href="/fish/transactions" className="fish-card__link"><ReceiptText aria-hidden="true"/>流水</Link>
+          <PosterModal triggerClassName="fish-card__link poster-trigger" label="收款码" src="/api/poster/collect" downloadName={`聪明山-${user.username}-收款码.png`} title="我的鱼干收款码" hint="扫码后填写金额并确认付款。" />
+          <Link href="/fish/shop" className="fish-card__link"><ShoppingBag aria-hidden="true"/>商城</Link>
         </div>
-        <div className="fish-card__body">
-          <div className="fish-card__balance">
-            <span className="fish-card__balance-number numeric">{fmtFish(driedFish)}</span>
-            <span className="fish-card__balance-label">小鱼干</span>
-          </div>
-          {todayFish > 0 && (
-            <div className="fish-card__today">
-              今日签到获得 <strong className="numeric">+{todayFish}</strong> 小鱼干
-            </div>
-          )}
-          <div className="fish-card__actions">
-            {/* 文案拆成「前缀 + 正文」，前缀在窄屏由 CSS 隐藏（见 _fish.scss 的 480px 档）。
-                ⚠️ 两段必须包在**同一个** <span> 里：.fish-card__link 是 inline-flex，
-                散着写会让「查看」自己变成一个 flex 项，与「流水」之间吃一道 8px 的 gap ——
-                桌面上就渲染成「查看 流水」（实测颗宽 120px，正常是 112px）。包起来之后整条
-                文案是一个 flex 项，内部按行内文本连排，图标与文字之间只剩 flex 自己的 gap。
-                图标与这段文案之间**不要留空格**（换行即可，JSX 会吃掉含换行的空白）。 */}
-            <Link href="/fish/transactions" className="fish-card__link" aria-label="查看流水">
-              <ReceiptText aria-hidden="true" />
-              <span className="fish-card__link-label"><span className="fish-card__link-prefix">查看</span>流水</span>
-            </Link>
-            <Link href="/fish/market" className="fish-card__link fish-card__link--primary" aria-label="鱼干市场">
-              <span className="icon icon-market" aria-hidden="true"></span>
-              <span className="fish-card__link-label"><span className="fish-card__link-prefix">鱼干</span>市场</span>
-            </Link>
-            {/* 收款码：生成一张图，别人扫了就能给我投喂 */}
-            <PosterModal
-              triggerClassName="fish-card__link poster-trigger"
-              label={
-                <>
-                  <span className="icon icon-fish" aria-hidden="true" /> 收款码
-                </>
-              }
-              src="/api/poster/collect"
-              downloadName={`聪明山-${user.username}-收款码.png`}
-              title="我的鱼干收款码"
-              hint="别人扫码后会打开收款页，由他自己填金额，再输密码确认付款。"
-            />
-          </div>
-          <div className="fish-card__info">
-            {/* 练手盘的入口**只能**放这里：上面那条 .fish-card__actions 被
-                tests/e2e/fish-layout.spec.ts 钉死为「恰好 3 颗」，加进去当场红。
-                ⚠️ 新链接别用 .fish-card__link-label 这个类名 —— 同一个用例钉死了
-                它的数量是 2（那两条带前缀的文案的壳）。 */}
-            {/* 【专注模式屏蔽练手盘时整段不渲染】两页 403、四接口 403，
-                入口连同它那句引导语一起消失 —— 判据与理由见 CLAUDE.md「档位阶梯」那条：
-                档位不够才留入口，专注模式是**本人一键可关的账号偏好**，留一条点了 403 的
-                灰链只是噪音。
-                ⚠️ 条件必须包住**整段 `<p>`**，不能只让链接自己不渲染：`.fish-card__info`
-                的 `p + p { margin-top }`（_fish.scss）命中的是「有没有那个 `<p>`」，
-                留个空 `<p>` 会在卡片里凭空多出一段行距。 */}
-            {!isFocusFishTradeBlocked(user) && (
-              <>
-                <p>每日签到可获得小鱼干。也可以去练手盘碰碰运气 ——</p>
-                <p>
-                  <Link href="/fish/trade" className="fish-card__info-link">
-                    鱼干练手盘：做多 / 做空 BTC 与 ETH，价格涨跌换鱼干
-                  </Link>
-                </p>
-                <p>打过的仗都记着 ——</p>
-                <p>
-                  <Link href="/fish/trade/stats" className="fish-card__info-link">
-                    练手盘统计：胜率、盈亏与按标的 / 杠杆的拆解
-                  </Link>
-                </p>
-              </>
-            )}
-            <p>攒下来的鱼干也有花出去的地方 ——</p>
-            <p>
-              <Link href="/fish/market#shop" className="fish-card__info-link">
-                鱼干商城：租头像框与聊天气泡
-              </Link>
-            </p>
-          </div>
-        </div>
+        {!isFocusFishTradeBlocked(user) && <Link href="/fish/trade" className="fish-card__info-link"><TrendingUp aria-hidden="true"/>鱼干练手盘</Link>}
       </div>
     </div>
-  );
+  </div>;
 }

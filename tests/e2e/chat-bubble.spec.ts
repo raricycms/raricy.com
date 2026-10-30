@@ -28,7 +28,7 @@ test('两款气泡：商城租赁 → 切换装备 → 两种主题及跨标签�
   const mention = await page.request.post('/api/chat/channels/lobby/messages', { data: { content: `@${user.username} 请看这条消息` } });
   expect(mention.status(), await mention.text()).toBe(200);
 
-  await page.goto('/fish/market#shop');
+  await page.goto('/fish/shop?category=bubble#shop');
   await page.getByRole('button', { name: '聊天气泡', exact: true }).click();
   await expect(page.locator('.market-card[data-bubble="blue-square"]')).toContainText('蓝底直角');
   await expect(page.locator('.market-card[data-bubble="blue-outline-square"]')).toContainText('蓝色直角');
@@ -100,7 +100,7 @@ test('两款气泡：商城租赁 → 切换装备 → 两种主题及跨标签�
 
 test('余额不足时气泡不可买，服务端也拒绝且不授予', async ({ page }) => {
   await registerFreshUser(page);
-  await page.goto('/fish/market#shop');
+  await page.goto('/fish/shop?category=bubble#shop');
   await page.getByRole('button', { name: '聊天气泡', exact: true }).click();
   for (const { key } of DEMOS) {
     const item = page.locator(`.market-card[data-bubble="${key}"]`);

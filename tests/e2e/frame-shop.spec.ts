@@ -47,8 +47,8 @@ test('租用全链路：商城 → 选租期 → 二次确认 → 扣款 + 那�
   await registerFreshUser(page, { core: true });
   const balance = await fundByCheckin(page);
 
-  await page.goto('/fish/market');
-  await expect(page.locator('.market-shop__title')).toContainText('鱼干商城');
+  await page.goto('/fish/shop');
+  await expect(page.locator('.page-title')).toContainText('鱼干商城');
   const blue = card(page, KEY);
   await expect(blue.locator('.market-shop__name')).toHaveText(LABEL);
   await expect(blue.locator('.market-shop__price')).toContainText('鱼干 / 天');
@@ -117,7 +117,7 @@ test('租用全链路：商城 → 选租期 → 二次确认 → 扣款 + 那�
 
 test('按月卖的那款：卡片上写着「鱼干 / 月」，租期上下限是 1–12', async ({ page }) => {
   await registerFreshUser(page, { core: true });
-  await page.goto('/fish/market');
+  await page.goto('/fish/shop');
 
   const night = card(page, MONTHLY_KEY);
   await expect(night.locator('.market-shop__name')).toHaveText(MONTHLY_LABEL);
@@ -141,7 +141,7 @@ test('新号余额为 0：按钮灰着，服务端也不放行（不留半张框
   await registerFreshUser(page, { core: true });
   // 不签到 —— 余额 0
 
-  await page.goto('/fish/market');
+  await page.goto('/fish/shop');
   const blue = card(page, KEY);
   await expect(blue.locator('.market-shop__submit')).toBeDisabled();
   await expect(blue.locator('.market-shop__error')).toContainText('小鱼干不足');

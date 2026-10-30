@@ -135,13 +135,13 @@ test('转账全链路：入口 → 选收款人 → 二次确认 → 到账 + �
 
   // ── 入口：/fish 余额卡里「查看流水」旁边 ────────────────────────────────
   await page.goto('/fish');
-  const marketLink = page.locator('.fish-card__actions a', { hasText: '鱼干市场' });
+  const marketLink = page.locator('.fish-card__actions a', { hasText: '转账' });
   await expect(marketLink).toBeVisible();
-  await expect(page.locator('.fish-card__actions a', { hasText: '查看流水' })).toBeVisible();
+  await expect(page.locator('.fish-card__actions a', { hasText: '流水' })).toBeVisible();
   await marketLink.click();
 
-  await expect(page).toHaveURL(/\/fish\/market$/);
-  await expect(page.locator('.page-title')).toContainText('鱼干市场');
+  await expect(page).toHaveURL(/\/fish\/transfer$/);
+  await expect(page.locator('.page-title')).toContainText('鱼干转账');
   await expect(page.locator('.market-card__balance-number')).toHaveText(balance.toFixed(4));
 
   // ── 转账（金额 1：签到给 3 条，转 1 条必然够）──────────────────────────
@@ -197,7 +197,7 @@ test('连续两笔同额：两笔各自落账（各有一个单号，不被静�
   const recipient = await registerFreshUser(page);
   await loginViaApi(page, sender.username);
 
-  await page.goto('/fish/market');
+  await page.goto('/fish/transfer');
   // 0.1：签到给 3 条，两笔 0.1 必然够
   await transferViaUI(page, recipient.username, '0.1');
   await transferViaUI(page, recipient.username, '0.1');
@@ -234,7 +234,7 @@ test('余额不足与转给自己：前端拦住 + 服务端 400，账目一分�
   const recipient = await registerFreshUser(page);
   await loginViaApi(page, sender.username);
 
-  await page.goto('/fish/market');
+  await page.goto('/fish/transfer');
 
   // 前端：金额超余额 → 提示 + 提交按钮禁用（连确认弹窗都进不去）
   await page.locator('.market-recipient-pick').click();

@@ -10,7 +10,7 @@ import { frameUrl, type FrameKey } from '@/lib/frame-refs';
 import { RENT_UNITS, parseRentCount, type RentUnit } from '@/lib/shop-refs';
 
 // ─────────────────────────────────────────────────────────────────────────────
-// ShopPanel —— 鱼干商城的租赁面板（/fish/market 的第二块，转账面板下面）
+// ShopPanel —— 鱼干商城的租赁面板（/fish/shop）
 //
 // 【逐款一块表单】面板按 `items.map` 渲染，每款一张 `.market-card`（`data-frame=<key>`
 // 与 `data-bubble=<key>` 是 e2e 的稳定钩子 —— 多款之后裸选择器会解析到多个元素，
@@ -21,7 +21,7 @@ import { RENT_UNITS, parseRentCount, type RentUnit } from '@/lib/shop-refs';
 // 【共享租期】鱼干蓝按天、星落月畔与两款直角气泡按月。单位、上下限、量词全从 `RENT_UNITS`
 // 现读（零依赖的同一份表，服务端校验读的也是它）—— 面板**不自己判**哪款是按天的。
 //
-// 【它只画商品，判什么都在服务端】列表是 `/fish/market` 的服务端组件调
+// 【它只画商品，判什么都在服务端】列表是 `/fish/shop` 的服务端组件调
 // 两类商品的列表服务算好传进来的：哪款在卖、素材在不在、我当前持有到什么时候、
 // 有没有过期 —— 全是**判定后的结果**。这里一次都不查时间（db-time-guard 规则 4–5
 // 扫整个 src/，含页面组件），确认弹窗里也**不显示算出来的到期日期**：
@@ -80,13 +80,15 @@ export default function ShopPanel({
   userId,
   balance: initialBalance,
   items,
+  initialCategory = 'all',
 }: {
   userId: string;
   balance: number;
   items: ShopItemView[];
+  initialCategory?: 'all' | 'frame' | 'bubble';
 }) {
   const [balance, setBalance] = useState(initialBalance);
-  const [category, setCategory] = useState<'all' | 'frame' | 'bubble'>('all');
+  const [category, setCategory] = useState<'all' | 'frame' | 'bubble'>(initialCategory);
 
   if (items.length === 0) return null;
 
@@ -281,8 +283,8 @@ function ShopItemCard({
             >
               租用
             </button>
-            {bubble && <p className="market-field__hint numeric">购买后到设置页选择使用。{item.rent.unit === 'month' && `1 个月固定 ${unit.days} 天。`}</p>}
-            {bubble && item.holding && <a className="frame-panel__hint-link" href="/settings#chat-bubble">选择聊天气泡</a>}
+            {item.rent.unit === 'month' && <p className="market-field__hint numeric">1 个月按 {unit.days} 天计算。</p>}
+            {item.holding && !item.holding.expired && <a className="frame-panel__hint-link" href={bubble ? '/settings#chat-bubble' : '/settings#avatar-frame'}>{bubble ? '选择聊天气泡' : '选择头像框'}</a>}
           </>
         )}
       </div>
