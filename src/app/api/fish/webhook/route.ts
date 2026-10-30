@@ -8,7 +8,7 @@
 // 签名密钥是凭证（泄露即可伪造我们发给该商户的回调），而且它活得比会话久；
 // 停用是安全方向的动作，在用户最想止损的一刻加摩擦是反的。
 
-import { getCurrentUser, isCurrentlyBanned } from '@/lib/auth';
+import { getCurrentUser, isCoreUser, isCurrentlyBanned } from '@/lib/auth';
 import { apiOk, apiErr } from '@/lib/format';
 import { verifyCredentials } from '@/lib/credential-auth';
 import { clientIp } from '@/lib/request-ip';
@@ -80,6 +80,7 @@ export async function GET() {
 export async function PUT(req: Request) {
   const user = await getCurrentUser();
   if (!user) return apiErr(401, '请先登录');
+  if (!isCoreUser(user)) return apiErr(403, '需要成员资格');
   if (isCurrentlyBanned(user)) return apiErr(403, '你已被禁言，暂时无法配置回调');
 
   let body: Record<string, unknown>;

@@ -20,7 +20,9 @@ describe('request-scoped reference permissions', () => {
     mocks.publicClips.mockResolvedValue({ AbCd1234: { content: '{{private-looking syntax}}', format: 'reactive', version: 'v1' } });
     const source = '[@AbCd1234] [@AbCdEf123] [@123456]';
     const result = await prepareReactiveDocument(source, { mode: 'external', viewer: null });
-    expect(result.hostData['clipboard:AbCd1234']).toMatchObject({ format: 'reactive', version: 'v1' });
+    expect(result.hostData).toEqual({});
+    expect(result.adaptedSource).toBe(source);
+    expect(mocks.publicClips).not.toHaveBeenCalled();
     expect(result.adaptedSource).not.toContain('private-looking');
     expect(result.adaptedSource).toContain('[@AbCdEf123]');
     expect(result.sourceHash).toMatch(/^[a-f0-9]{64}$/);
@@ -43,7 +45,7 @@ describe('request-scoped reference permissions', () => {
     expect(await read(slot('favorite', '123456'))).toBeUndefined();
     mocks.clip.mockResolvedValue({ ok: false, reason: 'forbidden' });
     expect(await read(slot('clipboard', 'AbCd1234'))).toBeUndefined();
-    expect(mocks.clip).toHaveBeenCalledWith('AbCd1234', undefined, false);
+    expect(mocks.clip).not.toHaveBeenCalled();
     expect(mocks.vote).not.toHaveBeenCalled();
     expect(mocks.favorite).not.toHaveBeenCalled();
   });

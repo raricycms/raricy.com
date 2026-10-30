@@ -285,6 +285,9 @@ raricy.com（聪明山）—— 个人博客 / 故事 / 工具集 / 剪贴板 / 
 
 ### 认证与角色
 
+公开注册必须提供有效一次性邀请码，直接创建 core 并登录；历史 user 可补码认证。
+取消成员资格不撤销账号安全、余额/流水、转出与既有仓位平仓能力，不能新开仓或租商品。
+
 `docs/architecture.md` §8（角色阶梯、四个 guard、`/admin/*` 的分档）与 §6.1（会话 cookie、
 登出只有 `POST /api/auth/logout`）。申诉闸门见 `src/lib/admin-appeal-service.ts` 头部。
 
@@ -478,7 +481,7 @@ ftyp 品牌 / 声明归一化 / `planImageUpload` —— 服务端与浏览器�
 引用、`compile.ts` 缓存）。三条不能破：reactive 源码**永不**交给旧 Markdown 解析器
 （认不出或编译失败 → `unavailable` / 本次请求现算的静态正文）；`<site-embed>` 标签与
 `${kind}:${ref}` 的 hostData **原子成对**（缺数据只保留字面量，绝不发半套）；`external`
-模式**零业务请求**（只用服务端下发的公开剪贴板）。灰度只住 `renderer-select.ts` +
+模式**零业务请求**（剪贴板、投票与收藏夹均保留字面量）。灰度只住 `renderer-select.ts` +
 `REACTIVE_MD_MODE` / `REACTIVE_MD_PERCENT`，别在页面里另判 cohort。
 
 ### 表情包
@@ -601,11 +604,9 @@ ftyp 品牌 / 声明归一化 / `planImageUpload` —— 服务端与浏览器�
 - **不带查看者的读口必须走具名出口**（`getExternallyVisibleBlog` / `listIndexableBlogs` /
   `listPublicBlogs`），别各自手写 where —— 名字就是静态台账认得它的凭证。
 - **「对外可读」与「可列举 / 可索引」是两件事**：`link` 读得到，但不进 sitemap、不许索引。
-- **对外视图也展开 `[@…]` 引用**（`contentRefs='external'`），判据是**这条引用的读口
-  匿名取不取得到**：图床 / 音频 / **公开档剪贴板**出得来，投票与收藏夹保留字面量。
-  别缩回「一律不展开」（那版让访客看不到正文里的图和录音）；也别放宽私有档 ——
-  剪贴板的私有部分由**服务端**筛（`resolvePublicClipRefs`），私有图 / 私有音频靠
-  raw 路由 404。⚠️ **音频属于「出得来」那一类**，别归进要 core+ 的那三种引用。
+- **对外视图按资源类型展开引用**（`contentRefs='external'`）：图床与音频维持 raw
+  路由的公开规则；**所有剪贴板、投票、收藏夹均保留字面量**。剪贴板仅站内共享，
+  external 不读取正文、标题或版本，也不随 RSC 下发。适配器版本 2 使旧引用快照失效。
 - **sitemap 与 `/explore` 必须列同一个集合**（都用 `INDEXABLE_BLOG_WHERE`）。这不是洁癖：
   多一层过滤就会出现「搜索引擎收录了一篇，读者在公开列表上翻不到」，而那条差异
   **不会有任何报错**。同理 `exclude_from_all` 与专注模式的栏目屏蔽**不作用于对外列表** ——

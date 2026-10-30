@@ -8,9 +8,7 @@
 // 【两种模式，不是「展开 / 不展开」】
 //   · 'expand'   —— 站内成员视图：带 same-origin 凭据请求三条 core+ 接口
 //     （剪贴板正文 / 投票存在性探测 / 收藏夹卡片数据），图床永远只是拼 URL。
-//   · 'external' —— 对外视图：**一个请求都不发**。剪贴板只认服务端随 payload
-//     下发的公开档（externalClips，clipboard-service.resolvePublicClipRefs 判过），
-//     投票与收藏夹一律 undefined（保留字面量 —— 两者读口都是 core+，且投票箱
+//   · 'external' —— 仅拼接图片与音频地址；所有成员引用保留原文，不取数。
 //     不进对外视图是站长定的口径）。
 //   判据是「这条引用的读口匿名取不取得到」，见 docs/architecture.md §7.3。
 //
@@ -127,9 +125,7 @@ export class ContentRefResolver {
 
   /**
    * @param mode          见文件头「两种模式」。实例级固定，不随调用变。
-   * @param externalClips 'external' 下**服务端预先解析好**的公开剪贴板。
-   *   新形状是 id → `{ content, format, version?, title? }`；**同时接受旧的
-   *   id → 字符串**（当作 markdown 内联，保持既有调用方可用）。
+   * @param externalClips 兼容旧调用形状；对外视图始终忽略它。
    */
   constructor(
     private mode: ContentRefMode,
@@ -175,7 +171,7 @@ export class ContentRefResolver {
   /**
    * 这一格要不要占并发名额：**只有真正会发 HTTP 的**才占。
    *   · 图床 —— 两种模式都只是拼 `/api/images/<id>/raw`，不发请求；
-   *   · 对外视图 —— 剪贴板查下发表、投票 / 收藏夹直接 undefined，一个请求都不发。
+   *   · 对外视图 —— 剪贴板、投票 / 收藏夹直接 undefined，一个请求都不发。
    * 判错（把不发请求的也塞进闸门）不会报错，只是白占名额、让真取数变慢。
    */
   private needsSlot(type: ContentRefType): boolean {
@@ -232,25 +228,8 @@ export class ContentRefResolver {
     }
 
     if (type === 'clipboard') {
-      if (this.mode === 'external') {
-        // 服务端已替我们判过公开档：在表里的直接当内容用；不在表里的
-        // （私有 / 已软删 / 不存在 / 格式认不出）保持字面量。**不缓存 undefined** ——
-        // 同一篇的 payload 不变，重查一次字典没有成本，缓存它反而挡住
-        // 「调用方随后补了一张更大的表」这种合法用法。
-        const entry = this.externalClips[id];
-        if (entry === undefined) return undefined;
-        // 旧形状（纯字符串）= 历史上只有 markdown，按 markdown 内联。
-        if (typeof entry === 'string') {
-          return { type: 'clipboard', content: entry, format: 'markdown' };
-        }
-        if (typeof entry.content !== 'string') return undefined;
-        const format = parseContentFormat(entry.format);
-        // 新形状但格式认不出：不内联、不猜 markdown，只给安全链接。
-        if (format !== 'markdown') {
-          return { type: 'clipboard', content: reactiveClipboardLink(id), format, version: entry.version };
-        }
-        return { type: 'clipboard', content: entry.content, format, version: entry.version };
-      }
+      // 即使旧缓存或调用方传来片段数据，对外视图也不消费它。
+      if (this.mode === 'external') return undefined;
       try {
         const res = await fetch(`/api/clipboard/${id}`, { credentials: 'same-origin' });
         if (!res.ok) throw new Error('failed');

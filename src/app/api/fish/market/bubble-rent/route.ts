@@ -1,4 +1,4 @@
-import { getCurrentUser, isCurrentlyBanned } from '@/lib/auth';
+import { getCurrentUser, isCoreUser, isCurrentlyBanned } from '@/lib/auth';
 import { apiErr, apiOk, ymdhms } from '@/lib/format';
 import { rentBubble } from '@/lib/bubble-shop-service';
 import { RENT_UNITS } from '@/lib/shop-refs';
@@ -9,6 +9,7 @@ export const runtime = 'nodejs';
 export async function POST(req: Request) {
   const user = await getCurrentUser();
   if (!user) return apiErr(401, '未登录');
+  if (!isCoreUser(user)) return apiErr(403, '需要成员资格');
   if (isCurrentlyBanned(user)) return apiErr(403, BANNED_MESSAGE);
   const body: unknown = await req.json().catch(() => null);
   if (!body || typeof body !== 'object' || Array.isArray(body)) return apiErr(400, '请求体格式错误');

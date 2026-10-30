@@ -530,19 +530,12 @@ export default function UploadForm({ clip }: { clip?: EditClip }) {
               checked={publicity}
               onChange={(e) => setPublicity(e.target.checked)}
             />
-            <label htmlFor="publicity">是否公开</label>
+            <label htmlFor="publicity">站内共享</label>
           </div>
 
-          {/* 「是否公开」的**真实边界**（默认是勾上的）。此前只有一句「勾选则所有人可见」，
-              而站内从来没有「公开剪贴板」的浏览列表 —— listUserClips 只按 authorId 取自己的
-              （clipboard-service.ts），所以「公开」=「拿到 8 位 ID 的人能读到」，
-              不是「挂到某个广场上」。写宽了会把唯一的价值主张（能被站外读者看到）吓掉，
-              写窄了就是撒谎 —— 所以只写 getClip / listUserClips 里读得出来的那两条边界。 */}
           <span className="form-hint text-muted">
-            公开：站内成员凭这 8 位 ID 就能读到；若嵌进对外公开的博客，站外读者也会看到其中的
-            内容。它不会出现在任何列表里，搜索引擎也搜不到。
-            <br />
-            私密：不公开分享；嵌进博客后，站外读者看到的是 <code>[@ID]</code> 原文。
+            {publicity ? '成员凭 ID 可读。' : '仅本人和站长可读。'}
+            访客阅读博客时，剪贴板引用保留原文。
           </span>
 
           {isEdit && (

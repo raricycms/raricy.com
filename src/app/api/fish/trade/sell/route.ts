@@ -1,5 +1,5 @@
 import { apiOk, apiErr } from '@/lib/format';
-import { getCurrentUser, isCoreUser } from '@/lib/auth';
+import { getCurrentUser } from '@/lib/auth';
 import { FOCUS_MODE_BLOCKED_TITLE, isFocusFishTradeBlocked } from '@/lib/focus-mode';
 import { closePosition } from '@/lib/market-service';
 
@@ -25,7 +25,7 @@ export const runtime = 'nodejs';
 //   sell    —— 只判 core+（已开的仓必须能出）
 //   quote   —— 只判 core+（只读展示，且下面这个弹窗的「预计到手」要用它）
 //   candles —— 只判 core+（只读展示；禁言用户更得看得见图才好决定止损）
-//   两个页面 —— 只判 core+（入口不跟着藏，点了买入才拿 403）
+//   历史无资格账号可查询自己的资产及平仓，不可开仓。
 // 代价是禁言用户仍能兑现**已有**仓位的浮盈 —— 那是「能出仓」的另一面，不是漏洞。
 // 真要断掉一个人的鱼干路，用的是封号，不是把人锁在仓位里。
 // 页面 /fish/trade 照旧不藏入口（点了买入才拿 403），与签到、讨论同款。
@@ -45,7 +45,7 @@ export const runtime = 'nodejs';
 export async function POST(req: Request) {
   const user = await getCurrentUser();
   if (!user) return apiErr(401, '请先登录');
-  if (!isCoreUser(user)) return apiErr(403, '需要核心用户权限');
+  if (user.archivedAt) return apiErr(403, '账号已归档');
   // 专注模式屏蔽了练手盘时挡平仓，这与上面「禁言不挡平仓」不矛盾 —— 别顺着那条推论给这里开个口子：
   // 禁言的活路来自「他只能等，所以必须留出出仓的路」；专注是他自己一键可关的偏好。
   if (isFocusFishTradeBlocked(user)) return apiErr(403, FOCUS_MODE_BLOCKED_TITLE);

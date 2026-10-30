@@ -5,7 +5,7 @@
 //
 // 要 step-up：新密钥同样是凭证。明文只回这一次。
 
-import { getCurrentUser, isCurrentlyBanned } from '@/lib/auth';
+import { getCurrentUser, isCoreUser, isCurrentlyBanned } from '@/lib/auth';
 import { apiOk, apiErr } from '@/lib/format';
 import { verifyCredentials } from '@/lib/credential-auth';
 import { clientIp } from '@/lib/request-ip';
@@ -18,6 +18,7 @@ export const dynamic = 'force-dynamic';
 export async function POST(req: Request) {
   const user = await getCurrentUser();
   if (!user) return apiErr(401, '请先登录');
+  if (!isCoreUser(user)) return apiErr(403, '需要成员资格');
   if (isCurrentlyBanned(user)) return apiErr(403, '你已被禁言，暂时无法配置回调');
 
   let body: Record<string, unknown>;

@@ -113,30 +113,40 @@ export async function loginViaApi(page: Page, username: string) {
  * 这里曾经漂过（写着「800/天」时实际已是 2000）。发言 / 投票 / 图床上传 / 点赞
  * 都按用户计桶。
  *
- * @param opts.core 注册后直接提到 core。默认 false（新注册就是 role=user）。
+ * @param opts.core 保留新注册的 core 资格；默认 false 会通过管理接口撤销为历史账号夹具。
  *   需要 core 的场景：点赞/剪贴板/投票/申诉/讨论这些 **core+ 档**的接口 ——
  *   光注册是用不了的，得先过邀请码认证。用例若忘了提权，会拿到 403，
  *   看起来像鉴权坏了，其实是没认证。
  */
+/** 邀请注册使用真实一次性邀请码；只由本地 e2e 种子站长签发。 */
+export async function freshInvite(page: Page): Promise<string> {
+  await loginViaApi(page, SEED_USERS.owner.username);
+  const res = await page.request.get('/zhh');
+  expect(res.status()).toBe(200);
+  return (await res.text()).trim();
+}
+
 export async function registerFreshUser(
   page: Page,
   opts: { core?: boolean } = {}
 ): Promise<{ id: string; username: string }> {
   const tag = uniqueTag();
   const username = `e2e_${tag}`;
+  const invite_code = await freshInvite(page);
   const res = await page.request.post('/api/auth/register', {
-    data: { username, email: `${tag}@e2e.local`, password: SEED_PASSWORD },
+    data: { username, email: `${tag}@e2e.local`, password: SEED_PASSWORD, invite_code },
   });
   const body = await res.json();
   // 断言而非静默继续：注册失败时后续用例的报错会指向八竿子打不着的地方
   expect(body.code, `注册失败：${JSON.stringify(body)}`).toBe(200);
 
-  if (opts.core) {
+  // 默认夹具模拟历史未认证账号；新注册本身始终是 core。
+  if (!opts.core) {
     // 借管理员走真实提权接口，而不是直连库改 role —— 顺带让这条链路本身也被跑到。
     // （user↔core 是管理员权限内的事，见 setRole；不必动用站长。）
     await loginViaApi(page, SEED_USERS.admin.username);
     const up = await page.request.patch(`/api/admin/users/${body.user.id}`, {
-      data: { role: 'core' },
+      data: { role: 'user' },
     });
     expect(up.status(), `提权失败：${await up.text()}`).toBe(200);
     // 换回这个新用户的登录态 —— 上一步把 cookie 换成管理员了

@@ -152,22 +152,33 @@ describe('档位：六处各判一次', () => {
     }
   });
 
-  it('★ 普通用户（role=user）→ 403，四个接口都一样', async () => {
+  it('历史账号不能开仓、获取行情，查询不存在仓位不动钱', async () => {
     const u = await makeFishUser(100, { role: 'user' });
     session.token = await createSessionToken({ uid: u.id, sv: 0 });
 
     for (const [name, res] of [
       ['buy', await buy(makeReq('/api/fish/trade/buy', { symbol: 'BTCUSDT', amount: 10 }))],
-      ['sell', await sell(makeReq('/api/fish/trade/sell', { position_id: 'x' }))],
       ['quote', await quote()],
       ['candles', await candles(makeReq('/api/fish/trade/candles?symbol=BTCUSDT&interval=1h'))],
     ] as const) {
       expect(res.status, `${name} 应 403 —— 漏判就是绕开档位的门`).toBe(403);
     }
+    expect((await sell(makeReq('/api/fish/trade/sell', { position_id: 'x' }))).status).toBe(404);
     // 而且真的没扣钱
     expect(await balanceOf(u.id)).toBe(100);
 
     await expectLedgerConsistent('普通用户被 403 拒后');
+  });
+
+  it('成员资格撤销后仍可平掉自己的仓位，不能新开仓', async () => {
+    const u = await makeCoreUser();
+    const opened = await buy(makeReq('/api/fish/trade/buy', { symbol: 'BTCUSDT', amount: 40 }));
+    const { position } = await opened.json();
+    await prisma.user.update({ where: { id: u.id }, data: { role: 'user' } });
+    expect((await buy(makeReq('/api/fish/trade/buy', { symbol: 'BTCUSDT', amount: 10 }))).status).toBe(403);
+    const closed = await sell(makeReq('/api/fish/trade/sell', { position_id: position.id }));
+    expect(closed.status).toBe(200);
+    await expectLedgerConsistent('取消资格后平仓');
   });
 
   it('★ 专注模式用户：四个接口一律 403，文案是专注那句（不是「需要核心用户权限」）', async () => {

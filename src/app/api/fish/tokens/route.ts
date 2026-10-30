@@ -7,7 +7,7 @@
 //
 // 只能动自己的账号，没有「管理员代签」—— 站长要代吊销走 CLI（fish credential-revoke）。
 
-import { getCurrentUser, isCurrentlyBanned } from '@/lib/auth';
+import { getCurrentUser, isCoreUser, isCurrentlyBanned } from '@/lib/auth';
 import { apiOk, apiErr } from '@/lib/format';
 import { verifyCredentials } from '@/lib/credential-auth';
 import { clientIp } from '@/lib/request-ip';
@@ -54,6 +54,7 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   const user = await getCurrentUser();
   if (!user) return apiErr(401, '请先登录');
+  if (!isCoreUser(user)) return apiErr(403, '需要成员资格');
   if (isCurrentlyBanned(user)) return apiErr(403, '你已被禁言，暂时无法签发凭据');
 
   let body: Record<string, unknown>;

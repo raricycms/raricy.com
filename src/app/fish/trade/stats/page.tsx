@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { redirect, forbidden } from 'next/navigation';
-import { getCurrentUser, isCoreUser } from '@/lib/auth';
+import { getCurrentUser } from '@/lib/auth';
 import { isFocusFishTradeBlocked } from '@/lib/focus-mode';
 import { loginUrlWithNext } from '@/lib/safe-url';
 import { getMarketStats } from '@/lib/market-stats-service';
@@ -57,7 +57,7 @@ function profitText(est: OpenEstimate | null): string {
 export default async function FishTradeStatsPage() {
   const user = await getCurrentUser();
   if (!user) redirect(loginUrlWithNext('/fish/trade/stats'));
-  if (!isCoreUser(user)) forbidden();
+  if (user.archivedAt) forbidden();
   // 专注模式屏蔽了练手盘：统计页也在闸内（它是练手盘的一部分，不是另一件事）。
   // forbidden() 收不了参数，而入口整段不渲染 —— 解释只剩 /settings 的专注模式说明。
   if (isFocusFishTradeBlocked(user)) forbidden();

@@ -125,7 +125,7 @@ test.describe('文章对外可见性', () => {
   // 确实没跟着进来**（后者判错的形态是「公开文章里多出别人的私有正文」，页面不会
   // 报任何错）。单测那边（tests/unit/blog-ref-render.test.ts）钉的是同一套判据的
   // 客户端一半，服务端那一半在 tests/service/clipboard-refs.test.ts。
-  test('public：访客读得到正文里的图 / 音频 / 公开剪贴板，读不到投票与私有剪贴板', async ({ page }) => {
+  test('public：访客可读图片和音频，所有剪贴板引用保留原文且载荷无片段数据', async ({ page }) => {
     await loginViaApi(page, SEED_USERS.core.username);
 
     const imageId = await uploadImageViaApi(page);
@@ -161,7 +161,11 @@ test.describe('文章对外可见性', () => {
     // ── 该出来的 ──
     await expect(body.locator(`img[src="/api/images/${imageId}/raw"]`)).toHaveCount(1);
     await expect(body.locator(`audio[src="/api/audio/${audioId}/raw"]`)).toHaveCount(1);
-    await expect(body, '公开剪贴板的正文要内联进来').toContainText('公开剪贴板正文-OPEN-7f21');
+    await expect(body).toContainText(`[@${publicClipId}]`);
+    await expect(body).not.toContainText('公开剪贴板正文-OPEN-7f21');
+    const payload = await res!.text();
+    expect(payload).not.toContain('公开剪贴板正文-OPEN-7f21');
+    expect(payload).not.toContain('私有剪贴板正文-SECRET-7f21');
 
     // ── 不该出来的 ──
     await expect(body, '私有剪贴板保持字面量').toContainText(`[@${privateClipId}]`);

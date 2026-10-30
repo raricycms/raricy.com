@@ -3,6 +3,7 @@
 import { useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { safeNextPath } from '@/lib/safe-url';
 import TurnstileWidget from '@/app/components/TurnstileWidget';
 
 function showToast(msg: string, type: string) {
@@ -51,16 +52,15 @@ export default function RegisterPage() {
           username,
           email,
           password,
-          invite_code: inviteCode || undefined,
+          invite_code: inviteCode.trim(),
           turnstileToken: turnstileToken || undefined,
         }),
       });
       const data = await res.json();
       if (data.code === 200) {
-        showToast(data.message || '注册成功！正在跳转到登录页面...', 'success');
-        setTimeout(() => {
-          router.push('/login');
-        }, 1800);
+        showToast(data.message || '注册成功', 'success');
+        router.push(safeNextPath(new URLSearchParams(window.location.search).get('next') || ''));
+        router.refresh();
       } else {
         showToast(data.message || '注册失败，请检查输入信息', 'error');
         if (data.field === 'invite_code') inviteCodeRef.current?.focus();
@@ -80,14 +80,13 @@ export default function RegisterPage() {
             <h2>
               <span className="icon icon-add" aria-hidden="true"></span> 用户注册
             </h2>
-            <p className="text-muted">请填写以下信息完成注册</p>
           </div>
 
           <form id="registerForm" ref={formRef} onSubmit={submit}>
             <div className="form-group">
               <label htmlFor="inviteCode" className="form-label">
                 邀请码{' '}
-                <span className="text-muted">(可选)</span>
+                <span className="text-danger">*</span>
               </label>
               <input
                 ref={inviteCodeRef}
@@ -95,13 +94,14 @@ export default function RegisterPage() {
                 className="form-control"
                 id="inviteCode"
                 name="invite_code"
-                placeholder="请输入邀请码（可选）"
+                placeholder="请输入邀请码"
+                required
+                maxLength={12}
                 value={inviteCode}
                 onChange={(e) => setInviteCode(e.target.value)}
               />
               <div className="form-text">
-                邀请码也可以在之后填写。如果你需要邀请码，可以去
-                <a href="/contact" target="_blank">这里</a>获取。
+                没有邀请码？<Link href="/contact">申请邀请</Link>
               </div>
               <div className="invalid-feedback">
                 请输入有效的邀请码

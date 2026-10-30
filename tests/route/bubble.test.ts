@@ -34,8 +34,8 @@ it('非法装备请求不能静默卸下；未持有不能使用；显式 null �
   expect((await PUT(request('PUT', { bubble_key: null }))).status).toBe(200);
   expect((await (await GET()).json()).activeKey).toBeNull();
 });
-it('普通登录用户可花自己的鱼干；篡改价格/单位无效；禁言拒扣款', async () => {
-  const user = await makeFishUser(30); await login(user.id);
+it('成员可花自己的鱼干；篡改价格/单位无效；禁言拒扣款', async () => {
+  const user = await makeFishUser(30, { role: 'core' }); await login(user.id);
   const res = await POST(request('POST', { bubble_key: KEY, count: 1, price: 0, unit: 'day' }));
   expect(res.status).toBe(200);
   expect(await res.json()).toMatchObject({ cost: 10, unit: 'month', balance: 20 });
@@ -56,4 +56,11 @@ it('装备快照遵守会话权限、专注模式及作者范围', async () => {
   expect((await read('lobby', Array.from({ length: 101 }, (_, i) => `u-${i}`))).status).toBe(400);
   await prisma.user.update({ where: { id: user.id }, data: { focusMode: true } });
   expect((await read('lobby')).status).toBe(403);
+});
+
+it('历史账号不能购买气泡，余额和持有账不变', async () => {
+  const u = await makeFishUser(30, { role: 'user' }); await login(u.id);
+  expect((await POST(request('POST', { bubble_key: KEY, count: 1 }))).status).toBe(403);
+  expect(await prisma.userBubble.count()).toBe(0);
+  await expectLedgerConsistent('非成员拒绝购买');
 });

@@ -348,30 +348,14 @@ describe('剪贴板格式：createClip / updateClip / getClip / resolvePublicCli
     if (got.ok) expect(got.clip.format, '未知值不能猜成 markdown').toBeNull();
   });
 
-  it('resolvePublicClipRefs 返回结构化数据；reactive 带源码但格式标明，未知值不进表', async () => {
+  it('所有格式的站内剪贴板均不产生对外载荷', async () => {
     const u = await makeUser();
     const md = await createClip(u.id, { title: 'md 标题', content: 'md 正文' });
     expect(md.ok).toBe(true);
     if (!md.ok) return;
     const reactiveId = await makeReactiveClip(u.id);
-
-    const out = await resolvePublicClipRefs(`[@${md.id}] 与 [@${reactiveId}]`);
-    expect(out[md.id]).toMatchObject({
-      content: 'md 正文',
-      format: 'markdown',
-      title: 'md 标题',
-    });
-    expect(typeof out[md.id].version).toBe('string');
+    expect(await resolvePublicClipRefs(`[@${md.id}] 与 [@${reactiveId}]`)).toEqual({});
     const member = await getClip(md.id, u.id);
-    expect(member.ok && member.clip.version).toBe(out[md.id].version);
-    await updateClip(md.id, u.id, { title: 'md 标题', content: 'edited body', publicity: true });
-    const refreshed = await resolvePublicClipRefs(`[@${md.id}]`);
-    expect(refreshed[md.id].version).not.toBe(out[md.id].version);
-    expect(out[reactiveId]).toMatchObject({ content: '# reactive 源码', format: 'reactive' });
-
-    // 未知格式：不下发（调用方保留字面量），绝不冒充 markdown。
-    await prisma.clipText.update({ where: { clipId: md.id }, data: { format: 'weird' } });
-    const out2 = await resolvePublicClipRefs(`[@${md.id}]`);
-    expect(out2).toEqual({});
+    expect(member.ok && member.clip.content).toBe('md 正文');
   });
 });

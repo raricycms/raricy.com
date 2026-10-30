@@ -105,6 +105,7 @@ describe('鉴权：只认会话', () => {
     // 在租框上生效：一旦生效，租金就从内部实现变成对外契约（改价 = 破坏兼容）。
     // 凭据必须是真的 —— 拿假密码去测，401 可能只是密码错，证明不了门没开。
     const user = await makeFishUser(10, {
+      role: 'core',
       username: 'rich',
       passwordHash: await hashPassword(PASSWORD),
     });
@@ -121,7 +122,7 @@ describe('鉴权：只认会话', () => {
   });
 
   it('被禁言 → 403，且不扣钱', async () => {
-    const user = await makeFishUser(10);
+    const user = await makeFishUser(10, { role: 'core' });
     await prisma.user.update({ where: { id: user.id }, data: { isBanned: true, banUntil: null } });
     await login(user.id);
 
@@ -131,10 +132,18 @@ describe('鉴权：只认会话', () => {
   });
 });
 
+it('取消资格后不能购买，原有余额不动', async () => {
+  const user = await makeFishUser(10, { role: 'user' });
+  await login(user.id);
+  expect((await rent({ frame_key: KEY, count: 1 })).status).toBe(403);
+  expect(await prisma.userFrame.count()).toBe(0);
+  await expectLedgerConsistent('资格不足拒绝租框');
+});
+
 describe('入参校验', () => {
   it('天数非法 → 400', async () => {
     writeAsset(KEY);
-    const user = await makeFishUser(10);
+    const user = await makeFishUser(10, { role: 'core' });
     await login(user.id);
 
     for (const count of [0, 31, 1.5, 'abc', null]) {
@@ -146,7 +155,7 @@ describe('入参校验', () => {
   it('未登记的 key / 不零售的框 → 400', async () => {
     writeAsset(KEY);
     writeAsset(NOT_FOR_SALE);
-    const user = await makeFishUser(10);
+    const user = await makeFishUser(10, { role: 'core' });
     await login(user.id);
 
     expect((await rent({ frame_key: 'nope', count: 1 })).status).toBe(400);
@@ -155,7 +164,7 @@ describe('入参校验', () => {
 
   it('请求体不是对象 → 400', async () => {
     // 先登录 —— 鉴权在解析请求体**之前**，没登录时这一条只会拿到 401
-    const user = await makeFishUser(10);
+    const user = await makeFishUser(10, { role: 'core' });
     await login(user.id);
 
     const res = await POST(
@@ -172,7 +181,7 @@ describe('入参校验', () => {
 describe('成功与业务失败', () => {
   it('租成功 → 200，余额与到期都下来了（到期给两种形状）', async () => {
     writeAsset(KEY);
-    const user = await makeFishUser(10);
+    const user = await makeFishUser(10, { role: 'core' });
     await login(user.id);
 
     const res = await rent({ frame_key: KEY, count: 2 });
@@ -196,7 +205,7 @@ describe('成功与业务失败', () => {
 
   it('小鱼干不足 → 400，且**没有留下半张框**', async () => {
     writeAsset(KEY);
-    const user = await makeFishUser(1);
+    const user = await makeFishUser(1, { role: 'core' });
     await login(user.id);
 
     const res = await rent({ frame_key: KEY, count: 5 });
@@ -215,7 +224,7 @@ describe('成功与业务失败', () => {
 
   it('素材缺失 → 409', async () => {
     // 故意不铺素材
-    const user = await makeFishUser(10);
+    const user = await makeFishUser(10, { role: 'core' });
     await login(user.id);
 
     const res = await rent({ frame_key: KEY, count: 1 });

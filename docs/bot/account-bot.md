@@ -520,7 +520,11 @@ Cookie: raricy_session=<JWT>
 
 ---
 
-## 8. 邀请码提权（把自己升成 core）
+## 8. 邀请码提权（历史账号补码）
+
+公开注册 `POST /api/auth/register` 的 `invite_code` 必填，必须为有效的未使用 12 位码。
+注册与占码原子提交，成功后直接创建 core 并设置会话；缺省或空白邀请码返回 400。
+以下补码接口保留给历史未认证及被取消成员资格的账号，不自动提升任何现存账号。
 
 ```http
 POST /api/auth/authentic

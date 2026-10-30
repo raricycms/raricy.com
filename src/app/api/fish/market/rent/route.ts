@@ -1,4 +1,4 @@
-import { getCurrentUser, isCurrentlyBanned } from '@/lib/auth';
+import { getCurrentUser, isCoreUser, isCurrentlyBanned } from '@/lib/auth';
 import { apiOk, apiErr, ymdhms } from '@/lib/format';
 import { rentFrame } from '@/lib/frame-shop-service';
 import { RENT_UNITS } from '@/lib/frame-refs';
@@ -32,6 +32,7 @@ export const runtime = 'nodejs';
 export async function POST(req: Request) {
   const user = await getCurrentUser();
   if (!user) return apiErr(401, '未登录');
+  if (!isCoreUser(user)) return apiErr(403, '需要成员资格');
   if (isCurrentlyBanned(user)) return apiErr(403, BANNED_MESSAGE);
 
   let body: Record<string, unknown>;

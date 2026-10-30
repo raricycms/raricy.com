@@ -23,7 +23,6 @@ import FooterCopyOverride from '@/app/components/FooterCopyOverride';
 import ReadingProgress from '@/app/blog/ReadingProgress';
 import { getCurrentUser, hasAdminRights, isCoreUser } from '@/lib/auth';
 import { getFeedStatus } from '@/lib/feed-service';
-import { resolvePublicClipRefs } from '@/lib/clipboard-service';
 import { resolveReadRender } from '@/lib/reactive/read-render';
 import { isBlogFavorited } from '@/lib/favorite-service';
 import { jsonLdScript } from '@/lib/json-ld';
@@ -143,7 +142,7 @@ export default async function BlogDetailPage({ params }: { params: Promise<{ id:
 
   // 渲染路径决策（格式 / override / 灰度 / 回退）全部交给 read-render：
   // 页面不自己判 cohort，也绝不把 reactive 源码交给 MarkdownRenderer。
-  // 访客（非 core）走 external —— 服务端只带公开剪贴板，投票与收藏保留字面量。
+  // 访客（非 core）走 external —— 剪贴板、投票与收藏均保留字面量。
   const contentSource = blog.content?.content ?? '';
   const readRender = await resolveReadRender({
     kind: 'blog',
@@ -158,14 +157,7 @@ export default async function BlogDetailPage({ params }: { params: Promise<{ id:
     syntaxVersion: blog.content?.syntaxVersion,
   });
 
-  // 对外视图的剪贴板引用：正文里的 `[@8位]` 由**服务端**解析成内容随 payload 下发
-  // （访客没有会话，客户端去拉只会吃 401）。只出公开档 —— 私有 / 已软删 / 不存在
-  // 一律不进表，正文里保持字面量。见 clipboard-service.resolvePublicClipRefs。
-  // 成员视图不需要：那边客户端自己带凭据拉，连私有剪贴板（作者 / 站长）也能展开。
-  // reactive / reactive-static 由适配器自己取数（prepare.ts），这里不要重复查库。
-  const externalClips = !member && readRender.choice.renderer === 'legacy'
-    ? await resolvePublicClipRefs(contentSource)
-    : undefined;
+  // 剪贴板仅供成员读取；external 不取数，也不下发引用元数据。
 
   // 「管理文章 → 设置可见性」里那句「上次变更」。只给**能改的人**取（作者 / 管理员）——
   // 其余人白花一次查询。公开是不可逆的，所以这条信息的价值在「我什么时候放的」，
@@ -244,7 +236,6 @@ export default async function BlogDetailPage({ params }: { params: Promise<{ id:
         <MarkdownRenderer
           content={contentSource}
           contentRefs={member ? 'expand' : 'external'}
-          externalClips={externalClips}
         />
       </div>
     );

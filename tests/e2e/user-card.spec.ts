@@ -25,7 +25,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { expect, test, type Page } from '@playwright/test';
-import { loginViaApi, registerFreshUser, uniqueTag } from './helpers';
+import { freshInvite, loginViaApi, registerFreshUser, uniqueTag } from './helpers';
 import { SEED_BLOG, SEED_FRAME_KEY, SEED_PASSWORD, SEED_USERS } from './seed';
 
 const LOBBY = 'lobby';
@@ -269,8 +269,9 @@ test.describe('用户名片：接口契约', () => {
     // 放行 \p{L}，中文名在站内是常态）。
     const tag = uniqueTag().slice(0, 4);
     const username = `张三丰${tag}`;
-    const res = await page.request.post('/api/auth/register', {
-      data: { username, email: `cj-${tag}@e2e.local`, password: SEED_PASSWORD },
+    const invite_code = await freshInvite(page);
+  const res = await page.request.post('/api/auth/register', {
+      data: { username, email: `cj-${tag}@e2e.local`, password: SEED_PASSWORD, invite_code },
     });
     const body = (await res.json()) as { code: number; user?: { id: string } };
     expect(body.code, `中文用户名应当注册得出来：${JSON.stringify(body)}`).toBe(200);

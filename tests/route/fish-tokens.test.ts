@@ -38,6 +38,7 @@ function makeReq(body?: unknown) {
 
 async function makeSessionUser(opts: { isBanned?: boolean } = {}) {
   const user = await makeUser({
+    role: 'core',
     passwordHash: await hashPassword(PASSWORD),
     isBanned: opts.isBanned ?? false,
   } as Parameters<typeof makeUser>[0]);
@@ -175,7 +176,7 @@ describe('DELETE /api/fish/tokens/[id] —— 吊销', () => {
     const theirs = await (await POST(makeReq({ password: PASSWORD }))).json();
 
     // 换成另一个用户
-    const me = await makeUser({ passwordHash: await hashPassword(PASSWORD) });
+    const me = await makeUser({ role: 'core', passwordHash: await hashPassword(PASSWORD) });
     session.token = await createSessionToken({ uid: me.id, sv: 0 });
 
     const res = await revokeById(makeReq(), ctx(String(theirs.token.id)));
@@ -207,4 +208,16 @@ describe('DELETE /api/fish/tokens/[id] —— 吊销', () => {
     expect((await revokeById(makeReq(), ctx(id))).status).toBe(200);
     expect((await revokeById(makeReq(), ctx(id))).status).toBe(200);
   });
+});
+
+it('取消成员资格后不能新增凭据，但可读取和吊销旧凭据', async () => {
+  const u = await makeSessionUser();
+  const minted = await mintFishToken(u.id);
+  await prisma.user.update({ where: { id: u.id }, data: { role: 'user' } });
+  expect((await POST(makeReq({ password: PASSWORD }))).status).toBe(403);
+  expect((await GET(makeReq())).status).toBe(200);
+  expect(await validateFishToken(minted.token)).not.toBeNull();
+  const res = await revokeById(makeReq(), { params: Promise.resolve({ id: String(minted.id) }) });
+  expect(res.status).toBe(200);
+  expect(await validateFishToken(minted.token)).toBeNull();
 });

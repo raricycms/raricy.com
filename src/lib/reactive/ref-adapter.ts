@@ -13,7 +13,7 @@
 // 【不是渲染器，也不是取数层】本模块不 import prisma、不发 HTTP、不碰 React。
 // `resolve` 是调用方按当前权限上下文注入的 `ReferenceReader`（站内 expand 视图
 // 就是 `ContentRefResolver` 那一套）；对外视图则一个请求都不发，只用服务端随
-// payload 下发的公开剪贴板（`externalClips`）。这样同一份源码在两种视图下可以
+// external 不读剪贴板、投票与收藏夹；旧 externalClips 参数也忽略。
 // 得到不同但都正确的适配结果。
 //
 // ── 六条「错了也不报错」的纪律 ────────────────────────────────────────────────
@@ -83,7 +83,7 @@ import type { AdaptedSourceSegment, SegmentOrigin } from './source-map';
  * §5.3）。**每次改变输出形状或转义规则都必须递增** —— 否则旧缓存会继续发一份
  * 按旧规则生成的源码。
  */
-export const ADAPTER_VERSION = 'reactive-ref-adapter/1';
+export const ADAPTER_VERSION = 'reactive-ref-adapter/2';
 
 /**
  * site-embed 的 ref 属性必须与宿主 schema 的 pattern 一致（`^[A-Za-z0-9]{1,32}$`，
@@ -103,8 +103,7 @@ export interface ReactiveAdaptOptions {
   /** `expand` 模式下的取数函数。`external` 模式**绝不调用**它。 */
   resolve?: ReferenceReader;
   /**
-   * `external` 模式下服务端预先解析好的公开剪贴板（id → 结构化数据）。
-   * 不在这里的剪贴板保留字面量 —— 不发标签，才不会出现 `local-host-unavailable`。
+   * @deprecated 兼容旧调用形状；external 不消费任何剪贴板载荷。
    */
   externalClips?: Record<string, ExternalClipData>;
 }
@@ -291,18 +290,7 @@ function planReplacement(
   const key = `${slot.kind}:${slot.ref}`;
 
   if (slot.kind === 'clipboard') {
-    if (mode === 'external') {
-      const clip = externalClips[slot.ref];
-      if (!clip) return null; // 缺公开数据 → 保留字面量，不发标签
-      const tag = embedTag('clipboard', slot.ref);
-      if (!tag) return null;
-      const data: SiteEmbedData = { kind: 'clipboard', ref: slot.ref, status: 'ready' };
-      if (clip.title !== undefined) data.title = clip.title;
-      data.format = clip.format;
-      if (clip.version !== undefined) data.version = clip.version;
-      // ★ 刻意不带 content ★ 首期一律链接卡片，见文件头【6】。
-      return { text: tag, data };
-    }
+    if (mode === 'external') return null;
     const resolved = resolvedByKey.get(key);
     if (!resolved) return null;
     const tag = embedTag('clipboard', slot.ref);

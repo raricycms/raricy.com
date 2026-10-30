@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { loginViaApi, uniqueTag } from './helpers';
+import { freshInvite, loginViaApi, uniqueTag } from './helpers';
 import { SEED_PASSWORD, SEED_USERS } from './seed';
 
 test('手机顶栏两个方向都有高度动画，第五个讨论入口按顺序入场', async ({ page, isMobile }) => {
@@ -76,8 +76,9 @@ test('顶栏逐步收紧：保留横排导航，长用户名让位给头像，�
   await page.emulateMedia({ reducedMotion: 'reduce' });
   const tag = uniqueTag();
   const username = '名'.repeat(12) + tag.slice(-8);
+  const invite_code = await freshInvite(page);
   const registration = await page.request.post('/api/auth/register', {
-    data: { username, email: `${tag}@e2e.local`, password: SEED_PASSWORD },
+    data: { username, email: `${tag}@e2e.local`, password: SEED_PASSWORD, invite_code },
   });
   expect((await registration.json()).code).toBe(200);
 
@@ -155,8 +156,9 @@ test('手机端用户名是固定宽度的文本框：名字过长横向滚动�
   const tag = uniqueTag();
   // 用户报障的那个长度：八个汉字。
   const username = '八个汉字的用户名';
+  const invite_code = await freshInvite(page);
   const registration = await page.request.post('/api/auth/register', {
-    data: { username, email: `${tag}@e2e.local`, password: SEED_PASSWORD },
+    data: { username, email: `${tag}@e2e.local`, password: SEED_PASSWORD, invite_code },
   });
   expect((await registration.json()).code).toBe(200);
 
@@ -256,8 +258,9 @@ test('手机端长用户名在顶栏展开后自动左右往返，减少动态�
   const tag = uniqueTag();
   // 顶到用户名上限（20 字）：375px 下那一格只放得下四五个汉字，必然溢出。
   const username = '名'.repeat(12) + tag.slice(-8);
+  const invite_code = await freshInvite(page);
   const registration = await page.request.post('/api/auth/register', {
-    data: { username, email: `${tag}@e2e.local`, password: SEED_PASSWORD },
+    data: { username, email: `${tag}@e2e.local`, password: SEED_PASSWORD, invite_code },
   });
   expect((await registration.json()).code).toBe(200);
 

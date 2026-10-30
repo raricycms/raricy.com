@@ -13,8 +13,7 @@
 //
 // 【两种引用模式，不是「展开 / 不展开」】`contentRefs='expand'` 是站内成员视图，
 // `'external'` 是对外视图。对外视图**也展开**，只是展开的范围小一圈：
-// 图床图片 / 音频 / **服务端随 payload 下发的公开剪贴板**（externalClips）出得来，
-// 投票与收藏夹保留字面量。判据是「这条引用的读口是不是匿名本来就取得到」——
+// external 仅展开图床与音频；剪贴板、投票与收藏夹保留原文，不携带资源数据。
 // 见 prop 上的说明与 docs/architecture.md §7.3。
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ContentRefProcessor, type RefRoundEntries } from '@/lib/content-ref-processor';
@@ -41,7 +40,7 @@ export default function MarkdownRenderer({
    *     （剪贴板正文 / 投票嵌入 / 收藏夹卡片）+ 拼图床 URL + 音频播放器。
    *     **只有 core+ 的页面能传这个。**
    *   · 'external' —— 对外视图：只展开**匿名读口本来就取得到**的那几类 ——
-   *     图床图片、音频播放器，以及随 payload 下发的公开剪贴板（见 `externalClips`）。
+   *     图床图片和音频播放器；剪贴板、投票与收藏夹保留原文。
    *     投票与收藏夹**保留字面量**（两者的读口都是 core+，而且那是站长定的口径：
    *     投票箱不进对外视图）。本模式**一个请求都不发**。
    *
@@ -60,19 +59,7 @@ export default function MarkdownRenderer({
    * 出现第三种「引用不可用」的观感；也不往不可信字符串里插入任何新文本，没有新的转义面。
    */
   contentRefs: ContentRefMode;
-  /**
-   * **服务端预先解析好**的公开剪贴板（id → 正文），只给 'external' 用。
-   *
-   * 为什么由服务端给而不是客户端去拉：`GET /api/clipboard/:id` 要 core+ 会话，
-   * 匿名读者拿不到 —— 而剪贴板的 `publicity=false` 是比 core+ **更窄**的一档，
-   * 不能因为「被引用进了一篇公开文章」而放宽。所以判档在服务端做，判完只把能给的
-   * 那几条随 payload 发下来（`clipboard-service.ts` 的 `resolvePublicClipRefs`）。
-   * 不带会话的页面**必须**传它，否则正文里的剪贴板引用一律是字面量。
-   *
-   * 值既可以是旧形状（id → 正文，按 markdown 内联），也可以是
-   * `{ content, format, version?, title? }`。reactive 剪贴板**绝不内联** ——
-   * 旧渲染器读不懂它，只会生成一个站内链接（见 ContentRefResolver）。
-   */
+  /** @deprecated 兼容旧调用形状；external 始终忽略片段数据。 */
   externalClips?: Record<string, string | ExternalClipData>;
   /**
    * 正文交互开关，默认 true（正文页行为）。编辑器完整预览传 **false**：

@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import LegacyPositions from './LegacyPositions';
 import { redirect, forbidden } from 'next/navigation';
 import { getCurrentUser, isCoreUser } from '@/lib/auth';
 import { isFocusFishTradeBlocked } from '@/lib/focus-mode';
@@ -43,7 +44,18 @@ export const dynamic = 'force-dynamic';
 export default async function FishTradePage() {
   const user = await getCurrentUser();
   if (!user) redirect(loginUrlWithNext('/fish/trade'));
-  if (!isCoreUser(user)) forbidden();
+  if (user.archivedAt) forbidden();
+  if (!isCoreUser(user)) {
+    const positions = await listOpenPositions(user.id);
+    return <div className="container py-4">
+      <h1>历史持仓</h1>
+      <p>当前账号未取得成员资格，可以查询和平仓。</p>
+      <LegacyPositions positions={positions.map(p => ({ id: p.id, symbol: p.symbol, stake: p.stake, direction: p.direction }))} />
+      <Link href="/fish/trade/stats" className="button button-secondary">统计</Link>{' '}
+      <Link href="/authentic" className="button button-secondary">认证成员资格</Link>{' '}
+      <Link href="/fish" className="button button-secondary">返回账户</Link>
+    </div>;
+  }
   // 专注模式屏蔽了练手盘：与上面那条同款（原地 403，不跳登录）。forbidden() 是
   // Next 内建的、收不了文案，所以这里给不出「因为专注模式」这句话 —— 而入口
   // （/fish 卡片与 /fish/market 页脚那三处）在屏蔽时**整段不渲染**，所以解释

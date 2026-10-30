@@ -198,14 +198,14 @@ describe('图床引用', () => {
 // ═══ 三、剪贴板：对外视图只出服务端判过的公开档 ═══════════════════════════════
 
 describe('剪贴板引用', () => {
-  it('在 externalClips 里 → 正文内联', async () => {
+  it('即使收到旧 externalClips 载荷也保留字面量', async () => {
     const html = await bodyHtml(`见 [@${CLIP_ID}]`, {
       contentRefs: 'external',
       externalClips: { [CLIP_ID]: '这是一段公开的剪贴板正文' },
     });
 
-    expect(html).toContain('这是一段公开的剪贴板正文');
-    expect(html).not.toContain(`[@${CLIP_ID}]`);
+    expect(html).not.toContain('这是一段公开的剪贴板正文');
+    expect(html).toContain(`[@${CLIP_ID}]`);
   });
 
   it('★ 不在表里（私有 / 已软删 / 不存在）→ 保留字面量，不提示、不区分 ★', async () => {

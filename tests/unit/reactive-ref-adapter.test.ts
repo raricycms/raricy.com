@@ -185,7 +185,7 @@ describe('adaptReactiveReferences（external）', () => {
 
     expect(resolveCalls).toBe(0);
     expect(result.adaptedSource).toContain(tag('audio', AUDIO_ID));
-    expect(result.adaptedSource).toContain(tag('clipboard', CLIP_ID));
+    expect(result.adaptedSource).toContain(`[@${CLIP_ID}]`);
     // 投票 / 收藏夹：读口要 core+，对外视图保持字面量
     expect(result.adaptedSource).toContain(`[@${VOTE_ID}]`);
     expect(result.adaptedSource).toContain(`[@${FAV_ID}]`);
@@ -193,13 +193,7 @@ describe('adaptReactiveReferences（external）', () => {
     expect(result.adaptedSource).toContain('[@AbCd5678]');
     // 下发的正文只用于提供标题 / 版本，绝不内联
     expect(result.adaptedSource).not.toContain('公开正文');
-    expect(result.hostData[`clipboard:${CLIP_ID}`]).toMatchObject({
-      status: 'ready',
-      title: '公开板',
-      format: 'markdown',
-      version: 'v1',
-    });
-    expect(result.hostData[`clipboard:${CLIP_ID}`].content).toBeUndefined();
+    expect(result.hostData[`clipboard:${CLIP_ID}`]).toBeUndefined();
     expect(result.hostData[`vote:${VOTE_ID}`]).toBeUndefined();
   });
 });

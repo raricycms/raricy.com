@@ -192,11 +192,11 @@ describe('失败与刷新', () => {
 });
 
 describe('external 模式：一个请求都不发', () => {
-  it('剪贴板只认下发的公开档；投票 / 收藏夹 / 图床各按口径', async () => {
+  it('旧载荷不改变成员资源边界，图床仍可用', async () => {
     const calls = stubFetch();
     const r = new ContentRefResolver('external', { [CLIP_ID]: '公开剪贴板正文' });
 
-    expect((await r.resolve('clipboard', CLIP_ID))?.content).toBe('公开剪贴板正文');
+    expect(await r.resolve('clipboard', CLIP_ID)).toBeUndefined();
     // 不在表里的（私有 / 已软删 / 不存在）→ undefined = 保留字面量
     expect(await r.resolve('clipboard', 'ZZyy9876')).toBeUndefined();
     expect(await r.resolve('vote', VOTE_ID)).toBeUndefined();
@@ -214,7 +214,7 @@ describe('external 模式：一个请求都不发', () => {
 });
 
 describe('剪贴板格式：reactive 绝不内联', () => {
-  it('external 结构化数据：markdown 内联；reactive / 未知格式 → 安全站内链接', async () => {
+  it('external 结构化数据：所有格式及旧形状均忽略', async () => {
     const calls = stubFetch();
     const r = new ContentRefResolver('external', {
       [CLIP_ID]: { content: '# reactive 源码', format: 'reactive', title: '标题' },
@@ -225,17 +225,9 @@ describe('剪贴板格式：reactive 绝不内联', () => {
       Legacy01: '旧字符串正文',
     });
 
-    const reactive = await r.resolve('clipboard', CLIP_ID);
-    expect(reactive?.format).toBe('reactive');
-    expect(reactive?.content, 'reactive 源码不得进入旧 Markdown 管线').toBe(
-      '[查看剪贴板](/clipboard/AbCd1234)'
-    );
-
-    expect((await r.resolve('clipboard', 'MdMd1234'))?.content).toBe('普通 markdown 正文');
-    expect((await r.resolve('clipboard', 'Bad0Bad0'))?.content).toBe(
-      '[查看剪贴板](/clipboard/Bad0Bad0)'
-    );
-    expect((await r.resolve('clipboard', 'Legacy01'))?.content).toBe('旧字符串正文');
+    for (const id of [CLIP_ID, 'MdMd1234', 'Bad0Bad0', 'Legacy01']) {
+      expect(await r.resolve('clipboard', id)).toBeUndefined();
+    }
 
     expect(calls, '对外视图一个请求都不发').toEqual([]);
   });

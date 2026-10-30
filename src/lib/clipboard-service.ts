@@ -17,14 +17,6 @@ import type { ContentFormat } from './content-format';
 import type { ExternalClipData } from './reactive/ref-types';
 import { buildReactiveSnapshotForWrite } from './reactive/publish';
 import { createHash } from 'node:crypto';
-import {
-  collectClipboardRefIds,
-  createConcurrencyLimiter,
-  MAX_REF_CONCURRENCY,
-  MAX_REF_EXPAND_CHARS,
-  MAX_REF_FETCHES,
-} from './content-refs';
-import { maskMarkdownCode } from './favorite-refs';
 
 // 校验上限
 export const CLIP_TITLE_MAX = 40;
@@ -392,91 +384,11 @@ export async function getClip(
   };
 }
 
-/**
- * 解析正文里所有 `[@8位]` 剪贴板引用，返回**只有公开档**的 id → 结构化数据
- * （`{ content, format, version?, title? }`）。
- *
- * ⚠️ 返回的 `content` 是**源码**，`format` 才是调用方该看的判据：
- *   · markdown → 旧渲染器可以内联；
- *   · reactive → **不得内联**（旧渲染器读不懂），消费端（ContentRefResolver /
- *     useResolvedContent）只生成一个安全的 Markdown 链接；
- *   · format 认不出（库里是脏值）→ 这条**不进表**，调用方保留字面量。
- *
- * 【谁在用】文章详情页的**对外视图**（`blog/[id]/page.tsx` 的访客分支）：把结果当
- * `externalClips` 交给 `MarkdownRenderer`。
- *
- * 【为什么非得在服务端做】访客没有会话，而 `GET /api/clipboard/:id` 要 core+ ——
- * 客户端去拉只会吃 401。所以判档在服务端做完，只把能给的那几条随 RSC payload 下发
- * （同 docs/architecture.md §7.3「闸门必须在服务端」）。**别为此把那条接口放开**：
- * 放开的是「所有公开剪贴板对匿名可读」，而这里要的只是「这篇文章引用了的那几条」。
- *
- * 【为什么只给公开档】剪贴板的 `publicity=false` 是「只有作者本人（和站长）」——
- * 比 core+ 更窄的一档，绝不能因为「有人把它引用进了一篇公开文章」而放宽。
- * 私有 / 已软删 / 不存在三种情况**同形**：都不出现在结果里，调用方一律保留字面量，
- * 不区分（区分等于确认存在性）。
- *
- * 【条数上限与客户端同源，且是**取数**那一档】取正文里出现的前 `MAX_REF_FETCHES`
- * 条（按出现顺序，去重）。这里要的是「服务端为这一篇最多查几次库、最多下发多少条」，
- * 对应客户端那个**取数候选**上限，而不是它的**显示**上限（`MAX_BLOG_REF_ITEMS`）——
- * 两个数当前都是 50，但语义不同：显示上限管「替换几处」，取数上限管「取几次」。
- * 见 content-refs.ts 里 `MAX_REF_FETCHES` 的说明。没有它，一篇塞满引用的文章会让
- * **每一次**访客请求打出成千上万条查询。
- *
- * 【并发与总量也有上限】查库走 `MAX_REF_CONCURRENCY` 的闸门（同一时刻最多 4 条），
- * 入映射的正文合计封顶 `MAX_REF_EXPAND_CHARS`（500000）—— 防的是**匿名 RSC payload
- * 被放大**：50 条各 5 万字的公开剪贴板加起来是 250 万字符，随每一次访客请求下发。
- * 入映射**按源文出现顺序**（`ids` 就是按出现顺序去重来的）：累计超预算的那条跳过、
- * 不占后续名额（后面的小剪贴板照样能进来）—— 与客户端那条「装不下就保留 token」同义。
- * 重复的 id 只计一次（`ids` 已去重）。
- *
- * 【盖码：代码块里的引用一个都不解析】与渲染器那条分流同口径
- * （`maskMarkdownCode`）——《内容引用语法指南》对读者的承诺是「代码里的引用一律
- * 不展开」，两边必须一致：不一致的形态是同一篇正文在成员视图与对外视图里显示
- * 不同的东西，**而且都不报错**。
- */
+/** @deprecated 剪贴板仅供成员读取。旧调用方也不得获得任何对外引用数据。 */
 export async function resolvePublicClipRefs(
-  markdown: string
+  _markdown: string
 ): Promise<Record<string, ExternalClipData>> {
-  const ids = collectClipboardRefIds(maskMarkdownCode(markdown)).slice(0, MAX_REF_FETCHES);
-  if (ids.length === 0) return {};
-
-  // 按**下标**收集结果 —— 并发完成顺序不定，映射要按源文顺序重建。
-  const contents: Array<ExternalClipData | undefined> = new Array(ids.length);
-  const gate = createConcurrencyLimiter(MAX_REF_CONCURRENCY);
-  await Promise.all(
-    ids.map((id, i) =>
-      gate(async () => {
-        // 不传 viewerId / viewerIsOwner：拿不到「本人」或「站长」这两个例外，
-        // 于是结果只可能是公开档（下面那句是第二道确认，别删）。
-        const result = await getClip(id);
-        if (!result.ok || !result.clip.publicity) return;
-        const clip = result.clip;
-        // 未知 / 缺失格式（null）一律**不进表**：调用方会保留字面量。
-        // 绝不把它当 Markdown 下发 —— 那等于替库里一个认不出的值做决定。
-        if (clip.format === null) return;
-        // 版本 = 这份公开快照的稳定标识（格式 + 标题 + 正文）。相同内容同版本，
-        // 引用方编辑后版本变化 —— 缓存与快照失效都靠它，不需要另存一张版本表。
-        const version = clip.version;
-        contents[i] = {
-          content: clip.content,
-          format: clip.format,
-          version,
-          title: clip.title,
-        };
-      })
-    )
-  );
-
-  const out: Record<string, ExternalClipData> = {};
-  let total = 0;
-  for (let i = 0; i < ids.length; i += 1) {
-    const data = contents[i];
-    if (data === undefined) continue;
-    if (total + data.content.length > MAX_REF_EXPAND_CHARS) continue;
-    out[ids[i]] = data;
-    total += data.content.length;
-  }
-  return out;
+  return {};
 }
 
 export interface ClipListItem {

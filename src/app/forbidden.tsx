@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { getCurrentUser } from '@/lib/auth';
+import { getCurrentUser, isCoreUser } from '@/lib/auth';
 
 // 403 禁止访问页 —— 彩虹渐变 + 色相循环（样式见 pages/_error.scss）。
 // 由 forbidden()（受控页非核心用户）在原地以 403 状态渲染。
@@ -31,6 +31,7 @@ export default async function Forbidden() {
               : '请先登录后重试。如果仍无法访问，可联系本站反馈。'}
           </p>
           <div className="rainbow-error__actions">
+            {user && !isCoreUser(user) && <Link href="/authentic" className="rainbow-error__btn rainbow-error__btn--solid">认证成员资格</Link>}
             {user ? (
               <Link href="/" className="rainbow-error__btn rainbow-error__btn--solid">
                 <span className="icon icon-house"></span>返回首页

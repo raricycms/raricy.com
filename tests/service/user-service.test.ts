@@ -39,6 +39,7 @@ import { resetDb, makeUser, makeBlog, prisma } from '../helpers/db';
 
 beforeEach(async () => {
   await resetDb();
+  await makeInvite({ code: "defaultcode1" });
 });
 
 afterEach(() => {
@@ -74,6 +75,7 @@ const goodInput = (over: Partial<Parameters<typeof registerUser>[0]> = {}) => {
     username: `user${i}`,
     email: `user${i}@example.com`,
     password: 'password123',
+    inviteCode: 'defaultcode1',
     ...over,
   };
 };
@@ -171,17 +173,17 @@ describe('validateEmail', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('registerUser：成功路径', () => {
-  it('落库的字段正确，且返回 user 摘要（role=user, sessionVersion=0）', async () => {
+  it('落库的字段正确，且返回 user 摘要（role=core, sessionVersion=0）', async () => {
     const input = goodInput({ username: 'alice', email: 'alice@example.com' });
     const r = await registerUser(input);
 
     expect(r).toMatchObject({ ok: true, code: 200, message: '注册成功' });
-    expect(r.user).toMatchObject({ username: 'alice', role: 'user', sessionVersion: 0 });
+    expect(r.user).toMatchObject({ username: 'alice', role: 'core', sessionVersion: 0 });
 
     const row = await prisma.user.findUniqueOrThrow({ where: { username: 'alice' } });
     expect(row.id, '返回的 id 必须与落库的一致').toBe(r.user!.id);
     expect(row.email).toBe('alice@example.com');
-    expect(row.role).toBe('user');
+    expect(row.role).toBe('core');
     expect(row.sessionVersion).toBe(0);
     expect(row.createdAt, 'createdAt 为 NULL 会让「注册于」展示与排序全废').not.toBeNull();
   });
@@ -206,6 +208,7 @@ describe('registerUser：成功路径', () => {
     const r = await registerUser({
       username: '  bob  ',
       email: '  bob@example.com  ',
+      inviteCode: 'defaultcode1',
       password: 'password123',
     });
     expect(r.ok).toBe(true);
@@ -338,19 +341,12 @@ describe('registerUser：格式与长度校验', () => {
 });
 
 describe('registerUser：邀请码', () => {
-  it('不给邀请码 → role=user，文案是纯「注册成功」', async () => {
-    const r = await registerUser(goodInput());
-    expect(r.message, '无邀请码时不能带「已通过邀请码验证」的尾巴').toBe('注册成功');
-    expect(r.user!.role).toBe('user');
-  });
-
-  it('inviteCode 为空串 / null / undefined 均视为不提供', async () => {
-    for (const code of ['', null, undefined, '   ']) {
-      await resetDb();
-      const r = await registerUser(goodInput({ inviteCode: code }));
-      expect(r.ok, `inviteCode=${JSON.stringify(code)} 应视为未提供`).toBe(true);
-      expect(r.user!.role).toBe('user');
+  it('缺省、空串和纯空白邀请码均拒绝，且不建号', async () => {
+    for (const inviteCode of [undefined, null, '', '   ']) {
+      expect(await registerUser(goodInput({ inviteCode }))).toMatchObject({ ok: false, code: 400, message: '请填写邀请码' });
     }
+    expect(await prisma.user.count()).toBe(0);
+    expect((await prisma.inviteCode.findUniqueOrThrow({ where: { code: 'defaultcode1' } })).isUsed).toBe(false);
   });
 
   it('★ 有效邀请码 → role=core，且邀请码被标记 isUsed / usedBy', async () => {
@@ -358,7 +354,7 @@ describe('registerUser：邀请码', () => {
     const r = await registerUser(goodInput({ inviteCode: 'abcdefghijkl' }));
 
     expect(r.ok).toBe(true);
-    expect(r.message, '成功文案要带邀请码提示').toBe('注册成功，您的账号已通过邀请码验证');
+    expect(r.message, '成功文案要带邀请码提示').toBe('注册成功');
     expect(r.user!.role, '有效邀请码必须升级为 core').toBe('core');
 
     const row = await prisma.user.findUniqueOrThrow({ where: { id: r.user!.id } });

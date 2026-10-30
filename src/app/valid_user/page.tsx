@@ -1,5 +1,4 @@
 import type { Metadata } from 'next';
-import FooterNote from '@/app/components/FooterNote';
 
 export const metadata: Metadata = { title: 'raricy.com - 获取注册资格' };
 
@@ -9,9 +8,6 @@ export default function ValidUserPage() {
   return (
     <div className="content-wrapper">
       <h1 className="page-title">获取注册资格</h1>
-      <p style={{ textAlign: 'center', color: 'var(--color-text-secondary)' }}>
-        本页面无直接操作，仅作为「获取邀请码」流程的说明。
-      </p>
       <div style={{ marginTop: '1.5rem' }}>
         <h2 style={{ fontSize: '1.25rem', fontWeight: 600, marginBottom: '0.75rem' }}>
           邀请码流程
@@ -22,7 +18,6 @@ export default function ValidUserPage() {
           如果还未获得，可前往 <a href="/contact">联系我们</a> 申请。
         </p>
       </div>
-      <FooterNote>你来对地方了。</FooterNote>
     </div>
   );
 }

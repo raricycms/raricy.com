@@ -1,7 +1,7 @@
 import Link from 'next/link';
-import { redirect } from 'next/navigation';
+import { redirect, forbidden } from 'next/navigation';
 import { Bot, ReceiptText, TrendingUp } from 'lucide-react';
-import { getCurrentUser } from '@/lib/auth';
+import { getCurrentUser, isCoreUser } from '@/lib/auth';
 import { isFocusFishTradeBlocked } from '@/lib/focus-mode';
 import { loginUrlWithNext } from '@/lib/safe-url';
 import { getBalance } from '@/lib/fish-service';
@@ -17,6 +17,7 @@ export const dynamic = 'force-dynamic';
 export default async function FishMarketPage() {
   const user = await getCurrentUser();
   if (!user) redirect(loginUrlWithNext('/fish/market'));
+  if (!isCoreUser(user)) forbidden();
 
   // 商城列表在**服务端**算好（`listShopItems` 已经把「素材在不在、我持有到什么时候、
   // 过没过期」都判成了结果），客户端组件一次都不做时间比较 —— 见 ShopPanel 的文件头。

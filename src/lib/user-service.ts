@@ -2,7 +2,7 @@
 // user-service.ts — 用户注册 / 公开资料 / 本人资料更新
 //
 // 三块职责：
-//   • 注册     校验用户名/邮箱/密码、邀请码升级为 core
+//   • 注册     校验用户名/邮箱/密码、必填邀请码创建 core
 //   • 公开资料 对外序列化（**绝不含 email**）
 //   • 资料更新 bio、隐私可见性、通知偏好
 //
@@ -101,7 +101,7 @@ export interface RegisterResult {
 /**
  * 注册新用户。校验顺序（tests/service/user-service.test.ts 逐条钉着）：
  * 用户名重复 → 用户名格式 → 邮箱重复 → 邮箱格式 → 长度。
- * 提供有效未用邀请码时升级为 'core' 并把邀请码标记为已用（同一事务内幂等）。
+ * 必须提供有效未用邀请码，直接创建 core 并在同一事务中原子占码。
  */
 export async function registerUser(input: RegisterInput): Promise<RegisterResult> {
   const username = (input.username || '').trim();
@@ -141,13 +141,15 @@ export async function registerUser(input: RegisterInput): Promise<RegisterResult
     return { ok: false, code: 400, message: '邮箱格式不正确' };
   }
 
-  // 邀请码（可选）：无效直接拒绝；有效则升级为 core。
+  if (!inviteCode) return { ok: false, code: 400, message: '请填写邀请码' };
+
+  // 邀请码必填：预检不代替事务内的原子占用。
   //
   // 这里只做「格式 + 存在性」的预检以便尽早返回错误；**真正的占用是在下方事务里用
   // updateMany(where isUsed:false) 原子完成的**（与 verifyInviteAndUpgrade 同款）。
   // 不能依赖此处的读结果做占用判断 —— 读在事务外，两个并发注册会同时读到 isUsed=false，
   // 若事务内只按 id 无条件 update，一个一次性邀请码就能兑出两个 core（已实测复现）。
-  let role = 'user';
+  const role = 'core';
   // 邀请码的原子占用通过回调交给内核执行 —— 内核里因此没有一行邀请码语义。
   // 收成常量是因为闭包里 TS 不保留对 let 的收窄。
   // 【为什么不需要「撤销」回调】占用与建号在**同一个事务**里：回调抛错（被另一个并发
@@ -162,7 +164,6 @@ export async function registerUser(input: RegisterInput): Promise<RegisterResult
     if (!record || record.isUsed) {
       return { ok: false, code: 400, message: '邀请码错误' };
     }
-    role = 'core';
     const code = inviteCode;
     // 原子占用邀请码（与 verifyInviteAndUpgrade 同款）：
     // 条件里必须带 isUsed:false —— 并发时只有一个事务能把 count 拿到 1，
@@ -201,10 +202,7 @@ export async function registerUser(input: RegisterInput): Promise<RegisterResult
     return { ok: false, ...mapCreateFailure(r.failure, '注册') };
   }
 
-  let message = '注册成功';
-  // 尾缀判「本次是否用了邀请码」，不判 role —— 内核的 role 现在也可能来自站长建号入口。
-  if (beforeCommit) message += '，您的账号已通过邀请码验证';
-  return { ok: true, code: 200, message, user: { id: r.id, username, role: r.role, sessionVersion: 0 } };
+  return { ok: true, code: 200, message: '注册成功', user: { id: r.id, username, role: r.role, sessionVersion: 0 } };
 }
 
 // ── 建号内核（公开注册 / 站长建号共用）────────────────────────────────────────

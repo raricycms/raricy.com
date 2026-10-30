@@ -1,4 +1,3 @@
-import { resolvePublicClipRefs } from '../clipboard-service';
 import { adaptReactiveReferences, ADAPTER_VERSION } from './ref-adapter';
 import { createServiceReferenceReader } from './ref-reader';
 import { reactiveContentHash } from './cache';
@@ -13,10 +12,8 @@ export async function prepareReactiveDocument(
     clientIp?: string;
   },
 ) {
-  const externalClips = context.mode === 'external' ? await resolvePublicClipRefs(source) : undefined;
   const result = await adaptReactiveReferences(source, {
     mode: context.mode,
-    externalClips,
     resolve: context.mode === 'expand'
       ? createServiceReferenceReader('expand', context.viewer, context.clientIp)
       : undefined,

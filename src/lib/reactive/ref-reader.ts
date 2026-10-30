@@ -21,7 +21,7 @@ export function createServiceReferenceReader(
 ): ReferenceReader {
   return async (slot): Promise<ResolvedReference | undefined> => {
     if (slot.kind === 'image' || slot.kind === 'audio') return undefined;
-    if (mode === 'external' && slot.kind !== 'clipboard') return undefined;
+    if (mode === 'external') return undefined;
     if (mode === 'expand' && !isCoreUser(viewer)) return { status: 'forbidden' };
     if (!/^[A-Za-z0-9]+$/.test(slot.ref)) return undefined;
     try {
@@ -29,16 +29,15 @@ export function createServiceReferenceReader(
         if (slot.ref.length !== 8) return undefined;
         const result = await getClip(
           slot.ref,
-          mode === 'expand' ? viewer!.id : undefined,
-          mode === 'expand' && isOwner(viewer),
+          viewer!.id,
+          isOwner(viewer),
         );
         if (!result.ok) {
-          return mode === 'external' ? undefined : { status: result.reason === 'forbidden' ? 'forbidden' : 'error' };
+          return { status: result.reason === 'forbidden' ? 'forbidden' : 'error' };
         }
-        if (mode === 'external' && !result.clip.publicity) return undefined;
         const clip = result.clip as typeof result.clip & { format?: unknown };
         const format = parseContentFormat(clip.format);
-        if (!format) return mode === 'external' ? undefined : { status: 'error' };
+        if (!format) return { status: 'error' };
         return {
           status: 'ready', title: clip.title, format, content: clip.content,
           version: clip.version,
@@ -74,7 +73,7 @@ export function createServiceReferenceReader(
       };
     } catch {
       // Availability failures are local to this reference; private details stay server-side.
-      return mode === 'external' ? undefined : { status: 'error' };
+      return { status: 'error' };
     }
   };
 }
