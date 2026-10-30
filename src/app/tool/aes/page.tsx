@@ -53,8 +53,18 @@ export default function AesToolPage() {
   const [key, setKey] = useState('');
   const [keyType, setKeyType] = useState('text');
   const [iv, setIv] = useState('');
+  const [ivAuto, setIvAuto] = useState(true);
   const [outFormat, setOutFormat] = useState('hex');
   const [status, setStatus] = useState('');
+
+  const invalidate = () => {
+    setRight('');
+    setStatus('');
+  };
+
+  function ivLength(m: string): number {
+    return m === 'GCM' ? 12 : 16;
+  }
 
   async function getKey(m: string): Promise<CryptoKey> {
     const keyLenBits = parseInt(keyLen, 10);
@@ -64,17 +74,25 @@ export default function AesToolPage() {
   }
 
   function getIv(m: string): Uint8Array {
-    const ivHex = iv || '';
+    const len = ivLength(m);
     let ivBytes: Uint8Array;
-    if (ivHex) {
-      ivBytes = hexToBytes(ivHex);
+    if (iv && !ivAuto) {
+      ivBytes = hexToBytes(iv);
     } else {
-      ivBytes = m === 'CBC' ? crypto.getRandomValues(new Uint8Array(16)) : crypto.getRandomValues(new Uint8Array(12));
+      // 每次加密都换新 IV/Nonce；只有用户手填过（ivAuto=false）才复用。
+      ivBytes = crypto.getRandomValues(new Uint8Array(len));
       setIv(bytesToHex(ivBytes));
+      setIvAuto(true);
     }
-    if (m === 'CBC' && ivBytes.length !== 16) throw new Error('CBC 模式要求 16 字节 IV');
-    if ((m === 'GCM' || m === 'CTR') && ivBytes.length !== 12) throw new Error('GCM/CTR 需要 12 字节 Nonce');
+    if (ivBytes.length !== len) {
+      throw new Error(`${m} 需要 ${len} 字节 ${m === 'GCM' ? 'Nonce' : 'IV/计数器'}`);
+    }
     return ivBytes;
+  }
+
+  function errorText(e: unknown): string {
+    const msg = e instanceof Error ? e.message : '';
+    return msg || '操作失败，请检查密钥、IV 与密文格式';
   }
 
   function encodeOut(bytes: Uint8Array): string {
@@ -94,18 +112,13 @@ export default function AesToolPage() {
       if (m === 'GCM') {
         result = await crypto.subtle.encrypt({ name: 'AES-GCM', iv: ivBytes as BufferSource }, cryptoKey, data);
       } else if (m === 'CBC') {
-        // PKCS#7 padding by hand
-        const blockSize = 16;
-        const padLen = blockSize - (data.length % blockSize);
-        const padded = new Uint8Array(data.length + padLen);
-        padded.set(data);
-        padded.fill(padLen, data.length);
-        result = await crypto.subtle.encrypt({ name: 'AES-CBC', iv: ivBytes as BufferSource }, cryptoKey, padded);
+        // WebCrypto 的 AES-CBC 自己会补 PKCS#7；这里再手工补一层会让密文多一整块。
+        result = await crypto.subtle.encrypt({ name: 'AES-CBC', iv: ivBytes as BufferSource }, cryptoKey, data);
       } else {
+        // CTR 的 counter 是完整的 16 字节分组；12 字节会直接抛 OperationError。
         result = await crypto.subtle.encrypt({ name: 'AES-CTR', counter: ivBytes as BufferSource, length: 64 }, cryptoKey, data);
       }
       const out = new Uint8Array(result);
-      // prepend IV for convenience (hex/base64)
       const combined = new Uint8Array(ivBytes.length + out.length);
       combined.set(ivBytes, 0);
       combined.set(out, ivBytes.length);
@@ -113,7 +126,7 @@ export default function AesToolPage() {
       setStatus('完成（输出已包含 IV/Nonce 前缀）');
     } catch (e) {
       setRight('');
-      setStatus('失败: ' + (e && (e as Error).message ? (e as Error).message : ''));
+      setStatus('失败: ' + errorText(e));
     }
   }
 
@@ -122,35 +135,25 @@ export default function AesToolPage() {
       const m = mode;
       const cryptoKey = await getKey(m);
       const input = decodeIn(right || '');
-      // assume input prefixed with IV
-      const ivLen = m === 'CBC' ? 16 : 12;
-      if (input.length <= ivLen) throw new Error('密文长度不足');
+      // 密文自带 IV/Nonce 前缀
+      const ivLen = ivLength(m);
+      if (input.length <= ivLen) throw new Error('密文长度不足，或缺少 IV/Nonce 前缀');
       const ivBytes = input.slice(0, ivLen);
       const ciphertext = input.slice(ivLen);
       let plainBuf: ArrayBuffer;
       if (m === 'GCM') {
         plainBuf = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: ivBytes as BufferSource }, cryptoKey, ciphertext as BufferSource);
       } else if (m === 'CBC') {
-        const buf = await crypto.subtle.decrypt({ name: 'AES-CBC', iv: ivBytes as BufferSource }, cryptoKey, ciphertext as BufferSource);
-        // remove PKCS#7 padding
-        const bytes = new Uint8Array(buf);
-        const pad = bytes[bytes.length - 1];
-        if (pad < 1 || pad > 16 || pad > bytes.length) throw new Error('填充无效');
-        // Verify all padding bytes
-        for (let i = bytes.length - pad; i < bytes.length; i++) {
-          if (bytes[i] !== pad) throw new Error('填充无效');
-        }
-        const unpadded = bytes.slice(0, bytes.length - pad);
-        plainBuf = unpadded.buffer;
+        // WebCrypto 解密时会自己校验并去掉 PKCS#7，不需要再手工去填充。
+        plainBuf = await crypto.subtle.decrypt({ name: 'AES-CBC', iv: ivBytes as BufferSource }, cryptoKey, ciphertext as BufferSource);
       } else {
         plainBuf = await crypto.subtle.decrypt({ name: 'AES-CTR', counter: ivBytes as BufferSource, length: 64 }, cryptoKey, ciphertext as BufferSource);
       }
-      setRight('');
       setLeft(td.decode(new Uint8Array(plainBuf)));
       setStatus('完成');
     } catch (e) {
-      setLeft('');
-      setStatus('失败: ' + (e && (e as Error).message ? (e as Error).message : ''));
+      // 解密失败不要把用户已经输入的明文清掉。
+      setStatus('失败: ' + errorText(e));
     }
   }
 
@@ -158,6 +161,7 @@ export default function AesToolPage() {
     const t = left;
     setLeft(right);
     setRight(t);
+    setStatus('已交换');
   };
   const copyRight = async () => {
     try {
@@ -203,13 +207,17 @@ export default function AesToolPage() {
                 placeholder="输入待加密明文，或在右侧粘贴密文以解密"
               />
 
-              <div className="row g-3 mt-2">
+              <div className="row g-3 mt-2 tool-options">
                 <div className="col-12 col-md-6">
                   <label className="form-label">模式</label>
                   <select
                     className="form-select"
                     value={mode}
-                    onChange={(e) => setMode(e.target.value)}
+                    onChange={(e) => {
+                      setMode(e.target.value);
+                      invalidate();
+                      if (ivAuto) setIv('');
+                    }}
                   >
                     <option value="GCM">GCM</option>
                     <option value="CBC">CBC</option>
@@ -221,52 +229,68 @@ export default function AesToolPage() {
                   <select
                     className="form-select"
                     value={keyLen}
-                    onChange={(e) => setKeyLen(e.target.value)}
+                    onChange={(e) => {
+                      setKeyLen(e.target.value);
+                      invalidate();
+                    }}
                   >
                     <option value="128">128</option>
                     <option value="192">192</option>
                     <option value="256">256</option>
                   </select>
                 </div>
-                <div className="col-12 col-md-8">
+                <div className="col-12 tool-options__wide">
                   <label className="form-label">密钥（文本或十六进制）</label>
                   <input
                     className="form-control mono"
                     value={key}
-                    onChange={(e) => setKey(e.target.value)}
+                    onChange={(e) => {
+                      setKey(e.target.value);
+                      invalidate();
+                    }}
                     placeholder="示例：secret or 001122... (hex)"
                   />
                 </div>
-                <div className="col-12 col-md-4">
+                <div className="col-12 col-md-6">
                   <label className="form-label">密钥类型</label>
                   <select
                     className="form-select"
                     value={keyType}
-                    onChange={(e) => setKeyType(e.target.value)}
+                    onChange={(e) => {
+                      setKeyType(e.target.value);
+                      invalidate();
+                    }}
                   >
                     <option value="text">文本</option>
                     <option value="hex">十六进制</option>
                   </select>
                 </div>
-                <div className="col-12 col-md-8">
-                  <label className="form-label">IV/Nonce（十六进制）</label>
-                  <input
-                    className="form-control mono"
-                    value={iv}
-                    onChange={(e) => setIv(e.target.value)}
-                    placeholder="GCM/CTR 推荐 12 字节；CBC 16 字节"
-                  />
-                </div>
-                <div className="col-12 col-md-4">
-                  <label className="form-label">输出格式</label>
+                <div className="col-12 col-md-6">
+                  <label className="form-label">密文格式（输入 / 输出）</label>
                   <select
                     className="form-select"
                     value={outFormat}
-                    onChange={(e) => setOutFormat(e.target.value)}
+                    onChange={(e) => {
+                      setOutFormat(e.target.value);
+                      invalidate();
+                    }}
                   >
                     <option value="hex">Hex</option>
                     <option value="base64">Base64</option>
                   </select>
+                </div>
+                <div className="col-12 tool-options__wide">
+                  <label className="form-label">IV/Nonce（十六进制）</label>
+                  <input
+                    className="form-control mono"
+                    value={iv}
+                    onChange={(e) => {
+                      setIv(e.target.value);
+                      setIvAuto(false);
+                      invalidate();
+                    }}
+                    placeholder="GCM 12 字节；CBC / CTR 16 字节"
+                  />
                 </div>
               </div>
             </div>
