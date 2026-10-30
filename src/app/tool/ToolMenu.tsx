@@ -3,13 +3,14 @@
 // 工具箱菜单。
 // 搜索、过滤、分组与卡片均走 tool-new-* BEM 类。
 import Link from 'next/link';
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import {
   ArrowRight,
   AudioLines,
   Binary,
   Braces,
   Calculator,
+  ChevronDown,
   Clipboard,
   Code,
   FileCog,
@@ -18,6 +19,7 @@ import {
   Link2,
   Lock,
   Mail,
+  Search,
   Star,
   Vote,
   Wrench,
@@ -127,7 +129,7 @@ const MATH: Tool[] = [
 const CODEC: Tool[] = [
   {
     cat: 'codec',
-    kw: 'base base64 base58 编码 解码',
+    kw: 'base base16 base32 base36 base58 base62 base64 base85 base91 base92 编码 解码',
     href: '/tool/base',
     icon: Braces,
     title: 'Base 编码',
@@ -136,7 +138,7 @@ const CODEC: Tool[] = [
   },
   {
     cat: 'codec',
-    kw: 'hex 十六进制 字节 bytes 转换',
+    kw: 'hex 十六进制 字节 bytes 文件 查看 编辑',
     href: '/tool/hex',
     icon: Binary,
     title: 'Hex 编码',
@@ -174,7 +176,7 @@ const CODEC: Tool[] = [
 const CRYPTO: Tool[] = [
   {
     cat: 'crypto',
-    kw: 'hash 哈希 sha md5 校验',
+    kw: 'hash 哈希 sha sha-1 sha-256 sha-512 md5 hmac 校验',
     href: '/tool/hash',
     icon: Hash,
     title: '哈希计算',
@@ -183,7 +185,7 @@ const CRYPTO: Tool[] = [
   },
   {
     cat: 'crypto',
-    kw: 'aes 加密 解密 对称 cbc gcm',
+    kw: 'aes 加密 解密 对称 cbc ctr gcm',
     href: '/tool/aes',
     icon: Lock,
     title: 'AES',
@@ -236,146 +238,132 @@ export default function ToolMenu({ isCore }: { isCore: boolean }) {
   const [cat, setCat] = useState<'all' | Cat>('all');
   const [moreOpen, setMoreOpen] = useState(false);
 
+  const query = q.trim().toLowerCase();
   const site = SITE.filter((t) => !t.coreOnly || isCore);
+
   const match = (t: Tool) => {
     const okCat = cat === 'all' || t.cat === cat;
-    const okQ =
-      !q.trim() ||
-      (t.kw + ' ' + t.title).toLowerCase().includes(q.toLowerCase().trim());
-    return okCat && okQ;
+    const haystack = [t.kw, t.title, t.desc, ...t.tags].join(' ').toLowerCase();
+    return okCat && (!query || haystack.includes(query));
   };
 
-  const showMore = moreOpen;
+  const blocks = [
+    { key: 'site', title: '站务工具', items: site.filter(match) },
+    { key: 'file', title: '文件处理', items: FILE_TOOLS.filter(match) },
+    { key: 'math', title: '数学 / 几何', items: MATH.filter(match) },
+    { key: 'codec', title: '编码 / 解码', items: CODEC.filter(match), more: true },
+    { key: 'crypto', title: '加密 / 安全', items: CRYPTO.filter(match), more: true },
+  ];
 
-  const blocks = useMemo(
-    () => [
-      { key: 'site', title: '站务工具', items: site.filter(match) },
-      { key: 'file', title: '文件处理', items: FILE_TOOLS.filter(match) },
-      { key: 'math', title: '数学 / 几何', items: MATH.filter(match) },
-      {
-        key: 'codec',
-        title: '编码 / 解码',
-        items: CODEC.filter(match),
-        more: true,
-      },
-      {
-        key: 'crypto',
-        title: '加密 / 安全',
-        items: CRYPTO.filter(match),
-        more: true,
-      },
-    ],
-    [q, cat, isCore]
-  );
+  const total = blocks.reduce((n, b) => n + b.items.length, 0);
+  // 选到「编码 / 解码」「加密 / 安全」时直接展开；搜索命中隐藏工具时也展开。
+  const showDev = moreOpen || cat === 'codec' || cat === 'crypto';
+  // 分类筛选时不再显示「收起」—— 那颗按钮会把用户刚筛出的唯一结果藏起来。
+  const showToggle = cat === 'all' && total > 0;
 
   return (
-    <div className="container">
+    <>
       <section className="tool-new-hero">
-        <h1 className="tool-new-hero__title">工具箱</h1>
-        <p className="tool-new-hero__description">
-          编码、转换、计算与站内工具。
-        </p>
-        <div className="tool-new-hero__search">
-          <input
-            type="text"
-            className="search-input"
-            placeholder="搜索工具或类别，例如：Base64、AES、哈希…"
-            aria-label="搜索工具"
-            value={q}
-            onChange={(e) => {
-              const v = e.target.value;
-              setQ(v);
-              if (v.trim()) setMoreOpen(true);
-            }}
-          />
-        </div>
-        <div className="tool-new-hero__filters">
-          {(
-            [
-              ['all', '全部'],
-              ['site', '站务工具'],
-              ['file', '文件处理'],
-              ['math', '数学 / 几何'],
-              ['codec', '编码 / 解码'],
-              ['crypto', '加密 / 安全'],
-            ] as Array<['all' | Cat, string]>
-          ).map(([c, label]) => (
-            <button
-              key={c}
-              type="button"
-              className={`filter-pill${cat === c ? ' active' : ''}`}
-              onClick={() => {
-                setCat(c);
-                if (c === 'codec' || c === 'crypto') setMoreOpen(true);
+        <div className="container">
+          <h1 className="tool-new-hero__title">工具箱</h1>
+          <p className="tool-new-hero__description">
+            编码、转换、计算与站内工具。
+          </p>
+          <div className="tool-new-hero__search">
+            <input
+              type="text"
+              className="search-input"
+              placeholder="搜索工具或类别，例如：Base64、AES、哈希…"
+              aria-label="搜索工具"
+              value={q}
+              onChange={(e) => {
+                const v = e.target.value;
+                setQ(v);
+                if (v.trim()) setMoreOpen(true);
               }}
-              aria-pressed={cat === c}
-            >
-              {label}
-            </button>
-          ))}
+            />
+          </div>
+          <div className="tool-new-hero__filters">
+            {(
+              [
+                ['all', '全部'],
+                ['site', '站务工具'],
+                ['file', '文件处理'],
+                ['math', '数学 / 几何'],
+                ['codec', '编码 / 解码'],
+                ['crypto', '加密 / 安全'],
+              ] as Array<['all' | Cat, string]>
+            ).map(([c, label]) => (
+              <button
+                key={c}
+                type="button"
+                className={`filter-pill${cat === c ? ' active' : ''}`}
+                onClick={() => setCat(c)}
+                aria-pressed={cat === c}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
         </div>
       </section>
 
-      <section className="tool-new-grid">
-        {blocks[0].items.length > 0 && (
-          <div className="tool-new-grid__section">
-            <h2 className="tool-new-grid__section-title">站务工具</h2>
-            <div className="tool-new-grid__tools">
-              {blocks[0].items.map((t) => (
-                <ToolCard t={t} key={t.title} />
-              ))}
+      <div className="container">
+        <section className="tool-new-grid">
+          {total === 0 ? (
+            <div className="tool-new-empty">
+              <Search className="tool-new-empty__icon" aria-hidden="true" />
+              <p className="tool-new-empty__text">没有匹配的工具</p>
+              <p className="tool-new-empty__subtext">
+                换个关键词，或把分类切回「全部」。
+              </p>
             </div>
-          </div>
-        )}
-
-        {blocks[1].items.length > 0 && (
-          <div className="tool-new-grid__section">
-            <h2 className="tool-new-grid__section-title">文件处理</h2>
-            <div className="tool-new-grid__tools">
-              {blocks[1].items.map((t) => (
-                <ToolCard t={t} key={t.title} />
-              ))}
-            </div>
-          </div>
-        )}
-
-        {blocks[2].items.length > 0 && (
-          <div className="tool-new-grid__section">
-            <h2 className="tool-new-grid__section-title">数学 / 几何</h2>
-            <div className="tool-new-grid__tools">
-              {blocks[2].items.map((t) => (
-                <ToolCard t={t} key={t.title} />
-              ))}
-            </div>
-          </div>
-        )}
-
-        <button
-          type="button"
-          className="filter-pill"
-          aria-expanded={showMore}
-          onClick={() => setMoreOpen((v) => !v)}
-          style={{ display: 'inline-block', margin: '16px auto' }}
-        >
-          {showMore ? '收起开发者工具' : '更多开发者工具'}
-        </button>
-
-        {showMore &&
-          blocks
-            .filter((b) => b.more)
-            .map((b) =>
-              b.items.length > 0 ? (
-                <div className="tool-new-grid__section" data-section={b.key} key={b.key}>
-                  <h2 className="tool-new-grid__section-title">{b.title}</h2>
-                  <div className="tool-new-grid__tools">
-                    {b.items.map((t) => (
-                      <ToolCard t={t} key={t.title} />
-                    ))}
+          ) : (
+            <>
+              {blocks.slice(0, 3).map((b) =>
+                b.items.length > 0 ? (
+                  <div className="tool-new-grid__section" key={b.key}>
+                    <h2 className="tool-new-grid__section-title">{b.title}</h2>
+                    <div className="tool-new-grid__tools">
+                      {b.items.map((t) => (
+                        <ToolCard t={t} key={t.title} />
+                      ))}
+                    </div>
                   </div>
+                ) : null
+              )}
+
+              {showToggle && (
+                <div className="tool-new-more">
+                  <button
+                    type="button"
+                    className="filter-pill"
+                    aria-expanded={moreOpen}
+                    onClick={() => setMoreOpen((v) => !v)}
+                  >
+                    {moreOpen ? '收起开发者工具' : '更多开发者工具'}
+                    <ChevronDown aria-hidden="true" />
+                  </button>
                 </div>
-              ) : null
-            )}
-      </section>
-    </div>
+              )}
+
+              {showDev &&
+                blocks.slice(3).map((b) =>
+                  b.items.length > 0 ? (
+                    <div className="tool-new-grid__section" data-section={b.key} key={b.key}>
+                      <h2 className="tool-new-grid__section-title">{b.title}</h2>
+                      <div className="tool-new-grid__tools">
+                        {b.items.map((t) => (
+                          <ToolCard t={t} key={t.title} />
+                        ))}
+                      </div>
+                    </div>
+                  ) : null
+                )}
+            </>
+          )}
+        </section>
+      </div>
+    </>
   );
 }
