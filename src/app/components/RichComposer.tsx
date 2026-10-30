@@ -21,7 +21,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useEffect, useId, useRef, useState } from 'react';
-import { BookOpenText, HelpCircle, Check, IdCard, Image as ImageIcon, Images, Smile, X } from 'lucide-react';
+import { BookOpenText, Check, IdCard, Image as ImageIcon, Images, Smile, X } from 'lucide-react';
 import { IMAGE_ACCEPT } from '@/lib/image-client';
 import type { MentionScope } from '@/lib/mention-shared';
 import MentionInput from './MentionInput';
@@ -294,7 +294,6 @@ export default function RichComposer({
               if (f) onPickImage(f);
             }}
           />
-          <a className={`${className}__icon-btn`} href="/docs/guide/内容引用语法指南" target="_blank" rel="noreferrer" aria-label="格式与引用帮助" title="格式与引用帮助"><HelpCircle aria-hidden="true" /></a>
           {/* 右上角的关闭叉（只有传了 dismiss 才有，见上面的 prop 说明）。
               margin-left:auto 由 SCSS 给 —— 它把叉推到工具条右端 = 面板右上角。 */}
           {dismiss && (
