@@ -327,7 +327,7 @@ export const DOC_ENTRIES: readonly DocEntry[] = [
     group: 'dev',
     slug: 'plan/frontend-content-ia-audit',
     title: '全站前端文案与信息架构审计',
-    summary: '50 项文案与 IA 问题、小鱼干与每日一言目标结构、实施顺序及验收；调研完成，未实施。',
+    summary: '50 项问题及目标结构；补充邀请注册、成员模型、剪贴板站内共享和公开正文搜索设计，待实施。',
   },
   {
     group: 'dev',
