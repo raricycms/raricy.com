@@ -201,7 +201,7 @@ export default async function ExplorePage({
               <SearchRateLimited />
             ) : (
               <Suspense fallback={<ExploreListSkeleton />}>
-                <ExploreListSection result={result} qs={qs} searching={!!search} />
+                <ExploreListSection result={result} qs={qs} searching={!!search} query={search || ''} />
               </Suspense>
             )}
           </main>
@@ -221,13 +221,19 @@ async function ExploreListSection({
   result: pending,
   qs,
   searching,
+  query,
 }: {
   result: ReturnType<typeof listPublicBlogs>;
   qs: (page: number) => string;
   /** 是不是「搜出来的空」。空态要分这两种说法 —— 见下面的注释。 */
   searching: boolean;
+  query: string;
 }) {
-  const result = await pending;
+  let result: Awaited<typeof pending>;
+  try { result = await pending; } catch { return <div className="no-blogs"><p role="alert">搜索暂时不可用，请稍后重试。</p></div>; }
+  const notice = result.searchAvailability === 'metadata-only'
+    ? '正文索引暂不可用，当前仅搜索标题、简介和作者。'
+    : result.searchAvailability === 'partial' ? '部分文章的正文暂不可检索。' : null;
 
   if (result.blogs.length === 0) {
     return (
@@ -239,6 +245,7 @@ async function ExploreListSection({
             两种空要分开说：搜索无结果写成「这里还没有文章」，搜的人会以为自己搜错了
             地方。这与「限频提示不能写成没有结果」是同一条纪律的另一面 —— 文案必须
             指向真实原因。 */}
+        {notice && <p role="status">{notice}</p>}
         <p>{searching ? '没有找到匹配的文章' : '这里还没有文章'}</p>
       </div>
     );
@@ -246,6 +253,7 @@ async function ExploreListSection({
 
   return (
     <>
+      {notice && <p role="status">{notice}</p>}
       <div className="blog-list">
         {result.blogs.map((b) => (
           <article key={b.id} className="blog-item" id={`id${b.id}`}>
@@ -259,7 +267,7 @@ async function ExploreListSection({
                   却翻不到评论是自相矛盾的；点赞与鱼干更是站内的事。这不是漏了。 */}
             </div>
             {/* 纯文本插值：简介是原始 markdown 片段，绝不进 dangerouslySetInnerHTML */}
-            <p className="blog-description">{b.description}</p>
+            <p className="blog-description">{b.snippet ? <SearchSnippet text={b.snippet} query={query} /> : b.description}</p>
             <div className="menu-blog-meta">
               <div className="blog-author">
                 <Link href={`/u/${b.authorId}`} className="blog-author-link" title={b.author?.username ?? ''}>
@@ -321,4 +329,20 @@ function ExploreListSkeleton() {
       ))}
     </div>
   );
+}
+
+function SearchSnippet({ text, query }: { text: string; query: string }) {
+  if (!query) return <>{text}</>;
+  const folded = text.toLowerCase();
+  const needle = query.toLowerCase();
+  const parts = [];
+  let from = 0;
+  let at = folded.indexOf(needle);
+  while (at !== -1) {
+    parts.push(text.slice(from, at), <mark key={at}>{text.slice(at, at + query.length)}</mark>);
+    from = at + query.length;
+    at = folded.indexOf(needle, from);
+  }
+  parts.push(text.slice(from));
+  return <>{parts}</>;
 }

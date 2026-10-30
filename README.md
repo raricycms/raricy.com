@@ -70,6 +70,8 @@ npm run dev                              # http://localhost:3000
 
 ## 工具脚本
 
+公开正文搜索：迁移后执行 `npm run search:rebuild` 回填历史文章；`npm run search:benchmark` 在系统临时目录验证合成语料性能。
+
 | 命令 | 作用 |
 |------|------|
 | `npm run dev` / `start` | 本地开发 / 生产启动，主站与实时服务共同启停 |

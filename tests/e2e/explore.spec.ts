@@ -121,16 +121,16 @@ test.describe('对外列表 /explore', () => {
     await expect(card.locator('.blog-author')).toContainText(author.username);
   });
 
-  test('搜索命中标题与作者名，**绝不命中正文**', async ({ page }) => {
+  test('搜索命中自身正文并展示高亮片段，标题与作者仍可查', async ({ page }) => {
     const tag = uniqueTag();
     const author = await ensureAuthor(page);
     const pub = await createBlog(page, 'public', `探索搜索-${tag}`);
     await becomeAnonymous(page);
 
-    // 正文里的哨兵串搜不到 —— 这是「对外搜索不碰正文」的行为侧保证，
-    // 结构侧的保证在 blog-service 的 PublicSearchField = Exclude<SearchField, 'content'>
+    // 自身正文索引命中，资源引用不参与搜索。
     await page.goto(`/explore?search=${encodeURIComponent(BODY_MARKER)}`);
-    await expect(page.locator('.no-blogs'), '正文里的词必须搜不到').toBeVisible();
+    await expect(page.locator('.blog-list')).toContainText(pub.title);
+    await expect(page.locator('.blog-description mark').first()).toContainText(BODY_MARKER);
 
     // 标题搜得到
     await page.goto(`/explore?search=${encodeURIComponent(`探索搜索-${tag}`)}`);

@@ -621,8 +621,10 @@ ftyp 品牌 / 声明归一化 / `planImageUpload` —— 服务端与浏览器�
   而且 `/api/spider/favorites/:id` 同时是**我们自家前端**的数据源（`[@六位]` 卡片）。
 - **不给 `listBlogs` 加可见性过滤**（它是**站内**列表，调用方都是 core+）。对外列表
   **已经另起了入口**（`listPublicBlogs`）—— 已有一条钉现状的用例，谁加了过滤会当场红。
-- **对外搜索绝不碰正文**，且那件事是**编译期**保证（`PublicSearchField = Exclude<SearchField,
-  'content'>`），不靠一句提醒。
+- **对外正文仅经公开索引检索**（`public-blog-search.ts`）：不往匿名查询添加原始正文
+  LIKE。FTS 候选、计数、分页与片段都受当前 public 白名单约束。原文/格式/可见性/软删除
+  改动先由 SQL 触发器撤旧索引，服务写入后重建；历史数据用 `npm run search:rebuild` 回填。
+  索引不完整时明确降级为元数据查询，绝不索引引用资源、隐藏数据或失败的 Reactive 源码。
 - 词汇（三档的名字 / 白名单 / 解析 / **两张人话表**）住在 `src/lib/blog-visibility.ts`，
   那是个**零依赖**模块：发文表单与文章卡片都是客户端组件，而 `blog-service` 拖着 prisma
   进不了客户端包。两张表都是 `Record<BlogVisibility, string>`，加第四档时 tsc 会因缺键报错。

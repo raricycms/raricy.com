@@ -1950,6 +1950,8 @@ describe('可见性 / 对外出口', () => {
 async function mkBlog(v: string, over: Parameters<typeof makeBlog>[0] = {}) {
   const b = await makeBlog(over);
   await prisma.blog.update({ where: { id: b.id }, data: { visibility: v } });
+  const { syncPublicBlogSearch } = await import('@/lib/public-blog-search');
+  await syncPublicBlogSearch(b.id);
   return b.id;
 }
 
@@ -2031,7 +2033,7 @@ describe('可见性 / listPublicBlogs —— 对外列表的唯一出口', () =>
     expect(row, '行里不该有 fishCount').not.toHaveProperty('fishCount');
   });
 
-  it('★ 搜索只命中标题 / 简介 / 作者名 —— **正文绝不参与**', async () => {
+  it('★ 搜索命中标题、简介、作者与公开自身正文', async () => {
     const author = await makeUser({ role: 'core', username: '搜得到的作者' });
     const id = await mkBlog('public', {
       authorId: author.id,
@@ -2043,7 +2045,7 @@ describe('可见性 / listPublicBlogs —— 对外列表的唯一出口', () =>
     const hit = async (q: string) =>
       (await listPublicBlogs({ search: q, perPage: 50 })).blogs.map((b) => b.id);
 
-    expect(await hit('正文丙哨兵串'), '正文里的词必须搜不到 —— 对外搜索不碰正文').toEqual([]);
+    expect(await hit('正文丙哨兵串'), '公开自身正文通过索引命中').toEqual([id]);
     expect(await hit('标题甲')).toEqual([id]);
     expect(await hit('简介乙')).toEqual([id]);
     expect(await hit('搜得到的作者')).toEqual([id]);

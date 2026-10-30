@@ -41,7 +41,9 @@
     "prepare:converter": "node scripts/copy-converter-assets.mjs",
     "converter:check": "node scripts/copy-converter-assets.mjs --check",
     "postinstall": "node scripts/copy-mathjax-fonts.mjs && node scripts/copy-emoji-assets.mjs && node scripts/copy-converter-assets.mjs",
-    "realtime:build": "tsc -p services/realtime/tsconfig.json"
+    "realtime:build": "tsc -p services/realtime/tsconfig.json",
+    "search:rebuild": "tsx scripts/rebuild-public-search.mts",
+    "search:benchmark": "tsx scripts/benchmark-public-search.mts"
   },
   "dependencies": {
     "@codemirror/commands": "6.11.1",

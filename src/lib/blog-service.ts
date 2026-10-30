@@ -46,6 +46,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { prisma } from './db';
+import { searchPublicBlogIds, refreshPublicBlogSearch, type SearchAvailability } from './public-blog-search';
 import { nowForDb, dayStart, todayStr, hoursUntil } from './db-time';
 import { ymdhms, categoryFullPath } from './format';
 import { rateLimit, RULES } from './rate-limit';
@@ -544,6 +545,7 @@ export interface PublicBlogRow {
   authorId: string;
   author: { username: string | null; frameUrl: string | null } | null;
   category: { name: string; parentId: number | null; parent: { name: string } | null } | null;
+  snippet?: string | null;
 }
 
 export interface PublicListParams {
@@ -556,22 +558,12 @@ export interface PublicListParams {
 const PUBLIC_DEFAULT_PER_PAGE = 20;
 const PUBLIC_MAX_PER_PAGE = 50;
 
-/**
- * 对外搜索允许命中的字段。`Exclude<…, 'content'>` 不是装饰 —— 它让「对外搜索绝不
- * 碰正文」成为**编译期**的事实：谁想把 `content` 加进这张表，tsc 当场拒绝，
- * 而不是等到线上匿名用户把 48.6MB 正文扫了一遍才发现。
- *
- * **刻意与 `DEFAULT_SEARCH_FIELDS` 分开写**：两者今天恰好相同，但它们回答的是不同
- * 的问题 —— 站内默认集合可以随站内需要放宽（比如把正文加进去），对外这一份永远
- * 不许。绑成一个常量的话，站内那次放宽会**静默**传导到匿名页面上。
- *
- * 行为侧另有一条用例钉住：拿一段**只在正文里**的哨兵串搜，必须搜不到。
- */
-type PublicSearchField = Exclude<SearchField, 'content'>;
+/** 元数据匹配与正文索引分开；正文仅经 public-blog-search 的受控出口。 */
+type PublicMetadataField = Exclude<SearchField, 'content'>;
 
-const PUBLIC_SEARCH_FIELDS: readonly PublicSearchField[] = ['title', 'description', 'author'];
+const PUBLIC_METADATA_FIELDS: readonly PublicMetadataField[] = ['title', 'description', 'author'];
 
-const PUBLIC_SEARCH_WHERE: Record<PublicSearchField, (q: string) => Prisma.BlogWhereInput> = {
+const PUBLIC_METADATA_WHERE: Record<PublicMetadataField, (q: string) => Prisma.BlogWhereInput> = {
   title: (q) => ({ title: { contains: q } }),
   description: (q) => ({ description: { contains: q } }),
   author: (q) => ({ author: { is: { username: { contains: q } } } }),
@@ -583,12 +575,10 @@ const PUBLIC_SEARCH_WHERE: Record<PublicSearchField, (q: string) => Prisma.BlogW
  * 与 `listBlogs` 的四点差异，都是刻意的：
  *   · where 以 `...INDEXABLE_BLOG_WHERE` 起手（不是 `ignore: false`）—— 与 sitemap 同源；
  *   · **不做** `excludeFromAll` / `focusHidden` 过滤（不变量【6】）；
- *   · 搜索字段写死成 `PUBLIC_SEARCH_FIELDS`，**不接受** `searchFields` 参数 ——
- *     正文只可能经那个参数进来，而没有这个参数就进不来；
+ *   · 元数据走固定字段，正文仅走 public-blog-search 的受控索引；
  *   · 不 select 任何计数。
  *
- * 排序恒按发布时间倒序：**不读也不写** `blog-sort-pref` 那个 cookie —— 对一个
- * 面向站外（含爬虫）的页面，设偏好 cookie 没有意义，只会平白多一个真相源。
+ * 无查询按发布时间倒序；搜索按相关性、发布时间与 ID 排序，不使用站内排序偏好。
  */
 export async function listPublicBlogs(params: PublicListParams = {}): Promise<{
   blogs: PublicBlogRow[];
@@ -598,6 +588,7 @@ export async function listPublicBlogs(params: PublicListParams = {}): Promise<{
   pages: number;
   hasPrev: boolean;
   hasNext: boolean;
+  searchAvailability?: SearchAvailability;
 }> {
   const page = Math.max(1, params.page ?? 1);
   const perPage = Math.min(
@@ -623,10 +614,34 @@ export async function listPublicBlogs(params: PublicListParams = {}): Promise<{
   }
 
   const q = params.search?.trim() || null;
+  let searchAvailability: SearchAvailability | undefined;
   if (q) {
+    try {
+      return await prisma.$transaction(async tx => {
+        const categoryIds = where.categoryId && typeof where.categoryId === 'object' && 'in' in where.categoryId
+          ? (where.categoryId.in as number[]) : typeof where.categoryId === 'number' ? [where.categoryId] : null;
+        const found = await searchPublicBlogIds(tx, q, categoryIds, page, perPage);
+        const hits = new Map(found.hits.map(h => [h.id, h]));
+        const blogs = await tx.blog.findMany({
+          where: { ...where, id: { in: found.hits.map(h => h.id) } },
+          select: { id:true,title:true,description:true,createdAt:true,authorId:true,
+            content:{select:{updatedAt:true}},
+            author:{select:{username:true,equippedFrameKey:true,equippedFrameExpiresAt:true}},
+            category:{select:{name:true,parentId:true,parent:{select:{name:true}}}} },
+        });
+        const rows = blogs.sort((a,b) => found.hits.findIndex(h=>h.id===a.id)-found.hits.findIndex(h=>h.id===b.id)).map(b => ({
+          ...b, author: { username: b.author.username, frameUrl: frameUrlFor(b.author) }, snippet: hits.get(b.id)?.snippet,
+        }));
+        const pages = Math.max(1, Math.ceil(found.total / perPage));
+        return { blogs: rows, total:found.total,page,perPage,pages,hasPrev:page>1,hasNext:page<pages,searchAvailability:found.availability };
+      });
+    } catch (error) {
+      console.error('[public-search] 查询降级', { error: error instanceof Error ? error.name : 'unknown' });
+      searchAvailability = 'metadata-only';
+    }
     // 用 AND 承载，而不是直接写 where.OR —— 上面栏目分支可能已经用了别的字段，
     // 写 OR 会与将来的条件互相覆盖（listBlogs 在同一处踩过这个形状）。
-    where.AND = [{ OR: PUBLIC_SEARCH_FIELDS.map((f) => PUBLIC_SEARCH_WHERE[f](q)) }];
+    where.AND = [{ OR: PUBLIC_METADATA_FIELDS.map((f) => PUBLIC_METADATA_WHERE[f](q)) }];
   }
 
   const [total, blogs] = await Promise.all([
@@ -660,7 +675,7 @@ export async function listPublicBlogs(params: PublicListParams = {}): Promise<{
   }));
 
   const pages = Math.max(1, Math.ceil(total / perPage));
-  return { blogs: rows, total, page, perPage, pages, hasPrev: page > 1, hasNext: page < pages };
+  return { blogs: rows, total, page, perPage, pages, hasPrev: page > 1, hasNext: page < pages, searchAvailability };
 }
 
 /**
@@ -1319,6 +1334,7 @@ export async function createBlog(authorId: string, data: ValidatedBlogData): Pro
       ? [prisma.reactiveSnapshot.create({ data: snapshot.row })]
       : []),
   ]);
+  await refreshPublicBlogSearch(blogId);
   return blogId;
 }
 
@@ -1548,6 +1564,7 @@ export async function updateBlog(
   }
 
   await prisma.$transaction(ops);
+  await refreshPublicBlogSearch(blogId);
 
   return { hasChanges, changesDetail };
 }
@@ -1590,6 +1607,7 @@ export async function setBlogVisibility(
     }),
   ]);
 
+  await refreshPublicBlogSearch(blogId);
   return {
     changed: true,
     from,

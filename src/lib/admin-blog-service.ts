@@ -6,6 +6,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { prisma } from './db';
+import { refreshPublicBlogSearch } from './public-blog-search';
 import type { Prisma } from '@prisma/client';
 import type { ServiceResult } from './admin-category-service';
 import { logAdminAction, type AdminResult } from './admin-user-service';
@@ -107,6 +108,7 @@ export async function setBlogIgnore(
   const blog = await prisma.blog.findUnique({ where: { id: blogId }, select: { id: true } });
   if (!blog) return { ok: false, message: '文章不存在' };
   await prisma.blog.update({ where: { id: blogId }, data: { ignore } });
+  await refreshPublicBlogSearch(blogId);
   return { ok: true, data: { id: blogId, ignore } };
 }
 
@@ -192,6 +194,7 @@ export async function restoreBlog(
   if (!blog.ignore) return { ok: false, code: 400, message: '该文章未被删除' };
 
   await prisma.blog.update({ where: { id: blogId }, data: { ignore: false } });
+  await refreshPublicBlogSearch(blogId);
 
   try {
     await logAdminAction({

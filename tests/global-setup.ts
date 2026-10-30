@@ -21,7 +21,7 @@ import path from 'node:path';
 import fs from 'node:fs';
 import crypto from 'node:crypto';
 import { TMP_DIR, TEMPLATE_DB, TEMPLATE_HASH, SQLITE_SIDECARS } from './helpers/db-template';
-import { CONSTRAINT_SQL_PATH, installTestConstraints } from './helpers/db-constraints';
+import { CONSTRAINT_SQL_PATH, SEARCH_SQL_PATH, installTestConstraints } from './helpers/db-constraints';
 
 /** 模板库「建好了」的最小体积。真实结构库 800KB+，空文件是 0 字节。 */
 const MIN_TEMPLATE_BYTES = 4096;
@@ -29,7 +29,7 @@ const MIN_TEMPLATE_BYTES = 4096;
 /** schema 与手写约束共同决定模板；SQL 改变也必须使缓存失效。 */
 function schemaHash(): string {
   const schema = fs.readFileSync(path.resolve(import.meta.dirname, '../prisma/schema.prisma'));
-  return crypto.createHash('sha256').update(schema).update(fs.readFileSync(CONSTRAINT_SQL_PATH)).digest('hex');
+  return crypto.createHash('sha256').update(schema).update(fs.readFileSync(CONSTRAINT_SQL_PATH)).update(fs.readFileSync(SEARCH_SQL_PATH)).digest('hex');
 }
 
 /**

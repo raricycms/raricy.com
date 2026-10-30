@@ -165,6 +165,7 @@ export async function resetDb() {
     'audio_hosting',
     'daily_checkins', 'fish_transactions', 'notifications',
     'admin_action_appeals', 'admin_action_logs',
+    'public_blog_search', 'public_blog_search_state',
     'user_bans', 'invite_codes',
     // OAuth 三表引用 users / oauth_applications —— 必须排在它们前面删，
     // 否则 DELETE users 撞外键（被下面的 catch 吞掉，表现为刷屏的 FK 报错）
@@ -319,6 +320,10 @@ export async function makeBlog(opts: Partial<{
       updatedAt: opts.contentUpdatedAt ?? nowForDb(),
     },
   });
+  if (blog.visibility === 'public' && !blog.ignore) {
+    const { syncPublicBlogSearch } = await import('../../src/lib/public-blog-search');
+    await syncPublicBlogSearch(id);
+  }
   return blog;
 }
 
