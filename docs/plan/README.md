@@ -12,6 +12,10 @@
 |------|----------------|
 | `docs/plan/frontend-content-ia-audit.md` | 全站 50 项文案与 IA 重构及产品规则已落地（2026-10-30）；含实现对账、本地验收及索引迁移/回填要求，待发布 |
 | `docs/plan/page-ui-audit.md` | 功能页面 UI 调研已完成（2026-10-30）；账户、签到、设置、商城等的视觉组织待决定及实施 |
+| `docs/plan/story-rebuild-plan.md` | 故事区重做方案与本地调研完成（2026-10-31）；初审/复审工具、作品编辑、美术、页面与发布均未实施 |
+| `docs/plan/story-rebuild-research.md` | 故事区调研依据：本地数据统计、旧故事与博客关系、实现约束；不等于全量内容分类或生产核验 |
+| `docs/plan/story-review-tooling.md` | 故事工作台设计：先人工复审闭环，再接 AI 初审、版本与作品关联；全部为待实施提案 |
+| `docs/plan/story-editorial-design.md` | 故事制作流程：作者确认、定稿、设计简报、配图、Codex 交接和可撤回出版；待作品试点 |
 | `docs/plan/yiwen-chapter-two.md` | 关卡设计与规则原型已完成；镜映、章节和多底稿交互未接入，玩家试玩待完成（2026-10-26） |
 | `docs/plan/page-transition-plan.md` | 仅方案与 P0 概念 demo；P0–P2 落地与验收未完成（2026-10-18） |
 | `docs/plan/maintenance-plan.md` | 样式整理与完整可见性轨迹待处理；翻译跳转入口待决策，具体事项及各自校对日期见正文 |

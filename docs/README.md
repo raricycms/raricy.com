@@ -92,6 +92,10 @@ GitHub 上仍是原来的反引号，两边不冲突。
 | `plan/README.md` | 计划索引：按状态查找剩余工作、实施记录与更新约定 |
 | `plan/frontend-content-ia-audit.md` | 全站 50 项文案与 IA 重构：邀请注册、成员边界、剪贴板站内共享、公开正文索引；实现对账、验收与发布步骤 |
 | `plan/page-ui-audit.md` | 功能页面 UI 调研：六类简陋问题、宽度来源、逐页优先级与局部重构范围（调研完成，界面未实施） |
+| `plan/story-rebuild-plan.md` | 故事区重做总计划：内容工具、三个作品样板、分批上线与持续选编（方案完成，未实施） |
+| `plan/story-rebuild-research.md` | 故事区本地调研：博客与旧故事统计、版本关系、现有实现及外部资料 |
+| `plan/story-review-tooling.md` | 故事初审与编辑工作台：只读导入、AI 全文覆盖、人工复审、作品建档与增量更新 |
+| `plan/story-editorial-design.md` | 故事编辑、美术与出版：作者确认、定稿、图文设计、出版包、迁移与撤回 |
 | `plan/daily-quote-refactor-plan.md` | 每日一言重构计划：社区一次选登、core+ 与博客门槛、版本重审、免费共鸣与收藏日期（本地实现及验收完成，待发布） |
 | `plan/daily-quote-repair-plan.md` | 每日一言修复方案：往期回看、累计一次共鸣、旧记录保留与界面整理（已实施，2026-10-29） |
 | `plan/craft-games-design.md` | 手工间设计：织布机、剪纸、水面印花的玩法、连贯沉浸的判据与落地记录；后续扩展未排期 |

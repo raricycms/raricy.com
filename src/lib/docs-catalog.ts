@@ -333,6 +333,30 @@ export const DOC_ENTRIES: readonly DocEntry[] = [
   },
   {
     group: 'dev',
+    slug: 'plan/story-rebuild-plan',
+    title: '故事区重做计划',
+    summary: '内容工具、三个作品样板、分批上线与持续选编；方案完成，尚未实施。',
+  },
+  {
+    group: 'dev',
+    slug: 'plan/story-rebuild-research',
+    title: '故事区重做调研依据',
+    summary: '本地博客与旧故事统计、来源版本关系、现有实现和外部资料。',
+  },
+  {
+    group: 'dev',
+    slug: 'plan/story-review-tooling',
+    title: '故事初审与编辑工作台设计',
+    summary: '只读导入、AI 全文覆盖、人工复审、作品建档与增量更新；待实施。',
+  },
+  {
+    group: 'dev',
+    slug: 'plan/story-editorial-design',
+    title: '故事编辑、美术与出版流程',
+    summary: '作者确认、定稿、图文设计、出版包、迁移与撤回；待作品试点。',
+  },
+  {
+    group: 'dev',
     slug: 'plan/daily-quote-refactor-plan',
     title: '每日一言重构计划',
     summary: '社区一次选登、博客门槛、拒稿重审、免费共鸣与收藏日期；本地验收完成，待发布。',
