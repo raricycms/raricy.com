@@ -325,6 +325,12 @@ export const DOC_ENTRIES: readonly DocEntry[] = [
   },
   {
     group: 'dev',
+    slug: 'plan/frontend-content-ia-audit',
+    title: '全站前端文案与信息架构审计',
+    summary: '50 项文案与 IA 问题、小鱼干与每日一言目标结构、实施顺序及验收；调研完成，未实施。',
+  },
+  {
+    group: 'dev',
     slug: 'plan/daily-quote-refactor-plan',
     title: '每日一言重构计划',
     summary: '社区一次选登、博客门槛、拒稿重审、免费共鸣与收藏日期；本地验收完成，待发布。',

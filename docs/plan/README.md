@@ -10,6 +10,7 @@
 
 | 文档 | 状态与剩余范围 |
 |------|----------------|
+| `docs/plan/frontend-content-ia-audit.md` | 全站文案与 IA 调研完成（2026-10-30）；50 项问题与建议及目标结构已整理，重构和浏览器验收未实施 |
 | `docs/plan/yiwen-chapter-two.md` | 关卡设计与规则原型已完成；镜映、章节和多底稿交互未接入，玩家试玩待完成（2026-10-26） |
 | `docs/plan/page-transition-plan.md` | 仅方案与 P0 概念 demo；P0–P2 落地与验收未完成（2026-10-18） |
 | `docs/plan/maintenance-plan.md` | 样式整理与完整可见性轨迹待处理；翻译跳转入口待决策，具体事项及各自校对日期见正文 |
