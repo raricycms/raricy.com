@@ -10,6 +10,7 @@ vi.mock('@/lib/reactive/snapshot-store', () => ({
 import { resolveReadRender, type ReadRenderInput } from '@/lib/reactive/read-render';
 import { compileReactiveSource } from '@/lib/reactive/compile';
 import { shouldFallbackToLegacy, shouldRejectReactive } from '@/lib/reactive/diagnostics';
+import { readReactiveSnapshot } from '@/lib/reactive/snapshot-store';
 
 const compileMock = vi.mocked(compileReactiveSource);
 const fallbackMock = vi.mocked(shouldFallbackToLegacy);
@@ -52,6 +53,7 @@ function input(overrides: Partial<ReadRenderInput> = {}): ReadRenderInput {
 }
 
 beforeEach(() => {
+  vi.mocked(readReactiveSnapshot).mockReset().mockResolvedValue({ status: 'missing' });
   compileMock.mockReset();
   fallbackMock.mockReset();
   fallbackMock.mockReturnValue(false);
@@ -69,6 +71,16 @@ afterEach(() => {
 });
 
 describe('resolveReadRender', () => {
+  it('成员静态阅读按本人权限展开引用，不复用访客快照，也不写回共享快照', async () => {
+    vi.mocked(readReactiveSnapshot).mockResolvedValue({ status: 'ready', payload: { document: { kind: 'document', children: [] }, hostData: {} } } as never);
+    compileMock.mockResolvedValue(outcome({ hostData: { clip: { kind: 'clipboard', status: 'ready', ref: 'AbCd1234', title: '成员片段' } } }));
+    const result = await resolveReadRender(input({ format: 'reactive', source: '[@AbCd1234]', mode: 'expand', viewer: { id: 'member', role: 'core' } }));
+    expect(result.choice.renderer).toBe('reactive-static');
+    expect(result.bundle?.hostData.clip.title).toBe('成员片段');
+    expect(result.snapshot).toBeUndefined();
+    expect(compileMock).toHaveBeenCalledWith(expect.objectContaining({ mode: 'expand', viewer: { id: 'member', role: 'core' } }));
+    expect(readReactiveSnapshot).not.toHaveBeenCalled();
+  });
   it('flags off → legacy markdown without compiling', async () => {
     const result = await resolveReadRender(input());
     expect(result.choice).toEqual({ renderer: 'legacy', reason: 'flag' });

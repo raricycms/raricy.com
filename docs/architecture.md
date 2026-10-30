@@ -1992,11 +1992,15 @@ reactive 源码交给旧 Markdown 解析器** —— 那不会抛错，只会把
 
 #### reactive 的静态正文
 
-`reactive-static` **先读同版本持久快照**（`reactive_snapshots`，迁移 36），再把
+`reactive-static` 对访客或不含站内资源引用的正文**先读同版本持久快照**（`reactive_snapshots`，迁移 36），再把
 `LocalDocument` 交给客户端组件 `ReactiveDocument mode="static"` 渲染：SSR 首屏即静态
 正文，无 JS 也可读，交互控件不挂事件。**不在服务端调 `react-dom/server`** —— Next 的
 RSC 编译链会拒绝它（构建期直接失败）；快照因此存的是可信编译产物（`LocalDocument` +
 external 权限下的 `hostData`，均为 JSON），不是作者上传的 HTML。
+
+成员阅读含剪贴板、投票或收藏夹引用的静态正文时，先按当前本人权限编译并渲染，
+避免访客快照让站内引用消失；这份成员结果不写回共享快照。访客始终保留站内引用原文，
+快照签名与宿主数据对账共同拒绝旧的片段载荷。
 
 内容版本 = `sha256(格式, 语法版本, 原文)`；正文与快照在**同一个事务**里写入，重编失败
 或命中回退码时整笔发布被拒。读取时版本 / 编译签名（语法、包、适配器、选项键）不一致的

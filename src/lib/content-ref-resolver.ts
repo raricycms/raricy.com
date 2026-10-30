@@ -134,7 +134,7 @@ export class ContentRefResolver {
 
   /**
    * 取一条引用的解析结果。`undefined` = 「不替换、保留字面量」
-   * （external 模式下不在下发表里的剪贴板、以及 external 模式的投票 / 收藏夹）。
+   * （external 模式下剪贴板、投票与收藏夹均保留原文）。
    * 并发同键只发一次请求；失败不落异常，按各类的降级口径落缓存。
    */
   resolve(type: ContentRefType, id: string): Promise<ResolvedRef | undefined> {

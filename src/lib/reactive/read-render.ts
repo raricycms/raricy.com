@@ -18,9 +18,8 @@
 // 【2】reactive 的静态正文**优先读同版本持久快照**（`reactive_snapshots`），读不到
 //   才按**当前正文**现编译一次。两者都不会把旧版本正文冒充成当前正文：版本 /
 //   编译签名不符的快照在 `snapshot-store.ts` 里按 stale 拒读。**用快照前还要按
-//   当前 external 权限重验引用**（`snapshot-revalidation.ts`）：公开剪贴板改私密 /
-//   删除 / 改标题 / 改版本后，旧快照的 hostData 与当前不一致，必须重编译而不是
-//   继续展示旧标题；重验读失败时旧引用同样不可信，也不得使用快照。绝不在服务端
+//   当前 external 规则重验引用**（`snapshot-revalidation.ts`）：任何含旧剪贴板
+//   载荷的结果都必须重编译；当前访客适配不取站内资源数据。重验失败也不使用快照。绝不在服务端
 //   用 `react-dom/server` 现拼 HTML（Next 的 RSC 编译链会拒绝）。
 //
 // 【3】markdown 只有在**候选**（override=reactive 或命中灰度）时才编译。候选之外
@@ -45,6 +44,7 @@ import { compileReactiveSource, type ReactiveCompileOutcome } from './compile';
 import { shouldFallbackToLegacy, shouldRejectReactive } from './diagnostics';
 import { hasLegacyMathDelimiters } from './legacy-math';
 import { hasMutableExternalReferences, hostDataEqual } from './snapshot-revalidation';
+import { scanReactiveReferences } from './ref-adapter';
 import {
   reactiveContentVersion,
   readReactiveSnapshot,
@@ -193,15 +193,12 @@ async function revalidateSnapshotReferences(
 }
 
 /**
- * reactive 的静态分支：先重验快照引用，再决定用快照还是现编译。
+ * reactive 的静态分支：成员资源按本人权限编译，其余重验并使用访客快照。
  *
  * 为什么先快照：快照是发布那一刻的可信产物，读取时不需要重编译；版本 / 编译签名
- * 不符的快照按 missing 处理，绝不拿旧正文冒充当前正文。为什么还要重验引用：快照
- * 里的公开剪贴板数据会随作者改权限 / 改标题而过期，见 `snapshot-revalidation.ts`。
- *
- * 引用不一致时按**当前 external 权限重新编译**，而不是修补旧 hostData —— 后者会
- * 既留下旧标题、又把「改私密」的引用继续当可用；新公开的引用也只有重编译才会出现。
- * 读失败时同样不用快照：那时无法确认任何引用数据仍然有效。
+ * 不符的快照按 missing 处理，绝不拿旧正文冒充当前正文。对含剪贴板 token 的正文
+ * 还检查宿主数据，拒绝可能残留的旧引用载荷，见 `snapshot-revalidation.ts`。
+ * 当前 external 适配只保留原文，不读取站内资源；对账失败时重新编译或显示不可用。
  *
  * 静态形态交给客户端组件的 `mode="static"`（SSR 首屏即静态正文，无 JS 也可读）。
  * 不在服务端调 `react-dom/server`：Next 的 RSC 编译链会拒绝它（构建期失败）。
@@ -214,6 +211,16 @@ async function buildStatic(
   compile: () => Promise<ReactiveCompileOutcome>,
   compileExternal: () => Promise<ReactiveCompileOutcome>,
 ): Promise<ReadRenderResult> {
+  // 持久快照固定面向访客，不能拿来代替成员的站内引用。
+  // 只对含成员资源的文档按当前本人权限编译；结果仅用于此次阅读，不写回共享快照。
+  const memberReferences = input.mode === 'expand' && input.viewer &&
+    scanReactiveReferences(input.source).some(slot => ['clipboard', 'vote', 'favorite'].includes(slot.kind));
+  if (memberReferences) {
+    try { bundle ??= await compile(); } catch { bundle = undefined; }
+    if (bundle?.result.ok && bundle.result.document) {
+      return finish({ renderer: 'reactive-static', reason: choice.reason }, format, bundle);
+    }
+  }
   const syntaxVersion =
     format === 'reactive' ? (input.syntaxVersion ?? LOCAL_SYNTAX_VERSION) : LOCAL_SYNTAX_VERSION;
   const contentVersion = reactiveContentVersion(format, syntaxVersion, input.source);

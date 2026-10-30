@@ -19,7 +19,7 @@
 // 【一批**跨管线**的东西，别在别处再写一份】id 长度词汇（上面三个常量）、
 // `MAX_BLOG_REF_ITEMS`（**只管客户端主循环那 50 处显示**：剪贴板 / 投票 / 图床
 // 共用一份替换额度）、「取数取多少 / 并发多少 / 展开多大」这三个预算
-// （`MAX_REF_FETCHES` 还兼管服务端公开剪贴板的查询条数 / `MAX_REF_CONCURRENCY` /
+// （`MAX_REF_FETCHES` / `MAX_REF_CONCURRENCY` /
 // `MAX_REF_EXPAND_CHARS`），以及那个并发闸门（`createConcurrencyLimiter`）。
 // **收藏夹与音频各有自己的显示上限**（不在 `MAX_BLOG_REF_ITEMS` 之列，见各自的
 // `MAX_FAVORITE_REFS` / `MAX_AUDIO_REFS`）。本文件零依赖，客户端渲染器与服务端
@@ -75,7 +75,7 @@ export const CLIPBOARD_REF_PROBE = new RegExp(
  *
  * 【只管显示，不管取数】这是**显示档**：博客渲染器（`content-ref-processor.ts` 的
  * `ContentRefProcessor`）用它封顶主循环的替换次数，剪贴板 / 投票 / 图床**共用**这一
- * 份额度。**取数候选与服务端公开剪贴板的查询条数是另一回事**（见 `MAX_REF_FETCHES`）；
+ * 份额度。**取数预算另行计算**（见 `MAX_REF_FETCHES`）；
  * **收藏夹与音频也各有自己的显示上限**，不占这 50 处（各跑一趟，见
  * `MAX_FAVORITE_REFS` / `MAX_AUDIO_REFS`）。
  */

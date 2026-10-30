@@ -120,7 +120,7 @@ describe('persistent snapshot reference revalidation', () => {
     expect(prepareMock.mock.calls[0][1]).toMatchObject({ mode: 'external' });
   });
 
-  it('revalidates against external even for expand readers', async () => {
+  it('expand readers compile their own references instead of reusing the external snapshot', async () => {
     const source = `正文 ${CLIP_TOKEN}`;
     readySnapshot({ [CLIP_KEY]: clip('旧标题', 'v1') });
     prepareReturns({});
@@ -130,8 +130,9 @@ describe('persistent snapshot reference revalidation', () => {
       input({ format: 'reactive', source, mode: 'expand', viewer: { id: 'u1' } }),
     );
 
-    expect(prepareMock).toHaveBeenCalledTimes(1);
-    expect(prepareMock.mock.calls[0][1]).toMatchObject({ mode: 'external' });
+    expect(prepareMock).not.toHaveBeenCalled();
+    expect(snapshotMock).not.toHaveBeenCalled();
+    expect(compileMock).toHaveBeenCalledWith(expect.objectContaining({ mode: 'expand', viewer: { id: 'u1' } }));
     expect(result.snapshot).toBeUndefined();
   });
 
