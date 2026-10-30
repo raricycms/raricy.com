@@ -327,6 +327,12 @@ export const DOC_ENTRIES: readonly DocEntry[] = [
   },
   {
     group: 'dev',
+    slug: 'plan/page-ui-audit',
+    title: '功能页面 UI 调研报告',
+    summary: '六类简陋问题、页面宽度来源、逐页优先级与局部重构范围；调研完成，界面未实施。',
+  },
+  {
+    group: 'dev',
     slug: 'plan/daily-quote-refactor-plan',
     title: '每日一言重构计划',
     summary: '社区一次选登、博客门槛、拒稿重审、免费共鸣与收藏日期；本地验收完成，待发布。',
