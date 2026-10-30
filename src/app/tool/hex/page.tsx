@@ -94,6 +94,7 @@ export default function HexToolPage() {
 
     function onCancelLoad() {
       if (currentAbort) currentAbort.abort();
+      fileInput.value = '';
       showProgressUI(false);
       showStatus('已取消加载');
     }
@@ -102,6 +103,8 @@ export default function HexToolPage() {
     async function onFileChange() {
       const f = fileInput.files?.[0];
       if (!f) return;
+      // 上一次加载还在跑就先中止，避免两个任务互相覆盖 fileBytes。
+      if (currentAbort) currentAbort.abort();
       originalFileName = f.name || 'modified.bin';
       modifiedIndices = new Set<number>();
       showProgressUI(true);
@@ -129,6 +132,8 @@ export default function HexToolPage() {
         const blob = new Blob(chunks, { type: 'application/octet-stream' });
         const buf = await blob.arrayBuffer();
         fileBytes = new Uint8Array(buf);
+        // 新文件从第一行开始看：沿用上一个文件的 scrollTop 会让小文件整屏空白。
+        hexViewer.scrollTop = 0;
         refreshAll();
         showStatus('加载完成');
       } catch {
@@ -140,7 +145,9 @@ export default function HexToolPage() {
       } finally {
         showProgressUI(false);
         URL.revokeObjectURL(url);
-        currentAbort = null;
+        if (currentAbort === controller) currentAbort = null;
+        // 清空原生 input 的值，允许再次选择同一文件（否则 change 不触发）。
+        fileInput.value = '';
       }
     }
     fileInput.addEventListener('change', onFileChange);
@@ -194,6 +201,9 @@ export default function HexToolPage() {
       const idx = Number(span.getAttribute('data-index'));
       const oldText = (span.textContent || '').trim();
       const input = document.createElement('input');
+      // 一次编辑只允许提交一次：Enter/Backspace 的 commit 会重建 DOM 并摘掉焦点，
+      // 随后触发的 blur 不能再走一遍 commit（否则删除会删两个字节、Escape 会提交）。
+      let finished = false;
       input.type = 'text';
       input.maxLength = 2;
       input.value = oldText;
@@ -207,6 +217,7 @@ export default function HexToolPage() {
       input.select();
 
       function commit() {
+        if (finished) return;
         const val = (input.value || '').trim();
         if (val === '') {
           // delete byte at idx
@@ -220,6 +231,7 @@ export default function HexToolPage() {
             else if (j > idx) newSet.add(j - 1);
           });
           modifiedIndices = newSet;
+          finished = true;
           showStatus(`已删除索引 ${idx} 字节`);
           refreshAll();
           return;
@@ -242,10 +254,12 @@ export default function HexToolPage() {
           fileBytes[idx] = byte;
           modifiedIndices.add(idx);
         }
+        finished = true;
         showStatus('已更新');
         refreshAll();
       }
       function cancel() {
+        finished = true;
         refreshAll();
       }
 

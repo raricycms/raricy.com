@@ -182,6 +182,7 @@ export default function HashToolPage() {
     if (!val) throw new Error('请输入 HMAC 密钥');
     if (hmacKeyType === 'hex') {
       const cleaned = val.trim().replace(/^0x/i, '').replace(/\s+/g, '');
+      if (cleaned.length === 0) throw new Error('密钥不能为空');
       if (cleaned.length % 2 !== 0 || /[^0-9a-fA-F]/.test(cleaned)) throw new Error('十六进制密钥格式不正确');
       const arr = new Uint8Array(cleaned.length / 2);
       for (let i = 0; i < cleaned.length; i += 2) arr[i / 2] = parseInt(cleaned.slice(i, i + 2), 16);
@@ -218,7 +219,8 @@ export default function HashToolPage() {
       setStatus('完成');
     } catch (e) {
       setResult('');
-      setStatus('失败: ' + (e && (e as Error).message ? (e as Error).message : ''));
+      const msg = e && (e as Error).message ? (e as Error).message : '未知错误';
+      setStatus('失败: ' + msg);
     }
   }
 
@@ -245,7 +247,7 @@ export default function HashToolPage() {
           <h1 className="mb-0 tool-new-hero__title">哈希计算</h1>
         </div>
         <p className="tool-new-hero__description">
-          支持 SHA-256 / SHA-1 / SHA-512 / MD5 / BLAKE2 等，文本与文件均可计算。
+          支持 SHA-256 / SHA-1 / SHA-512 / MD5 与 HMAC，文本与文件均可计算。
         </p>
 
         <div className="row g-4">
@@ -267,8 +269,27 @@ export default function HashToolPage() {
               />
               <div className="mt-3">
                 <label className="form-label fw-semibold">或选择文件</label>
-                <input ref={fileInputRef} className="form-control" type="file" />
-                <div className="file-hint text-muted">若选择文件，将以文件为准进行计算；大文件使用流式分块计算。</div>
+                <input
+                  ref={fileInputRef}
+                  className="form-control"
+                  type="file"
+                  onChange={() => {
+                    setResult('');
+                    setStatus('');
+                  }}
+                />
+                <button
+                  type="button"
+                  className="btn btn-outline-secondary mt-2"
+                  onClick={() => {
+                    if (fileInputRef.current) fileInputRef.current.value = '';
+                    setResult('');
+                    setStatus('');
+                  }}
+                >
+                  清除已选文件
+                </button>
+                <div className="file-hint text-muted">若选择文件，将以文件为准进行计算；大文件会整块读入内存，超大文件可能失败。</div>
                 <div className="mt-3">
                   <div className="form-check">
                     <input
@@ -276,7 +297,11 @@ export default function HashToolPage() {
                       type="checkbox"
                       id="useHmac"
                       checked={useHmac}
-                      onChange={(e) => setUseHmac(e.target.checked)}
+                      onChange={(e) => {
+                        setUseHmac(e.target.checked);
+                        setResult('');
+                        setStatus('');
+                      }}
                     />
                     <label className="form-check-label" htmlFor="useHmac">使用 HMAC（带密钥）</label>
                   </div>
@@ -286,14 +311,22 @@ export default function HashToolPage() {
                         className="form-control mono"
                         placeholder="输入密钥（文本或十六进制）"
                         value={hmacKey}
-                        onChange={(e) => setHmacKey(e.target.value)}
+                        onChange={(e) => {
+                          setHmacKey(e.target.value);
+                          setResult('');
+                          setStatus('');
+                        }}
                       />
                     </div>
                     <div className="col-12 col-md-4">
                       <select
                         className="form-select"
                         value={hmacKeyType}
-                        onChange={(e) => setHmacKeyType(e.target.value as KeyType)}
+                        onChange={(e) => {
+                          setHmacKeyType(e.target.value as KeyType);
+                          setResult('');
+                          setStatus('');
+                        }}
                       >
                         <option value="text">文本密钥</option>
                         <option value="hex">十六进制密钥</option>
@@ -309,20 +342,39 @@ export default function HashToolPage() {
             <div className="p-3 rounded tool-panel h-100">
               <label className="form-label fw-semibold">算法</label>
               <div className="d-flex flex-wrap gap-2 mb-3">
-                {ALGOS.map((algo) => (
-                  <span
-                    key={algo}
-                    className={`badge rounded-pill algo-badge${currentAlgo === algo ? ' active' : ''}`}
-                    data-algo={algo}
-                    role="button"
-                    aria-pressed={currentAlgo === algo}
-                    onClick={() => setCurrentAlgo(algo)}
-                  >
-                    {algo}
-                  </span>
-                ))}
+                {ALGOS.map((algo) => {
+                  const disabled = useHmac && algo === 'MD5';
+                  return (
+                    <span
+                      key={algo}
+                      className={`badge rounded-pill algo-badge${currentAlgo === algo ? ' active' : ''}`}
+                      data-algo={algo}
+                      role="button"
+                      tabIndex={0}
+                      aria-pressed={currentAlgo === algo}
+                      aria-disabled={disabled || undefined}
+                      title={disabled ? 'HMAC 目前仅支持 SHA-1/256/512' : undefined}
+                      onClick={() => {
+                        if (disabled) return;
+                        setCurrentAlgo(algo);
+                        setResult('');
+                        setStatus('');
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key !== 'Enter' && e.key !== ' ') return;
+                        e.preventDefault();
+                        if (disabled) return;
+                        setCurrentAlgo(algo);
+                        setResult('');
+                        setStatus('');
+                      }}
+                    >
+                      {algo}
+                    </span>
+                  );
+                })}
               </div>
-              <div className="d-grid gap-2 d-md-flex">
+              <div className="d-flex flex-wrap gap-2">
                 <button className="btn btn-primary" onClick={onCompute}>计算</button>
                 <button className="btn btn-outline-secondary" onClick={onCopy}>
                   <span className="icon icon-clipboard"></span> 复制结果
