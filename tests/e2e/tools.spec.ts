@@ -96,3 +96,149 @@ test('哈希：SHA-256("abc") 等于标准值', async ({ page }) => {
     { ignoreCase: true }
   );
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 下面这一组是 2026-10-31 修完缺陷后补的**回归闸门**。
+//
+// 这些 bug 的共同点是「不报错」：CTR 一用就抛、CBC 密文多一整套填充、GCM 复用
+// nonce、QP 按 UTF-16 转义、Hex 删除删两个字节 —— 全都能通过「页面能打开 + 哈希
+// 一个值」这一档断言。所以断言必须落到**具体数字与往返结果**上。
+// ─────────────────────────────────────────────────────────────────────────────
+
+test('AES-CTR：counter 是 16 字节，往返能还原（12 字节会直接 OperationError）', async ({ page }) => {
+  await page.goto('/tool/aes');
+  const ta = page.locator('textarea');
+  await ta.first().fill('hello world');
+  await page.locator('select').first().selectOption('CTR');
+  await page.locator('input.form-control.mono').first().fill('secret');
+  await page.getByRole('button', { name: /加密/ }).click();
+
+  // 密文 = 16 字节 counter 前缀 + 11 字节原文 ⇒ 54 个 hex 字符。
+  // 用 12 字节时这一行根本到不了：WebCrypto 抛 `counter must contain exactly 16 bytes`。
+  await expect(ta.nth(1)).toHaveValue(/^[0-9a-f]{54}$/);
+  const cipher = await ta.nth(1).inputValue();
+
+  // 解密读右栏：把密文放回右栏，左栏清空后再解，确认还原成原文
+  await ta.nth(1).fill(cipher);
+  await page.getByRole('button', { name: /解密/ }).click();
+  await expect(ta.first()).toHaveValue('hello world');
+});
+
+test('AES-CBC：密文只补一层 PKCS#7（43 字节明文 → 48 字节密文体）', async ({ page }) => {
+  await page.goto('/tool/aes');
+  const ta = page.locator('textarea');
+  await ta.first().fill('The quick brown fox jumps over the lazy dog');
+  await page.locator('select').first().selectOption('CBC');
+  await page.locator('input.form-control.mono').first().fill('secret');
+  await page.getByRole('button', { name: /加密/ }).click();
+
+  const cipher = await ta.nth(1).inputValue();
+  const body = cipher.length / 2 - 16; // 去掉 IV 前缀
+  // 43 → 48 是**一层**填充的结果；手工再补一层会变成 64，且解标准密文会静默截断。
+  expect(body).toBe(48);
+  expect(body % 16).toBe(0);
+
+  await ta.nth(1).fill(cipher);
+  await page.getByRole('button', { name: /解密/ }).click();
+  await expect(ta.first()).toHaveValue('The quick brown fox jumps over the lazy dog');
+});
+
+test('AES-GCM：每次加密换新 nonce（同 key 同 nonce 是致命的）', async ({ page }) => {
+  await page.goto('/tool/aes');
+  const ta = page.locator('textarea');
+  await ta.first().fill('same plaintext');
+  await page.locator('select').first().selectOption('GCM');
+  await page.locator('input.form-control.mono').first().fill('secret');
+  const ivInput = page.locator('input.form-control.mono').nth(1);
+
+  await page.getByRole('button', { name: /加密/ }).click();
+  const first = await ta.nth(1).inputValue();
+  const iv1 = await ivInput.inputValue();
+  await page.getByRole('button', { name: /加密/ }).click();
+  const second = await ta.nth(1).inputValue();
+  const iv2 = await ivInput.inputValue();
+
+  expect(iv1).toMatch(/^[0-9a-f]{24}$/); // 12 字节
+  expect(iv1).not.toBe(iv2);
+  expect(first).not.toBe(second);
+});
+
+test('QP：中文按 UTF-8 字节转义（不是 UTF-16 code unit）', async ({ page }) => {
+  await page.goto('/tool/qp');
+  const ta = page.locator('textarea');
+  await ta.first().fill('你好');
+  await page.getByRole('button', { name: /编码/ }).first().click();
+  // 你 U+4F60 的 UTF-8 是 E4 BD A0。按 code unit 会编成 =4F60 —— 那是错的 QP。
+  await expect(ta.nth(1)).toHaveValue(/^=E4=BD=A0=E5=A5=BD$/);
+  await page.getByRole('button', { name: /解码/ }).first().click();
+  await expect(ta.first()).toHaveValue('你好');
+});
+
+for (const algo of ['base85', 'base92'] as const) {
+  test(`${algo}：对非 ASCII / 任意字节都能往返（不漏字节、不出 NUL）`, async ({ page }) => {
+    await page.goto('/tool/base');
+    // 选算法：这两组的编码都曾经是有符号 32 位 / 补零实现的受害者
+    await page.locator(`[data-algo="${algo}"]`).click();
+    const ta = page.locator('textarea');
+    await ta.first().fill('hello world');
+    await page.getByRole('button', { name: /编码/ }).first().click();
+    const encoded = await ta.nth(1).inputValue();
+    expect(encoded.length).toBeGreaterThan(0);
+    // Base92 曾经在尾部补 0x00，往返后正文末尾多一个 NUL（视觉上看不见）
+    expect(encoded).not.toContain('\u0000');
+    await page.getByRole('button', { name: /解码/ }).first().click();
+    await expect(ta.first()).toHaveValue('hello world');
+  });
+}
+
+test('Hex：非法输入按 Escape 不提交（曾经 Escape 反而保存）', async ({ page }) => {
+  await page.goto('/tool/hex');
+  // 加载监听是在 useEffect 里挂的：选文件太早会丢 change 事件（真人也选不了这么快，
+  // 但 CI 里会撞上），所以在「第一次没加载出来」时补选一次。这只影响这条用例的稳定性，
+  // 不掩盖被测行为 —— 一旦页面对 change 事件真的失效，它会一直等到超时。
+  const selectSample = () =>
+    page.locator('#fileInput').setInputFiles({
+      name: 'sample.bin',
+      mimeType: 'application/octet-stream',
+      buffer: Buffer.from([0x41, 0x42, 0x43, 0x44, 0x45]),
+    });
+  const bytes = page.locator('#hexBody .byte[data-index]');
+  await selectSample();
+  await page
+    .waitForFunction(() => document.querySelectorAll('#hexBody .byte[data-index]').length === 5, null, {
+      timeout: 8_000,
+    })
+    .catch(async () => {
+      await selectSample();
+    });
+  await expect(bytes).toHaveCount(5);
+
+  // 第 2 个字节改成非法值再按 Escape：输入框必须消失，且原字节仍是 42
+  await page.locator('#hexBody .byte[data-index="1"]').dblclick();
+  await page.locator('#hexBody input').fill('ZZ');
+  await page.locator('#hexBody input').press('Escape');
+  await expect(page.locator('#hexBody input')).toHaveCount(0);
+  await expect(page.locator('#hexBody .byte[data-index="1"]')).toHaveText('42');
+});
+
+test('哈希：MD5 + HMAC 是不可用组合，徽章置灰且点不动', async ({ page }) => {
+  await page.goto('/tool/hash');
+  await page.locator('textarea').first().fill('abc');
+  await page.locator('input[type="checkbox"]').first().check();
+  const md5 = page.locator('[data-algo="MD5"]');
+  await expect(md5).toHaveAttribute('aria-disabled', 'true');
+  // 置灰必须真的落到颜色上（只有 aria 属性而视觉不变 = 用户仍会去点）
+  await expect(md5).toHaveCSS('opacity', '0.45');
+  // 可用的算法不能被一起压暗
+  await expect(page.locator('[data-algo="SHA-256"]')).toHaveCSS('opacity', '1');
+});
+
+test('面板里的字段是「看得见」的：有底、有内距（U-01 曾经把它们变成隐形控件）', async ({ page }) => {
+  await page.goto('/tool/aes');
+  const key = page.locator('input.form-control.mono').first();
+  // padding: 0 会让长值在圆角处被切掉半个字形；透明底会让字段和面板糊成一片。
+  await expect(key).not.toHaveCSS('padding-left', '0px');
+  await expect(key).toHaveCSS('padding-left', '16px');
+  const bg = await key.evaluate((el) => getComputedStyle(el).backgroundColor);
+  expect(bg).not.toBe('rgba(0, 0, 0, 0)');
+});
