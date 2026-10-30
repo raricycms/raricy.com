@@ -226,7 +226,7 @@ test.describe('用户名片：输入区入口', () => {
     await page.goto(`/chat?channel=${LOBBY}`);
 
     const composer = page.locator('.chat-composer');
-    await composer.getByRole('button', { name: '发送用户名片' }).click();
+    await composer.getByRole('button', { name: '插入用户名片' }).click();
 
     const panel = page.locator('.user-picker');
     await expect(panel).toBeVisible();

@@ -18,7 +18,7 @@ import ExpandSelect, {
 import type { CategoryHierarchy } from '@/lib/blog-service';
 // 可见性词汇必须从 ./blog-visibility 取（那个模块零依赖）——**不能**从 blog-service，
 // 它拖着 prisma，值导出会把服务端依赖拉进客户端包。理由见该文件头。
-import { BLOG_VISIBILITIES, VISIBILITY_LABEL } from '@/lib/blog-visibility';
+import { BLOG_VISIBILITIES, VISIBILITY_LABEL, VISIBILITY_DESCRIPTION } from '@/lib/blog-visibility';
 import type { BlogVisibility } from '@/lib/blog-visibility';
 import {
   CONTENT_FORMATS,
@@ -92,7 +92,8 @@ export default function BlogForm({ categories, blog = null, banInfo = null }: Bl
   const isEdit = !!blog;
   const initialMarkdown = blog?.contentMarkdown ?? '';
   const categoryValue = String(blog?.categoryId ?? '');
-  const visibilityValue = blog?.visibility ?? 'internal';
+  const [visibilityValue, setVisibilityValue] = useState<BlogVisibility>(blog?.visibility ?? 'internal');
+  const [previewAsVisitor, setPreviewAsVisitor] = useState(true);
   // 编辑态从**库里的**格式起步；新建态默认 markdown。显式写回请求体 ——
   // 省略 format 在 PUT 上是「这一列不动」而不是「打回默认档」，回写才与界面一致。
   const [format, setFormat] = useState<ContentFormat>(
@@ -481,19 +482,17 @@ export default function BlogForm({ categories, blog = null, banInfo = null }: Bl
           <ExpandSelect
             id="visibility"
             name="visibility"
-            defaultValue={visibilityValue}
+            value={visibilityValue}
+            onChange={value => setVisibilityValue(value as BlogVisibility)}
             groups={visibilityGroups}
             ariaLabel={`可见范围：${visibilityLabel}`}
           />
-          <span className="form-hint text-muted">
-            仅站内可见：只有站内核心用户读得到（默认）。凭链接可读：拿到链接的任何人
-            都能打开，但不会出现在任何列表里、也不会被搜索引擎收录。对外公开：任何人
-            可读，可能被搜索引擎收录与第三方存档。
-          </span>
-          <span className="form-hint text-muted">
-            公开前请自行确认正文里没有不适合外传的内容。公开后可能被第三方抓取存档，
-            改回「仅站内可见」不会收回已经抓走的副本。
-          </span>
+          <span className="form-hint text-muted">{VISIBILITY_DESCRIPTION[visibilityValue]}</span>
+          {visibilityValue === 'public' && <span className="form-hint text-muted">公开后可能被第三方保存，改回站内不会收回已有副本。</span>}
+          {visibilityValue !== 'internal' && <>
+            <label className="form-check-label"><input type="checkbox" checked={previewAsVisitor} onChange={event => setPreviewAsVisitor(event.target.checked)} />访客视角预览</label>
+            {previewAsVisitor && <span className="form-hint text-muted">访客不会展开剪贴板、投票和收藏夹引用；需要公开的文字请写入正文。</span>}
+          </>}
         </div>
 
         {/* 匿名评论开关：作者对**自己的文章**的互动规则设置。
@@ -517,8 +516,7 @@ export default function BlogForm({ categories, blog = null, banInfo = null }: Bl
             </label>
           </div>
           <span className="form-hint text-muted">
-            匿名评论者在本文下始终显示同一个化名（第一位是 Alice，第二位是 Bob，以此类推），
-            头像按化名生成，评论区不展示其账号资料。
+            同一读者在本文下使用固定化名，评论区不展示其账号资料。
           </span>
         </div>
 
@@ -555,6 +553,7 @@ export default function BlogForm({ categories, blog = null, banInfo = null }: Bl
               initialValue={initialMarkdown}
               draftKey={isEdit ? undefined : DRAFT_KEY}
               format={format}
+              referenceMode={visibilityValue !== 'internal' && previewAsVisitor ? 'external' : 'expand'}
               onDraftFormatRestored={setFormat}
               // 导出件的文件名与 `<title>` 读的是**此刻**的标题（不是进页面那一刻的）
               title={title}

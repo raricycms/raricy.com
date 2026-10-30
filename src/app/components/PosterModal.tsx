@@ -11,9 +11,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 // （RULES.posterMinute）。页面一加载就取，等于每次看主页/看余额都白烧一次 CPU。
 // 所以 <img> 只在弹窗打开时才挂进 DOM。
 //
-// 【失败态要说人话】路由在 SITE_URL 未配置时直接 503（那时二维码是废码，
-// 宁可不出图）。图片加载失败的常见原因就两个：没配 SITE_URL、服务器缺中文字体。
-// 提示里把这两条点到，省得对着一个破图猜。
+// 【失败态】提供重试和联系入口；部署诊断留在服务端日志中。
 // ─────────────────────────────────────────────────────────────────────────────
 
 export default function PosterModal({
@@ -37,6 +35,7 @@ export default function PosterModal({
   triggerClassName: string;
 }) {
   const [open, setOpen] = useState(false);
+  const [attempt, setAttempt] = useState(0);
   const [state, setState] = useState<'loading' | 'ready' | 'failed'>('loading');
 
   // 每次打开都从头来一遍 —— 不然关掉再开会停在上一轮的 ready/failed
@@ -79,6 +78,7 @@ export default function PosterModal({
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     className="poster-frame__img"
+                    key={attempt}
                     src={src}
                     alt={title}
                     style={{ display: state === 'ready' ? 'block' : 'none' }}
@@ -87,12 +87,11 @@ export default function PosterModal({
                   />
                   {state === 'loading' && <p className="poster-state">正在生成…</p>}
                   {state === 'failed' && (
-                    <p className="poster-state">
-                      生成失败了，请稍后重试。
-                      <br />
-                      若一直失败：可能是服务器未配置 <code>SITE_URL</code>（拼不出二维码里
-                      的网址），或缺少中文字体。
-                    </p>
+                    <div className="poster-state" role="alert">
+                      <p>生成失败，请重试。</p>
+                      <button type="button" className="button button-secondary" onClick={() => { setState('loading'); setAttempt(value => value + 1); }}>重试</button>{' '}
+                      <a href="/contact">反馈问题</a>
+                    </div>
                   )}
                 </div>
 

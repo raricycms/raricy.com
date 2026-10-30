@@ -23,6 +23,7 @@ import path from 'node:path';
 import {
   DOC_ENTRIES,
   DOC_GROUPS,
+  GUIDE_CANONICAL_ROUTES,
   docAnchor,
   docHref,
   findDocEntry,
@@ -130,8 +131,8 @@ describe('URL 与取件口', () => {
   it('slug 中的中文逐段转义，且能被 findDocEntry 解回同一份文档', () => {
     for (const e of DOC_ENTRIES) {
       const href = docHref(e.slug);
-      expect(href.startsWith('/docs/')).toBe(true);
-      const segments = href.slice('/docs/'.length).split('/');
+      expect(href).toBe(GUIDE_CANONICAL_ROUTES[e.slug] ?? `/docs/${e.slug.split('/').map(encodeURIComponent).join('/')}`);
+      const segments = e.slug.split('/').map(encodeURIComponent);
       // Next 两种形态都可能给到：原样转义的，与已解码的
       expect(findDocEntry(segments)?.slug).toBe(e.slug);
       expect(findDocEntry(segments.map(decodeURIComponent))?.slug).toBe(e.slug);

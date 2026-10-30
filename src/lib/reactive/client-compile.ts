@@ -237,9 +237,10 @@ export function createClientReferenceReader(
  */
 export async function adaptReactivePreview(
   source: string,
-  reader: ReferenceReader
+  reader: ReferenceReader,
+  mode: 'expand' | 'external' = 'expand'
 ): Promise<AdaptedReactivePreview> {
-  const adapted = await adaptReactiveReferences(source, { mode: 'expand', resolve: reader });
+  const adapted = await adaptReactiveReferences(source, { mode, resolve: mode === 'expand' ? reader : undefined });
   return { adaptedSource: adapted.adaptedSource, hostData: adapted.hostData };
 }
 

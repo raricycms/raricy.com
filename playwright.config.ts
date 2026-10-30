@@ -71,6 +71,7 @@ const REALTIME_PORT = 3103;
  * 就加进来；只是 goto 一个页面再断言内容，就不加。
  */
 const RESPONSIVE_SPECS: RegExp[] = [
+  /frontend-ia\.spec\.ts$/,
   /daily-quote\.spec\.ts$/,
   /blog-directory\.spec\.ts$/,
   /theme-transition\.spec\.ts$/,
@@ -138,7 +139,7 @@ const RESPONSIVE_SPECS: RegExp[] = [
   /comment-layout\.spec\.ts$/,
   // 格式转换器：八颗类别胶囊在窄屏折行与否、页面横向溢出 —— 纯排版事实。
   /file-converter-layout\.spec\.ts$/,
-  // 小鱼干余额页的三颗行动：窄屏靠「藏前缀 + 收内边距」压在同一行，差几个像素就换行 ——
+  // 小鱼干账户操作在窄屏保持可点且不撑宽页面 ——
   // 同样是只有浏览器排版才说得清的事实。桌面那一遍验的是「文案没被压掉」。
   /fish-layout\.spec\.ts$/,
   // 页面檐沟：断言「抬头/首屏元素的左边缘离视口左边缘 ≥16px」。这是「谁兜住了这一页」
@@ -240,6 +241,9 @@ export default defineConfig({
       // 登录会「成功但不粘」。这正是线上踩过的坑；此处显式关掉，
       // 另有专门用例验证该判定逻辑本身。
       COOKIE_SECURE: 'false',
+      // 渲染回退用例明确验证 flag=off，不能继承本机 .env 的灰度开关。
+      REACTIVE_MD_MODE: 'off',
+      REACTIVE_MD_PERCENT: '0',
       // 画报 / 收款码的二维码前缀取自 SITE_URL（见 src/lib/site-url.ts）。
       // 不显式给的话会回落到 .env 里的 http://localhost:3000 —— 图照样能出，
       // 但二维码指向的是开发端口而不是这个测试服务器，等于测了个假的。

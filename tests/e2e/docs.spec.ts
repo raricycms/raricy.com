@@ -15,11 +15,11 @@
 // 断了就等于整块功能只剩手敲 URL 能到。
 
 import { test, expect } from '@playwright/test';
-import { DOC_ENTRIES, DOC_GROUPS, docHref } from '../../src/lib/docs-catalog';
+import { DOC_ENTRIES, DOC_GROUPS, GUIDE_CANONICAL_ROUTES, docHref } from '../../src/lib/docs-catalog';
 
 /** 拿一份中文 slug 的文档与一份 ASCII slug 的文档 —— 两条 URL 路径都要走到。 */
 const ZH = DOC_ENTRIES.find((e) => /[一-龥]/.test(e.slug))!;
-const ASCII = DOC_ENTRIES.find((e) => !/[一-龥]/.test(e.slug))!;
+const ASCII = DOC_ENTRIES.find((e) => !/[一-龥]/.test(e.slug) && !GUIDE_CANONICAL_ROUTES[e.slug])!;
 
 test('索引页列出全部登记文档，并按三组分区', async ({ page }) => {
   await page.goto('/docs');
@@ -36,6 +36,15 @@ test('中文 slug 的文档打得开（URL 转义往返）', async ({ page }) =>
 
   expect(resp?.status()).toBe(200);
   await expect(page.locator('.docs-content h1')).toHaveText(ZH.title);
+});
+
+test('六份功能指南的旧文档地址跳转至规范页，正文和返回上下文保留', async ({ page }) => {
+  for (const [slug, href] of Object.entries(GUIDE_CANONICAL_ROUTES)) {
+    await page.goto('/docs/' + slug.split('/').map(encodeURIComponent).join('/'));
+    await expect(page).toHaveURL(href);
+    await expect(page.locator('.guide__content h1')).toHaveText(DOC_ENTRIES.find(entry => entry.slug === slug)!.title);
+    await expect(page.locator('.guide__back')).toBeVisible();
+  }
 });
 
 test('ASCII slug 的文档打得开，且同组文档列在正文之后', async ({ page }) => {

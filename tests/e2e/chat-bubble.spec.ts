@@ -99,7 +99,7 @@ test('两款气泡：商城租赁 → 切换装备 → 两种主题及跨标签�
 });
 
 test('余额不足时气泡不可买，服务端也拒绝且不授予', async ({ page }) => {
-  await registerFreshUser(page);
+  await registerFreshUser(page, { core: true });
   await page.goto('/fish/shop?category=bubble#shop');
   await page.getByRole('button', { name: '聊天气泡', exact: true }).click();
   for (const { key } of DEMOS) {

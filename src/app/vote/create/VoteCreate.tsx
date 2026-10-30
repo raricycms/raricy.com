@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 
 const MAX_OPTIONS = 10;
 const MIN_OPTIONS = 2;
+const MAX_TEXT = 200;
 
 export default function VoteCreate() {
   const router = useRouter();
@@ -86,23 +87,25 @@ export default function VoteCreate() {
         <form id="createForm" onSubmit={submit}>
           <div className="vote-form__group">
             <label htmlFor="title">
-              投票标题 <span className="vote-form__hint">（1-200字）</span>
+              投票标题
             </label>
             <input
               type="text"
               id="title"
               name="title"
               placeholder="请输入投票标题"
-              maxLength={200}
+              maxLength={MAX_TEXT}
+              aria-describedby={title.length >= MAX_TEXT * 0.9 ? 'vote-title-limit' : undefined}
               required
               value={title}
               onChange={(e) => setTitle(e.target.value)}
             />
+            {title.length >= MAX_TEXT * 0.9 && <p id="vote-title-limit" className="form-hint" role="status">{title.length} / {MAX_TEXT} 字</p>}
           </div>
 
           <div className="vote-form__group">
             <label>
-              投票选项 <span className="vote-form__hint">（2-10个选项，每个1-200字）</span>
+              投票选项
             </label>
             <div className="vote-form__options" id="optionsContainer">
               {options.map((opt, i) => (
@@ -114,7 +117,8 @@ export default function VoteCreate() {
                     type="text"
                     className="vote-option-input"
                     placeholder={`选项 ${i + 1}`}
-                    maxLength={200}
+                    maxLength={MAX_TEXT}
+                    aria-describedby={opt.length >= MAX_TEXT * 0.9 ? 'vote-option-limit' : undefined}
                     required
                     value={opt}
                     onChange={(e) => setOption(i, e.target.value)}
@@ -131,8 +135,9 @@ export default function VoteCreate() {
                 </div>
               ))}
             </div>
-            <button type="button" className="vote-form__add-option" id="addOption" onClick={addOption}>
-              + 添加选项
+            {options.some(opt => opt.length >= MAX_TEXT * 0.9) && <p id="vote-option-limit" className="form-hint" role="status">每个选项最多 {MAX_TEXT} 字。</p>}
+            <button type="button" className="vote-form__add-option" id="addOption" onClick={addOption} disabled={options.length >= MAX_OPTIONS}>
+              {options.length >= MAX_OPTIONS ? '已达选项上限' : '+ 添加选项'}
             </button>
           </div>
 

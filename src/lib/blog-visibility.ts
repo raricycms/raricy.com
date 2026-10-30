@@ -82,3 +82,10 @@ export function parseVisibility(raw: unknown): BlogVisibility | null {
     ? (raw as BlogVisibility)
     : null;
 }
+
+/** 发布表单只展示当前选择的实际受众，不重复罗列全部档位。 */
+export const VISIBILITY_DESCRIPTION: Record<BlogVisibility,string> = {
+  internal:'仅成员可读。',
+  link:'持有链接的访客可读，不进入公开目录和搜索。',
+  public:'访客可读，并进入公开目录和搜索。',
+};

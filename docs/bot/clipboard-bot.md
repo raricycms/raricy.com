@@ -47,8 +47,8 @@
 
 ## 2. 准备账号与鉴权
 
-全部接口**需要 core+ 且登录**。注册出来是 `user`，要提权一次：
-注册时带有效邀请码（全自动），或让站长执行 `npm run cli -- promote-core mybot`。
+全部接口**需要 core+ 且登录**。公开注册须填写有效邀请码，成功即为 core。历史未认证账号可补码认证：
+新账号注册成功即为 core；历史账号可登录后通过 `POST /api/auth/authentic` 补码认证。
 完整流程见 `docs/bot/chat-bot.md` §2。登录换 cookie：
 
 ```http

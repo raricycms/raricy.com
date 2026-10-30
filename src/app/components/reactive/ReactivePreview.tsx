@@ -54,6 +54,7 @@ interface RenderedPreview {
 export interface ReactivePreviewProps {
   /** 作者原文（未适配）。 */
   source: string;
+  referenceMode?: 'expand' | 'external';
   /** 适配防抖；调度器自身还会再合并 150ms（上游默认）。 */
   debounceMs?: number;
   /**
@@ -68,6 +69,7 @@ export interface ReactivePreviewProps {
 
 export default function ReactivePreview({
   source,
+  referenceMode = 'expand',
   debounceMs = DEFAULT_DEBOUNCE_MS,
   refreshToken = 0,
 }: ReactivePreviewProps) {
@@ -135,7 +137,7 @@ export default function ReactivePreview({
     const timer = window.setTimeout(() => {
       void (async () => {
         try {
-          const adapted = await adaptReactivePreview(source, reader);
+          const adapted = await adaptReactivePreview(source, reader, referenceMode);
           if (generation !== generationRef.current) return;
           const store = hostDataBySourceRef.current;
           store.set(adapted.adaptedSource, adapted.hostData);
@@ -155,7 +157,7 @@ export default function ReactivePreview({
     }, Math.max(0, debounceMs));
 
     return () => window.clearTimeout(timer);
-  }, [source, debounceMs, refreshToken]);
+  }, [source, debounceMs, refreshToken, referenceMode]);
 
   return (
     <div

@@ -45,7 +45,7 @@ const SITE: Tool[] = [
     title: '云剪贴板',
     // 原为「云端文本存储与分享」—— 那句任何网盘都成立，说不出它跟博客的区别。
     // 这句讲的是它唯一无法被博客替代的能力（一个 ID 引用多处，改一次全更新）。
-    desc: 'Markdown 片段库：写一次，在博客里随处引用',
+    desc: '保存内容片段，在站内文章中引用',
     tags: ['片段', 'Markdown', '引用'],
   },
   {
@@ -84,7 +84,7 @@ const SITE: Tool[] = [
     href: '/favorite',
     icon: Star,
     title: '我的收藏夹',
-    desc: '收藏文章、整理成夹，公开的还能分享给别人',
+    desc: '收藏文章，整理后与成员分享',
     tags: ['收藏', '整理'],
     // 刻意**不设 coreOnly**：这一条原先挂在顶栏下拉菜单里，那里写明
     // 「不对档位设条件（core 以下点了是就地 403）—— 入口不跟着藏」。
@@ -96,7 +96,7 @@ const SITE: Tool[] = [
     href: '/tool/cattca',
     icon: Wrench,
     title: 'Cattca',
-    desc: '其他工具功能',
+    desc: '互动故事脚本编辑与运行',
     tags: ['工具'],
   },
 ];
@@ -273,7 +273,7 @@ export default function ToolMenu({ isCore }: { isCore: boolean }) {
       <section className="tool-new-hero">
         <h1 className="tool-new-hero__title">工具箱</h1>
         <p className="tool-new-hero__description">
-          常用编码、加密和数据处理工具的整合平台，助你更高效地完成开发与日常工作。
+          编码、转换、计算与站内工具。
         </p>
         <div className="tool-new-hero__search">
           <input

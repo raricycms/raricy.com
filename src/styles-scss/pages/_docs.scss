@@ -4,6 +4,7 @@
 // 本文件只管索引页的目录版式、正文页的外壳（返回条 / 来源行 / 同组文档），
 // 以及正文页那条**行宽上限**。
 
+@use '../abstracts/mixins' as m;
 @use '../components/doc-prose' as prose;
 
 // ⚠️ 只写纵向内距，**不要写 padding 简写**：`.docs-page` 与 `.container` 同挂一个
@@ -188,3 +189,7 @@
     margin-bottom: 1rem;
   }
 }
+
+.docs-audiences { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 24px; }
+.docs-audiences a { @include m.btn-tab; display: inline-flex; align-items: center; min-height: 44px; padding: 8px 16px; text-decoration: none; }
+.docs-group { scroll-margin-top: 96px; }

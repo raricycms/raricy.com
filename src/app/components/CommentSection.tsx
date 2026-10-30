@@ -425,7 +425,8 @@ export default function CommentSection({
         hintExtra={
           text.length > (pendingImage || blogQuote ? COMMENT_CAPTION_MAX : COMMENT_TEXT_MAX)
             ? `已超出${pendingImage || blogQuote ? COMMENT_CAPTION_MAX : COMMENT_TEXT_MAX}字上限`
-            : `最多${pendingImage || blogQuote ? COMMENT_CAPTION_MAX : COMMENT_TEXT_MAX}字`
+            : text.length >= (pendingImage || blogQuote ? COMMENT_CAPTION_MAX : COMMENT_TEXT_MAX) * 0.9
+              ? `${text.length} / ${pendingImage || blogQuote ? COMMENT_CAPTION_MAX : COMMENT_TEXT_MAX} 字` : undefined
         }
       />
     </div>

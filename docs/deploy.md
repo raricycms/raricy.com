@@ -634,7 +634,13 @@ journalctl -u raricy-next -f    # 观察启动日志
 
 ### 公开正文索引发布
 
-应用迁移后、切换新服务前执行 `npm run search:rebuild`，回填当前 public 且未删除的文章。
+应用迁移后、切换新服务前，对同一目标库执行回填：
+
+```bash
+DATABASE_URL="file:/绝对路径/instance/database/db.db" npm run search:rebuild
+```
+
+该命令回填当前 public 且未删除的文章。必须显式指定与迁移相同的数据库，避免落到本机默认开发库。
 重建命令可重复运行，不修改文章内容；失败须处理后再重试。若索引尚未就绪，公开搜索页面会
 明确降级为标题、简介和作者检索。源码中 `PUBLIC_SEARCH_VERSION` 改变时也须重新回填。
 新建、编辑、可见性变更和删除/恢复已维护索引，触发器先撤旧片段；索引异常查服务日志。

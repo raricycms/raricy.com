@@ -66,10 +66,9 @@ export interface MarketActor {
  * 禁言文案：本命名空间的接口共用一条，别各写各的。
  *
  * 导出是为了 `rent/route.ts` —— 那条路由不走这里的三道门（它只认会话，
- * 理由见它自己的文件头），但禁言这一道**必须一致**：同一个页面上，
- * 转账说「无法使用鱼干市场」而租框说别的，用户只会以为其中一条坏了。
+ * 理由见它自己的文件头），但禁言这一道对转账与租用采用相同口径。
  */
-export const BANNED_MESSAGE = '你已被禁言，暂时无法使用鱼干市场';
+export const BANNED_MESSAGE = '你已被禁言，暂时无法转账或租用装饰';
 
 export interface MarketAuthOptions {
   /**

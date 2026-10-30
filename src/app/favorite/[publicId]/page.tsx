@@ -4,7 +4,7 @@ import { requireCoreUser } from '@/lib/guard';
 import { getPublicFavorite } from '@/lib/favorite-service';
 import FavoriteDetailActions from '../FavoriteDetailActions';
 
-// 公开收藏夹的分享页（6 位句柄）。
+// 站内共享收藏夹的分享页（6 位句柄）。
 //
 // ⚠️ 需要 core+ 登录：整个博客区都是 core+ 的（/blog/[id] 也是），而这一页列出的正是
 //    博客链接 —— 做一张「游客打不开」的二维码没有意义。站外机器人 / 爬虫走的是
@@ -35,7 +35,7 @@ export default async function FavoritePublicPage({
     <div className="container" style={{ paddingTop: '2rem', paddingBottom: '2rem' }}>
       <div className="favorite-detail__head">
         <h1 className="favorite-detail__title">{fav.title}</h1>
-        <span className="favorite-badge favorite-badge--public">公开</span>
+        <span className="favorite-badge favorite-badge--public">站内共享</span>
         {isMine && (
           <Link className="read-btn" href={`/favorite/mine/${fav.id}`}>
             管理

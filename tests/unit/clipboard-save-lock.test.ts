@@ -425,7 +425,7 @@ describe('提交撞上在飞的那一笔：这次点击的意图算不算完成'
       '新建态有未保存的改动却跳走了 —— 标题与公开状态跟着一起消失'
     ).toEqual([]);
     expect(
-      toasts.some(([m]) => m.includes('标题') && m.includes('公开设置')),
+      toasts.some(([m]) => m.includes('标题') && m.includes('共享设置')),
       '没有点名改了哪几格（草稿只接得住正文，另外两格必须说出来）'
     ).toBe(true);
     expect(title.value, '留在页面上却不是他刚改的那一份').toBe('在飞后标题');

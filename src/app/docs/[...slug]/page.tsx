@@ -1,8 +1,8 @@
 import Link from 'next/link';
-import { notFound } from 'next/navigation';
+import { notFound, permanentRedirect } from 'next/navigation';
 import type { Metadata } from 'next';
 import { ArrowLeft } from 'lucide-react';
-import { docEntriesOfGroup, docHref, findDocEntry, repoFileUrl } from '@/lib/docs-catalog';
+import { GUIDE_CANONICAL_ROUTES, docEntriesOfGroup, docHref, findDocEntry, repoFileUrl } from '@/lib/docs-catalog';
 import { docRepoPath, renderDocHtml } from '@/lib/docs-service';
 
 // 文档正文页 —— `/docs/<登记表里的 slug>`。
@@ -28,6 +28,8 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 export default async function DocPage({ params }: PageProps) {
   const entry = findDocEntry((await params).slug);
   if (!entry) notFound();
+  const canonical = GUIDE_CANONICAL_ROUTES[entry.slug];
+  if (canonical) permanentRedirect(canonical);
 
   const html = renderDocHtml(entry);
   const repoPath = docRepoPath(entry);

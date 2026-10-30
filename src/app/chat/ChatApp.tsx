@@ -1878,7 +1878,8 @@ export default function ChatApp({
               hintExtra={
                 text.length > (pendingImage || blogQuote ? CHAT_CAPTION_MAX : CHAT_TEXT_MAX)
                   ? `已超出${pendingImage || blogQuote ? CHAT_CAPTION_MAX : CHAT_TEXT_MAX}字上限`
-                  : `最多${pendingImage || blogQuote ? CHAT_CAPTION_MAX : CHAT_TEXT_MAX}字`
+                  : text.length >= (pendingImage || blogQuote ? CHAT_CAPTION_MAX : CHAT_TEXT_MAX) * 0.9
+              ? `${text.length} / ${pendingImage || blogQuote ? CHAT_CAPTION_MAX : CHAT_TEXT_MAX} 字` : undefined
               }
             />
           </>

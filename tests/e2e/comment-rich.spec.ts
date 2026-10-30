@@ -195,9 +195,10 @@ test.describe('评论输入区（与讨论同源的 RichComposer）', () => {
     await expect(composer.getByRole('button', { name: '引用博客' })).toBeVisible();
     await expect(composer.getByRole('button', { name: '上传图片' })).toBeVisible();
     await expect(composer.getByRole('button', { name: '从图床选择' })).toBeVisible();
-    await expect(composer.getByRole('button', { name: '发送用户名片' })).toBeVisible();
+    await expect(composer.getByRole('button', { name: '插入用户名片' })).toBeVisible();
     await expect(composer.getByRole('button', { name: '表情' })).toBeVisible();
-    await expect(composer.locator('.comment-composer__icon-btn')).toHaveCount(5);
+    await expect(composer.locator('button.comment-composer__icon-btn')).toHaveCount(5);
+    await expect(composer.getByRole('link', { name: '格式与引用帮助' })).toBeVisible();
 
     // 空内容点提交 → 只弹提示，不发请求（评论区条数不变）
     const before = await page.locator('.comment-item').count();

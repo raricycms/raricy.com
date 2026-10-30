@@ -53,7 +53,7 @@ Content-Type: application/json
   "username": "mybot",
   "email": "bot@example.com",
   "password": "********",
-  "invite_code": "可选，填有效邀请码则直接升为 core",
+  "invite_code": "必填，有效且未使用的一次性邀请码",
   "turnstileToken": "可选，站点启用 Turnstile 时必填"
 }
 ```
@@ -65,6 +65,7 @@ Content-Type: application/json
 | `username` | 3–20 字符；仅允许字母 / 数字 / `_` / `-`；不能以 `-` 或 `_` 开头或结尾 |
 | `email` | 常规邮箱格式，≤100 字符 |
 | `password` | ≤100 字符 |
+| `invite_code` | 必填，必须有效且未使用；与创建账号原子占用 |
 
 **成功即自动登录**（响应会 `Set-Cookie`，见 §3）：
 
@@ -72,7 +73,7 @@ Content-Type: application/json
 {
   "code": 200,
   "message": "注册成功",
-  "user": { "id": "u_xxx", "username": "mybot", "role": "user" }
+  "user": { "id": "u_xxx", "username": "mybot", "role": "core" }
 }
 ```
 
@@ -82,13 +83,12 @@ Content-Type: application/json
 > 做法：由人工在浏览器里建号一次，之后机器人用账号密码登录即可 ——
 > 后续所有交互都不再涉及人机验证。
 
-### 2.2 提权到 core+
+### 2.2 成员资格与历史账号认证
 
-注册出来是 `user`，**讨论接口要求 core+**，否则一律 `403 需要核心用户权限`。
-两条路：
+**讨论接口要求 core+**。公开注册已直接创建 core；历史未认证或被取消资格的账号仍会收到 `403 需要核心用户权限`。
 
-- **注册时带有效邀请码** → 直接是 core（推荐，全自动）；
-- **让站长在服务器上执行**：`npm run cli -- promote-core mybot`
+- **新账号**：注册时必须提供有效邀请码，成功直接为 core 并建立会话；
+- **历史账号**：登录后通过 `POST /api/auth/authentic` 补码认证；或由有权限的管理人员调整资格。
 
 ---
 

@@ -19,11 +19,7 @@
 // 不一致时读者会在目录里看到 A、点进去看到 B。守卫按「去掉反引号与多余空白后相等」
 // 比对，所以 H1 里的行内代码（`内容引用语法 \`[@ ]\` 使用指南`）不会逼着索引也带反引号。
 //
-// 【与那 6 个指南页的关系】`/image/guide` 这类既有页面仍然按文件名读盘渲染
-//（`MarkdownGuide.tsx`），本表的条目与它们**并存**：同一份文档因此有两个站内 URL。
-// 这是刻意留的 —— 那些页面被工具页与线上冒烟钉着（见 `docs/README.md`），
-// 合并是一次独立的改动，不在这份表里顺手做。
-//
+// 六个功能内指南是规范地址；同一份 Markdown 的 /docs/guide/... 地址永久跳转。
 // 本文件**零 import**：它被服务端页面与 node 侧的守卫测试共用，别把 fs / marked
 // 或者任何 Next 专有的东西拖进来。
 // ─────────────────────────────────────────────────────────────────────────────
@@ -38,7 +34,7 @@ export const DOC_GROUPS = [
   {
     key: 'bot',
     title: '给机器人开发者',
-    description: '站外机器人接入的接口契约。十四份都自包含 —— 不读本站源码也能对接。',
+    description: '站外机器人接入的接口契约。各份文档均可独立阅读。',
   },
   {
     key: 'dev',
@@ -113,7 +109,7 @@ export const DOC_ENTRIES: readonly DocEntry[] = [
     group: 'guide',
     slug: 'guide/收藏夹使用指南',
     title: '收藏夹使用指南',
-    summary: '私密与公开的区别、复制、分享、导入导出。',
+    summary: '私密与站内共享、复制、分享、导入导出。',
   },
   {
     group: 'guide',
@@ -246,8 +242,8 @@ export const DOC_ENTRIES: readonly DocEntry[] = [
   {
     group: 'bot',
     slug: 'bot/favorite-bot',
-    title: '收藏夹接口（读公开收藏夹 · 站内写入）',
-    summary: '按 6 位 ID 读公开收藏夹；站内写入的接口与所有者限定。',
+    title: '收藏夹接口（读站内共享收藏夹 · 站内写入）',
+    summary: '按 6 位 ID 读站内共享收藏夹；站内写入的接口与所有者限定。',
   },
 
   // ── 开发与运维 ────────────────────────────────────────────────────────────
@@ -327,7 +323,7 @@ export const DOC_ENTRIES: readonly DocEntry[] = [
     group: 'dev',
     slug: 'plan/frontend-content-ia-audit',
     title: '全站前端文案与信息架构审计',
-    summary: '50 项问题及目标结构；补充邀请注册、成员模型、剪贴板站内共享和公开正文搜索设计，待实施。',
+    summary: '50 项文案与 IA 重构及产品规则实现；附本地验收、索引回填与发布要求。',
   },
   {
     group: 'dev',
@@ -403,7 +399,17 @@ export function docEntriesOfGroup(group: DocGroupKey): DocEntry[] {
 }
 
 /** 条目 → 站内 URL。中文路径逐段转义（`/docs/guide/%E5%9B%BE...`）。 */
+export const GUIDE_CANONICAL_ROUTES: Readonly<Record<string,string>> = {
+  'guide/图床使用指南':'/image/guide',
+  'guide/音频床使用指南':'/audio/guide',
+  'guide/云剪贴板使用指南':'/clipboard/guide',
+  'guide/投票箱使用指南':'/vote/guide',
+  'guide/收藏夹使用指南':'/favorite/guide',
+  'guide/cattca-guide':'/tool/cattca-guide',
+};
+
 export function docHref(slug: string): string {
+  if (GUIDE_CANONICAL_ROUTES[slug]) return GUIDE_CANONICAL_ROUTES[slug];
   return '/docs/' + slug.split('/').map(encodeURIComponent).join('/');
 }
 

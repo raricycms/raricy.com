@@ -1,4 +1,4 @@
-import { expect, type Page } from '@playwright/test';
+import { expect, request, type Page, type APIRequestContext } from '@playwright/test';
 import { SEED_PASSWORD, SEED_USERS } from './seed';
 
 /** 唯一后缀：注册类用例每次都要新用户名，且 desktop / mobile 两个 project 会把同一个
@@ -119,11 +119,21 @@ export async function loginViaApi(page: Page, username: string) {
  *   看起来像鉴权坏了，其实是没认证。
  */
 /** 邀请注册使用真实一次性邀请码；只由本地 e2e 种子站长签发。 */
+let inviteIssuer: { origin: string; state: Awaited<ReturnType<APIRequestContext['storageState']>> } | null = null;
 export async function freshInvite(page: Page): Promise<string> {
-  await loginViaApi(page, SEED_USERS.owner.username);
-  const res = await page.request.get('/zhh');
-  expect(res.status()).toBe(200);
-  return (await res.text()).trim();
+  // 只复用种子签发者会话，不反复消耗同一账号的密码计算预算；被测注册仍走真实接口。
+  const origin = inviteIssuer?.origin ?? new URL((await page.request.get('/login')).url()).origin;
+  const issuer = await request.newContext({ baseURL: origin, storageState: inviteIssuer?.state });
+  try {
+    if (!inviteIssuer) {
+      const login = await issuer.post('/api/auth/login', { data: { username: SEED_USERS.owner.username, password: SEED_PASSWORD } });
+      expect(login.status()).toBe(200);
+      inviteIssuer = { origin, state: await issuer.storageState() };
+    }
+    const response = await issuer.get('/zhh');
+    expect(response.status()).toBe(200);
+    return (await response.text()).trim();
+  } finally { await issuer.dispose(); }
 }
 
 export async function registerFreshUser(

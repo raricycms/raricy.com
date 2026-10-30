@@ -46,7 +46,7 @@ test.describe('匿名评论', () => {
     await expect(anon, '勾选项必须渲染出来，否则匿名无从发起').toBeVisible();
     await expect(anon).not.toBeChecked();
     // 工具条数量没被这个勾选项顶掉（comment-rich.spec.ts 钉死为 5）
-    await expect(composer.locator('.comment-composer__icon-btn')).toHaveCount(5);
+    await expect(composer.locator('button.comment-composer__icon-btn')).toHaveCount(5);
   });
 
   test('★ 走输入区勾上匿名发出：页面显示化名 + 「匿名」标，且点不进个人主页', async ({ page }) => {

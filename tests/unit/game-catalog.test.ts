@@ -33,14 +33,14 @@ describe('玩具合集：嵌套清单', () => {
   });
 
   it('URL 由父链推出：顶层一段，子合集两段', () => {
-    expect(collectionPath('craft').map((entry) => entry.id)).toEqual(['test', 'craft']);
+    expect(collectionPath('craft').map((entry) => entry.id)).toEqual(['craft']);
     expect(collectionHref('test')).toBe('/game/collections/test');
-    expect(collectionHref('craft')).toBe('/game/collections/test/craft');
+    expect(collectionHref('craft')).toBe('/game/collections/craft');
   });
 
   it('玩具首页只陈列顶层合集；子合集只在父合集页里出现', () => {
-    expect(topLevelCollections().map((entry) => entry.id)).toEqual(['test']);
-    expect(childCollections('test').map((entry) => entry.id)).toEqual(['craft']);
+    expect(topLevelCollections().map((entry) => entry.id)).toEqual(['test', 'craft']);
+    expect(childCollections('test').map((entry) => entry.id)).toEqual([]);
     expect(childCollections('craft')).toEqual([]);
   });
 
@@ -65,8 +65,8 @@ describe('玩具清单：与合集的引用关系', () => {
     }
   });
 
-  it('手工间挂在测试合集下，三款手工仍归手工间', () => {
-    expect(gameCollection('craft')?.parentId).toBe('test');
+  it('手工间独立陈列，三款手工的归属不变', () => {
+    expect(gameCollection('craft')?.parentId).toBeNull();
     expect(GAMES.filter((game) => game.collectionId === 'craft').map((game) => game.id))
       .toEqual(['loom', 'papercut', 'marbling']);
   });

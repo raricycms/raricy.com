@@ -8,10 +8,10 @@
 //
 // ★ 复制必须说清是**快照** ★ 用户很容易以为是活链接 —— 复制完自己这边删一条，
 //   却发现别人的副本没变（或反过来），是那种「用了一阵才隐约觉得不对」的困惑。
-//   所以这句提示是正文，不是 title 属性。
+//   所以这句提示在展开复制选项时展示，不藏在 title 属性里。
 
 import { useRef, useState } from 'react';
-import { Lock, Globe, Download, Trash2, Copy, QrCode, Pencil } from 'lucide-react';
+import { Lock, Globe, Download, Trash2, QrCode, Pencil } from 'lucide-react';
 import PosterModal from '@/app/components/PosterModal';
 
 function toast(msg: string, type: string) {
@@ -38,6 +38,7 @@ export default function FavoriteDetailActions({
   title,
   redirectTo,
 }: Props) {
+  const [copyOpen, setCopyOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [renaming, setRenaming] = useState(false);
   const [name, setName] = useState(title);
@@ -55,7 +56,7 @@ export default function FavoriteDetailActions({
       const data = await res.json();
       if (data.code === 200) {
         toast(
-          `已复制为${target ? '公开' : '私密'}收藏夹（快照，之后两边各自独立）`,
+          `已复制为${target ? '站内共享' : '私密'}收藏夹`,
           'success'
         );
         // 复制出来的那份归我 —— 直接带用户去管理它的页面
@@ -119,16 +120,21 @@ export default function FavoriteDetailActions({
   return (
     <>
       <div className="favorite-actions">
+        <button type="button" className="read-btn" aria-expanded={copyOpen} onClick={() => setCopyOpen(value => !value)}>复制新收藏夹</button>
+        {copyOpen && <>
         {/* 复制：两个方向都给。从公开复制成私密（「我把它收起来」）与从私密复制成公开
             （「我决定把它公开」）都是常见诉求，所以不做成「切换」，而是两颗并列的按钮。 */}
         <button type="button" className="read-btn" disabled={busy} onClick={() => void copy(false)}>
           <Lock aria-hidden="true" size={14} /> 复制为私密收藏夹
         </button>
         <button type="button" className="read-btn" disabled={busy} onClick={() => void copy(true)}>
-          <Globe aria-hidden="true" size={14} /> 复制为公开收藏夹
+          <Globe aria-hidden="true" size={14} /> 复制为站内共享收藏夹
         </button>
 
-        {/* 二维码只对公开收藏夹出现 —— 私密收藏夹在库里没有 6 位句柄，生成不出可分享的码 */}
+        <p className="favorite-snapshot-note">复制当前文章清单，两份收藏夹之后不会同步。</p>
+        </>}
+
+        {/* 二维码只对站内共享收藏夹出现 —— 私密收藏夹在库里没有 6 位句柄，生成不出可分享的码 */}
         {isPublic && publicId && (
           <PosterModal
             label={
@@ -139,7 +145,7 @@ export default function FavoriteDetailActions({
             src={`/api/poster/favorite/${publicId}`}
             downloadName={`聪明山-收藏夹-${title}.png`}
             title="收藏夹分享二维码"
-            hint="扫码即可打开这个收藏夹。二维码指向的是公开链接，任何核心用户都能打开。"
+            hint="扫码后需以成员账号登录。"
             triggerClassName="read-btn"
           />
         )}
@@ -168,13 +174,6 @@ export default function FavoriteDetailActions({
 
       </div>
 
-      {/* 复制提示放**两种视角都看得到**的位置：两种视角都有「复制」按钮，
-          而「以为是活链接」的困惑也两种视角都会发生。 */}
-      <p className="favorite-snapshot-note">
-        <Copy aria-hidden="true" size={13} style={{ marginRight: 6, verticalAlign: '-2px' }} />
-        复制出来的是<strong>快照</strong>：只复制此刻的这些文章，之后两份各走各的 ——
-        这边增删条目，那边不会跟着变。
-      </p>
 
       {mode === 'mine' && renaming && (
         <div className="favorite-picker__new" style={{ marginTop: '0.75rem' }}>

@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { getCurrentUser } from '@/lib/auth';
+import { getCurrentUser, isCoreUser } from '@/lib/auth';
 import { loginUrlWithNext } from '@/lib/safe-url';
 import { listFishTokens } from '@/lib/fish-token-service';
 import { getWebhookEndpoint, listRecentDeliveries } from '@/lib/fish-webhook-service';
@@ -96,7 +96,8 @@ export default async function FishApiPage() {
           —— 所以它比把密码交给脚本安全。有效期一年，到期后需重新签发。
         </p>
 
-        <FishApiClient initialTokens={initialTokens} />
+        {!isCoreUser(user) && <p className="market-field__hint">当前账号未取得成员资格，可查阅和吊销已有凭据。<Link href="/authentic">认证成员资格</Link></p>}
+        <FishApiClient initialTokens={initialTokens} canCreate={isCoreUser(user)} />
       </section>
 
       <section className="fish-api-section">
@@ -108,9 +109,10 @@ export default async function FishApiPage() {
           投递会重试，但<strong>可能重复</strong>，请按请求头里的投递编号去重。
         </p>
 
-        <FishWebhookPanel initialEndpoint={initialEndpoint} initialDeliveries={initialDeliveries} />
+        <FishWebhookPanel initialEndpoint={initialEndpoint} initialDeliveries={initialDeliveries} canConfigure={isCoreUser(user)} />
       </section>
 
+      <p className="market-foot"><Link href="/settings#developer" className="market-foot__link">返回设置</Link></p>
       <p className="market-foot">
         <Link href="/fish/transactions?type=transfer_all" className="market-foot__link">
           查看转账记录

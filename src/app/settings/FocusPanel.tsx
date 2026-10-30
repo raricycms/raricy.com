@@ -226,8 +226,8 @@ export default function FocusPanel({ onAlert }: Props) {
           <span className="settings-toggle-row__title">屏蔽的博客栏目</span>
           <p className="focus-cats__hint">
             {customized
-              ? '已按你的选择屏蔽；勾选一个板块会连同其子板块一起屏蔽。'
-              : '默认屏蔽站长标记的「专注隐藏」栏目；勾选一个板块会连同其子板块一起屏蔽。'}
+              ? '自定义栏目'
+              : '使用默认栏目'}
           </p>
         </div>
 
@@ -264,7 +264,6 @@ export default function FocusPanel({ onAlert }: Props) {
               恢复默认
             </button>
           )}
-          <span className="focus-cats__hint">未自定义时使用站长标记的栏目。</span>
         </div>
       </div>
     </>

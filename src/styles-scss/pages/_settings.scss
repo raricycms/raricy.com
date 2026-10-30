@@ -8,10 +8,10 @@
 .settings-page {
   max-width: 700px;
   margin: 0 auto;
-  padding: $space-8 0;
+  padding-block: $space-8;
 
   @media (max-width: 768px) {
-    padding: $space-6 0;
+    padding-block: $space-6;
   }
 }
 
@@ -494,3 +494,13 @@
   margin-top: $space-3;
   flex-wrap: wrap;
 }
+
+.settings-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: $space-2;
+  margin-bottom: $space-6;
+  a { @include m.btn-tab; padding: $space-2 $space-4; text-decoration: none; min-height: 44px; display: inline-flex; align-items: center; }
+}
+.settings-section { scroll-margin-top: 96px; margin-bottom: $space-8; }
+.settings-section__title { font-size: 1.2rem; margin: 0 0 $space-4; color: var(--color-text-primary); }

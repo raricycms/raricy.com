@@ -18,13 +18,13 @@ export async function generateMetadata({
   params: Promise<{ id: string }>;
 }): Promise<Metadata> {
   const user = await getCurrentUser();
-  if (!isCoreUser(user)) return { title: '文章编辑 - Raricy.com' };
+  if (!isCoreUser(user)) return { title: '编辑云剪贴板 - Raricy.com' };
 
   const { id } = await params;
   const result = await getClip(id, user?.id, isOwner(user));
   const title = result.ok
-    ? `${result.clip.title} 文章编辑 - Raricy.com`
-    : '文章编辑 - Raricy.com';
+    ? `${result.clip.title} 编辑云剪贴板 - Raricy.com`
+    : '编辑云剪贴板 - Raricy.com';
   return { title };
 }
 
@@ -50,6 +50,7 @@ export default async function ClipEditPage({
 
   return (
     <div className="clipboard-page">
+      <h1 className="clipboard-title">编辑云剪贴板</h1>
       <UploadForm
         clip={{
           id: clip.id,

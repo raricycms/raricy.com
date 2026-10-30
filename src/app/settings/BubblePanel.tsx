@@ -39,21 +39,20 @@ export default function BubblePanel() {
       {!view ? alert ? <button className="settings-btn" onClick={() => void load()}>重新加载</button> : <p className="settings-card__desc" role="status">加载中…</p> : (
         <>
           <div className="bubble-panel__item">
-            <ChatBubble bubbleKey={null}>默认气泡，一直可用。</ChatBubble>
+            <ChatBubble bubbleKey={null}>默认气泡</ChatBubble>
             <button className="settings-btn" disabled={busy || view.equippedKey === null} onClick={() => void equip(null)}>
               {view.equippedKey === null ? '使用中' : '恢复默认'}
             </button>
           </div>
           {view.bubbles.map((b) => (
             <div className="bubble-panel__item" key={b.key} data-bubble-item={b.key}>
-              <ChatBubble bubbleKey={b.key}>{b.label}，这是你的聊天气泡预览。</ChatBubble>
+              <ChatBubble bubbleKey={b.key}>{b.label}</ChatBubble>
               <span className="bubble-panel__state"><span className="numeric">{b.expiresAt ? `${b.expiresAt} 到期` : '永久持有'}</span>{b.expired ? ' · 已过期' : b.disabled ? ' · 已停用' : ''}</span>
               <button className="settings-btn settings-btn--primary" disabled={busy || !b.available || view.activeKey === b.key} onClick={() => void equip(b.key)}>
                 {view.activeKey === b.key ? '使用中' : '使用'}
               </button>
             </div>
           ))}
-          {view.bubbles.length === 0 && <p className="settings-card__desc">你还没有付费气泡，可以到鱼干商城租用。</p>}
         </>
       )}
     </div>

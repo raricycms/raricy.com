@@ -157,8 +157,9 @@ test('复制公开收藏夹 → 自己得到一份**私密**副本（且是快�
   const copier = await registerFreshUser(page, { core: true });
   await page.goto(`/favorite/${src.favorite.public_id}`);
 
-  // 复制按钮旁边必须有「快照」的说明（需求明确要求提示用户之后各走各的）
-  await expect(page.locator('body')).toContainText('快照');
+  await expect(page.locator('.favorite-snapshot-note')).toHaveCount(0);
+  await page.getByRole('button', { name: '复制新收藏夹', exact: true }).click();
+  await expect(page.locator('.favorite-snapshot-note')).toContainText('不会同步');
 
   await page.getByRole('button', { name: '复制为私密收藏夹' }).click();
   // 复制完会跳到新那份的管理页

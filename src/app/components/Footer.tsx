@@ -37,8 +37,8 @@ export default function Footer({ children }: { children?: ReactNode }) {
               <a href="https://github.com/raricycms/raricy.com" aria-label="GitHub">
                 <span className="icon icon-github" aria-hidden="true"></span>
               </a>
-              <a href="/contact" aria-label="Twitter">
-                <span className="icon icon-twitter" aria-hidden="true"></span>
+              <a href="/contact" aria-label="联系本站">
+                <span className="icon icon-chat-dots_new" aria-hidden="true"></span>
               </a>
               <a href="mailto:raricycms@gmail.com" aria-label="Email">
                 <span className="icon icon-envelope" aria-hidden="true"></span>

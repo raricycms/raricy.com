@@ -77,7 +77,7 @@ export default function FavoriteButton({ blogId, isAuth, isCore, initialFavorite
       return;
     }
     if (!isCore) {
-      toast('需要核心用户权限', 'error');
+      toast('需要成员资格', 'error');
       return;
     }
     setOpen(true);
@@ -154,7 +154,7 @@ export default function FavoriteButton({ blogId, isAuth, isCore, initialFavorite
       if (addData.code === 200) {
         setNewTitle('');
         setFavorited(true);
-        toast(isPublic ? '已创建公开收藏夹并收藏' : '已创建私密收藏夹并收藏', 'success');
+        toast(isPublic ? '已创建站内共享收藏夹并收藏' : '已创建私密收藏夹并收藏', 'success');
         await load();
       } else {
         toast(addData.message || '收藏失败', 'error');
@@ -249,18 +249,20 @@ export default function FavoriteButton({ blogId, isAuth, isCore, initialFavorite
                     className="read-btn"
                     disabled={creating}
                     onClick={() => void create(false)}
+                    aria-label="创建私密收藏夹"
                     title="只有你能看到；不显示 ID，无法分享、无法被机器人读取，但可以导出 JSON"
                   >
-                    <Lock aria-hidden="true" size={14} /> 创建私密收藏夹
+                    <Lock aria-hidden="true" size={14} /> 创建私密
                   </button>
                   <button
                     type="button"
                     className="read-btn"
                     disabled={creating}
                     onClick={() => void create(true)}
-                    title="任何人可见；有 6 位 ID，可以分享、生成二维码、用 [@ID] 内嵌到文章里"
+                    aria-label="创建站内共享收藏夹"
+                    title="成员凭分享链接可读，也可用 [@ID] 引用"
                   >
-                    <Globe aria-hidden="true" size={14} /> 创建公开收藏夹
+                    <Globe aria-hidden="true" size={14} /> 创建站内共享
                   </button>
                 </div>
               </div>

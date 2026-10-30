@@ -198,13 +198,15 @@ export default function SettingsPage() {
 
   return (
     <div className="settings-page container">
+      <h1 className="page-title">设置</h1>
+      <nav className="settings-nav" aria-label="设置分组"><a href="/settings#profile">资料</a><a href="/settings#preferences">浏览偏好</a><a href="/settings#appearance">外观</a><a href="/settings#security">安全与应用</a><a href="/settings#developer">开发接入</a></nav>
+      <section className="settings-section" id="profile" aria-labelledby="profile-heading"><h2 className="settings-section__title" id="profile-heading">个人资料</h2>
       {/* ====== Section 1: Bio ====== */}
       <div className="settings-card">
         <div className="settings-card__header">
           <span className="icon icon-person"></span>
-          <h2 className="settings-card__title">个人资料</h2>
+          <h3 className="settings-card__title">个人简介</h3>
         </div>
-        <p className="settings-card__desc">编辑你的个人简介，展示在个人主页中</p>
         <div className={bioAlertClass} id="bioAlert">{bioAlert?.msg ?? ''}</div>
         <textarea
           id="editBio"
@@ -225,11 +227,112 @@ export default function SettingsPage() {
         </button>
       </div>
 
+      {/* ====== Section 3: Privacy ====== */}
+      <div className="settings-card">
+        <div className="settings-card__header">
+          <span className="icon icon-gear"></span>
+          <h3 className="settings-card__title">主页隐私设置</h3>
+        </div>
+        <p className="settings-card__desc">主页内容由你在主页上自行布置；下面两项控制默认展示与资料接口</p>
+        <div className={privacyAlertClass} id="privacyAlert">{privacyAlert?.msg ?? ''}</div>
+
+        <div className="settings-toggle-row">
+          <div className="settings-toggle-row__label">
+            <span className="settings-toggle-row__title">默认展示最近文章</span>
+            <span className="settings-toggle-row__desc">还没布置主页时，自动展示最近三篇对外可读的文章；关掉后默认为空。亲手加的文章块不受影响</span>
+          </div>
+          <label className="settings-toggle">
+            <input
+              type="checkbox"
+              id="toggleBlogs"
+              checked={state.showRecentBlogs}
+              onChange={(e) => savePrivacy('showRecentBlogs', e.target.checked)}
+            />
+            <span className="settings-toggle__slider"></span>
+          </label>
+        </div>
+
+        <div className="settings-toggle-row">
+          <div className="settings-toggle-row__label">
+            <span className="settings-toggle-row__title">在资料接口中提供最近评论</span>
+            <span className="settings-toggle-row__desc">评论不会出现在个人主页（保护匿名评论者）；关闭后，第三方应用读取资料时也拿不到最近评论</span>
+          </div>
+          <label className="settings-toggle">
+            <input
+              type="checkbox"
+              id="toggleComments"
+              checked={state.showRecentComments}
+              onChange={(e) => savePrivacy('showRecentComments', e.target.checked)}
+            />
+            <span className="settings-toggle__slider"></span>
+          </label>
+        </div>
+      </div>
+
+      </section>
+      <section className="settings-section" id="preferences" aria-labelledby="preferences-heading"><h2 className="settings-section__title" id="preferences-heading">浏览偏好</h2>
+      {/* ====== Section 3.5: 专注模式（id 供 /blog 横幅深链跳转） ====== */}
+      <div className="settings-card" id="focus-mode">
+        <div className="settings-card__header">
+          <span className="icon icon-controller"></span>
+          <h3 className="settings-card__title">专注模式</h3>
+        </div>
+        <div className={focusAlertClass} id="focusAlert">{focusAlert?.msg ?? ''}</div>
+        <FocusPanel
+          onAlert={(kind, msg) => {
+            setFocusAlert({ msg, type: kind });
+            setTimeout(() => setFocusAlert(null), 3000);
+          }}
+        />
+      </div>
+
+      {/* ====== Section 6: 添加到主屏幕（独立窗口下整张卡片自隐） ====== */}
+      <AddToHomeScreenGuide />
+      </section>
+      <section className="settings-section" id="appearance" aria-labelledby="appearance-heading"><h2 className="settings-section__title" id="appearance-heading">外观</h2>
+      {/* ====== Section 3b: 头像框 ====== */}
+      {/* id 给深链用（/u/[id] 的「换个头像框」按钮指过来），与 #focus-mode 同款 */}
+      <div className="settings-card" id="avatar-frame">
+        <div className="settings-card__header">
+          <span className="icon icon-person"></span>
+          <h3 className="settings-card__title">头像框</h3>
+        </div>
+        <p className="settings-card__desc"><a className="frame-panel__hint-link" href="/fish/shop?category=frame#shop">去商城选头像框</a></p>
+        {frameAlert && (
+          <div className={`settings-alert settings-alert--${frameAlert.type}`}>
+            {frameAlert.msg}
+          </div>
+        )}
+        {/* 等 profile 到了再渲染 —— 面板要用 id 画预览，空 id 会画出一张不属于任何人的
+            identicon（而它看起来「也像个头像」，没人会发现是错的） */}
+        {state.id && (
+          <FramePanel
+            userId={state.id}
+            onAlert={(kind, msg) => {
+              setFrameAlert({ msg, type: kind });
+              setTimeout(() => setFrameAlert(null), 3000);
+            }}
+          />
+        )}
+      </div>
+
+      {/* ====== Section 4: OAuth applications ====== */}
+      <div className="settings-card" id="chat-bubble">
+        <div className="settings-card__header">
+          <span className="icon icon-chat-dots_new"></span>
+          <h3 className="settings-card__title">聊天气泡</h3>
+        </div>
+        <p className="settings-card__desc">选择会同时影响历史消息。<a className="frame-panel__hint-link" href="/fish/shop?category=bubble#shop">去商城选气泡</a></p>
+        {state.id && <BubblePanel />}
+      </div>
+
+      </section>
+      <section className="settings-section" id="security" aria-labelledby="security-heading"><h2 className="settings-section__title" id="security-heading">安全与应用</h2>
       {/* ====== Section 2: Password ====== */}
       <div className="settings-card">
         <div className="settings-card__header">
           <span className="icon icon-gear-fill"></span>
-          <h2 className="settings-card__title">修改密码</h2>
+          <h3 className="settings-card__title">修改密码</h3>
         </div>
         <p className="settings-card__desc">修改后需要重新登录</p>
         <div className={passwordAlertClass} id="passwordAlert">{passwordAlert?.msg ?? ''}</div>
@@ -287,119 +390,10 @@ export default function SettingsPage() {
         </form>
       </div>
 
-      {/* ====== Section 3: Privacy ====== */}
-      <div className="settings-card">
-        <div className="settings-card__header">
-          <span className="icon icon-gear"></span>
-          <h2 className="settings-card__title">主页隐私设置</h2>
-        </div>
-        <p className="settings-card__desc">主页内容由你在主页上自行布置；下面两项控制默认展示与资料接口</p>
-        <div className={privacyAlertClass} id="privacyAlert">{privacyAlert?.msg ?? ''}</div>
-
-        <div className="settings-toggle-row">
-          <div className="settings-toggle-row__label">
-            <span className="settings-toggle-row__title">默认展示最近文章</span>
-            <span className="settings-toggle-row__desc">还没布置主页时，自动展示最近三篇对外可读的文章；关掉后默认为空。亲手加的文章块不受影响</span>
-          </div>
-          <label className="settings-toggle">
-            <input
-              type="checkbox"
-              id="toggleBlogs"
-              checked={state.showRecentBlogs}
-              onChange={(e) => savePrivacy('showRecentBlogs', e.target.checked)}
-            />
-            <span className="settings-toggle__slider"></span>
-          </label>
-        </div>
-
-        <div className="settings-toggle-row">
-          <div className="settings-toggle-row__label">
-            <span className="settings-toggle-row__title">在资料接口中提供最近评论</span>
-            <span className="settings-toggle-row__desc">评论不会出现在个人主页（保护匿名评论者）；关闭后，第三方应用读取资料时也拿不到最近评论</span>
-          </div>
-          <label className="settings-toggle">
-            <input
-              type="checkbox"
-              id="toggleComments"
-              checked={state.showRecentComments}
-              onChange={(e) => savePrivacy('showRecentComments', e.target.checked)}
-            />
-            <span className="settings-toggle__slider"></span>
-          </label>
-        </div>
-      </div>
-
-      {/* ====== Section 3.5: 专注模式（id 供 /blog 横幅深链跳转） ====== */}
-      <div className="settings-card" id="focus-mode">
-        <div className="settings-card__header">
-          <span className="icon icon-controller"></span>
-          <h2 className="settings-card__title">专注模式</h2>
-        </div>
-        <p className="settings-card__desc">
-          屏蔽干扰源，专心阅读。可以分别选择屏蔽讨论大区、玩具区与鱼干练手盘，
-          也可以自选要屏蔽的博客栏目（未自定义时使用站长标记的「专注隐藏」栏目）。
-          私聊、鱼干商城与转账不受影响。随时可在此调整。
-        </p>
-        <div className={focusAlertClass} id="focusAlert">{focusAlert?.msg ?? ''}</div>
-        <FocusPanel
-          onAlert={(kind, msg) => {
-            setFocusAlert({ msg, type: kind });
-            setTimeout(() => setFocusAlert(null), 3000);
-          }}
-        />
-      </div>
-
-      {/* ====== Section 3b: 头像框 ====== */}
-      {/* id 给深链用（/u/[id] 的「换个头像框」按钮指过来），与 #focus-mode 同款 */}
-      <div className="settings-card" id="avatar-frame">
-        <div className="settings-card__header">
-          <span className="icon icon-person"></span>
-          <h2 className="settings-card__title">头像框</h2>
-        </div>
-        <p className="settings-card__desc">
-          戴上你拥有的头像框，它会显示在顶栏、评论区、讨论区与你的个人主页。
-          除了活动发放的，也可以去{' '}
-          <a className="frame-panel__hint-link" href="/fish/shop?category=frame#shop">
-            鱼干商城
-          </a>
-          用小鱼干租一款。限时的头像框到期后会自动消失，不需要手动摘。
-        </p>
-        {frameAlert && (
-          <div className={`settings-alert settings-alert--${frameAlert.type}`}>
-            {frameAlert.msg}
-          </div>
-        )}
-        {/* 等 profile 到了再渲染 —— 面板要用 id 画预览，空 id 会画出一张不属于任何人的
-            identicon（而它看起来「也像个头像」，没人会发现是错的） */}
-        {state.id && (
-          <FramePanel
-            userId={state.id}
-            onAlert={(kind, msg) => {
-              setFrameAlert({ msg, type: kind });
-              setTimeout(() => setFrameAlert(null), 3000);
-            }}
-          />
-        )}
-      </div>
-
-      {/* ====== Section 4: OAuth applications ====== */}
-      <div className="settings-card" id="chat-bubble">
-        <div className="settings-card__header">
-          <span className="icon icon-chat-dots_new"></span>
-          <h2 className="settings-card__title">聊天气泡</h2>
-        </div>
-        <p className="settings-card__desc">
-          在讨论大区和私聊中使用你选的气泡，历史消息也会跟随当前选择。
-          到期后自动恢复默认款。购买后在这里选择使用，{' '}
-          <a className="frame-panel__hint-link" href="/fish/shop?category=frame#shop">去鱼干商城</a>。
-        </p>
-        {state.id && <BubblePanel />}
-      </div>
-
       <div className="settings-card">
         <div className="settings-card__header">
           <span className="icon icon-github"></span>
-          <h2 className="settings-card__title">已绑定的应用</h2>
+          <h3 className="settings-card__title">已绑定的应用</h3>
         </div>
         <p className="settings-card__desc">查看通过 OAuth 2.0 绑定到你账号的第三方应用，可在此解除绑定。解除后该应用的访问令牌立即失效。</p>
         {oauthAlert && (
@@ -415,11 +409,13 @@ export default function SettingsPage() {
         />
       </div>
 
+      </section>
+      <section className="settings-section" id="developer" aria-labelledby="developer-heading"><h2 className="settings-section__title" id="developer-heading">开发接入</h2>
       {/* ====== Section 5: 鱼干接口（机器人接入） ====== */}
       <div className="settings-card">
         <div className="settings-card__header">
           <span className="icon icon-fish"></span>
-          <h2 className="settings-card__title">鱼干接口</h2>
+          <h3 className="settings-card__title">鱼干接口</h3>
         </div>
         <p className="settings-card__desc">
           给站外机器人 / 银行签发只读凭据：只能查余额与流水，不能转账，可单独吊销。
@@ -429,8 +425,7 @@ export default function SettingsPage() {
         </Link>
       </div>
 
-      {/* ====== Section 6: 添加到主屏幕（独立窗口下整张卡片自隐） ====== */}
-      <AddToHomeScreenGuide />
+      </section>
     </div>
   );
 }

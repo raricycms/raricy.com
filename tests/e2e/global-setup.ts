@@ -228,7 +228,7 @@ export default async function globalSetup() {
   // 显式传 url：本进程的 .env 指向 prod.db，不能靠环境变量兜底
   const prisma = new PrismaClient({ datasources: { db: { url } } });
   try {
-    // Playwright 的模块钩子不支持 node:sqlite；经 Prisma 执行与模板完全相同的 SQL。
+    // 与 Vitest 模板安装同一份约束及搜索索引 SQL。
     installTestConstraints(E2E_DB);
     await prisma.dailyQuote.createMany({ data: classicQuotes.map((quote) => ({
       id: quote.id, kind: 'builtin', content: quote.content, contentKey: quote.content_key,

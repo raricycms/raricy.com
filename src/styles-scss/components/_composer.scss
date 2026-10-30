@@ -279,11 +279,12 @@
   .#{$p}__foot {
     display: flex;
     align-items: center;
-    justify-content: space-between;
+    justify-content: flex-end;
     gap: 8px;
     padding: 2px 2px 0;
   }
   .#{$p}__hint {
+    margin-right: auto;
     // 辅助信息的字号下限 0.75rem（frontend-styles §3.2）
     font-size: 0.75rem;
     /* 提示是**辅助文字**，走次级色。此前用的是 `--color-text-tertiary`（#dde4ee /

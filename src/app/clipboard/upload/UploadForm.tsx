@@ -53,7 +53,7 @@ interface ClipFields {
 const CLIP_LABELS: ReadonlyArray<readonly [keyof ClipFields, string]> = [
   ['title', '标题'],
   ['content', '正文'],
-  ['publicity', '公开设置'],
+  ['publicity', '共享设置'],
   ['format', '正文格式'],
 ];
 
@@ -424,26 +424,7 @@ export default function UploadForm({ clip }: { clip?: EditClip }) {
   }
 
   return (
-    <div className="clipboard-page">
-      <h1 className="clipboard-title">
-        {isEdit ? `${clip!.title} 文章编辑` : '上传云剪贴板'}
-      </h1>
-
-      {isEdit && (
-        <div className="clipboard-form__reminder">
-          提示：编辑过程中可按 <kbd>Ctrl+S</kbd> 手动保存，以免内容丢失。也可以勾选下方
-          {'"自动保存"'}开关，每分钟自动保存一次。
-          <br />
-          支持 Markdown 与 LaTeX（<code>$inline$</code> / <code>{'$$block$$'}</code>）。
-        </div>
-      )}
-
-      {!isEdit && (
-        <div className="clipboard-form__reminder">
-          支持 Markdown 与 LaTeX（<code>$inline$</code> / <code>{'$$block$$'}</code>）。
-        </div>
-      )}
-
+    <>
       <div className="clipboard-form">
         <form id="uploadForm" onSubmit={onSubmit}>
           <div className="clipboard-form__group">
@@ -559,6 +540,6 @@ export default function UploadForm({ clip }: { clip?: EditClip }) {
           </button>
         </form>
       </div>
-    </div>
+    </>
   );
 }

@@ -13,6 +13,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { ReferenceReader } from '@/lib/reactive/ref-types';
 import {
+  adaptReactivePreview,
   compileReactivePreview,
   createClientReferenceReader,
 } from '@/lib/reactive/client-compile';
@@ -214,5 +215,14 @@ describe('createClientReferenceReader', () => {
         items: [{ blogId: 'b1', title: '一' }],
       },
     });
+  });
+});
+
+describe('发布时的访客预览',()=>{
+  it('不读取任何成员资源，引用保持原文，与实际外部文章一致',async()=>{
+    const reader=vi.fn<ReferenceReader>();
+    const source='正文 [@AbCd1234] [@AbCdEf123] [@123456]';
+    const result=await adaptReactivePreview(source,reader,'external');
+    expect(result.adaptedSource).toBe(source);expect(result.hostData).toEqual({});expect(reader).not.toHaveBeenCalled();
   });
 });

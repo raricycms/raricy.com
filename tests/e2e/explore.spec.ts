@@ -103,7 +103,7 @@ test.describe('对外列表 /explore', () => {
     await expect(page.locator('a[href*="featured=1"]'), '对外列表不该有精选筛选').toHaveCount(0);
   });
 
-  test('卡片上没有计数、作者名不是链接（对外视图没有评论区）', async ({ page }) => {
+  test('卡片上没有计数，作者链接通往现有公开个人主页', async ({ page }) => {
     const tag = uniqueTag();
     const author = await ensureAuthor(page);
     const pub = await createBlog(page, 'public', `探索卡片-${tag}`);
@@ -116,8 +116,8 @@ test.describe('对外列表 /explore', () => {
     // 三个计数全挂在 .blog-stats 上 —— 整个块不该被渲染（第 1 期已定：对外视图无评论区，
     // 写着「评论 12」却翻不到评论是自相矛盾的）
     await expect(card.locator('.blog-stats'), '卡片上不该有任何计数').toHaveCount(0);
-    // 作者名显示但不链接 —— 第 2 期刻意不做作者页对外
-    await expect(card.locator('.blog-author a'), '作者名不许是链接').toHaveCount(0);
+    // 公开个人主页已在审计基线中上线，作者链接沿用该能力。
+    await expect(card.locator('.blog-author a')).toHaveAttribute('href', `/u/${author.id}`);
     await expect(card.locator('.blog-author')).toContainText(author.username);
   });
 

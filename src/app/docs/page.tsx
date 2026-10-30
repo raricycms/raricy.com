@@ -1,7 +1,6 @@
 import Link from 'next/link';
 import type { Metadata } from 'next';
 import {
-  DOC_ENTRIES,
   DOC_GROUPS,
   REPO_URL,
   docEntriesOfGroup,
@@ -33,9 +32,7 @@ export default function DocsIndexPage() {
       <header className="docs-hero">
         <h1 className="docs-hero__title">文档</h1>
         <p className="docs-hero__lede">
-          本站的全部文档，共 <span className="numeric">{DOC_ENTRIES.length}</span> 份：给玩家与创作者的使用指南、给站外机器人开发者的
-          接口说明，以及开发与运维笔记。它们与站外仓库{' '}
-          <code>docs/</code> 里的是同一份 —— 这里读到的就是仓库里的原文。
+          使用指南、机器人接口说明与开发资料。
         </p>
         <p className="docs-hero__source">
           <a href={REPO_URL} target="_blank" rel="noreferrer">
@@ -44,10 +41,12 @@ export default function DocsIndexPage() {
         </p>
       </header>
 
+      <nav className="docs-audiences" aria-label="文档受众">{DOC_GROUPS.map(group=><a key={group.key} href={`/docs#docs-${group.key}`}>{group.title}</a>)}</nav>
+
       {DOC_GROUPS.map((group) => {
         const entries = docEntriesOfGroup(group.key);
         return (
-          <section className="docs-group" key={group.key}>
+          <section className="docs-group" key={group.key} id={`docs-${group.key}`}>
             <h2 className="docs-group__title">
               {group.title}
               <span className="docs-group__count numeric">{entries.length}</span>

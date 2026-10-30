@@ -19,8 +19,8 @@ export interface GameCollection {
 }
 
 export const GAME_COLLECTIONS = [
-  { id: 'test', title: '测试', parentId: null, icon: 'flask' },
-  { id: 'craft', title: '手工间', parentId: 'test', icon: 'craft' },
+  { id: 'test', title: '实验室', parentId: null, icon: 'flask' },
+  { id: 'craft', title: '手工间', parentId: null, icon: 'craft' },
 ] as const satisfies readonly GameCollection[];
 
 export type GameCollectionId = (typeof GAME_COLLECTIONS)[number]['id'];
@@ -268,6 +268,8 @@ export function childCollections(parentId: string): GameCollection[] {
  * 整段对不上（父链断了 / 不存在 / 空路径）回 null，交给页面 404。
  */
 export function collectionByPath(slugs: readonly string[]): GameCollection | null {
+  // 已发布的旧父链保留跳转，不能把其他断链路径泛化为有效路径。
+  if (slugs.length === 2 && slugs[0] === 'test' && slugs[1] === 'craft') return gameCollection('craft') ?? null;
   const [head, ...rest] = slugs;
   let current = head ? gameCollection(head) : undefined;
   if (!current) return null;

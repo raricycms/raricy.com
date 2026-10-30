@@ -56,7 +56,7 @@ export default function FavoriteMenu({ favorites }: { favorites: Row[] }) {
           ...prev,
         ]);
         setTitle('');
-        toast(isPublic ? '已创建公开收藏夹' : '已创建私密收藏夹', 'success');
+        toast(isPublic ? '已创建站内共享收藏夹' : '已创建私密收藏夹', 'success');
       } else {
         toast(data.message || '创建失败', 'error');
       }
@@ -159,7 +159,7 @@ export default function FavoriteMenu({ favorites }: { favorites: Row[] }) {
             <Lock aria-hidden="true" size={14} /> 创建私密收藏夹
           </button>
           <button type="button" className="read-btn" disabled={busy} onClick={() => void create(true)}>
-            <Globe aria-hidden="true" size={14} /> 创建公开收藏夹
+            <Globe aria-hidden="true" size={14} /> 创建站内共享收藏夹
           </button>
         </div>
       </div>
@@ -187,7 +187,7 @@ export default function FavoriteMenu({ favorites }: { favorites: Row[] }) {
             disabled={busy || !pendingFile}
             onClick={() => void doImport(true)}
           >
-            <Upload aria-hidden="true" size={14} /> 导入为公开收藏夹
+            <Upload aria-hidden="true" size={14} /> 导入为站内共享收藏夹
           </button>
         </div>
       </div>
@@ -206,10 +206,10 @@ export default function FavoriteMenu({ favorites }: { favorites: Row[] }) {
                 </a>
                 <div className="favorite-item__meta">
                   <span className={`favorite-badge favorite-badge--${row.isPublic ? 'public' : 'private'}`}>
-                    {row.isPublic ? '公开' : '私密'}
+                    {row.isPublic ? '站内共享' : '私密'}
                   </span>
                   <span className="numeric">{row.itemCount} 篇</span>
-                  {/* 只有公开收藏夹有 6 位句柄；私密的那格**什么都不渲染**。
+                  {/* 只有站内共享收藏夹有 6 位句柄；私密的那格**什么都不渲染**。
                       写的是 JSX 文本 + 表达式，别把模板字符串的 `${}` 搬进来 ——
                       写成 `[@${row.publicId}]` 会原样渲染出「[@$123456]」，
                       而那个句柄是要拿去粘进 `[@六位ID]` 引用的。 */}

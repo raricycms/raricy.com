@@ -66,9 +66,11 @@ const STATUS_LABEL: Record<string, string> = {
 export default function FishWebhookPanel({
   initialEndpoint,
   initialDeliveries,
+  canConfigure = true,
 }: {
   initialEndpoint: WebhookEndpointView | null;
   initialDeliveries: DeliveryRow[];
+  canConfigure?: boolean;
 }) {
   const [endpoint, setEndpoint] = useState<WebhookEndpointView | null>(initialEndpoint);
   const [deliveries, setDeliveries] = useState<DeliveryRow[]>(initialDeliveries);
@@ -184,7 +186,7 @@ export default function FishWebhookPanel({
         </div>
       )}
 
-      <form className="market-card" onSubmit={save}>
+      {canConfigure && <form className="market-card" onSubmit={save}>
         <div className="market-field">
           <label className="market-field__label" htmlFor="webhook-url">
             回调地址
@@ -223,7 +225,7 @@ export default function FishWebhookPanel({
         <button type="submit" className="market-submit" disabled={busy || !url.trim() || !password}>
           {busy ? '处理中…' : endpoint ? '更新回调地址' : '登记回调地址'}
         </button>
-      </form>
+      </form>}
 
       {endpoint && (
         <>
@@ -251,7 +253,7 @@ export default function FishWebhookPanel({
                     停用
                   </button>
                 )}
-                <button type="button" className="fish-api-revoke" onClick={rotate} disabled={busy}>
+                <button type="button" className="fish-api-revoke" onClick={rotate} disabled={busy || !canConfigure}>
                   换密钥
                 </button>
               </div>

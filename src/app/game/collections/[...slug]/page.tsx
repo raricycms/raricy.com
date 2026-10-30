@@ -51,6 +51,7 @@ export default async function GameCollectionPage({ params }: Props) {
         ))}
       </nav>
       <h1>{collection.title}</h1>
+      {collection.id === 'test' && <p className="text-muted">实验性玩具，功能仍在调整。</p>}
       <div className="game-grid">
         {games.map((game) => <GameCard key={game.id} game={game} />)}
       </div>

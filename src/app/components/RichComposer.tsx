@@ -20,8 +20,8 @@
 // 一个字节都不用改）。
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { useEffect, useRef, useState } from 'react';
-import { BookOpenText, Check, IdCard, Image as ImageIcon, Images, Smile, X } from 'lucide-react';
+import { useEffect, useId, useRef, useState } from 'react';
+import { BookOpenText, HelpCircle, Check, IdCard, Image as ImageIcon, Images, Smile, X } from 'lucide-react';
 import { IMAGE_ACCEPT } from '@/lib/image-client';
 import type { MentionScope } from '@/lib/mention-shared';
 import MentionInput from './MentionInput';
@@ -137,11 +137,7 @@ export default function RichComposer({
    */
   stickerPickClosesPanel?: boolean;
   /**
-   * 底条左侧提示的**前置**内容（讨论与评论都用它显示字数上限）。
-   *
-   * 【为什么是前置而不是整体替换】曾经它是整体替换默认提示的，于是评论区的
-   * 「Enter 发送 · Shift+Enter 换行 · 支持 Markdown」被顶掉了 —— 而讨论要加
-   * 字数提示时同样会丢掉按键说明。前置就只是「多一句」，两边都完整。
+   * 接近上限或异常时的就地提示；正常输入不占位。
    */
   hintExtra?: React.ReactNode;
   /**
@@ -165,6 +161,7 @@ export default function RichComposer({
   dismiss?: { label: string; onClick: () => void } | null;
 }) {
   const isTouch = useCoarsePointer();
+  const limitHintId = useId();
   // 文件 input 归自己持有：选完立即清 value，否则连续选同一个文件不会再触发 change。
   const fileRef = useRef<HTMLInputElement | null>(null);
   // 图床选择弹窗也归自己持有（同 fileRef 的道理：开合是个纯 UI 状态，调用方不关心）。
@@ -269,8 +266,8 @@ export default function RichComposer({
               cardCaretRef.current = captureCaret(textareaRef.current);
             }}
             onClick={() => setCardOpen(true)}
-            title="发送用户名片"
-            aria-label="发送用户名片"
+            title="插入用户名片"
+            aria-label="插入用户名片"
           >
             <IdCard aria-hidden="true" />
           </button>
@@ -297,6 +294,7 @@ export default function RichComposer({
               if (f) onPickImage(f);
             }}
           />
+          <a className={`${className}__icon-btn`} href="/docs/guide/内容引用语法指南" target="_blank" rel="noreferrer" aria-label="格式与引用帮助" title="格式与引用帮助"><HelpCircle aria-hidden="true" /></a>
           {/* 右上角的关闭叉（只有传了 dismiss 才有，见上面的 prop 说明）。
               margin-left:auto 由 SCSS 给 —— 它把叉推到工具条右端 = 面板右上角。 */}
           {dismiss && (
@@ -312,6 +310,7 @@ export default function RichComposer({
           )}
         </div>
         <MentionInput
+          aria-describedby={hintExtra ? limitHintId : undefined}
           scope={mentionScope}
           textareaRef={textareaRef}
           onTextChange={onTextChange}
@@ -319,7 +318,7 @@ export default function RichComposer({
           rows={1}
           placeholder={
             isTouch
-              ? `${placeholderLead}，Enter 换行，点「${submitVerb}」提交`
+              ? placeholderLead
               : `${placeholderLead}，Enter ${submitVerb}，Shift+Enter 换行`
           }
           value={text}
@@ -348,12 +347,7 @@ export default function RichComposer({
           }}
         />
         <div className={`${className}__foot`}>
-          <span className={`${className}__hint`}>
-            {hintExtra ? <>{hintExtra} · </> : null}
-            {isTouch
-              ? `Enter 换行 · 点${submitVerb}提交 · 支持 Markdown`
-              : `Enter ${submitVerb} · Shift+Enter 换行 · 支持 Markdown`}
-          </span>
+          {hintExtra && <span className={`${className}__hint`} id={limitHintId} role="status">{hintExtra}</span>}
           {anonToggle && (
             /* 勾选钮是一枚圆形按钮 + ✔（外观见 pages/blog/_comments.scss 的 __anon）；
                「匿名」两个字仍是普通标签文字，不跟着状态变色。

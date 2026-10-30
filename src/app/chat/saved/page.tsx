@@ -94,11 +94,11 @@ export default async function SavedMessagesPage({
       <div className="saved-page__head">
         <h1 className="saved-page__title">保存的消息</h1>
         <span className="saved-page__count numeric">
-          {page.total} / {SAVED_MESSAGE_MAX}
+          {page.total} 条
         </span>
       </div>
       <p className="saved-page__hint">
-        只有自己看得到，不会导出、不会被分享。消息被删除后会显示占位，点进去跳到原会话。
+        私密
       </p>
 
       {page.items.length === 0 ? (

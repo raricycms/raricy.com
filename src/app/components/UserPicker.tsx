@@ -110,7 +110,7 @@ export default function UserPicker({
       <div className="modal-dialog user-picker" onClick={(e) => e.stopPropagation()}>
         <div className="modal-content">
           <div className="modal-header">
-            <h3 className="modal-title">发送用户名片</h3>
+            <h3 className="modal-title">插入用户名片</h3>
             <button type="button" className="chat-modal-close" onClick={onClose} aria-label="关闭">
               ×
             </button>
@@ -157,10 +157,6 @@ export default function UserPicker({
               )}
             </div>
 
-            <p className="user-picker__hint">
-              <IdCard aria-hidden="true" />
-              对方收到的是一张带头像的名片，点一下就进他的主页；不会给他发通知。
-            </p>
           </div>
         </div>
       </div>

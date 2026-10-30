@@ -168,7 +168,7 @@ async function resonateCard(card: Locator) {
   const done = card.getByRole('button', { name: '已共鸣', exact: true });
   await expect(async () => {
     if (await done.count()) return;
-    await card.getByRole('button', { name: /^共鸣，/ }).click();
+    await card.getByRole('button', { name: /^共鸣(?:，|$)/ }).click();
     await expect(done).toHaveCount(1, { timeout: 2_000 });
   }).toPass({ timeout: 20_000 });
 }
@@ -238,7 +238,7 @@ test('无博客时各一言页面统一引导，发文后恢复，删光后再�
   const user = await registerCoreUser(page, false);
   for (const url of ['/checkin', '/checkin/quotes', '/favorite/quotes', '/checkin/submissions']) {
     await page.goto(url);
-    await expect(page.getByText('请先发表一篇博客，再使用每日一言。不妨从自我介绍开始。')).toBeVisible();
+    await expect(page.getByText(url === '/checkin' ? '请先发表一篇博客，再签到。' : '请先发表一篇博客，再使用每日一言。不妨从自我介绍开始。')).toBeVisible();
     await expect(page.getByRole('link', { name: '发表博客', exact: true })).toBeVisible();
     await expect(page.locator('.daily-quote-list')).toHaveCount(0);
     await expectNoHorizontalScroll(page);
@@ -532,10 +532,11 @@ test('未签到也能回看往期，今日接口仍 403（H1）', async ({ page 
   await registerCoreUser(page);
 
   await page.goto('/checkin');
-  // 有博客的 core 未签到也能使用三个相关入口
-  const nav = page.locator('.daily-quote-nav');
+  // 签到只提供一言入口，完整导航位于一言功能域。
+  await page.getByRole('link', { name: '每日一言', exact: true }).click();
+  const nav = page.getByRole('navigation', { name: '每日一言', exact: true });
   await expect(nav).toBeVisible();
-  await expect(nav.getByRole('link')).toHaveCount(3);
+  await expect(nav.locator('a, [aria-current]')).toHaveCount(4);
   // 今日内容仍要签到后才给看 —— 往期不是绕过签到的旁路
   expect((await page.request.get('/api/daily-quotes/today')).status()).toBe(403);
 

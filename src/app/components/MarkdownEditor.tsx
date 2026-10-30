@@ -137,6 +137,8 @@ export interface MarkdownEditorProps {
    * Markdown 的一切（含导出 / 打印）保持原样。**默认 markdown，行为不变。**
    */
   format?: ContentFormat;
+  /** 对外文章可按访客预览；默认保留成员编辑与引用能力。 */
+  referenceMode?: 'expand' | 'external';
   /** 编辑区高度（CSS 值）。 */
   height?: string;
   /** CM6 初始化失败 —— 调用方把 textarea 回退显示出来，并用这个初值填进去。 */
@@ -162,6 +164,7 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(
       title = '',
       withMath = false,
       format = 'markdown',
+      referenceMode = 'expand',
       height = '60vh',
       onInitError,
       onNotify,
@@ -185,7 +188,12 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(
 
     /** 会话级引用缓存：跨预览重渲染复用，编辑器销毁即释放（§5.1）。 */
     const resolverRef = useRef<ContentRefResolver | null>(null);
-    if (!resolverRef.current) resolverRef.current = new ContentRefResolver('expand');
+    const resolverModeRef = useRef(referenceMode);
+    if (!resolverRef.current || resolverModeRef.current !== referenceMode) {
+      resolverRef.current?.invalidate();
+      resolverRef.current = new ContentRefResolver(referenceMode);
+      resolverModeRef.current = referenceMode;
+    }
 
     const draftRef = useRef<DraftStore | null>(null);
     const [draftChoice, setDraftChoice] = useState<string | null>(null);
@@ -889,11 +897,12 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(
                  * blog-content-dom）**一行都不跑** —— 它读不懂 reactive 语法，
                  * 跑一遍只会把源码当 Markdown 重新解释。
                  */
-                <ReactivePreview source={previewDoc} refreshToken={refreshToken} />
+                <ReactivePreview key={referenceMode} source={previewDoc} refreshToken={refreshToken} referenceMode={referenceMode} />
               ) : (
                 <MarkdownRenderer
                   content={previewDoc}
-                  contentRefs="expand"
+                  key={referenceMode}
+                  contentRefs={referenceMode}
                   interactive={false}
                   resolver={resolverRef.current}
                   refreshToken={refreshToken}

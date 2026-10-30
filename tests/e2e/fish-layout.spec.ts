@@ -26,3 +26,14 @@ test('旧市场保留任务选择，旧商品锚点到商城',async({page})=>{
   await expect(page).toHaveURL(/\/fish\/shop#shop$/);
   await expect(page.locator('h1')).toHaveText('鱼干商城');
 });
+test('练手盘记录与统计保留内部导航和返回入口',async({page})=>{
+  await loginViaApi(page,SEED_USERS.core.username);
+  for(const route of ['/fish/trade/history','/fish/trade/stats']) {
+    await page.goto(route);
+    const nav=page.getByRole('navigation',{name:'练手盘',exact:true});
+    await expect(nav.locator('a, [aria-current]')).toHaveCount(3);
+    const parent=route.endsWith('history')?'/fish':'/fish/trade';
+    await expect(page.locator(`a[href="${parent}"]`).last()).toBeVisible();
+    expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(page.viewportSize()!.width);
+  }
+});

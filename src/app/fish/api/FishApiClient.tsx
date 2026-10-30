@@ -50,7 +50,7 @@ function statusOf(t: TokenRow): { text: string; kind: 'ok' | 'off' } {
   return { text: '有效', kind: 'ok' };
 }
 
-export default function FishApiClient({ initialTokens }: { initialTokens: TokenRow[] }) {
+export default function FishApiClient({ initialTokens, canCreate = true }: { initialTokens: TokenRow[]; canCreate?: boolean }) {
   const [tokens, setTokens] = useState<TokenRow[]>(initialTokens);
   const [nextCursor, setNextCursor] = useState<number | null>(initialTokens.length === FISH_TOKEN_PAGE_SIZE ? initialTokens[initialTokens.length - 1].id : null);
   const [label, setLabel] = useState('');
@@ -149,7 +149,7 @@ export default function FishApiClient({ initialTokens }: { initialTokens: TokenR
         </div>
       )}
 
-      <form className="market-card" onSubmit={mint}>
+      {canCreate && <form className="market-card" onSubmit={mint}>
         <div className="market-field">
           <label className="market-field__label" htmlFor="token-label">
             凭据备注（可选）
@@ -191,7 +191,7 @@ export default function FishApiClient({ initialTokens }: { initialTokens: TokenR
           凭据只能<strong>查</strong>余额与流水，不能转账，也不能提现。改密码不会作废它 ——
           要停用请在这里吊销（立即生效）。
         </p>
-      </form>
+      </form>}
 
       {tokens.length === 0 ? (
         <p className="fish-api-empty">还没有签发过凭据。</p>
