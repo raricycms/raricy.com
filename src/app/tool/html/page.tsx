@@ -26,8 +26,8 @@ export default function HtmlToolPage() {
     let out = '';
     for (const ch of text) {
       if (namedMap[ch]) {
-        // Always encode the basic HTML entities, regardless of the checkbox
-        out += namedMap[ch];
+        // 勾选时基础字符走命名实体；取消勾选走等价的数字实体。
+        out += useNamed ? namedMap[ch] : `&#${(ch.codePointAt(0) as number)};`;
       } else if (encodeNonAscii && ch.charCodeAt(0) > 0x7f) {
         const code = (ch.codePointAt(0) as number).toString(16).toUpperCase();
         out += `&#x${code};`;
@@ -39,8 +39,13 @@ export default function HtmlToolPage() {
   }
 
   function decodeHTML(text: string): string {
+    // 先把 <br> 与块级结束标签换成换行，避免 textContent 把整段结构吞成一行；
+    // 之后仍用 detached div 解析，不执行脚本、不插入文档。
+    const withBreaks = (text || '')
+      .replace(/<br\s*\/?>/gi, '\n')
+      .replace(/<\/(p|div|li|tr|h[1-6]|blockquote|pre|section|article)>/gi, '\n');
     const div = document.createElement('div');
-    div.innerHTML = text;
+    div.innerHTML = withBreaks;
     return div.textContent || (div as HTMLElement).innerText || '';
   }
 
@@ -55,6 +60,7 @@ export default function HtmlToolPage() {
   const swap = () => {
     setLeft(right);
     setRight(left);
+    setStatus('已交换');
   };
   const copyRight = async () => {
     try {
@@ -112,7 +118,11 @@ export default function HtmlToolPage() {
                         type="checkbox"
                         id="useNamed"
                         checked={useNamed}
-                        onChange={(e) => setUseNamed(e.target.checked)}
+                        onChange={(e) => {
+                          setUseNamed(e.target.checked);
+                          setRight('');
+                          setStatus('');
+                        }}
                       />
                       <label className="form-check-label" htmlFor="useNamed">
                         优先使用命名实体（如 &amp;amp;），否则使用数字实体
@@ -126,7 +136,11 @@ export default function HtmlToolPage() {
                         type="checkbox"
                         id="encodeNonAscii"
                         checked={encodeNonAscii}
-                        onChange={(e) => setEncodeNonAscii(e.target.checked)}
+                        onChange={(e) => {
+                          setEncodeNonAscii(e.target.checked);
+                          setRight('');
+                          setStatus('');
+                        }}
                       />
                       <label className="form-check-label" htmlFor="encodeNonAscii">
                         编码非 ASCII 字符（如中文 → &amp;#xXXXX;）

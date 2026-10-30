@@ -100,7 +100,10 @@ function base32ToBytes(text: string): Uint8Array {
     value = 0;
   const out: number[] = [];
   for (const ch of clean) {
-    if (!map.has(ch)) continue;
+    if (!map.has(ch)) {
+      if (ch === '=') continue;
+      throw new Error(`非法 Base32 字符: ${ch}`);
+    }
     value = (value << 5) | (map.get(ch) as number);
     bits += 5;
     if (bits >= 8) {
@@ -170,18 +173,20 @@ function ascii85Encode(bytes: Uint8Array): string {
   for (let i = 0; i < bytes.length; i += 4) {
     const chunk = bytes.slice(i, i + 4);
     const pad = 4 - chunk.length;
-    let val = 0;
+    // 4 字节按 32 位无符号数处理。写成 (val << 8) | b 会在首字节 >= 0x80 时变成
+    // 负数，后面的 % 85 得到负余数 —— 用 BigInt 避免整类溢出。
+    let val = 0n;
     for (let j = 0; j < 4; j++) {
-      val = (val << 8) | (chunk[j] ?? 0);
+      val = (val << 8n) | BigInt(chunk[j] ?? 0);
     }
-    if (val === 0 && pad === 0) {
+    if (val === 0n && pad === 0) {
       out += 'z';
       continue;
     }
-    const digits = new Array(5);
+    const digits = new Array<number>(5);
     for (let k = 4; k >= 0; k--) {
-      digits[k] = (val % 85) + 33;
-      val = Math.floor(val / 85);
+      digits[k] = Number(val % 85n) + 33;
+      val /= 85n;
     }
     const emitLen = 5 - pad;
     for (let k = 0; k < emitLen; k++) out += String.fromCharCode(digits[k]);
@@ -326,8 +331,13 @@ function base92Encode(bytes: Uint8Array): string {
     }
   }
   if (n > 0) {
-    const v = (b << (13 - n)) & 0x1fff;
-    out += B92_ALPHABET[Math.floor(v / 92)] + B92_ALPHABET[v % 92];
+    if (n <= 6) {
+      // 末组 ≤ 6 bit：只发一个字符（解码端按 6 bit 读）。
+      out += B92_ALPHABET[b & ((1 << n) - 1)];
+    } else {
+      const v = (b << (13 - n)) & 0x1fff;
+      out += B92_ALPHABET[Math.floor(v / 92)] + B92_ALPHABET[v % 92];
+    }
   }
   return out;
 }
@@ -336,20 +346,33 @@ function base92Decode(text: string): Uint8Array {
   let b = 0,
     n = 0;
   const out: number[] = [];
-  for (let i = 0; i < input.length; i += 2) {
-    const c1 = B92_DEC[input.charCodeAt(i)];
-    const c2 = B92_DEC[input.charCodeAt(i + 1)] ?? -1;
-    if (c1 === -1 || c2 === -1) throw new Error('包含非法 Base92 字符');
-    const v = c1 * 92 + c2;
-    b = (b << 13) | v;
-    n += 13;
+  let i = 0;
+  while (i < input.length) {
+    const remaining = input.length - i;
+    let v: number;
+    let add: number;
+    if (remaining >= 2) {
+      const c1 = B92_DEC[input.charCodeAt(i)];
+      const c2 = B92_DEC[input.charCodeAt(i + 1)];
+      if (c1 === -1 || c2 === -1) throw new Error('包含非法 Base92 字符');
+      v = c1 * 92 + c2;
+      add = 13;
+      i += 2;
+    } else {
+      const c = B92_DEC[input.charCodeAt(i)];
+      if (c === -1) throw new Error('包含非法 Base92 字符');
+      // 末组单字符：编码端只写了 ≤6 bit。
+      v = c & 0x3f;
+      add = 6;
+      i += 1;
+    }
+    b = (b << add) | v;
+    n += add;
     while (n >= 8) {
       n -= 8;
       out.push((b >>> n) & 0xff);
     }
-  }
-  if (n > 0 && input.length % 2 === 1) {
-    out.push((b << (8 - n)) & 0xff);
+    b = n ? b & ((1 << n) - 1) : 0;
   }
   return new Uint8Array(out);
 }
@@ -425,7 +448,7 @@ export default function BaseToolPage() {
       setLeft(decodeAlgo(algo, right || ''));
       setStatus('完成');
     } catch (e) {
-      setLeft('');
+      // 解码失败只改状态：不要把用户已经在左栏写好的原文清掉。
       setStatus((e as Error).message || '出错了');
     }
   };
@@ -477,7 +500,12 @@ export default function BaseToolPage() {
                   className={`badge rounded-pill algo-badge${isActive ? ' active' : ''}`}
                   data-algo={key}
                   aria-pressed={isActive ? 'true' : 'false'}
-                  onClick={() => setAlgo(key)}
+                  onClick={() => {
+                    setAlgo(key);
+                    // 换算法后旧输出不再对应当前算法，清掉并重置状态。
+                    setRight('');
+                    setStatus('');
+                  }}
                 >
                   {label}
                 </span>

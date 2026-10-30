@@ -35,24 +35,34 @@ export default function UrlToolPage() {
       text = text.replace(/\+/g, '%20');
     }
     const decoder = useEncodeURI ? decodeURIComponent : decodeURI;
-    try {
-      return decoder(text);
-    } catch (e) {
-      return '[解码失败] ' + ((e as Error).message || '');
-    }
+    // 让异常抛给调用方：解码失败只体现在状态栏，不要把错误文案当结果写进左栏。
+    return decoder(text);
+  }
+
+  function errorText(e: unknown): string {
+    return e instanceof Error && e.message ? e.message : '非法输入';
   }
 
   const encodeLeftToRight = () => {
-    setRight(customEncode(left || ''));
-    setStatus('完成');
+    try {
+      setRight(customEncode(left || ''));
+      setStatus('完成');
+    } catch (e) {
+      setStatus('编码失败：' + errorText(e));
+    }
   };
   const decodeRightToLeft = () => {
-    setLeft(customDecode(right || ''));
-    setStatus('完成');
+    try {
+      setLeft(customDecode(right || ''));
+      setStatus('完成');
+    } catch (e) {
+      setStatus('解码失败：' + errorText(e));
+    }
   };
   const swap = () => {
     setLeft(right);
     setRight(left);
+    setStatus('已交换');
   };
   const copyRight = async () => {
     try {
@@ -110,7 +120,11 @@ export default function UrlToolPage() {
                         type="checkbox"
                         id="useEncodeURI"
                         checked={useEncodeURI}
-                        onChange={(e) => setUseEncodeURI(e.target.checked)}
+                        onChange={(e) => {
+                          setUseEncodeURI(e.target.checked);
+                          setRight('');
+                          setStatus('');
+                        }}
                       />
                       <label className="form-check-label" htmlFor="useEncodeURI">
                         使用 encodeURIComponent（取消选中使用 encodeURI）
@@ -124,7 +138,11 @@ export default function UrlToolPage() {
                         type="checkbox"
                         id="spacePlus"
                         checked={spacePlus}
-                        onChange={(e) => setSpacePlus(e.target.checked)}
+                        onChange={(e) => {
+                          setSpacePlus(e.target.checked);
+                          setRight('');
+                          setStatus('');
+                        }}
                       />
                       <label className="form-check-label" htmlFor="spacePlus">
                         空格编码为 + （适用于 application/x-www-form-urlencoded）
@@ -138,7 +156,11 @@ export default function UrlToolPage() {
                         type="checkbox"
                         id="preserveSlash"
                         checked={preserveSlash}
-                        onChange={(e) => setPreserveSlash(e.target.checked)}
+                        onChange={(e) => {
+                          setPreserveSlash(e.target.checked);
+                          setRight('');
+                          setStatus('');
+                        }}
                       />
                       <label className="form-check-label" htmlFor="preserveSlash">
                         保留斜杠 / 不编码
@@ -152,7 +174,11 @@ export default function UrlToolPage() {
                         type="checkbox"
                         id="lowercaseHex"
                         checked={lowercaseHex}
-                        onChange={(e) => setLowercaseHex(e.target.checked)}
+                        onChange={(e) => {
+                          setLowercaseHex(e.target.checked);
+                          setRight('');
+                          setStatus('');
+                        }}
                       />
                       <label className="form-check-label" htmlFor="lowercaseHex">
                         百分号转义使用小写十六进制（%2f 而非 %2F）

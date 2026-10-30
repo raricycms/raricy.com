@@ -17,16 +17,16 @@ export default function QpToolPage() {
     const lines = input.split(/\r?\n/);
     const out: string[] = [];
     const eol = crlf ? '\r\n' : '\n';
-    for (let line of lines) {
+    const encoder = new TextEncoder();
+    for (const line of lines) {
+      // QP 的 =XX 是**字节**转义（RFC 2045），所以先取 UTF-8 字节再逐字节判断；
+      // 直接对 UTF-16 code unit 转义会写出 =4F60 这种非法 QP。
+      const bytes = encoder.encode(line);
       let encoded = '';
-      for (let i = 0; i < line.length; i++) {
-        const ch = line[i];
-        const code = ch.charCodeAt(0);
-        // Per RFC 2045, tab(9) and space(32) are safe unless at EOL.
-        // Other safe chars are 33-60 and 62-126.
+      for (const code of bytes) {
         const safe =
           code === 9 || code === 32 || (code >= 33 && code <= 60) || (code >= 62 && code <= 126);
-        if (safe) encoded += ch;
+        if (safe) encoded += String.fromCharCode(code);
         else encoded += '=' + code.toString(16).toUpperCase().padStart(2, '0');
       }
       if (escapeTrailingSpaces) {
@@ -69,9 +69,11 @@ export default function QpToolPage() {
       }
     }
     try {
-      return new TextDecoder().decode(new Uint8Array(bytes));
+      // fatal: true —— 非 UTF-8 的 QP 正文（如 ISO-8859-1 的 =E9）应当报错，
+      // 而不是静默替换成 U+FFFD。
+      return new TextDecoder('utf-8', { fatal: true }).decode(new Uint8Array(bytes));
     } catch {
-      return '[解码失败]';
+      return '[解码失败] 不是合法的 UTF-8 字节序列';
     }
   }
 
@@ -86,6 +88,7 @@ export default function QpToolPage() {
   const swap = () => {
     setLeft(right);
     setRight(left);
+    setStatus('已交换');
   };
   const copyRight = async () => {
     try {
@@ -143,7 +146,11 @@ export default function QpToolPage() {
                         type="checkbox"
                         id="softLineBreak"
                         checked={softLineBreak}
-                        onChange={(e) => setSoftLineBreak(e.target.checked)}
+                        onChange={(e) => {
+                          setSoftLineBreak(e.target.checked);
+                          setRight('');
+                          setStatus('');
+                        }}
                       />
                       <label className="form-check-label" htmlFor="softLineBreak">
                         软换行（在行末添加 =\r\n）
@@ -157,7 +164,11 @@ export default function QpToolPage() {
                         type="checkbox"
                         id="escapeTrailingSpaces"
                         checked={escapeTrailingSpaces}
-                        onChange={(e) => setEscapeTrailingSpaces(e.target.checked)}
+                        onChange={(e) => {
+                          setEscapeTrailingSpaces(e.target.checked);
+                          setRight('');
+                          setStatus('');
+                        }}
                       />
                       <label className="form-check-label" htmlFor="escapeTrailingSpaces">
                         转义行尾空格和制表符
@@ -171,7 +182,11 @@ export default function QpToolPage() {
                         type="checkbox"
                         id="crlf"
                         checked={crlf}
-                        onChange={(e) => setCrlf(e.target.checked)}
+                        onChange={(e) => {
+                          setCrlf(e.target.checked);
+                          setRight('');
+                          setStatus('');
+                        }}
                       />
                       <label className="form-check-label" htmlFor="crlf">
                         使用 CRLF 作为换行（\r\n）
