@@ -19,41 +19,42 @@
   &-hero {
     padding: $space-8 0;
     background: linear-gradient(135deg, var(--color-background-page) 0%, var(--color-background-card) 100%);
-    border-bottom: 1px solid var(--color-border);
-    
+
     @media (max-width: 768px) {
       padding: $space-6 0;
     }
-    
+
     &__title {
-      font-size: 2.5rem;
+      font-size: clamp(1.9rem, 1.4rem + 1.4vw, 2.6rem);
       font-weight: 700;
       margin-bottom: $space-3;
       color: var(--color-text-primary);
-      
+
       @media (max-width: 768px) {
-        font-size: 2rem;
+        font-size: 1.9rem;
       }
     }
-    
+
     &__description {
-      font-size: 1.125rem;
+      font-size: 1.0625rem;
       color: var(--color-text-secondary);
       margin-bottom: $space-6;
       line-height: 1.6;
     }
-    
+
     &__search {
-      max-width: 500px;
+      max-width: 560px;
       margin-bottom: $space-4;
 
       /* 此处原有 .search-input 的完整重声明（1px 描边 / 10px 圆角 / 卡片底色），
          已删除 —— 全站搜索框统一走 blog/_menu.scss 里的那一条。 */
       .search-input {
         width: 100%;
+        height: 48px;
+        font-size: 1rem;
       }
     }
-    
+
     &__filters {
       display: flex;
       gap: $space-2;
@@ -191,21 +192,58 @@
     text-align: center;
     padding: $space-8 0;
     color: var(--color-text-secondary);
-    
+
     &__icon {
-      font-size: 3rem;
-      margin-bottom: $space-3;
-      opacity: 0.5;
+      display: block;
+      width: 40px;
+      height: 40px;
+      margin: 0 auto $space-3;
+      color: var(--color-text-tertiary);
+      opacity: 0.8;
     }
-    
+
     &__text {
-      font-size: 1.125rem;
+      font-size: 1.05rem;
+      font-weight: 600;
       margin-bottom: $space-2;
+      color: var(--color-text-primary);
     }
-    
+
     &__subtext {
       font-size: 0.875rem;
-      opacity: 0.7;
+      opacity: 0.8;
+    }
+  }
+}
+
+// 「更多开发者工具」按钮单独占一行并居中（它以前是 inline-block + margin:auto，
+// 在块级容器里不会居中，实际贴在左边）。
+.tool-new-more {
+  display: flex;
+  justify-content: center;
+  padding: $space-2 0 $space-6;
+
+  .filter-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 10px 20px;
+    background: var(--color-background-card);
+    color: var(--color-text-secondary);
+
+    svg {
+      width: 16px;
+      height: 16px;
+      transition: transform 0.2s ease;
+    }
+
+    &[aria-expanded='true'] svg {
+      transform: rotate(180deg);
+    }
+
+    &:hover {
+      background: var(--color-brand-secondary);
+      color: var(--color-brand-primary);
     }
   }
 }
@@ -215,45 +253,75 @@
    `.dark-mode` —— 这是一套永不生效的第二配色，且色值与真暗色板不一致，已删。 */
 // ── 工具子页面的外壳与面板 ───────────────────────────────────────────────────
 //
-// /tool/{base,aes,hash,hex,url,qp,html} 七页共用同一套写法。这一块随 SCSS 拆分
-// （02f6ab5）一起丢了 —— 于是这些页面上「面板」不见了：输入区与结果区就是两块
-// 直接摊在页面底色上的文字，卡片底、描边、内距全没有。
+// /tool/{base,aes,hash,hex,url,qp,html} 七页共用同一套写法。这里只保留两件事：
+//   · 页面外壳（标题 / 说明 / 留白）
+//   · 工作台卡片（输入区、结果区、选项区）
+// 字段本身一律走全站字段令牌；**不再**把 input 的边框/底色/内距清零（那会把
+// 密钥、IV、HMAC 这类小字段变成没有表面的隐形控件，长值还会在边界被切半字）。
 .base-tool-page {
-  padding: $space-8 0;
+  padding: $space-8 0 $space-8;
+
+  .tool-new-hero__title {
+    font-size: clamp(1.7rem, 1.3rem + 1.2vw, 2.15rem);
+    letter-spacing: -0.02em;
+  }
+
+  .tool-new-hero__description {
+    max-width: 720px;
+    margin-bottom: $space-6;
+    font-size: 0.95rem;
+    line-height: 1.65;
+  }
+
+  @media (max-width: 767.98px) {
+    padding: $space-6 0;
+  }
 }
 
-// 面板即输入框：单层描边，label 在上，内部的 textarea / input **无缝嵌入**
-// （去边框去底色去内距），焦点环加在整框上 —— 这样看起来是一个控件而不是
-// 「一个框里套另一个框」。所以下面那几条 .tool-panel 内部的覆盖不能删。
+// 工作台卡片：面板里再没有「框套框」。行内只放 label、编辑器、选项与状态。
 .tool-panel {
   position: relative;
   display: flex;
   flex-direction: column;
-  padding: 14px $space-4;
+  gap: 12px;
+  padding: 20px;
   background: var(--color-background-card);
   border-radius: $radius-field;
-  // 字段外壳本就该无边框：常态无边框、无阴影，聚焦才亮品牌蓝光晕（光晕不参与
-  // 布局，字段不会随焦点撑高）。边框去掉后 border-color 已无对象，transition 里
-  // 也只留会变的 box-shadow 一项。
   transition: box-shadow 0.2s ease;
+
+  // 页面里同时挂了 .p-3；工具类的 !important 会盖掉上面的内距，这里按面板档位收回来。
+  &.p-3 {
+    padding: 20px !important;
+  }
+
+  @media (max-width: 767.98px) {
+    padding: 16px;
+    gap: 10px;
+
+    &.p-3 {
+      padding: 16px !important;
+    }
+  }
 
   &:focus-within {
     box-shadow: var(--shadow-focus-brand);
   }
 
   > .form-label {
-    margin-bottom: 10px;
-    font-size: 0.78rem;
+    margin-bottom: 0;
+    font-size: 0.8rem;
     font-weight: 600;
     letter-spacing: 0.01em;
     color: var(--color-text-secondary);
   }
 
-  textarea.form-control,
-  input.form-control {
+  // 大编辑器（输入 / 输出那两块）就是面板本身：透明、无边框，焦点环由整张卡接住。
+  textarea.form-control.result-area {
     flex: 1;
-    padding: 0;
+    min-height: 260px;
+    padding: 2px 0;
     border: none;
+    border-radius: 0;
     background: transparent;
     box-shadow: none;
     resize: none;
@@ -263,15 +331,124 @@
       background: transparent;
       box-shadow: none;
     }
+
+    @media (max-width: 767.98px) {
+      min-height: 190px;
+    }
+  }
+
+  // 面板里的其它 textarea（如哈希结果）保留完整字段表面；多行字段固定 20px 圆角。
+  textarea.form-control:not(.result-area) {
+    min-height: 150px;
+    padding: 14px 16px;
+    border: none;
+    border-radius: $radius-field;
+    background: var(--color-background-page);
+    resize: vertical;
+
+    &:focus {
+      outline: 0;
+      box-shadow: var(--shadow-focus-brand);
+    }
+  }
+
+  // 单行字段：胶囊、页面底、真实内距。密钥 / IV / HMAC 这类字段终于看得见了。
+  input.form-control {
+    height: 44px;
+    padding: 10px 16px;
+    border: none;
+    border-radius: $radius-max;
+    background: var(--color-background-page);
+
+    &:focus {
+      outline: 0;
+      box-shadow: var(--shadow-focus-brand);
+    }
+
+    @media (max-width: 767.98px) {
+      font-size: 1rem;
+    }
+  }
+
+  select.form-select {
+    width: 100%;
+    height: 44px;
+    padding: 10px 16px;
+    border: none;
+    border-radius: $radius-max;
+    background-color: var(--color-background-page);
+  }
+
+  .row {
+    --gutter: 16px;
+  }
+
+  .form-label {
+    margin-bottom: 6px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--color-text-secondary);
+  }
+
+  .form-check {
+    padding-left: 1.75rem;
+    margin-bottom: 8px;
+  }
+
+  // 复选框：方形带勾，与单选框拉开语义（全站的圆点勾选在缩略布局里读起来像 radio）。
+  .form-check-input {
+    width: 18px;
+    height: 18px;
+    margin-top: 2px;
+    margin-left: -1.75rem;
+    border: 1.5px solid var(--color-border);
+    border-radius: 6px;
+    background-color: var(--color-background-card);
+    background-position: center;
+    background-repeat: no-repeat;
+    background-size: 12px 12px;
+
+    &:checked {
+      border-color: var(--color-brand-primary);
+      background-color: var(--color-brand-primary);
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='none' stroke='%23fff' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round' d='M3.5 8.5l3 3 6-6'/%3E%3C/svg%3E");
+    }
+
+    &:focus {
+      box-shadow: 0 0 0 3px var(--color-brand-secondary);
+    }
+  }
+
+  .form-check-label {
+    font-size: 0.9rem;
+    line-height: 1.55;
+    color: var(--color-text-primary);
+  }
+
+  // 面板底部的快捷键 / 状态行：窄屏允许折行，别把「加载完成」压成两行。
+  > .d-flex.justify-content-between {
+    flex-wrap: wrap;
+    row-gap: 6px;
+    align-items: center;
+
+    > small {
+      flex: 1 1 auto;
+      min-width: 0;
+    }
+
+    > .text-muted.numeric {
+      flex: none;
+      white-space: nowrap;
+    }
   }
 }
 
-// 结果区（各工具页右侧那块大 textarea）
+// 结果区高度（桌面更舒展，移动端收紧）
 .result-area {
-  min-height: 240px;
+  min-height: 260px;
 
   @media (max-width: 767.98px) {
-    min-height: 168px;
+    min-height: 190px;
   }
 }
 
@@ -279,34 +456,52 @@
 .viewer-panel {
   background: var(--color-background-card);
   border-radius: $radius-field;
-  // 去边框：只保留卡片底色与圆角，层级靠底色深浅差。
 }
 
-// 算法 / 模式选择：一排小胶囊，`.active` 表示当前选中。
-// 归「切页档」——同一排里选一个，与工具箱的 .filter-pill 是同一个交互。
-.algo-badge {
-  @include m.btn-tab;
-  display: inline-flex;
-  align-items: center;
-  padding: 6px 14px;
-  border: none;
-  font-size: 0.875rem;
-  line-height: 1.2;
-  white-space: nowrap;
-}
-
-// 算法徽章那一排的间距（Bootstrap 的 g-* 在这里被当成 gap 用）
+// 算法 / 模式选择：一排胶囊。未选中也有底，扫读得到；`.active` 为品牌淡底。
 .algo-grid {
   display: flex;
   flex-wrap: wrap;
   gap: $space-2;
 }
 
-// 「复制结果」之类贴在结果区右上角的按钮
+.algo-badge {
+  @include m.btn-tab;
+  display: inline-flex;
+  align-items: center;
+  padding: 9px 16px;
+  border: none;
+  border-radius: $radius-max;
+  background: var(--color-background-page);
+  color: var(--color-text-secondary);
+  font-size: 0.875rem;
+  line-height: 1.2;
+  white-space: nowrap;
+  cursor: pointer;
+
+  &.active {
+    color: var(--color-brand-primary);
+    background: var(--color-brand-secondary);
+  }
+
+  &:focus-visible {
+    outline: 0;
+    box-shadow: var(--shadow-focus-brand);
+  }
+
+  // 组合不可用（如 MD5 + HMAC）：仍可聚焦以便读 title，但不响应点击
+  &[aria-disabled='true'] {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+}
+
+// 「复制结果」贴在结果区右上角
 .btn-copy {
   position: absolute;
   right: 1rem;
-  top: 0.75rem;
+  top: 0.85rem;
+  z-index: 1;
 }
 
 // 键盘按键提示
@@ -320,14 +515,57 @@
   font-size: 0.8rem;
 }
 
-// 垂直居中的一段操作区（工具页中间那张「请先选择文件」的占位卡）
+// 垂直居中的操作区
 .mid-actions {
   display: flex;
   align-items: center;
   justify-content: center;
   min-height: 100%;
+  padding: 8px 0;
 
   .btn {
-    width: 140px;
+    width: 100%;
+    max-width: 160px;
+    white-space: nowrap;
+  }
+
+  @media (max-width: 991.98px) {
+    padding: 4px 0;
+
+    .d-flex.flex-column {
+      flex-direction: row !important;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 8px !important;
+    }
+
+    .btn {
+      flex: 0 1 auto;
+      max-width: none;
+      min-width: 0;
+      padding-inline: 14px;
+    }
+  }
+}
+
+// AES / 哈希这类多字段选项区：手机上两列排，别一个字段占一整行。
+@media (max-width: 767.98px) {
+  .tool-options {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px 16px;
+    margin: 0;
+
+    > [class*='col-'] {
+      width: auto;
+      max-width: none;
+      padding: 0;
+      flex: none;
+    }
+
+    // 密钥、IV 这种长字段独占整行
+    > .tool-options__wide {
+      grid-column: 1 / -1;
+    }
   }
 }

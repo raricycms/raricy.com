@@ -19,7 +19,7 @@
    所以 max-height 与 overflow 必须挂在这里，不能挪到 .hex-body 上 —— 挪了就没有
    滚动条、scroll 事件不触发，正文永远只有首批那几百行。 */
 .hex-viewer {
-  max-height: 420px;
+  max-height: 480px;
   overflow: auto;
   overscroll-behavior: contain;
   border-radius: v.$radius-large;
@@ -28,7 +28,7 @@
   background: var(--color-background-content);
 
   @media (max-width: 767.98px) {
-    max-height: 320px;
+    max-height: 340px;
   }
 }
 
@@ -48,10 +48,12 @@
   position: sticky;
   top: 0;
   z-index: 1;
+  height: 24px;
   background: var(--color-background-subtle);
   border-bottom: 1px solid var(--color-border);
   color: var(--color-text-secondary);
   font-size: 0.75rem;
+  line-height: 24px;
 }
 
 .hex-offset {
@@ -73,7 +75,8 @@
 
 .hex-ascii {
   flex: none;
-  width: 184px;
+  /* 184px 装不下 14px 内距 + 16×11px（=190px）；191px 才让最后一列完整。 */
+  width: 191px;
   padding-left: 14px;
   border-left: 1px solid var(--color-border);
   color: var(--color-text-secondary);
@@ -102,6 +105,32 @@
    本身没有内容，不该被看到。 */
 .pad {
   width: 100%;
+}
+
+/* 空态：还没选文件时不要把面板留成一条 24px 的表头 */
+#hexBody:empty::before {
+  content: '选择一个文件后在这里查看字节';
+  display: block;
+  padding: 20px 14px;
+  color: var(--color-text-tertiary);
+  font-size: 0.85rem;
+}
+
+/* 底部「提示 / 状态」行：窄屏允许折行，别把「加载完成」压成两行 */
+.viewer-panel > .d-flex.justify-content-between {
+  flex-wrap: wrap;
+  row-gap: 6px;
+  align-items: center;
+
+  > small {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  > .text-muted.numeric {
+    flex: none;
+    white-space: nowrap;
+  }
 }
 
 /* 鼠标悬停 / 键盘聚焦的那一格（JS 给同一 data-index 的 byte 与 char 同时挂上） */
