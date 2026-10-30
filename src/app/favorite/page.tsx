@@ -21,7 +21,7 @@ export default async function FavoritePage() {
       </h1>
 
       <p style={{ marginBottom: '1.25rem' }}>
-        <Link href="/favorite/quotes" className="read-btn">一言集 →</Link>
+        <Link href="/quotes/saved" className="read-btn">一言收藏 →</Link>
       </p>
 
       <FavoriteMenu

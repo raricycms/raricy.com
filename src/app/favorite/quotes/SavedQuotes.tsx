@@ -80,7 +80,7 @@ export default function SavedQuotes({ rows }: { rows: SavedQuoteEntry[] }) {
                 aria-busy={busy === row.id}
                 onClick={() => void remove(row.id)}
               >
-                移出一言集
+                取消收藏
               </button>
             </div>
           </article>

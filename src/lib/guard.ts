@@ -46,9 +46,9 @@ export async function redirectToLogin(next?: string): Promise<never> {
 // 两道门的行为（改动即改全站入口表现）：
 //   - 未登录 → 302 重定向到 /login?next=<原URL>（让用户能登录后再回来）
 //   - 已登录但权限不够 → forbidden() 原地渲染 403 页
-export async function requireCoreUser(): Promise<SafeUser> {
+export async function requireCoreUser(next?: string): Promise<SafeUser> {
   const user = await getCurrentUser();
-  if (!user) return redirectToLogin();
+  if (!user) return redirectToLogin(next);
   if (!isCoreUser(user)) forbidden();
   return user;
 }

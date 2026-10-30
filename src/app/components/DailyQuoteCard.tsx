@@ -80,7 +80,7 @@ export default function DailyQuoteCard({
         );
       } else {
         onChange?.({ ...quote, favorited: !removing });
-        setMessage(removing ? '已移出一言集' : '已收藏到一言集');
+        setMessage(removing ? '已取消收藏' : '已收藏');
         if (removing) onRemoved?.();
       }
     } catch (cause) {
@@ -90,15 +90,8 @@ export default function DailyQuoteCard({
     }
   }
 
-  const fee = quote.resonance_fish ? '投喂 1 条鱼干' : '免费';
-  // 已共鸣说明优先于「作者当前无法收款」：恢复收款资格也不会让同一个人再付一次。
-  const status = quote.resonated ? '每人每句限一次' : quote.resonance_unavailable ?? fee;
-  const hint = quote.resonated
-    ? '每人每句限一次。'
-    : quote.resonance_unavailable ??
-      (quote.resonance_fish
-        ? '共鸣投喂 1 条鱼干给投稿人，全额转交；每人每句限一次。'
-        : quote.kind === 'builtin' ? '经典语录共鸣免费；每人每句限一次。' : '本次共鸣不扣鱼干；每人每句限一次。');
+  const fee = quote.resonance_fish ? `投喂 ${quote.resonance_fish} 条鱼干` : '';
+  const hint = !quote.resonated && !quote.can_resonate ? quote.resonance_unavailable : null;
   const note = error || message;
 
   const meta = (
@@ -143,7 +136,7 @@ export default function DailyQuoteCard({
         disabled={pending !== null || !quote.can_resonate}
         aria-busy={pending === 'resonance'}
         aria-pressed={quote.resonated}
-        aria-label={quote.resonated ? '已共鸣' : `共鸣，${fee}`}
+        aria-label={quote.resonated ? '已共鸣' : fee ? `共鸣，${fee}` : '共鸣'}
       >
         {pending === 'resonance' ? (
           <LoaderCircle className="daily-quote-spin" size={18} aria-hidden="true" />
@@ -171,7 +164,7 @@ export default function DailyQuoteCard({
         )}
         {quote.favorited ? '已收藏' : '收藏'}
       </button>
-      {listMode && <span className="daily-quote-card__fee">{status}</span>}
+      {!quote.resonated && fee && <span className="daily-quote-card__fee">{fee}</span>}
     </div>
   );
 
@@ -205,8 +198,8 @@ export default function DailyQuoteCard({
         {byline}
       </div>
       {actions}
-      <p className="daily-quote-card__hint">{hint}</p>
-      {feedback}
+      {hint && <p className="daily-quote-card__hint">{hint}</p>}
+      {note && feedback}
     </article>
   );
 }

@@ -140,9 +140,9 @@ export default function CheckinCard({
     ) : btnPhase === 'success' ? (
       ''
     ) : done ? (
-      '今日已签到'
+      <>已签到{fishToday > 0 && <span className="numeric"> · +{fishToday}</span>}</>
     ) : (
-      '每日签到'
+      <>每日签到 <span className="numeric">· +{rewardFish}</span></>
     );
 
   return (
@@ -176,22 +176,8 @@ export default function CheckinCard({
         </div>
       </div>
 
-      {/* 今天到手多少 —— **读服务端真值**（流水），不按常量推算：奖励将来若改，
-          今天已签的人也不会看到「按新数字算出来」的假账。
-          没签到、或签过但没到账（本行是历史遗留）时不渲染，别写一个骗人的 0。 */}
-      {fishToday > 0 ? (
-        <div className="checkin-today-reward">
-          <span className="checkin-today-reward__label">今日签到获得</span>
-          <span className="checkin-today-reward__value numeric">+{fishToday}</span>
-          <span className="checkin-today-reward__label">小鱼干</span>
-        </div>
-      ) : (
-        <div className="checkin-reward-hint numeric">每天签到领 {rewardFish} 条小鱼干</div>
-      )}
       {done && <div className="checkin-quote-links">
         <button ref={quoteTrigger} type="button" className="daily-quote-primary" onClick={() => setQuoteOpen(true)}>查看今日一言</button>
-        {/* 「往期一言 / 一言集 / 我的投稿」由签到页的 DailyQuoteNav 统一给，这里不再
-            重复一颗「我的投稿」——同一页出现两份入口会让人以为它们去的地方不同。 */}
       </div>}
       {quoteOpen && <DailyQuoteModal onClose={() => setQuoteOpen(false)} returnFocus={quoteTrigger} />}
     </div>

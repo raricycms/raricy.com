@@ -3,7 +3,7 @@ import { getCurrentUser, isCoreUser, isCurrentlyBanned } from '@/lib/auth';
 import { loginUrlWithNext } from '@/lib/safe-url';
 import { getTodayStatus, getCountLeaderboard } from '@/lib/checkin-service';
 import CheckinCard, { CheckinLeaderboards } from '@/app/components/CheckinCard';
-import DailyQuoteNav from '@/app/components/DailyQuoteNav';
+import Link from 'next/link';
 import QuoteBlogRequired from '@/app/components/QuoteBlogRequired';
 
 // 签到 = 每日领鱼干，档位是 **core+**（与投喂、点赞、剪贴板同档）。
@@ -29,6 +29,7 @@ export default async function CheckinPage() {
 
   return (
     <div className="checkin-page">
+      <h1 className="page-title">每日签到</h1>
       {status.canCheckIn ? (
         <CheckinCard
           checkedIn={status.checkedIn}
@@ -47,13 +48,12 @@ export default async function CheckinPage() {
             <span className="checkin-card__greeting">你好，{user.username}</span>
             <span className="checkin-card__date numeric">{status.today}</span>
           </div>
-          <div className="checkin-reward-hint">签到与每日一言需先发表博客；发过又全部删除也算没有。</div>
-          <QuoteBlogRequired embedded />
+          <QuoteBlogRequired embedded purpose="checkin" />
         </div>
       )}
 
       {/* 已发文但未签到的人可以使用往期等入口；没发文时统一先走引导。 */}
-      {status.canCheckIn && <DailyQuoteNav />}
+      <p className="checkin-quote-links"><Link className="read-btn" href="/quotes">每日一言</Link></p>
 
       <CheckinLeaderboards countEntries={countLb} currentUserId={user.id} />
     </div>

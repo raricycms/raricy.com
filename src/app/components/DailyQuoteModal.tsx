@@ -130,7 +130,7 @@ export default function DailyQuoteModal({ onClose, returnFocus }: { onClose: () 
         {/* 「我的投稿」不再放这里：投稿成功态（DailyQuoteForm 的完成区）已经有入口，
             三个相关页面也由 DailyQuoteNav 统一交代 —— 弹窗底栏只留「去别处看」的两项。 */}
         <nav className="daily-quote-dialog__links" aria-label="每日一言相关">
-          <Link href="/checkin/quotes">往期一言</Link><Link href="/favorite/quotes">一言集</Link>
+          <Link href="/quotes">每日一言</Link><Link href="/quotes/history">往期一言</Link>
         </nav>
         {/* 投稿模式与阅读模式共用这一颗按钮：文案与图标换，位置、焦点与外壳不变。 */}
         <button type="button" className="daily-quote-dialog__mode" disabled={blogRequired || result?.can_submit === false} onClick={() => setSubmission((value) => !value)}>

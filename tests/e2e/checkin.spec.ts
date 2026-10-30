@@ -52,16 +52,16 @@ test('点击签到 → 固定 +3 条鱼干；同日再签被拒且不再发鱼',
 
   await page.goto('/checkin');
   const btn = page.locator('.checkin-button');
-  await expect(btn).toHaveText('每日签到');
+  await expect(btn).toContainText('每日签到');
   await expect(btn).toBeEnabled();
   // 未签到时给的是「每天能领多少」的静态提示（数字来自服务端常量）
-  await expect(page.locator('.checkin-reward-hint')).toContainText(String(REWARD));
+  await expect(page.locator('.checkin-button')).toContainText(String(REWARD));
 
   await btn.click();
 
   await expect(page.locator('#toast-container .toast__body')).toContainText('签到成功');
   // 按钮进入已签到态并锁死（防重复提交的第一道闸）
-  await expect(btn).toHaveText('今日已签到', { timeout: 10_000 });
+  await expect(btn).toContainText('已签到', { timeout: 10_000 });
   await expect(btn).toBeDisabled();
 
   // ── 鱼真的发了：余额 + 流水（同一个事务的两面）───────────────────────────
@@ -73,7 +73,7 @@ test('点击签到 → 固定 +3 条鱼干；同日再签被拒且不再发鱼',
   expect(await myBalance(page), '余额真的多了这一笔').toBe(REWARD);
 
   // 卡片上显示的是服务端真值（读流水给的那一个）
-  await expect(page.locator('.checkin-today-reward')).toContainText(`+${REWARD}`);
+  await expect(page.locator('.checkin-button')).toContainText(`+${REWARD}`);
   // 累计签到天数落库为 1
   await expect(page.locator('.checkin-stats__item').first()).toContainText('1');
 
@@ -92,9 +92,9 @@ test('点击签到 → 固定 +3 条鱼干；同日再签被拒且不再发鱼',
 
   // 刷新后仍是已签到态（服务端状态，不是前端的临时 state）
   await page.goto('/checkin');
-  await expect(btn).toHaveText('今日已签到');
+  await expect(btn).toContainText('已签到');
   await expect(btn).toBeDisabled();
-  await expect(page.locator('.checkin-today-reward')).toContainText(String(REWARD));
+  await expect(page.locator('.checkin-button')).toContainText(String(REWARD));
 });
 
 test('状态接口的形状：签到前后各一次（机器人按它决定要不要签）', async ({ page }) => {

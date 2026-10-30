@@ -54,7 +54,6 @@ export default function LoginPage() {
         <div className="register-container">
           <div className="register-header">
             <h2><span className="icon icon-person" aria-hidden="true"></span> 用户登录</h2>
-            <p className="text-muted">请填写以下信息完成登录</p>
           </div>
 
           <form id="loginForm" onSubmit={submit} noValidate>
@@ -107,7 +106,7 @@ export default function LoginPage() {
           </form>
 
           <div className="login-link">
-            <p className="text-muted">没有账号？ <Link href="/register" className="text-primary">立即注册</Link></p>
+            <p className="text-muted">没有账号？ <Link href={next ? `/register?next=${encodeURIComponent(safeNextPath(next))}` : '/register'} className="text-primary">立即注册</Link></p>
           </div>
         </div>
       </div>

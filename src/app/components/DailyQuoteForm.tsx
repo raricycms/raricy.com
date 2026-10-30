@@ -19,6 +19,7 @@ export default function DailyQuoteForm({ submission, onSaved, onCancel }: {
   const doneBox = useRef<HTMLDivElement>(null);
   const focusForm = useRef(false);
   const [content, setContent] = useState(submission?.content ?? '');
+  const [signature, setSignature] = useState(submission?.signature ?? 'nickname');
   const [sourceType, setSourceType] = useState(submission?.source_type ?? 'original');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -61,6 +62,7 @@ export default function DailyQuoteForm({ submission, onSaved, onCancel }: {
     focusForm.current = true;
     setContent('');
     setSourceType('original');
+    setSignature('nickname');
     setError('');
     setDone(false);
   }
@@ -72,7 +74,7 @@ export default function DailyQuoteForm({ submission, onSaved, onCancel }: {
       <p role="status">投稿已提交，等待管理员审核。</p>
     </div>
     <div className="daily-quote-form__done-actions">
-      <Link href="/checkin/submissions" className="read-btn">查看我的投稿</Link>
+      <Link href="/quotes/submissions" className="read-btn">查看我的投稿</Link>
       <button type="button" className="daily-quote-secondary" onClick={again}>继续投稿</button>
     </div>
   </div>;
@@ -86,10 +88,10 @@ export default function DailyQuoteForm({ submission, onSaved, onCancel }: {
       <label htmlFor={`${id}-content`}>一言内容</label>
       <textarea ref={textarea} id={`${id}-content`} name="content" value={content}
         onChange={(event) => setContent(event.target.value)}
-        required rows={3} disabled={busy} aria-describedby={`${id}-length`} />
-      <p id={`${id}-length`} className={`daily-quote-form__counter numeric${tooLong ? ' is-over' : ''}`}>
+        required rows={3} disabled={busy} aria-describedby={length >= QUOTE_CONTENT_MAX * 0.8 ? `${id}-length` : undefined} />
+      {length >= QUOTE_CONTENT_MAX * 0.8 && <p id={`${id}-length`} className={`daily-quote-form__counter numeric${tooLong ? ' is-over' : ''}`}>
         {length} / {QUOTE_CONTENT_MAX} 字
-      </p>
+      </p>}
     </div>
     <div className="daily-quote-form__row">
       <div className="daily-quote-form__field"><label htmlFor={`${id}-category`}>类型</label>
@@ -97,7 +99,7 @@ export default function DailyQuoteForm({ submission, onSaved, onCancel }: {
           groups={[{ options: QUOTE_CATEGORIES.map((category) => ({ value: category, label: category })) }]} disabled={busy} />
       </div>
       <div className="daily-quote-form__field"><label htmlFor={`${id}-signature`}>署名方式</label>
-        <ExpandSelect id={`${id}-signature`} ariaLabel="署名方式" name="signature" defaultValue={submission?.signature ?? 'nickname'}
+        <ExpandSelect id={`${id}-signature`} ariaLabel="署名方式" name="signature" value={signature} onChange={value => setSignature(value as 'nickname' | 'anonymous')}
           groups={[{ options: [{ value: 'nickname', label: '昵称' }, { value: 'anonymous', label: '匿名' }] }]} disabled={busy} />
       </div>
     </div>
@@ -113,11 +115,8 @@ export default function DailyQuoteForm({ submission, onSaved, onCancel }: {
         </div>
       </div>
     </div>
-    <p className="daily-quote-form__hint">{submission
-      ? submission.status === 'rejected'
-        ? '修改后可重新提交审核，也可以只修正出处或署名；计入24小时5次投稿额度，旧版本与审核意见保留。'
-        : '保存后仍需管理员审核，不占用新的投稿次数。'
-      : '24小时最多投稿5次。审核通过后等待选登，每条投稿最多选登一次。匿名仅隐藏对其他用户的署名，管理员仍可查看投稿人。'}</p>
+    {signature === 'anonymous' && <p className="daily-quote-form__hint">对读者匿名，管理员仍可查看投稿人。</p>}
+    {submission && <p className="daily-quote-form__hint">保存后重新审核，旧稿与审核意见保留。</p>}
     {error && <p className="daily-quote-error" role="alert">{error}</p>}
     <button type="submit" className="daily-quote-primary daily-quote-form__submit" disabled={busy || !content.trim() || tooLong} aria-busy={busy}>
       {busy ? <><LoaderCircle className="daily-quote-spin" size={18} aria-hidden="true" />保存中…</>

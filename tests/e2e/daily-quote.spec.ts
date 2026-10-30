@@ -261,7 +261,7 @@ test('投稿人降级后可以免费共鸣；恢复资格不补扣、不重复�
   await registerCoreUser(page);
   await page.goto('/checkin/quotes');
   const card = quoteCard(page, content);
-  await expect(card.getByRole('button', { name: '共鸣，免费', exact: true })).toBeEnabled();
+  await expect(card.getByRole('button', { name: '共鸣', exact: true })).toBeEnabled();
   await resonateCard(card);
   expect(await fishBalance(page)).toBe(0);
   expect((await e2eDb().dailyQuoteResonance.findFirstOrThrow({ where: { quoteId } })).paidUnits).toBe(0);
@@ -281,9 +281,9 @@ test('页面展示免费后收款资格恢复，先更新费用再由用户点�
   expect((await page.request.post('/api/checkin')).status()).toBe(200);
   await page.goto('/checkin/quotes');
   const card = quoteCard(page, content);
-  await expect(card.getByRole('button', { name: '共鸣，免费', exact: true })).toBeVisible();
+  await expect(card.getByRole('button', { name: '共鸣', exact: true })).toBeVisible();
   await e2eDb().user.update({ where: { id: author.id }, data: { role: 'core' } });
-  await card.getByRole('button', { name: '共鸣，免费', exact: true }).click();
+  await card.getByRole('button', { name: '共鸣', exact: true }).click();
   await expect(card.getByRole('alert')).toContainText('共鸣费用已变化');
   expect(await fishBalance(page)).toBe(3);
   await expect(card.getByRole('button', { name: '共鸣，投喂 1 条鱼干', exact: true })).toBeEnabled();
@@ -293,7 +293,7 @@ test('页面展示免费后收款资格恢复，先更新费用再由用户点�
 
 test('签到弹窗、免费共鸣、私密收藏、当天回看与窄屏焦点', async ({ page }, info) => {
   await registerCoreUser(page);
-  await page.goto('/checkin'); await page.getByRole('button', { name: '每日签到', exact: true }).click();
+  await page.goto('/checkin'); await page.getByRole('button', { name: /每日签到/ }).click();
   const dialog = page.getByRole('dialog', { name: '每日一言', exact: true });
   await expect(dialog).toBeVisible();
   await expect(dialog.locator('blockquote')).toHaveText(classics[0].content);
@@ -301,7 +301,7 @@ test('签到弹窗、免费共鸣、私密收藏、当天回看与窄屏焦点',
   expect(rect!.x).toBeGreaterThanOrEqual(15); expect(rect!.x + rect!.width).toBeLessThanOrEqual(viewport.width - 15);
   expect(rect!.height).toBeLessThanOrEqual(viewport.height - 30);
   await page.screenshot({ path: `tests/.tmp/daily-quote-${info.project.name}-light.png` });
-  await dialog.getByRole('button', { name: '共鸣，免费' }).click();
+  await dialog.getByRole('button', { name: '共鸣' }).click();
   // 按钮进终态：可见文案是「已共鸣」（不再有「今日」二字），且一生一次 ⇒ disabled
   await expect(dialog.getByRole('button', { name: '已共鸣', exact: true })).toBeDisabled();
   await dialog.getByRole('button', { name: '收藏', exact: true }).click();
@@ -317,8 +317,9 @@ test('签到弹窗、免费共鸣、私密收藏、当天回看与窄屏焦点',
   await page.screenshot({ path: `tests/.tmp/daily-quote-${info.project.name}-dark.png` });
   // 弹窗底栏只剩「去别处看」的两项：往期一言 / 一言集
   await expect(dialog.getByRole('link', { name: '往期一言', exact: true })).toBeVisible();
-  await dialog.getByRole('link', { name: '一言集', exact: true }).click();
-  await expect(page.getByRole('heading', { name: '一言集', exact: true })).toBeVisible();
+  await dialog.getByRole('link', { name: '每日一言', exact: true }).click();
+  await page.getByRole('navigation', { name: '每日一言', exact: true }).getByRole('link', { name: '我的收藏', exact: true }).click();
+  await expect(page.getByRole('heading', { name: '我的收藏', exact: true })).toBeVisible();
   await expect(page.locator('blockquote')).toHaveText(classics[0].content);
   await page.getByRole('button', { name: '已收藏', exact: true }).click();
   await expect(page.getByText('还没有收藏的一言。')).toBeVisible();
@@ -328,7 +329,7 @@ test('签到弹窗、免费共鸣、私密收藏、当天回看与窄屏焦点',
 
 test('弹窗投稿→管理员审核→匿名全额投喂与重复保护', async ({ page }, info) => {
   const author = await registerCoreUser(page);
-  await page.goto('/checkin'); await page.getByRole('button', { name: '每日签到', exact: true }).click();
+  await page.goto('/checkin'); await page.getByRole('button', { name: /每日签到/ }).click();
   const dialog = page.getByRole('dialog');
   await dialog.getByRole('button', { name: '我也要投稿', exact: true }).click();
   const content = `愿你每天都有好心情${uniqueTag()}`;
@@ -348,7 +349,7 @@ test('弹窗投稿→管理员审核→匿名全额投喂与重复保护', async
   await expect(row).toHaveCount(0);
   await edition(id);
   await registerCoreUser(page);
-  await page.goto('/checkin'); await page.getByRole('button', { name: '每日签到', exact: true }).click();
+  await page.goto('/checkin'); await page.getByRole('button', { name: /每日签到/ }).click();
   await expect(dialog.locator('blockquote')).toHaveText(content);
   await expect(dialog.getByText('匿名 投稿')).toBeVisible();
   await expect(dialog).not.toContainText(author.username);
@@ -448,11 +449,11 @@ test('最近投稿可回填、取消与保存；拒稿修改后原稿重审，�
 test('一言加载失败可单独重试，签到奖励已到账', async ({ page }) => {
   await registerCoreUser(page);
   await page.route('**/api/daily-quotes/today', (route) => route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ code: 503, message: '一言加载测试失败' }) }));
-  await page.goto('/checkin'); await page.getByRole('button', { name: '每日签到', exact: true }).click();
+  await page.goto('/checkin'); await page.getByRole('button', { name: /每日签到/ }).click();
   const dialog = page.getByRole('dialog');
   await expect(dialog.getByRole('alert')).toHaveText('一言加载测试失败');
   expect((await (await page.request.get('/api/fish/balance')).json()).balance).toBe(3);
-  await expect(page.locator('.checkin-today-reward')).toContainText('+3');
+  await expect(page.locator('.checkin-button')).toContainText('+3');
   await page.unroute('**/api/daily-quotes/today');
   await dialog.getByRole('button', { name: '重新加载' }).click();
   await expect(dialog.locator('blockquote')).toHaveText(classics[0].content);
@@ -469,7 +470,7 @@ test('窄屏弹窗上沿固定、遮罩是平铺色', async ({ page, isMobile })
     await new Promise((resolve) => setTimeout(resolve, 800));
     await route.continue();
   });
-  await page.goto('/checkin'); await page.getByRole('button', { name: '每日签到', exact: true }).click();
+  await page.goto('/checkin'); await page.getByRole('button', { name: /每日签到/ }).click();
   const dialog = page.getByRole('dialog', { name: '每日一言', exact: true });
   await expect(dialog).toBeVisible();
   await expect(dialog.getByRole('status')).toHaveText('正在打开今日一言…');
@@ -502,7 +503,7 @@ test('窄屏弹窗上沿固定、遮罩是平铺色', async ({ page, isMobile })
 test('签到粒子动画期间整页不出现横向滚动', async ({ page }) => {
   await registerCoreUser(page);
   await page.goto('/checkin');
-  await page.getByRole('button', { name: '每日签到', exact: true }).click();
+  await page.getByRole('button', { name: /每日签到/ }).click();
   const widest = await page.evaluate(async () => {
     const doc = document.documentElement;
     let max = doc.scrollWidth;
@@ -588,11 +589,11 @@ test('往期条目上共鸣 + 收藏：跨页一致、重复请求幂等（H2 / 
   await expect(card.getByRole('status')).toHaveText('已共鸣，已向投稿人投喂 1 条鱼干');
   await expect(card.locator('.daily-quote-card__count')).toHaveText('1');
   await expect(card.getByRole('button', { name: '已共鸣', exact: true })).toBeDisabled();
-  await expect(card.getByText('每人每句限一次', { exact: true })).toBeVisible();
+  await expect(card.getByText('每人每句限一次', { exact: true })).toHaveCount(0);
   expect(await fishBalance(page)).toBe(2);
 
   await favoriteCard(card);
-  await expect(card.getByRole('status')).toHaveText('已收藏到一言集');
+  await expect(card.getByRole('status')).toHaveText('已收藏');
 
   // 页面状态 == 服务端真值（同一个批量组装器），别只信 DOM
   const history = await historyApi(page);
@@ -605,8 +606,8 @@ test('往期条目上共鸣 + 收藏：跨页一致、重复请求幂等（H2 / 
   });
 
   // 一言集是另一个入口：状态要一致，日期是收藏时间，选登日期另行说明
-  await page.getByRole('link', { name: '一言集', exact: true }).click();
-  await expect(page.getByRole('heading', { name: '一言集', exact: true })).toBeVisible();
+  await page.goto('/quotes/saved');
+  await expect(page.getByRole('heading', { name: '我的收藏', exact: true })).toBeVisible();
   const saved = quoteCard(page, content);
   await expect(saved.locator('.daily-quote-card__date')).toHaveText(`收藏于 ${todayStr()}`);
   await expect(saved.getByRole('button', { name: '已共鸣', exact: true })).toHaveCount(1);
@@ -642,7 +643,7 @@ test('同一句两个入选日期：两条同时存在，操作一条另一条�
   await expect(cards.nth(1).locator('.daily-quote-card__date')).toHaveText(day2);
   await expect(cards.nth(0)).toContainText(classic.content);
   await expect(cards.nth(1)).toContainText(classic.content);
-  await expect(cards.nth(0).getByText('免费', { exact: true })).toBeVisible();
+  await expect(cards.nth(0).getByText('免费', { exact: true })).toHaveCount(0);
 
   await resonateCard(cards.nth(0));
   // 互动状态按 quoteId 共享：另一张卡**不用刷新**就跟着变成已共鸣
@@ -690,7 +691,7 @@ test('下架条目：日期仍在、正文不可见、不能共鸣、仍可移�
   await page.goto('/favorite/quotes');
   await expect(page.getByText('这句一言已下架。')).toBeVisible();
   await expect(page.getByText(`收藏于 ${todayStr()}`)).toBeVisible();
-  const remove = page.getByRole('button', { name: '移出一言集' });
+  const remove = page.getByRole('button', { name: '取消收藏' });
   await expect(async () => {
     if (!(await remove.count())) return;
     await remove.click();
