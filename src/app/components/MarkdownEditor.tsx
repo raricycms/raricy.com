@@ -287,10 +287,20 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(
 
     const invalidEnhanced = formatAnalysis?.effective === 'invalid-enhanced';
     const detectedReactive = formatAnalysis?.effective === 'reactive';
+    /**
+     * 插入组件后的即时升级只是**分析落地前**的临时状态：一旦有了分析结果，
+     * 就以解析器为准（有效 → reactive；无效 → 仍显示诊断并阻止发布；
+     * 新建的 Markdown 文档删光组件 → 回到 markdown）。已保存为 reactive 的
+     * 文档由 `format` 这个下限兜住，永不自动降级。
+     */
+    const forcedReactive = componentInserted && formatAnalysis === null;
     const effectiveFormat: ContentFormat =
-      format === 'reactive' || componentInserted || detectedReactive ? 'reactive' : 'markdown';
+      format === 'reactive' || forcedReactive || detectedReactive ? 'reactive' : 'markdown';
     const effectiveFormatRef = useRef(effectiveFormat);
     effectiveFormatRef.current = effectiveFormat;
+    /** `format` 的同步副本：提交判定在 async 回调里读，不能拿到旧闭包。 */
+    const formatFloorRef = useRef(format);
+    formatFloorRef.current = format;
 
     /**
      * 草稿里存的格式：**无效增强语法仍记 reactive**。
@@ -571,6 +581,8 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(
         setFormatAnalysis(null);
         setAnalysisPending(false);
         setAnalysisFailure(null);
+        // 没有 `<` / `{{` 就不可能有组件了：插入动作留下的临时升级一并清掉。
+        setComponentInserted(false);
         return;
       }
       setAnalysisPending(true);
@@ -981,13 +993,15 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(
       const currentSource = () =>
         viewRef.current?.state.doc.toString() ?? docRef.current;
 
+      // 已保存为 reactive 的文档是**下限**：即使删光组件也不自动降级。
+      const floorReactive = formatFloorRef.current === 'reactive';
       for (let attempt = 0; attempt < SUBMIT_ANALYSIS_ATTEMPTS; attempt += 1) {
         const content = currentSource();
         if (!mightContainReactiveSyntax(content)) {
           return {
             content,
-            format: 'markdown',
-            syntaxVersion: null,
+            format: floorReactive ? 'reactive' : 'markdown',
+            syntaxVersion: floorReactive ? syntaxVersionRef.current : null,
             blocked: null,
           };
         }
@@ -1041,10 +1055,11 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(
           };
         }
         if (result.syntaxVersion) syntaxVersionRef.current = result.syntaxVersion;
+        const reactive = result.effective === 'reactive' || floorReactive;
         return {
           content,
-          format: result.effective === 'reactive' ? 'reactive' : 'markdown',
-          syntaxVersion: result.effective === 'reactive' ? result.syntaxVersion : null,
+          format: reactive ? 'reactive' : 'markdown',
+          syntaxVersion: reactive ? (result.syntaxVersion ?? syntaxVersionRef.current) : null,
           blocked: null,
         };
       }

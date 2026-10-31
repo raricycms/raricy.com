@@ -657,6 +657,23 @@ describe('prepareSubmit：无效增强语法绝不静默按 Markdown 保存', ()
     expect(snapshot.syntaxVersion).toBe('local-draft-3');
   });
 
+  it('已保存为 reactive 的文档即使删光组件也不降级', async () => {
+    const ref = createRef<MarkdownEditorHandle>();
+    mount(
+      createElement(MarkdownEditor, {
+        initialValue: '只剩普通正文了',
+        format: 'reactive',
+        ref,
+      })
+    );
+    let snapshot!: EditorSubmitSnapshot;
+    await act(async () => {
+      snapshot = await ref.current!.prepareSubmit();
+    });
+    expect(snapshot.format).toBe('reactive');
+    expect(snapshot.blocked).toBeNull();
+  });
+
   it('普通 Markdown 不排分析，直接按 markdown 提交', async () => {
     const ref = createRef<MarkdownEditorHandle>();
     mount(
