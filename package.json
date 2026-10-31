@@ -19,7 +19,7 @@
     "diagnose": "tsx scripts/diagnose-deploy.mjs",
     "probe:ws": "node scripts/probe-binance-ws.mjs",
     "check:links": "node scripts/check-links.mjs",
-    "reactive:corpus": "tsx scripts/reactive-corpus-report.mjs",
+    "reactive:corpus": "node --experimental-sqlite node_modules/vite-node/vite-node.mjs --config vitest.config.ts scripts/reactive-corpus-report.mjs",
     "reactive:migrate-v07": "vite-node --config vitest.config.ts scripts/reactive-migrate-v07.ts",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -45,7 +45,7 @@
     "realtime:build": "tsc -p services/realtime/tsconfig.json",
     "search:rebuild": "tsx scripts/rebuild-public-search.mts",
     "search:benchmark": "tsx scripts/benchmark-public-search.mts",
-    "reactive:measure": "tsx scripts/reactive-budget-measure.mts"
+    "reactive:measure": "vite-node --config vitest.config.ts scripts/reactive-budget-measure.mts"
   },
   "dependencies": {
     "@codemirror/commands": "6.11.1",

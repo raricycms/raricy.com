@@ -1,4 +1,3 @@
-#!/usr/bin/env node
 // ─────────────────────────────────────────────────────────────────────────────
 // reactive-corpus-report.mjs — 存量语料静态风险报告的 CLI（P6）
 //
@@ -20,15 +19,19 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { readFile, writeFile, mkdir, realpath, stat } from 'node:fs/promises';
+import { createRequire } from 'node:module';
 import { dirname, resolve } from 'node:path';
 
 const USAGE = `用法：
-  npm run reactive:corpus -- --input <file.json|file.jsonl> [--input ...] [--db <sqlite>] --out <report.json>
+  npm run reactive:corpus -- --input <file.json|file.jsonl> [--input ...] [--db <sqlite>] --out <report.json> [--compile] [--limit N]
 
 说明：
-  · 至少需要一个 --input 或 --db；--out 必填。
-  · 报告只包含文档 ID、种类与风险计数，不含正文或标题。
-  · --db 以只读方式打开，不读取 .env，不使用 Prisma。`;
+  · 至少需要一个 --input 或 --db；--out 必填；输出不能覆盖输入 / 数据库。
+  · 报告只包含文档 ID、种类与风险/编译计数，不含正文、标题或作者。
+  · --db 以 node:sqlite 的 readOnly:true 打开；不使用 Prisma，避免写 WAL。
+  · --compile 用站点统一 compat + 生产预算（50k）实际编译每篇，统计失败 / 回退 / 字面量降级；
+    不展开业务引用（剪贴板 / 投票 / 收藏夹），引用边界另由静态扫描统计。
+  · --limit N 只扫描前 N 篇（试跑用；报告 totals.limited=true）。`;
 
 class UsageError extends Error {}
 class InputError extends Error {}
@@ -56,7 +59,7 @@ async function assertDistinctOutput(options) {
 }
 
 function parseArgs(argv) {
-  const options = { inputs: [], db: null, out: null, help: false };
+  const options = { inputs: [], db: null, out: null, help: false, compile: false, limit: 0 };
 
   const valueOf = (index, flag) => {
     const value = argv[index + 1];
@@ -83,6 +86,11 @@ function parseArgs(argv) {
     } else if (arg.startsWith('--db=')) {
       options.db = arg.slice('--db='.length);
       if (!options.db) throw new UsageError('--db 需要一个值');
+    } else if (arg === '--compile') {
+      options.compile = true;
+    } else if (arg === '--limit') {
+      options.limit = Number(valueOf(index, arg));
+      index += 1;
     } else if (arg === '--out' || arg === '-o') {
       options.out = valueOf(index, arg);
       index += 1;
@@ -182,7 +190,9 @@ function tableNames(db) {
 async function readDbDocuments(dbPath) {
   let sqlite;
   try {
-    sqlite = await import('node:sqlite');
+    // 用 createRequire 而不是动态 import：vite-node 会拦截 import('node:sqlite')，
+    // 在已带 --experimental-sqlite 的进程里也报「无法加载」。
+    sqlite = createRequire(import.meta.url)('node:sqlite');
   } catch {
     throw new InputError(
       '当前 Node 无法加载 node:sqlite。需要 Node >= 22.5；若仍是实验阶段，请在启动时加 --experimental-sqlite。'
@@ -292,7 +302,7 @@ async function main() {
     corpus = await import('../src/lib/reactive/corpus.ts');
   } catch (error) {
     throw new InputError(
-      `无法加载 TypeScript 扫描器（请用 npm run reactive:corpus，它会经 tsx 运行）：${error?.message ?? error}`
+      `无法加载 TypeScript 扫描器（请用 npm run reactive:corpus，它会经 vite-node 运行）：${error?.message ?? error}`
     );
   }
   const { nowForDb, isoWithOffset } = await import('../src/lib/db-time.ts');
@@ -311,10 +321,28 @@ async function main() {
   }
 
   const { documents, errors } = corpus.validateCorpusDocuments(rawDocuments);
-  const report = corpus.scanCorpusDocuments(documents, {
+  const limited = options.limit > 0 ? documents.slice(0, options.limit) : documents;
+  const report = corpus.scanCorpusDocuments(limited, {
     scannedAt,
     errors: [...inputErrors, ...errors],
+    compile: options.compile,
   });
+  report.totals.limited = options.limit > 0;
+  if (options.compile) {
+    const results = report.documents.map((document) => document.compileResult);
+    report.totals.compile = {
+      ok: results.filter((item) => item?.status === 'ok').length,
+      fallback: results.filter((item) => item?.status === 'fallback').length,
+      failed: results.filter((item) => item?.status === 'failed').length,
+      literalized: results.filter((item) => item?.literalized).length,
+      formatMismatch: results.filter((item) => item?.formatMismatch).length,
+      byCode: Object.fromEntries(
+        [...new Set(results.flatMap((item) => item?.codes ?? []))]
+          .sort()
+          .map((code) => [code, results.filter((item) => item?.codes.includes(code)).length])
+      ),
+    };
+  }
 
   const outPath = resolve(options.out);
   await mkdir(dirname(outPath), { recursive: true });
@@ -329,6 +357,13 @@ async function main() {
       `{{}} ${totals.documentsWithBraceExpressions} / 数学 ${totals.documentsWithMathReview} / ` +
       `引用 ${totals.documentsWithReferences} / 外链图 ${totals.documentsWithExternalImages}。`
   );
+  if (options.compile) {
+    const compiled = report.totals.compile;
+    console.log(
+      `编译：成功 ${compiled.ok} / 语义回退 ${compiled.fallback} / 失败 ${compiled.failed} / ` +
+        `字面量降级 ${compiled.literalized} / 格式不匹配 ${compiled.formatMismatch}。`
+    );
+  }
   console.log(`报告：${outPath}`);
 
   if (report.errors.length > 0) {

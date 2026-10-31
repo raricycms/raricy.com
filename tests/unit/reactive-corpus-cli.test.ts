@@ -15,9 +15,18 @@ function directory() {
   return dir;
 }
 function run(args: string[]) {
-  return spawnSync(process.execPath, ['--import', 'tsx', 'scripts/reactive-corpus-report.mjs', ...args], {
-    cwd: root, encoding: 'utf8', timeout: 10000,
-  });
+  return spawnSync(
+    process.execPath,
+    [
+      '--experimental-sqlite',
+      path.join(root, 'node_modules', 'vite-node', 'vite-node.mjs'),
+      '--config',
+      'vitest.config.ts',
+      'scripts/reactive-corpus-report.mjs',
+      ...args,
+    ],
+    { cwd: root, encoding: 'utf8', timeout: 20000 }
+  );
 }
 afterEach(() => {
   for (const dir of directories.splice(0)) {

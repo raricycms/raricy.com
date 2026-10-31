@@ -20,6 +20,7 @@ import { dirname, resolve } from 'node:path';
 import { performance } from 'node:perf_hooks';
 import { compileLocal, type LocalCompileOptions } from 'reactive-md';
 import { reactiveCompileOptions } from '../src/lib/reactive/host-components';
+import { applyLegacyHtmlCompat } from '../src/lib/reactive/legacy-compat';
 
 interface Scenario {
   name: string;
@@ -96,7 +97,28 @@ function components(count: number): string {
   return out.join('\n\n');
 }
 
+function mixedLong(chars: number): string {
+  const units = [
+    '普通正文，带有 $x_1$ 公式与 [链接](https://example.com)。',
+    '<div class="legacy" style="color:red">旧 HTML 正文</div>',
+    '<TAB>教程占位</TAB>',
+    '第二行紧接上一行。',
+    '',
+  ];
+  const out: string[] = [];
+  let size = 0;
+  let index = 0;
+  while (size < chars) {
+    const unit = units[index % units.length];
+    out.push(unit);
+    size += unit.length + 1;
+    index += 1;
+  }
+  return out.join('\n');
+}
+
 const SCENARIOS: readonly Scenario[] = [
+  { name: 'mixed-200k', source: mixedLong(200_000) },
   { name: 'paragraphs-200k', source: paragraphs(200_000) },
   { name: 'poem-200k', source: poem(200_000) },
   { name: 'dense-inline-50k', source: denseInline(50_000) },
@@ -141,6 +163,7 @@ function parseArgs(argv: string[]) {
     out: '',
     list: false,
     timeoutMs: 45_000,
+    compat: false,
   };
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
@@ -152,6 +175,7 @@ function parseArgs(argv: string[]) {
     };
     if (arg === '--list') out.list = true;
     else if (arg === '--run-all') out.runAll = true;
+    else if (arg === '--compat') out.compat = true;
     else if (arg === '--scenario') out.scenario = value();
     else if (arg === '--budget') out.budget = Number(value());
     else if (arg === '--samples') out.samples = Math.max(1, Math.min(9, Number(value())));
@@ -207,7 +231,7 @@ function runChild(args: string[]): Row {
   const script = resolve(import.meta.dirname, 'reactive-budget-measure.mts');
   const result = spawnSync(
     process.platform === 'win32' ? 'npx.cmd' : 'npx',
-    ['tsx', script, ...args],
+    ['vite-node', '--config', 'vitest.config.ts', script, ...args],
     {
       cwd: resolve(import.meta.dirname, '..'),
       encoding: 'utf8',
@@ -278,6 +302,27 @@ function main(): void {
 
   const scenario = findScenario(args.scenario);
   if (!scenario) throw new Error(`未知场景：${args.scenario}（用 --list 查看）`);
+  if (args.compat) {
+    const time = (): number => {
+      const start = performance.now();
+      applyLegacyHtmlCompat(scenario.source);
+      return Math.round((performance.now() - start) * 100) / 100;
+    };
+    const first = time();
+    const samples: number[] = [];
+    for (let index = 0; index < Math.max(3, args.samples); index += 1) samples.push(time());
+    console.log(JSON.stringify({
+      scenario: scenario.name,
+      characters: scenario.source.length,
+      budget: 0,
+      status: 'ok',
+      nodes: null,
+      codes: ['compat-main-thread'],
+      firstMs: first,
+      medianMs: median(samples),
+    }));
+    return;
+  }
   if (!Number.isSafeInteger(args.budget) || args.budget < 1) {
     throw new Error('--budget 必须是正整数');
   }
