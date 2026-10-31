@@ -82,6 +82,11 @@ const PUBLIC_READ_ROUTES: Record<string, string> = {
   // 由 OAuth 客户端持有，与会话 cookie 无关（见 docs/oauth.md）。放这里只是因为
   // 判据按「有没有会话守卫符号」扫，它的凭据不来自会话。
   '/api/oauth/userinfo': '鉴权走 Bearer token（OAuth access_token），非会话',
+  // 开发者工具「网站响应头查看」的服务端代理。工具箱页面本身对所有人开放，所以这条
+  // 也得匿名可达。它**不返回本站任何用户数据**：响应体只有目标站点的状态码与响应头，
+  // 请求由服务端代发，出站侧有 SSRF 判据（src/lib/dev-tools/net-guard.ts）、只读头
+  // 不读 body、按 IP 限频（RULES.toolHeaderFetchPerIp）。
+  '/api/tool/http-headers': '开发者工具：只回目标站点的响应头，不含本站用户数据；出站有 SSRF 判据与按 IP 限频',
 };
 
 /** 递归找出所有 route.ts。 */

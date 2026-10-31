@@ -300,7 +300,7 @@ test('工具箱「站务工具」里有「我的收藏夹」入口，点进去�
   await registerFreshUser(page, { core: true });
   await page.goto('/tool');
 
-  // 站务工具区默认就展开（编码 / 加密两组才收在「更多开发者工具」里）
+  // 站务工具区默认就展开（开发者工具收在另一张 /tool/dev 合集卡里）
   const entry = page.locator('a.tool-new-card[href="/favorite"]');
   await expect(entry).toBeVisible();
   await entry.click();

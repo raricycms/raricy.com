@@ -10,10 +10,13 @@
 //   3. 抽查算得对（用标准值断言，不是「有输出就算过」）
 //   4. 站务工具区的「音频床」入口在、且点得进去 —— 同一种「功能做完却进不去」的
 //      毛病（/audio 一度不在任何导航里，三份文档却都写着「进入 /audio」）
+//   5. 开发者工具合集（/tool/dev）收录既有工具 + 新工具，且清单里每个新工具页都可达
+//      （清单唯一真相源是 src/lib/dev-tools/registry.ts，这里直接遍历它）
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { test, expect } from '@playwright/test';
 import { registerFreshUser } from './helpers';
+import { DEV_TOOLS } from '../../src/lib/dev-tools/registry';
 
 const TOOLS = ['url', 'html', 'qp', 'hash', 'aes'] as const;
 
@@ -27,7 +30,7 @@ test('站务工具区里有「音频床」入口，点进去就是音频床（�
   await registerFreshUser(page, { core: true });
   await page.goto('/tool');
 
-  // 站务工具区默认就展开（编码 / 加密两组才收在「更多开发者工具」里）
+  // 站务工具区默认就展开（开发者工具是另一张合集卡）
   const entry = page.locator('a.tool-new-card[href="/audio"]');
   await expect(entry).toBeVisible();
   await entry.click();
@@ -39,10 +42,6 @@ test('站务工具区里有「音频床」入口，点进去就是音频床（�
 test('工具菜单不含指向外部站的工具链接（绝对 URL 会 404）', async ({ page }) => {
   await page.goto('/tool');
 
-  // 编码/加密工具默认收在「更多开发者工具」手风琴里 —— 走真实路径先展开，
-  // 否则菜单里只数得到站务类卡片（曾有旧版 .tool 链接类名，现行是 tool-new-card）
-  await page.getByRole('button', { name: '更多开发者工具' }).click();
-
   const hrefs = await page.locator('a.tool-new-card').evaluateAll((as) =>
     as.map((a) => (a as HTMLAnchorElement).getAttribute('href') ?? '')
   );
@@ -52,9 +51,69 @@ test('工具菜单不含指向外部站的工具链接（绝对 URL 会 404）',
   const external = hrefs.filter((h) => /^https?:\/\//.test(h));
   expect(external, `这些工具链接指向站外：${external.join(', ')}`).toEqual([]);
 
-  // 这五个工具，菜单里必须都在且是站内链接
+  // 2026-10 起「编码 / 解码」与「加密 / 安全」不再平铺在工具箱主页，而是和新增的
+  // 开发者工具一起收进 `/tool/dev` 合集（主页只留合集卡 + 四张常用卡）。
+  expect(hrefs, '工具箱主页缺少开发者工具合集入口').toContain('/tool/dev');
+});
+
+test('开发者工具合集：既有五个工具 + 新增工具都在，且没有站外链接', async ({ page }) => {
+  await page.goto('/tool/dev');
+
+  const hrefs = await page.locator('a.tool-new-card').evaluateAll((as) =>
+    as.map((a) => (a as HTMLAnchorElement).getAttribute('href') ?? '')
+  );
+  expect(hrefs.length).toBeGreaterThan(20);
+
+  // 既有工具一页都没搬家（合集只是索引它们，旧链接与文档因此不用改）
   for (const t of TOOLS) {
-    expect(hrefs, `菜单缺少 /tool/${t}`).toContain(`/tool/${t}`);
+    expect(hrefs, `合集缺少既有工具 /tool/${t}`).toContain(`/tool/${t}`);
+  }
+  // 新增工具的代表：每类各取一项，防止「清单有、页面没接」
+  for (const slug of [
+    'json',
+    'json-tree',
+    'json-path',
+    'regex',
+    'diff',
+    'timestamp',
+    'jwt',
+    'qrcode',
+    'barcode',
+    'url-params',
+    'subnet',
+    'dns',
+    'http-headers',
+  ]) {
+    expect(hrefs, `合集缺少新工具 /tool/dev/${slug}`).toContain(`/tool/dev/${slug}`);
+  }
+
+  const external = hrefs.filter((h) => /^https?:\/\//.test(h));
+  expect(external, `合集里这些链接指向站外：${external.join(', ')}`).toEqual([]);
+});
+
+test('开发者工具合集：清单里的每个新工具页都能打开', async ({ page }) => {
+  // 直接遍历 registry：清单加一行就自动多测一个页面，不需要在这份用例里再维护一份列表。
+  // 每条只断言「不是 404 占位页、有 h1」—— 具体算法由各工具的单测负责，这里管可达性。
+  for (const t of DEV_TOOLS.filter((x) => !x.legacy)) {
+    const res = await page.goto(`/tool/dev/${t.slug}`);
+    expect(res?.status(), `/tool/dev/${t.slug} 状态码`).toBe(200);
+    await expect(page.locator('body')).not.toContainText('This page could not be found');
+    await expect(page.locator('h1')).toContainText(t.title);
+  }
+});
+
+test('开发者工具各页在窄屏（390px）下没有横向溢出', async ({ page }) => {
+  // 这条是实测出来的：cron 页的宏列表是一串没有空格的等宽文本
+  // （`@yearly/@monthly/…`），390px 下把整页顶到 scrollWidth 415。
+  // 横向溢出不会让构建失败、单测也看不见，只有真浏览器量视口才现形。
+  // 遍历 registry，新增工具自动纳入。
+  await page.setViewportSize({ width: 390, height: 844 });
+  for (const path of ['/tool/dev', ...DEV_TOOLS.filter((x) => !x.legacy).map((t) => `/tool/dev/${t.slug}`)]) {
+    await page.goto(path);
+    const overflow = await page.evaluate(
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth
+    );
+    expect(overflow, `${path} 在 390px 视口下横向溢出 ${overflow}px`).toBeLessThanOrEqual(1);
   }
 });
 

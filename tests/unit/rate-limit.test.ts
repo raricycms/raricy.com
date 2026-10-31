@@ -247,6 +247,12 @@ describe('RULES 全站配额（src/lib/rate-limit.ts 即权威，改动即报警
       desc: '个人主页布局保存 30 次/分/用户（整页替换 = 一个事务里最多 16 次写）',
     },
     {
+      name: 'toolHeaderFetchPerIp',
+      limit: 20,
+      windowMs: 60_000,
+      desc: '开发者工具「网站响应头查看」20 次/分/IP（全站唯一代用户发起外网请求的路由，一次最多 1+3 次出站）',
+    },
+    {
       name: 'favoriteCreateHourly',
       limit: 20,
       windowMs: HOUR,
