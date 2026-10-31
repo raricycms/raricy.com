@@ -57,7 +57,7 @@ async function createBlogViaApi(
 }
 
 test.describe('ReactiveMD 发布与阅读', () => {
-  test('reactive 发布后（flag=off）阅读页是静态正文，引用 / 脚注 / 软换行都在', async ({
+  test('reactive 发布后阅读页默认可交互，引用 / 脚注 / 软换行都在', async ({
     page,
   }) => {
     await loginViaApi(page, SEED_USERS.core.username);
@@ -96,16 +96,15 @@ test.describe('ReactiveMD 发布与阅读', () => {
 
     await page.goto(`/blog/${blogId}`);
     const container = page.locator('#userContentContainer');
-    await expect(container).toHaveAttribute('data-content-renderer', 'reactive-static');
+    await expect(container).toHaveAttribute('data-content-renderer', 'reactive');
 
-    // 静态正文 + 静态控件值（不是输入框）
-    await expect(container.locator('.md-document.local-static')).toBeVisible();
-    await expect(container.locator('.local-static-value')).toHaveText('2');
-    await expect(container.locator('.local-slider input')).toHaveCount(0);
+    // SSR 先给静态首屏，水合后组件可操作：滑杆是真实 input，初始值 2。
+    await expect(container.locator('.local-slider input')).toHaveCount(1);
+    await expect(container.locator('.local-slider input')).toHaveValue('2');
 
-    // reactive 文档保持 CommonMark 的软换行语义（不插 <br>）；软换行兼容是给
-    // 「Markdown 文档走新渲染器」那一档的，不是给 reactive 源码的。
-    await expect(container.locator('p br')).toHaveCount(0);
+    // 站点统一软换行规则：Markdown 与 Reactive 都把单换行渲染成 <br>，
+    // 这样 Markdown 追加组件、format 自动升级后排版不变。
+    await expect(container.locator('p br')).not.toHaveCount(0);
     await expect(container).toContainText('第一行');
     await expect(container).toContainText('第二行');
 
@@ -122,7 +121,7 @@ test.describe('ReactiveMD 发布与阅读', () => {
     await expect(container).not.toContainText('<panel');
   });
 
-  test('markdown 文档（flag=off）仍然走 legacy 渲染器，页面行为逐字不变', async ({ page }) => {
+  test('markdown 文档也走统一引擎，加粗与正文正常', async ({ page }) => {
     await loginViaApi(page, SEED_USERS.core.username);
     const blogId = await createBlogViaApi(page, {
       content: '## 普通标题\n\n正文 **加粗**',
@@ -130,9 +129,9 @@ test.describe('ReactiveMD 发布与阅读', () => {
     });
 
     await page.goto(`/blog/${blogId}`);
-    await expect(page.locator('[data-content-renderer="legacy"] #userContentContainer')).toHaveCount(1);
+    await expect(page.locator('#userContentContainer[data-content-renderer="reactive"]')).toHaveCount(1);
     await expect(page.locator('#userContentContainer strong')).toHaveText('加粗');
-    await expect(page.locator('.md-document')).toHaveCount(0);
+    await expect(page.locator('.reactive-document')).toHaveCount(1);
   });
 
   test('无法编译的 reactive 发布被整笔拒绝，且库里不出现半篇文章', async ({ page }) => {
@@ -149,7 +148,7 @@ test.describe('ReactiveMD 发布与阅读', () => {
       },
     });
     expect(res.status()).toBe(400);
-    expect(((await res.json()) as { message: string }).message).toContain('无法编译');
+    expect(((await res.json()) as { message: string }).message).toContain('无法编译渲染');
 
     const after = await page.request.get('/api/blogs?limit=1');
     expect(after.status()).toBe(before.status());
@@ -172,11 +171,106 @@ test.describe('ReactiveMD 发布与阅读', () => {
 
     await page.goto(`/blog/${blogId}`);
     const container = page.locator('#userContentContainer');
-    await expect(container).toHaveAttribute('data-content-renderer', 'reactive-static');
+    await expect(container).toHaveAttribute('data-content-renderer', 'reactive');
     await expect(container.locator('h1')).toContainText('无 JS 标题');
     await expect(container.locator('.local-footnote-ref a')).toHaveCount(1);
     await expect(container).toContainText('正文段落。');
     await context.close();
+  });
+});
+
+
+test.describe('统一管线的兼容与保存边界', () => {
+  test('有效增强语法写成 markdown → 具名 400；未知普通标签仍可保存', async ({ page }) => {
+    await loginViaApi(page, SEED_USERS.core.username);
+    const mismatch = await page.request.post('/api/blogs', {
+      data: {
+        title: `mismatch-${uniqueTag()}`,
+        description: 'mismatch',
+        content: '<counter bind="n" label="N" initial="1" />',
+        visibility: 'internal',
+        format: 'markdown',
+      },
+    });
+    expect(mismatch.status()).toBe(400);
+    expect((await mismatch.json()) as { error_code: string }).toMatchObject({
+      error_code: 'content_format_mismatch',
+    });
+
+    const legacy = await page.request.post('/api/blogs', {
+      data: {
+        title: `legacy-${uniqueTag()}`,
+        description: 'legacy',
+        content: `<TAB>教程占位</TAB>
+
+普通正文`,
+        visibility: 'internal',
+        format: 'markdown',
+      },
+    });
+    expect(legacy.status(), await legacy.text()).toBe(200);
+  });
+
+  test('★ 普通多行 MD 追加组件后保存重开：<br> / 公式 / 引用都不变 ★', async ({ page }) => {
+    await loginViaApi(page, SEED_USERS.core.username);
+    const clipId = await createClipViaApi(page, '被引用的剪贴板正文');
+    const base = [
+      '第一行',
+      '第二行',
+      '',
+      '公式 $x_1 + y_2$ 与引用 [@' + clipId + ']。',
+      '',
+      '[链接](https://example.com) 结束',
+    ].join('\n');
+    const blogId = await createBlogViaApi(page, { content: base, format: 'markdown' });
+
+    const updated = await page.request.put(`/api/blogs/${blogId}`, {
+      data: {
+        title: `mixed-${uniqueTag()}`,
+        description: 'mixed',
+        content: `${base}
+
+<counter bind="n" label="N" initial="1" />`,
+        visibility: 'internal',
+        format: 'reactive',
+      },
+    });
+    expect(updated.status(), await updated.text()).toBe(200);
+
+    await page.goto(`/blog/${blogId}`);
+    const container = page.locator('#userContentContainer');
+    await expect(container).toHaveAttribute('data-content-renderer', 'reactive');
+    // 折行必须是真实 <br>，不能只看 textContent。
+    await expect(container.locator('p br')).not.toHaveCount(0);
+    await expect(container).toContainText('第一行');
+    await expect(container).toContainText('第二行');
+    await expect(container.locator('.local-math-inline, .local-math-display').first()).toBeVisible({ timeout: 15_000 });
+    await expect(container.locator('.site-embed-clipboard-inline')).toContainText('被引用的剪贴板正文');
+    await page.reload();
+    await expect(page.locator('#userContentContainer p br')).not.toHaveCount(0);
+  });
+
+  test('历史 data 位图在真实浏览器里显示为 <img>（>8KB 也不回退源码）', async ({ page }) => {
+    await loginViaApi(page, SEED_USERS.core.username);
+    const png =
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg';
+    const padded = `${png}${'A'.repeat(9000)}`;
+    const dataUrl = `data:image/png;base64,${padded.slice(0, padded.length - (padded.length % 4))}`;
+    const blogId = await createBlogViaApi(page, {
+      content: `前面
+
+<img src="${dataUrl}" alt="历史位图">
+
+后面`,
+      format: 'markdown',
+    });
+    await page.goto(`/blog/${blogId}`);
+    const image = page.locator('#userContentContainer img[alt="历史位图"]');
+    await expect(image).toHaveCount(1);
+    await expect(image).toHaveAttribute('src', /^data:image\/png;base64,/);
+    const rendered = await image.evaluate((element) => (element as HTMLImageElement).naturalWidth);
+    expect(rendered).toBeGreaterThan(0);
+    await expect(page.locator('#userContentContainer')).not.toContainText('base64');
   });
 });
 

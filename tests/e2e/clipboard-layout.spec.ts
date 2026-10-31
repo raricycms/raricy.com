@@ -37,12 +37,12 @@ test.describe('云剪贴板：详情页的层数', () => {
     const { id } = (await res.json()) as { id: string };
 
     await page.goto(`/clipboard/${id}`);
-    await expect(page.locator('.blog-content-container')).toBeVisible();
+    await expect(page.locator('.clipboard-reactive-content .reactive-document')).toBeVisible();
 
     const geo = await page.evaluate(() => {
       const card = document.querySelector('.clipboard-detail') as HTMLElement;
       const inner = document.querySelector(
-        '.clipboard-detail__content .blog-content-container'
+        '.clipboard-detail__content .reactive-document'
       ) as HTMLElement;
       const cs = getComputedStyle(inner);
       const cardCs = getComputedStyle(card);

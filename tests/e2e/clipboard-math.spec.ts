@@ -29,20 +29,11 @@ test.describe('云剪贴板：LaTeX 公式', () => {
 
     await page.goto(`/clipboard/${id}`);
 
-    // 块级公式必须是 display 模式（历史 bug 下它会是行内，跨行时干脆是原始文本）
-    const display = page.locator('mjx-container[jax="CHTML"][display="true"]');
+    // 统一引擎：块级公式是 `.local-math-display`，行内是 `.local-math-inline`。
+    const display = page.locator('.local-math-display');
     await expect(display).toHaveCount(1, { timeout: 15_000 });
-    // 块级 + 行内各一个容器
-    await expect(page.locator('mjx-container[jax="CHTML"]')).toHaveCount(2);
-    // 公式里的 `<` 若被 HTML 解析器吃掉，残句喂给 MathJax 会产出错误节点
-    await expect(page.locator('mjx-merror')).toHaveCount(0);
-
-    // CHTML 的 @font-face 必须指向同源静态目录：默认相对路径在 /clipboard/<id>
-    // 下会解析成 /clipboard/js/… 而 404，公式只能用回退字体渲染。
-    // 用 textContent 取值：<style> 在 head 里不参与渲染，Playwright 的
-    // toContainText 走 innerText 会拿到空串。
-    await expect
-      .poll(() => page.locator('#MJX-CHTML-styles').textContent(), { timeout: 15_000 })
-      .toContain('/static/mathjax/woff-v2/');
+    await expect(page.locator('.local-math-inline')).toHaveCount(1);
+    // 不允许退化成 fallback 源码（那说明 formulas 没被识别）。
+    await expect(page.locator('.local-math-fallback')).toHaveCount(0);
   });
 });
