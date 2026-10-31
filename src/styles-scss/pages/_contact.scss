@@ -12,8 +12,10 @@
   }
 }
 
-// 三条联系方式在宽屏并成一行，窄屏回落成一列 —— 卡片铺满容器，但每条信息仍是
+// 三条联系方式在宽屏并成一行，其余宽度回落成一列 —— 卡片铺满容器，但每条信息仍是
 // 一小块，不会出现「一句话横跨 1100px」。
+// 三列从 992px（站点宽度阶梯的第一档）才开始：768–991 时每列只有约 230px，
+// 「问题反馈」的说明会被挤成三四个字一行的细列；单列反而更好读。
 .contact-card {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -22,7 +24,7 @@
   background: var(--color-background-card);
   border-radius: 30px;
 
-  @media (min-width: 768px) {
+  @media (min-width: 992px) {
     grid-template-columns: repeat(3, minmax(0, 1fr));
     padding: $space-6;
   }

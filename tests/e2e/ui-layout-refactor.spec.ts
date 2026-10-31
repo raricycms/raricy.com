@@ -249,7 +249,8 @@ test('320 / 390 页头：单个短操作与标题同行，放不下才换行', a
   }
 });
 
-test('联系页邮箱的可点区域至少 44px 高', async ({ page }) => {
+test('联系页：邮箱触控高度与响应式列数', async ({ page }, testInfo) => {
+  // ① 320：邮箱是主要点击入口，可点区域至少 44px 高。
   await page.setViewportSize({ width: 320, height: 800 });
   await page.goto('/contact');
   const mail = page.locator('a.contact-row__value[href^="mailto:"]');
@@ -257,6 +258,47 @@ test('联系页邮箱的可点区域至少 44px 高', async ({ page }) => {
   const box = await mail.boundingBox();
   expect(box, '量不到邮箱链接').not.toBeNull();
   expect(box!.height).toBeGreaterThanOrEqual(44);
+
+  // ② 768：三条联系方式必须是一列 —— 三列时「问题反馈」的说明只有约 70px 宽，
+  // 会被挤成三四个字一行的细列。这里按真实矩形量外壳与说明列宽。
+  await page.setViewportSize({ width: 768, height: 900 });
+  await page.goto('/contact');
+  const rows = page.locator('.contact-row');
+  await expect(rows).toHaveCount(3);
+  const rowBoxes = await rows.evaluateAll((els) =>
+    els.map((el) => {
+      const r = el.getBoundingClientRect();
+      return { x: r.x, y: r.y, width: r.width, height: r.height };
+    })
+  );
+  for (const r of rowBoxes.slice(1)) {
+    expect(Math.abs(r.x - rowBoxes[0].x), '单列时三行左边缘应一致').toBeLessThanOrEqual(1);
+    expect(Math.abs(r.width - rowBoxes[0].width), '单列时三行宽度应一致').toBeLessThanOrEqual(1);
+  }
+  for (let i = 1; i < rowBoxes.length; i++) {
+    expect(rowBoxes[i].y, '单列时下一行应在前一行下方').toBeGreaterThanOrEqual(
+      rowBoxes[i - 1].y + rowBoxes[i - 1].height - 1
+    );
+  }
+  const desc = await page.locator('.contact-row__desc').boundingBox();
+  expect(desc, '量不到反馈说明').not.toBeNull();
+  expect(desc!.width, '768 下反馈说明被挤成了细列').toBeGreaterThan(240);
+  await page.screenshot({ path: testInfo.outputPath('contact-tablet.png'), fullPage: true });
+
+  // ③ 1440：三列回到同一行，左到右依次排列。
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto('/contact');
+  const wide = await page.locator('.contact-row').evaluateAll((els) =>
+    els.map((el) => {
+      const r = el.getBoundingClientRect();
+      return { x: r.x, y: r.y };
+    })
+  );
+  expect(wide).toHaveLength(3);
+  expect(Math.abs(wide[0].y - wide[1].y), '三列应在同一行').toBeLessThanOrEqual(2);
+  expect(Math.abs(wide[1].y - wide[2].y), '三列应在同一行').toBeLessThanOrEqual(2);
+  expect(wide[0].x).toBeLessThan(wide[1].x);
+  expect(wide[1].x).toBeLessThan(wide[2].x);
 });
 
 test('商城 #shop 深链落在固定顶栏之下（含旧 market 兼容跳转）', async ({ page }) => {
