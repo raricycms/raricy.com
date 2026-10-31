@@ -2,15 +2,19 @@
 //
 // 这几十行原先是 GuideShell 里的一段内联 `<style>`（GUIDE_STYLES）。2026-09 搬到
 // SCSS，理由有二：① 站内文档页（`/docs/...`）要渲染同一批 Markdown，排版不该抄第二份；
-// ② 内联样式在 `<body>` 里才出现，与全站样式表的先后顺序全靠「谁后出现谁赢」，
-// 而 `.guide` 的 `padding` 简写正好会盖掉 `.wrap` 的 `padding-inline` —— 搬进
-// `pages/` 之后两者的先后由 main.scss 的 @use 顺序决定，读得出来。
+// ② 内联样式在 `<body>` 里才出现，与全站样式表的先后顺序全靠「谁后出现谁赢」。
 // 正文部分的规则现在住在 components/_doc-prose.scss，两边共用。
+//
+// ⚠️ 根节点同时挂 `.guide` 与 `.wrap`：横向檐沟（16px）归 layout/_container.scss 的
+// `.wrap`，本文件只给**纵向**内距。当前 `.guide` 在本文件里晚于 `.wrap` 加载，
+// 两者权重相同 —— 若写成 `padding: 2rem 0`，简写会把 `.wrap` 的横向内距覆盖成 0，
+// 指南正文就贴住屏幕边。只写 `padding-block` 便不会再碰横向；别改回四边简写，
+// 也别在这里补写横向值 —— 两个类都在同一节点上，只该各管一轴。
 
 @use '../components/doc-prose' as prose;
 
 .guide {
-  padding: 2rem 0;
+  padding-block: 2rem;
   max-width: 820px;
   margin: 0 auto;
 }
