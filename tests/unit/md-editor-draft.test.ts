@@ -165,35 +165,56 @@ describe('组件卸载（站内换页根本不发 pagehide）', () => {
 
 describe('草稿格式：老草稿一律按 markdown 恢复', () => {
   it('裸正文（Vditor 时代的老草稿）恢复成 markdown', () => {
-    expect(parseDraftValue('# 旧草稿')).toEqual({ format: 'markdown', text: '# 旧草稿' });
+    expect(parseDraftValue('# 旧草稿')).toEqual({ format: 'markdown', text: '# 旧草稿', syntaxVersion: null });
   });
 
   it('★ 看起来像 JSON 的旧正文也不猜成 reactive ★', () => {
     const old = '{"format":"reactive","text":"这是正文"}';
-    expect(parseDraftValue(old)).toEqual({ format: 'markdown', text: old });
+    expect(parseDraftValue(old)).toEqual({ format: 'markdown', text: old, syntaxVersion: null });
   });
 
   it('坏掉的信封不丢正文，仍按 markdown 恢复', () => {
     const broken = 'raricy-md-draft:v1:{not json';
-    expect(parseDraftValue(broken)).toEqual({ format: 'markdown', text: broken });
+    expect(parseDraftValue(broken)).toEqual({ format: 'markdown', text: broken, syntaxVersion: null });
   });
 
   it('reactive 草稿连格式一起落盘、一起恢复', () => {
     vi.useFakeTimers();
     const store = createDraftStore(KEY, { debounceMs: 500 });
-    store.schedule({ format: 'reactive', text: '人数：{{ people }}' });
+    store.schedule({ format: 'reactive', text: '人数：{{ people }}', syntaxVersion: 'local-draft-3' });
     vi.advanceTimersByTime(500);
     expect(store.read()).toEqual({
       ok: true,
       value: '人数：{{ people }}',
       format: 'reactive',
+      syntaxVersion: 'local-draft-3',
     });
     store.dispose();
   });
 
   it('markdown 的落盘形态一个字都没变（老草稿续用同一把键）', () => {
-    expect(encodeDraftValue({ format: 'markdown', text: '普通正文' })).toBe('普通正文');
-    expect(parseDraftValue('普通正文')).toEqual({ format: 'markdown', text: '普通正文' });
+    expect(encodeDraftValue({ format: 'markdown', text: '普通正文', syntaxVersion: null })).toBe('普通正文');
+    expect(parseDraftValue('普通正文')).toEqual({ format: 'markdown', text: '普通正文', syntaxVersion: null });
+  });
+
+  it('v1 信封继续读：没有版本字段的旧 reactive 草稿按 null 恢复', () => {
+    const v1 = 'raricy-md-draft:v1:' + JSON.stringify({ format: 'reactive', text: '旧正文' });
+    expect(parseDraftValue(v1)).toEqual({
+      format: 'reactive',
+      text: '旧正文',
+      syntaxVersion: null,
+    });
+  });
+
+  it('v2 信封连语法版本一起恢复', () => {
+    const v2 =
+      'raricy-md-draft:v2:' +
+      JSON.stringify({ format: 'reactive', text: '新正文', syntaxVersion: 'local-draft-3' });
+    expect(parseDraftValue(v2)).toEqual({
+      format: 'reactive',
+      text: '新正文',
+      syntaxVersion: 'local-draft-3',
+    });
   });
 });
 

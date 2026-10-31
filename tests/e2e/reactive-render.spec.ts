@@ -184,8 +184,9 @@ test.describe('ReactiveMD 编辑器预览', () => {
   test('reactive 格式的预览走 ReactivePreview（组件可交互、无编译错误）', async ({ page }) => {
     await loginViaApi(page, SEED_USERS.core.username);
     await page.goto('/blog/upload');
-    await page.selectOption('#format', 'reactive');
 
+    // 作者界面已移除手动格式选择：插入的组件 / 表达式会让编辑器自动升级为
+    // Reactive（异步分析，下面的 preview 断言带 20s 等待）。
     await page.locator('#editor .cm-content').click();
     // 一次性插入整篇：逐行 `type` 会触发 CM6 的标签自动闭合，凭空多出 `</slider>`，
     // 而 ReactiveMD 的控件是自闭合标签 —— 那份源码会直接编译失败。

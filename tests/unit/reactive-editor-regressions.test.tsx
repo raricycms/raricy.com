@@ -97,6 +97,26 @@ vi.mock('@/app/components/markdown-editor/Toolbar', () => ({
   default: () => null,
   VIEW_MODES: [],
 }));
+// 格式分析器是后端契约（worker）；单测里只要一个不排后台任务的替身 ——
+// 无候选语法的正文根本不会调用它，需要结果的用例各自再覆盖。
+vi.mock('@/lib/reactive/format-observer', () => ({
+  createFormatAnalyzer: () => ({
+    analyze: async (_source: string, revision = 1) => ({
+      revision,
+      effective: 'markdown',
+      valid: true,
+      publishable: true,
+      evidence: [],
+      candidates: [],
+      codes: [],
+      diagnostics: [],
+      declaredVersion: null,
+      syntaxVersion: null,
+    }),
+    dispose: () => {},
+  }),
+}));
+
 vi.mock('@/app/components/markdown-editor/ResourcePanel', () => ({ default: () => null }));
 
 import MarkdownEditor from '@/app/components/MarkdownEditor';
@@ -199,7 +219,7 @@ describe('草稿：只切格式也要把正文与新格式一起存下', () => {
     await tick(DRAFT_DEBOUNCE_MS + 50);
 
     expect(window.localStorage.getItem(KEY)).toBe(
-      encodeDraftValue({ format: 'reactive', text: '正文一个字都没动' })
+      encodeDraftValue({ format: 'reactive', text: '正文一个字都没动', syntaxVersion: null })
     );
     h.unmount();
   });
@@ -216,7 +236,7 @@ describe('草稿：只切格式也要把正文与新格式一起存下', () => {
   });
 
   it('初次挂载不覆盖正等用户选择的旧草稿', async () => {
-    const oldDraft = encodeDraftValue({ format: 'reactive', text: '上次没发出去的草稿' });
+    const oldDraft = encodeDraftValue({ format: 'reactive', text: '上次没发出去的草稿', syntaxVersion: null });
     window.localStorage.setItem(KEY, oldDraft);
 
     const h = await mountEditor({
@@ -236,7 +256,7 @@ describe('草稿恢复按钮：最终正文与格式保持一致', () => {
   it('恢复一份 reactive 草稿 → 表单格式跟着变，落盘的也是 reactive', async () => {
     window.localStorage.setItem(
       KEY,
-      encodeDraftValue({ format: 'reactive', text: '草稿里的正文' })
+      encodeDraftValue({ format: 'reactive', text: '草稿里的正文', syntaxVersion: null })
     );
     const onFormatRestored = vi.fn();
     const h = await mountEditor({
@@ -251,13 +271,13 @@ describe('草稿恢复按钮：最终正文与格式保持一致', () => {
 
     await tick(DRAFT_DEBOUNCE_MS + 50);
     expect(window.localStorage.getItem(KEY)).toBe(
-      encodeDraftValue({ format: 'reactive', text: '草稿里的正文' })
+      encodeDraftValue({ format: 'reactive', text: '草稿里的正文', syntaxVersion: null })
     );
     h.unmount();
   });
 
   it('自动恢复时不拿表单原来的格式回写（草稿格式才是真相）', async () => {
-    const draft = encodeDraftValue({ format: 'reactive', text: '草稿正文' });
+    const draft = encodeDraftValue({ format: 'reactive', text: '草稿正文', syntaxVersion: null });
     window.localStorage.setItem(KEY, draft);
 
     const onFormatRestored = vi.fn();

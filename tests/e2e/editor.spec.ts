@@ -127,24 +127,18 @@ async function setViewMode(page: Page, editor: string, label: '编辑' | '并排
 }
 
 /**
- * 够到某一颗工具条按钮 —— 窄屏要先把「更多工具」展开（宽屏下是个空操作）。
+ * 走「插入 → 某一项」执行一个 Markdown 动作（粗体、标题……）。
  *
- * 【为什么必须走这一步】窄屏工具条默认只留 表情 / 上传图片 / 插入引用 三件核心动作，
- * 其余（含粗体）收在「更多工具」里，而**收起是样式表做的**（`_markdown-editor.scss`
- * 的窄屏段）。于是窄屏下那颗按钮是 `display: none` —— Playwright 的 `click()` 会一直
- * 等它可见然后超时，而那看起来像「按钮没了」。
- *
- * 【判据用按钮自己可不可见，不用 isMobile】两者本该同源（都是同一个 767px 断点），
- * 但可见性才是「用户此刻能不能点到它」这件事本身，多一层镜像就多一处会漂的地方。
+ * 四入口 IA 之后，所有 Markdown 写入动作都收在 Insert 菜单里；桌面与手机同一条
+ * 路径（菜单自己限宽限高、内部滚动），所以窄屏不再需要「先展开工具条」这一步。
  */
-async function revealToolbarButton(page: Page, editor: string, name: string) {
-  const target = page.locator(editor).getByRole('button', { name, exact: true });
-  if (await target.isVisible()) return;
-  const more = page.locator(editor).getByRole('button', { name: '更多工具', exact: true });
-  await expect(more).toBeVisible();
-  await more.click();
-  await expect(more).toHaveAttribute('aria-expanded', 'true');
-  await expect(target).toBeVisible();
+async function runInsertAction(page: Page, editor: string, name: string) {
+  const scope = page.locator(editor);
+  await scope.getByRole('button', { name: '插入', exact: true }).click();
+  const menu = scope.locator('.md-toolbar__menu--insert');
+  await expect(menu).toBeVisible();
+  await menu.getByRole('menuitem', { name, exact: true }).click();
+  await expect(menu).toHaveCount(0);
 }
 
 test.describe('编辑器行为', () => {
@@ -166,9 +160,8 @@ test.describe('编辑器行为', () => {
     // 只有整篇渲染出来才看得见（只断字数的话，包不包标记都不影响长度之外的东西）
     const mod = await modKey(page);
     await page.keyboard.press(`${mod}+a`);
-    // 窄屏要先把「更多工具」展开（宽屏空操作）—— 用户在那边的入口就是这条路径
-    await revealToolbarButton(page, BLOG_EDITOR, '粗体');
-    await page.locator(BLOG_EDITOR).getByRole('button', { name: '粗体', exact: true }).click();
+    // 四入口 IA：所有 Markdown 动作都在 Insert 菜单里（桌面 / 手机同一条路径）
+    await runInsertAction(page, BLOG_EDITOR, '粗体');
     await setViewMode(page, BLOG_EDITOR, '预览');
 
     const preview = page.locator(`${BLOG_EDITOR} .md-editor__preview-body`);

@@ -75,7 +75,8 @@ async function exportHtml(
   editor: string,
   startedAt?: number
 ): Promise<{ text: string; filename: string; elapsedMs: number }> {
-  await page.locator(editor).getByRole('button', { name: '导出', exact: true }).click();
+  // 四入口 IA：导出 / 打印收在「更多」菜单里
+  await page.locator(editor).getByRole('button', { name: '更多', exact: true }).click();
   let clickedAt = 0;
   const [download] = await Promise.all([
     page.waitForEvent('download'),
@@ -370,7 +371,7 @@ test.describe('导出的并发', () => {
     page.on('download', (d) => downloads.push(d));
 
     const exportMenu = async () => {
-      await page.locator('#editor').getByRole('button', { name: '导出', exact: true }).click();
+      await page.locator('#editor').getByRole('button', { name: '更多', exact: true }).click();
       await page
         .locator('#editor')
         .getByRole('menuitem', { name: '导出 HTML', exact: true })
