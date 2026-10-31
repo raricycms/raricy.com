@@ -78,7 +78,7 @@ function digestOf(documentJson: string, hostDataJson: string): string {
 function makeRow(overrides: Partial<RawRow> = {}): RawRow {
   const documentJson = overrides.documentJson ?? JSON.stringify(DOCUMENT);
   const hostDataJson = overrides.hostDataJson ?? JSON.stringify(HOST_DATA);
-  const sig = currentSnapshotSignature();
+  const sig = currentSnapshotSignature('reactive');
   return {
     id: 'row-1',
     kind: KIND,
@@ -108,8 +108,8 @@ describe('readReactiveSnapshot —— missing', () => {
   });
 
   it('该版本没有行 → missing（不是 stale，也不是 corrupt）', async () => {
-    const version = reactiveContentVersion('reactive', currentSnapshotSignature().syntaxVersion, CONTENT);
-    expect(await readReactiveSnapshot(KIND, CONTENT_ID, version)).toEqual({ status: 'missing' });
+    const version = reactiveContentVersion('reactive', currentSnapshotSignature('reactive').syntaxVersion, CONTENT);
+    expect(await readReactiveSnapshot(KIND, CONTENT_ID, version, 'reactive')).toEqual({ status: 'missing' });
   });
 
   it('★ 同内容不同版本号 → missing：版本是把快照与**那一版正文**绑死的唯一手段', async () => {
@@ -117,13 +117,13 @@ describe('readReactiveSnapshot —— missing', () => {
     await insert(row);
     // 正文改一个字 → contentVersion 变 → 旧行的版本号不再是当前版本
     const otherVersion = reactiveContentVersion('reactive', row.syntaxVersion, CONTENT + '多一个字');
-    expect(await readReactiveSnapshot(KIND, CONTENT_ID, otherVersion)).toEqual({ status: 'missing' });
+    expect(await readReactiveSnapshot(KIND, CONTENT_ID, otherVersion, 'reactive')).toEqual({ status: 'missing' });
   });
 
   it('同版本号但换了 contentId → missing（kind + contentId + version 三者共同定位）', async () => {
     const row = makeRow();
     await insert(row);
-    expect(await readReactiveSnapshot(KIND, 'another-blog', row.contentVersion)).toEqual({
+    expect(await readReactiveSnapshot(KIND, 'another-blog', row.contentVersion, 'reactive')).toEqual({
       status: 'missing',
     });
   });
@@ -137,7 +137,7 @@ describe('readReactiveSnapshot —— ready', () => {
   it('签名、版本、摘要全对 → ready，且把 document 与 hostData 原样交回', async () => {
     const row = makeRow();
     await insert(row);
-    const result = await readReactiveSnapshot(KIND, CONTENT_ID, row.contentVersion);
+    const result = await readReactiveSnapshot(KIND, CONTENT_ID, row.contentVersion, 'reactive');
     expect(result.status).toBe('ready');
     if (result.status !== 'ready') return;
     expect(result.payload.document).toEqual(DOCUMENT);
@@ -147,7 +147,7 @@ describe('readReactiveSnapshot —— ready', () => {
   it('clipboard 这一档同样走通（kind 是枚举，不是只有 blog）', async () => {
     const row = makeRow({ kind: 'clipboard', contentId: 'clip-1' });
     await insert(row);
-    const result = await readReactiveSnapshot('clipboard', 'clip-1', row.contentVersion);
+    const result = await readReactiveSnapshot('clipboard', 'clip-1', row.contentVersion, 'reactive');
     expect(result.status).toBe('ready');
   });
 });
@@ -160,7 +160,7 @@ describe('readReactiveSnapshot —— stale（三个理由）', () => {
   it('scope 不是 external → stale/scope：**绝不**把带会话数据的快照渲染给访客', async () => {
     const row = makeRow({ scope: 'expand' });
     await insert(row);
-    expect(await readReactiveSnapshot(KIND, CONTENT_ID, row.contentVersion)).toEqual({
+    expect(await readReactiveSnapshot(KIND, CONTENT_ID, row.contentVersion, 'reactive')).toEqual({
       status: 'stale',
       reason: 'scope',
     });
@@ -170,7 +170,7 @@ describe('readReactiveSnapshot —— stale（三个理由）', () => {
     // 顺序有意义 —— scope 是权限问题，比「包版本旧了」严重得多，先报它。
     const row = makeRow({ scope: 'expand', syntaxVersion: 'ancient-syntax' });
     await insert(row);
-    expect(await readReactiveSnapshot(KIND, CONTENT_ID, row.contentVersion)).toEqual({
+    expect(await readReactiveSnapshot(KIND, CONTENT_ID, row.contentVersion, 'reactive')).toEqual({
       status: 'stale',
       reason: 'scope',
     });
@@ -184,7 +184,7 @@ describe('readReactiveSnapshot —— stale（三个理由）', () => {
   ])('编译签名 %s 变了 → stale/compile-signature', async (_label, override) => {
     const row = makeRow(override as Partial<RawRow>);
     await insert(row);
-    expect(await readReactiveSnapshot(KIND, CONTENT_ID, row.contentVersion)).toEqual({
+    expect(await readReactiveSnapshot(KIND, CONTENT_ID, row.contentVersion, 'reactive')).toEqual({
       status: 'stale',
       reason: 'compile-signature',
     });
@@ -192,7 +192,7 @@ describe('readReactiveSnapshot —— stale（三个理由）', () => {
 
   it('★ 四个签名字段每一个都必须参与比对 —— 漏一个就能拿旧编译产物冒充新产物', async () => {
     // 这条用例是给「将来有人把某个字段从 if 里删掉」准备的：逐个改坏，逐个必须 stale。
-    const sig = currentSnapshotSignature();
+    const sig = currentSnapshotSignature('reactive');
     const fields: Array<keyof typeof sig> = [
       'syntaxVersion',
       'compilerVersion',
@@ -203,7 +203,7 @@ describe('readReactiveSnapshot —— stale（三个理由）', () => {
       await resetDb();
       const row = makeRow({ [f]: `${sig[f]}-drifted` } as Partial<RawRow>);
       await insert(row);
-      const result = await readReactiveSnapshot(KIND, CONTENT_ID, row.contentVersion);
+      const result = await readReactiveSnapshot(KIND, CONTENT_ID, row.contentVersion, 'reactive');
       expect(result, `字段 ${f} 没有参与签名比对`).toEqual({
         status: 'stale',
         reason: 'compile-signature',
@@ -222,7 +222,7 @@ describe('readReactiveSnapshot —— stale（三个理由）', () => {
     const row = makeRow({ contentVersion: 'a-version-from-the-past' });
     await insert(row);
     const queryVersion = reactiveContentVersion('reactive', row.syntaxVersion, CONTENT);
-    expect(await readReactiveSnapshot(KIND, CONTENT_ID, queryVersion)).toEqual({
+    expect(await readReactiveSnapshot(KIND, CONTENT_ID, queryVersion, 'reactive')).toEqual({
       status: 'missing',
     });
   });
@@ -236,7 +236,7 @@ describe('readReactiveSnapshot —— corrupt（三个理由）', () => {
   it('format 不是 reactive → corrupt/format', async () => {
     const row = makeRow({ format: 'markdown' });
     await insert(row);
-    expect(await readReactiveSnapshot(KIND, CONTENT_ID, row.contentVersion)).toEqual({
+    expect(await readReactiveSnapshot(KIND, CONTENT_ID, row.contentVersion, 'reactive')).toEqual({
       status: 'corrupt',
       reason: 'format',
     });
@@ -246,7 +246,7 @@ describe('readReactiveSnapshot —— corrupt（三个理由）', () => {
     const row = makeRow();
     // 摘要保持合法，只把正文换掉 —— 等价于绕过写入路径直接改库
     await insert({ ...row, documentJson: JSON.stringify({ ...DOCUMENT, nodes: [] }) });
-    expect(await readReactiveSnapshot(KIND, CONTENT_ID, row.contentVersion)).toEqual({
+    expect(await readReactiveSnapshot(KIND, CONTENT_ID, row.contentVersion, 'reactive')).toEqual({
       status: 'corrupt',
       reason: 'digest',
     });
@@ -256,7 +256,7 @@ describe('readReactiveSnapshot —— corrupt（三个理由）', () => {
     const broken = '{ not json';
     const row = makeRow({ documentJson: broken, digest: digestOf(broken, JSON.stringify(HOST_DATA)) });
     await insert(row);
-    expect(await readReactiveSnapshot(KIND, CONTENT_ID, row.contentVersion)).toEqual({
+    expect(await readReactiveSnapshot(KIND, CONTENT_ID, row.contentVersion, 'reactive')).toEqual({
       status: 'corrupt',
       reason: 'json',
     });
@@ -269,7 +269,7 @@ describe('readReactiveSnapshot —— corrupt（三个理由）', () => {
       digest: digestOf(JSON.stringify(DOCUMENT), brokenHost),
     });
     await insert(row);
-    expect(await readReactiveSnapshot(KIND, CONTENT_ID, row.contentVersion)).toEqual({
+    expect(await readReactiveSnapshot(KIND, CONTENT_ID, row.contentVersion, 'reactive')).toEqual({
       status: 'corrupt',
       reason: 'json',
     });
@@ -282,7 +282,7 @@ describe('readReactiveSnapshot —— corrupt（三个理由）', () => {
       digest: digestOf(noNodes, JSON.stringify(HOST_DATA)),
     });
     await insert(row);
-    expect(await readReactiveSnapshot(KIND, CONTENT_ID, row.contentVersion)).toEqual({
+    expect(await readReactiveSnapshot(KIND, CONTENT_ID, row.contentVersion, 'reactive')).toEqual({
       status: 'corrupt',
       reason: 'json',
     });
@@ -295,7 +295,7 @@ describe('readReactiveSnapshot —— corrupt（三个理由）', () => {
       digest: digestOf(nullDoc, JSON.stringify(HOST_DATA)),
     });
     await insert(row);
-    expect(await readReactiveSnapshot(KIND, CONTENT_ID, row.contentVersion)).toEqual({
+    expect(await readReactiveSnapshot(KIND, CONTENT_ID, row.contentVersion, 'reactive')).toEqual({
       status: 'corrupt',
       reason: 'json',
     });

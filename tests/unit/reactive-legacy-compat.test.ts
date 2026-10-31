@@ -9,8 +9,12 @@
 // 危险能力没有变成可执行内容。
 // ─────────────────────────────────────────────────────────────────────────────
 
+import { createElement } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { compileLocal, type LocalNode } from 'reactive-md';
+import { renderSiteEmbedStatic } from '@/app/components/reactive/site-embed-static';
+import { adaptReactiveReferences } from '@/lib/reactive/ref-adapter';
 import { applyLegacyHtmlCompat } from '@/lib/reactive/legacy-compat';
 import { reactiveCompileOptions } from '@/lib/reactive/host-components';
 import { parseLegacyDataImage } from '@/lib/reactive/data-image';
@@ -100,16 +104,67 @@ describe('applyLegacyHtmlCompat', () => {
     expect(JSON.stringify(documentOf(result).nodes)).not.toContain('<style');
   });
 
-  it('历史 data 位图转成 Markdown 图片，仍在受限 URL 策略内', () => {
+  it('★ 历史 data 位图走宿主组件，真实渲染出 <img>（不依赖上游 urlPolicy）★', async () => {
     const source = `<p>前面</p><img src="${PNG_1PX}" alt="示意图"><p>后面</p>`;
-    const { compat, result } = compatCompile(source);
+    const compat = applyLegacyHtmlCompat(source);
     expect(compat.counts['data-image']).toBe(1);
-    expect(result.ok).toBe(true);
-    const json = JSON.stringify(documentOf(result).nodes);
-    expect(json).toContain('data:image/png;base64,');
-    expect(documentOf(result).nodes.some((node) => JSON.stringify(node).includes('"type":"image"'))).toBe(true);
+    expect(compat.source).toContain('[@图片/');
+    const ref = compat.source.match(/\[@图片\/([a-f0-9]{24})\]/)?.[1];
+    expect(ref).toBeTruthy();
+    expect(compat.dataImages[ref!]?.url).toBe(PNG_1PX);
+
+    const adapted = await adaptReactiveReferences(compat.source, {
+      mode: 'external',
+      dataImages: compat.dataImages,
+    });
+    const hostData = adapted.hostData[`image:${ref}`];
+    expect(hostData).toMatchObject({ kind: 'image', ref, status: 'ready' });
+    expect((hostData.payload as { src: string }).src).toBe(PNG_1PX);
+
+    const markup = renderToStaticMarkup(
+      createElement(
+        'div',
+        null,
+        renderSiteEmbedStatic(
+          { type: 'component', id: 'img', range: { start: 0, end: 0 }, attrs: { kind: 'image', ref: ref! } },
+          hostData,
+          { mode: 'static' } as never
+        )
+      )
+    );
+    expect(markup).toContain('<img');
+    expect(markup).toContain('src="data:image/png;base64,');
+    expect(markup).toContain('alt="示意图"');
     expect(isAllowedReactiveUrl(PNG_1PX, 'image')).toBe(true);
     expect(isAllowedReactiveUrl(PNG_1PX, 'link')).toBe(false);
+  });
+
+  it('>8KB data 位图仍被兼容层截住，不把 base64 当源码输出', () => {
+    const payload =
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg';
+    const padded = `${payload}${'A'.repeat(9000)}`;
+    const big = `data:image/png;base64,${padded.slice(0, padded.length - (padded.length % 4))}`;
+    expect(big.length).toBeGreaterThan(8192);
+    const compat = applyLegacyHtmlCompat(`<img src="${big}" alt="大图">`);
+    expect(compat.counts['data-image']).toBe(1);
+    expect(compat.source).not.toContain('base64');
+    expect(compat.source).toContain('[@图片/');
+    expect(isAllowedReactiveUrl(big, 'image')).toBe(true);
+    expect(isAllowedReactiveUrl(big, 'link')).toBe(false);
+  });
+
+  it('Markdown 原生 data 图片同样走宿主组件', () => {
+    const compat = applyLegacyHtmlCompat(`![示意](${PNG_1PX})`);
+    expect(compat.counts['data-image']).toBe(1);
+    expect(compat.source).toContain('[@图片/');
+    expect(compat.source).not.toContain('data:image');
+  });
+
+  it('WebP 只接受 RIFF/WEBP 品牌，RIFF/WAVE 不显示', () => {
+    const webp = `data:image/webp;base64,${Buffer.from('RIFF\0\0\0\0WEBPVP8 ').toString('base64')}`;
+    const wave = `data:image/webp;base64,${Buffer.from('RIFF\0\0\0\0WAVEfmt ').toString('base64')}`;
+    expect(parseLegacyDataImage(webp)).not.toBeNull();
+    expect(parseLegacyDataImage(wave)).toBeNull();
   });
 
   it('非受限 data 位图（SVG）不显示、也不输出巨长源码', () => {
@@ -132,6 +187,35 @@ describe('applyLegacyHtmlCompat', () => {
     const compat = applyLegacyHtmlCompat(source);
     expect(compat.changed).toBe(false);
     expect(compat.source).toBe(source);
+  });
+
+  it('缩进代码块逐字保留（含 font / script / $）', () => {
+    const source = [
+      '    示例 <font color="red">x</font>',
+      '',
+      '    <script>alert(1)</script>',
+      '',
+      '    价格 $5 与 </br>',
+    ].join('\n');
+    const compat = applyLegacyHtmlCompat(source);
+    expect(compat.changed).toBe(false);
+    expect(compat.source).toBe(source);
+    const result = compile(source);
+    expect(result.ok).toBe(true);
+    expect(JSON.stringify(documentOf(result).nodes)).toContain('alert(1)');
+  });
+
+  it('未配对数学不破坏转义 / 链接目标 / HTML 属性 URL', () => {
+    const escaped = '价格 \\$5 元';
+    expect(applyLegacyHtmlCompat(escaped).source).toBe(escaped);
+
+    const link = '[说明](https://e.com/items?$filter=name)';
+    expect(applyLegacyHtmlCompat(link).source).toBe(link);
+
+    const video = '<video src="https://e.com/a$b$c.mp4"></video>';
+    const compat = applyLegacyHtmlCompat(video);
+    expect(compat.source).toContain('https://e.com/a$b$c.mp4');
+    expect(compat.source).not.toContain('axxxxc');
   });
 
   it('未配对数学不会被当成标签处理，且不吞掉后半句', () => {
@@ -161,6 +245,37 @@ describe('applyLegacyHtmlCompat', () => {
     const { result } = compatCompile('<div class="x">正文</div>');
     expect(result.ok).toBe(true);
     expect(result.diagnostics).toEqual([]);
+  });
+
+  it('★ 兼容白名单 × 上游属性矩阵：每一格都不触发 local.html.fallback ★', () => {
+    const cases = [
+      '<div align="center">x</div>',
+      '<p align="center">x</p>',
+      '<h1 align="center">x</h1>',
+      '<table><tr><td colspan="2" rowspan="1" headers="h">x</td></tr></table>',
+      '<table><tr><th scope="col">h</th></tr></table>',
+      '<ol start="3"><li>x</li></ol>',
+      '<a href="https://e.com" target="_blank" rel="noopener">x</a>',
+      '<img src="/a.png" width="10" height="20" alt="a" title="t">',
+      '<details open><summary>s</summary>x</details>',
+    ];
+    for (const html of cases) {
+      const { result } = compatCompile(html);
+      expect(result.ok, html).toBe(true);
+      expect(result.diagnostics.map((d) => d.code), html).not.toContain('local.html.fallback');
+    }
+    // 上游拒绝的属性必须被剥掉，而不是整块退成源码。
+    for (const html of [
+      '<table align="center"><tr><td>x</td></tr></table>',
+      '<table><caption align="center">c</caption><tr><td>x</td></tr></table>',
+      '<details><summary align="center">s</summary>x</details>',
+      '<img src="/a.png" align="center">',
+      '<table><colgroup span="2"><col span="2"></colgroup><tr><td>x</td></tr></table>',
+    ]) {
+      const { result } = compatCompile(html);
+      expect(result.ok, html).toBe(true);
+      expect(result.diagnostics.map((d) => d.code), html).not.toContain('local.html.fallback');
+    }
   });
 
   it('javascript: 链接不再以原样标签进入文档', () => {

@@ -3,11 +3,12 @@ import { parseReactiveFlags } from '@/lib/reactive/flags';
 import { selectContentRenderer } from '@/lib/renderer-select';
 import { parseContentFormat, resolveContentWriteFormat } from '@/lib/content-format';
 
-const base = { id: 'article-a', kind: 'blog' as const, format: 'markdown', markdownCompatible: true };
-const enabled = parseReactiveFlags({ REACTIVE_MD_MODE: 'on', REACTIVE_MD_PERCENT: '100' });
+const base = { id: 'article-a', kind: 'blog' as const, format: 'markdown' };
+const enabled = parseReactiveFlags({});
+const emergency = parseReactiveFlags({ REACTIVE_MD_MODE: 'off' });
 
 describe('format write gate', () => {
-  it('preserves defaults, rejects unknown languages and keeps reactive writes closed', () => {
+  it('preserves defaults, rejects unknown languages and keeps reactive writes open', () => {
     expect(parseContentFormat('Markdown')).toBeNull();
     expect(resolveContentWriteFormat(undefined)).toEqual({ ok: true, format: 'markdown' });
     expect(resolveContentWriteFormat(null)).toEqual({ ok: false, reason: 'invalid_format' });
@@ -15,38 +16,35 @@ describe('format write gate', () => {
   });
 });
 
-describe('reactive renderer selection', () => {
-  it('fails closed for malformed flags', () => {
-    expect(parseReactiveFlags({ REACTIVE_MD_MODE: 'ON', REACTIVE_MD_PERCENT: '100' })).toEqual({ mode: 'off', percent: 100 });
-    for (const value of ['-1', '101', '2.5', 'Infinity', '5x', '']) {
-      expect(parseReactiveFlags({ REACTIVE_MD_PERCENT: value }).percent).toBe(0);
-    }
+describe('reactive renderer selection（统一后）', () => {
+  it('默认启用：未设置环境变量也是统一管线', () => {
+    expect(parseReactiveFlags({})).toEqual({ mode: 'on', percent: 100 });
+    expect(parseReactiveFlags({ REACTIVE_MD_MODE: 'on' })).toEqual({ mode: 'on', percent: 100 });
+    // shadow 不再做影子编译，等同启用；只有显式 off 是回退。
+    expect(parseReactiveFlags({ REACTIVE_MD_MODE: 'shadow' }).mode).toBe('shadow');
+    expect(parseReactiveFlags({ REACTIVE_MD_MODE: 'off' }).mode).toBe('off');
+    // percent 仅保留环境变量兼容，不再参与选择。
+    expect(parseReactiveFlags({ REACTIVE_MD_PERCENT: '0' }).percent).toBe(0);
   });
-  it('lets the emergency switch and shadow override per-document configuration', () => {
-    for (const mode of ['off', 'shadow'] as const) {
-      expect(selectContentRenderer({ ...base, override: 'reactive', flags: { mode, percent: 100 } }))
-        .toMatchObject({ renderer: 'legacy', reason: 'flag' });
-    }
+
+  it('默认：Markdown 与 Reactive 都走 reactive，不再看 percent / override', () => {
+    expect(selectContentRenderer({ ...base, flags: enabled })).toEqual({ renderer: 'reactive', reason: 'format' });
+    expect(selectContentRenderer({ ...base, format: 'reactive', flags: enabled, override: 'legacy' }))
+      .toEqual({ renderer: 'reactive', reason: 'format' });
+    expect(selectContentRenderer({ ...base, flags: { mode: 'on', percent: 0 } }))
+      .toEqual({ renderer: 'reactive', reason: 'format' });
   });
-  it('requires verified compatibility and falls back locally after compile failure', () => {
-    expect(selectContentRenderer({ ...base, flags: enabled })).toMatchObject({ renderer: 'reactive' });
-    expect(selectContentRenderer({ ...base, flags: enabled, markdownCompatible: false, override: 'reactive' }))
-      .toMatchObject({ renderer: 'legacy', reason: 'fallback' });
+
+  it('事故回退：Markdown → legacy；Reactive → static；未知格式仍 unavailable', () => {
+    expect(selectContentRenderer({ ...base, flags: emergency })).toEqual({ renderer: 'legacy', reason: 'flag' });
+    expect(selectContentRenderer({ ...base, format: 'reactive', flags: emergency }))
+      .toEqual({ renderer: 'reactive-static', reason: 'flag' });
+    expect(selectContentRenderer({ ...base, format: 'other', flags: enabled }))
+      .toEqual({ renderer: 'unavailable', reason: 'invalid-format' });
+  });
+
+  it('编译失败 → unavailable（不按格式猜，也不交给旧解析器）', () => {
     expect(selectContentRenderer({ ...base, flags: enabled, compilationFailed: true }))
-      .toMatchObject({ renderer: 'legacy', reason: 'fallback' });
-  });
-  it('never sends reactive or unknown content to legacy and refuses stale snapshots', () => {
-    const reactive = { ...base, format: 'reactive', flags: { mode: 'off' as const, percent: 100 }, contentVersion: 'v2' };
-    expect(selectContentRenderer(reactive)).toMatchObject({ renderer: 'unavailable', reason: 'snapshot-missing' });
-    expect(selectContentRenderer({ ...reactive, snapshotVersion: 'v1' })).toMatchObject({ renderer: 'unavailable' });
-    expect(selectContentRenderer({ ...reactive, snapshotVersion: 'v2' })).toMatchObject({ renderer: 'reactive-static' });
-    expect(selectContentRenderer({ ...reactive, flags: enabled, override: 'legacy', snapshotVersion: 'v2' }))
-      .toMatchObject({ renderer: 'reactive-static', reason: 'invalid-override' });
-    expect(selectContentRenderer({ ...base, format: 'other', flags: enabled })).toMatchObject({ renderer: 'unavailable' });
-  });
-  it('makes 0/100 percent boundaries explicit and honors a legacy override', () => {
-    expect(selectContentRenderer({ ...base, flags: { mode: 'on', percent: 0 } })).toMatchObject({ renderer: 'legacy' });
-    expect(selectContentRenderer({ ...base, flags: enabled })).toMatchObject({ renderer: 'reactive' });
-    expect(selectContentRenderer({ ...base, flags: enabled, override: 'legacy' })).toMatchObject({ renderer: 'legacy' });
+      .toEqual({ renderer: 'unavailable', reason: 'fallback' });
   });
 });

@@ -40,57 +40,9 @@ import {
   type SourceRange,
 } from 'reactive-md';
 import { reactiveCompileOptions } from './host-components';
+import { currentDeclaration, findLeadingVersionDirective, type LeadingDeclaration } from './version-directive';
 
-/** 当前版本指令的精确文本 —— 与上游 `T` 常量同形，从 `LOCAL_SYNTAX_VERSION` 派生。 */
-const CURRENT_DECLARATION = `<!-- reactive-md: ${LOCAL_SYNTAX_VERSION} -->`;
 
-/** 前导区里允许出现的版本指令（整行匹配）。 */
-const DECLARATION_LINE = /^\s*<!--\s*reactive-md:\s*([A-Za-z0-9.-]+)\s*-->\s*$/;
-
-/** 普通 HTML 注释（可排在版本指令之前）。 */
-const LEADING_COMMENT_LINE = /^\s*<!--[\s\S]*?-->\s*$/;
-
-export interface LeadingDeclaration {
-  version: string;
-  range: SourceRange;
-}
-
-/**
- * 找出正文前导区的版本指令。
- *
- * 规则与上游一致：BOM、空行、普通 Markdown 注释可以排在指令之前；遇到第一条
- * 其它内容就停止。返回 `null` = 没有声明（隐式当前版本 / 旧版本）。
- *
- * 为什么不用 `inspectLocalSourceVersion`：大文档超节点预算时它会把
- * `declaration` 置空（实测 6,000 段正文即可复现），而迁移恰恰要处理这类文档。
- */
-export function findLeadingVersionDirective(source: string): LeadingDeclaration | null {
-  const start = source.charCodeAt(0) === 0xfeff ? 1 : 0;
-  let cursor = start;
-  while (cursor <= source.length) {
-    let lineEnd = source.indexOf('\n', cursor);
-    if (lineEnd === -1) lineEnd = source.length;
-    // 去掉行尾的 \r（CRLF）。
-    const contentEnd = lineEnd > cursor && source[lineEnd - 1] === '\r' ? lineEnd - 1 : lineEnd;
-    const line = source.slice(cursor, contentEnd);
-    if (line.trim() === '') {
-      if (lineEnd === source.length) return null;
-      cursor = lineEnd + 1;
-      continue;
-    }
-    const declaration = DECLARATION_LINE.exec(line);
-    if (declaration) {
-      return { version: declaration[1], range: { start: cursor, end: contentEnd } };
-    }
-    if (LEADING_COMMENT_LINE.test(line)) {
-      if (lineEnd === source.length) return null;
-      cursor = lineEnd + 1;
-      continue;
-    }
-    return null;
-  }
-  return null;
-}
 
 /** 上游结果是否**只**因节点预算失败（其余阻塞项一律不放行）。 */
 function budgetOnly(result: LocalMigrationResult): boolean {
@@ -172,6 +124,84 @@ function findActivatedExternal(
   return diagnostics;
 }
 
+
+/** draft-3 新增的动态约束属性（按组件）。见 0.7.0 发布说明。 */
+const DYNAMIC_CONSTRAINTS: Readonly<Record<string, ReadonlySet<string>>> = {
+  number: new Set(['min', 'max']),
+  slider: new Set(['min', 'max']),
+  date: new Set(['min', 'max', 'required']),
+  input: new Set(['required']),
+  textarea: new Set(['required']),
+  plot: new Set(['min', 'max']),
+};
+
+/**
+ * draft-2 → draft-3 的**动态约束激活**检查。
+ *
+ * 上游迁移器只检查新激活 `<external>`；发布说明同时把「动态 min/max/required」
+ * 列为可能改变原字面语义的变化。这里用上游 `analyzeLocalSource` 的 token /
+ * expression 事实判断：同一标签上的动态属性出现表达式 `{{ … }}` 即阻塞。
+ *
+ * 在所有 draft-2 行上都要跑（不只在预算失败分支），短文档也一样。
+ */
+export function findDynamicConstraintActivations(source: string): Diagnostic[] {
+  const declaration = findLeadingVersionDirective(source);
+  const blanked = declaration
+    ? source.slice(0, declaration.range.start) +
+      source.slice(declaration.range.start, declaration.range.end).replace(/[^\r\n]/g, ' ') +
+      source.slice(declaration.range.end)
+    : source;
+
+  const baseOptions = reactiveCompileOptions('reactive');
+  const analysis = analyzeLocalSource(blanked, {
+    ...baseOptions,
+    limits: {
+      ...baseOptions.limits,
+      maxSyntaxNodes: Math.max(200_000, source.length),
+    },
+  });
+
+  const diagnostics: Diagnostic[] = [];
+  let currentTag: string | null = null;
+  let currentAttr: string | null = null;
+  for (const token of analysis.tokens) {
+    if (token.kind === 'tag') {
+      currentTag = source.slice(token.range.start, token.range.end).toLowerCase();
+      currentAttr = null;
+      continue;
+    }
+    if (token.kind === 'attribute') {
+      currentAttr = source.slice(token.range.start, token.range.end).toLowerCase();
+      continue;
+    }
+    if (token.kind !== 'expression' || !currentTag || !currentAttr) continue;
+    if (!DYNAMIC_CONSTRAINTS[currentTag]?.has(currentAttr)) continue;
+    diagnostics.push(
+      upgradeDiagnostic(
+        'site.migration.dynamic-constraint',
+        source,
+        token.range,
+        `${currentTag}.${currentAttr} becomes a dynamic constraint in local-draft-3`
+      )
+    );
+  }
+  return diagnostics;
+}
+
+/** 列已是当前版本、正文却仍声明旧版本：一次性标记不能掩盖它。 */
+export function findStaleVersionDeclaration(source: string): Diagnostic[] {
+  const declaration = findLeadingVersionDirective(source);
+  if (!declaration || declaration.version === LOCAL_SYNTAX_VERSION) return [];
+  return [
+    upgradeDiagnostic(
+      'site.migration.stale-declaration',
+      source,
+      declaration.range,
+      `content declares ${declaration.version} while the row says ${LOCAL_SYNTAX_VERSION}`
+    ),
+  ];
+}
+
 /**
  * 用站点预算迁移一份旧版本源码。
  *
@@ -202,8 +232,8 @@ export function migrateLocalSourceWithSiteBudget(
   const range = declaration?.range ?? { start: bom, end: bom };
   const newline = source.includes('\r\n') ? '\r\n' : '\n';
   const replacement = declaration
-    ? CURRENT_DECLARATION
-    : `${CURRENT_DECLARATION}${newline}${newline}`;
+    ? currentDeclaration(LOCAL_SYNTAX_VERSION)
+    : `${currentDeclaration(LOCAL_SYNTAX_VERSION)}${newline}${newline}`;
   const migrated = source.slice(0, range.start) + replacement + source.slice(range.end);
 
   // 用站点配置复核迁移后的正文。失败就阻塞，并带上真实的编译诊断。
@@ -218,6 +248,8 @@ export function migrateLocalSourceWithSiteBudget(
     source: migrated,
     changed: migrated !== source,
     edits: [{ range: { ...range }, text: replacement }],
-    diagnostics: [],
+    // 保留站点复核产生的 warning（例如上游的 version-missing / 诊断提醒），
+    // 不要因为迁移成功就把它们丢掉。
+    diagnostics: compiled.diagnostics,
   };
 }

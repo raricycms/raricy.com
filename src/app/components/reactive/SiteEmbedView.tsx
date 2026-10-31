@@ -23,6 +23,7 @@ import {
   VoteWidget,
 } from './site-embed-static';
 import type { VoteEmbedData } from '@/lib/blog-markdown';
+import MarkdownRenderer from '@/app/components/MarkdownRenderer';
 
 export interface SiteEmbedViewOptions {
   /** 编辑器预览：看得见、点不动，不发任何业务写请求。 */
@@ -89,6 +90,15 @@ function InteractiveVote({ voteId, initial }: InteractiveVoteProps): ReactNode {
   );
 }
 
+/** 旧 Markdown 剪贴板的一层内联：只读、外部引用口径（不再嵌套展开）。 */
+function InlineClipboardMarkdown({ content }: { content: string }) {
+  return (
+    <div className="site-embed-clipboard-inline">
+      <MarkdownRenderer content={content} contentRefs="external" interactive={false} />
+    </div>
+  );
+}
+
 /**
  * 宿主渲染入口。签名保持「位置参数」是因为它由 `hostRenderer` 直接调用；
  * 本函数自身不持有 hooks，交互态在 `<InteractiveVote>` 里 —— 直接调用也安全。
@@ -99,6 +109,21 @@ export function SiteEmbedView(
   ctx: LocalRenderContext,
   options?: SiteEmbedViewOptions
 ): ReactNode {
+  // 旧 Markdown 剪贴板的一层内联：静态快照 / 导出仍用链接卡片（不嵌第二套运行时）；
+  // 成员阅读与预览走客户端 MarkdownRenderer，只读、不发业务写请求。
+  if (ctx.mode !== 'static') {
+    const resolvedInline = resolveSiteEmbed(node, data);
+    if (
+      resolvedInline.status === 'ready' &&
+      resolvedInline.kind === 'clipboard' &&
+      resolvedInline.data.format === 'markdown' &&
+      typeof resolvedInline.data.content === 'string' &&
+      resolvedInline.data.content.length > 0
+    ) {
+      return <InlineClipboardMarkdown content={resolvedInline.data.content} />;
+    }
+  }
+
   // 预览与静态快照一律只读：不挂处理器、不发请求。
   if (ctx.mode === 'static' || options?.preview) {
     return renderSiteEmbedStatic(node, data, ctx);

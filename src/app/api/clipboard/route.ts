@@ -8,6 +8,7 @@ import {
   listUserClips,
   resolveClipContentFormat,
   clipContentWriteMessage,
+  clipContentWriteErrorCode,
   CLIP_TITLE_MAX,
   CLIP_CONTENT_MAX,
 } from '@/lib/clipboard-service';
@@ -60,7 +61,11 @@ export async function POST(req: Request) {
 
   // 内容格式写入闸门（API 层；service 里同一道）。新建省略 format = 默认 markdown。
   const contentWrite = resolveClipContentFormat(data.format);
-  if (!contentWrite.ok) return apiErr(400, clipContentWriteMessage(contentWrite.reason));
+  if (!contentWrite.ok) {
+    return apiErr(400, clipContentWriteMessage(contentWrite.reason), {
+      error_code: clipContentWriteErrorCode(contentWrite.reason),
+    });
+  }
 
   const result = await createClip(user.id, {
     title,
@@ -73,8 +78,10 @@ export async function POST(req: Request) {
     // 把它们如实映射成与上面同样的文案，避免被误报成「超过 200 篇」。
     if (result.reason === 'title_too_long') return apiErr(400, 'title too long');
     if (result.reason === 'content_too_long') return apiErr(400, 'content too long');
-    if (result.reason === 'invalid_format' || result.reason === 'reactive_invalid') {
-      return apiErr(400, clipContentWriteMessage(result.reason));
+    if (result.reason === 'invalid_format' || result.reason === 'reactive_invalid' || result.reason === 'format_mismatch') {
+      return apiErr(400, clipContentWriteMessage(result.reason), {
+        error_code: clipContentWriteErrorCode(result.reason),
+      });
     }
     return apiErr(400, '一个用户只能发布200篇云剪贴板！');
   }

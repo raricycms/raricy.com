@@ -27,6 +27,11 @@ import { MAX_BLOG_REF_ITEMS, MAX_REF_EXPAND_CHARS, MAX_REF_FETCHES } from '../co
 import { parseContentFormat, type ContentFormat } from '../content-format';
 import { MAX_FAVORITE_REFS } from '../favorite-refs';
 import { utf8ByteLength } from './cache';
+import { compileLocal, LOCAL_SYNTAX_VERSION } from 'reactive-md';
+import { shouldRejectReactive } from './diagnostics';
+import { documentEvidence, literalizeReactiveSyntax } from './detect-format';
+import { applyLegacyHtmlCompat, LEGACY_COMPAT_VERSION } from './legacy-compat';
+import { REACTIVE_COMPILER_VERSION, REACTIVE_MAX_SYNTAX_NODES, reactiveCompileOptions } from './host-components';
 
 export const CORPUS_SCAN_SCHEMA_VERSION = 1;
 
@@ -217,6 +222,21 @@ export interface CorpusImageScan {
   otherScheme: number;
 }
 
+export interface CorpusCompileScan {
+  /** ok = 编译且语义检查通过；fallback = 编译成功但命中语义回退码；failed = 编译失败。 */
+  status: 'ok' | 'fallback' | 'failed';
+  /** 诊断码去重（不含正文 / message）。 */
+  codes: string[];
+  /** 历史 HTML 兼容改写的计数（只观测）。 */
+  compatCounts: Record<string, number>;
+  /** 解析器实际认出的格式。 */
+  detectedFormat: 'markdown' | 'reactive';
+  /** Markdown 编译失败后经字面量降级成功。 */
+  literalized: boolean;
+  /** 声明格式与实际格式不一致（前端 400 的判据）。 */
+  formatMismatch: boolean;
+}
+
 export interface CorpusDocumentScan {
   id: string;
   kind: CorpusDocumentKind;
@@ -233,6 +253,8 @@ export interface CorpusDocumentScan {
   math: CorpusMathScan;
   refs: CorpusRefScan;
   images: CorpusImageScan;
+  /** `--compile` 时才有；静态扫描下为 null。 */
+  compileResult: CorpusCompileScan | null;
 }
 
 export interface CorpusTotals {
@@ -252,9 +274,15 @@ export interface CorpusTotals {
 
 export interface CorpusReport {
   schemaVersion: typeof CORPUS_SCAN_SCHEMA_VERSION;
-  generator: 'reactive-corpus-static-scan';
-  provisional: true;
-  compile: 'not-run';
+  generator: 'reactive-corpus-static-scan' | 'reactive-corpus-full-scan';
+  provisional: boolean;
+  compile: 'not-run' | 'run';
+  compiler: {
+    compilerVersion: string;
+    syntaxVersion: string;
+    maxSyntaxNodes: number;
+    compatVersion: string;
+  } | null;
   textDiff: 'not-run';
   scannedAt: string;
   totals: CorpusTotals;
@@ -266,6 +294,8 @@ export interface CorpusReportOptions {
   /** 站点时钟 ISO（调用方传 `isoWithOffset(nowForDb())`）。 */
   scannedAt: string;
   errors?: readonly CorpusInputError[];
+  /** 开启真实编译（统一 compat + 生产预算）。 */
+  compile?: boolean;
 }
 
 // ── 代码盖码（保留换行）──────────────────────────────────────────────────────
@@ -602,7 +632,46 @@ function scanImages(masked: string): CorpusImageScan {
 
 // ── 单篇与整份报告 ───────────────────────────────────────────────────────────
 
-export function scanCorpusDocument(document: CorpusDocument): CorpusDocumentScan {
+function compileCorpusDocument(document: CorpusDocument): CorpusCompileScan {
+  const compat = applyLegacyHtmlCompat(document.content);
+  const options = reactiveCompileOptions(document.format);
+  let result = compileLocal(compat.source, options);
+  let literalized = false;
+  if (!result.ok && document.format === 'markdown') {
+    const literal = literalizeReactiveSyntax(document.content);
+    if (literal.changed) {
+      const retry = compileLocal(applyLegacyHtmlCompat(literal.source).source, options);
+      if (retry.ok) {
+        result = retry;
+        literalized = true;
+      }
+    }
+  }
+  if (!result.ok) {
+    return {
+      status: 'failed',
+      codes: [...new Set(result.diagnostics.map((d) => d.code))],
+      compatCounts: compat.counts,
+      detectedFormat: 'markdown',
+      literalized,
+      formatMismatch: false,
+    };
+  }
+  const detectedFormat = documentEvidence(result.document).length > 0 ? 'reactive' : 'markdown';
+  return {
+    status: shouldRejectReactive(result) ? 'fallback' : 'ok',
+    codes: [...new Set(result.diagnostics.map((d) => d.code))],
+    compatCounts: compat.counts,
+    detectedFormat,
+    literalized,
+    formatMismatch: document.format === 'markdown' && detectedFormat === 'reactive',
+  };
+}
+
+export function scanCorpusDocument(
+  document: CorpusDocument,
+  compile = false
+): CorpusDocumentScan {
   const masked = maskCodePreservingLines(document.content);
   const lines = scanLines(document.content);
   const html = scanHtml(masked);
@@ -649,6 +718,7 @@ export function scanCorpusDocument(document: CorpusDocument): CorpusDocumentScan
     math,
     refs,
     images: scanImages(masked),
+    compileResult: compile ? compileCorpusDocument(document) : null,
   };
 }
 
@@ -732,13 +802,22 @@ export function scanCorpusDocuments(
   if (typeof options?.scannedAt !== 'string' || options.scannedAt.length === 0) {
     throw new TypeError('scannedAt 必须是站点时钟的 ISO 字符串');
   }
-  const scans = documents.map(scanCorpusDocument);
+  const compile = options.compile === true;
+  const scans = documents.map((document) => scanCorpusDocument(document, compile));
   const errors = [...(options.errors ?? [])];
   return {
     schemaVersion: CORPUS_SCAN_SCHEMA_VERSION,
-    generator: 'reactive-corpus-static-scan',
-    provisional: true,
-    compile: 'not-run',
+    generator: compile ? 'reactive-corpus-full-scan' : 'reactive-corpus-static-scan',
+    provisional: !compile,
+    compile: compile ? 'run' : 'not-run',
+    compiler: compile
+      ? {
+          compilerVersion: REACTIVE_COMPILER_VERSION,
+          syntaxVersion: LOCAL_SYNTAX_VERSION,
+          maxSyntaxNodes: REACTIVE_MAX_SYNTAX_NODES,
+          compatVersion: LEGACY_COMPAT_VERSION,
+        }
+      : null,
     textDiff: 'not-run',
     scannedAt: options.scannedAt,
     totals: buildTotals(scans, errors.length),

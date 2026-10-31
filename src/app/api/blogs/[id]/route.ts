@@ -8,6 +8,7 @@ import {
   parseVisibility,
   resolveBlogContentFormat,
   contentWriteFailureMessage,
+  contentWriteErrorCode,
   BLOG_VISIBILITIES,
 } from '@/lib/blog-service';
 import { parseContentFormat } from '@/lib/content-format';
@@ -174,7 +175,11 @@ export async function PUT(req: Request, ctx: { params: Promise<{ id: string }> }
       ? (body as Record<string, unknown>).format
       : undefined;
   const contentWrite = resolveBlogContentFormat(requestedFormat, blog.content?.format);
-  if (!contentWrite.ok) return apiErr(400, contentWriteFailureMessage(contentWrite.reason));
+  if (!contentWrite.ok) {
+    return apiErr(400, contentWriteFailureMessage(contentWrite.reason), {
+      error_code: contentWriteErrorCode(contentWrite.reason),
+    });
+  }
 
   // 缺 `visibility` 键时**用库里现值补齐**。
   //
@@ -219,7 +224,9 @@ export async function PUT(req: Request, ctx: { params: Promise<{ id: string }> }
   const updateResult = await updateBlog(id, v.data, user.id);
   // service 层的第二道闸门（理论上与上面同真同假；留它是为了任何绕过 HTTP 的调用方）。
   if (updateResult.error) {
-    return apiErr(400, contentWriteFailureMessage(updateResult.error));
+    return apiErr(400, contentWriteFailureMessage(updateResult.error), {
+      error_code: contentWriteErrorCode(updateResult.error),
+    });
   }
   const { hasChanges, changesDetail } = updateResult;
 

@@ -17,6 +17,7 @@ import type { LocalDocument } from 'reactive-md';
 import { prisma } from '../db';
 import { sha256Hex } from './cache';
 import { ADAPTER_VERSION } from './ref-adapter';
+import { LEGACY_COMPAT_VERSION } from './legacy-compat';
 import {
   REACTIVE_COMPILER_VERSION,
   reactiveCompileOptions,
@@ -25,6 +26,9 @@ import type { SiteHostData } from './ref-types';
 
 export const SNAPSHOT_KIND = { blog: 'blog', clipboard: 'clipboard' } as const;
 export type SnapshotKind = (typeof SNAPSHOT_KIND)[keyof typeof SNAPSHOT_KIND];
+
+/** 快照对应的正文语言。Markdown 与 reactive 的编译选项不同，必须分开签名。 */
+export type SnapshotFormat = 'markdown' | 'reactive';
 
 /** 与正文写入共用的内容版本：格式 / 语法版本 / 原文三者任一变化就换版本。 */
 export function reactiveContentVersion(
@@ -36,7 +40,7 @@ export function reactiveContentVersion(
 }
 
 /** 当前编译包能认可的完整签名（读取时与写入行逐字段比较）。 */
-export function currentSnapshotSignature(): {
+export function currentSnapshotSignature(format: SnapshotFormat): {
   syntaxVersion: string;
   compilerVersion: string;
   adapterVersion: string;
@@ -45,8 +49,10 @@ export function currentSnapshotSignature(): {
   return {
     syntaxVersion: LOCAL_SYNTAX_VERSION,
     compilerVersion: REACTIVE_COMPILER_VERSION,
-    adapterVersion: ADAPTER_VERSION,
-    optionsKey: localCompileOptionsKey(reactiveCompileOptions('reactive')),
+    // 兼容层也会改变编译输入；规则变了旧快照必须 stale。
+    adapterVersion: `${ADAPTER_VERSION}|${LEGACY_COMPAT_VERSION}`,
+    // markdown 的 `markdownBreaks` 与 reactive 不同 —— 选项键必须按格式现算。
+    optionsKey: localCompileOptionsKey(reactiveCompileOptions(format)),
   };
 }
 
@@ -75,6 +81,7 @@ export async function readReactiveSnapshot(
   kind: SnapshotKind,
   contentId: string,
   contentVersion: string,
+  format: SnapshotFormat,
 ): Promise<SnapshotReadResult> {
   const row = await prisma.reactiveSnapshot.findUnique({
     where: {
@@ -82,10 +89,10 @@ export async function readReactiveSnapshot(
     },
   });
   if (!row) return { status: 'missing' };
-  if (row.format !== 'reactive') return { status: 'corrupt', reason: 'format' };
+  if (row.format !== format) return { status: 'corrupt', reason: 'format' };
   if (row.scope !== 'external') return { status: 'stale', reason: 'scope' };
 
-  const current = currentSnapshotSignature();
+  const current = currentSnapshotSignature(format);
   if (
     row.syntaxVersion !== current.syntaxVersion ||
     row.compilerVersion !== current.compilerVersion ||
@@ -123,7 +130,7 @@ export interface ReactiveSnapshotRow {
   kind: SnapshotKind;
   contentId: string;
   contentVersion: string;
-  format: 'reactive';
+  format: SnapshotFormat;
   scope: 'external';
   syntaxVersion: string;
   compilerVersion: string;
@@ -147,18 +154,19 @@ export function toSnapshotRow(
   kind: SnapshotKind,
   contentId: string,
   contentVersion: string,
+  format: SnapshotFormat,
   payload: SnapshotPayload,
   generatedAt: string,
 ): ReactiveSnapshotRow {
   const documentJson = JSON.stringify(payload.document);
   const hostDataJson = JSON.stringify(payload.hostData);
-  const signature = currentSnapshotSignature();
+  const signature = currentSnapshotSignature(format);
   return {
     id: snapshotRowId(kind, contentId, contentVersion),
     kind,
     contentId,
     contentVersion,
-    format: 'reactive',
+    format,
     scope: 'external',
     syntaxVersion: signature.syntaxVersion,
     compilerVersion: signature.compilerVersion,

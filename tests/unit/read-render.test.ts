@@ -1,41 +1,48 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-// 纯决策层：编译、诊断与静态渲染全部替身，测试不碰 prisma / React / 上游包。
-vi.mock('@/lib/reactive/compile', () => ({ compileReactiveSource: vi.fn() }));
-vi.mock('@/lib/reactive/diagnostics', () => ({ shouldFallbackToLegacy: vi.fn(() => false), shouldRejectReactive: vi.fn(() => false) }));
+// 纯决策层：编译 / 快照 / 引用重验全部替身，不碰 prisma / React / 上游包。
+vi.mock('@/lib/reactive/compile-content', () => ({ compileContent: vi.fn() }));
 vi.mock('@/lib/reactive/snapshot-store', () => ({
   reactiveContentVersion: () => 'content-version',
   readReactiveSnapshot: vi.fn(async () => ({ status: 'missing' })),
 }));
+vi.mock('@/lib/reactive/snapshot-revalidation', () => ({
+  hasMutableExternalReferences: vi.fn(() => false),
+  hostDataEqual: vi.fn(() => true),
+}));
 import { resolveReadRender, type ReadRenderInput } from '@/lib/reactive/read-render';
-import { compileReactiveSource } from '@/lib/reactive/compile';
-import { shouldFallbackToLegacy, shouldRejectReactive } from '@/lib/reactive/diagnostics';
+import { compileContent } from '@/lib/reactive/compile-content';
 import { readReactiveSnapshot } from '@/lib/reactive/snapshot-store';
+import { hasMutableExternalReferences, hostDataEqual } from '@/lib/reactive/snapshot-revalidation';
 
-const compileMock = vi.mocked(compileReactiveSource);
-const fallbackMock = vi.mocked(shouldFallbackToLegacy);
-const rejectReactiveMock = vi.mocked(shouldRejectReactive);
+const compileMock = vi.mocked(compileContent);
+const snapshotMock = vi.mocked(readReactiveSnapshot);
+const mutableMock = vi.mocked(hasMutableExternalReferences);
+const equalMock = vi.mocked(hostDataEqual);
 
 function outcome(overrides: Record<string, unknown> = {}) {
   return {
-    result: {
-      ok: true,
-      document: { kind: 'document', children: [] },
-      diagnostics: [{ code: 'local.ok' }],
+    outcome: {
+      result: {
+        ok: true,
+        document: { syntax: 'local', nodes: [], bindings: {}, initialState: {} },
+        diagnostics: [],
+      },
+      adaptedSource: 'adapted',
+      hostData: {},
+      segments: [],
+      referenceSnapshotId: 'snap',
+      sourceHash: 'source',
+      adaptedHash: 'adapted',
+      adapterVersion: 'test-adapter',
+      compilerVersion: 'test-compiler',
+      syntaxVersion: 'local-draft-3',
+      compatCounts: {},
+      cacheKey: 'key',
+      cacheHit: false,
+      compileMs: 7,
+      ...overrides,
     },
-    adaptedSource: 'adapted',
-    hostData: {},
-    segments: [],
-    referenceSnapshotId: 'snap',
-    sourceHash: 'source',
-    adaptedHash: 'adapted',
-    adapterVersion: 'test-adapter',
-    compilerVersion: 'test-compiler',
-    syntaxVersion: 'local-draft-2',
-    cacheKey: 'key',
-    cacheHit: false,
-    compileMs: 7,
-    ...overrides,
   } as never;
 }
 
@@ -53,102 +60,108 @@ function input(overrides: Partial<ReadRenderInput> = {}): ReadRenderInput {
 }
 
 beforeEach(() => {
-  vi.mocked(readReactiveSnapshot).mockReset().mockResolvedValue({ status: 'missing' });
+  snapshotMock.mockReset().mockResolvedValue({ status: 'missing' });
   compileMock.mockReset();
-  fallbackMock.mockReset();
-  fallbackMock.mockReturnValue(false);
-  rejectReactiveMock.mockReset();
-  rejectReactiveMock.mockReturnValue(false);
-  process.env.REACTIVE_MD_MODE = 'off';
-  process.env.REACTIVE_MD_PERCENT = '100';
+  mutableMock.mockReset().mockReturnValue(false);
+  equalMock.mockReset().mockReturnValue(true);
+  delete process.env.REACTIVE_MD_MODE;
   vi.spyOn(console, 'info').mockImplementation(() => {});
 });
 
 afterEach(() => {
   delete process.env.REACTIVE_MD_MODE;
-  delete process.env.REACTIVE_MD_PERCENT;
   vi.restoreAllMocks();
 });
 
-describe('resolveReadRender', () => {
-  it('成员静态阅读按本人权限展开引用，不复用访客快照，也不写回共享快照', async () => {
-    vi.mocked(readReactiveSnapshot).mockResolvedValue({ status: 'ready', payload: { document: { kind: 'document', children: [] }, hostData: {} } } as never);
-    compileMock.mockResolvedValue(outcome({ hostData: { clip: { kind: 'clipboard', status: 'ready', ref: 'AbCd1234', title: '成员片段' } } }));
-    const result = await resolveReadRender(input({ format: 'reactive', source: '[@AbCd1234]', mode: 'expand', viewer: { id: 'member', role: 'core' } }));
-    expect(result.choice.renderer).toBe('reactive-static');
-    expect(result.bundle?.hostData.clip.title).toBe('成员片段');
-    expect(result.snapshot).toBeUndefined();
-    expect(compileMock).toHaveBeenCalledWith(expect.objectContaining({ mode: 'expand', viewer: { id: 'member', role: 'core' } }));
-    expect(readReactiveSnapshot).not.toHaveBeenCalled();
+describe('resolveReadRender（统一管线）', () => {
+  it('★ 默认不设 flag：Markdown 也走新引擎并返回可交互路径 ★', async () => {
+    compileMock.mockResolvedValue(outcome());
+    const result = await resolveReadRender(input());
+    expect(result.choice).toEqual({ renderer: 'reactive', reason: 'format' });
+    expect(result.bundle?.result.ok).toBe(true);
+    expect(compileMock).toHaveBeenCalledWith(expect.objectContaining({ format: 'markdown' }));
   });
-  it('flags off → legacy markdown without compiling', async () => {
+
+  it('快照命中：访客不发编译，直接返回同版本静态 + 可交互外壳', async () => {
+    snapshotMock.mockResolvedValue({
+      status: 'ready',
+      payload: { document: { syntax: 'local', nodes: [] }, hostData: {} },
+    } as never);
+    const result = await resolveReadRender(input());
+    expect(result.choice.renderer).toBe('reactive');
+    expect(result.snapshot).toBeDefined();
+    expect(result.bundle).toBeUndefined();
+    expect(compileMock).not.toHaveBeenCalled();
+    expect(result.log.snapshotStatus).toBe('ready');
+  });
+
+  it('成员引用视图按本人权限现编译，不把访客快照当展开结果', async () => {
+    snapshotMock.mockResolvedValue({
+      status: 'ready',
+      payload: { document: { syntax: 'local', nodes: [] }, hostData: {} },
+    } as never);
+    compileMock.mockResolvedValue(outcome({ hostData: { 'clipboard:AbCd1234': { kind: 'clipboard', ref: 'AbCd1234', status: 'ready', title: '成员片段' } } }));
+    const result = await resolveReadRender(
+      input({ source: '[@AbCd1234]', mode: 'expand', viewer: { id: 'member', role: 'core' } })
+    );
+    expect(result.choice.renderer).toBe('reactive');
+    expect(result.bundle?.hostData['clipboard:AbCd1234'].title).toBe('成员片段');
+    expect(compileMock).toHaveBeenCalledWith(expect.objectContaining({ mode: 'expand' }));
+  });
+
+  it('显式事故回退 REACTIVE_MD_MODE=off：Markdown 回旧引擎且不编译', async () => {
+    process.env.REACTIVE_MD_MODE = 'off';
     const result = await resolveReadRender(input());
     expect(result.choice).toEqual({ renderer: 'legacy', reason: 'flag' });
     expect(result.bundle).toBeUndefined();
-    expect(result.log.format).toBe('markdown');
     expect(compileMock).not.toHaveBeenCalled();
+    expect(snapshotMock).not.toHaveBeenCalled();
   });
 
-  it('markdown + override=legacy → legacy without compiling', async () => {
-    process.env.REACTIVE_MD_MODE = 'on';
-    const result = await resolveReadRender(input({ override: 'legacy' }));
-    expect(result.choice).toEqual({ renderer: 'legacy', reason: 'override' });
-    expect(compileMock).not.toHaveBeenCalled();
+  it('reactive + 事故回退：用同版本快照静态渲染，绝不交给旧解析器', async () => {
+    process.env.REACTIVE_MD_MODE = 'off';
+    snapshotMock.mockResolvedValue({
+      status: 'ready',
+      payload: { document: { syntax: 'local', nodes: [] }, hostData: {} },
+    } as never);
+    const result = await resolveReadRender(input({ format: 'reactive' }));
+    expect(result.choice).toEqual({ renderer: 'reactive-static', reason: 'format' });
+    expect(result.snapshot).toBeDefined();
   });
 
-  it('reactive + compile failure → unavailable (never reactive)', async () => {
-    process.env.REACTIVE_MD_MODE = 'on';
+  it('reactive 编译失败 → unavailable，绝不回旧 Markdown', async () => {
     compileMock.mockResolvedValue(outcome({ result: { ok: false, diagnostics: [{ code: 'local.syntax' }] } }));
     const result = await resolveReadRender(input({ format: 'reactive' }));
     expect(result.choice.renderer).toBe('unavailable');
     expect(result.failure).toBe('compile');
-    expect(result.bundle).toBeDefined();
     expect(result.log.codes).toEqual(['local.syntax']);
   });
 
-  it('reactive + fallback diagnostics → reactive-static with the current compile', async () => {
-    process.env.REACTIVE_MD_MODE = 'on';
-    compileMock.mockResolvedValue(outcome());
-    rejectReactiveMock.mockReturnValue(true);
-    const result = await resolveReadRender(input({ format: 'reactive' }));
-    expect(result.choice.renderer).toBe('reactive-static');
-    expect(result.choice.reason).toBe('fallback');
-    expect(result.bundle?.result.ok).toBe(true);
+  it('Markdown 编译失败且没快照 → unavailable，失败原因归到 compile', async () => {
+    compileMock.mockResolvedValue(outcome({ result: { ok: false, diagnostics: [{ code: 'local.budget' }] } }));
+    const result = await resolveReadRender(input());
+    expect(result.choice.renderer).toBe('unavailable');
+    expect(result.failure).toBe('compile');
   });
 
-  it('reactive + flag off → reactive-static, still never legacy', async () => {
-    compileMock.mockResolvedValue(outcome());
-    const result = await resolveReadRender(input({ format: 'reactive' }));
-    expect(result.choice.renderer).toBe('reactive-static');
-    expect(result.choice.reason).toBe('flag');
-    expect(result.bundle?.result.ok).toBe(true);
-  });
-
-  it('invalid format → unavailable invalid-format without compiling', async () => {
-    process.env.REACTIVE_MD_MODE = 'on';
+  it('invalid format → unavailable invalid-format，不编译', async () => {
     const result = await resolveReadRender(input({ format: 'html' }));
     expect(result.choice).toEqual({ renderer: 'unavailable', reason: 'invalid-format' });
     expect(result.failure).toBe('invalid-format');
-    expect(result.log.format).toBeNull();
     expect(compileMock).not.toHaveBeenCalled();
   });
 
-  it('markdown candidate that fails compatibility → legacy (fallback), never reactive', async () => {
-    process.env.REACTIVE_MD_MODE = 'on';
+  it('旧快照引用数据变化 → 按 external 重新编译替代', async () => {
+    mutableMock.mockReturnValue(true);
+    equalMock.mockReturnValue(false);
+    snapshotMock.mockResolvedValue({
+      status: 'ready',
+      payload: { document: { syntax: 'local', nodes: [] }, hostData: { old: true } },
+    } as never);
     compileMock.mockResolvedValue(outcome());
-    fallbackMock.mockReturnValue(true);
-    const result = await resolveReadRender(input({ override: 'reactive' }));
-    expect(result.choice.renderer).toBe('legacy');
-    expect(result.choice.reason).toBe('fallback');
-    expect(compileMock).toHaveBeenCalledTimes(1);
-  });
-
-  it('markdown candidate that compiles cleanly → reactive', async () => {
-    process.env.REACTIVE_MD_MODE = 'on';
-    compileMock.mockResolvedValue(outcome());
-    const result = await resolveReadRender(input({ override: 'reactive' }));
+    const result = await resolveReadRender(input({ source: '[@AbCd1234]' }));
     expect(result.choice.renderer).toBe('reactive');
-    expect(result.bundle?.result.ok).toBe(true);
-    expect(result.log.compileMs).toBe(7);
+    expect(result.log.snapshotStatus).toBe('stale-references');
+    expect(compileMock).toHaveBeenCalledWith(expect.objectContaining({ mode: 'external' }));
   });
 });

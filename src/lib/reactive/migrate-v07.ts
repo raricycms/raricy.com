@@ -1,6 +1,10 @@
 import { LOCAL_SYNTAX_VERSION } from 'reactive-md';
 import { prisma } from '../db';
-import { migrateLocalSourceWithSiteBudget } from './source-migration';
+import {
+  findDynamicConstraintActivations,
+  findStaleVersionDeclaration,
+  migrateLocalSourceWithSiteBudget,
+} from './source-migration';
 import { isoWithOffset, nowForDb } from '../db-time';
 import { runAsBackendOps } from '../audit-context';
 import { buildReactiveSnapshotForWrite } from './publish';
@@ -48,9 +52,23 @@ export async function planReactiveV07Migration(): Promise<ReactiveV07Plan> {
     const rows: PreparedRow[] = [];
     const blockers: MigrationBlocker[] = [];
     for (const item of sources) {
-      if (item.syntaxVersion === LOCAL_SYNTAX_VERSION) continue;
+      if (item.syntaxVersion === LOCAL_SYNTAX_VERSION) {
+        // 列已是当前版本，正文却仍声明旧版本：一次性标记不能掩盖它。
+        const stale = findStaleVersionDeclaration(item.source);
+        if (stale.length > 0) {
+          blockers.push({ kind: item.kind, id: item.id, codes: stale.map((d) => d.code) });
+        }
+        continue;
+      }
       if (alreadyApplied || item.syntaxVersion !== OLD_SYNTAX) {
         blockers.push({ kind: item.kind, id: item.id, codes: [alreadyApplied ? 'site.migration.legacy-after-completion' : 'site.migration.unknown-syntax'] });
+        continue;
+      }
+      // 0.7.0 的 draft-3 还会让动态 min/max/required 从字面量变成约束。上游迁移器
+      // 不检查这一类，站点必须在**所有** draft-2 行上做一次，短文档也不例外。
+      const dynamic = findDynamicConstraintActivations(item.source);
+      if (dynamic.length > 0) {
+        blockers.push({ kind: item.kind, id: item.id, codes: dynamic.map((d) => d.code) });
         continue;
       }
       // 站点预算适配层：上游 migrateLocalSource 内置 10,000 节点预算，低于站点
@@ -60,7 +78,7 @@ export async function planReactiveV07Migration(): Promise<ReactiveV07Plan> {
         blockers.push({ kind: item.kind, id: item.id, codes: migrated.diagnostics.map((d) => d.code) });
         continue;
       }
-      const snapshot = await buildReactiveSnapshotForWrite({ kind: item.kind, contentId: item.id, content: migrated.source });
+      const snapshot = await buildReactiveSnapshotForWrite({ kind: item.kind, contentId: item.id, content: migrated.source, format: 'reactive' });
       if (!snapshot.ok) {
         blockers.push({ kind: item.kind, id: item.id, codes: snapshot.codes });
         continue;
@@ -96,6 +114,27 @@ export async function applyReactiveV07Migration(plan: ReactiveV07Plan): Promise<
     if (await tx.blogContent.findFirst({ where: old, select: { blogId: true } }) ||
         await tx.clipText.findFirst({ where: old, select: { clipId: true } })) {
       throw new Error('Unmigrated reactive source appeared during migration');
+    }
+    // 列已是当前版本、正文却仍声明旧版本的行同样不能留到标记之后。
+    const [currentBlogs, currentClips] = await Promise.all([
+      tx.blogContent.findMany({
+        where: { format: 'reactive', syntaxVersion: LOCAL_SYNTAX_VERSION, content: { contains: 'reactive-md:' } },
+        select: { blogId: true, content: true },
+      }),
+      tx.clipText.findMany({
+        where: { format: 'reactive', syntaxVersion: LOCAL_SYNTAX_VERSION, content: { contains: 'reactive-md:' } },
+        select: { clipId: true, content: true },
+      }),
+    ]);
+    for (const row of currentBlogs) {
+      if (findStaleVersionDeclaration(row.content).length > 0) {
+        throw new Error(`Stale reactive source declaration: blog:${row.blogId}`);
+      }
+    }
+    for (const row of currentClips) {
+      if (findStaleVersionDeclaration(row.content).length > 0) {
+        throw new Error(`Stale reactive source declaration: clipboard:${row.clipId}`);
+      }
     }
     await tx.reactiveSourceMigration.create({ data: { name: MIGRATION_NAME, completedAt: isoWithOffset(nowForDb()) ?? '' } });
   }, { timeout: 120_000 }));

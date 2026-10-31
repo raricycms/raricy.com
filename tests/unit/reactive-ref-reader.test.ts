@@ -19,7 +19,7 @@ describe('request-scoped reference permissions', () => {
   it('prepares external payloads using public data without probing member resources', async () => {
     mocks.publicClips.mockResolvedValue({ AbCd1234: { content: '{{private-looking syntax}}', format: 'reactive', version: 'v1' } });
     const source = '[@AbCd1234] [@AbCdEf123] [@123456]';
-    const result = await prepareReactiveDocument(source, { mode: 'external', viewer: null });
+    const result = await prepareReactiveDocument(source, { mode: 'external', format: 'reactive', viewer: null });
     expect(result.hostData).toEqual({});
     expect(result.adaptedSource).toBe(source);
     expect(mocks.publicClips).not.toHaveBeenCalled();

@@ -386,3 +386,57 @@ describe('source-map：半开区间双向映射', () => {
     expect(result.referenceSnapshotId).toContain(`adapter=${ADAPTER_VERSION}`);
   });
 });
+
+// ═══ 剪贴板内联语义 ═══════════════════════════════════════════════════════════
+
+describe('剪贴板引用：Markdown 父文档内联一层，Reactive 父文档仍链接卡片', () => {
+  const content = '# 子标题\n\n子正文';
+
+  async function adapt(parentFormat: 'markdown' | 'reactive', mode: 'expand' | 'external') {
+    return adaptReactiveReferences(`前 [@${CLIP_ID}] 后`, {
+      mode,
+      parentFormat,
+      resolve: async () => ({
+        status: 'ready',
+        title: '子剪贴板',
+        format: 'markdown',
+        content,
+        version: 'v1',
+      }),
+    });
+  }
+
+  it('★ Markdown 父文档 + Markdown 子剪贴板 → hostData 携带一层内容 ★', async () => {
+    const result = await adapt('markdown', 'expand');
+    const data = result.hostData[`clipboard:${CLIP_ID}`];
+    expect(data).toMatchObject({ kind: 'clipboard', status: 'ready', title: '子剪贴板' });
+    expect(data.content).toBe(content);
+  });
+
+  it('Reactive 父文档保持链接卡片：不携带正文', async () => {
+    const result = await adapt('reactive', 'expand');
+    const data = result.hostData[`clipboard:${CLIP_ID}`];
+    expect(data.kind).toBe('clipboard');
+    expect(data.content).toBeUndefined();
+  });
+
+  it('external 视图不取数、不携带正文（全部保留字面量）', async () => {
+    const result = await adapt('markdown', 'external');
+    expect(result.hostData[`clipboard:${CLIP_ID}`]).toBeUndefined();
+    expect(result.adaptedSource).toContain(`[@${CLIP_ID}]`);
+  });
+
+  it('Reactive 子剪贴板即使父文档是 Markdown 也不内联（不嵌套 Reactive）', async () => {
+    const result = await adaptReactiveReferences(`[@${CLIP_ID}]`, {
+      mode: 'expand',
+      parentFormat: 'markdown',
+      resolve: async () => ({
+        status: 'ready',
+        title: 'reactive 子剪贴板',
+        format: 'reactive',
+        content: '<counter bind="n" label="N" initial="1" />',
+      }),
+    });
+    expect(result.hostData[`clipboard:${CLIP_ID}`].content).toBeUndefined();
+  });
+});

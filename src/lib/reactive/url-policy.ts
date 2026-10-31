@@ -19,11 +19,11 @@
 // 字符串比较里不像危险协议，交给 URL 解析器却会还原成 `javascript:`。反斜杠也拒绝，
 // 因为 WHATWG URL 把它当 `/` 归一化，`https:\\evil` 会变成另一个主机。
 //
-// 本文件会被客户端（`ReactiveDocument` 的 urlPolicy）与服务端共用，所以刻意不 import
-// 任何东西，也不碰 Node / DOM。
+// 本文件会被客户端（`ReactiveDocument` 的 urlPolicy）与服务端共用，所以只 import
+// 同样零依赖的 data-image，不碰 Node / DOM。
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { parseLegacyDataImage } from './data-image';
+import { MAX_DATA_IMAGE_CHARS, parseLegacyDataImage } from './data-image';
 
 export type ReactiveUrlPurpose = 'image' | 'audio' | 'link';
 
@@ -52,18 +52,22 @@ const CONTROLLED_AUDIO_PATH = /^\/api\/audio\/[A-Za-z0-9]{10}\/raw$/;
  * 首尾空白本身就该拒绝，而不是替调用方「修好」它。
  */
 export function isAllowedReactiveUrl(url: string, purpose: ReactiveUrlPurpose): boolean {
-  if (typeof url !== 'string' || url.length === 0 || url.length > MAX_URL_LENGTH) {
-    return false;
+  if (typeof url !== 'string' || url.length === 0) return false;
+
+  // 历史内嵌位图：只对图片用途、只认受限的四种 MIME + base64 + 魔数（见
+  // data-image.ts）。它有自己的长度上限，必须先于通用的 8192 判断。
+  // 链接与音频仍然一律拒绝 data:。
+  if (purpose === 'image' && url.startsWith('data:')) {
+    if (url.length > MAX_DATA_IMAGE_CHARS) return false;
+    if (FORBIDDEN_CHARS.test(url)) return false;
+    if (ENTITY_COLON.test(url)) return false;
+    return parseLegacyDataImage(url) !== null;
   }
+
+  if (url.length > MAX_URL_LENGTH) return false;
   if (FORBIDDEN_CHARS.test(url)) return false;
   if (ENTITY_COLON.test(url)) return false;
   if (ENCODED_SCHEME.test(url)) return false;
-
-  // 历史内嵌位图：只对图片用途、只认受限的四种 MIME + base64 + 魔数（见
-  // data-image.ts）。链接与音频仍然一律拒绝 data:。
-  if (purpose === 'image' && url.startsWith('data:')) {
-    return parseLegacyDataImage(url) !== null;
-  }
 
   // 音频不参与「相对地址 / 外链」那套判断：只认本站受控路径。
   if (purpose === 'audio') return CONTROLLED_AUDIO_PATH.test(url);

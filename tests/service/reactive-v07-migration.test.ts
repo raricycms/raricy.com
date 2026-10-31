@@ -34,7 +34,7 @@ describe('ReactiveMD 0.7 正文迁移', () => {
     expect(blog.content).toBe('<!-- reactive-md: local-draft-3 -->\n\n旧博客正文');
     expect(clip.content).toContain('<!-- reactive-md: local-draft-3 -->');
     expect([blog.syntaxVersion, clip.syntaxVersion]).toEqual(['local-draft-3', 'local-draft-3']);
-    const snapshots = await prisma.reactiveSnapshot.findMany({ where: { contentId: { in: [blogId, clipId] } } });
+    const snapshots = await prisma.reactiveSnapshot.findMany({ where: { contentId: { in: [blogId, clipId] }, format: 'reactive' } });
     expect(snapshots).toHaveLength(2);
     expect(snapshots.every((row) => row.syntaxVersion === 'local-draft-3' && row.compilerVersion === 'reactive-md/0.7.0')).toBe(true);
     expect((await planReactiveV07Migration()).alreadyApplied).toBe(true);
@@ -59,7 +59,7 @@ describe('ReactiveMD 0.7 正文迁移', () => {
     await prisma.clipText.update({ where: { clipId }, data: { content: '并发修改' } });
     await expect(applyReactiveV07Migration(plan)).rejects.toThrow('Source changed');
     expect((await prisma.blogContent.findUniqueOrThrow({ where: { blogId } })).syntaxVersion).toBe('local-draft-2');
-    expect(await prisma.reactiveSnapshot.count({ where: { contentId: blogId } })).toBe(0);
+    expect(await prisma.reactiveSnapshot.count({ where: { contentId: blogId, format: 'reactive' } })).toBe(0);
     expect(await prisma.reactiveSourceMigration.count()).toBe(0);
   });
 
@@ -84,7 +84,7 @@ describe('ReactiveMD 0.7 正文迁移', () => {
     const row = await prisma.blogContent.findUniqueOrThrow({ where: { blogId } });
     expect(row.syntaxVersion).toBe('local-draft-3');
     expect(row.content).toContain('<!-- reactive-md: local-draft-3 -->');
-    expect(await prisma.reactiveSnapshot.count({ where: { kind: 'blog', contentId: blogId } })).toBe(1);
+    expect(await prisma.reactiveSnapshot.count({ where: { kind: 'blog', contentId: blogId, format: 'reactive' } })).toBe(1);
   });
 
   it('空库也能完成一次性标记，重复应用被拒', async () => {
@@ -108,6 +108,47 @@ describe('ReactiveMD 0.7 正文迁移', () => {
 
     await expect(applyReactiveV07Migration(plan)).rejects.toThrow('Unmigrated reactive source');
     expect((await prisma.blogContent.findUniqueOrThrow({ where: { blogId } })).syntaxVersion).toBe('local-draft-2');
+    expect(await prisma.reactiveSourceMigration.count()).toBe(0);
+  });
+
+  it('draft-2 的动态约束即使短文档也整批阻塞', async () => {
+    const { clipId } = await oldSources();
+    await prisma.clipText.update({
+      where: { clipId },
+      data: {
+        content: `<!-- reactive-md: local-draft-2 -->
+
+<number bind="b" label="B" initial="5" min="{{ b }}" max="10">`,
+      },
+    });
+    const plan = await planReactiveV07Migration();
+    expect(plan.blockers).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: clipId, codes: expect.arrayContaining(['site.migration.dynamic-constraint']) }),
+      ])
+    );
+    await expect(applyReactiveV07Migration(plan)).rejects.toThrow('blocked');
+    expect((await prisma.clipText.findUniqueOrThrow({ where: { clipId } })).syntaxVersion).toBe('local-draft-2');
+  });
+
+  it('列已是当前版本但正文仍声明旧版本时阻塞（一次性标记不能掩盖）', async () => {
+    const { blogId } = await oldSources();
+    await prisma.blogContent.update({
+      where: { blogId },
+      data: {
+        syntaxVersion: 'local-draft-3',
+        content: `<!-- reactive-md: local-draft-2 -->
+
+旧正文`,
+      },
+    });
+    const plan = await planReactiveV07Migration();
+    expect(plan.blockers).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: blogId, codes: expect.arrayContaining(['site.migration.stale-declaration']) }),
+      ])
+    );
+    await expect(applyReactiveV07Migration(plan)).rejects.toThrow('blocked');
     expect(await prisma.reactiveSourceMigration.count()).toBe(0);
   });
 

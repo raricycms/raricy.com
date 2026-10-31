@@ -23,6 +23,9 @@
 import type { LocalCompileOptions, LocalHostComponentSchema } from 'reactive-md';
 import type { ContentFormat } from '../content-format';
 
+/** 当前语法版本的**权威导出**（草稿 / 写 API 契约用；不要在前端另抄字符串）。 */
+export { LOCAL_SYNTAX_VERSION as REACTIVE_SYNTAX_VERSION } from 'reactive-md';
+
 /** 唯一允许作者/适配器产出的宿主标签。 */
 export const SITE_EMBED_TAG = 'site-embed';
 
@@ -73,7 +76,7 @@ export const SITE_EMBED_SCHEMA: LocalHostComponentSchema = {
       kind: 'enum',
       required: true,
       static: true,
-      enum: ['audio', 'vote', 'favorite', 'clipboard'],
+      enum: ['audio', 'vote', 'favorite', 'clipboard', 'image'],
     },
     ref: {
       kind: 'string',
@@ -85,15 +88,22 @@ export const SITE_EMBED_SCHEMA: LocalHostComponentSchema = {
 };
 
 /**
- * 阅读页 / 预览共用的一份编译选项。
+ * 阅读页 / 预览 / 发布共用的一份编译选项。
  *
- * `markdownBreaks` 只在 Markdown 文档为 true：存量 Markdown 的旧渲染器用
- * `breaks: true`，而 reactive 文档按语法本身解释单换行。两者不能共用一套。
+ * ★ `markdownBreaks` 对**所有格式**都是 true ★
+ *
+ * 产品要求「无缝混写」：普通多行 Markdown 追加组件、自动升级为 Reactive 后，
+ * 原有软换行不能突然从 `<br>` 变成空格。若按格式切换这个选项，升级前后同一段
+ * 正文的排版必然变化，且只在重新打开后才被发现。
+ *
+ * 因此本站统一采用 GFM 软换行兼容：单换行在 Markdown 与 Reactive 文档里都渲染成
+ * `<br>`。Reactive 作者若要分段而不换行，请用空行或显式标签；这是站点级的排版
+ * 规则，不是按文档分叉的选项。
  */
-export function reactiveCompileOptions(format: ContentFormat): LocalCompileOptions {
+export function reactiveCompileOptions(_format: ContentFormat): LocalCompileOptions {
   return {
     hostComponents: [SITE_EMBED_SCHEMA],
     limits: { maxSyntaxNodes: REACTIVE_MAX_SYNTAX_NODES },
-    markdownBreaks: format === 'markdown',
+    markdownBreaks: true,
   };
 }

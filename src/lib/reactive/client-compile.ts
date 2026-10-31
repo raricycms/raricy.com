@@ -239,12 +239,15 @@ export function createClientReferenceReader(
 export async function adaptReactivePreview(
   source: string,
   reader: ReferenceReader,
-  mode: 'expand' | 'external' = 'expand'
+  mode: 'expand' | 'external' = 'expand',
+  parentFormat: 'markdown' | 'reactive' = 'reactive'
 ): Promise<AdaptedReactivePreview> {
   // 与阅读页同一条兼容规则（等长改写，预览与终稿逐字一致）。
   const compat = applyLegacyHtmlCompat(source);
   const adapted = await adaptReactiveReferences(compat.source, {
     mode,
+    parentFormat,
+    dataImages: compat.dataImages,
     resolve: mode === 'expand' ? reader : undefined,
   });
   return { adaptedSource: adapted.adaptedSource, hostData: adapted.hostData };
@@ -256,9 +259,10 @@ export async function adaptReactivePreview(
  */
 export async function compileReactivePreview(
   source: string,
-  reader: ReferenceReader
+  reader: ReferenceReader,
+  parentFormat: 'markdown' | 'reactive' = 'reactive'
 ): Promise<ReactivePreviewCompile> {
-  const adapted = await adaptReactivePreview(source, reader);
+  const adapted = await adaptReactivePreview(source, reader, 'expand', parentFormat);
   return {
     ...adapted,
     result: compileLocal(adapted.adaptedSource, reactiveCompileOptions('reactive')),

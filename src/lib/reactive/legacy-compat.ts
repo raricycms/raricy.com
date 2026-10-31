@@ -31,8 +31,18 @@
 
 import { LOCAL_COMPONENT_NAMES } from 'reactive-md/authoring';
 import { maskMarkdownCode } from '../favorite-refs';
-import { parseLegacyDataImage } from './data-image';
+import { dataImageRef, MAX_DATA_IMAGE_CHARS, parseLegacyDataImage } from './data-image';
 import { isAllowedReactiveUrl } from './url-policy';
+
+/** 兼容规则的显式版本。**改任何规则都要递增** —— 它进快照签名。 */
+export const LEGACY_COMPAT_VERSION = 'reactive-legacy-compat/1';
+
+export interface LegacyDataImageAsset {
+  url: string;
+  alt: string;
+  width?: string;
+  height?: string;
+}
 
 export interface LegacyCompatResult {
   /** 与输入**等长**的兼容改写结果。 */
@@ -40,6 +50,8 @@ export interface LegacyCompatResult {
   changed: boolean;
   /** 每类改写的次数（只进日志 / 测试，不含正文）。 */
   counts: Record<string, number>;
+  /** `[@图片/<ref>]` → 受限 data 位图。真实字节只随 hostData 交给宿主组件。 */
+  dataImages: Record<string, LegacyDataImageAsset>;
 }
 
 type MutableCounts = Record<string, number>;
@@ -67,7 +79,7 @@ const VOID_TAGS = new Set([
 const GLOBAL_ATTRS = new Set(['title']);
 const TAG_ATTRS: Readonly<Record<string, ReadonlySet<string>>> = {
   a: new Set(['href', 'title', 'rel', 'target']),
-  img: new Set(['src', 'alt', 'title', 'width', 'height', 'align']),
+  img: new Set(['src', 'alt', 'title', 'width', 'height']),
   details: new Set(['open']),
   div: new Set(['align']),
   p: new Set(['align']),
@@ -77,14 +89,11 @@ const TAG_ATTRS: Readonly<Record<string, ReadonlySet<string>>> = {
   h4: new Set(['align']),
   h5: new Set(['align']),
   h6: new Set(['align']),
-  table: new Set(['align']),
-  caption: new Set(['align']),
+  // table / caption / summary 的 align 与 col / colgroup 的 span 在 0.7.0
+  // 默认模式下会触发 local.html.fallback（整块退成源码），不能保留。
   th: new Set(['align', 'colspan', 'rowspan', 'scope', 'headers']),
   td: new Set(['align', 'colspan', 'rowspan', 'headers']),
-  col: new Set(['span']),
-  colgroup: new Set(['span']),
   ol: new Set(['start']),
-  summary: new Set(['align']),
 };
 
 function allowedAttr(tag: string, attr: string): boolean {
@@ -219,24 +228,64 @@ function findTagEnd(source: string, start: number): number {
       continue;
     }
     if (char === '>') return index + 1;
-    // 未闭合的标签最多看 8KB，避免把整篇当成一个标签。
-    if (index - start > 8192) return -1;
+    // data 位图的 img 标签可以到 512k；普通标签也按同一上限截断，
+    // 避免把整篇当成一个标签，同时保证大图不会漏过兼容处理。
+    if (index - start > MAX_DATA_IMAGE_CHARS + 8192) return -1;
   }
   return -1;
 }
 
 // ── 保护区域（代码 / 数学 / pre / code 内部）─────────────────────────────────
 
-function maskProtected(source: string): string {
-  let out = maskMarkdownCode(source);
+/** 把一段文本（保留换行）盖成 x。 */
+function maskChars(text: string): string {
+  return text.replace(/[^\r\n]/g, 'x');
+}
+
+/**
+ * 缩进代码块保护。
+ *
+ * `maskMarkdownCode` 只盖围栏与行内代码，**不盖 4 空格缩进代码**；旧正文里把
+ * HTML 当示例缩进粘贴很常见，不保护就会把示例里的 `<script>` 删掉、`<font>` 改写。
+ * 规则：上一行是空行、且本行以 4 个空格或 Tab 开头 → 代码块开始，直到遇到非空
+ * 且不再缩进的行。
+ */
+function maskIndentedCode(source: string): string {
+  const lines = source.split('\n');
+  let inCode = false;
+  let previousBlank = true;
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
+    const body = line.endsWith('\r') ? line.slice(0, -1) : line;
+    const indented = /^(?: {4}|\t)/.test(body);
+    if (inCode) {
+      if (indented || body.trim() === '') {
+        lines[index] = maskChars(line);
+      } else {
+        inCode = false;
+      }
+    }
+    if (!inCode && previousBlank && indented && body.trim() !== '') {
+      inCode = true;
+      lines[index] = maskChars(line);
+    }
+    previousBlank = body.trim() === '';
+  }
+  return lines.join('\n');
+}
+
+export function maskProtectedContent(source: string): string {
+  let out = maskIndentedCode(maskMarkdownCode(source));
   const mask = (pattern: RegExp): void => {
-    out = out.replace(pattern, (match) => 'x'.repeat(match.length));
+    out = out.replace(pattern, (match) => maskChars(match));
   };
   // 数学区域：与 markdown-math.ts 的四组定界符同口径。
   mask(/\$\$[\s\S]*?\$\$/g);
   mask(/\\\[[\s\S]*?\\\]/g);
   mask(/\$[^$\n]+?\$/g);
   mask(/\\\([\s\S]*?\\\)/g);
+  // 转义美元（`\$5`）不是数学定界符。
+  mask(/\\\$/g);
   // HTML 的 <pre> / <code> 内部按字面显示：只保护内部，标签本身仍可被剥属性。
   out = out.replace(
     /(<(pre|code)\b[^>]*>)([\s\S]*?)(<\/\2\s*>)/gi,
@@ -268,7 +317,7 @@ function removeBlocks(chars: string[], masked: string, counts: MutableCounts): v
   //
   // ⚠️ 必须在**上面的改写之后**重新取掩码：否则已配对删除的 `<style>…</style>`
   // 仍会出现在旧掩码里，这个「到 EOF」的正则会把后面所有正文一起清掉。
-  const afterPaired = maskProtected(chars.join(''));
+  const afterPaired = maskProtectedContent(chars.join(''));
   const unclosed = /<(script|style)\b[^>]*>[\s\S]*$/gi;
   for (const match of afterPaired.matchAll(unclosed)) {
     if (afterPaired[(match.index ?? 0)] !== '<') continue;
@@ -288,11 +337,18 @@ function convertMediaBlocks(chars: string[], masked: string, counts: MutableCoun
   const block = /<(video|audio)\b([^>]*)>([\s\S]*?)<\/\1\s*>/gi;
   for (const match of masked.matchAll(block)) {
     const start = match.index ?? 0;
-    if (masked[start] !== '<') continue;
+    if (chars[start] !== '<') continue;
     const tag = match[1].toLowerCase();
-    const attrs = match[2] ?? '';
-    const inner = match[3] ?? '';
-    const url = readAttr(`<${tag} ${attrs}>`, 'src') ?? readSourceChild(inner);
+    // ⚠️ 属性必须从**原文**取：`masked` 会把 `$…$` / 链接目标盖成 x，
+    // 用它生成 URL 会把 `https://e.com/a$b$c.mp4` 悄悄改成 `axxxxc.mp4`。
+    const rawBlock = chars.slice(start, start + match[0].length).join('');
+    const openEnd = rawBlock.indexOf('>');
+    const openTag = openEnd === -1 ? rawBlock : rawBlock.slice(0, openEnd + 1);
+    const closeStart = rawBlock.toLowerCase().lastIndexOf('</');
+    const inner = openEnd === -1
+      ? ''
+      : rawBlock.slice(openEnd + 1, closeStart > openEnd ? closeStart : rawBlock.length);
+    const url = readAttr(openTag, 'src') ?? readSourceChild(inner);
     let desired: string;
     if (tag === 'audio') {
       const controlled = url?.match(/^\/api\/audio\/([A-Za-z0-9]{10})\/raw$/);
@@ -360,12 +416,14 @@ function stripUnsupportedAttrs(
         probe += 1;
         while (probe < tagEnd && chars[probe] !== quote) probe += 1;
         valueEnd = Math.min(probe + 1, tagEnd);
+        // 光标必须越过收尾引号，否则下一轮会把这个引号当成一个属性名抹掉。
+        cursor = valueEnd;
       } else {
         valueStart = probe;
         while (probe < tagEnd && !/[\s>]/.test(chars[probe])) probe += 1;
         valueEnd = probe;
+        cursor = probe;
       }
-      cursor = probe;
     }
     if (!allowedAttr(tagName, name)) {
       blankRange(chars, nameStart, valueEnd);
@@ -389,12 +447,23 @@ function stripUnsupportedAttrs(
  */
 function normalizeUnpairedMath(chars: string[], masked: string, counts: MutableCounts): void {
   for (let index = 0; index < masked.length; index += 1) {
+    // 前面阶段可能已把这个位置中和成零宽字符；别在已删除的块里重新写字。
+    if (chars[index] !== '$' && chars[index] !== '\\') continue;
     if (masked[index] === '$') {
       const start = index;
       while (index < masked.length && masked[index] === '$') index += 1;
       for (let at = start; at < index; at += 1) chars[at] = '＄';
       count(counts, 'unpaired-math');
       index -= 1;
+      continue;
+    }
+    if (
+      masked[index] === '\\' &&
+      index > 0 &&
+      masked[index - 1] === '\\'
+    ) {
+      // `\\(` 是转义后的字面反斜杠 + 括号，不是数学定界符。
+      index += 1;
       continue;
     }
     if (masked[index] === '\\' && (masked[index + 1] === '(' || masked[index + 1] === '[')) {
@@ -413,9 +482,56 @@ function normalizeUnpairedMath(chars: string[], masked: string, counts: MutableC
   }
 }
 
+// ── Markdown 原生 data 图片 ────────────────────────────────────────────────
+
+/**
+ * `![alt](data:image/…)` 同样不能交给上游图片闸门（它在宿主 urlPolicy 之前就按
+ * http(s) 白名单拒绝）。转成 `[@图片/<ref>]` token，由适配器生成宿主组件，
+ * 真实字节走 hostData；渲染前还会再验一次 MIME / 魔数。
+ */
+function convertMarkdownDataImages(
+  chars: string[],
+  masked: string,
+  counts: MutableCounts,
+  dataImages: Record<string, LegacyDataImageAsset>
+): void {
+  const source = chars.join('');
+  const re = /!\[([^\]\r\n]*)\]\((data:image\/[^)\s]+)(?:\s+"[^"]*")?\)/g;
+  for (const match of masked.matchAll(re)) {
+    const start = match.index ?? 0;
+    if (chars[start] !== '!') continue;
+    const url = source.slice(start + match[0].indexOf('](') + 2, start + match[0].length - 1).split(/\s+"/)[0];
+    const image = parseLegacyDataImage(url);
+    if (!image) {
+      // 非受限 data 图：不显示、不输出巨长源码。
+      const alt = safeAltText(match[1] ?? null);
+      const replacement = fitReplacement(match[0].length, alt === '图片' ? '' : alt);
+      if (replacement !== null) chars.splice(start, match[0].length, ...replacement.split(''));
+      else neutralizeRange(chars, start, start + match[0].length);
+      count(counts, 'data-image-rejected');
+      continue;
+    }
+    const ref = dataImageRef(image.url);
+    const replacement = fitReplacement(match[0].length, `[@图片/${ref}]`);
+    if (replacement !== null) {
+      dataImages[ref] = { url: image.url, alt: safeAltText(match[1] ?? null) };
+      chars.splice(start, match[0].length, ...replacement.split(''));
+      count(counts, 'data-image');
+    } else {
+      neutralizeRange(chars, start, start + match[0].length);
+      count(counts, 'data-image-too-large');
+    }
+  }
+}
+
 // ── 标签主扫描 ──────────────────────────────────────────────────────────────
 
-function transformTags(chars: string[], masked: string, counts: MutableCounts): void {
+function transformTags(
+  chars: string[],
+  masked: string,
+  counts: MutableCounts,
+  dataImages: Record<string, LegacyDataImageAsset>
+): void {
   const stack: string[] = [];
   /** 已确认是 ReactiveMD 组件的 HTML 同名标签（input / table / section …）。 */
   const componentStack: string[] = [];
@@ -441,7 +557,8 @@ function transformTags(chars: string[], masked: string, counts: MutableCounts): 
 
     const end = findTagEnd(masked, index);
     if (end === -1) continue;
-    const raw = masked.slice(index, end);
+    // 原文取属性值：masked 只用于定位，不能用来读 URL / data payload。
+    const raw = chars.slice(index, end).join('');
     const nameMatch = /^<\s*(\/?)\s*([A-Za-z][A-Za-z0-9:-]*)/.exec(raw);
     if (!nameMatch) {
       index = end - 1;
@@ -492,10 +609,16 @@ function transformTags(chars: string[], masked: string, counts: MutableCounts): 
       if (dataUrl && /^data:/i.test(dataUrl)) {
         const image = parseLegacyDataImage(dataUrl);
         if (image) {
-          const alt = safeAltText(readAttr(raw, 'alt'));
-          const base = `![${alt}](${image.url})`;
-          const replacement = fitReplacement(length, base);
+          const ref = dataImageRef(image.url);
+          const token = `[@图片/${ref}]`;
+          const replacement = fitReplacement(length, token);
           if (replacement !== null) {
+            dataImages[ref] = {
+              url: image.url,
+              alt: safeAltText(readAttr(raw, 'alt')),
+              ...(readAttr(raw, 'width') ? { width: readAttr(raw, 'width')! } : {}),
+              ...(readAttr(raw, 'height') ? { height: readAttr(raw, 'height')! } : {}),
+            };
             chars.splice(index, length, ...replacement.split(''));
             count(counts, 'data-image');
           } else {
@@ -590,8 +713,10 @@ function transformTags(chars: string[], masked: string, counts: MutableCounts): 
       continue;
     }
 
-    // 其它未知**小写**标签：原样留给编译器。它可能是拼错的组件（应当得到
-    // `local.component.unknown` 诊断），不能在这里静默解包成普通正文。
+    // 其它未知标签：按旧 DOMPurify 的宽容行为解包、保留子文本。
+    // 已知 ReactiveMD 组件已在上面原样放行；这里剩下的不可能是增强语法。
+    neutralizeRange(chars, index, end);
+    count(counts, 'unwrapped-tag');
     index = end - 1;
   }
 }
@@ -600,25 +725,39 @@ function transformTags(chars: string[], masked: string, counts: MutableCounts): 
  * 兼容改写入口。返回值与输入等长；`counts` 只用于观测。
  */
 export function applyLegacyHtmlCompat(source: string): LegacyCompatResult {
-  if (!source.includes('<') && !source.includes('$') && !source.includes('\\(') && !source.includes('\\[')) {
-    return { source, changed: false, counts: {} };
+  if (
+    !source.includes('<') &&
+    !source.includes('$') &&
+    !source.includes('\\(') &&
+    !source.includes('\\[') &&
+    !source.includes('data:image')
+  ) {
+    return { source, changed: false, counts: {}, dataImages: {} };
   }
   const chars = source.split('');
   const counts: MutableCounts = {};
+  const dataImages: Record<string, LegacyDataImageAsset> = {};
 
   // 顺序很重要：先抹掉整块危险能力，再转换音视频，最后逐标签处理。
-  let masked = maskProtected(source);
+  //
+  // 【只算一次保护掩码】后续阶段只改 `chars`，但都先确认「该位置在原文里仍是那个
+  // 字符」（`chars[i] === '<' / '$' / '!'`）——被前面阶段中和掉的位置不会因为旧
+  // 掩码还写着 `<` 而被二次处理。这样 200k 正文不必反复重跑掩码扫描。
+  const masked = maskProtectedContent(source);
   removeBlocks(chars, masked, counts);
-  const afterRemoval = chars.join('');
-  masked = maskProtected(afterRemoval);
   convertMediaBlocks(chars, masked, counts);
-  const afterMedia = chars.join('');
-  masked = maskProtected(afterMedia);
-  normalizeUnpairedMath(chars, masked, counts);
-  const afterMath = chars.join('');
-  masked = maskProtected(afterMath);
-  transformTags(chars, masked, counts);
+  // 未配对数学只扫正文：HTML 标签内部（属性值可能含 `$`）整体盖掉。
+  normalizeUnpairedMath(
+    chars,
+    masked
+      .replace(/<[^>]*>/g, maskChars)
+      // 链接目标里的 `$` 是 URL 的一部分，不是公式（只在数学扫描里盖掉）。
+      .replace(/\]\((?:[^()\s]|\([^)]*\))*\)/g, maskChars),
+    counts
+  );
+  convertMarkdownDataImages(chars, masked, counts, dataImages);
+  transformTags(chars, masked, counts, dataImages);
 
   const result = chars.join('');
-  return { source: result, changed: result !== source, counts };
+  return { source: result, changed: result !== source, counts, dataImages };
 }

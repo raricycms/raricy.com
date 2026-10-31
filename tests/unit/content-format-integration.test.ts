@@ -177,10 +177,59 @@ describe('博客格式：validateBlogData / 落库 / 读出口', () => {
         visibility: 'internal',
         format: 'reactive',
       })
-    ).rejects.toThrow('ReactiveMD 正文无法编译');
+    ).rejects.toThrow('正文无法编译渲染');
     expect(await prisma.blog.count()).toBe(0);
     expect(await prisma.blogContent.count()).toBe(0);
     expect(await prisma.reactiveSnapshot.count()).toBe(0);
+  });
+
+  it('★ 有效增强语法却写 markdown → 具名格式不匹配，不落库 ★', async () => {
+    const u = await makeUser();
+    await expect(
+      createBlog(u.id, {
+        ...BLOG_BASE,
+        content: '<counter bind="n" label="N" initial="1" />',
+        categoryId: null,
+        visibility: 'internal',
+        format: 'markdown',
+      })
+    ).rejects.toMatchObject({ code: 'content_format_mismatch' });
+    expect(await prisma.blog.count()).toBe(0);
+
+    const id = await createBlog(u.id, {
+      ...BLOG_BASE, content: '普通 Markdown', categoryId: null, visibility: 'internal',
+    });
+    const updated = await updateBlog(
+      id,
+      {
+        ...BLOG_BASE,
+        content: '<counter bind="n" label="N" initial="1" />',
+        categoryId: null,
+        visibility: 'internal',
+        format: 'markdown',
+      },
+      u.id
+    );
+    expect(updated.error).toBe('format_mismatch');
+    expect((await prisma.blogContent.findUniqueOrThrow({ where: { blogId: id } })).content).toBe('普通 Markdown');
+  });
+
+  it('未知普通标签的历史 Markdown 仍可保存（不被误判成增强语法）', async () => {
+    const u = await makeUser();
+    const id = await createBlog(u.id, {
+      ...BLOG_BASE,
+      content: `<TAB>教程占位</TAB>
+
+普通正文`,
+      categoryId: null,
+      visibility: 'internal',
+      format: 'markdown',
+    });
+    expect((await prisma.blogContent.findUniqueOrThrow({ where: { blogId: id } })).format).toBe('markdown');
+    const snapshot = await prisma.reactiveSnapshot.findFirst({
+      where: { kind: 'blog', contentId: id, format: 'markdown' },
+    });
+    expect(snapshot).not.toBeNull();
   });
 
   it('更新省略 format → 保留库里原值（markdown 仍是 markdown）', async () => {
@@ -218,7 +267,7 @@ describe('博客格式：validateBlogData / 落库 / 读出口', () => {
     expect(row?.content).toBe('# 新 reactive\n\n正文');
     expect(row?.format).toBe('reactive');
     expect(row?.syntaxVersion).toBe('local-draft-3');
-    expect(await prisma.reactiveSnapshot.count({ where: { kind: 'blog', contentId: id } })).toBe(1);
+    expect(await prisma.reactiveSnapshot.count({ where: { kind: 'blog', contentId: id, format: 'reactive' } })).toBe(1);
 
     const downgraded = await updateBlog(
       id,
@@ -280,13 +329,24 @@ describe('剪贴板格式：createClip / updateClip / getClip / resolvePublicCli
       expect(row?.format).toBe('reactive');
       expect(row?.syntaxVersion).toBe('local-draft-3');
       expect(
-        await prisma.reactiveSnapshot.count({ where: { kind: 'clipboard', contentId: reactive.id } })
+        await prisma.reactiveSnapshot.count({ where: { kind: 'clipboard', contentId: reactive.id, format: 'reactive' } })
       ).toBe(1);
     }
 
     expect(
       await createClip(u.id, { title: 't', content: '<panel title="未闭合">', format: 'reactive' })
     ).toEqual({ ok: false, reason: 'reactive_invalid' });
+  });
+
+  it('★ 剪贴板：有效增强语法却写 markdown → format_mismatch ★', async () => {
+    const u = await makeUser();
+    const result = await createClip(u.id, {
+      title: 't',
+      content: '<counter bind="n" label="N" initial="1" />',
+      format: 'markdown',
+    });
+    expect(result).toEqual({ ok: false, reason: 'format_mismatch' });
+    expect(await prisma.clipBoard.count()).toBe(0);
   });
 
   it('更新省略 format → 保留原格式；存量 reactive → 拒绝且正文不变', async () => {
@@ -316,7 +376,7 @@ describe('剪贴板格式：createClip / updateClip / getClip / resolvePublicCli
     expect(reactive?.format).toBe('reactive');
     expect(reactive?.syntaxVersion).toBe('local-draft-3');
     expect(
-      await prisma.reactiveSnapshot.count({ where: { kind: 'clipboard', contentId: reactiveId } })
+      await prisma.reactiveSnapshot.count({ where: { kind: 'clipboard', contentId: reactiveId, format: 'reactive' } })
     ).toBe(1);
 
     expect(

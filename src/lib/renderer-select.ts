@@ -1,9 +1,21 @@
 import { parseContentFormat } from './content-format';
 import type { ReactiveFlags } from './reactive/flags';
 
+/**
+ * 阅读渲染路径的唯一决策函数。
+ *
+ * 2026-11 统一后的规则只有三条：
+ *   1. 认不出格式 → `unavailable`（绝不猜 markdown）；
+ *   2. 显式事故回退 `REACTIVE_MD_MODE=off`：
+ *      · Markdown → 旧渲染器（临时）；
+ *      · Reactive → 同版本静态快照（永不交给旧解析器）；
+ *   3. 其余一律 `reactive`：Markdown 与 Reactive 都走统一引擎，正常阅读可交互。
+ *
+ * 百分比灰度与逐篇 override 不再参与决策；字段仍留在库里供旧消费者读取。
+ */
 export interface RendererChoice {
   renderer: 'legacy' | 'reactive' | 'reactive-static' | 'unavailable';
-  reason: 'format' | 'override' | 'flag' | 'percent' | 'fallback' | 'snapshot-missing' | 'invalid-format' | 'invalid-override';
+  reason: 'format' | 'flag' | 'fallback' | 'invalid-format';
 }
 
 export interface RendererSelectionInput {
@@ -18,37 +30,16 @@ export interface RendererSelectionInput {
   snapshotVersion?: string;
 }
 
-/** FNV-1a over stable identity, so editing source cannot move a document between cohorts. */
-function cohort(kind: string, id: string): number {
-  let hash = 2166136261;
-  for (const character of `${kind}:${id}`) hash = Math.imul(hash ^ character.codePointAt(0)!, 16777619);
-  return (hash >>> 0) % 100;
-}
-
 export function selectContentRenderer(input: RendererSelectionInput): RendererChoice {
   const format = parseContentFormat(input.format);
   if (!format) return { renderer: 'unavailable', reason: 'invalid-format' };
-  const snapshot = (reason: RendererChoice['reason']): RendererChoice => {
-    if (!input.contentVersion || input.snapshotVersion !== input.contentVersion) {
-      return { renderer: 'unavailable', reason: 'snapshot-missing' };
-    }
-    return { renderer: 'reactive-static', reason };
-  };
-  if (input.flags.mode !== 'on') {
-    return format === 'markdown' ? { renderer: 'legacy', reason: 'flag' } : snapshot('flag');
+
+  if (input.flags.mode === 'off') {
+    return format === 'markdown'
+      ? { renderer: 'legacy', reason: 'flag' }
+      : { renderer: 'reactive-static', reason: 'flag' };
   }
-  const override = input.override;
-  if (override != null && override !== 'legacy' && override !== 'reactive') {
-    return format === 'markdown' ? { renderer: 'legacy', reason: 'invalid-override' } : snapshot('invalid-override');
-  }
-  if (format === 'reactive' && override === 'legacy') return snapshot('invalid-override');
-  if (format === 'markdown' && override === 'legacy') return { renderer: 'legacy', reason: 'override' };
-  if (input.compilationFailed || (format === 'markdown' && input.markdownCompatible !== true)) {
-    return format === 'markdown' ? { renderer: 'legacy', reason: 'fallback' } : snapshot('fallback');
-  }
-  if (override === 'reactive') return { renderer: 'reactive', reason: 'override' };
-  if (cohort(input.kind, input.id) >= input.flags.percent) {
-    return format === 'markdown' ? { renderer: 'legacy', reason: 'percent' } : snapshot('percent');
-  }
+
+  if (input.compilationFailed) return { renderer: 'unavailable', reason: 'fallback' };
   return { renderer: 'reactive', reason: 'format' };
 }

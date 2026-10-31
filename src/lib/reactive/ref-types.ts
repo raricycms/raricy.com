@@ -1,7 +1,7 @@
 import type { ContentFormat } from '../content-format';
 
 export type ReferenceKind = 'image' | 'audio' | 'vote' | 'favorite' | 'clipboard';
-export type SiteEmbedKind = Exclude<ReferenceKind, 'image'>;
+export type SiteEmbedKind = 'audio' | 'vote' | 'favorite' | 'clipboard' | 'image';
 export type ReferenceMode = 'expand' | 'external';
 
 export interface ReferenceSlot {
@@ -33,4 +33,12 @@ export interface ExternalClipData {
   format: ContentFormat;
   version?: string;
   title?: string;
+}
+
+/** 兼容层提取的受限 data 位图（仅 hostData 使用）。 */
+export interface DataImageSource {
+  url: string;
+  alt: string;
+  width?: string;
+  height?: string;
 }

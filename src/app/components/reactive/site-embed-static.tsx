@@ -17,6 +17,7 @@ import type { LocalNode } from 'reactive-md';
 import type { LocalRenderContext } from 'reactive-md/react';
 import type { SiteEmbedData, SiteEmbedKind } from '@/lib/reactive/ref-types';
 import { CONTENT_FORMAT_LABELS, parseContentFormat } from '@/lib/content-format';
+import { parseLegacyDataImage } from '@/lib/reactive/data-image';
 import { MAX_CARD_ITEMS } from '@/lib/favorite-refs';
 import type { VoteEmbedData, VoteOptionData } from '@/lib/blog-markdown';
 
@@ -29,12 +30,13 @@ const KIND_REF: Record<SiteEmbedKind, RegExp> = {
   vote: /^[A-Za-z0-9]{1,32}$/,
   favorite: /^[0-9]{6}$/,
   clipboard: /^[A-Za-z0-9]{8}$/,
+  image: /^[a-f0-9]{24}$/,
 };
 
 /** 收藏夹条目的博客 id 只作为站内路径的一段；UUID 以外的值不给链接。 */
 const SAFE_BLOG_ID = /^[A-Za-z0-9-]{1,64}$/;
 
-const EMBED_KINDS: readonly SiteEmbedKind[] = ['audio', 'vote', 'favorite', 'clipboard'];
+const EMBED_KINDS: readonly SiteEmbedKind[] = ['audio', 'vote', 'favorite', 'clipboard', 'image'];
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -318,6 +320,30 @@ function FavoriteEmbed({
   );
 }
 
+/** 受限 data 位图：真实字节只来自 hostData，渲染前再验一次 MIME / 魔数。 */
+function ImageEmbed({ data }: { data: SiteEmbedData }): ReactNode {
+  const payload = isRecord(data.payload) ? data.payload : null;
+  const src = typeof payload?.src === 'string' ? payload.src : '';
+  const image = parseLegacyDataImage(src);
+  if (!image) return <SiteEmbedStatus status="error" />;
+  const alt = typeof payload?.alt === 'string' && payload.alt.length > 0 ? payload.alt : '图片';
+  const dimension = (value: unknown): number | undefined => {
+    if (typeof value !== 'string' || !/^\d{1,5}$/.test(value)) return undefined;
+    const parsed = Number(value);
+    return parsed > 0 ? parsed : undefined;
+  };
+  return (
+    <img
+      className="site-embed site-embed--image"
+      src={image.url}
+      alt={alt}
+      width={dimension(payload?.width)}
+      height={dimension(payload?.height)}
+      loading="lazy"
+    />
+  );
+}
+
 /** 剪贴板首期一律是链接卡片：**绝不渲染 content**，也不嵌套编译。 */
 function ClipboardEmbed({
   clipboardId,
@@ -362,6 +388,8 @@ export function renderSiteEmbedStatic(
   switch (resolved.kind) {
     case 'audio':
       return <AudioEmbed audioId={resolved.ref} />;
+    case 'image':
+      return <ImageEmbed data={resolved.data} />;
     case 'clipboard':
       return <ClipboardEmbed clipboardId={resolved.ref} data={resolved.data} />;
     case 'favorite':

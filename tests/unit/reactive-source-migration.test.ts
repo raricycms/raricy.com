@@ -8,10 +8,8 @@
 
 import { describe, expect, it } from 'vitest';
 import { compileLocal, LOCAL_SYNTAX_VERSION } from 'reactive-md';
-import {
-  findLeadingVersionDirective,
-  migrateLocalSourceWithSiteBudget,
-} from '@/lib/reactive/source-migration';
+import { migrateLocalSourceWithSiteBudget } from '@/lib/reactive/source-migration';
+import { findLeadingVersionDirective } from '@/lib/reactive/version-directive';
 import { reactiveCompileOptions } from '@/lib/reactive/host-components';
 
 const OLD_DECLARATION = '<!-- reactive-md: local-draft-2 -->';
@@ -33,6 +31,17 @@ describe('findLeadingVersionDirective', () => {
     const found = findLeadingVersionDirective(source);
     expect(found?.version).toBe('local-draft-2');
     expect(source.slice(found!.range.start, found!.range.end)).toBe(OLD_DECLARATION);
+  });
+
+  it('跨行普通注释之后仍能找到声明（与上游前导区规则一致）', () => {
+    const source = `<!--
+license note
+-->
+${OLD_DECLARATION}
+
+正文`;
+    const found = findLeadingVersionDirective(source);
+    expect(found?.version).toBe('local-draft-2');
   });
 
   it('正文开始后出现的指令不算（避免把代码示例当成声明）', () => {

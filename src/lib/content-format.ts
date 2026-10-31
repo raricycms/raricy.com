@@ -31,3 +31,13 @@ export function resolveContentWriteFormat(
   if (format === null) return { ok: false, reason: 'invalid_format' };
   return { ok: true, format };
 }
+
+/** 写入闸门的**稳定错误码**（前端按码提示，不解析中文 message）。 */
+export const CONTENT_WRITE_ERROR_CODES = {
+  invalid_format: 'invalid_content_format',
+  format_mismatch: 'content_format_mismatch',
+  reactive_invalid: 'content_unrenderable',
+} as const;
+
+export type ContentWriteErrorCode =
+  (typeof CONTENT_WRITE_ERROR_CODES)[keyof typeof CONTENT_WRITE_ERROR_CODES];

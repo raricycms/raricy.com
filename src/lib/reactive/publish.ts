@@ -11,8 +11,11 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { LOCAL_SYNTAX_VERSION } from 'reactive-md';
+import type { ContentFormat, ContentWriteErrorCode } from '../content-format';
 import { isoWithOffset, nowForDb } from '../db-time';
 import { shouldRejectReactive } from './diagnostics';
+import { documentEvidence } from './detect-format';
+import { compileContent } from './compile-content';
 import {
   reactiveContentVersion,
   toSnapshotRow,
@@ -24,13 +27,18 @@ export interface BuildReactiveSnapshotInput {
   kind: SnapshotKind;
   contentId: string;
   content: string;
+  /** 正文语言。Markdown 与 reactive 的编译选项不同，快照签名也不同。 */
+  format: ContentFormat;
 }
 
 /** 发布被拒的**类型化**错误：route 用它折 400，不靠比对错误文案。 */
 export class ReactivePublishError extends Error {
-  constructor(message: string) {
+  readonly code: ContentWriteErrorCode;
+
+  constructor(message: string, code: ContentWriteErrorCode = 'content_unrenderable') {
     super(message);
     this.name = 'ReactivePublishError';
+    this.code = code;
   }
 }
 
@@ -39,7 +47,10 @@ export type BuildReactiveSnapshotResult =
       ok: true;
       row: ReactiveSnapshotRow;
       contentVersion: string;
-      syntaxVersion: string;
+      /** 写回正文行 `syntax_version` 的值：Markdown 恒为 null。 */
+      syntaxVersion: string | null;
+      /** 解析器实际认出的格式（用于写入格式不匹配闸门）。 */
+      detectedFormat: ContentFormat;
     }
   | {
       ok: false;
@@ -57,41 +68,41 @@ export async function buildReactiveSnapshotForWrite(
   input: BuildReactiveSnapshotInput,
 ): Promise<BuildReactiveSnapshotResult> {
   // 延迟加载：避开 service ↔ compile 的模块环，见文件头。
-  const { compileReactiveSource } = await import('./compile');
+  const { compileContent } = await import('./compile-content');
 
-  const bundle = await compileReactiveSource({
+  const { outcome } = await compileContent({
     source: input.content,
-    format: 'reactive',
+    format: input.format,
     mode: 'external',
     viewer: null,
   });
 
-  if (!bundle.result.ok) {
+  if (!outcome.result.ok) {
     return {
       ok: false,
       reason: 'compile',
-      codes: bundle.result.diagnostics.map((diagnostic) => diagnostic.code),
+      codes: outcome.result.diagnostics.map((diagnostic) => diagnostic.code),
     };
   }
-  if (shouldRejectReactive(bundle.result)) {
+  if (shouldRejectReactive(outcome.result)) {
     return {
       ok: false,
       reason: 'fallback',
-      codes: bundle.result.diagnostics.map((diagnostic) => diagnostic.code),
+      codes: outcome.result.diagnostics.map((diagnostic) => diagnostic.code),
     };
   }
 
-  const contentVersion = reactiveContentVersion(
-    'reactive',
-    LOCAL_SYNTAX_VERSION,
-    input.content,
-  );
+  const detectedFormat: ContentFormat =
+    documentEvidence(outcome.result.document).length > 0 ? 'reactive' : 'markdown';
+  const syntaxVersion = input.format === 'reactive' ? LOCAL_SYNTAX_VERSION : null;
+  const contentVersion = reactiveContentVersion(input.format, syntaxVersion, input.content);
   const generatedAt = isoWithOffset(nowForDb());
   const row = toSnapshotRow(
     input.kind,
     input.contentId,
     contentVersion,
-    { document: bundle.result.document, hostData: bundle.hostData },
+    input.format,
+    { document: outcome.result.document, hostData: outcome.hostData },
     generatedAt ?? '',
   );
 
@@ -99,6 +110,7 @@ export async function buildReactiveSnapshotForWrite(
     ok: true,
     row,
     contentVersion,
-    syntaxVersion: LOCAL_SYNTAX_VERSION,
+    syntaxVersion,
+    detectedFormat,
   };
 }

@@ -64,12 +64,14 @@ import {
 } from './blog-visibility';
 import type { BlogVisibility } from './blog-visibility';
 import {
+  CONTENT_WRITE_ERROR_CODES,
   CONTENT_FORMAT_LABELS,
   DEFAULT_CONTENT_FORMAT,
   parseContentFormat,
   resolveContentWriteFormat,
 } from './content-format';
-import type { ContentFormat } from './content-format';
+import type { ContentFormat, ContentWriteErrorCode } from './content-format';
+import { detectReactiveSyntax } from './reactive/detect-format';
 import { buildReactiveSnapshotForWrite, ReactivePublishError } from './reactive/publish';
 import type { Prisma } from '@prisma/client';
 import type { PersonalBlogScope } from './blog-directory';
@@ -885,7 +887,7 @@ export const BLOG_ACCEPTED_KEYS = [
 ] as const;
 
 /** 正文写入闸门的失败原因。全部是**拒绝**，不是降级。 */
-export type ContentWriteFailure = 'invalid_format' | 'reactive_invalid';
+export type ContentWriteFailure = 'invalid_format' | 'format_mismatch' | 'reactive_invalid';
 
 export type ContentWriteGate =
   | { ok: true; format: ContentFormat }
@@ -913,9 +915,16 @@ export function resolveBlogContentFormat(
 
 /** 写入闸门失败时的对外文案（route 层直接用它，避免两处措辞漂移）。 */
 export function contentWriteFailureMessage(reason: ContentWriteFailure): string {
-  return reason === 'invalid_format'
-    ? '内容格式取值不合法，可选：markdown / reactive'
-    : 'ReactiveMD 正文无法编译，已拒绝发布';
+  if (reason === 'invalid_format') return '内容格式取值不合法，可选：markdown / reactive';
+  if (reason === 'format_mismatch') {
+    return '正文包含有效 ReactiveMD 语法，但格式为 Markdown；请改用 reactive，或把示例放进代码块';
+  }
+  return '正文无法编译渲染，已拒绝发布';
+}
+
+/** 稳定错误码：前端按码提示，不解析中文文案。 */
+export function contentWriteErrorCode(reason: ContentWriteFailure): ContentWriteErrorCode {
+  return CONTENT_WRITE_ERROR_CODES[reason];
 }
 
 /**
@@ -1295,15 +1304,33 @@ export async function createBlog(authorId: string, data: ValidatedBlogData): Pro
   const blogId = crypto.randomUUID();
   const now = nowForDb();
 
-  // reactive 发布前先编译一次并生成同版本快照；编译不出来就**不落库**。
-  const snapshot =
-    write.format === 'reactive'
-      ? await buildReactiveSnapshotForWrite({ kind: 'blog', contentId: blogId, content: data.content })
-      : null;
-  if (snapshot && !snapshot.ok) {
+  // 所有正文（Markdown 与 reactive）发布前都编译一次并生成同版本快照。
+  // Markdown 也走统一引擎；编译 / 语义校验失败同样不落库。
+  const snapshot = await buildReactiveSnapshotForWrite({
+    kind: 'blog',
+    contentId: blogId,
+    content: data.content,
+    format: write.format,
+  });
+  if (!snapshot.ok) {
+    // 未能编译：若解析器其实认出了增强语法，归为「格式不匹配」而不是笼统的
+    // 渲染失败，让前端 / API 调用方能按稳定错误码区分。
+    const detected = detectReactiveSyntax(data.content);
+    if (write.format === 'markdown' && detected.format === 'reactive') {
+      throw new ReactivePublishError(
+        contentWriteFailureMessage('format_mismatch'),
+        CONTENT_WRITE_ERROR_CODES.format_mismatch
+      );
+    }
     throw new ReactivePublishError(contentWriteFailureMessage('reactive_invalid'));
   }
-  const syntaxVersion = snapshot && snapshot.ok ? snapshot.syntaxVersion : null;
+  if (write.format === 'markdown' && snapshot.detectedFormat === 'reactive') {
+    throw new ReactivePublishError(
+      contentWriteFailureMessage('format_mismatch'),
+      CONTENT_WRITE_ERROR_CODES.format_mismatch
+    );
+  }
+  const syntaxVersion = snapshot.syntaxVersion;
 
   await prisma.$transaction([
     prisma.blog.create({
@@ -1384,21 +1411,31 @@ export async function updateBlog(
   // 只改标题 / 摘要等元信息时沿用已有快照（内容版本没变）。
   const oldFormat = contentRow ? parseContentFormat(contentRow.format) : null;
   let snapshot: Awaited<ReturnType<typeof buildReactiveSnapshotForWrite>> | null = null;
-  if (write.format === 'reactive' && (oldFormat !== 'reactive' || oldContent !== data.content)) {
+  if (!contentRow || oldFormat !== write.format || oldContent !== data.content) {
     snapshot = await buildReactiveSnapshotForWrite({
       kind: 'blog',
       contentId: blogId,
       content: data.content,
+      format: write.format,
     });
     if (!snapshot.ok) {
-      return { hasChanges: false, changesDetail: [], error: 'reactive_invalid' };
+      const detected = detectReactiveSyntax(data.content);
+      return {
+        hasChanges: false,
+        changesDetail: [],
+        error: write.format === 'markdown' && detected.format === 'reactive'
+          ? 'format_mismatch'
+          : 'reactive_invalid',
+      };
+    }
+    if (write.format === 'markdown' && snapshot.detectedFormat === 'reactive') {
+      return { hasChanges: false, changesDetail: [], error: 'format_mismatch' };
     }
   }
-  const syntaxVersion =
-    write.format === 'reactive'
-      ? snapshot && snapshot.ok
-        ? snapshot.syntaxVersion
-        : contentRow?.syntaxVersion ?? null
+  const syntaxVersion = snapshot
+    ? snapshot.syntaxVersion
+    : write.format === 'reactive'
+      ? contentRow?.syntaxVersion ?? null
       : null;
 
   let hasChanges = false;

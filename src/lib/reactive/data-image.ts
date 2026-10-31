@@ -33,7 +33,7 @@ const MAGIC: Record<LegacyDataImage['subtype'], readonly number[]> = {
   jpeg: [0xff, 0xd8, 0xff],
   png: [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a],
   gif: [0x47, 0x49, 0x46, 0x38], // GIF8
-  webp: [0x52, 0x49, 0x46, 0x46], // RIFF（后续 WEBP 由容器声明，但头四字节足够）
+  webp: [0x52, 0x49, 0x46, 0x46], // RIFF（brand 在偏移 8–11，下面单独校验）
 };
 
 const BASE64_ALPHABET =
@@ -89,8 +89,33 @@ export function parseLegacyDataImage(value: string): LegacyDataImage | null {
   if (payload.length % 4 !== 0) return null;
   const prefix = decodeBase64Prefix(payload, Math.max(MAGIC[subtype].length, 4));
   if (!matchesMagic(prefix, MAGIC[subtype])) return null;
+  if (subtype === 'webp') {
+    // RIFF 容器还可能是 WAVE / AVI；偏移 8–11 必须是 "WEBP"。
+    const brand = decodeBase64Prefix(payload, 12).slice(8, 12);
+    if (brand.length !== 4 || String.fromCharCode(...brand) !== 'WEBP') return null;
+  }
   return {
     url: `data:image/${subtype};base64,${payload}`,
     subtype,
   };
+}
+
+
+/**
+ * 稳定的内容寻址 id（24 位十六进制，96 bit）。用于在文档里引用一份受限 data
+ * 位图：源码里只留短 token，真实字节随 hostData 交给宿主组件渲染。
+ *
+ * 前提下这里只是**寻址**，不是安全边界：渲染前仍会再跑一次 `parseLegacyDataImage`。
+ */
+export function dataImageRef(value: string): string {
+  let a = 2166136261;
+  let b = 0x9e3779b9;
+  for (let index = 0; index < value.length; index += 1) {
+    const code = value.charCodeAt(index);
+    a = Math.imul(a ^ code, 16777619);
+    b = Math.imul(b ^ code, 2246822519);
+    b ^= b >>> 13;
+  }
+  return (a >>> 0).toString(16).padStart(8, '0') + (b >>> 0).toString(16).padStart(8, '0') +
+    ((a ^ b) >>> 0).toString(16).padStart(8, '0');
 }

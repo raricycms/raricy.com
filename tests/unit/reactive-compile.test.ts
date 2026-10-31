@@ -239,7 +239,7 @@ describe('compileReactiveSource 缓存', () => {
     expectPlain(second.result);
   });
 
-  it('format 变化（选项键变化）必须 miss', async () => {
+  it('format 不再切换编译选项：同一份源码命中同一份编译结果', async () => {
     const reactive = await compileReactiveSource({
       source,
       format: 'reactive',
@@ -253,9 +253,10 @@ describe('compileReactiveSource 缓存', () => {
       viewer: null,
     });
 
-    expect(markdown.cacheHit).toBe(false);
-    expect(markdown.cacheKey).not.toBe(reactive.cacheKey);
-    expect(stats()).toMatchObject({ hits: 0, misses: 2 });
+    // markdownBreaks 已统一为 true：format 不再改变选项键，结果可以复用。
+    expect(markdown.cacheHit).toBe(true);
+    expect(markdown.cacheKey).toBe(reactive.cacheKey);
+    expect(stats()).toMatchObject({ hits: 1, misses: 1 });
   });
 
   it('调用方改自己的结果不会污染缓存', async () => {

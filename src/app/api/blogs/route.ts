@@ -8,6 +8,7 @@ import {
   createBlog,
   resolveBlogContentFormat,
   contentWriteFailureMessage,
+  contentWriteErrorCode,
   BLOG_DAILY_LIMIT,
   ALL_SEARCH_FIELDS,
   type SearchField,
@@ -151,7 +152,11 @@ export async function POST(req: Request) {
   // 新建省略 format = 默认 markdown；reactive 已开放，但**编译不过就整篇拒绝**（400），
   // 而不是落库一半 —— 正文与快照必须同生共死，见 publish.ts 与 createBlog。
   const contentWrite = resolveBlogContentFormat(v.data.format);
-  if (!contentWrite.ok) return apiErr(400, contentWriteFailureMessage(contentWrite.reason));
+  if (!contentWrite.ok) {
+    return apiErr(400, contentWriteFailureMessage(contentWrite.reason), {
+      error_code: contentWriteErrorCode(contentWrite.reason),
+    });
+  }
 
   // 每日发文上限（20 篇）
   const todayCount = await countBlogsToday(user.id);
@@ -178,7 +183,7 @@ export async function POST(req: Request) {
     blogId = await createBlog(user.id, v.data);
   } catch (error) {
     if (error instanceof ReactivePublishError) {
-      return apiErr(400, error.message);
+      return apiErr(400, error.message, { error_code: error.code });
     }
     throw error;
   }

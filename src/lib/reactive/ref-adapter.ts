@@ -66,6 +66,7 @@ import {
 import { collectAudioRefs } from '@/lib/audio-refs';
 import { isFavoriteId, maskMarkdownCode, MAX_FAVORITE_REFS } from '@/lib/favorite-refs';
 import type {
+  DataImageSource,
   ExternalClipData,
   ReferenceKind,
   ReferenceMode,
@@ -77,13 +78,14 @@ import type {
   SiteHostData,
 } from './ref-types';
 import type { AdaptedSourceSegment, SegmentOrigin } from './source-map';
+import type { ContentFormat } from '../content-format';
 
 /**
  * 适配器版本。进缓存键 / 快照标识（见 docs/plan/reactive-md-migration-plan.md
  * §5.3）。**每次改变输出形状或转义规则都必须递增** —— 否则旧缓存会继续发一份
  * 按旧规则生成的源码。
  */
-export const ADAPTER_VERSION = 'reactive-ref-adapter/2';
+export const ADAPTER_VERSION = 'reactive-ref-adapter/3';
 
 /**
  * site-embed 的 ref 属性必须与宿主 schema 的 pattern 一致（`^[A-Za-z0-9]{1,32}$`，
@@ -95,11 +97,18 @@ const EMBED_REF_RE = /^[A-Za-z0-9]{1,32}$/;
 /** 旧博客管线的数字引用形态：内部空白与 `\w`（含下划线）都认。 */
 const NUMERIC_REF_PATTERN = /\[@\s*(\w+)\s*\]/g;
 
+/** 兼容层为受限 data 位图生成的短 token（24 位十六进制内容寻址）。 */
+const DATA_IMAGE_PATTERN = /\[@图片\/([a-f0-9]{24})\]/g;
+
 /** 作者伪造的宿主标签前缀（只匹配到标签名，尖括号随后被转义）。 */
 const FORGED_EMBED_PATTERN = /<site-embed(?=[\s/>])/gi;
 
 export interface ReactiveAdaptOptions {
   mode: ReferenceMode;
+  /** 父文档格式：只有 Markdown 父文档才内联 Markdown 剪贴板的一层正文。 */
+  parentFormat?: ContentFormat;
+  /** 兼容层提取的受限 data 位图；只由 token 引用，不自行扫描。 */
+  dataImages?: Readonly<Record<string, DataImageSource>>;
   /** `expand` 模式下的取数函数。`external` 模式**绝不调用**它。 */
   resolve?: ReferenceReader;
   /**
@@ -149,6 +158,14 @@ function scanMasked(source: string, masked: string): ReferenceSlot[] {
     const start = m.index ?? 0;
     const end = start + m[0].length;
     slots.push({ kind, ref, token: source.slice(start, end), start, end });
+  }
+
+  // 兼容层生成的受限 data 位图 token。它们只可能来自 Immutable 的 compat 输出，
+  // 内容寻址 id 必须与 compat 的 24 位十六进制一致。
+  for (const m of masked.matchAll(new RegExp(DATA_IMAGE_PATTERN.source, 'g'))) {
+    const ref = m[1];
+    const start = m.index ?? 0;
+    slots.push({ kind: 'image', ref, token: source.slice(start, start + m[0].length), start, end: start + m[0].length });
   }
 
   // 音频走现有 collector：它自带 `MAX_AUDIO_REFS=3`，且白名单字符集与
@@ -272,9 +289,30 @@ function planReplacement(
   slot: ReferenceSlot,
   mode: ReferenceMode,
   resolvedByKey: ReadonlyMap<string, ResolvedReference | undefined>,
-  externalClips: Record<string, ExternalClipData>
+  externalClips: Record<string, ExternalClipData>,
+  dataImages: Readonly<Record<string, DataImageSource>>,
+  parentFormat: ContentFormat | undefined
 ): PlannedReplacement | null {
   if (slot.kind === 'image') {
+    const image = dataImages[slot.ref];
+    if (image) {
+      const tag = embedTag('image', slot.ref);
+      if (!tag) return null;
+      return {
+        text: tag,
+        data: {
+          kind: 'image',
+          ref: slot.ref,
+          status: 'ready',
+          payload: {
+            src: image.url,
+            alt: image.alt,
+            ...(image.width ? { width: image.width } : {}),
+            ...(image.height ? { height: image.height } : {}),
+          },
+        },
+      };
+    }
     // 只拼 URL，不取数。raw 路由逐条判权（私有档 404），与旧管线逐字一致。
     return { text: `![${slot.ref}](/api/images/${slot.ref}/raw)` };
   }
@@ -295,7 +333,14 @@ function planReplacement(
     if (!resolved) return null;
     const tag = embedTag('clipboard', slot.ref);
     if (!tag) return null;
-    return { text: tag, data: makeEmbedData('clipboard', slot.ref, resolved, false) };
+    // 旧 Markdown 剪贴板保持「内联一层」的阅读能力；Reactive 剪贴板仍只给链接
+    // 卡片（不嵌套 Reactive 运行时）。子正文由宿主的旧 Markdown 管线单独渲染，
+    // 其字面表达式不会进入父文档绑定作用域。
+    const inline =
+      parentFormat === 'markdown' &&
+      resolved.format === 'markdown' &&
+      typeof resolved.content === 'string';
+    return { text: tag, data: makeEmbedData('clipboard', slot.ref, resolved, inline) };
   }
 
   // vote / favorite：对外视图保持字面量（两条读口都要 core+，且投票箱不进对外视图）。
@@ -431,7 +476,14 @@ export async function adaptReactiveReferences(
     if (slot.kind === 'favorite' && favoritesReplaced >= MAX_FAVORITE_REFS) continue;
     if (slot.kind !== 'favorite' && slot.kind !== 'audio' && replaced >= MAX_BLOG_REF_ITEMS) continue;
 
-    const planned = planReplacement(slot, mode, resolvedByKey, externalClips);
+    const planned = planReplacement(
+      slot,
+      mode,
+      resolvedByKey,
+      externalClips,
+      options.dataImages ?? {},
+      options.parentFormat
+    );
     if (!planned) continue;
 
     const delta = planned.text.length - (slot.end - slot.start);

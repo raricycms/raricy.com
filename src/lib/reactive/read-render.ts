@@ -1,48 +1,35 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // read-render.ts — 阅读页（博客 / 剪贴板）的**唯一渲染决策入口**（服务端）
 //
-// 它只做三件事，顺序固定：
-//   1. 读 flag，解析存储格式（`parseContentFormat`：认不出就是认不出，不猜 markdown）；
-//   2. 把决定权交给 `selectContentRenderer`（灰度 / override / 回退的规则只住那里，
-//      这里**不复制**任何一份 cohort 或 override 判定）；
-//   3. 需要编译时调 `compileReactiveSource`，用 `shouldFallbackToLegacy` 把
-//      「编译通过但语义不兼容」也算进回退判据。
+// 2026-11 统一后的顺序：
+//   1. 读 flag（默认启用；只有 `REACTIVE_MD_MODE=off` 是事故回退）与存储格式；
+//   2. 非成员视图优先读**同版本持久快照**（发布时生成，避免每次未命中都付冷编译）；
+//   3. 快照不可用 / 成员需要展开引用 / 事故回退时现编译；
+//   4. Markdown 编译失败走 `compile-content.ts` 的字面量容错，Reactive 失败则不可用。
 //
-// ── 五条「错了也不报错」的纪律 ────────────────────────────────────────────────
+// ── 四条「错了也不报错」的纪律 ────────────────────────────────────────────────
 //
-// 【1】reactive 源码**永不**交给旧 Markdown 渲染器。格式认不出 → `unavailable`；
-//   编译失败 → `unavailable`；能编译但不能交互 → 服务端现算的 `reactive-static`。
-//   把 reactive 源文喂给 marked 不会抛错，只会把 `{{ }}` / 组件标签当成普通文本
-//   显示出来 —— 这正是最难被发现的那种坏页面。
+// 【1】reactive 源码**永不**交给旧 Markdown 渲染器。`REACTIVE_MD_MODE=off` 时
+//   Markdown 才回旧引擎；reactive 只走静态快照，格式认不出则 unavailable。
 //
-// 【2】reactive 的静态正文**优先读同版本持久快照**（`reactive_snapshots`），读不到
-//   才按**当前正文**现编译一次。两者都不会把旧版本正文冒充成当前正文：版本 /
-//   编译签名不符的快照在 `snapshot-store.ts` 里按 stale 拒读。**用快照前还要按
-//   当前 external 规则重验引用**（`snapshot-revalidation.ts`）：任何含旧剪贴板
-//   载荷的结果都必须重编译；当前访客适配不取站内资源数据。重验失败也不使用快照。绝不在服务端
-//   用 `react-dom/server` 现拼 HTML（Next 的 RSC 编译链会拒绝）。
+// 【2】快照版本 / 编译签名不符按 stale 拒读，绝不拿旧正文冒充当前正文。用快照前
+//   还要按当前 external 规则重验引用（`snapshot-revalidation.ts`）：任何含旧剪贴板
+//   载荷的结果都必须重编译。成员视图的引用展开不写回共享快照。
 //
-// 【3】markdown 只有在**候选**（override=reactive 或命中灰度）时才编译。候选之外
-//   的 markdown 直接 legacy —— 否则每一次阅读都要为一次「反正会回退」的编译付费。
-//   `REACTIVE_MD_MODE=shadow` 是例外：读者看 legacy，但对候选做一次影子编译，只留
-//   诊断 / 耗时 / cacheHit 观测（`shadow` 字段 + `[reactive-shadow]` 日志行），
-//   影子产物绝不用于渲染；percent 与逐篇 override=legacy 照常生效，`off` 不编译。
+// 【3】正常阅读默认交互：快照与现编译产物都以 `reactive` 返回，页面用
+//   `staticFirst` 先给 SSR 静态首屏，再水合为可操作组件。百分比 / cohort 不再
+//   参与决策。
 //
-// 【4】`markdownCompatible` 必须由 `shouldFallbackToLegacy` 给出，不能只看 `ok`。
-//   `local.html.fallback` / `local.component.unknown` 会在 `ok: true` 的情况下改变
-//   内容；Markdown 须退回旧渲染器，Reactive 则可保留安全的 HTML 局部源码回退。
-//   反斜线数学已由上游支持，`legacyMath` 仅作为观察字段。
-//
-// 【5】日志只写结构化字段（renderer / reason / codes / 耗时 / 缓存命中 / 快照状态），
-//   **不写正文、不写标题**。这些是运维台账，不是内容副本。
+// 【4】日志只写结构化字段（renderer / reason / codes / 耗时 / 缓存命中 / 快照状态），
+//   **不写正文、不写标题**。
 // ─────────────────────────────────────────────────────────────────────────────
 
+import { LOCAL_SYNTAX_VERSION } from 'reactive-md';
 import { parseContentFormat, type ContentFormat } from '../content-format';
 import { selectContentRenderer, type RendererChoice } from '../renderer-select';
-import { parseReactiveFlags, type ReactiveFlags } from './flags';
-import { compileReactiveSource, type ReactiveCompileOutcome } from './compile';
-import { shouldFallbackToLegacy, shouldRejectReactive } from './diagnostics';
-import { hasLegacyMathDelimiters } from './legacy-math';
+import { parseReactiveFlags } from './flags';
+import { compileContent } from './compile-content';
+import type { ReactiveCompileOutcome } from './compile';
 import { hasMutableExternalReferences, hostDataEqual } from './snapshot-revalidation';
 import { scanReactiveReferences } from './ref-adapter';
 import {
@@ -50,7 +37,6 @@ import {
   readReactiveSnapshot,
   type SnapshotPayload,
 } from './snapshot-store';
-import { LOCAL_SYNTAX_VERSION } from 'reactive-md';
 
 export interface ReadRenderInput {
   kind: 'blog' | 'clipboard';
@@ -65,38 +51,9 @@ export interface ReadRenderInput {
   syntaxVersion?: string | null;
 }
 
-/**
- * 影子编译的观测结果（`REACTIVE_MD_MODE=shadow`）。
- *
- * **只进日志与测试**：读者看到的仍然是 `choice` 给出的 legacy。`renderer` / `reason`
- * 是「若灰度真的生效会落到哪里」；`compatible` 为 false 时它就是 legacy + fallback。
- */
-export interface ShadowObservation {
-  renderer: RendererChoice['renderer'];
-  reason: RendererChoice['reason'];
-  compatible: boolean;
-  codes: string[];
-  compileMs: number;
-  cacheHit: boolean;
-  legacyMath: boolean;
-  /** 影子编译本身失败 / 没有产物（不影响读者看到的 legacy）。 */
-  error?: 'compile';
-}
-
 export interface ReadRenderResult {
   choice: RendererChoice;
-  /** 本次编译产物；reactive 与 reactive-static 都由它渲染。 */
-  bundle?: ReactiveCompileOutcome;
-  /** 持久快照（仅 reactive-static 且版本 / 引用都匹配时）；优先于 bundle。 */
-  snapshot?: SnapshotPayload;
-  /** 影子观测；仅 shadow 模式且命中灰度候选时存在，绝不用于渲染。 */
-  shadow?: ShadowObservation;
-  failure?:
-    | 'compile'
-    | 'snapshot-missing'
-    | 'snapshot-references'
-    | 'invalid-format'
-    | 'invalid-override';
+  /** 日志字段（只含结构化信息）。 */
   log: {
     renderer: string;
     reason: string;
@@ -105,21 +62,14 @@ export interface ReadRenderResult {
     compileMs: number;
     cacheHit: boolean;
     snapshotStatus: string;
-    legacyMath: boolean;
   };
+  /** 现编译的产物（快照命中时没有）。 */
+  bundle?: ReactiveCompileOutcome;
+  /** 同版本持久快照（成员引用展开时不用它）。 */
+  snapshot?: SnapshotPayload;
+  failure?: 'invalid-format' | 'compile' | 'snapshot-missing';
 }
 
-/**
- * 选择器只比较「内容版本 == 快照版本」这两个标记；真正的版本 / 编译签名校验在
- * `readReactiveSnapshot` 里做。这里传同一个常量表示「调用方没有额外的版本要求」，
- * 不会被 `selectContentRenderer` 误判成 snapshot-missing。
- */
-const SELECTION_VERSION = 'current';
-
-/**
- * 把一次选择落成结果：生成日志、记录失败原因。
- * `overrideChoice` 用于「编译失败后必须换成 unavailable」这类二次判定。
- */
 function finish(
   choice: RendererChoice,
   format: ContentFormat | null,
@@ -128,9 +78,7 @@ function finish(
     failure?: ReadRenderResult['failure'];
     snapshot?: SnapshotPayload;
     snapshotStatus?: string;
-    shadow?: ShadowObservation;
-    legacyMath?: boolean;
-  },
+  }
 ): ReadRenderResult {
   const codes = bundle?.result.diagnostics
     ? bundle.result.diagnostics.map((diagnostic) => diagnostic.code)
@@ -143,46 +91,33 @@ function finish(
     compileMs: bundle?.compileMs ?? 0,
     cacheHit: bundle?.cacheHit ?? false,
     snapshotStatus: extra?.snapshotStatus ?? 'none',
-    legacyMath: extra?.legacyMath ?? false,
   };
-  // 只写结构化字段：不打印 source / 标题 / 任何正文片段。
   console.info('[reactive-read]', JSON.stringify(log));
-  // 影子观测单独一行：它**不是读者的渲染结果**，别混进上面那条。
-  if (extra?.shadow) {
-    console.info('[reactive-shadow]', JSON.stringify({ ...extra.shadow, format }));
-  }
   return {
     choice,
     log,
     ...(bundle ? { bundle } : {}),
     ...(extra?.snapshot ? { snapshot: extra.snapshot } : {}),
-    ...(extra?.shadow ? { shadow: extra.shadow } : {}),
     ...(extra?.failure ? { failure: extra.failure } : {}),
   };
 }
 
 /**
  * 用当前 external 权限重验快照里的引用是否仍然有效。
- *
- * 返回 `keep`    = 引用数据与快照一致，快照可用；
- *      `replace` = 有变化（改私密 / 删除 / 改标题 / 改版本 / 新公开），旧快照作废；
- *      `untrusted` = 读当前权限时失败 —— 这时**旧引用数据同样不可信**（可能正好是
- *                    权限变动导致的那次故障），不能继续用快照，只能现编译。
- *
- * 没有剪贴板引用时直接 `keep`：音频 / 图床 / 投票 / 收藏夹的 external 形态不随
- * 权限变化，快照快速路径一次库都不查。
+ * 返回 keep / replace / untrusted，语义与快照模块一致（见 snapshot-revalidation.ts）。
  */
 async function revalidateSnapshotReferences(
   input: ReadRenderInput,
-  snapshotHostData: SnapshotPayload['hostData'],
+  format: ContentFormat,
+  snapshotHostData: SnapshotPayload['hostData']
 ): Promise<'keep' | 'replace' | 'untrusted'> {
   if (!hasMutableExternalReferences(input.source)) return 'keep';
   try {
-    // 延迟加载：`prepare` 会拖进剪贴板 / 投票 / 收藏夹三个 service；只在真正
-    // 需要重验时付这份模块成本（与 publish.ts 的动态 import 同一理由）。
     const { prepareReactiveDocument } = await import('./prepare');
     const prepared = await prepareReactiveDocument(input.source, {
       mode: 'external',
+      format,
+
       viewer: input.viewer,
       clientIp: input.clientIp,
     });
@@ -192,229 +127,109 @@ async function revalidateSnapshotReferences(
   }
 }
 
-/**
- * reactive 的静态分支：成员资源按本人权限编译，其余重验并使用访客快照。
- *
- * 为什么先快照：快照是发布那一刻的可信产物，读取时不需要重编译；版本 / 编译签名
- * 不符的快照按 missing 处理，绝不拿旧正文冒充当前正文。对含剪贴板 token 的正文
- * 还检查宿主数据，拒绝可能残留的旧引用载荷，见 `snapshot-revalidation.ts`。
- * 当前 external 适配只保留原文，不读取站内资源；对账失败时重新编译或显示不可用。
- *
- * 静态形态交给客户端组件的 `mode="static"`（SSR 首屏即静态正文，无 JS 也可读）。
- * 不在服务端调 `react-dom/server`：Next 的 RSC 编译链会拒绝它（构建期失败）。
- */
-async function buildStatic(
-  input: ReadRenderInput,
-  choice: RendererChoice,
-  format: ContentFormat,
-  bundle: ReactiveCompileOutcome | undefined,
-  compile: () => Promise<ReactiveCompileOutcome>,
-  compileExternal: () => Promise<ReactiveCompileOutcome>,
-): Promise<ReadRenderResult> {
-  // 持久快照固定面向访客，不能拿来代替成员的站内引用。
-  // 只对含成员资源的文档按当前本人权限编译；结果仅用于此次阅读，不写回共享快照。
-  const memberReferences = input.mode === 'expand' && input.viewer &&
-    scanReactiveReferences(input.source).some(slot => ['clipboard', 'vote', 'favorite'].includes(slot.kind));
-  if (memberReferences) {
-    try { bundle ??= await compile(); } catch { bundle = undefined; }
-    if (bundle?.result.ok && bundle.result.document) {
-      return finish({ renderer: 'reactive-static', reason: choice.reason }, format, bundle);
-    }
-  }
+/** 快照内容版本：Markdown 的 syntaxVersion 恒为 null，与发布侧一致。 */
+function contentVersionFor(input: ReadRenderInput, format: ContentFormat): string {
   const syntaxVersion =
-    format === 'reactive' ? (input.syntaxVersion ?? LOCAL_SYNTAX_VERSION) : LOCAL_SYNTAX_VERSION;
-  const contentVersion = reactiveContentVersion(format, syntaxVersion, input.source);
-  const snapshot = await readReactiveSnapshot(input.kind, input.id, contentVersion);
-  if (snapshot.status === 'ready') {
-    const verdict = await revalidateSnapshotReferences(input, snapshot.payload.hostData);
-    if (verdict === 'keep') {
-      return finish({ renderer: 'reactive-static', reason: choice.reason }, format, bundle, {
-        snapshot: snapshot.payload,
-        snapshotStatus: 'ready',
-      });
-    }
-
-    // 旧快照的引用数据不可信 —— 按当前 external 权限重编一份替代它。
-    let replacement: ReactiveCompileOutcome | undefined;
-    try {
-      replacement = await compileExternal();
-    } catch {
-      replacement = undefined;
-    }
-    const snapshotStatus =
-      verdict === 'untrusted' ? 'untrusted-references' : 'stale-references';
-    if (replacement?.result.ok && replacement.result.document) {
-      return finish({ renderer: 'reactive-static', reason: choice.reason }, format, replacement, {
-        snapshotStatus,
-      });
-    }
-    return finish({ renderer: 'unavailable', reason: choice.reason }, format, replacement, {
-      failure: verdict === 'untrusted' ? 'snapshot-references' : 'compile',
-      snapshotStatus,
-    });
-  }
-
-  if (!bundle) {
-    try {
-      bundle = await compile();
-    } catch {
-      bundle = undefined;
-    }
-  }
-  if (bundle?.result.ok && bundle.result.document) {
-    return finish({ renderer: 'reactive-static', reason: choice.reason }, format, bundle, {
-      snapshotStatus: snapshot.status,
-    });
-  }
-  return finish({ renderer: 'unavailable', reason: choice.reason }, format, bundle, {
-    // 编译真的失败时优先报 compile；只有「没快照、也没能编出一份当前正文」才归为
-    // snapshot-missing（运维据此区分「包/内容问题」与「发布链路没生成快照」）。
-    failure:
-      snapshot.status === 'missing' && (!bundle || bundle.result.ok)
-        ? 'snapshot-missing'
-        : 'compile',
-    snapshotStatus: snapshot.status,
-  });
+    format === 'reactive' ? input.syntaxVersion ?? LOCAL_SYNTAX_VERSION : null;
+  return reactiveContentVersion(format, syntaxVersion, input.source);
 }
 
-/**
- * `REACTIVE_MD_MODE=shadow`：读者仍看 legacy，但对**灰度候选**做一次影子编译，
- * 只记录「如果灰度真的生效会怎样」。
- *
- * 候选判定复用 `selectContentRenderer`（把 mode 临时当 `on`），**不在这里复制**
- * cohort / override 规则：`override=legacy` 与未命中 percent 的正文一次都不编译。
- * 影子产物绝不挂到返回结果的 `bundle` 上，页面没有任何路径能拿到它。
- */
-async function observeShadowCandidate(
-  input: ReadRenderInput,
-  selectionBase: Parameters<typeof selectContentRenderer>[0],
-  flags: ReactiveFlags,
-  compile: () => Promise<ReactiveCompileOutcome>,
-): Promise<ShadowObservation | undefined> {
-  if (flags.mode !== 'shadow') return undefined;
+/** 成员视图是否含有必须按本人权限展开的成员资源。 */
+function hasMemberReferences(input: ReadRenderInput): boolean {
+  if (input.mode !== 'expand' || !input.viewer) return false;
+  return scanReactiveReferences(input.source).some((slot) =>
+    slot.kind === 'clipboard' || slot.kind === 'vote' || slot.kind === 'favorite'
+  );
+}
 
-  const candidateFlags: ReactiveFlags = { ...flags, mode: 'on' };
-  const candidate = selectContentRenderer({
-    ...selectionBase,
-    flags: candidateFlags,
-    markdownCompatible: true,
-  });
-  if (candidate.renderer !== 'reactive') return undefined;
-
-  const legacyMath = hasLegacyMathDelimiters(input.source);
-  let bundle: ReactiveCompileOutcome | undefined;
+async function compile(input: ReadRenderInput, format: ContentFormat) {
   try {
-    bundle = await compile();
+    return await compileContent({
+      source: input.source,
+      format,
+      mode: input.mode,
+      viewer: input.viewer,
+      clientIp: input.clientIp,
+    });
   } catch {
-    bundle = undefined;
+    return undefined;
   }
-  const compatible =
-    !!bundle && bundle.result.ok && !shouldFallbackToLegacy(bundle.result);
-  const wouldBe = selectContentRenderer({
-    ...selectionBase,
-    flags: candidateFlags,
-    markdownCompatible: compatible,
-  });
-
-  const observation: ShadowObservation = {
-    renderer: wouldBe.renderer,
-    reason: wouldBe.reason,
-    compatible,
-    codes: bundle?.result.diagnostics.map((diagnostic) => diagnostic.code) ?? [],
-    compileMs: bundle?.compileMs ?? 0,
-    cacheHit: bundle?.cacheHit ?? false,
-    legacyMath,
-  };
-  if (!bundle) observation.error = 'compile';
-  return observation;
 }
 
 export async function resolveReadRender(input: ReadRenderInput): Promise<ReadRenderResult> {
   const flags = parseReactiveFlags(process.env);
   const format = parseContentFormat(input.format);
 
-  const selectionBase = {
-    kind: input.kind,
-    id: input.id,
-    format: input.format,
-    override: input.override,
-    flags,
-    contentVersion: SELECTION_VERSION,
-    snapshotVersion: SELECTION_VERSION,
-  };
-
-  // 认不出的格式不是 markdown（见文件头【1】）。
   if (!format) {
     return finish(
-      selectContentRenderer({ ...selectionBase, markdownCompatible: true }),
+      { renderer: 'unavailable', reason: 'invalid-format' },
       null,
       undefined,
-      { failure: 'invalid-format' },
+      { failure: 'invalid-format' }
     );
   }
 
-  const compileWith =
-    (mode: ReadRenderInput['mode']) => () =>
-      compileReactiveSource({
-        source: input.source,
-        format,
-        mode,
-        viewer: input.viewer,
-        clientIp: input.clientIp,
-      });
-  const compile = compileWith(input.mode);
-  // 快照固定按 external 生成；引用过期后的替代编译也必须同范围。
-  const compileExternal = compileWith('external');
+  // 事故回退：Markdown 才允许旧引擎；Reactive 仍只走静态快照 / 现编译。
+  if (flags.mode === 'off' && format === 'markdown') {
+    return finish({ renderer: 'legacy', reason: 'flag' }, format, undefined);
+  }
 
-  if (format === 'markdown') {
-    // flag 关 / override=legacy / 未命中灰度都在这一步直接落 legacy，不编译。
-    const tentative = selectContentRenderer({ ...selectionBase, markdownCompatible: true });
-    if (tentative.renderer !== 'reactive') {
-      // shadow 也走这条出口：读者可见的仍是 legacy，影子编译只留观测。
-      const shadow = await observeShadowCandidate(input, selectionBase, flags, compile);
-      return finish(tentative, format, undefined, {
-        ...(shadow ? { shadow } : {}),
-        ...(tentative.reason === 'invalid-override' ? { failure: 'invalid-override' } : {}),
+  const contentVersion = contentVersionFor(input, format);
+  const member = hasMemberReferences(input);
+
+  // ── 快照优先（成员引用展开不适用：那些数据只属于本人）───────────────────
+  let snapshotStatus = 'none';
+  let snapshotPayload: SnapshotPayload | undefined;
+  const snapshotRead = await readReactiveSnapshot(
+    input.kind,
+    input.id,
+    contentVersion,
+    format
+  );
+  snapshotStatus = snapshotRead.status;
+  if (snapshotRead.status === 'ready' && !member) {
+    const verdict = await revalidateSnapshotReferences(input, format, snapshotRead.payload.hostData);
+    if (verdict === 'keep') {
+      const renderer = flags.mode === 'off' ? 'reactive-static' : 'reactive';
+      return finish({ renderer, reason: 'format' }, format, undefined, {
+        snapshot: snapshotRead.payload,
+        snapshotStatus: 'ready',
       });
     }
-
-    let bundle: ReactiveCompileOutcome | undefined;
-    try {
-      bundle = await compile();
-    } catch {
-      bundle = undefined;
+    snapshotStatus = verdict === 'untrusted' ? 'untrusted-references' : 'stale-references';
+    // 旧快照的引用数据不可信：按 external 重新编译一份替代它。
+    const replacement = await compile({ ...input, mode: 'external' }, format);
+    if (replacement?.outcome.result.ok) {
+      const renderer = flags.mode === 'off' ? 'reactive-static' : 'reactive';
+      return finish({ renderer, reason: 'format' }, format, replacement.outcome, { snapshotStatus });
     }
-    // 编译失败 / 命中回退码 → markdownCompatible=false → 选择器给回 legacy。
-    // 反斜线数学已受支持，扫描结果只用于观测。
-    const legacyMath = hasLegacyMathDelimiters(input.source);
-    const compatible =
-      !!bundle && bundle.result.ok && !shouldFallbackToLegacy(bundle.result);
-    const choice = selectContentRenderer({ ...selectionBase, markdownCompatible: compatible });
-    return finish(choice, format, bundle, {
-      legacyMath,
-      ...(choice.reason === 'fallback' && (!bundle || !bundle.result.ok)
-        ? { failure: 'compile' as const }
-        : {}),
+  } else if (snapshotRead.status === 'ready') {
+    // 成员引用视图需要现编译；快照留作编译失败时的静态兜底。
+    snapshotPayload = snapshotRead.payload;
+  }
+
+  const compiled = await compile(input, format);
+  if (compiled?.outcome.result.ok) {
+    const renderer = flags.mode === 'off' ? 'reactive-static' : 'reactive';
+    return finish({ renderer, reason: 'format' }, format, compiled.outcome, { snapshotStatus });
+  }
+
+  // 现编译失败时，同版本访客快照仍是一份可读的静态正文（引用保持字面量）。
+  if (snapshotPayload) {
+    return finish({ renderer: 'reactive-static', reason: 'format' }, format, undefined, {
+      snapshot: snapshotPayload,
+      snapshotStatus: 'ready-fallback',
     });
   }
 
-  // ── reactive：flag=on 时实时编译（expand 权限）；其余分支走静态快照 ─────────
-  const tentative = selectContentRenderer(selectionBase);
-
-  if (tentative.renderer === 'reactive') {
-    let bundle: ReactiveCompileOutcome | undefined;
-    try {
-      bundle = await compile();
-    } catch {
-      bundle = undefined;
+  return finish(
+    { renderer: 'unavailable', reason: 'fallback' },
+    format,
+    compiled?.outcome,
+    {
+      // 现编译抛错也是编译失败；只有「没有快照且压根没产出编译结果」才归 snapshot-missing。
+      failure: snapshotRead.status === 'missing' && !compiled ? 'snapshot-missing' : 'compile',
+      snapshotStatus,
     }
-    const failed = !bundle || !bundle.result.ok || shouldRejectReactive(bundle.result);
-    const choice = selectContentRenderer({ ...selectionBase, compilationFailed: failed });
-    if (choice.renderer === 'reactive') return finish(choice, format, bundle);
-    // 编译失败或语义不兼容 → 同版本静态快照，绝不退回旧 Markdown。
-    return buildStatic(input, choice, format, bundle, compile, compileExternal);
-  }
-
-  // flag 关 / 未命中灰度 / 脏 override：选择器已经判为 reactive-static。
-  return buildStatic(input, tentative, format, undefined, compile, compileExternal);
+  );
 }

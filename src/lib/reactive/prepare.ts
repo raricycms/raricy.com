@@ -3,12 +3,14 @@ import { createServiceReferenceReader } from './ref-reader';
 import { reactiveContentHash } from './cache';
 import { applyLegacyHtmlCompat } from './legacy-compat';
 import type { ReferenceMode } from './ref-types';
+import type { ContentFormat } from '../content-format';
 
 /** Server-only preparation. Page rendering stays on legacy until upstream integration. */
 export async function prepareReactiveDocument(
   source: string,
   context: {
     mode: ReferenceMode;
+    format: ContentFormat;
     viewer: Parameters<typeof createServiceReferenceReader>[1];
     clientIp?: string;
   },
@@ -18,6 +20,8 @@ export async function prepareReactiveDocument(
   const compat = applyLegacyHtmlCompat(source);
   const result = await adaptReactiveReferences(compat.source, {
     mode: context.mode,
+    parentFormat: context.format,
+    dataImages: compat.dataImages,
     resolve: context.mode === 'expand'
       ? createServiceReferenceReader('expand', context.viewer, context.clientIp)
       : undefined,

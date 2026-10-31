@@ -9,11 +9,13 @@ import { prisma } from './db';
 import { nowForDb } from './db-time';
 import { generateShortId } from './short-id';
 import {
+  CONTENT_WRITE_ERROR_CODES,
   DEFAULT_CONTENT_FORMAT,
   parseContentFormat,
   resolveContentWriteFormat,
 } from './content-format';
-import type { ContentFormat } from './content-format';
+import type { ContentFormat, ContentWriteErrorCode } from './content-format';
+import { detectReactiveSyntax } from './reactive/detect-format';
 import type { ExternalClipData } from './reactive/ref-types';
 import { buildReactiveSnapshotForWrite } from './reactive/publish';
 import { createHash } from 'node:crypto';
@@ -27,7 +29,7 @@ export const CLIP_CONTENT_MAX = 50000;
 export const CLIP_PER_USER_MAX = 200;
 
 /** 正文写入闸门的失败原因（与 blog-service 同形，但两域各自设防）。 */
-export type ClipContentWriteFailure = 'invalid_format' | 'reactive_invalid';
+export type ClipContentWriteFailure = 'invalid_format' | 'format_mismatch' | 'reactive_invalid';
 
 export type ClipContentWriteGate =
   | { ok: true; format: ContentFormat }
@@ -53,9 +55,15 @@ export function resolveClipContentFormat(
 
 /** 写入闸门失败时的对外文案（route 层直接用它，避免两处措辞漂移）。 */
 export function clipContentWriteMessage(reason: ClipContentWriteFailure): string {
-  return reason === 'invalid_format'
-    ? '内容格式取值不合法，可选：markdown / reactive'
-    : 'ReactiveMD 正文无法编译，已拒绝发布';
+  if (reason === 'invalid_format') return '内容格式取值不合法，可选：markdown / reactive';
+  if (reason === 'format_mismatch') {
+    return '正文包含有效 ReactiveMD 语法，但格式为 Markdown；请改用 reactive，或把示例放进代码块';
+  }
+  return '正文无法编译渲染，已拒绝发布';
+}
+
+export function clipContentWriteErrorCode(reason: ClipContentWriteFailure): ContentWriteErrorCode {
+  return CONTENT_WRITE_ERROR_CODES[reason];
 }
 
 export interface CreateClipInput {
@@ -114,12 +122,25 @@ export async function createClip(
   const now = nowForDb();
 
   // reactive：先编译并生成同版本快照；编不出来就整笔拒绝（不落半篇）。
-  const snapshot =
-    write.format === 'reactive'
-      ? await buildReactiveSnapshotForWrite({ kind: 'clipboard', contentId: id, content: input.content })
-      : null;
-  if (snapshot && !snapshot.ok) return { ok: false, reason: 'reactive_invalid' };
-  const syntaxVersion = snapshot && snapshot.ok ? snapshot.syntaxVersion : null;
+  const snapshot = await buildReactiveSnapshotForWrite({
+    kind: 'clipboard',
+    contentId: id,
+    content: input.content,
+    format: write.format,
+  });
+  if (!snapshot.ok) {
+    const detected = detectReactiveSyntax(input.content);
+    return {
+      ok: false,
+      reason: write.format === 'markdown' && detected.format === 'reactive'
+        ? 'format_mismatch'
+        : 'reactive_invalid',
+    };
+  }
+  if (write.format === 'markdown' && snapshot.detectedFormat === 'reactive') {
+    return { ok: false, reason: 'format_mismatch' };
+  }
+  const syntaxVersion = snapshot.syntaxVersion;
 
   await prisma.$transaction([
     prisma.clipBoard.create({
@@ -197,19 +218,30 @@ export async function updateClip(
   const oldContent = clip.content?.content ?? '';
   const oldFormat = clip.content ? parseContentFormat(clip.content.format) : null;
   const snapshot =
-    write.format === 'reactive' && (oldFormat !== 'reactive' || oldContent !== input.content)
+    !clip.content || oldFormat !== write.format || oldContent !== input.content
       ? await buildReactiveSnapshotForWrite({
           kind: 'clipboard',
           contentId: clipId,
           content: input.content,
+          format: write.format,
         })
       : null;
-  if (snapshot && !snapshot.ok) return { ok: false, reason: 'reactive_invalid' };
-  const syntaxVersion =
-    write.format === 'reactive'
-      ? snapshot && snapshot.ok
-        ? snapshot.syntaxVersion
-        : clip.content?.syntaxVersion ?? null
+  if (snapshot && !snapshot.ok) {
+    const detected = detectReactiveSyntax(input.content);
+    return {
+      ok: false,
+      reason: write.format === 'markdown' && detected.format === 'reactive'
+        ? 'format_mismatch'
+        : 'reactive_invalid',
+    };
+  }
+  if (snapshot && write.format === 'markdown' && snapshot.detectedFormat === 'reactive') {
+    return { ok: false, reason: 'format_mismatch' };
+  }
+  const syntaxVersion = snapshot
+    ? snapshot.syntaxVersion
+    : write.format === 'reactive'
+      ? clip.content?.syntaxVersion ?? null
       : null;
 
   const now = nowForDb();

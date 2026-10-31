@@ -142,6 +142,7 @@ export async function compileReactiveSource(
 
   const prepared = await prepareReactiveDocument(input.source, {
     mode: input.mode,
+    format: input.format,
     viewer: input.viewer,
     clientIp: input.clientIp,
   });
