@@ -34,11 +34,14 @@ import {
   type LocalDocument,
   type LocalNode,
 } from 'reactive-md';
-import { LOCAL_COMPONENT_NAMES } from 'reactive-md/authoring';
+import { SITE_REACTIVE_COMPONENT_NAMES } from './component-names';
 import { shouldRejectReactive } from './diagnostics';
 import { applyLegacyHtmlCompat, maskProtectedContent } from './legacy-compat';
 import { reactiveCompileOptions } from './host-components';
 import { findLeadingVersionDirective } from './version-directive';
+
+/** 当前语法版本的权威导出（草稿 / 写 API 契约用；来自上游 LOCAL_SYNTAX_VERSION）。 */
+export { LOCAL_SYNTAX_VERSION as REACTIVE_SYNTAX_VERSION };
 
 export type ContentFormatName = 'markdown' | 'reactive';
 
@@ -64,7 +67,7 @@ export interface ReactiveSyntaxDetection {
   literalized?: boolean;
 }
 
-const COMPONENT_NAMES: ReadonlySet<string> = new Set(LOCAL_COMPONENT_NAMES);
+const COMPONENT_NAMES: ReadonlySet<string> = new Set(SITE_REACTIVE_COMPONENT_NAMES);
 
 function walk(nodes: readonly LocalNode[], onNode: (node: LocalNode) => void): void {
   for (const node of nodes) {

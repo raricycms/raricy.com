@@ -103,13 +103,13 @@ describe('compileReactivePreview', () => {
       ref: FAV_ID,
       status: 'ready',
     });
-    // 剪贴板首期一律链接卡片：hostData 里绝不携带正文。
+    // Markdown 剪贴板在 expand 下内联一层（宿主渲染器只读展示）；Reactive 剪贴板才保持卡片。
     expect(hostData[`clipboard:${CLIP_ID}`]).toMatchObject({
       kind: 'clipboard',
       ref: CLIP_ID,
       status: 'ready',
     });
-    expect(hostData[`clipboard:${CLIP_ID}`].content).toBeUndefined();
+    expect(hostData[`clipboard:${CLIP_ID}`].content).toBe('# 不该被内联的正文');
 
     // 取数只发生在需要它的三类上；图床 / 音频不占请求。
     expect(calls.sort()).toEqual(

@@ -221,7 +221,7 @@ describe('博客写接口：format 的默认、保留与拒绝', () => {
     expect(await contentFormatOf(blog_id)).toMatchObject({
       content: '# 标题\n\n正文',
       format: 'reactive',
-      syntaxVersion: 'local-draft-2',
+      syntaxVersion: 'local-draft-3',
     });
     expect(
       await prisma.reactiveSnapshot.count({ where: { kind: 'blog', contentId: blog_id } })
@@ -270,7 +270,7 @@ describe('博客写接口：format 的默认、保留与拒绝', () => {
     const blog = await makeBlog({ authorId: author.id, content: 'reactive 源码' });
     await prisma.blogContent.update({
       where: { blogId: blog.id },
-      data: { format: 'reactive', syntaxVersion: 'local-draft-2' },
+      data: { format: 'reactive', syntaxVersion: 'local-draft-3' },
     });
     await login(author.id);
 
@@ -282,7 +282,7 @@ describe('博客写接口：format 的默认、保留与拒绝', () => {
     expect(await contentFormatOf(blog.id)).toMatchObject({
       content: '# 新 reactive\n\n正文',
       format: 'reactive',
-      syntaxVersion: 'local-draft-2',
+      syntaxVersion: 'local-draft-3',
     });
     expect(
       await prisma.reactiveSnapshot.count({ where: { kind: 'blog', contentId: blog.id } })
@@ -327,7 +327,7 @@ describe('剪贴板写接口：format 的默认、保留与拒绝', () => {
     const { id } = (await res.json()) as { id: string };
     expect(await prisma.clipText.findUnique({ where: { clipId: id } })).toMatchObject({
       format: 'reactive',
-      syntaxVersion: 'local-draft-2',
+      syntaxVersion: 'local-draft-3',
     });
     expect(
       await prisma.reactiveSnapshot.count({ where: { kind: 'clipboard', contentId: id } })
@@ -366,7 +366,7 @@ describe('剪贴板写接口：format 的默认、保留与拒绝', () => {
           create: {
             content: 'reactive 源码',
             format: 'reactive',
-            syntaxVersion: 'local-draft-2',
+            syntaxVersion: 'local-draft-3',
             updatedAt: nowForDb(),
           },
         },
@@ -381,7 +381,7 @@ describe('剪贴板写接口：format 的默认、保留与拒绝', () => {
     expect(await prisma.clipText.findUnique({ where: { clipId: reactiveId } })).toMatchObject({
       content: '# 新 reactive\n\n正文',
       format: 'reactive',
-      syntaxVersion: 'local-draft-2',
+      syntaxVersion: 'local-draft-3',
     });
     expect(
       await prisma.reactiveSnapshot.count({ where: { kind: 'clipboard', contentId: reactiveId } })

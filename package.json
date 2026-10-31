@@ -45,7 +45,8 @@
     "realtime:build": "tsc -p services/realtime/tsconfig.json",
     "search:rebuild": "tsx scripts/rebuild-public-search.mts",
     "search:benchmark": "tsx scripts/benchmark-public-search.mts",
-    "reactive:measure": "vite-node --config vitest.config.ts scripts/reactive-budget-measure.mts"
+    "reactive:measure": "vite-node --config vitest.config.ts scripts/reactive-budget-measure.mts",
+    "reactive:backfill": "vite-node --config vitest.config.ts scripts/reactive-backfill-snapshots.ts"
   },
   "dependencies": {
     "@codemirror/commands": "6.11.1",

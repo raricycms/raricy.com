@@ -233,7 +233,7 @@ describe('校验与伪造', () => {
     expect(box.querySelector('a')).toBeNull();
   });
 
-  it('剪贴板忽略 payload 里的 href，只按 ref 拼站内地址，且不渲染 content', () => {
+  it('静态快照的剪贴板忽略 payload href，只按 ref 拼站内地址，且不内联 content', () => {
     const box = mount(
       node('clipboard', CLIP_ID),
       embed('clipboard', CLIP_ID, 'ready', {
@@ -241,11 +241,26 @@ describe('校验与伪造', () => {
         format: 'markdown',
         content: '正文不该出现',
         payload: { href: 'javascript:alert(1)', title: '伪造标题' },
-      })
+      }),
+      ctx('static')
     );
     const link = box.querySelector('a.site-embed-clipboard');
     expect(link?.getAttribute('href')).toBe(`/clipboard/${CLIP_ID}`);
-    expect(box.textContent).not.toContain('正文不该出现');
+    expect(box.querySelector('.site-embed-clipboard-inline')).toBeNull();
+  });
+
+  it('成员阅读的 Markdown 剪贴板走一层内联外壳（不渲染成链接卡片）', () => {
+    const box = mount(
+      node('clipboard', CLIP_ID),
+      embed('clipboard', CLIP_ID, 'ready', {
+        title: '一段剪贴板',
+        format: 'markdown',
+        content: '可内联的正文',
+        payload: { href: 'javascript:alert(1)', title: '伪造标题' },
+      })
+    );
+    expect(box.querySelector('.site-embed-clipboard-inline')).not.toBeNull();
+    expect(box.querySelector('a.site-embed-clipboard')).toBeNull();
   });
 
   it('收藏夹条目里的 javascript: id 只作为文本，不成链接', () => {

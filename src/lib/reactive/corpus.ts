@@ -270,6 +270,17 @@ export interface CorpusTotals {
   refs: CorpusRefCounts;
   images: CorpusImageScan;
   errors: number;
+  /** CLI 的 --limit 截断。 */
+  limited?: boolean;
+  /** --compile 时的汇总（由 CLI 写入）。 */
+  compile?: {
+    ok: number;
+    fallback: number;
+    failed: number;
+    literalized: number;
+    formatMismatch: number;
+    byCode: Record<string, number>;
+  };
 }
 
 export interface CorpusReport {

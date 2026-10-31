@@ -23,9 +23,6 @@
 import type { LocalCompileOptions, LocalHostComponentSchema } from 'reactive-md';
 import type { ContentFormat } from '../content-format';
 
-/** 当前语法版本的**权威导出**（草稿 / 写 API 契约用；不要在前端另抄字符串）。 */
-export { LOCAL_SYNTAX_VERSION as REACTIVE_SYNTAX_VERSION } from 'reactive-md';
-
 /** 唯一允许作者/适配器产出的宿主标签。 */
 export const SITE_EMBED_TAG = 'site-embed';
 

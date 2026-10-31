@@ -333,13 +333,13 @@ function planReplacement(
     if (!resolved) return null;
     const tag = embedTag('clipboard', slot.ref);
     if (!tag) return null;
-    // 旧 Markdown 剪贴板保持「内联一层」的阅读能力；Reactive 剪贴板仍只给链接
-    // 卡片（不嵌套 Reactive 运行时）。子正文由宿主的旧 Markdown 管线单独渲染，
-    // 其字面表达式不会进入父文档绑定作用域。
+    // 内联与否由**子剪贴板格式**决定，与父文档是 Markdown 还是 Reactive 无关：
+    // 普通 Markdown 追加组件后 format 会自动升为 reactive，若这时改成链接卡片，
+    // 同一篇正文保存前后的阅读结果就变了。Reactive 子剪贴板仍只给链接卡片
+    // （不嵌套 Reactive 运行时）；Markdown 子正文由宿主单独渲染，字面表达式不会
+    // 进入父文档绑定作用域。
     const inline =
-      parentFormat === 'markdown' &&
-      resolved.format === 'markdown' &&
-      typeof resolved.content === 'string';
+      resolved.format === 'markdown' && typeof resolved.content === 'string';
     return { text: tag, data: makeEmbedData('clipboard', slot.ref, resolved, inline) };
   }
 

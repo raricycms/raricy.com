@@ -29,7 +29,7 @@
 // 浏览器预览共用同一份规则。
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { LOCAL_COMPONENT_NAMES } from 'reactive-md/authoring';
+import { SITE_REACTIVE_COMPONENT_NAMES } from './component-names';
 import { maskMarkdownCode } from '../favorite-refs';
 import { dataImageRef, MAX_DATA_IMAGE_CHARS, parseLegacyDataImage } from './data-image';
 import { isAllowedReactiveUrl } from './url-policy';
@@ -131,7 +131,7 @@ const LEGACY_UNKNOWN_TAGS = new Set([
  * 原样留给编译器 —— 把未知标签一律解包会把「新写的无效结构」静默变成能发布的
  * 普通正文，也会把合法组件拆掉。
  */
-const COMPONENT_TAGS = new Set<string>([...LOCAL_COMPONENT_NAMES, 'site-embed']);
+const COMPONENT_TAGS = new Set<string>([...SITE_REACTIVE_COMPONENT_NAMES, 'site-embed']);
 
 /** 与原生 HTML 同名、需要靠属性区分「组件还是旧标签」的标签。 */
 const HTML_COLLISION_TAGS = new Set([
