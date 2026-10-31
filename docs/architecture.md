@@ -81,7 +81,7 @@
 | `/audio` · `/audio/admin` · `/audio/guide` · `/api/audio/*` | page + API | 音频床 + 管理。**独立配额**（不吃图床那份 50MB），见 §6.6/§6.15 |
 | `/image/i/<id>` · `/auth/avatar/<id>` | rewrite | **不是路由**：历史版本的旧直链，由 `next.config.mjs` 的 `rewrites()` 映射到 `/api/images/<id>/raw`、`/api/avatar/<id>`。存量正文里写死的就是它们（见 `tests/e2e/legacy-urls.spec.ts`） |
 | `/story` · `/story/[...path]` | page | 故事合集/阅读 |
-| `/tool` · `/tool/<sub>` | page | 工具集（aes / base / hash / hex / html / qp / translate / url / cattca） |
+| `/tool` · `/tool/<sub>` | page | 工具集（aes / base / hash / hex / html / qp / translate / url / cattca）。**开发者工具**收在合集 `/tool/dev`（含 27 个新工具，见 §6.24）；`/tool/dev/<slug>` 是各工具子页 |
 | `/admin/*` · `/api/admin/*` | page + API | 管理后台（档位分页而异，见 §8） |
 | `/audit` · `/audit/[id]` | page | 审计日志公示 + 申诉。页面（母版 `src/app/audit/layout.tsx`）、`GET /api/audit` 与提交申诉**同为 core+** —— 「公示」的口径是**公示给站内成员**，不是对外透明。只列近 30 天、visibility='public' 的日志 |
 | `/admin/logs` | page | 审计日志**运维检索**（admin+，页面里 `requireAdmin()`）。与 `/audit` 是两个东西：看得到内部日志（`visibility='internal'`），且不设时间窗。**刻意不抹** `hideTarget`（匿名评论的当事人照常显示）—— 这正是它要 admin 档的原因（见 §6.16） |
@@ -2085,6 +2085,92 @@ Markdown 仍走旧管线。导出件展示的是**初始状态**（`REACTIVE_EXP
   管理员，因为输出是尚未灰度的渲染路径。
 - 样式在 `src/styles-scss/pages/blog/_reactive-md.scss`，只在
   `.reactive-document .md-document` 下覆写；详见 `docs/frontend-styles.md` §7.6。
+
+### 6.24 开发者工具合集（`/tool/dev`，2026-10）
+
+**定位**：把原先散在「编码 / 解码」「加密 / 安全」两组里的开发者工具，和新增的
+JSON / 正则 / Diff / Cron / JWT / 时间戳 / 二维码 / 条码 / 网络查询等，收进一个合集页
+（`/tool/dev`）。工具箱主页（`/tool`）的「开发者工具」区因此只剩**一张合集卡 + 四张
+常用工具卡**，不再平铺 —— 旧的 `CODEC` / `CRYPTO` 数组已删，避免第二份清单 drift。
+
+#### 结构：一份清单、一个外壳、每个工具一个路由
+
+| 件 | 位置 | 职责 |
+|---|---|---|
+| 清单（唯一真相源） | `src/lib/dev-tools/registry.ts` | 每条工具的 slug / 分类 / 图标名 / 标题 / 说明 / 关键词 / 标签；**零依赖**，客户端、服务端与 node 单测共用 |
+| 合集首页 | `src/app/tool/dev/page.tsx` + `DevToolsHub.tsx`（client） | 搜索、分类筛选、按分类分组的卡片 |
+| 子页外壳 | `src/app/tool/dev/DevToolShell.tsx` | 返回合集链接 + 标题与说明（从清单取）+ children |
+| 工具页 | `src/app/tool/dev/<slug>/page.tsx` + 客户端组件 | `metadata = devToolMetadata('<slug>')`，正文是纯客户端计算 |
+| 样式 | `pages/_tool-dev.scss` + 四个家族分片 | 外壳与共享原语在第一个文件；工具独有类名按家族分片 |
+| 纯逻辑 | `src/lib/dev-tools/*.ts` | 可被 node 单测直接 import；UI 只负责渲染与交互 |
+
+**两种 href**：新工具 `/tool/dev/<slug>`；既有七个工具（Base / Hex / URL 编码 / HTML 编码 /
+Quoted-printable / 哈希 / AES）`legacy: true`，仍指向 `/tool/<slug>` —— 合集只索引，不搬家，
+旧链接、文档与站外引用都不用改。`devToolHref()` 是唯一的拼 href 处。
+
+**静态对账**（`tests/unit/dev-tools-registry.test.ts`）双向检查：
+清单里的新工具必须有 `src/app/tool/dev/<slug>/page.tsx` 且页面用 `DevToolShell` +
+`devToolMetadata`；合集目录下多出来的工具页必须在清单里登记（否则「建了页面却没有入口」，
+页面 200、构建成功、就是没人找得到）。图标名到组件的映射写成
+`Record<DevToolIconName, LucideIcon>`，清单加图标名而首页没跟上时 tsc 报错。
+
+#### 数据边界（哪一端在算）
+
+除「网站响应头查看」外，全部工具在**浏览器**里计算：没有库表、没有迁移、没有审计、
+没有文件上传。需要外部数据的三个各自说明来源：
+
+- **DNS 查询**：浏览器直连 DNS over HTTPS（Cloudflare `cloudflare-dns.com/dns-query`，
+  失败回退 Google `dns.google/resolve`）。查询域名会发给这两家。
+- **IP 地址信息**：浏览器直连 `ipwho.is`。查询地址会发给该服务。
+- **网站响应头查看**：浏览器读不到跨源响应头，只能由本站服务端代发。它是**唯一**会代
+  用户向外网发起请求的路由：`GET /api/tool/http-headers?url=`。
+
+#### 响应头路由的安全边界（SSRF）
+
+判据在 `src/lib/dev-tools/net-guard.ts`（纯函数，单测覆盖），路由在
+`src/app/api/tool/http-headers/route.ts`。任一条不满足都拒绝，且**每一跳重定向都要重判**：
+
+- 仅 `http:` / `https:`；端口仅 80 / 443；URL 不许带用户名密码；
+  hostname 拒绝 `localhost` / `*.localhost` / `*.local` / `*.internal`。
+- hostname 用 `node:dns/promises.lookup(host, { all: true })` 解析出**全部**地址，
+  任一落在私网 / 回环 / 链路本地 / 保留段就拒绝（IPv4 与 IPv6 各自一张表；IP 字面量
+  直接判、不做 DNS）。防的是「拿本站当内网探测代理」。
+- 手动跟最多 3 次重定向，每跳重新校验；8 秒超时（`AbortController`）。
+- **只读响应头，不读 body**（`res.body?.cancel()`）；不返回 `set-cookie`。
+- 按 IP 限频 `RULES.toolHeaderFetchPerIp`（键 `tool-header:ip:<IP>`；取不到 IP 时跳过
+  该维度，不传占位串 —— 与 §6.5 的约定一致）。
+- **已知残余风险：DNS 重绑定**。校验用的是 `dns.lookup` 这一次解析的结果，而 `fetch` 会
+  自己再解析一次域名 —— 两步之间 DNS 若被换成内网地址，理论上能打到内网。这段窗口用
+  `fetch` 关不死（要改成「解析后直连 IP、自己写 Host」的 outbound client）。影响被后面
+  几道闸收窄：只回响应头、不读 body、8 秒超时、按 IP 20/分。别把这里当成「SSRF 已彻底
+  解决」—— 它挡住的是绝大多数直连私网写法，不是 DNS rebinding。
+
+#### 三个会静默出错的点
+
+- **`qrcode-generator` 默认是 Latin-1**：`stringToBytes` 是 `charCodeAt(i) & 0xff`，
+  中文会变成乱码二维码（图能生成、扫出来是错的）。工具侧必须覆盖成
+  `TextEncoder` 的 UTF-8 编码（`src/lib/dev-tools/qr.ts`）。
+- **本站时间戳口径与浏览器本地时区不是一回事**：时间戳 / Cron 工具一律用
+  `Intl.DateTimeFormat(..., { timeZone })` 或 `getUTC*` 展示，禁止 `toLocale*` 与本地
+  getter（`tests/unit/db-time-guard.test.ts` 静态扫全 `src/`）。Cron 的「下次执行」按
+  **站点时区 UTC+8** 计算并明确标注。
+- **浏览器 `fetch` 读不到跨源响应头**（没有 `Access-Control-Expose-Headers`），所以
+  响应头查看必须走服务端 —— 别把它「优化」成前端直连，那样浏览器只会拿到 CORS 报错，
+  而页面上看起来像「目标站没发头」。
+
+#### 依赖
+
+二维码识别用 `jsqr`（原本只在 devDependencies 里给 `tests/unit/poster.test.ts` 解码用，
+现在页面运行时要 import，已移入 `dependencies`）。二维码生成复用既有的
+`qrcode-generator`；YAML 转换复用既有的 `js-yaml`。**没有新增任何依赖。**
+
+#### 测试
+
+- `tests/unit/dev-tools-registry.test.ts`：清单 ↔ 路由目录双向对账。
+- `tests/unit/dev-tools-{data,code,time,net}.test.ts`：各家族纯逻辑（JSON / Diff / SQL /
+  代码格式化 / Cron / 子网 / 条码 / SSRF 判据…）。
+- `tests/e2e/tools.spec.ts`：合集入口、无站外链接、清单里每个新工具页可达，以及
+  **390px 窄屏下逐页没有横向溢出**（cron 的宏列表曾把整页顶出 25px，单测看不见）。
 
 ## 7. 数据流（4 个典型路径）
 
