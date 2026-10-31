@@ -61,7 +61,11 @@ const PAGES: { url: string; targets: string[]; gutter?: number }[] = [
   // ⚠️ 也**不能量 `.docs-back`**：它是个内容宽的 inline-flex 链接，右边缘不在容器边上
   //（这条用例量的是左右两条边，只有撑满容器的块级元素才同时成立）。
   { url: '/docs', targets: ['main h1', '.docs-hero__lede'] },
-  { url: docHref('guide/图床使用指南'), targets: ['.docs-content'] },
+  // 通用文档正文卡：取一份仍在 `/docs/<slug>` 的根文档。图床指南是**功能内指南**，
+  // 规范地址已是 /image/guide（GuideShell 的 `.guide__content`），不再走 `.docs-content`。
+  { url: docHref('frontend-styles'), targets: ['.docs-content'] },
+  // 规范地址的图床指南：正文卡由 GuideShell 渲染，量它的内容列（檐沟同源，仍是 16）。
+  { url: docHref('guide/图床使用指南'), targets: ['.guide__content'] },
   // 以下要 core+ / 管理员（登录用种子账号 e2e_admin）
   { url: '/admin', targets: ['main h1', '.admin-hero p'], gutter: 20 },
   { url: '/blog/upload', targets: ['main h1', '.blog-form-container'] },
