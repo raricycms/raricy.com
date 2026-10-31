@@ -1,5 +1,6 @@
-import { LOCAL_SYNTAX_VERSION, migrateLocalSource } from 'reactive-md';
+import { LOCAL_SYNTAX_VERSION } from 'reactive-md';
 import { prisma } from '../db';
+import { migrateLocalSourceWithSiteBudget } from './source-migration';
 import { isoWithOffset, nowForDb } from '../db-time';
 import { runAsBackendOps } from '../audit-context';
 import { buildReactiveSnapshotForWrite } from './publish';
@@ -52,7 +53,9 @@ export async function planReactiveV07Migration(): Promise<ReactiveV07Plan> {
         blockers.push({ kind: item.kind, id: item.id, codes: [alreadyApplied ? 'site.migration.legacy-after-completion' : 'site.migration.unknown-syntax'] });
         continue;
       }
-      const migrated = migrateLocalSource(item.source, { fromVersion: OLD_SYNTAX });
+      // 站点预算适配层：上游 migrateLocalSource 内置 10,000 节点预算，低于站点
+      // 配置。只有「上游只因预算失败」时才按站点选项复核并继续；其余阻塞原样返回。
+      const migrated = migrateLocalSourceWithSiteBudget(item.source, OLD_SYNTAX);
       if (!migrated.ok) {
         blockers.push({ kind: item.kind, id: item.id, codes: migrated.diagnostics.map((d) => d.code) });
         continue;

@@ -63,6 +63,54 @@ describe('ReactiveMD 0.7 正文迁移', () => {
     expect(await prisma.reactiveSourceMigration.count()).toBe(0);
   });
 
+  it('长文：站点预算内、上游默认预算外，仍能完整迁移并生成快照', async () => {
+    const user = await makeUser();
+    const blogId = await createBlog(user.id, {
+      title: '长文', content: '初始', description: '', visibility: 'internal', categoryId: null,
+    });
+    const longSource = `<!-- reactive-md: local-draft-2 -->\n\n${Array.from(
+      { length: 6000 },
+      (_, index) => `第 ${index} 段`
+    ).join('\n\n')}`;
+    await prisma.blogContent.update({
+      where: { blogId },
+      data: { format: 'reactive', syntaxVersion: 'local-draft-2', content: longSource },
+    });
+
+    const plan = await planReactiveV07Migration();
+    expect(plan.blockers).toEqual([]);
+    expect(plan.rows).toHaveLength(1);
+    await applyReactiveV07Migration(plan);
+    const row = await prisma.blogContent.findUniqueOrThrow({ where: { blogId } });
+    expect(row.syntaxVersion).toBe('local-draft-3');
+    expect(row.content).toContain('<!-- reactive-md: local-draft-3 -->');
+    expect(await prisma.reactiveSnapshot.count({ where: { kind: 'blog', contentId: blogId } })).toBe(1);
+  });
+
+  it('空库也能完成一次性标记，重复应用被拒', async () => {
+    const plan = await planReactiveV07Migration();
+    expect(plan).toMatchObject({ alreadyApplied: false, rows: [], blockers: [] });
+    await applyReactiveV07Migration(plan);
+    expect(await prisma.reactiveSourceMigration.count()).toBe(1);
+    await expect(applyReactiveV07Migration(plan)).rejects.toThrow('already applied');
+  });
+
+  it('准备之后新出现的旧版本行会让整批回滚', async () => {
+    const { blogId } = await oldSources();
+    const plan = await planReactiveV07Migration();
+    const user = await makeUser();
+    const clip = await createClip(user.id, { title: '后新增', content: '后新增正文' });
+    if (!clip.ok) throw new Error('clip fixture failed');
+    await prisma.clipText.update({
+      where: { clipId: clip.id },
+      data: { format: 'reactive', syntaxVersion: 'local-draft-2', content: '后新增 reactive' },
+    });
+
+    await expect(applyReactiveV07Migration(plan)).rejects.toThrow('Unmigrated reactive source');
+    expect((await prisma.blogContent.findUniqueOrThrow({ where: { blogId } })).syntaxVersion).toBe('local-draft-2');
+    expect(await prisma.reactiveSourceMigration.count()).toBe(0);
+  });
+
   it('后台迁移也覆盖归档作者的文章', async () => {
     const { user, blogId } = await oldSources();
     await prisma.user.update({ where: { id: user.id }, data: { archivedAt: nowForDb() } });
