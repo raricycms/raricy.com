@@ -1,6 +1,6 @@
 # ReactiveMD 全量应用与编辑器重整计划
 
-> **状态：方案完成，待实施。校对日期：2026-11-01。**
+> **状态：部分交付（后端统一管线 / P0-P3 / P5 已实施；P4 编辑器由独立会话实施中；P6 生产发布待外层验收）。校对日期：2026-11-01。**
 > 本文安排 PR #20 的修复与合并、Markdown 兼容补齐、博客和云剪贴板全量使用
 > ReactiveMD，以及共用编辑器的工具栏重整。编写本计划不代表已修复、合并或发布功能。
 > 后续目标以本文为准；`docs/plan/reactive-md-migration-plan.md` 保留早期接入设计与
@@ -401,3 +401,95 @@ P1 新增测试以实际合并文件为准，不在测试里复制一套实现�
 
 实施记录追加在本文后续章节：每项记录提交、实际差异、验证命令、结果和剩余限制。
 在这些检查全部完成之前，保持本计划“待实施”或“部分交付”的准确状态。
+
+---
+
+## 实施记录（2026-11-01）
+
+> 本轮由 Claude Code 在隔离 worktree 实施；生产发布动作尚未执行（等外层验收）。
+> 本节只记录**已实际发生的**提交、验证与限制，不把待办写成完成。
+
+### P0：范围、夹具与只读语料命令
+
+- 匿名夹具落在 `tests/unit/reactive-legacy-compat.test.ts`、
+  `reactive-detect-format.test.ts`、`reactive-mixed-content.test.ts`、
+  `reactive-source-migration.test.ts` 与 e2e `tests/e2e/reactive-render.spec.ts`；
+  覆盖长文预算、HTML 属性 / 旧标签、`</br>` / 多余 `</details>` / `<TAB>`、
+  未配对数学、data 位图（含 >8KB）、整页 HTML、代码 / 缩进代码保护、
+  draft-2 动态约束、未知普通标签、无缝混写。
+- 只读语料命令（**不通过 Prisma、不写 WAL**）：
+
+  ```bash
+  npm run reactive:corpus -- --db "C:\绝对路径\db.db" \
+    --out "%TEMP%\reactive-corpus-20261101.json" --compile
+  ```
+
+  `node:sqlite` 以 `readOnly:true` 打开；统一 compat + 生产预算实际编译；报告只有
+  ID / 类别 / 计数 / 诊断码，不含正文、标题、作者。`--limit N` 可试跑。
+  不展开业务引用（剪贴板 / 投票 / 收藏夹），引用边界由静态扫描单列。
+- 性能脚本：`npm run reactive:measure -- --scenario <name> --budget <n> --samples N`
+  或 `--run-all --out <ndjson>`；每场景独立子进程 + 超时。匿名实测（200k）：
+  普通段落最终 6,935 节点 / 冷 129ms；混合 HTML+数学 compat 主线程约 25ms；
+  编辑器 `analyze()` 主线程约 0.07ms/次（编译与 compat 在 worker）。
+
+### P1：PR #20 修复与集成
+
+- 依赖升级到 `reactive-md@0.7.0` / `local-draft-3`（PR 原提交 `8bcec563`）。
+- 修复上游 `migrateLocalSource` 默认 10,000 节点预算：`source-migration.ts` 只在
+  **全部错误均为 `local.budget`** 时用站点选项复核并完成元数据迁移；
+  draft-2 新激活 `<external>`、动态 `min/max/required` 与「列已是当前版本但正文声明
+  旧版本」仍整批阻塞。
+- 本地合并保留 PR 祖先：merge `9bbf38bc`；后续修复提交 `58399ce1`、
+  `54822f65`、`2b5e437c`、`96f94bab`。
+- 迁移事务仍是「原文 + 快照 + 一次性标记」同事务；补齐空库、重复执行、准备后
+  新增旧行、长文与归档作者用例。
+- 发布顺序 / 回滚 / 只读预检 / 快照回填写入 `docs/deploy.md`。
+
+### P2：兼容与预算
+
+- `legacy-compat.ts` + `data-image.ts` + `url-policy.ts`：等长改写、脚本 / iframe /
+  SVG 整块移除、旧标签解包、`</br>`、多余 `</details>`、未配对数学、转义 / 链接目标 /
+  属性 URL 保护、缩进代码保护；历史 data 位图改为宿主 `image` 组件（上游图片闸门
+  不接受 `data:`，不能只放宽 urlPolicy）。
+- 审查的 4 个 P1 + 确定 P2 已在 `96f94bab` 修复；未知普通标签不再仅凭
+  `local.component.unknown` 判成增强语法。
+- 预算按 0.7.0 实测调到 `REACTIVE_MAX_SYNTAX_NODES = 50_000`；最坏 200k 高结构
+  正文冷编译约 3s，因此正常阅读优先走持久快照，编辑器逐键走 worker。
+- 软换行统一：`markdownBreaks: true` 对 Markdown 与 Reactive 都生效；追加组件 /
+  format 升级前后结构回归见 `reactive-mixed-content.test.ts` 与 e2e。
+
+### P3：博客与云剪贴板统一渲染
+
+- `read-render.ts` 统一：默认 `reactive`；`REACTIVE_MD_MODE=off` 只让 Markdown 回
+  旧引擎；reactive 永不进旧解析器。快照与现编译产物都能给 `staticFirst` 渲染。
+- Markdown 与 reactive 都在发布时生成同版本快照；快照签名纳入兼容层版本。
+- 剪贴板语义：Markdown 子剪贴板在成员视图内联一层（只读、external 引用口径、
+  不递归）；Reactive 子剪贴板仍链接卡片；external 全部保留字面量。
+- 博客 / 剪贴板详情页、`ClipDetailClient`、导出接线完成；`/reactive-preview/[id]`
+  临时管理员路由已移除。
+
+### P4：共用编辑器
+
+- 后端提供 `detect-format.ts`（三态、诊断、syntaxVersion）、`format-observer.ts`
+  （worker + revision）、`compile.worker.ts`（worker 内 compat）、稳定错误码；
+  契约在 `TEMP/raricy-reactive-frontend-contract-20261101.md`，提交 `96f94bab`。
+- 四入口工具栏、移除手动格式选择、草稿 / 保存接线由独立前端会话实施；本轮
+  未修改其归属文件。前端提交合入后由本会话统一跑测试与构建。
+
+### P5：搜索、摘要、导出与文档
+
+- `blog-excerpt.ts` 对两种格式都从编译 AST 取文本；`public-blog-search.ts` 过兼容层，
+  `PUBLIC_SEARCH_VERSION` 升为 `public-body/2`。
+- 导出统一走 `renderStaticMarkup`，静态初始状态；不依赖预览 DOM。
+- `architecture.md` §6.23、`deploy.md`、`frontend-styles.md` §7.6、编辑器 / 云剪贴板 /
+  内容引用指南与 README 已更新。
+
+### P6：验证与发布
+
+- 已执行：`npm run typecheck`、`npm run build`、相关 vitest、`reactive-render` e2e
+  （含无 JS、format mismatch、data 图真实渲染、混写保存重开）；完整日志在
+  `%TEMP%\raricy-*.log`。
+- 全量 vitest 首轮 282 文件 / 5,614 用例中 6 条因旧断言失败，已修正；随后重跑结果见
+  进度文件。构建后 e2e 一次一个 spec，桌面 / 手机涉及布局的 spec 单独跑。
+- 生产发布、真实本地库语料扫描、真实浏览器截图与隔离验收账号由外层执行；本轮
+  不 push、不远端 merge、不部署业务库。

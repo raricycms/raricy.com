@@ -632,6 +632,49 @@ journalctl -u raricy-next -f    # 观察启动日志
 - `../README.md` —— 快速开始
 - `../CLAUDE.md` —— 关键约定
 
+### ReactiveMD 0.7 / 统一渲染的发布顺序
+
+统一管线后 **Markdown 与 reactive 都** 会编译并写同版本快照（迁移 36/40）。发布窗口
+按下面顺序执行；任一步失败就停，不启动版本不匹配的新服务。
+
+```bash
+# 0) 预检（只读，不碰 Prisma）：生产库副本 / 停写后的快照上跑
+node --experimental-sqlite node_modules/vite-node/vite-node.mjs --config vitest.config.ts   scripts/reactive-corpus-report.mjs --db /绝对路径/db.db   --out "$TMPDIR/reactive-corpus.json" --compile
+
+# 1) 安装锁定依赖 + 生成 Prisma client
+npm ci && npx prisma generate
+
+# 2) 结构迁移（手写 runner；不要用 prisma migrate）
+DATABASE_URL="file:/绝对路径/db.db" npm run migrate -- status
+DATABASE_URL="file:/绝对路径/db.db" npm run migrate -- up
+DATABASE_URL="file:/绝对路径/db.db" npm run migrate -- verify
+
+# 3) 旧 Reactive 语法版本迁移：先预检，确认 blockers 为空
+DATABASE_URL="file:/绝对路径/db.db" npm run reactive:migrate-v07
+# 再应用（原文 + 快照 + 一次性标记同一事务；中途失败整批回滚）
+DATABASE_URL="file:/绝对路径/db.db" npm run reactive:migrate-v07 -- --apply
+
+# 4) 历史编译快照回填（可中断重跑；默认 dry-run，--apply 才写）
+DATABASE_URL="file:/绝对路径/db.db" npm run reactive:backfill -- --limit 200
+DATABASE_URL="file:/绝对路径/db.db" npm run reactive:backfill -- --apply
+
+# 5) 公开搜索索引重建（PUBLIC_SEARCH_VERSION 变化后必须）
+DATABASE_URL="file:/绝对路径/db.db" npm run search:rebuild
+```
+
+- **停写 + 一致备份**：SQLite 备份必须包含 WAL 一致性（`sqlite3 db.db ".backup ..."`，
+  或先停服再拷贝 `db.db`/`-wal`/`-shm`）。正文 / 图床 / 音频 / 快照同一时点。
+- `reactive:migrate-v07` 的 blockers：未知语法版本、新激活 `<external>`、draft-2 动态
+  `min/max/required`、列已是当前版本但正文声明旧版本。全部解决后再 `--apply`；
+  一次性标记写入后不要手工重跑。
+- `reactive:backfill` 只补缺失的快照；已有同内容版本行跳过。Reactive 旧版本未迁移时
+  会报 blocker，不会擅自改写。
+- **回滚**：代码与数据必须成对恢复。只恢复代码 / 关闭交互 / 读旧 AST 都不会撤销已写入
+  的新语法或旧语法迁移。恢复备份点之后的新写入如何保留 / 重放，必须在演练中明确，
+  不能无记录覆盖。Markdown 的持久快照是可重建缓存，不是独立备份。
+- 发布后观察 `[reactive-read]` / `[reactive-slow]` 的结构化字段（renderer、reason、
+  耗时、缓存命中、诊断码），不记录正文。
+
 ### 公开正文索引发布
 
 应用迁移后、切换新服务前，对同一目标库执行回填：

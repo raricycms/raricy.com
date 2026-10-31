@@ -670,9 +670,12 @@ ReactiveMD 正文由上游 `reactive-md/screen.css` 提供基础版式，站点�
 - **375px**：字号与标题尺寸下调，表格在 `.md-table-scroll` 内横向滚动（表格自身
   `min-width`），整页不出现横向溢出。
 - **打印**：上游 `screen.css` **不含 `@page`**，`print.css` 含；`ReactiveDocument.tsx`
-  当前同时引入两者。站点打印规则隐藏交互控件（`.vote-embed-submit`、
-  `.vote-embed-link`、`.site-embed--audio`），保留静态正文与投票结果。只想要屏幕
-  样式时可以只引 `screen.css`，是否接受上游的 `@page` 由宿主决定。
+  只引 `screen.css`，打印规则住站点 SCSS（避免全局 `@page` 连坐整站打印）。
+  打印隐藏交互控件（`.vote-embed-submit`、`.vote-embed-link`），保留静态正文与投票结果。
+- **引用外壳**：`.site-embed--image`（历史 data 位图的宿主 `<img>`）与
+  `.site-embed-clipboard-inline`（Markdown 子剪贴板的一层内联）都只做宽度 / 圆角 /
+  外壳间距；内部正文仍由 `.reactive-document` 或子剪贴板自己的 Markdown 外壳负责。
+  不要把 `.blog-content-container` 的卡片底色 / 内距复制到这两个选择器上。
 
 ## 8. 实现约定与验收
 

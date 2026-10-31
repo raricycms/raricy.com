@@ -19,11 +19,11 @@ Next.js 15 + Prisma + SQLite 主站，自有 `instance/` 数据目录；实时�
   独立实时进程，承载「测试」合集中的 Wand demo；主站签发一次性票据并复核账号权限。
   共用主站 `.env*`，内部凭据自动生成；`npm run dev` / `npm start` 同时管理两个进程。
   ATÅMAS 不依赖它。部署反代见 `docs/realtime.md`。
-- **前端**：服务端 / 客户端组件混用；Markdown 仍由 marked + DOMPurify + highlight.js 渲染
-- **ReactiveMD**：精确依赖 `reactive-md@0.6.1`（博客 / 剪贴板正文的第二种格式与渲染器，
-  公式由 KaTeX 排版并随包提供离线字体，见 `docs/architecture.md` §6.23）。
-  灰度开关 `REACTIVE_MD_MODE=off|shadow|on`（默认
-  `off`）与 `REACTIVE_MD_PERCENT=0..100`（默认 `0`）；默认不改变现有渲染路径
+- **前端**：服务端 / 客户端组件混用；评论 / 讨论 / 故事仍用 marked + DOMPurify + highlight.js
+- **ReactiveMD**：精确依赖 `reactive-md@0.7.0`（`local-draft-3`）。博客与云剪贴板
+  **默认全部**走统一引擎，Markdown 与 ReactiveMD 都编译为同一份 `LocalDocument`；
+  正常阅读 SSR 静态首屏 + 水合交互。`REACTIVE_MD_MODE=off` 只是事故回退（仅 Markdown
+  回旧引擎），百分比灰度与逐篇 override 不再参与决策。见 `docs/architecture.md` §6.23
 
 组件与子系统的关系见 `docs/architecture.md`。
 
@@ -72,6 +72,11 @@ npm run dev                              # http://localhost:3000
 
 公开正文搜索：迁移后执行 `npm run search:rebuild` 回填历史文章；`npm run search:benchmark` 在系统临时目录验证合成语料性能。
 
+ReactiveMD：`npm run reactive:migrate-v07` 预检旧语法迁移（加 `--apply` 才写库）；
+`npm run reactive:backfill` 回填历史编译快照（默认 dry-run）；
+`npm run reactive:corpus -- --db <sqlite> --out <json> --compile` 只读扫描语料并实际编译；
+`npm run reactive:measure` 逐场景实测节点预算。发布顺序见 `docs/deploy.md`。
+
 | 命令 | 作用 |
 |------|------|
 | `npm run dev` / `start` | 本地开发 / 生产启动，主站与实时服务共同启停 |
@@ -82,6 +87,10 @@ npm run dev                              # http://localhost:3000
 | `npm run e2e` | 端到端（直接跑 Playwright，**不**自动 build —— 见下方警告） |
 | `npm run e2e:ci` | 同上，但先 build（CI / 全新环境用） |
 | `npm run probe:page -- /路径` | **看一眼**某个页面（起真浏览器 → 打开 → 可选等选择器 / 截图 / 打印 HTML / 打印 console 报错）。要登录加 `--as core`。**不做断言、不算测试** —— 要断言就写进 `tests/e2e/*.spec.ts` |
+| `npm run reactive:migrate-v07` | 旧 Reactive 语法版本预检 / 迁移（`--apply` 同事务写原文 + 快照 + 标记） |
+| `npm run reactive:backfill` | 历史编译快照回填（默认 dry-run，`--apply` 写库） |
+| `npm run reactive:corpus` | 只读语料扫描；`--compile` 用统一 compat + 生产预算实际编译 |
+| `npm run reactive:measure` | 逐场景 / 逐预算实测，带子进程超时 |
 | `npm run smoke` | 只读冒烟（登录态/列表/详情/图床/**音频床**/CSRF/指南页等，**不含签到** —— 打的是生产站，不做任何写操作。条数不写死在这儿：加到脚本里的检查会自动出现在输出里） |
 | `npm run diagnose` | 部署自检（版本 / .env / 库 / 密钥）；报红就别往下走 |
 | `npm run check:secrets` | 密钥与生产数据是否进过版本库 |
