@@ -472,7 +472,7 @@ P1 新增测试以实际合并文件为准，不在测试里复制一套实现�
 
 - 后端提供 `detect-format.ts`（三态、诊断、syntaxVersion）、`format-observer.ts`
   （worker + revision）、`compile.worker.ts`（worker 内 compat）、稳定错误码；
-  契约在 `TEMP/raricy-reactive-frontend-contract-20261101.md`，提交 `96f94bab`。
+  契约在 `%TEMP%` 下的 raricy-reactive-frontend-contract-20261101.md，提交 `96f94bab`。
 - 四入口工具栏、移除手动格式选择、草稿 / 保存接线由独立前端会话实施；本轮
   未修改其归属文件。前端提交合入后由本会话统一跑测试与构建。
 
@@ -481,7 +481,7 @@ P1 新增测试以实际合并文件为准，不在测试里复制一套实现�
 - `blog-excerpt.ts` 对两种格式都从编译 AST 取文本；`public-blog-search.ts` 过兼容层，
   `PUBLIC_SEARCH_VERSION` 升为 `public-body/2`。
 - 导出统一走 `renderStaticMarkup`，静态初始状态；不依赖预览 DOM。
-- `architecture.md` §6.23、`deploy.md`、`frontend-styles.md` §7.6、编辑器 / 云剪贴板 /
+- `../architecture.md` §6.23、`../deploy.md`、`../frontend-styles.md` §7.6、编辑器 / 云剪贴板 /
   内容引用指南与 README 已更新。
 
 ### P6：验证与发布

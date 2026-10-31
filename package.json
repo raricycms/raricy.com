@@ -46,7 +46,8 @@
     "search:rebuild": "tsx scripts/rebuild-public-search.mts",
     "search:benchmark": "tsx scripts/benchmark-public-search.mts",
     "reactive:measure": "vite-node --config vitest.config.ts scripts/reactive-budget-measure.mts",
-    "reactive:backfill": "vite-node --config vitest.config.ts scripts/reactive-backfill-snapshots.ts"
+    "reactive:backfill": "vite-node --config vitest.config.ts scripts/reactive-backfill-snapshots.ts",
+    "acceptance:seed": "vite-node --config vitest.config.ts scripts/seed-acceptance.mts"
   },
   "dependencies": {
     "@codemirror/commands": "6.11.1",
