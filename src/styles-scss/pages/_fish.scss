@@ -2,8 +2,39 @@
 @use '../abstracts/variables' as *;
 
 // ═══════════════════════════════════════════════════════
-//  余额卡片
+//  账户页（/fish）
+//
+//  宽屏：左「余额 + 三个主操作」、右「更多」入口列表；窄屏单列、主操作在前。
+//  `.fish-card__actions` 的子元素被 e2e 逐个断言（在视口内、高 ≥44px、不横向溢出），
+//  所以三个主操作必须留在这一个容器里，次级入口放进 `.fish-more`。
 // ═══════════════════════════════════════════════════════
+
+.fish-page {
+  padding-top: $space-4;
+  padding-bottom: $space-8;
+}
+
+// 转账：页面外壳走全站阶梯，只有那张表单收窄 —— 一行「收款人 / 金额 / 确认」
+// 铺满 1140 会让字段长得像两列不相关的输入。左对齐，与抬头同一条左边缘。
+.fish-transfer {
+  .market-card {
+    max-width: 560px;
+    margin-left: 0;
+    margin-right: 0;
+  }
+}
+
+.fish-account {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: $space-4;
+  align-items: start;
+
+  @media (min-width: 768px) {
+    grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+    gap: $space-6;
+  }
+}
 
 .fish-card {
   background: var(--color-background-card);
@@ -11,33 +42,17 @@
   padding: $space-8;
   /* 常态不投影 —— 全站卡片一律改用「卡片色深浅」划分层级。本卡不是整卡可点的
      （卡内只有几颗 Link），所以只去阴影，不在 hover 上加品牌蓝光晕。 */
-  margin-bottom: $space-6;
-  max-width: 480px;
-  margin-left: auto;
-  margin-right: auto;
-  text-align: center;
 
   @media (max-width: 768px) {
-    padding: $space-6;
+    padding: $space-6 $space-4;
     border-radius: 20px;
   }
-}
-
-.fish-card__header {
-  margin-bottom: $space-6;
-}
-
-.fish-card__title {
-  margin: 0;
-  font-size: 1.5rem;
-  font-weight: 700;
-  color: var(--color-text-primary);
 }
 
 .fish-card__balance {
   display: flex;
   flex-direction: column;
-  align-items: center;
+  align-items: flex-start;
   gap: $space-2;
   margin-bottom: $space-4;
   padding: $space-6;
@@ -50,25 +65,36 @@
   font-weight: 800;
   color: var(--color-brand-primary);
   line-height: 1;
+  overflow-wrap: anywhere;
+
+  @media (max-width: 420px) {
+    font-size: 2.5rem;
+  }
 }
 
 .fish-card__balance-label {
-  font-size: 1rem;
+  font-size: 0.9rem;
   color: var(--color-text-secondary);
   font-weight: 500;
-}
-
-.fish-card__today {
-  font-size: 0.875rem;
-  color: var(--color-success-primary);
-  margin-bottom: $space-4;
 }
 
 .fish-card__actions {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: $space-2;
-  margin-bottom: $space-4;
+
+  // 窄屏：主操作「转账」独占一行，其余两颗并排。
+  > :first-child {
+    grid-column: 1 / -1;
+  }
+
+  @media (min-width: 576px) {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+
+    > :first-child {
+      grid-column: auto;
+    }
+  }
 }
 
 .fish-card__link {
@@ -86,49 +112,112 @@
   border-radius: $radius-max;
   transition: background-color 0.2s;
 
+  svg {
+    flex: none;
+    width: 18px;
+    height: 18px;
+  }
+
   &:hover {
     background: var(--color-brand-secondary);
   }
 
-  // 主行动（鱼干市场）：归「最高级」档。与同排的「查看流水」（次级：无底色、
-  // 次级文字色）仍然分得开 —— 主按钮空闲就有品牌浅底。
-  // 原先它是常驻实底白字 + hover 只提亮 1.1 并上浮 1px。
+  // 主行动（转账）：归「最高级」档，空闲就有品牌浅底，与同排次级操作分得开。
   &--primary {
     @include m.btn-primary;
     font-weight: 600;
   }
 }
 
-.fish-card__info {
-  font-size: 0.875rem;
-  color: var(--color-text-secondary);
-  padding: $space-4;
-  background: var(--color-background-highlight);
-  border-radius: $radius-large;
-  line-height: 1.6;
+// 次级业务入口（商城 / 练手盘）。统计与交易记录归练手盘内部。
+.fish-more {
+  background: var(--color-background-card);
+  border-radius: 30px;
+  padding: $space-6;
 
-  p {
-    margin: 0;
-
-    & + p {
-      margin-top: $space-2;
-    }
+  @media (max-width: 768px) {
+    padding: $space-4;
+    border-radius: 20px;
   }
 }
 
-/* 账户中的次级业务入口；统计与交易记录归练手盘内部。 */
-.fish-card__info-link {
-  display: inline-flex;
-  align-items: center;
-  gap: $space-2;
-  min-height: 44px;
-  color: var(--color-brand-primary);
+// 单独成页的任务选择（旧市场地址）：不跟着宽屏铺满。
+.fish-more--narrow {
+  max-width: 560px;
+}
+
+.fish-more__title {
+  margin: 0 0 $space-2;
+  padding: 0 $space-2;
+  font-size: 0.85rem;
   font-weight: 600;
+  color: var(--color-text-secondary);
+}
+
+.fish-more__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: $space-1;
+}
+
+.fish-entry {
+  display: flex;
+  align-items: center;
+  gap: $space-3;
+  min-height: 56px;
+  padding: $space-2 $space-3;
+  border-radius: $radius-large * 2;
+  color: var(--color-text-primary);
   text-decoration: none;
+  transition: background-color 0.2s ease;
 
   &:hover {
-    text-decoration: underline;
+    background: var(--color-brand-secondary);
   }
+
+  &:hover .fish-entry__icon,
+  &:hover .fish-entry__chevron {
+    color: var(--color-brand-primary);
+  }
+}
+
+.fish-entry__icon {
+  flex: none;
+  display: inline-flex;
+  color: var(--color-text-secondary);
+
+  svg {
+    width: 22px;
+    height: 22px;
+  }
+}
+
+.fish-entry__text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.fish-entry__name {
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.fish-entry__desc {
+  font-size: 0.8rem;
+  color: var(--color-text-secondary);
+  line-height: 1.4;
+}
+
+.fish-entry__chevron {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  color: var(--color-text-tertiary);
 }
 
 // ═══════════════════════════════════════════════════════
@@ -138,12 +227,14 @@
 .fish-filter-bar {
   display: flex;
   gap: $space-2;
-  margin-bottom: $space-6;
+  margin-bottom: $space-4;
   flex-wrap: wrap;
 }
 
 .filter-btn {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  min-height: 36px;
   padding: $space-2 $space-4;
   font-size: 0.85rem;
   font-weight: 500;
@@ -158,9 +249,13 @@
     color: var(--color-brand-primary);
   }
 
+  // 当前筛选项：与全站切页档一致（品牌淡底 + 品牌字），不铺实底 ——
+  // 实底在这里会跟「转账」那颗主按钮抢视线。
+  &.is-active,
   &.active {
-    background: var(--color-brand-primary);
-    color: #fff;
+    background: var(--color-brand-secondary);
+    color: var(--color-brand-primary);
+    font-weight: 600;
   }
 }
 

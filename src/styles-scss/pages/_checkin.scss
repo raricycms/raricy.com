@@ -83,6 +83,26 @@
   }
 }
 
+// ---- 页面版式：今日任务为主、排行榜为侧栏 ----
+
+.checkin-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: $space-4;
+  align-items: start;
+
+  // 桌面才分栏；窄屏保持「任务 → 排行」的阅读顺序。
+  @media (min-width: 900px) {
+    grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+    gap: $space-6;
+  }
+}
+
+.checkin-layout__main,
+.checkin-layout__side {
+  min-width: 0;
+}
+
 // ---- 签到卡片 ----
 
 .checkin-card {
@@ -90,8 +110,7 @@
   border-radius: 30px;
   padding: $space-8;
   // 卡片去常态阴影（黑阴影退役）：层级由卡片色深浅承担，不靠投影。
-  margin-bottom: $space-6;
-  text-align: center;
+  text-align: left;
 
   @media (max-width: 768px) {
     padding: $space-6;
@@ -103,16 +122,16 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: $space-3;
   margin-bottom: $space-6;
 
   @media (max-width: 768px) {
-    flex-direction: column;
-    gap: $space-3;
+    flex-wrap: wrap;
   }
 }
 
 .checkin-card__greeting {
-  font-size: 1.25rem;
+  font-size: 1.15rem;
   font-weight: 700;
   color: var(--color-text-primary);
 }
@@ -123,6 +142,15 @@
   background: var(--color-background-subtle);
   padding: 2px 12px;
   border-radius: $radius-max;
+}
+
+// 今日任务行：签到按钮与「查看今日一言」并排；签到后退成状态条，今日一言接任主操作。
+.checkin-card__task {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: $space-3;
+  margin-bottom: $space-6;
 }
 
 // ---- 签到按钮（高级动画版） ----
@@ -144,7 +172,6 @@
   background: var(--color-brand-secondary);
   color: var(--color-brand-primary);
   transition: background 0.25s ease, color 0.25s ease, transform 0.2s ease, box-shadow 0.25s ease;
-  margin-bottom: $space-6;
   overflow: visible;
   isolation: isolate;
 
@@ -208,10 +235,15 @@
     animation: btnPulse 1s ease;
   }
 
-  // 已完成状态
+  // 已完成状态：从按钮退成一枚状态条 —— 待办已经没有了，别让它继续占着主操作的位置。
   &--done {
-    background: var(--color-background-subtle);
-    color: var(--color-text-secondary);
+    width: auto;
+    gap: 0;
+    padding: 8px 16px;
+    font-size: 0.9rem;
+    font-weight: 600;
+    background: var(--color-success-secondary);
+    color: var(--color-success-primary);
     box-shadow: none;
 
     &::before {
@@ -257,7 +289,7 @@
 
 .checkin-stats {
   display: flex;
-  justify-content: center;
+  justify-content: flex-start;
   gap: $space-2;
 }
 
@@ -294,16 +326,16 @@
 .checkin-leaderboard {
   background: var(--color-background-card);
   border-radius: 30px;
-  padding: $space-8;
+  padding: $space-6;
 
   @media (max-width: 768px) {
-    padding: $space-6;
+    padding: $space-4;
     border-radius: 20px;
   }
 }
 
 .checkin-leaderboard__title {
-  font-size: 1.2rem;
+  font-size: 1.05rem;
   font-weight: 700;
   margin: 0 0 $space-4;
   color: var(--color-text-primary);

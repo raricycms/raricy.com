@@ -3,7 +3,7 @@ import { Vote } from 'lucide-react';
 import { requireCoreUser } from '@/lib/guard';
 import { listVotes } from '@/lib/vote-service';
 import { VoteRedirect, VoteCopyButton } from './VoteMenuClient';
-import { GuidePill } from '@/app/components/MarkdownGuide';
+import PageHeader from '@/app/components/PageHeader';
 
 export const dynamic = 'force-dynamic';
 
@@ -12,17 +12,20 @@ export default async function VoteListPage() {
   const votes = await listVotes(user.id);
 
   return (
-    <div className="vote-page">
-      <h1 className="vote-title">投票箱</h1>
+    <div className="container vote-list-page">
+      <PageHeader
+        title="投票箱"
+        actions={
+          <>
+            <Link href="/vote/guide" className="page-header__action">使用指南</Link>
+            <Link href="/vote/create" className="button button-primary">创建投票</Link>
+          </>
+        }
+      />
 
-      <div className="vote-navigation">
+      <div className="vote-access">
+        <span className="vote-access__label">按 ID 打开投票</span>
         <VoteRedirect />
-        <div className="vote-navigation__actions">
-          <GuidePill href="/vote/guide" />
-          <Link href="/vote/create" className="action-button primary">
-            创建投票
-          </Link>
-        </div>
       </div>
 
       {votes.length > 0 ? (
@@ -56,7 +59,7 @@ export default async function VoteListPage() {
             <Vote />
           </div>
           <div className="vote-list__empty-text">还没有投票</div>
-          <div className="vote-list__empty-subtext">点击上方按钮创建你的第一个投票。</div>
+          <div className="vote-list__empty-subtext">点击「创建投票」开始。</div>
         </div>
       )}
     </div>

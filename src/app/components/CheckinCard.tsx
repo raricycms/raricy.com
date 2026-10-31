@@ -152,19 +152,28 @@ export default function CheckinCard({
         <span className="checkin-card__date numeric">{today}</span>
       </div>
 
-      <button
-        className={btnClass}
-        onClick={doCheckinFlow}
-        disabled={done || btnPhase === 'loading' || btnPhase === 'success'}
-      >
-        <span
-          className={
-            'checkin-button__particles' +
-            (btnPhase === 'success' ? ' checkin-button__particles--active' : '')
-          }
-        />
-        {btnText}
-      </button>
+      {/* 今日任务与今日一言并排：未签到时只有签到一颗；签到后签到按钮退成状态，
+          今日一言变成这一块的主操作 —— 原先三颗按钮竖着堆在中轴上。 */}
+      <div className="checkin-card__task">
+        <button
+          className={btnClass}
+          onClick={doCheckinFlow}
+          disabled={done || btnPhase === 'loading' || btnPhase === 'success'}
+        >
+          <span
+            className={
+              'checkin-button__particles' +
+              (btnPhase === 'success' ? ' checkin-button__particles--active' : '')
+            }
+          />
+          {btnText}
+        </button>
+        {done && (
+          <button ref={quoteTrigger} type="button" className="daily-quote-primary" onClick={() => setQuoteOpen(true)}>
+            查看今日一言
+          </button>
+        )}
+      </div>
 
       {/* 统计只有签到天数一格 */}
       <div className="checkin-stats">
@@ -176,9 +185,6 @@ export default function CheckinCard({
         </div>
       </div>
 
-      {done && <div className="checkin-quote-links">
-        <button ref={quoteTrigger} type="button" className="daily-quote-primary" onClick={() => setQuoteOpen(true)}>查看今日一言</button>
-      </div>}
       {quoteOpen && <DailyQuoteModal onClose={() => setQuoteOpen(false)} returnFocus={quoteTrigger} />}
     </div>
   );

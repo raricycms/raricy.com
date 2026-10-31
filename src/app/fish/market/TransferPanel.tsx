@@ -98,8 +98,10 @@ export default function TransferPanel({ balance: initialBalance }: { balance: nu
       <div className="market-card">
         <div className="market-card__head">
           <span className="market-card__balance-label">我的余额</span>
-          <span className="market-card__balance-number numeric">{fmtFish(balance)}</span>
-          <span className="market-card__balance-unit">小鱼干</span>
+          <span className="market-card__balance-value">
+            <span className="market-card__balance-number numeric">{fmtFish(balance)}</span>
+            <span className="market-card__balance-unit">小鱼干</span>
+          </span>
         </div>
 
         <div className="market-field">

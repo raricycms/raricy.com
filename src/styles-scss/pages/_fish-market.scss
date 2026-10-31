@@ -35,33 +35,51 @@
   }
 }
 
-.market-card__head {
+// 余额摘要只在转账面板用到（.market-card__head 的唯一消费者）。作用域收在
+// `.fish-transfer` 下 —— 收银台 / 收款页共用 .market-card 的外壳，不该跟着变。
+// 版式：标签一行、数值与单位一行。窄屏下三样并排会把「我的余额」「小鱼干」
+// 逐字折断，且大号数字夹在中间；分层后标签与单位都 nowrap，长余额只在数值这一格内换行。
+.fish-transfer .market-card__head {
   display: flex;
-  align-items: baseline;
-  justify-content: center;
-  gap: $space-2;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: $space-1;
   padding: $space-4;
   margin-bottom: $space-6;
   background: var(--color-background-subtle);
   border-radius: $radius-large;
 }
 
-.market-card__balance-label {
+.fish-transfer .market-card__balance-label {
   font-size: 0.9rem;
   color: var(--color-text-secondary);
+  white-space: nowrap;
 }
 
-.market-card__balance-number {
+.fish-transfer .market-card__balance-value {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: $space-1 $space-2;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.fish-transfer .market-card__balance-number {
+  max-width: 100%;
   font-size: 2rem;
   font-weight: 800;
-  line-height: 1;
+  line-height: 1.1;
   color: var(--color-brand-primary);
   font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
 }
 
-.market-card__balance-unit {
+.fish-transfer .market-card__balance-unit {
+  flex: none;
   font-size: 0.9rem;
   color: var(--color-text-secondary);
+  white-space: nowrap;
 }
 
 // ── 表单字段 ────────────────────────────────────────────────────────────────
@@ -672,3 +690,92 @@
 // 两类装扮共用余额与租赁表单，分类只筛商品，不触碰转账面板。
 .market-shop__categories { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
 .market-shop__category { @include m.btn-tab; }
+
+// ── 商城网格（/fish/shop）────────────────────────────────────────────────────
+// 逐款一张卡是既定的（data-frame / data-bubble 是逐款钩子），这里只改排布：
+// 宽屏两列、窄屏一列；卡片取消 480 的居中上限，改由网格决定宽度。
+// 卡片各自按内容高度排（align-items: start），**不拉成等高** —— 描述长短与是否
+// 持有天然不同，硬拉齐只会在短卡里留一大片空白。
+// 作用域只到 `.market-shop__grid` —— 转账 / 收银台 / 接口页的 .market-card 不受影响。
+.market-shop__grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: $space-4;
+  align-items: start;
+
+  @media (min-width: 900px) {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .market-card {
+    max-width: none;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  // 卡片内部字段之间的间距。
+  .market-field + .market-field {
+    margin-top: $space-4;
+  }
+}
+
+// 商品行：预览在左、名称 / 说明 / 单价在右。预览放大到 64px，与「这件东西长什么样」
+// 这个最该先被看到的信息相称；单价单独一行、品牌色，是第二眼要确认的数。
+.market-shop__item {
+  align-items: center;
+}
+
+.market-shop__preview {
+  width: 64px;
+  height: 64px;
+}
+
+.market-shop__preview .avatar__img {
+  width: 64px;
+  height: 64px;
+}
+
+.market-shop__name {
+  font-size: 1.05rem;
+  line-height: 1.35;
+}
+
+.market-shop__price {
+  margin-top: 2px;
+  font-size: 0.95rem;
+}
+
+// 空态：没有商品 / 分类下没有结果。用卡片表面，不给按钮 —— 这里没有能做的事。
+.market-shop__empty {
+  padding: $space-8 $space-6;
+  background: var(--color-background-card);
+  border-radius: 20px;
+  text-align: center;
+}
+
+.market-shop__empty-title {
+  margin: 0 0 $space-2;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.market-shop__empty-text {
+  margin: 0;
+  font-size: 0.875rem;
+  color: var(--color-text-secondary);
+}
+
+.market-shop__empty-link {
+  @include m.btn-secondary;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  margin-top: $space-4;
+  padding: $space-2 $space-4;
+  font-size: 0.9rem;
+  font-family: inherit;
+  text-decoration: none;
+}

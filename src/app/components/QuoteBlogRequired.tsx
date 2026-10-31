@@ -6,8 +6,8 @@ export default function QuoteBlogRequired({ embedded = false, purpose = 'quote' 
   const content = <>
       <p>{purpose === 'checkin' ? '请先发表一篇博客，再签到。' : QUOTE_BLOG_REQUIRED}</p>
       <div className="daily-quote-card__actions">
-        <Link href={QUOTE_INTRO_HREF} className="read-btn">看看大家的「自我介绍」</Link>
-        <Link href="/blog/upload" className="read-btn">发表博客</Link>
+        <Link href="/blog/upload" className="daily-quote-primary">发表博客</Link>
+        <Link href={QUOTE_INTRO_HREF} className="daily-quote-secondary">看看大家的「自我介绍」</Link>
       </div>
   </>;
   return embedded ? <div className="daily-quote-state">{content}</div> :

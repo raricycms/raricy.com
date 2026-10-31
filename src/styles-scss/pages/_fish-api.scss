@@ -15,8 +15,39 @@
 //     所以「危险 / 错误」用它是对的，别去找 --color-danger-*（那是 Fluent 别名 --fd-danger）。
 // ═══════════════════════════════════════════════════════
 
+// 每个模块一张卡：标题 → 说明 → 表单 / 列表。卡内的 .market-card 表单退成次级底色并取消 480 上限，
+// 否则是「卡片套同色卡片」。
 .fish-api-section {
-  margin-top: $space-6;
+  margin-bottom: $space-4;
+  padding: $space-6;
+  background: var(--color-background-card);
+  border-radius: 30px;
+
+  .market-card {
+    max-width: 560px;
+    margin: $space-3 0 0;
+    background: var(--color-background-subtle);
+  }
+
+  @media (max-width: 768px) {
+    padding: $space-4;
+    border-radius: 20px;
+  }
+}
+
+.fish-api-section > .market-field__hint {
+  max-width: 680px;
+  margin: 0 0 $space-2;
+  font-size: 0.85rem;
+  line-height: 1.6;
+  text-align: left;
+}
+
+.fish-api-section__title {
+  margin: 0 0 $space-2;
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--color-text-primary);
 }
 
 .fish-api-list {

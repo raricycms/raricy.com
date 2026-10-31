@@ -196,6 +196,14 @@
   flex-shrink: 0;
 }
 
+// 行动入口成组：主操作在前、次级入口在后，窄屏换行不撑破卡片。
+.daily-quote-card__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
 .daily-quote-primary,
 .daily-quote-secondary {
   display: inline-flex;
@@ -233,6 +241,7 @@
   justify-items: start;
   gap: 16px;
   color: var(--color-text-secondary);
+
 
   p {
     margin: 0;
@@ -655,26 +664,6 @@
   a[aria-current='page'] {
     color: var(--color-brand-primary);
     background: var(--color-brand-secondary);
-  }
-}
-
-.checkin-quote-links {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: center;
-  gap: 20px;
-  margin-top: 24px;
-
-  a {
-    color: var(--color-text-secondary);
-    font-size: .9rem;
-    text-decoration: none;
-    transition: color .25s ease;
-
-    &:hover {
-      color: var(--color-brand-primary);
-    }
   }
 }
 

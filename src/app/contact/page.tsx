@@ -1,49 +1,48 @@
 import type { Metadata } from 'next';
-import FooterNote from '@/app/components/FooterNote';
+import { GitBranch, Mail, MessageCircle } from 'lucide-react';
+import PageHeader from '@/app/components/PageHeader';
 
 export const metadata: Metadata = { title: 'Raricy.com - 联系我们' };
 
-// 联系页
-// 样式：用 content-wrapper 包裹 + page-title 标题。
+// 联系页：三条真实联系方式，一行一条；卡片与按钮沿用站内既有语言。
 export default function ContactPage() {
   return (
-    <div className="content-wrapper">
-      <h1 className="page-title">
-        <span className="icon icon-chat-dots_new" aria-hidden="true"></span> 联系我们
-      </h1>
-      <p style={{ textAlign: 'center', color: 'var(--color-text-secondary)', marginBottom: '1.5rem' }}>
-        遇到问题或有建议？我们随时为您服务。
-      </p>
+    <div className="content-wrapper contact-page">
+      <PageHeader title="联系我们" description="遇到问题或有建议时，可以通过以下方式联系。" />
 
-      <ul style={{ listStyle: 'none', padding: 0, maxWidth: 560, margin: '0 auto' }}>
-        <li style={{ marginBottom: '1rem' }}>
-          <span className="icon icon-envelope" aria-hidden="true"></span>
-          <span style={{ marginRight: '0.5rem' }}>电子邮件：</span>
-          <a href="mailto:raricycms@gmail.com" style={{ color: 'var(--color-brand-primary)' }}>
-            raricycms@gmail.com
-          </a>
-        </li>
-        <li style={{ marginBottom: '1rem' }}>
-          <span className="icon icon-people" aria-hidden="true"></span>
-          <span style={{ marginRight: '0.5rem' }}>微信号：</span>
-          <span>whitealiveautumn0</span>
-        </li>
-        <li style={{ marginBottom: '1rem' }}>
-          <span style={{ marginRight: '0.5rem' }}>或通过 GitHub 提交问题：</span>
+      <section className="contact-card" aria-label="联系方式">
+        <div className="contact-row">
+          <span className="contact-row__icon" aria-hidden="true"><Mail /></span>
+          <div className="contact-row__text">
+            <span className="contact-row__label">电子邮件</span>
+            <a className="contact-row__value" href="mailto:raricycms@gmail.com">raricycms@gmail.com</a>
+          </div>
+        </div>
+
+        <div className="contact-row">
+          <span className="contact-row__icon" aria-hidden="true"><MessageCircle /></span>
+          <div className="contact-row__text">
+            <span className="contact-row__label">微信号</span>
+            <span className="contact-row__value contact-row__value--plain">whitealiveautumn0</span>
+          </div>
+        </div>
+
+        <div className="contact-row">
+          <span className="contact-row__icon" aria-hidden="true"><GitBranch /></span>
+          <div className="contact-row__text">
+            <span className="contact-row__label">问题反馈</span>
+            <span className="contact-row__desc">也可以在项目仓库提交问题。</span>
+          </div>
           <a
+            className="contact-row__action"
             href="https://github.com/raricycms/raricy.com"
             target="_blank"
             rel="noreferrer"
-            style={{ color: 'var(--color-brand-primary)' }}
           >
-            <span className="icon icon-github" aria-hidden="true"></span> 项目仓库
+            打开仓库
           </a>
-        </li>
-      </ul>
-
-      <FooterNote>
-        <p style={{ color: 'var(--color-text-tertiary)', textAlign: 'center' }}>就在附近！</p>
-      </FooterNote>
+        </div>
+      </section>
     </div>
   );
 }

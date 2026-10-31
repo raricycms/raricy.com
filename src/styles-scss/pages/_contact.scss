@@ -1,0 +1,124 @@
+@use '../abstracts/variables' as *;
+@use '../abstracts/mixins' as m;
+
+// 联系页：一张卡片、三行联系方式；宽屏三列并排，窄屏一列。
+// 铺满宽屏只会让「一行信息」横跨整屏。
+.contact-page {
+  padding-top: $space-4;
+  padding-bottom: $space-8;
+
+  @media (max-width: 768px) {
+    padding-bottom: $space-6;
+  }
+}
+
+// 三条联系方式在宽屏并成一行，窄屏回落成一列 —— 卡片铺满容器，但每条信息仍是
+// 一小块，不会出现「一句话横跨 1100px」。
+.contact-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: $space-2 $space-4;
+  padding: $space-4 $space-6;
+  background: var(--color-background-card);
+  border-radius: 30px;
+
+  @media (min-width: 768px) {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    padding: $space-6;
+  }
+
+  @media (max-width: 768px) {
+    padding: $space-2 $space-4;
+    border-radius: 20px;
+  }
+}
+
+.contact-row {
+  display: flex;
+  align-items: center;
+  gap: $space-4;
+  padding: $space-4 0;
+
+  & + & {
+    // 行与行之间只用留白分层，不加贯通分隔线（§3.6）。
+    margin-top: 0;
+  }
+
+  &__icon {
+    display: grid;
+    place-items: center;
+    flex: none;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: var(--color-brand-secondary);
+    color: var(--color-brand-primary);
+
+    svg {
+      width: 18px;
+      height: 18px;
+    }
+  }
+
+  &__text {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  &__label {
+    font-size: 0.8rem;
+    color: var(--color-text-secondary);
+  }
+
+  /* 邮箱是这一页的主要点击入口：整行文本都可点，且触屏高度至少 44。
+     用 inline-flex 而不是把整行做成链接 —— 标签与图标仍保持语义上的从属，
+     文本也仍可选中。 */
+  &__value {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+    font-size: 0.95rem;
+    font-weight: 500;
+    color: var(--color-brand-primary);
+    text-decoration: none;
+    overflow-wrap: anywhere;
+
+    &--plain {
+      color: var(--color-text-primary);
+      font-family: var(--font-mono);
+    }
+
+    &:hover {
+      text-decoration: underline;
+    }
+  }
+
+  &__desc {
+    font-size: 0.875rem;
+    color: var(--color-text-secondary);
+    line-height: 1.5;
+  }
+
+  &__action {
+    @include m.btn-secondary;
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+    padding: $space-2 $space-4;
+    font-size: 0.875rem;
+    text-decoration: none;
+    white-space: nowrap;
+  }
+
+  @media (max-width: 480px) {
+    align-items: flex-start;
+
+    &__action {
+      align-self: center;
+    }
+  }
+}

@@ -5,6 +5,7 @@ import { loginUrlWithNext } from '@/lib/safe-url';
 import { listFishTokens } from '@/lib/fish-token-service';
 import { getWebhookEndpoint, listRecentDeliveries } from '@/lib/fish-webhook-service';
 import { nowForDb } from '@/lib/db-time';
+import PageHeader from '@/app/components/PageHeader';
 import FishApiClient, { type TokenRow } from './FishApiClient';
 import FishWebhookPanel, {
   type WebhookEndpointView,
@@ -78,32 +79,27 @@ export default async function FishApiPage() {
   }));
 
   return (
-    <div className="content-wrapper">
-      <h1 className="page-title">
-        <span className="icon icon-market" aria-hidden="true" style={{ marginRight: '0.5rem' }}></span>
-        鱼干接口
-      </h1>
-      <p className="market-subtitle">
-        把机器人接进来：用<strong>只读凭据</strong>查余额与流水，不必再让它拿你的账号密码。
-      </p>
+    <div className="content-wrapper fish-page">
+      <PageHeader
+        title="鱼干接口"
+        back={{ href: '/settings#developer', label: '返回设置' }}
+        description="把机器人接进来，不必再让它拿你的账号密码。"
+        actions={<Link href="/fish/transactions?type=transfer_all" className="page-header__action">转账记录</Link>}
+      />
 
-      <section className="fish-api-section">
-        <div className="market-card__head">
-          <span className="market-card__balance-label">只读凭据</span>
-        </div>
+      <section className="fish-api-section" aria-labelledby="fish-api-token-title">
+        <h2 className="fish-api-section__title" id="fish-api-token-title">只读凭据</h2>
         <p className="market-field__hint">
-          凭据只能查余额与流水，<strong>不能转账</strong>。它可单独吊销，且改密码不会作废它
-          —— 所以它比把密码交给脚本安全。有效期一年，到期后需重新签发。
+          只能查余额与流水，<strong>不能转账或提现</strong>。有效期一年，到期需重新签发；
+          可随时吊销，吊销立即生效。改密码不会作废它。
         </p>
 
         {!isCoreUser(user) && <p className="market-field__hint">当前账号未取得成员资格，可查阅和吊销已有凭据。<Link href="/authentic">认证成员资格</Link></p>}
         <FishApiClient initialTokens={initialTokens} canCreate={isCoreUser(user)} />
       </section>
 
-      <section className="fish-api-section">
-        <div className="market-card__head">
-          <span className="market-card__balance-label">收款回调</span>
-        </div>
+      <section className="fish-api-section" aria-labelledby="fish-api-webhook-title">
+        <h2 className="fish-api-section__title" id="fish-api-webhook-title">收款回调</h2>
         <p className="market-field__hint">
           登记一个地址，有人给你转账时我们主动推一条通知过去 —— 不必再轮询流水。
           投递会重试，但<strong>可能重复</strong>，请按请求头里的投递编号去重。
@@ -111,13 +107,6 @@ export default async function FishApiPage() {
 
         <FishWebhookPanel initialEndpoint={initialEndpoint} initialDeliveries={initialDeliveries} canConfigure={isCoreUser(user)} />
       </section>
-
-      <p className="market-foot"><Link href="/settings#developer" className="market-foot__link">返回设置</Link></p>
-      <p className="market-foot">
-        <Link href="/fish/transactions?type=transfer_all" className="market-foot__link">
-          查看转账记录
-        </Link>
-      </p>
     </div>
   );
 }

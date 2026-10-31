@@ -200,8 +200,6 @@ function consumedClasses(): Set<string> {
 /** 刻意无样式，且**不需要**有消费者 —— 纯语义包装 / 占位修饰类。 */
 const UNSTYLED: [string, string][] = [
   ['.chat-msg__reply-text', '纯语义包装：字号/颜色/换行/超长裁剪全部自父级 button.chat-msg__reply 继承'],
-  ['.fish-card__body', '纯语义包装：四个子块各自带间距与外观，这层壳不带样式（678f461 主动删掉过它的空规则）'],
-  ['.fish-card__link-label', '纯语义包装且是必需的：整条文案要成为 .fish-card__link 的单一子元素（见 _fish.scss 注释）'],
   ['.home-grid-item', '纯语义包装：位置由 .home-grid 的 gap/stretch 给，卡片自己 height:100%'],
   ['.clipboard-markdown-content', 'JS 钩子（挂 MutationObserver）+ 纯包装：子节点 MarkdownRenderer 自带 .blog-content-container 正文卡，剪贴板页由 _clipboard.scss 的 &__content 把那张卡的外观抵消掉'],
   ['.rc-medal', '命名钩子：尺寸由 svg.rc-icon 的 1em × 父级 font-size 决定，奖牌三档的固定色在 svg 的 fill 上'],

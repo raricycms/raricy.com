@@ -44,6 +44,7 @@
 // (0,2,1) 的选择器，不靠这个顺序决胜，见 _avatar.scss 的注释。
 @use 'components/avatar';
 @use 'components/blog-timestamps';
+@use 'components/page-header';
 
 @use 'utilities/spacing';
 @use 'utilities/display';
@@ -83,6 +84,7 @@
 @use 'pages/blog/upload_blog';
 @use 'pages/auth';
 @use 'pages/notifications';
+@use 'pages/contact';
 @use 'pages/story';
 @use 'pages/tool-new';
 @use 'pages/tool-hex';

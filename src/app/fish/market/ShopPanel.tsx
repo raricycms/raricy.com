@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Avatar from '@/app/components/Avatar';
@@ -90,7 +91,19 @@ export default function ShopPanel({
   const [balance, setBalance] = useState(initialBalance);
   const [category, setCategory] = useState<'all' | 'frame' | 'bubble'>(initialCategory);
 
-  if (items.length === 0) return null;
+  // 一件在售都没有：这是「现在什么都租不了」，不是「分类里暂时没东西」——
+  // 所以不给分类切换（切了也不会有结果），直接说清现状。
+  if (items.length === 0) {
+    return (
+      <div className="market-shop__empty">
+        <p className="market-shop__empty-title">当前没有在售商品</p>
+        <p className="market-shop__empty-text">现在没有可租用的头像框或聊天气泡。</p>
+        <Link className="market-shop__empty-link" href="/fish">返回账户</Link>
+      </div>
+    );
+  }
+
+  const visible = items.filter((item) => category === 'all' || item.kind === category);
 
   return (
     <>
@@ -101,15 +114,25 @@ export default function ShopPanel({
             onClick={() => setCategory(kind)}>{label}</button>
         ))}
       </div>
-      {items.filter((item) => category === 'all' || item.kind === category).map((item) => (
-        <ShopItemCard
-          key={`${item.kind}:${item.key}`}
-          userId={userId}
-          balance={balance}
-          item={item}
-          onBalance={setBalance}
-        />
-      ))}
+      {visible.length === 0 ? (
+        <div className="market-shop__empty">
+          <p className="market-shop__empty-title">这个分类里没有商品</p>
+          <p className="market-shop__empty-text">另一类装扮里可能还有可租用的。</p>
+          <button type="button" className="market-shop__empty-link" onClick={() => setCategory('all')}>查看全部商品</button>
+        </div>
+      ) : (
+        <div className="market-shop__grid">
+          {visible.map((item) => (
+            <ShopItemCard
+              key={`${item.kind}:${item.key}`}
+              userId={userId}
+              balance={balance}
+              item={item}
+              onBalance={setBalance}
+            />
+          ))}
+        </div>
+      )}
     </>
   );
 }
@@ -216,9 +239,16 @@ function ShopItemCard({
           </div>
           {item.holding && (
             <p className="market-field__hint market-shop__owned">
-              {item.holding.expired ? '上次租的已过期' : '当前持有到'}
-              <span className="numeric">{item.holding.expiresAt ? ` ${item.holding.expiresAt}` : ''}</span>
-              {item.equipped && !item.holding.expired ? (bubble ? '（使用中）' : '（正戴着）') : ''}
+              {/* expiresAt === null 是**永久持有**（发放/活动所得），没有到期日可写。 */}
+              {permanent ? (
+                <>永久持有{item.equipped ? (bubble ? '（使用中）' : '（正戴着）') : ''}</>
+              ) : (
+                <>
+                  {item.holding.expired ? '上次租的已过期' : '当前持有到'}
+                  <span className="numeric">{item.holding.expiresAt ? ` ${item.holding.expiresAt}` : ''}</span>
+                  {item.equipped && !item.holding.expired ? (bubble ? '（使用中）' : '（正戴着）') : ''}
+                </>
+              )}
             </p>
           )}
         </div>

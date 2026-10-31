@@ -1,0 +1,112 @@
+@use '../abstracts/variables' as *;
+@use '../abstracts/mixins' as m;
+
+// 功能页通用抬头（PageHeader.tsx）。标题左对齐，与下方内容共用同一条左边缘；
+// 主操作位在右，窄屏放不下时才整组落到下一行（单个短操作仍与标题同行）。
+// h1 仍带 `.page-title`，所以用 (0,2,0) 作用域覆盖其居中与下距。
+.page-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: $space-3 $space-6;
+  margin-bottom: $space-6;
+}
+
+.page-header__main {
+  /* 不写死 flex-basis：187-280px 的基准会让「标题 + 单个短操作」在 390/320 下
+     也被迫换行。8em 是「装得下四个字的标题」的下限 —— 只有放不下时才整行换到
+     下一行，而不是把标题挤成两行。 */
+  flex: 1 1 auto;
+  min-width: 8em;
+}
+
+.page-header__title {
+  margin: 0;
+  /* 标题就是 #shop 这类深链的落点。固定顶栏 62px，沿用站内 96px 的留白约定
+     （与 .settings-card / .settings-section 同值）—— 冷启动或客户端跳转后，
+     标题落在顶栏之下，而不是被压在 top: 0。只影响锚点滚动，不改变页头尺寸。 */
+  scroll-margin-top: 96px;
+}
+
+.page-header .page-title {
+  margin: 0;
+  text-align: left;
+  font-size: 1.75rem;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+
+.page-header__back {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  min-height: 44px;
+  margin-left: -6px;
+  padding-right: $space-3;
+  color: var(--color-text-secondary);
+  font-size: 0.875rem;
+  text-decoration: none;
+  transition: color 0.2s ease;
+
+  svg {
+    width: 18px;
+    height: 18px;
+  }
+
+  &:hover {
+    color: var(--color-brand-primary);
+  }
+}
+
+.page-header__desc {
+  margin: $space-2 0 0;
+  color: var(--color-text-secondary);
+  font-size: 0.95rem;
+  line-height: 1.6;
+}
+
+.page-header__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: $space-2;
+  /* 操作放得下就留在标题同一行；放不下由父级 flex-wrap 整组换行。 */
+  min-width: 0;
+
+  // 站内 .button 一档的尺寸是 39px 左右；抬头里的主操作在触屏上要够 44。
+  .button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 44px;
+  }
+}
+
+// 抬头里的次级操作（链接形态）：次级档 + 44px 触控高度。主操作请直接用 .action-button.primary / btn-primary。
+.page-header__action {
+  @include m.btn-secondary;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 0 $space-4;
+  font-size: 0.9rem;
+  text-decoration: none;
+}
+
+@media (max-width: 575.98px) {
+  .page-header {
+    margin-bottom: $space-4;
+  }
+
+  /* 有说明的抬头（如 /fish/api）：说明要占满整行宽度才好读，操作另起一行。
+     没有说明的短抬头仍与标题同行（见 .page-header__main 的 flex-basis）。 */
+  .page-header--with-desc .page-header__main {
+    flex-basis: 100%;
+  }
+
+  .page-header .page-title {
+    font-size: 1.5rem;
+  }
+}

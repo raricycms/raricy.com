@@ -4,6 +4,7 @@ import { getCurrentUser } from '@/lib/auth';
 import { loginUrlWithNext } from '@/lib/safe-url';
 import { getTransactions } from '@/lib/fish-service';
 import { fmtFish } from '@/lib/fish-amount';
+import PageHeader from '@/app/components/PageHeader';
 import SitePager from '@/app/components/SitePager';
 
 export const dynamic = 'force-dynamic';
@@ -60,15 +61,20 @@ export default async function FishTransactionsPage({
     type ? `/fish/transactions?type=${type}` : '/fish/transactions';
 
   return (
-    <div className="content-wrapper">
-      <h1 className="page-title"><span className="icon icon-fish" aria-hidden="true" style={{ marginRight: '0.5rem' }}></span>小鱼干流水</h1>
+    <div className="content-wrapper fish-page">
+      <PageHeader
+        title="小鱼干流水"
+        back={{ href: '/fish', label: '返回账户' }}
+        description="余额的进出来源与时间。"
+      />
 
-      <div className="fish-filter-bar">
+      <div className="fish-filter-bar" role="group" aria-label="按类型筛选">
         {FILTERS.map((f) => (
           <Link
             key={f.label}
-            className={`filter-btn${typeFilter === f.type ? ' active' : ''}`}
+            className={`filter-btn${typeFilter === f.type ? ' is-active' : ''}`}
             href={filterHref(f.type)}
+            aria-current={typeFilter === f.type ? 'page' : undefined}
           >
             {f.label}
           </Link>

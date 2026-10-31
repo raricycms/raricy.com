@@ -8,6 +8,7 @@ import FramePanel from './FramePanel';
 import BubblePanel from './BubblePanel';
 import FocusPanel from './FocusPanel';
 import AddToHomeScreenGuide from '../components/AddToHomeScreenGuide';
+import PageHeader from '../components/PageHeader';
 
 interface ProfileState {
   /** 自己的 id：装备面板要拿它把框预览叠在**本人头像**上。 */
@@ -51,9 +52,15 @@ export default function SettingsPage() {
   const [passwordSubmitting, setPasswordSubmitting] = useState(false);
   const [passwordAlert, setPasswordAlert] = useState<Alert | null>(null);
   const [oauthAlert, setOauthAlert] = useState<Alert | null>(null);
+  // 资料没到之前**不渲染任何可编辑字段** —— EMPTY 只是占位，把它当真实设置显示出来，
+  // 用户会对着「关掉的开关」保存一次，静默改掉自己的偏好。
+  const [loadState, setLoadState] = useState<'loading' | 'error' | 'ready'>('loading');
+  const [loadAttempt, setLoadAttempt] = useState(0);
+  const [activeGroup, setActiveGroup] = useState('profile');
 
   useEffect(() => {
     let alive = true;
+    setLoadState('loading');
     (async () => {
       try {
         const res = await fetch('/api/users/me', { credentials: 'same-origin' });
@@ -74,15 +81,51 @@ export default function SettingsPage() {
             showRecentBlogs: !!data.profile.showRecentBlogs,
             showRecentComments: !!data.profile.showRecentComments,
           });
+          setLoadState('ready');
+        } else {
+          setLoadState('error');
         }
       } catch {
-        // 加载失败时保持默认值
+        if (alive) setLoadState('error');
       }
     })();
     return () => {
       alive = false;
     };
-  }, [router]);
+  }, [router, loadAttempt]);
+
+  // 分组目录跟着滚动位置高亮。只认这五段；`#focus-mode` 等段内锚点归它所在的段。
+  useEffect(() => {
+    if (loadState !== 'ready') return;
+    const sections = Array.from(document.querySelectorAll<HTMLElement>('.settings-section'));
+    if (!sections.length || typeof IntersectionObserver === 'undefined') return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const visible = entries
+          .filter((e) => e.isIntersecting)
+          .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top)[0];
+        if (visible) setActiveGroup(visible.target.id);
+      },
+      { rootMargin: '-96px 0px -55% 0px', threshold: 0 }
+    );
+    sections.forEach((el) => observer.observe(el));
+    return () => observer.disconnect();
+  }, [loadState]);
+
+  // 深链是在数据到齐后才渲染出目标节点的：浏览器不会为后插入的节点再滚一次。
+  useEffect(() => {
+    if (loadState !== 'ready') return;
+    const id = window.location.hash.slice(1);
+    if (id) document.getElementById(id)?.scrollIntoView();
+  }, [loadState]);
+
+  const groups = [
+    ['profile', '资料'],
+    ['preferences', '浏览偏好'],
+    ['appearance', '外观'],
+    ['security', '安全与应用'],
+    ['developer', '开发接入'],
+  ] as const;
 
   async function saveBio() {
     const bio = state.bio.trim();
@@ -198,8 +241,23 @@ export default function SettingsPage() {
 
   return (
     <div className="settings-page container">
-      <h1 className="page-title">设置</h1>
-      <nav className="settings-nav" aria-label="设置分组"><a href="/settings#profile">资料</a><a href="/settings#preferences">浏览偏好</a><a href="/settings#appearance">外观</a><a href="/settings#security">安全与应用</a><a href="/settings#developer">开发接入</a></nav>
+      <PageHeader title="设置" />
+      <div className="settings-layout">
+        <nav className="settings-nav" aria-label="设置分组">
+          {groups.map(([id, label]) => (
+            <a
+              key={id}
+              href={`/settings#${id}`}
+              className={activeGroup === id ? 'is-active' : undefined}
+              aria-current={activeGroup === id ? 'true' : undefined}
+            >
+              {label}
+            </a>
+          ))}
+        </nav>
+        <div className="settings-content">
+          {loadState === 'ready' ? (
+            <>
       <section className="settings-section" id="profile" aria-labelledby="profile-heading"><h2 className="settings-section__title" id="profile-heading">个人资料</h2>
       {/* ====== Section 1: Bio ====== */}
       <div className="settings-card">
@@ -426,6 +484,23 @@ export default function SettingsPage() {
       </div>
 
       </section>
+            </>
+          ) : loadState === 'error' ? (
+            // 失败时整段可编辑区都不渲染（见 loadState 的注释）；这里只给结论与重试。
+            <div className="settings-state" role="alert">
+              <p className="settings-state__title">设置加载失败</p>
+              <p className="settings-state__text">网络或服务暂时不可用，请重试。</p>
+              <button type="button" className="settings-btn settings-btn--primary" onClick={() => setLoadAttempt((n) => n + 1)}>
+                重试
+              </button>
+            </div>
+          ) : (
+            <div className="settings-state" role="status">
+              <p className="settings-state__title">正在加载设置…</p>
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

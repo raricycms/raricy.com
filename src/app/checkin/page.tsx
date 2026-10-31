@@ -5,6 +5,7 @@ import { getTodayStatus, getCountLeaderboard } from '@/lib/checkin-service';
 import CheckinCard, { CheckinLeaderboards } from '@/app/components/CheckinCard';
 import Link from 'next/link';
 import QuoteBlogRequired from '@/app/components/QuoteBlogRequired';
+import PageHeader from '@/app/components/PageHeader';
 
 // 签到 = 每日领鱼干，档位是 **core+**（与投喂、点赞、剪贴板同档）。
 //
@@ -29,33 +30,38 @@ export default async function CheckinPage() {
 
   return (
     <div className="checkin-page">
-      <h1 className="page-title">每日签到</h1>
-      {status.canCheckIn ? (
-        <CheckinCard
-          checkedIn={status.checkedIn}
-          totalCount={status.totalCount}
-          todayFish={status.todayFish}
-          rewardFish={status.rewardFish}
-          today={status.today}
-          username={user.username}
-        />
-      ) : (
-        // 前置条件未满足（没发过未软删的文章）：渲染引导而不是签到按钮 ——
-        // 留一个点了 403 的按钮比不给更糟（判据与档位入口相反：这里不是「档位不够、
-        // 入口照给」，而是「这一步现在做不了、先去做另一件他能做的事」）。
-        <div className="checkin-card">
-          <div className="checkin-card__header">
-            <span className="checkin-card__greeting">你好，{user.username}</span>
-            <span className="checkin-card__date numeric">{status.today}</span>
-          </div>
-          <QuoteBlogRequired embedded purpose="checkin" />
+      <PageHeader
+        title="每日签到"
+        actions={<Link href="/quotes" className="page-header__action">每日一言</Link>}
+      />
+      <div className="checkin-layout">
+        <div className="checkin-layout__main">
+          {status.canCheckIn ? (
+            <CheckinCard
+              checkedIn={status.checkedIn}
+              totalCount={status.totalCount}
+              todayFish={status.todayFish}
+              rewardFish={status.rewardFish}
+              today={status.today}
+              username={user.username}
+            />
+          ) : (
+            // 前置条件未满足（没发过未软删的文章）：渲染引导而不是签到按钮 ——
+            // 留一个点了 403 的按钮比不给更糟（判据与档位入口相反：这里不是「档位不够、
+            // 入口照给」，而是「这一步现在做不了、先去做另一件他能做的事」）。
+            <div className="checkin-card">
+              <div className="checkin-card__header">
+                <span className="checkin-card__greeting">你好，{user.username}</span>
+                <span className="checkin-card__date numeric">{status.today}</span>
+              </div>
+              <QuoteBlogRequired embedded purpose="checkin" />
+            </div>
+          )}
         </div>
-      )}
-
-      {/* 已发文但未签到的人可以使用往期等入口；没发文时统一先走引导。 */}
-      <p className="checkin-quote-links"><Link className="read-btn" href="/quotes">每日一言</Link></p>
-
-      <CheckinLeaderboards countEntries={countLb} currentUserId={user.id} />
+        <aside className="checkin-layout__side" aria-label="签到排行">
+          <CheckinLeaderboards countEntries={countLb} currentUserId={user.id} />
+        </aside>
+      </div>
     </div>
   );
 }

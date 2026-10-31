@@ -5,13 +5,56 @@
 // Settings page
 // ============================================================
 
+// 宽度走全站阶梯（与顶栏、其他正文页同一条左边缘）；不再收成 700 的窄列。
 .settings-page {
-  max-width: 700px;
-  margin: 0 auto;
-  padding-block: $space-8;
+  padding-top: $space-4;
+  padding-bottom: $space-8;
 
   @media (max-width: 768px) {
-    padding-block: $space-6;
+    padding-bottom: $space-6;
+  }
+}
+
+// 桌面：左侧常驻分组目录 + 右侧内容列。目录与内容各自滚，目录跟着视口停住。
+.settings-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: $space-4;
+  align-items: start;
+
+  @media (min-width: 900px) {
+    grid-template-columns: 200px minmax(0, 1fr);
+    gap: $space-8;
+  }
+}
+
+.settings-content {
+  min-width: 0;
+}
+
+// 加载 / 失败：只占内容列，不伪装成一张有字段的卡。
+.settings-state {
+  padding: $space-8;
+  background: var(--color-background-card);
+  border-radius: 30px;
+
+  &__title {
+    margin: 0;
+    font-size: 1.05rem;
+    font-weight: 600;
+    color: var(--color-text-primary);
+  }
+
+  &__text {
+    margin: $space-2 0 $space-6;
+    font-size: 0.875rem;
+    line-height: 1.7;
+    color: var(--color-text-secondary);
+  }
+
+  @media (max-width: 768px) {
+    padding: $space-6;
+    border-radius: 20px;
   }
 }
 
@@ -83,6 +126,7 @@
     border-radius: 20px;
     padding: 12px 16px;
     min-height: 110px;
+    max-width: 560px;
     resize: vertical;
     line-height: 1.6;
   }
@@ -109,6 +153,7 @@
 
 .settings-field {
   flex: 1;
+  max-width: 380px;
 
   label {
     display: block;
@@ -495,12 +540,43 @@
   flex-wrap: wrap;
 }
 
+// 分组目录：窄屏是一行可横滑的切页；桌面竖排成一列常驻目录。
 .settings-nav {
   display: flex;
-  flex-wrap: wrap;
-  gap: $space-2;
-  margin-bottom: $space-6;
-  a { @include m.btn-tab; padding: $space-2 $space-4; text-decoration: none; min-height: 44px; display: inline-flex; align-items: center; }
+  gap: $space-1;
+  overflow-x: auto;
+  padding-bottom: $space-1;
+  scrollbar-width: none;
+
+  &::-webkit-scrollbar {
+    display: none;
+  }
+
+  a {
+    @include m.btn-tab;
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+    padding: $space-2 $space-4;
+    font-size: 0.9rem;
+    text-decoration: none;
+    white-space: nowrap;
+  }
+
+  @media (min-width: 900px) {
+    position: sticky;
+    top: 96px;
+    flex-direction: column;
+    align-items: stretch;
+    overflow: visible;
+    padding-bottom: 0;
+
+    a {
+      justify-content: flex-start;
+    }
+  }
 }
 .settings-section { scroll-margin-top: 96px; margin-bottom: $space-8; }
+.settings-section:last-child { margin-bottom: 0; }
 .settings-section__title { font-size: 1.2rem; margin: 0 0 $space-4; color: var(--color-text-primary); }

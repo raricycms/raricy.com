@@ -187,10 +187,6 @@ export default function FishApiClient({ initialTokens, canCreate = true }: { ini
         <button type="submit" className="market-submit" disabled={busy || !password}>
           {busy ? '处理中…' : '签发只读凭据'}
         </button>
-        <p className="pay-disclaimer">
-          凭据只能<strong>查</strong>余额与流水，不能转账，也不能提现。改密码不会作废它 ——
-          要停用请在这里吊销（立即生效）。
-        </p>
       </form>}
 
       {tokens.length === 0 ? (

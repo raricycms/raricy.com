@@ -243,13 +243,13 @@ test.describe('专注模式（设置 → 各处生效）', () => {
 
     // 入口：**连同它那句引导语一起消失**（不是置灰保留 —— 判据见 CLAUDE.md「档位阶梯」）。
     await page.goto('/fish');
-    await expect(page.locator('.fish-card__info-link', { hasText: '鱼干练手盘' })).toHaveCount(0);
-    await expect(page.locator('.fish-card__info-link', { hasText: '练手盘统计' })).toHaveCount(0);
+    await expect(page.locator('a[href="/fish/trade"]')).toHaveCount(0);
+    await expect(page.locator('a[href="/fish/trade/stats"]')).toHaveCount(0);
     // ★ 引导语也得走：只藏链接会在卡片里留下两句悬空的引子（而 `p + p` 的行距照旧生效
     //   —— 所以条件必须包住整段 <p>，不能只让链接自己不渲染）。
-    const info = page.locator('.fish-card');
-    await expect(info).not.toContainText('碰碰运气');
-    await expect(info).not.toContainText('打过的仗');
+    const info = page.locator('main');
+    await expect(info).not.toContainText('练手盘');
+    await expect(info).not.toContainText('真实行情');
     await expect(page.getByRole('link',{name:'商城',exact:true})).toBeVisible();
     await page.goto('/fish/transfer');
     await expect(page.getByRole('link',{name:'转账记录',exact:true})).toBeVisible();
