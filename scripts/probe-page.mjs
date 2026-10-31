@@ -39,7 +39,7 @@ const DEFAULT_PORT = 3100;
 const { SEED_PASSWORD, SEED_USERS } = await import('../tests/e2e/seed.ts');
 
 function parseArgs(argv) {
-  const opts = { url: '/', wait: null, shot: null, as: null, html: false, console: false, port: DEFAULT_PORT, timeout: 30_000 };
+  const opts = { url: '/', wait: null, shot: null, as: null, html: false, console: false, port: DEFAULT_PORT, timeout: 30_000, width: null, height: null, clicks: [], typeText: null, typeFile: null, thenWait: null };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     const next = () => argv[++i];
@@ -47,6 +47,12 @@ function parseArgs(argv) {
     else if (a === '--shot') opts.shot = next();
     else if (a === '--as') opts.as = next();
     else if (a === '--port') opts.port = Number(next());
+    else if (a === '--width') opts.width = Number(next());
+    else if (a === '--height') opts.height = Number(next());
+    else if (a === '--click') opts.clicks.push(next());
+    else if (a === '--type') opts.typeText = next();
+    else if (a === '--type-file') opts.typeFile = next();
+    else if (a === '--then-wait') opts.thenWait = next();
     else if (a === '--timeout') opts.timeout = Number(next());
     else if (a === '--html') opts.html = true;
     else if (a === '--console') opts.console = true;
@@ -64,6 +70,11 @@ const HELP = `用法: npx tsx scripts/probe-page.mjs <路径> [选项]
   --html                          打印渲染后的 HTML（超长会截断）
   --console                       打印浏览器 console 的 warning / error
   --port <端口>                   主站端口，默认 ${DEFAULT_PORT}
+  --width <像素> / --height <像素>  视口（默认 Playwright 的 1280×720）
+  --click <选择器>                等 --wait 之后依次点击（可重复；用于打开菜单）
+  --type <文本>                   点击 .cm-content 后一次性输入（编辑器用例）
+  --type-file <文件>              同上，从 UTF-8 文件读（避开 shell 引号 / 换行）
+  --then-wait <选择器>            点击 / 输入之后再等一个选择器（如预览编译完成）
   --timeout <毫秒>                总超时，默认 30000
 
 注意：需要 e2e 的 webServer 已在跑（npm run e2e:ci 那套）。这个脚本不做断言、不算测试。
@@ -85,7 +96,9 @@ async function main() {
   try {
     // 临时上下文落在系统临时目录 —— 探针不该在仓库里留任何东西。
     const userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-probe-'));
-    const context = await browser.newContext();
+    const context = await browser.newContext(
+      opts.width ? { viewport: { width: opts.width, height: opts.height ?? 900 } } : undefined
+    );
     const page = await context.newPage();
 
     if (opts.console) {
@@ -115,6 +128,24 @@ async function main() {
       console.log(`选择器出现：${opts.wait}`);
       const count = await page.locator(opts.wait).count();
       console.log(`匹配数量：${count}`);
+    }
+
+    const typed = opts.typeFile ? fs.readFileSync(opts.typeFile, 'utf8') : opts.typeText;
+    if (typed !== null) {
+      await page.locator('.cm-content').first().click({ timeout: opts.timeout });
+      await page.keyboard.insertText(typed);
+      console.log(`输入了 ${typed.length} 个字符`);
+    }
+
+    for (const selector of opts.clicks) {
+      await page.locator(selector).first().click({ timeout: opts.timeout });
+      console.log(`点击：${selector}`);
+      await page.waitForTimeout(200);
+    }
+
+    if (opts.thenWait) {
+      await page.waitForSelector(opts.thenWait, { timeout: opts.timeout });
+      console.log(`选择器出现：${opts.thenWait}`);
     }
 
     console.log(`标题：${await page.title()}`);

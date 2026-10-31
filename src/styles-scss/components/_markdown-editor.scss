@@ -57,10 +57,46 @@
   gap: 2px;
 }
 
-/// 「更多工具」那颗按钮：**宽屏整个藏掉**（宽屏所有分组都在，没有可展开的东西）。
-/// 窄屏由下面那段 media 打开 —— 收起的是一组分组、不是一个浮层，见文件头。
+/// 四个主入口 + 历史 + 更多；分组本身不再参与“收起”。
+.md-toolbar__group--insert,
+.md-toolbar__group--components,
+.md-toolbar__group--media,
+.md-toolbar__group--history,
 .md-toolbar__group--more {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+/// 主入口（带文字）：宽屏是 icon + 文字的小胶囊；窄屏保留短文字（见文末媒体查询）。
+///
+/// ⚠️ 选择器必须**带上 `.md-toolbar__btn`**：基线的 `width: 28px` 排在它后面，
+/// 同权重会被后写的盖掉 —— 症状是文字挤在 28px 的盒子里互相重叠（实测截图）。
+.md-toolbar__btn.md-toolbar__btn--entry {
+  width: auto;
+  gap: 5px;
+  padding: 0 8px;
+  font-size: .8rem;
+
+  &.is-open {
+    background: var(--color-background-content);
+    color: var(--color-brand-primary);
+  }
+}
+
+.md-toolbar__entry-label {
+  white-space: nowrap;
+}
+
+/// 手机的短标签（插入 / 组件 / 图片 / 引用 / 更多）—— 宽屏不出现。
+.md-toolbar__entry-short {
   display: none;
+  white-space: nowrap;
+}
+
+.md-toolbar__entry-caret {
+  flex: none;
+  opacity: .6;
 }
 
 .md-toolbar__sep {
@@ -128,7 +164,9 @@
 }
 
 .md-toolbar__menu-item {
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: 8px;
   width: 100%;
   padding: 6px 10px;
   border: none;
@@ -136,32 +174,128 @@
   background: transparent;
   color: var(--color-text-primary);
   font: inherit;
+  font-size: .82rem;
   text-align: left;
   white-space: nowrap;
   cursor: pointer;
 
-  &:hover {
+  &:hover:not(:disabled),
+  &.is-active {
     background: var(--color-background-content);
+    color: var(--color-brand-primary);
+  }
+
+  &:disabled {
+    opacity: .45;
+    cursor: not-allowed;
+  }
+}
+
+.md-toolbar__menu-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.md-toolbar__menu-kbd {
+  flex: none;
+  margin-left: auto;
+  color: var(--color-text-secondary);
+  font-size: .68rem;
+}
+
+/// ── Insert 菜单 ─────────────────────────────────────────────────────────────
+/// 宽屏两列：左边「文字 / 列表」，右边「内容 / 表情」。窄屏一列，整块限高滚动。
+.md-toolbar__menu--insert {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px 14px;
+  width: min(440px, 100cqw);
+  max-height: min(460px, 70vh);
+  padding: 10px;
+  overflow-y: auto;
+}
+
+.md-toolbar__section {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.md-toolbar__section--emoji {
+  grid-column: 1 / -1;
+  padding-top: 4px;
+  border-top: 1px solid var(--color-border);
+}
+
+.md-toolbar__section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.md-toolbar__section-title {
+  padding: 2px 8px;
+  color: var(--color-text-secondary);
+  font-size: .7rem;
+  font-weight: 600;
+  letter-spacing: .04em;
+}
+
+.md-toolbar__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  padding: 0 2px;
+}
+
+.md-toolbar__chip {
+  padding: 3px 8px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--color-text-primary);
+  font: inherit;
+  font-size: .75rem;
+  cursor: pointer;
+
+  &:hover {
+    border-color: var(--color-brand-primary);
+    color: var(--color-brand-primary);
+  }
+
+  &.is-active {
+    border-color: var(--color-brand-primary);
+    background: var(--color-brand-secondary);
     color: var(--color-brand-primary);
   }
 }
 
-/// 表情面板：网格铺开，比一列菜单好扫。
-///
-/// 【宽度为什么不是写死的】`width: min(264px, 100cqw)` —— `100cqw` 是**工具条
-/// 内容盒**的宽度（见 `.md-toolbar` 的 `container-type`），也就是编辑器真实可用
-/// 宽度减掉工具条两侧内边距。宽屏上它远大于 264px，取 264（观感一字未动）；窄屏
-/// 上它更小，面板就跟着收，**不再撑出编辑区被 `overflow: hidden` 默默裁掉**。
-/// 用容器查询而不是 `calc(100vw - 常量)`：博客与剪贴板两条链路的檐沟不同，
-/// 减常量等于把其中一条的尺寸硬套到另一条上。
-///
-/// 列数交给 `auto-fill`：宽屏 264px 下仍是 8 列（与改版前逐像素一致），窄到
-/// 190px 时自动落成 6 列，每格都还塞得下一个表情。
-.md-toolbar__menu--emoji {
+.md-toolbar__emoji-toggle {
+  padding: 2px 8px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--color-brand-primary);
+  font: inherit;
+  font-size: .72rem;
+  cursor: pointer;
+
+  &:hover {
+    background: var(--color-background-content);
+  }
+}
+
+.md-toolbar__emoji-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(28px, 1fr));
   gap: 2px;
-  width: min(264px, 100cqw);
+  max-height: 168px;
+  padding: 2px;
+  overflow-y: auto;
 }
 
 .md-toolbar__emoji {
@@ -178,83 +312,95 @@
   }
 }
 
-// ── 窄屏工具条：核心三件事 + 「更多」，固定一行 ────────────────────────────
+// ── 窄屏工具条：四个主入口 + 更多，固定一行 ────────────────────────────────
 //
-// 手机上 16 颗 28px 的按钮要占三行，编辑区被挤矮、每一颗又都点不准。这里把
-// **表情 / 上传图片 / 插入引用** 留在首行，其余收进「更多工具」
-//（文案与取舍见 Toolbar.tsx 的文件头）。
+// 手机上一排带文字的入口既挤不进一行、又点不准。这里只做三件事：
+//   1. 主入口收成 40px 图标钮（文字标签藏起来，aria-label / title 仍在）；
+//   2. **历史组整个藏掉** —— 撤销 / 重做在「更多」菜单里有同一组命令（同一份
+//      逻辑，不是第二套工具条），首行因此只剩 插入 / 组件 / 上传 / 引用 / 更多；
+//   3. 菜单限宽限高、内部滚动，跟着编辑器可用宽度（100cqw）收。
 //
 // 断点 767px 与视图切换的「并排」那一档同值（MarkdownEditor.tsx 的
-// SPLIT_MIN_WIDTH 与下面 `.md-editor__mode--split` 那段）：两者都在说
-// 「这是手机 / 平板竖屏的宽度」，拆成两个值只会让中间那一小段自相矛盾。
+// SPLIT_MIN_WIDTH 与下面 `.md-editor__mode--split` 那段）。
 //
-// ⚠️ **这一整段必须排在 `.md-toolbar__group` 那几条之后**：权重相同时后写的赢，
-// 排到前面去的话「默认收起」会被 `.md-toolbar__group { display: flex }` 盖掉 ——
-// 症状是手机上照旧一屏按钮，且看不出是顺序问题（`.md-editor__mode--split` 那段
-// 踩的是同一个坑）。
+// ⚠️ **必须排在 `.md-toolbar__group` 之前或之后都行（同权重按书写顺序），但
+// 这里用的是更高优先的元素选择器 + 显式覆盖，改顺序时仍要复查**。
 @media (max-width: 767px) {
-  // 1) 除核心三件事与「更多」之外，所有分组默认收起
-  .md-toolbar__group {
+  .md-toolbar__group--history {
     display: none;
   }
 
-  .md-toolbar__group--core,
-  .md-toolbar__group--media,
+  // 「更多」靠右（撑杆已隐藏），否则向左展开的菜单会顶出编辑区
   .md-toolbar__group--more {
-    display: flex;
-  }
-
-  // 2) 首行的顺序：表情 → 上传图片 / 插入引用 → 更多；展开后其余分组接在后面。
-  //    「更多」始终 order 3：展开与否都在同一个位置（开关不跳，才不会按错）。
-  //    ⚠️ 「表格」那一档（`--table`）必须排在「更多」**之后** —— 排在前面的话，
-  //    它展开时会把开关挤着往右挪（实测一颗按钮的宽度），而用户正是要靠「开关
-  //    在原地」才敢连按两下。它与其余次要分组一起排在展开区里。
-  .md-toolbar__group--core { order: 1; }
-  .md-toolbar__group--media { order: 2; }
-  .md-toolbar__group--more { order: 3; }
-  .md-toolbar__group--format { order: 4; }
-  .md-toolbar__group--lists { order: 5; }
-  .md-toolbar__group--blocks { order: 6; }
-  .md-toolbar__group--table { order: 7; }
-  .md-toolbar__group--history { order: 8; }
-  .md-toolbar__group--export {
-    order: 9;
-    // 窄屏撑杆已隐藏，导出组自己靠右；否则向左展开的文字菜单会被编辑器裁掉。
     margin-left: auto;
   }
 
-  // 3) 展开：所有分组回来。属性选择器权重更高，不必关心与上面那几条的先后。
-  //    内联展开（工具条自己长高、分组照常换行）而不是浮层：浮层在窄屏要么被视口
-  //    裁掉、要么盖住编辑区，而换行天生不会溢出。
-  .md-toolbar[data-more='open'] .md-toolbar__group {
-    display: flex;
-  }
-
-  // 4) 分隔线与「把导出推到右边」的撑杆在窄屏没有意义：收起时它们会变成一排
-  //    悬空的竖线，展开时各分组靠换行本来就分得开。
   .md-toolbar__sep,
   .md-toolbar__grow {
     display: none;
   }
 
-  // 5) 触摸面积：28px 是鼠标的尺寸，手指点不准（收藏夹那三颗圆钮定的也是这条口径）。
-  //    40px 在 WCAG 2.5.8 的 24px 下限之上，且四颗按钮一行放得下 320px。
+  // 触摸面积：28px 是鼠标的尺寸，手指点不准。40px 在 WCAG 2.5.8 的 24px 下限
+  // 之上；首行五颗 = 200px + 间距，320px 上也放得下。
   .md-toolbar__btn {
     width: 40px;
     height: 40px;
   }
 
+  // 主入口：**保留可见的中文短标签**（普通作者不认图标）。图标与下拉箭头让出
+  // 宽度，按钮按文字自适应但至少 40px 触控面积；320px 上五个入口仍是一行。
+  .md-toolbar__btn.md-toolbar__btn--entry {
+    width: auto;
+    min-width: 40px;
+    padding: 0 8px;
+    border: 1px solid var(--color-border);
+    background: var(--color-background-page);
+    font-size: .75rem;
+  }
+
+  .md-toolbar__btn--entry svg {
+    display: none;
+  }
+
+  .md-toolbar__entry-label {
+    display: none;
+  }
+
+  .md-toolbar__entry-short {
+    display: inline;
+  }
+
   // 换行后的行距：基线的 2px 是给同一行内的按钮留的，行与行之间那样挤
   .md-toolbar {
     row-gap: 6px;
+    // 手机首行的五个入口之间多留 2px：短标签彼此不贴在一起，仍放得进 320px
+    column-gap: 4px;
   }
 
-  // 6) 表情面板在窄屏可能比编辑区还高（短视口 / 横屏：编辑区 60vh 只有 ~240px，
-  //    而面板十来行）。限高并让面板**自己滚**，否则底部那几行会被 `.md-editor`
-  //    的 `overflow: hidden` 静默裁掉、看得见却点不到。宽屏不限（那边够高）。
-  .md-toolbar__menu--emoji {
-    max-height: 50vh;
-    overflow-y: auto;
+  // Insert 菜单：窄屏一列；整块限高滚动，别被 `.md-editor` 的 overflow:hidden
+  // 静默裁掉底部几项（看得见却点不到）。
+  .md-toolbar__menu--insert {
+    grid-template-columns: 1fr;
+    width: min(320px, 100cqw);
+    // 编辑区本体只有 50vh（剪贴板）/ 60vh（博客）：菜单再高就会伸出 body、
+    // 被 `.md-editor` 的 overflow:hidden 裁掉底部（看得见却点不到）。46vh 保证
+    // 整块落在 body 内，超出部分由菜单自己滚动。
+    max-height: 46vh;
+  }
+
+  .md-toolbar__section--emoji {
+    grid-column: auto;
+  }
+
+  .md-toolbar__menu-item,
+  .md-toolbar__chip,
+  .md-toolbar__emoji-toggle {
+    min-height: 40px;
+  }
+
+  // 表情网格可能比编辑区还高（短视口 / 横屏）：自己滚。
+  .md-toolbar__emoji-grid {
+    max-height: 40vh;
   }
 }
 
@@ -762,14 +908,46 @@
     font-weight: 600;
   }
 
-  .md-authoring__count.is-error {
+  .md-authoring__state {
+    color: var(--color-text-secondary);
+  }
+
+  .md-authoring__state.is-error {
     color: var(--color-warning-primary);
     font-weight: 600;
   }
 
-  .md-authoring__count.is-warning {
+  .md-authoring__state.is-warning {
     color: var(--color-accent-amber);
     font-weight: 600;
+  }
+
+  .md-authoring__toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    margin-left: auto;
+    padding: 2px 6px;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--color-text-secondary);
+    font: inherit;
+    font-size: .75rem;
+    cursor: pointer;
+
+    &:hover {
+      background: var(--color-background-content);
+      color: var(--color-brand-primary);
+    }
+
+    svg {
+      transition: transform .18s ease;
+    }
+  }
+
+  .md-authoring__toggle .is-flipped {
+    transform: rotate(180deg);
   }
 
   .md-authoring__diagnostics {
@@ -1044,7 +1222,8 @@
     text-align: left;
     cursor: pointer;
 
-    &:hover {
+    &:hover,
+    &.is-active {
       background: var(--color-background-content);
       color: var(--color-brand-primary);
     }
@@ -1126,5 +1305,14 @@
       // iOS 聚焦 < 16px 的可编辑区会强制放大整页（同 _composer.scss）
       font-size: 16px;
     }
+  }
+}
+
+// ── 窄屏组件面板高度（必须排在上面 `.md-editor` 里那条基线之后）──────────────
+// 基线 `.md-editor .md-toolbar__menu--components` 的 min(440px, 70vh) 权重相同、
+// 位置更靠后；放在前面的媒体查询会被它盖掉。46vh 让菜单留在 50vh 的编辑区本体内。
+@media (max-width: 767px) {
+  .md-editor .md-toolbar__menu--components {
+    max-height: 46vh;
   }
 }

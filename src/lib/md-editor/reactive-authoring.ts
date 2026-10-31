@@ -39,12 +39,20 @@ import {
 import {
   analyzeLocalSource,
   completeLocalSource,
+  createLocalComponentCatalogForOptions,
+  filterLocalComponentCatalog,
   formatLocalSource,
-  getNativeComponentCatalog,
-  insertTemplate,
-  renderNativeSnippet,
+  insertLocalComponentFromOptions,
+  localCatalogAncestors,
+  localComponentCatalogGroups,
+  localComponentHelp,
 } from 'reactive-md/authoring';
-import type { AuthorAnalysis, AuthorCompletion, Diagnostic } from 'reactive-md/authoring';
+import type {
+  AuthorAnalysis,
+  AuthorCompletion,
+  Diagnostic,
+  LocalComponentCatalogEntry,
+} from 'reactive-md/authoring';
 import { reactiveCompileOptions } from '@/lib/reactive/host-components';
 
 export type { AuthorAnalysis, AuthorCompletion } from 'reactive-md/authoring';
@@ -55,8 +63,21 @@ const COMPILE_OPTIONS = reactiveCompileOptions('reactive');
 /** 停手一小会儿再分析：比逐键解析省得多，又赶得上视觉上的「即时」。 */
 const ANALYSIS_DEBOUNCE_MS = 250;
 
-/** 模板列表固定用中文目录（契约见文件头）。 */
-const ZH_CATALOG = getNativeComponentCatalog('zh');
+/**
+ * 组件目录来自**站点当前编译配置**，不维护第二份清单。
+ *
+ * `createLocalComponentCatalogForOptions(COMPILE_OPTIONS)` 与编译器读同一份 host schema /
+ * 预算，于是「菜单里点得出来」和「预览里编译得过」天然一致。站点没有宿主能力的组件
+ * 不会凭空出现在这里（`<site-embed>` 是 host component，上游目录不收录它 ——
+ * 引用走「插入引用」面板，不走 Components）。
+ *
+ * 目录在一次模块求值里算好：选项是静态的，`localComponentCatalogKey` 也只是为了
+ * 上游自己的缓存口径；这里没有随正文变化的输入。
+ */
+const SITE_ENTRIES: readonly LocalComponentCatalogEntry[] =
+  createLocalComponentCatalogForOptions(COMPILE_OPTIONS, 'zh');
+
+const SITE_GROUPS = localComponentCatalogGroups(SITE_ENTRIES);
 
 const EMPTY_ANALYSIS: AuthorAnalysis = { tokens: [], bindings: [], diagnostics: [] };
 
@@ -260,29 +281,122 @@ function singleChange(before: string, after: string): { from: number; to: number
   return { from, to: beforeEnd, insert: after.slice(from, afterEnd) };
 }
 
+// ── 组件目录（供 Components 菜单）────────────────────────────────────────────
+
+/** 菜单里的一行：直接从上游目录投影，不另写文案 / 模板。 */
+export interface SiteComponentEntry {
+  id: string;
+  title: string;
+  description: string;
+  category: string;
+  categoryLabel: string;
+  inline: boolean;
+  paired: boolean;
+  /** 搜索词（中英双语，来自上游 manifest）。 */
+  keywords: readonly string[];
+  /** 纯文本帮助：说明 + 属性帮助（悬停 / 可访问名用）。 */
+  help: string;
+}
+
+export interface SiteComponentGroup {
+  id: string;
+  label: string;
+  entries: SiteComponentEntry[];
+}
+
+function toEntry(item: LocalComponentCatalogEntry): SiteComponentEntry {
+  return {
+    id: item.id,
+    title: item.title,
+    description: item.description,
+    category: item.category,
+    categoryLabel: item.categoryLabel,
+    inline: item.inline,
+    paired: item.paired,
+    keywords: item.keywords ?? [],
+    help: localComponentHelp(item),
+  };
+}
+
+/** 分组顺序 = 上游目录顺序（输入 / 交互 / 组织 / 数据 / 提示）。 */
+export function getSiteComponentCatalog(): SiteComponentGroup[] {
+  return SITE_GROUPS.map((group) => ({
+    id: group.id,
+    label: group.label,
+    entries: group.entries.map(toEntry),
+  }));
+}
+
 /**
- * 插入一个原生组件模板。
+ * 按搜索词与光标上下文过滤。
  *
- * 顺序与上游工具条一致：中文目录取模板 → `renderNativeSnippet` 只解析
- * `{{bind:…}}`（同一次插入里同名绑定复用、与原文已有名字冲突时自动加序号）→
- * `insertTemplate` 处理选区 / 占位光标。整段落成**一个** CM6 事务，因此 Ctrl+Z
- * 一步退回，history 不重建。
+ * `ancestors` 交给上游 `filterLocalComponentCatalog`：只该出现在某个容器里的组件
+ * （声明了 `parents` 的那些）不会在光标外面变成永远插不对的死模板。
+ * 本模块不自己判父子关系 —— 那是编译器的 schema。
+ */
+export function filterSiteComponents(
+  query: string,
+  ancestors: readonly string[] = []
+): SiteComponentGroup[] {
+  const term = query.trim();
+  const entries = filterLocalComponentCatalog(SITE_ENTRIES, {
+    query: term || undefined,
+    ancestors: ancestors.length > 0 ? ancestors : undefined,
+  });
+  const allowed = new Set(entries.map((entry) => entry.id));
+  return SITE_GROUPS.map((group) => ({
+    id: group.id,
+    label: group.label,
+    entries: group.entries
+      .filter((entry) => allowed.has(entry.id))
+      .map(toEntry),
+  })).filter((group) => group.entries.length > 0);
+}
+
+/**
+ * 光标处的容器祖先（最外 → 最内），交给 `filterSiteComponents` 做上下文过滤。
+ * 解析失败一律返回空数组：菜单退回「全部组件」比整块菜单消失好。
+ */
+export function getComponentAncestors(view: EditorView): string[] {
+  try {
+    return [
+      ...localCatalogAncestors(
+        view.state.doc.toString(),
+        view.state.selection.main.head,
+        COMPILE_OPTIONS
+      ),
+    ];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * 插入一个组件模板。
+ *
+ * 顺序与上游工具条一致：从**站点配置**的目录取条目 → `insertLocalComponentFromOptions`
+ * 解析 `{{bind:…}}`（同名绑定复用、与原文冲突时自动加序号）、处理选区 / 占位光标。
+ * 整段落成**一个** CM6 事务，因此 Ctrl+Z 一步退回，history 不重建。
  */
 export function applyReactiveTemplate(view: EditorView, componentId: string): boolean {
   if (view.state.readOnly || view.composing) return false;
-  const component = ZH_CATALOG.components.find((item) => item.id === componentId);
-  if (!component) return false;
+  if (!SITE_ENTRIES.some((item) => item.id === componentId)) return false;
 
   const source = view.state.doc.toString();
   const range = view.state.selection.main;
-  const selectedText = source.slice(range.from, range.to);
-  const snippet = renderNativeSnippet(component, source, selectedText);
-  const edit = insertTemplate(
-    source,
-    { start: range.from, end: range.to },
-    snippet,
-    { block: !component.inline }
-  );
+  let edit;
+  try {
+    edit = insertLocalComponentFromOptions(
+      COMPILE_OPTIONS,
+      componentId,
+      source,
+      { start: range.from, end: range.to },
+      'zh'
+    );
+  } catch {
+    // 目录里每条模板在构建期已校验；这里只是防御 —— 插不进去时保持正文原样。
+    return false;
+  }
   if (edit.value === source) return false;
 
   view.dispatch({

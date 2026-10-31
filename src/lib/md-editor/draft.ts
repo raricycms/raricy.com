@@ -25,10 +25,18 @@ import type { ContentFormat } from '../content-format';
 /** 防抖间隔。取 500ms：比一次连续打字的停顿略长，又短到「刚打完切走」也来得及。 */
 export const DRAFT_DEBOUNCE_MS = 500;
 
-/** 草稿 = 正文 + 它所属的格式。两者必须一起恢复（见下面「格式怎么存」）。 */
+/**
+ * 草稿 = 正文 + 格式 + 语法版本。
+ *
+ * 三者必须一起恢复：正文按 A 版语法写成，却按 B 版语义恢复，页面上通常看不出
+ * 异常（滑块照样能拖），直到保存 / 迁移时才出问题。`syntaxVersion` 只是**原样
+ * 保存与回传**，不在前端推导（权威值来自服务端 / 解析器）。
+ */
 export interface DraftEntry {
   format: ContentFormat;
   text: string;
+  /** 正文写入时的语法版本；null = 旧文档 / 未知（不是「最新版」）。 */
+  syntaxVersion: string | null;
 }
 
 /**
@@ -36,39 +44,65 @@ export interface DraftEntry {
  *
  * 老草稿（Vditor 时代留下的）在 localStorage 里就是一段裸 Markdown，键名也一直
  * 沿用 —— 它们必须原样恢复成 markdown。所以 markdown 这一档的落盘形态一个字都
- * 不能变；reactive 用一个带前缀的 JSON 信封，读回时认前缀。
+ * 不能变；reactive 用带前缀的 JSON 信封，读回时认前缀。
  *
  * 前缀外层的任何内容（包括一段以 `{` 开头的旧正文）都按裸 Markdown 恢复 ——
  * **绝不因为「看起来像 JSON」就猜成 reactive**。猜错等于把一份 Markdown 交给
  * ReactiveMD 解析器，页面上通常看不出异常，只是内容悄悄变样。
+ *
+ * v1 → v2：v2 多了 `syntaxVersion`。**v1 继续读**（未知版本记 null），
+ * 于是升级后浏览器里那份没写完的草稿照常恢复 —— 丢草稿是静默的，没有提示。
  */
-const DRAFT_ENVELOPE_PREFIX = 'raricy-md-draft:v1:';
+const DRAFT_ENVELOPE_V1 = 'raricy-md-draft:v1:';
+const DRAFT_ENVELOPE_V2 = 'raricy-md-draft:v2:';
+
+/** 取信封里的字符串字段；形态不对返回 null（不抛）。 */
+function envelopeString(value: unknown): string | null {
+  return typeof value === 'string' ? value : null;
+}
 
 /** 把 localStorage 里的原样字符串解成草稿。null = 没有草稿。 */
 export function parseDraftValue(raw: string | null): DraftEntry | null {
   if (raw === null) return null;
-  if (raw.startsWith(DRAFT_ENVELOPE_PREFIX)) {
+  for (const [prefix, versioned] of [
+    [DRAFT_ENVELOPE_V2, true],
+    [DRAFT_ENVELOPE_V1, false],
+  ] as const) {
+    if (!raw.startsWith(prefix)) continue;
     try {
-      const parsed: unknown = JSON.parse(raw.slice(DRAFT_ENVELOPE_PREFIX.length));
+      const parsed: unknown = JSON.parse(raw.slice(prefix.length));
       if (
         parsed &&
         typeof parsed === 'object' &&
         (parsed as { format?: unknown }).format === 'reactive' &&
         typeof (parsed as { text?: unknown }).text === 'string'
       ) {
-        return { format: 'reactive', text: (parsed as { text: string }).text };
+        return {
+          format: 'reactive',
+          text: (parsed as { text: string }).text,
+          syntaxVersion: versioned
+            ? envelopeString((parsed as { syntaxVersion?: unknown }).syntaxVersion)
+            : null,
+        };
       }
     } catch {
       // 信封坏了就按旧草稿处理：原文仍然还给用户，绝不把它丢掉。
     }
   }
-  return { format: 'markdown', text: raw };
+  return { format: 'markdown', text: raw, syntaxVersion: null };
 }
 
 /** 落盘形态（见上面「格式怎么存」）。 */
 export function encodeDraftValue(entry: DraftEntry): string {
   if (entry.format === 'markdown') return entry.text;
-  return DRAFT_ENVELOPE_PREFIX + JSON.stringify({ format: entry.format, text: entry.text });
+  return (
+    DRAFT_ENVELOPE_V2 +
+    JSON.stringify({
+      format: entry.format,
+      text: entry.text,
+      syntaxVersion: entry.syntaxVersion,
+    })
+  );
 }
 
 export interface DraftStore {
@@ -79,7 +113,9 @@ export interface DraftStore {
    * `value`，因此不必为格式改动重写一遍；要按格式恢复的调用方再读 `format`。
    * 没有草稿时 `value` 为 null、`format` 仍是 markdown。
    */
-  read(): { ok: true; value: string | null; format: ContentFormat } | { ok: false };
+  read():
+    | { ok: true; value: string | null; format: ContentFormat; syntaxVersion: string | null }
+    | { ok: false };
   /**
    * 记下最新正文，防抖后落盘。
    *
@@ -148,8 +184,13 @@ export function createDraftStore(key: string, options: DraftStoreOptions = {}): 
       try {
         const entry = parseDraftValue(window.localStorage.getItem(key));
         return entry === null
-          ? { ok: true, value: null, format: 'markdown' }
-          : { ok: true, value: entry.text, format: entry.format };
+          ? { ok: true, value: null, format: 'markdown', syntaxVersion: null }
+          : {
+              ok: true,
+              value: entry.text,
+              format: entry.format,
+              syntaxVersion: entry.syntaxVersion,
+            };
       } catch {
         notifyUnavailable();
         return { ok: false };
@@ -157,7 +198,10 @@ export function createDraftStore(key: string, options: DraftStoreOptions = {}): 
     },
     schedule(value) {
       if (stopped) return;
-      pending = typeof value === 'string' ? { format: 'markdown', text: value } : value;
+      pending =
+        typeof value === 'string'
+          ? { format: 'markdown', text: value, syntaxVersion: null }
+          : value;
       if (timer !== null) clearTimeout(timer);
       timer = setTimeout(() => {
         timer = null;

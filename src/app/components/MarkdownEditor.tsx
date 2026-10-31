@@ -23,7 +23,6 @@ import {
   forwardRef,
   useCallback,
   useEffect,
-  useId,
   useImperativeHandle,
   useReducer,
   useRef,
@@ -38,7 +37,7 @@ import { EditorView, keymap } from '@codemirror/view';
 import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands';
 import { markdown } from '@codemirror/lang-markdown';
 import { RefreshCw } from 'lucide-react';
-import type { Diagnostic } from 'reactive-md';
+import type { Diagnostic, LocalCompileWorker } from 'reactive-md';
 
 import Toolbar, { VIEW_MODES } from './markdown-editor/Toolbar';
 import ResourcePanel from './markdown-editor/ResourcePanel';
@@ -74,6 +73,12 @@ import {
   type AuthorCompletion,
 } from '@/lib/md-editor/reactive-authoring';
 import { createDraftStore, type DraftStore } from '@/lib/md-editor/draft';
+import {
+  mightContainReactiveSyntax,
+  type EditorDiagnostic,
+  type EditorSubmitSnapshot,
+} from '@/lib/md-editor/format-mode';
+import { createFormatAnalyzer, type FormatAnalysis } from '@/lib/reactive/format-observer';
 import { createInsertAnchor, type InsertAnchor } from '@/lib/md-editor/insert-anchor';
 import {
   addUploadBatch,
@@ -97,6 +102,16 @@ import {
 const PREVIEW_DEBOUNCE_MS = 400;
 
 /**
+ * 格式分析的防抖。分析本身在 worker 里（见 `@/lib/reactive/format-observer`），
+ * 这里只是不再为「连续敲字」的每一个中间态排队 —— 200k 正文也不该每键触发一次
+ * 编译调度。停手 350ms 之后才分析，比预览略快一点（诊断要跟着手走）。
+ */
+const FORMAT_ANALYSIS_DEBOUNCE_MS = 350;
+
+/** 提交时最多重试几次「正文在等分析时又被改了」。 */
+const SUBMIT_ANALYSIS_ATTEMPTS = 3;
+
+/**
  * 并排视图在窄屏下没有意义（两栏各自不到 300px）。两处用到这个阈值，值必须一致：
  * 样式表把「并排」那颗按钮整个藏掉（`.md-editor__mode--split`，`_markdown-editor.scss`），
  * 这里负责视口在编辑途中变窄时把已经选中的并排退回编辑态。
@@ -116,6 +131,17 @@ export interface MarkdownEditorHandle {
   flushDraft(): void;
   /** 聚焦编辑区。 */
   focus(): void;
+  /** 此刻应当提交的正文格式（含「插入组件后自动升级为 reactive」这一下）。 */
+  getFormat(): ContentFormat;
+  /** 这份正文的语法版本（服务端给的值；草稿恢复后是草稿里那一版）。 */
+  getSyntaxVersion(): string | null;
+  /**
+   * 提交前的权威判定：等**当前正文**的异步分析落地，返回与判定同一份的正文 +
+   * 格式 + 版本；无效增强语法（或分析失败）时 `blocked` 非空，调用方必须停下。
+   *
+   * 这是唯一允许在提交路径上做完整编译的地方（一次保存一次，不是每键）。
+   */
+  prepareSubmit(): Promise<EditorSubmitSnapshot>;
 }
 
 export interface MarkdownEditorProps {
@@ -123,6 +149,8 @@ export interface MarkdownEditorProps {
   id?: string;
   /** 初始正文。 */
   initialValue: string;
+  /** 服务端给的语法版本（草稿恢复时以草稿那份为准）。null = 未知 / 旧文档。 */
+  initialSyntaxVersion?: string | null;
   /**
    * 新建页的草稿键（`blog-upload-editor` / `clipboard-upload-editor`）。
    * **编辑态不要传** —— 编辑态既不读也不写新建草稿（§5.2）。
@@ -153,6 +181,8 @@ export interface MarkdownEditorProps {
    * 表单上那个 markdown 写入 —— 正文没变，格式被静默改写。
    */
   onDraftFormatRestored?: (format: ContentFormat) => void;
+  /** 草稿里那份语法版本（恢复时通知表单；提交由服务端定版本，前端不推导）。 */
+  onDraftSyntaxVersionRestored?: (syntaxVersion: string | null) => void;
 }
 
 const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(
@@ -160,6 +190,7 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(
     {
       id,
       initialValue,
+      initialSyntaxVersion = null,
       draftKey,
       title = '',
       withMath = false,
@@ -169,13 +200,22 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(
       onInitError,
       onNotify,
       onDraftFormatRestored,
+      onDraftSyntaxVersionRestored,
     },
     ref
   ) {
     const hostRef = useRef<HTMLDivElement>(null);
     const previewBodyRef = useRef<HTMLDivElement>(null);
-    /** 键盘提示的 id（编辑区用 aria-describedby 指过来）。 */
-    const kbHintId = useId();
+    /**
+     * 键盘提示的 id（编辑区用 aria-describedby 指过来）。
+     *
+     * **用调用方给的 `id` 派生，不用 `useId`**：`useId` 的值编码了组件在树里的
+     * 位置，服务端与客户端的树只要有一处不同（dev 下按需重编译 / 快速刷新时
+     * 代码版本错位就会这样）就会得到两个不同 id —— React 报 hydration mismatch，
+     * 而且这个 id 只是 `aria-describedby` 的目标，没有唯一性要求。每页最多一个
+     * 编辑器，`editor` / `clipboard-editor` 已经足够区分；没有 id 时退到固定值。
+     */
+    const kbHintId = id ? `${id}-kbd-hint` : 'md-editor-kbd-hint';
     const fileInputRef = useRef<HTMLInputElement>(null);
     const viewRef = useRef<EditorView | null>(null);
     const [view, setView] = useState<EditorView | null>(null);
@@ -197,11 +237,11 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(
 
     const draftRef = useRef<DraftStore | null>(null);
     const [draftChoice, setDraftChoice] = useState<string | null>(null);
-    /** 横幅里那份草稿自己的格式（恢复时同步给表单）。 */
+    /** 横幅里那份草稿自己的格式 / 语法版本（恢复时同步给表单）。 */
     const restoredDraftFormatRef = useRef<ContentFormat>('markdown');
-    /** 最新的表单格式 —— 草稿落盘时随正文一起写，不读可能过期的闭包。 */
-    const formatRef = useRef(format);
-    formatRef.current = format;
+    const restoredDraftVersionRef = useRef<string | null>(null);
+    /** 当前正文的语法版本：服务端初值，草稿恢复时改用草稿那份。 */
+    const syntaxVersionRef = useRef<string | null>(initialSyntaxVersion ?? null);
     /**
      * 格式同步的「水位」：上一次见到的格式，以及是否已经过了挂载那一刻。
      *
@@ -213,8 +253,72 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(
      *   · 挂载之后的变化才是用户自己切的，正文没动也要把**新**格式存下去
      *     （绝不能拿表单原来的旧格式回写，草稿里存的格式才是恢复时的真相）。
      */
-    const formatSyncRef = useRef({ mounted: false, last: format });
+    const formatSyncRef = useRef({
+      mounted: false,
+      last: format as ContentFormat,
+      lastVersion: null as string | null,
+    });
     const [initFailed, setInitFailed] = useState(false);
+
+    /**
+     * 「插入组件后自动升级为 Reactive」。
+     *
+     * 作者界面不再要求先手动选格式：从 Components 菜单插一个 `<slider>` 进来，
+     * 这份正文就已经是增强语法了。`format` 是**服务端 / 草稿给的下限**，这里只
+     * 单向上调（reactive 不会因为删光组件自动降回 markdown，见计划 §3.1）。
+     *
+     * 完整的自动识别（手写组件 / 表达式，不经过菜单）等后端异步分析契约稳定后
+     * 接进来 —— 在此之前只用「插入动作」这一个确定事实，不猜。
+     */
+    const [componentInserted, setComponentInserted] = useState(false);
+
+    // ── 自动格式（异步 / worker，逐键不在主线程编译）───────────────────────
+    /**
+     * 最近一次**与当前正文对应**的分析结果。null = 尚未分析 / 正文里没有任何
+     * 增强语法候选（预筛直接排除，不必排一次编译）。
+     */
+    const [formatAnalysis, setFormatAnalysis] = useState<FormatAnalysis | null>(null);
+    const [analysisPending, setAnalysisPending] = useState(false);
+    /** worker + 主线程回退都失败时的明确状态（不静默按 Markdown 保存）。 */
+    const [analysisFailure, setAnalysisFailure] = useState<string | null>(null);
+    const analyzerRef = useRef<ReturnType<typeof createFormatAnalyzer> | null>(null);
+    const analysisRevisionRef = useRef(0);
+    const analysisTimerRef = useRef<number | null>(null);
+
+    const invalidEnhanced = formatAnalysis?.effective === 'invalid-enhanced';
+    const detectedReactive = formatAnalysis?.effective === 'reactive';
+    /**
+     * 插入组件后的即时升级只是**分析落地前**的临时状态：一旦有了分析结果，
+     * 就以解析器为准（有效 → reactive；无效 → 仍显示诊断并阻止发布；
+     * 新建的 Markdown 文档删光组件 → 回到 markdown）。已保存为 reactive 的
+     * 文档由 `format` 这个下限兜住，永不自动降级。
+     */
+    const forcedReactive = componentInserted && formatAnalysis === null;
+    const effectiveFormat: ContentFormat =
+      format === 'reactive' || forcedReactive || detectedReactive ? 'reactive' : 'markdown';
+    const effectiveFormatRef = useRef(effectiveFormat);
+    effectiveFormatRef.current = effectiveFormat;
+    /** `format` 的同步副本：提交判定在 async 回调里读，不能拿到旧闭包。 */
+    const formatFloorRef = useRef(format);
+    formatFloorRef.current = format;
+
+    /**
+     * 草稿里存的格式：**无效增强语法仍记 reactive**。
+     *
+     * 这是「不静默降级」的最后一道保险：正文里有一段坏掉的 `<slider>` 时，草稿若
+     * 记成 markdown，下次恢复出来就是一份被当作普通文本的增强文档 —— 用户看不到
+     * 任何提示。存 reactive + 诊断，恢复时按增强文档继续编辑。
+     */
+    const draftFormat: ContentFormat = invalidEnhanced ? 'reactive' : effectiveFormat;
+    const draftFormatRef = useRef(draftFormat);
+    draftFormatRef.current = draftFormat;
+    /** 草稿随附的语法版本：Reactive 用分析给的权威值，Markdown 恒 null。 */
+    const draftSyntaxVersionRef = useRef<string | null>(null);
+    draftSyntaxVersionRef.current =
+      draftFormat === 'reactive'
+        ? (formatAnalysis?.syntaxVersion ?? syntaxVersionRef.current)
+        : null;
+    const draftSyntaxVersion = draftSyntaxVersionRef.current;
 
     // ── Reactive 作者工具 ───────────────────────────────────────────────────
     /** 最近一次分析；切到 Markdown / 重新挂载扩展时清空（由扩展重新填）。 */
@@ -272,10 +376,16 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(
         if (!initialValue) {
           // 新建页没有服务端初值 —— 直接恢复，不问（这是绝大多数情况）
           resolvedInitialRef.current = read.value;
+          syntaxVersionRef.current = read.syntaxVersion;
+          restoredDraftVersionRef.current = read.syntaxVersion;
           if (read.format !== format) onDraftFormatRestored?.(read.format);
+          if (read.syntaxVersion !== (initialSyntaxVersion ?? null)) {
+            onDraftSyntaxVersionRestored?.(read.syntaxVersion);
+          }
         } else {
           // 两份都有内容：不静默覆盖任何一份，交给用户在横幅里选
           restoredDraftFormatRef.current = read.format;
+          restoredDraftVersionRef.current = read.syntaxVersion;
           setDraftChoice(read.value);
         }
       }
@@ -419,7 +529,7 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(
     /** 「补全」按钮：候选按**当前光标**现取，面板展示后由用户挑一条。 */
     const requestCompletions = useCallback(() => {
       const v = viewRef.current;
-      if (!v || formatRef.current !== 'reactive') return;
+      if (!v || effectiveFormatRef.current !== 'reactive') return;
       setAuthoringStatus(null);
       try {
         setAuthoringCompletions(getReactiveCompletions(v) ?? []);
@@ -451,6 +561,101 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(
       if (!v) return;
       revealReactiveDiagnostic(v, diagnostic);
       v.focus();
+    }, []);
+
+    // ── 自动格式分析 ────────────────────────────────────────────────────────
+    /**
+     * 排一次分析：防抖 + 预筛，真正的编译在 worker（`format-observer`）里。
+     *
+     * 这个函数刻意只读 ref 与 setter —— updateListener 在挂载时只建一次，
+     * 闭包里的任何 state 都会是旧值。
+     */
+    const scheduleAnalysis = useCallback((source: string) => {
+      if (analysisTimerRef.current !== null) {
+        window.clearTimeout(analysisTimerRef.current);
+        analysisTimerRef.current = null;
+      }
+      if (!mightContainReactiveSyntax(source)) {
+        // 肯定不含增强语法：作废在飞结果，直接回到「纯 Markdown」。
+        analysisRevisionRef.current += 1;
+        setFormatAnalysis(null);
+        setAnalysisPending(false);
+        setAnalysisFailure(null);
+        // 没有 `<` / `{{` 就不可能有组件了：插入动作留下的临时升级一并清掉。
+        setComponentInserted(false);
+        return;
+      }
+      setAnalysisPending(true);
+      analysisTimerRef.current = window.setTimeout(() => {
+        analysisTimerRef.current = null;
+        const analyzer = analyzerRef.current;
+        if (!analyzer) {
+          setAnalysisPending(false);
+          return;
+        }
+        const revision = (analysisRevisionRef.current += 1);
+        void analyzer
+          .analyze(source, revision)
+          .then((result) => {
+            if (destroyedRef.current) return;
+            // 乱序 / 被更新正文取代的结果一律丢弃（契约 §2）。
+            if (result.revision !== analysisRevisionRef.current) return;
+            if (result.effective === 'superseded') {
+              if (result.revision === analysisRevisionRef.current) setAnalysisPending(false);
+              return;
+            }
+            setFormatAnalysis(result);
+            setAnalysisPending(false);
+            setAnalysisFailure(null);
+            if (result.syntaxVersion) syntaxVersionRef.current = result.syntaxVersion;
+            // 草稿来自旧语法版本：明确提示，别让它在保存时被服务端拒绝时才暴露。
+            const restored = restoredDraftVersionRef.current;
+            if (
+              restored &&
+              result.effective === 'reactive' &&
+              result.syntaxVersion &&
+              restored !== result.syntaxVersion
+            ) {
+              setAuthoringStatus('草稿来自旧语法版本，保存时可能被拒绝；请检查正文后重新保存');
+            }
+          })
+          .catch(() => {
+            if (destroyedRef.current) return;
+            setAnalysisPending(false);
+            setAnalysisFailure('无法检查正文格式，请稍后再试');
+          });
+      }, FORMAT_ANALYSIS_DEBOUNCE_MS);
+    }, []);
+
+    // 分析器：一次挂载一份，卸载即终止 worker。
+    useEffect(() => {
+      let analyzer: ReturnType<typeof createFormatAnalyzer> | null = null;
+      try {
+        analyzer = createFormatAnalyzer({
+          createWorker: () =>
+            // MarkdownEditor 在 src/app/components；worker 在 src/lib/reactive。
+            new Worker(new URL('../../lib/reactive/compile.worker.ts', import.meta.url), {
+              type: 'module',
+            }) as unknown as LocalCompileWorker,
+        });
+        analyzerRef.current = analyzer;
+      } catch {
+        // Worker 起不来时上游调度器会异步回退主线程；这里只是兜底标记，
+        // 下面的提交判定会明确 blocked 而不是猜格式。
+        analyzerRef.current = null;
+      }
+      // 打开已有正文（含草稿恢复）时先给一次分析；没有候选语法时预筛会直接跳过。
+      scheduleAnalysis(resolvedInitialRef.current);
+      return () => {
+        analyzerRef.current = null;
+        if (analysisTimerRef.current !== null) {
+          window.clearTimeout(analysisTimerRef.current);
+          analysisTimerRef.current = null;
+        }
+        analyzer?.dispose();
+      };
+      // 只建一次：分析器跟着编辑器生命周期走
+      // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     // ── CM6 生命周期 ────────────────────────────────────────────────────────
@@ -514,14 +719,19 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(
           insertAnchorRef.current?.map(update.changes);
           const text = update.state.doc.toString();
           docRef.current = text;
-          if (formatRef.current === 'reactive') {
+          if (effectiveFormatRef.current === 'reactive') {
             // 候选和诊断绑定于旧源码偏移；正文变化后先收起，再等待新分析。
             setAuthoringCompletions(null);
             setAuthoringAnalysis(null);
           }
           bump();
           schedulePreview(text);
-          draftRef.current?.schedule({ format: formatRef.current, text });
+          scheduleAnalysis(text);
+          draftRef.current?.schedule({
+            format: draftFormatRef.current,
+            text,
+            syntaxVersion: draftSyntaxVersionRef.current,
+          });
         }),
         EditorView.domEventHandlers({
           /**
@@ -614,7 +824,7 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(
       if (!v) return;
 
       const extension =
-        format === 'reactive'
+        effectiveFormat === 'reactive'
           ? reactiveAuthoring({
               onAnalysis: (next) => {
                 if (destroyedRef.current || reactiveGenerationRef.current !== generation) return;
@@ -629,30 +839,36 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(
           : [];
 
       v.dispatch({ effects: reactiveCompartmentRef.current.reconfigure(extension) });
-    }, [format]);
+    }, [effectiveFormat]);
 
     useEffect(() => () => draftRef.current?.dispose(), []);
 
-    // ── 只切格式 = 一次草稿写入 ─────────────────────────────────────────────
-    // 正文没动时 updateListener 不会跑，格式本身也就没人落盘（见 formatSyncRef）。
-    // 这里只补「格式变了」这一种情况：草稿仍然只存正文与格式，不扩展别的状态。
+    // ── 只切格式 / 版本 = 一次草稿写入 ───────────────────────────────────────
+    // 正文没动时 updateListener 不会跑，格式 / 语法版本本身也就没人落盘（见
+    // formatSyncRef）。这里补「自动识别完成 / 草稿恢复后格式变了」这一种情况。
     useEffect(() => {
       const sync = formatSyncRef.current;
       if (!sync.mounted) {
         // 初次挂载：正文与格式的初值来自草稿或服务端，不是用户刚改的。
         sync.mounted = true;
-        sync.last = format;
+        sync.last = draftFormat;
+        sync.lastVersion = draftSyntaxVersion;
         return;
       }
-      if (sync.last === format) return;
-      sync.last = format;
+      if (sync.last === draftFormat && sync.lastVersion === draftSyntaxVersion) return;
+      sync.last = draftFormat;
+      sync.lastVersion = draftSyntaxVersion;
       const store = draftRef.current;
       const view = viewRef.current;
       // 编辑器没起来（已回退 textarea）时正文不在 docRef 这面镜子里，别拿旧快照写草稿。
       if (!store || !view) return;
       // schedule 的语义就是「用这一份替换排队中的旧值」—— 正好是切换格式要的。
-      store.schedule({ format, text: view.state.doc.toString() });
-    }, [format]);
+      store.schedule({
+        format: draftFormat,
+        text: view.state.doc.toString(),
+        syntaxVersion: draftSyntaxVersion,
+      });
+    }, [draftFormat, draftSyntaxVersion]);
 
     // ── 并排视图的窄屏降级 ──────────────────────────────────────────────────
     useEffect(() => {
@@ -703,7 +919,7 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(
         const source = viewRef.current?.state.doc.toString() ?? docRef.current;
         // reactive 走 ReactiveMD 的静态渲染（`mode="static"`，初始状态）；
         // 旧管线只服务 Markdown 文档 —— 两种语言不能互换解析器。
-        if (formatRef.current === 'reactive') {
+        if (effectiveFormatRef.current === 'reactive') {
           const bodyHtml = await renderStaticMarkup({ source, format: 'reactive' });
           return { title, bodyHtml, footerNote: REACTIVE_EXPORT_NOTE };
         }
@@ -763,6 +979,102 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(
       })();
     }, [buildSnapshot]);
 
+    // ── 提交前的权威判定 ────────────────────────────────────────────────────
+    /**
+     * 等**当前正文**的分析落地，返回与判定同一份的提交快照。
+     *
+     * 这是唯一允许在提交路径上做一次完整编译的地方（一次保存一次）。三种情况都
+     * 明确说出来，绝不静默按 Markdown 保存：
+     *   · `invalid-enhanced` → 带诊断的 blocked（表单提示 + 保留草稿 + 不提交）；
+     *   · 分析器不可用 / 抛错 → blocked（宁可让用户重试，也不猜）；
+     *   · 正文在等待期间又变了 → 用新正文重来（最多 3 次），仍不稳定就 blocked。
+     */
+    const prepareSubmit = useCallback(async (): Promise<EditorSubmitSnapshot> => {
+      const currentSource = () =>
+        viewRef.current?.state.doc.toString() ?? docRef.current;
+
+      // 已保存为 reactive 的文档是**下限**：即使删光组件也不自动降级。
+      const floorReactive = formatFloorRef.current === 'reactive';
+      for (let attempt = 0; attempt < SUBMIT_ANALYSIS_ATTEMPTS; attempt += 1) {
+        const content = currentSource();
+        if (!mightContainReactiveSyntax(content)) {
+          return {
+            content,
+            format: floorReactive ? 'reactive' : 'markdown',
+            syntaxVersion: floorReactive ? syntaxVersionRef.current : null,
+            blocked: null,
+          };
+        }
+        const analyzer = analyzerRef.current;
+        if (!analyzer) {
+          return {
+            content,
+            format: 'reactive',
+            syntaxVersion: syntaxVersionRef.current,
+            blocked: {
+              message: '编辑器还没准备好检查正文格式，请稍后再保存',
+              diagnostics: [],
+            },
+          };
+        }
+        const revision = (analysisRevisionRef.current += 1);
+        let result: FormatAnalysis;
+        try {
+          result = await analyzer.analyze(content, revision);
+        } catch {
+          return {
+            content,
+            format: 'reactive',
+            syntaxVersion: syntaxVersionRef.current,
+            blocked: {
+              message: '无法检查正文格式，请稍后再试；草稿已经保留',
+              diagnostics: [],
+            },
+          };
+        }
+        // 等待期间用户又改了正文 / 又排了一次分析 —— 这一份不再是「当前」。
+        if (result.effective === 'superseded' || result.revision !== revision) {
+          continue;
+        }
+        // 与实时分析共用同一份结果：提交完的界面计数不该回到上一版。
+        if (analysisRevisionRef.current === revision) {
+          setFormatAnalysis(result);
+          setAnalysisPending(false);
+          setAnalysisFailure(null);
+        }
+        const diagnostics: EditorDiagnostic[] = result.diagnostics;
+        if (result.effective === 'invalid-enhanced') {
+          return {
+            content,
+            format: 'reactive',
+            syntaxVersion: result.syntaxVersion ?? syntaxVersionRef.current,
+            blocked: {
+              message: '正文含无效的增强语法，已保留草稿；请按诊断修正后再保存',
+              diagnostics,
+            },
+          };
+        }
+        if (result.syntaxVersion) syntaxVersionRef.current = result.syntaxVersion;
+        const reactive = result.effective === 'reactive' || floorReactive;
+        return {
+          content,
+          format: reactive ? 'reactive' : 'markdown',
+          syntaxVersion: reactive ? (result.syntaxVersion ?? syntaxVersionRef.current) : null,
+          blocked: null,
+        };
+      }
+
+      return {
+        content: currentSource(),
+        format: effectiveFormatRef.current,
+        syntaxVersion: syntaxVersionRef.current,
+        blocked: {
+          message: '正文仍在变化，暂时无法确定格式，请稍后再保存',
+          diagnostics: [],
+        },
+      };
+    }, []);
+
     // ── 对外接口 ────────────────────────────────────────────────────────────
     useImperativeHandle(
       ref,
@@ -772,8 +1084,11 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(
         clearDraft: () => draftRef.current?.clear(),
         flushDraft: () => draftRef.current?.flush(),
         focus: () => viewRef.current?.focus(),
+        getFormat: () => effectiveFormatRef.current,
+        getSyntaxVersion: () => syntaxVersionRef.current,
+        prepareSubmit,
       }),
-      []
+      [prepareSubmit]
     );
 
     /** 恢复旧草稿：整体替换正文，并把它作为一次可撤销的操作留下。 */
@@ -791,12 +1106,21 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(
       // 一起**写下去（schedule 替换掉前一份）；表单没接这个回调时，最终格式
       // 仍是表单当前那一档，两份保持一致。
       const restoredFormat = restoredDraftFormatRef.current;
-      let finalFormat = formatRef.current;
-      if (restoredFormat !== formatRef.current && onDraftFormatRestored) {
+      const restoredVersion = restoredDraftVersionRef.current;
+      syntaxVersionRef.current = restoredVersion;
+      let finalFormat = effectiveFormatRef.current;
+      if (restoredFormat !== effectiveFormatRef.current && onDraftFormatRestored) {
         onDraftFormatRestored(restoredFormat);
         finalFormat = restoredFormat;
       }
-      draftRef.current?.schedule({ format: finalFormat, text: value });
+      if (restoredVersion !== (initialSyntaxVersion ?? null)) {
+        onDraftSyntaxVersionRestored?.(restoredVersion);
+      }
+      draftRef.current?.schedule({
+        format: finalFormat,
+        text: value,
+        syntaxVersion: restoredVersion,
+      });
       setDraftChoice(null);
     }
 
@@ -825,18 +1149,31 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(
         <Toolbar
           view={view}
           withMath={withMath}
-          reactive={format === 'reactive'}
-          onRequestCompletions={requestCompletions}
+          reactive={effectiveFormat === 'reactive'}
+          onRequestCompletions={
+            effectiveFormat === 'reactive' ? requestCompletions : undefined
+          }
           onFormat={formatAuthoringDocument}
+          onComponentInserted={() => setComponentInserted(true)}
           onPickFiles={() => fileInputRef.current?.click()}
           onOpenResources={openResources}
           onExportHtml={onExportHtml}
           onPrint={onPrint}
         />
 
-        {format === 'reactive' && (
+        {/*
+          诊断条：增强语法（含无效的）或确实有诊断时才出现。默认收起，只在标题行
+          显示「检查中 / 错误 N · 警告 M / 未发现问题」。普通 Markdown 不占版面。
+        */}
+        {(effectiveFormat === 'reactive' ||
+          invalidEnhanced ||
+          analysisFailure !== null ||
+          (formatAnalysis?.candidates.length ?? 0) > 0) && (
           <ReactiveAuthoringPanel
-            analysis={authoringAnalysis}
+            diagnostics={formatAnalysis?.diagnostics ?? authoringAnalysis?.diagnostics ?? []}
+            localized={formatAnalysis !== null}
+            pending={analysisPending}
+            failure={analysisFailure}
             completions={authoringCompletions}
             status={authoringStatus}
             onSelectCompletion={pickCompletion}
@@ -890,7 +1227,7 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(
               </button>
             </div>
             <div className="md-editor__preview-body" ref={previewBodyRef}>
-              {format === 'reactive' ? (
+              {effectiveFormat === 'reactive' ? (
                 /*
                  * reactive：预览由 ReactivePreview 自己防抖 + 适配 + 编译，
                  * 旧的 Markdown 管线（ContentRefProcessor → blog-renderer →

@@ -106,7 +106,9 @@ test('对外文章默认访客预览，切换后可以展开成员引用，再�
   const clipResponse = await page.request.post('/api/clipboard', { data: { title: secret, content: secret, publicity: true } });
   expect(clipResponse.status()).toBe(200);
   const clip = await clipResponse.json();
-  const response = await page.request.post('/api/blogs', { data: { title: '访客预览', description: '引用边界', visibility: 'public', content: '正文 [@' + clip.id + ']' } });
+  // 直接以 reactive 格式建这篇：作者界面已移除手动格式选择，编辑页从库里的
+  // 格式起步 —— 这里要验的是「访客视角预览」在增强文档上同样不泄露成员正文。
+  const response = await page.request.post('/api/blogs', { data: { title: '访客预览', description: '引用边界', visibility: 'public', format: 'reactive', content: '正文 [@' + clip.id + ']' } });
   expect(response.status()).toBe(200);
   const blog = await response.json();
   await page.goto('/blog/' + blog.blog_id + '/edit');
@@ -121,7 +123,6 @@ test('对外文章默认访客预览，切换后可以展开成员引用，再�
   await mode.check();
   await expect(preview).not.toContainText(secret);
   await expect(preview).toContainText('[@' + clip.id + ']');
-  await page.locator('#format').selectOption('reactive');
   await expect(preview).toContainText('[@' + clip.id + ']');
   await expect(preview).not.toContainText(secret);
   await mode.uncheck();

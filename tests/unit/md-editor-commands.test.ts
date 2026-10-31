@@ -301,6 +301,21 @@ describe('插入类', () => {
     expect(h.main()).toEqual([1, 5]);
   });
 
+  it('外链图片：选中的文字当 alt，光标选中 URL 那一格', () => {
+    const h = harness('风景', [[0, 2]]);
+    cmd.insertImage()(h.view);
+    expect(h.text()).toBe('![风景](https://)');
+    // `![` (2) + alt (2) + `](` (2) = URL 起点 6，选中 `https://`
+    expect(h.main()).toEqual([6, 14]);
+  });
+
+  it('外链图片：空选区插占位 alt 并选中 URL', () => {
+    const h = harness('', [[0, 0]]);
+    cmd.insertImage()(h.view);
+    expect(h.text()).toBe('![图片描述](https://)');
+    expect(h.main()).toEqual([8, 16]);
+  });
+
   it('代码块：选中的内容原样进围栏（不缩进、不转义）', () => {
     const h = harness('a <b>', [[0, 5]]);
     cmd.insertCodeBlock()(h.view);
