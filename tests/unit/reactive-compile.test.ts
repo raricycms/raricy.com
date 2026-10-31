@@ -227,7 +227,7 @@ describe('compileReactiveSource 缓存', () => {
     const second = await compileReactiveSource(input);
     expect(first.cacheHit).toBe(false);
     expect(second.cacheHit).toBe(true);
-    expect(first.compilerVersion).toBe('reactive-md/0.6.1');
+    expect(first.compilerVersion).toBe('reactive-md/0.7.0');
     const visited = new Set<object>();
     const expectPlain = (value: unknown): void => {
       if (!value || typeof value !== 'object' || visited.has(value)) return;

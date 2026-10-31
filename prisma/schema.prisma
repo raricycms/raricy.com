@@ -1383,6 +1383,13 @@ model ProfileBlock {
 // reactive 正文的同版本静态快照（迁移 36）。
 // 存的是可信编译产物（LocalDocument + hostData），不是作者上传的 HTML。
 // 正文与这一行必须在同一个事务里写入；编译签名不一致的旧行按 stale 拒读。
+model ReactiveSourceMigration {
+  name        String @id
+  completedAt String @map("completed_at")
+
+  @@map("reactive_source_migrations")
+}
+
 model ReactiveSnapshot {
   id              String @id
   kind            String

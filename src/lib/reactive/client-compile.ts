@@ -39,6 +39,7 @@ import { parseContentFormat } from '../content-format';
 import { MAX_CARD_ITEMS } from '../favorite-refs';
 import { reactiveCompileOptions } from './host-components';
 import { adaptReactiveReferences } from './ref-adapter';
+import { applyLegacyHtmlCompat } from './legacy-compat';
 import type { ReferenceReader, ResolvedReference, SiteHostData } from './ref-types';
 
 /** 适配后的预览源码 + 渲染它所需的 hostData（与 `adaptReactiveReferences` 同形）。 */
@@ -240,7 +241,12 @@ export async function adaptReactivePreview(
   reader: ReferenceReader,
   mode: 'expand' | 'external' = 'expand'
 ): Promise<AdaptedReactivePreview> {
-  const adapted = await adaptReactiveReferences(source, { mode, resolve: mode === 'expand' ? reader : undefined });
+  // 与阅读页同一条兼容规则（等长改写，预览与终稿逐字一致）。
+  const compat = applyLegacyHtmlCompat(source);
+  const adapted = await adaptReactiveReferences(compat.source, {
+    mode,
+    resolve: mode === 'expand' ? reader : undefined,
+  });
   return { adaptedSource: adapted.adaptedSource, hostData: adapted.hostData };
 }
 

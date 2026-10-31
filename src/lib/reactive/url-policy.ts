@@ -23,6 +23,8 @@
 // 任何东西，也不碰 Node / DOM。
 // ─────────────────────────────────────────────────────────────────────────────
 
+import { parseLegacyDataImage } from './data-image';
+
 export type ReactiveUrlPurpose = 'image' | 'audio' | 'link';
 
 /** 超长地址直接拒绝：正常图床/外链不会到这个量级，也避免把异常输入带进缓存键。 */
@@ -56,6 +58,12 @@ export function isAllowedReactiveUrl(url: string, purpose: ReactiveUrlPurpose): 
   if (FORBIDDEN_CHARS.test(url)) return false;
   if (ENTITY_COLON.test(url)) return false;
   if (ENCODED_SCHEME.test(url)) return false;
+
+  // 历史内嵌位图：只对图片用途、只认受限的四种 MIME + base64 + 魔数（见
+  // data-image.ts）。链接与音频仍然一律拒绝 data:。
+  if (purpose === 'image' && url.startsWith('data:')) {
+    return parseLegacyDataImage(url) !== null;
+  }
 
   // 音频不参与「相对地址 / 外链」那套判断：只认本站受控路径。
   if (purpose === 'audio') return CONTROLLED_AUDIO_PATH.test(url);

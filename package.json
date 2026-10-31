@@ -20,6 +20,7 @@
     "probe:ws": "node scripts/probe-binance-ws.mjs",
     "check:links": "node scripts/check-links.mjs",
     "reactive:corpus": "tsx scripts/reactive-corpus-report.mjs",
+    "reactive:migrate-v07": "vite-node --config vitest.config.ts scripts/reactive-migrate-v07.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
@@ -43,7 +44,8 @@
     "postinstall": "node scripts/copy-mathjax-fonts.mjs && node scripts/copy-emoji-assets.mjs && node scripts/copy-converter-assets.mjs",
     "realtime:build": "tsc -p services/realtime/tsconfig.json",
     "search:rebuild": "tsx scripts/rebuild-public-search.mts",
-    "search:benchmark": "tsx scripts/benchmark-public-search.mts"
+    "search:benchmark": "tsx scripts/benchmark-public-search.mts",
+    "reactive:measure": "tsx scripts/reactive-budget-measure.mts"
   },
   "dependencies": {
     "@codemirror/commands": "6.11.1",
@@ -82,7 +84,7 @@
     "qrcode-generator": "^2.0.4",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "reactive-md": "0.6.1",
+    "reactive-md": "0.7.0",
     "sharp": "^0.35.3",
     "tesseract.js": "5.1.1",
     "utif": "3.1.0",
