@@ -2,31 +2,40 @@
 
 // 工具箱菜单。
 // 搜索、过滤、分组与卡片均走 tool-new-* BEM 类。
+//
+// 【开发者工具入口在 2026-10 收敛成一个合集（/tool/dev）】
+// 原先「编码 / 解码」与「加密 / 安全」两组收在「更多开发者工具」手风琴里，现在连同
+// 新增的 JSON / 正则 / Diff / Cron / JWT / 时间戳 / 二维码 / 网络查询一起登记在
+// `src/lib/dev-tools/registry.ts`，由合集页统一陈列。这里只放一张合集卡 + 四张常用
+// 工具卡，**不再维护第二份清单** —— 旧的 CODEC / CRYPTO 数组已删，两份清单必然 drift。
 import Link from 'next/link';
 import { useState } from 'react';
 import {
   ArrowRight,
   AudioLines,
-  Binary,
   Braces,
   Calculator,
-  ChevronDown,
   Clipboard,
-  Code,
+  Clock,
   FileCog,
-  Hash,
+  FileJson,
   Image,
-  Link2,
-  Lock,
-  Mail,
+  QrCode,
+  Regex,
   Search,
   Star,
   Vote,
   Wrench,
   type LucideIcon,
 } from 'lucide-react';
+import {
+  DEV_TOOLS,
+  devToolHref,
+  findDevTool,
+  type DevToolSlug,
+} from '@/lib/dev-tools/registry';
 
-type Cat = 'site' | 'file' | 'math' | 'codec' | 'crypto';
+type Cat = 'site' | 'file' | 'math' | 'dev';
 type Tool = {
   cat: Cat;
   kw: string;
@@ -36,6 +45,7 @@ type Tool = {
   desc: string;
   tags: string[];
   coreOnly?: boolean;
+  featured?: boolean;
 };
 
 const SITE: Tool[] = [
@@ -102,6 +112,7 @@ const SITE: Tool[] = [
     tags: ['工具'],
   },
 ];
+
 const FILE_TOOLS: Tool[] = [
   {
     cat: 'file',
@@ -126,72 +137,36 @@ const MATH: Tool[] = [
   },
 ];
 
-const CODEC: Tool[] = [
+/** 常用开发者工具：标题 / 说明 / 标签都从 registry 取，只有图标是本地给的。 */
+function devPick(slug: DevToolSlug, icon: LucideIcon): Tool {
+  const def = findDevTool(slug);
+  if (!def) throw new Error(`开发者工具清单里没有登记：${slug}`);
+  return {
+    cat: 'dev',
+    kw: def.keywords,
+    href: devToolHref(def),
+    icon,
+    title: def.title,
+    desc: def.desc,
+    tags: [...def.tags],
+  };
+}
+
+const DEV: Tool[] = [
   {
-    cat: 'codec',
-    kw: 'base base16 base32 base36 base58 base62 base64 base85 base91 base92 编码 解码',
-    href: '/tool/base',
+    cat: 'dev',
+    kw: '开发者 工具 dev json 正则 表达式 sql diff 文本对比 cron jwt 时间戳 uuid 二维码 条码 dns ip 子网 url 编码 加密 哈希 base hex aes 合集 collection 工具集',
+    href: '/tool/dev',
     icon: Braces,
-    title: 'Base 编码',
-    desc: 'Base16 / 32 / 36 / 58 / 62 / 64 / 85 / 91 / 92',
-    tags: ['Base64', 'Base58', '+7'],
+    title: '开发者工具合集',
+    desc: `JSON、正则、Diff、Cron、JWT、时间戳、二维码、条码与网络查询等 ${DEV_TOOLS.length} 项工具`,
+    tags: ['合集', 'JSON', '网络'],
+    featured: true,
   },
-  {
-    cat: 'codec',
-    kw: 'hex 十六进制 字节 bytes 文件 查看 编辑',
-    href: '/tool/hex',
-    icon: Binary,
-    title: 'Hex 编码',
-    desc: '十六进制与字节流互转',
-    tags: ['Hex', 'Bytes'],
-  },
-  {
-    cat: 'codec',
-    kw: 'url 编码 解码 percent query',
-    href: '/tool/url',
-    icon: Link2,
-    title: 'URL 编码',
-    desc: 'URL 百分号编码 / 解码',
-    tags: ['URL', 'Web', '编码'],
-  },
-  {
-    cat: 'codec',
-    kw: 'html 实体 entity 转义 escape',
-    href: '/tool/html',
-    icon: Code,
-    title: 'HTML 编码',
-    desc: 'HTML 实体编码 / 解码，支持常用符号和特殊字符',
-    tags: ['Entity', 'Escape'],
-  },
-  {
-    cat: 'codec',
-    kw: 'quoted-printable mime rfc2045 邮件',
-    href: '/tool/qp',
-    icon: Mail,
-    title: 'Quoted-printable',
-    desc: '邮件 MIME Quoted-Printable 编 / 解码',
-    tags: ['MIME', 'RFC2045'],
-  },
-];
-const CRYPTO: Tool[] = [
-  {
-    cat: 'crypto',
-    kw: 'hash 哈希 sha sha-1 sha-256 sha-512 md5 hmac 校验',
-    href: '/tool/hash',
-    icon: Hash,
-    title: '哈希计算',
-    desc: 'SHA-256 / SHA-1 / SHA-512 / MD5 等',
-    tags: ['SHA-256', 'MD5'],
-  },
-  {
-    cat: 'crypto',
-    kw: 'aes 加密 解密 对称 cbc ctr gcm',
-    href: '/tool/aes',
-    icon: Lock,
-    title: 'AES',
-    desc: '常见模式（CBC / CTR / GCM）与填充',
-    tags: ['AES', '密钥'],
-  },
+  devPick('json', FileJson),
+  devPick('regex', Regex),
+  devPick('timestamp', Clock),
+  devPick('qrcode', QrCode),
 ];
 
 function ToolCard({ t }: { t: Tool }) {
@@ -223,7 +198,12 @@ function ToolCard({ t }: { t: Tool }) {
     </>
   );
   return t.href.startsWith('/') ? (
-    <Link className="tool-new-card" data-cat={t.cat} data-kw={t.kw} href={t.href}>
+    <Link
+      className={`tool-new-card${t.featured ? ' tool-new-card--featured' : ''}`}
+      data-cat={t.cat}
+      data-kw={t.kw}
+      href={t.href}
+    >
       {inner}
     </Link>
   ) : (
@@ -236,7 +216,6 @@ function ToolCard({ t }: { t: Tool }) {
 export default function ToolMenu({ isCore }: { isCore: boolean }) {
   const [q, setQ] = useState('');
   const [cat, setCat] = useState<'all' | Cat>('all');
-  const [moreOpen, setMoreOpen] = useState(false);
 
   const query = q.trim().toLowerCase();
   const site = SITE.filter((t) => !t.coreOnly || isCore);
@@ -251,15 +230,10 @@ export default function ToolMenu({ isCore }: { isCore: boolean }) {
     { key: 'site', title: '站务工具', items: site.filter(match) },
     { key: 'file', title: '文件处理', items: FILE_TOOLS.filter(match) },
     { key: 'math', title: '数学 / 几何', items: MATH.filter(match) },
-    { key: 'codec', title: '编码 / 解码', items: CODEC.filter(match), more: true },
-    { key: 'crypto', title: '加密 / 安全', items: CRYPTO.filter(match), more: true },
+    { key: 'dev', title: '开发者工具', items: DEV.filter(match) },
   ];
 
   const total = blocks.reduce((n, b) => n + b.items.length, 0);
-  // 选到「编码 / 解码」「加密 / 安全」时直接展开；搜索命中隐藏工具时也展开。
-  const showDev = moreOpen || cat === 'codec' || cat === 'crypto';
-  // 分类筛选时不再显示「收起」—— 那颗按钮会把用户刚筛出的唯一结果藏起来。
-  const showToggle = cat === 'all' && total > 0;
 
   return (
     <>
@@ -267,20 +241,16 @@ export default function ToolMenu({ isCore }: { isCore: boolean }) {
         <div className="container">
           <h1 className="tool-new-hero__title">工具箱</h1>
           <p className="tool-new-hero__description">
-            编码、转换、计算与站内工具。
+            编码、转换、计算、开发者工具与站内服务。
           </p>
           <div className="tool-new-hero__search">
             <input
               type="text"
               className="search-input"
-              placeholder="搜索工具或类别，例如：Base64、AES、哈希…"
+              placeholder="搜索工具或类别，例如：Base64、JSON、二维码…"
               aria-label="搜索工具"
               value={q}
-              onChange={(e) => {
-                const v = e.target.value;
-                setQ(v);
-                if (v.trim()) setMoreOpen(true);
-              }}
+              onChange={(e) => setQ(e.target.value)}
             />
           </div>
           <div className="tool-new-hero__filters">
@@ -290,8 +260,7 @@ export default function ToolMenu({ isCore }: { isCore: boolean }) {
                 ['site', '站务工具'],
                 ['file', '文件处理'],
                 ['math', '数学 / 几何'],
-                ['codec', '编码 / 解码'],
-                ['crypto', '加密 / 安全'],
+                ['dev', '开发者工具'],
               ] as Array<['all' | Cat, string]>
             ).map(([c, label]) => (
               <button
@@ -319,48 +288,18 @@ export default function ToolMenu({ isCore }: { isCore: boolean }) {
               </p>
             </div>
           ) : (
-            <>
-              {blocks.slice(0, 3).map((b) =>
-                b.items.length > 0 ? (
-                  <div className="tool-new-grid__section" key={b.key}>
-                    <h2 className="tool-new-grid__section-title">{b.title}</h2>
-                    <div className="tool-new-grid__tools">
-                      {b.items.map((t) => (
-                        <ToolCard t={t} key={t.title} />
-                      ))}
-                    </div>
+            blocks.map((b) =>
+              b.items.length > 0 ? (
+                <div className="tool-new-grid__section" data-section={b.key} key={b.key}>
+                  <h2 className="tool-new-grid__section-title">{b.title}</h2>
+                  <div className="tool-new-grid__tools">
+                    {b.items.map((t) => (
+                      <ToolCard t={t} key={t.title} />
+                    ))}
                   </div>
-                ) : null
-              )}
-
-              {showToggle && (
-                <div className="tool-new-more">
-                  <button
-                    type="button"
-                    className="filter-pill"
-                    aria-expanded={moreOpen}
-                    onClick={() => setMoreOpen((v) => !v)}
-                  >
-                    {moreOpen ? '收起开发者工具' : '更多开发者工具'}
-                    <ChevronDown aria-hidden="true" />
-                  </button>
                 </div>
-              )}
-
-              {showDev &&
-                blocks.slice(3).map((b) =>
-                  b.items.length > 0 ? (
-                    <div className="tool-new-grid__section" data-section={b.key} key={b.key}>
-                      <h2 className="tool-new-grid__section-title">{b.title}</h2>
-                      <div className="tool-new-grid__tools">
-                        {b.items.map((t) => (
-                          <ToolCard t={t} key={t.title} />
-                        ))}
-                      </div>
-                    </div>
-                  ) : null
-                )}
-            </>
+              ) : null
+            )
           )}
         </section>
       </div>

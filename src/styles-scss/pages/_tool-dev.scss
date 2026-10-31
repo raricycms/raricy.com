@@ -1,0 +1,319 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// 开发者工具合集（/tool/dev）的外壳与共享原语
+//
+// 这里只放**跨工具复用**的东西：
+//   · 合集首页与子页的返回链接 / 标题区
+//   · 各工具页共用的输入、输出、表格、键值、徽章、分栏等原语
+// 单个工具特有的类名住在各自的家族分片：
+//   _tool-dev-data / -code / -time / -net.scss
+//
+// 纪律：
+//   · 按钮只用全站三档（.btn / .btn-primary / .btn-outline-secondary / .filter-pill），
+//     这里不另写按钮表面。
+//   · 字段表面一律走 --color-background-page + 聚焦 --shadow-focus-brand；单行胶囊、
+//     多行 20px（$radius-field）。
+//   · `tests/unit/css-tsx-classes.test.ts` 会静态对账：.tsx 里出现的类名必须在编译后
+//     CSS 里有定义。新增类名必须同时在这里（或家族分片里）加规则。
+// ─────────────────────────────────────────────────────────────────────────────
+@use '../abstracts/variables' as v;
+@use '../abstracts/mixins' as m;
+
+// 返回工具集的链接：子页面与合集首页共用同一个外观。
+.devtool-shell__back,
+.devtool-hub__back {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: v.$space-4;
+  color: var(--color-text-secondary);
+  font-size: 0.9rem;
+  text-decoration: none;
+
+  svg {
+    width: 16px;
+    height: 16px;
+  }
+
+  &:hover {
+    color: var(--color-brand-primary);
+  }
+}
+
+// 子页面标题区（h1 与说明沿用 tool-new-hero__*，这里只管与下方工作区的间距）。
+.devtool-head {
+  margin-bottom: v.$space-6;
+
+  .tool-new-hero__description {
+    margin-bottom: 0;
+  }
+}
+
+// 合集首页：标题区下方的数量说明、分类标题右侧的计数。
+.devtool-hub__meta {
+  margin-top: v.$space-4;
+  margin-bottom: 0;
+  color: var(--color-text-secondary);
+  font-size: 0.85rem;
+}
+
+.devtool-section__count {
+  margin-left: v.$space-2;
+  color: var(--color-text-secondary);
+  font-size: 0.85rem;
+  font-weight: 500;
+}
+
+// 输入 / 输出分栏。默认单列；桌面两列，可用修饰符调整宽窄比例。
+.devtool-split {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: v.$space-4;
+
+  @media (min-width: 992px) {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+
+    &--left {
+      grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+    }
+
+    &--right {
+      grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
+    }
+  }
+}
+
+// 工具操作条：一排按钮 / 选项，窄屏折行。
+.devtool-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: v.$space-2;
+  margin-bottom: v.$space-3;
+}
+
+.devtool-bar__spacer {
+  margin-left: auto;
+}
+
+.devtool-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: v.$space-2;
+}
+
+// 多行输入（textarea）的字段表面。单行字段请直接用 .form-control（全站字段令牌），
+// 只有这里的大编辑区需要一套无边框、可伸缩的表面。
+.devtool-input {
+  width: 100%;
+  min-height: 140px;
+  padding: 14px 16px;
+  border: none;
+  border-radius: v.$radius-field;
+  background: var(--color-background-page);
+  color: var(--color-text-primary);
+  font-family: var(--font-mono);
+  font-size: 0.875rem;
+  line-height: 1.6;
+  resize: vertical;
+
+  &:focus {
+    outline: 0;
+    box-shadow: var(--shadow-focus-brand);
+  }
+
+  @media (max-width: 767.98px) {
+    font-size: 1rem;
+  }
+}
+
+// 等宽结果面。div / pre 都可用；pre 自带 white-space 已由下面统一成 pre-wrap。
+.devtool-output {
+  margin: 0;
+  max-height: 460px;
+  padding: 14px 16px;
+  overflow: auto;
+  border-radius: v.$radius-field;
+  background: var(--color-background-page);
+  color: var(--color-text-primary);
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+
+  &--error {
+    color: var(--color-warning-primary);
+  }
+
+  &--ok {
+    color: var(--color-success-primary);
+  }
+}
+
+.devtool-hint {
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: 0.82rem;
+  line-height: 1.6;
+
+  // 提示行里的等宽片段可能是一长串没有空格的选项（如 cron 宏
+  // `@yearly/@monthly/@weekly/…`）。不放开折行时，390px 视口实测会把整页顶出
+  // 横向滚动条（scrollWidth 415 > 390），而这一串本身没有任何可断点。
+  .mono {
+    overflow-wrap: anywhere;
+  }
+}
+
+.devtool-error {
+  margin: 0;
+  color: var(--color-warning-primary);
+  font-size: 0.85rem;
+  line-height: 1.6;
+}
+
+.devtool-status {
+  color: var(--color-text-secondary);
+  font-size: 0.82rem;
+}
+
+// 键值表（IP 信息、响应头、UA 解析这类「字段 → 值」的展示）。
+.devtool-kv {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 6px v.$space-4;
+  margin: 0;
+  font-size: 0.9rem;
+
+  dt {
+    color: var(--color-text-secondary);
+  }
+
+  dd {
+    margin: 0;
+    word-break: break-all;
+  }
+}
+
+// 可滚动表格外壳 + 数据表（状态码、MIME、DNS 记录、响应头）。
+.devtool-table-wrap {
+  max-height: 480px;
+  overflow: auto;
+  border-radius: v.$radius-field;
+  background: var(--color-background-page);
+}
+
+.devtool-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+
+  th,
+  td {
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--color-border);
+    text-align: left;
+    vertical-align: top;
+  }
+
+  th {
+    color: var(--color-text-secondary);
+    font-weight: 600;
+    white-space: nowrap;
+  }
+
+  tr:last-child td {
+    border-bottom: none;
+  }
+}
+
+// 小徽章（状态、方法、匹配次数…）。语义色用全站令牌，别写死色值。
+.devtool-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border: 1px solid var(--color-border);
+  border-radius: v.$radius-small;
+  background: var(--color-background-page);
+  color: var(--color-text-secondary);
+  font-size: 0.75rem;
+  line-height: 1.4;
+
+  &--ok {
+    border-color: transparent;
+    background: var(--color-success-secondary);
+    color: var(--color-success-primary);
+  }
+
+  &--warn {
+    border-color: transparent;
+    background: var(--color-accent-amber-soft);
+    color: var(--color-accent-amber);
+  }
+
+  &--danger {
+    border-color: transparent;
+    background: var(--color-warning-secondary);
+    color: var(--color-warning-primary);
+  }
+
+  &--info {
+    border-color: transparent;
+    background: var(--color-brand-secondary);
+    color: var(--color-brand-primary);
+  }
+}
+
+// 列表 / 行（匹配结果、树节点、参数行）。
+.devtool-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 0.875rem;
+}
+
+.devtool-row {
+  display: flex;
+  align-items: flex-start;
+  gap: v.$space-2;
+  padding: 5px 8px;
+  border-radius: v.$radius-small;
+
+  &:hover {
+    background: var(--color-background-subtle);
+  }
+
+  &--hit {
+    background: var(--color-brand-secondary);
+  }
+}
+
+// 限定高度的滚动区（大 JSON / 长列表）。
+.devtool-scroll {
+  overflow: auto;
+  max-height: 420px;
+}
+
+// 图片 / 二维码预览：白底居中（二维码必须白底才扫得出来，主题底色不算）。
+.devtool-preview {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: v.$space-4;
+  background: var(--color-background-page);
+  border-radius: v.$radius-field;
+
+  img,
+  canvas,
+  svg {
+    max-width: 100%;
+    height: auto;
+    background: #fff;
+    border-radius: v.$radius-small;
+  }
+}
+
+// 工具箱主页「开发者工具」区的合集卡：横跨整行（其余热门工具卡跟在后面）。
+.tool-new-card--featured {
+  grid-column: 1 / -1;
+}

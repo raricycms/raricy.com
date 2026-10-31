@@ -1,0 +1,124 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// 开发者工具 · 网络与码家族（二维码生成 / 二维码识别 / 条码 / IP / 子网 / DNS / 响应头）
+//
+// 只放这一族工具页**独有**的类名；共享原语（.devtool-split / -kv / -preview /
+// -table / -bar / -badge / -list / -row / -input / -error / -hint …）住在
+// `pages/_tool-dev.scss`，这里不重复定义。
+//
+// 类名一律带 `devtool-net-` 前缀：四个家族分片会同时编进 main.scss，前缀冲突会导致
+// 「后编译的那份悄悄覆盖前一份」，而且不会有任何报错。
+// ─────────────────────────────────────────────────────────────────────────────
+@use '../abstracts/variables' as v;
+
+// 字段块：label + 控件 + 说明的纵向分组（面板本身已有 gap，这里不再加外边距）。
+.devtool-net-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+
+  > .devtool-hint {
+    margin: 0;
+  }
+}
+
+// 单行输入 + 下拉 / 按钮的横排。窄屏自动折行，输入框保住最小宽度。
+.devtool-net-input-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: v.$space-2;
+
+  .form-control {
+    flex: 1 1 200px;
+    min-width: 0;
+  }
+
+  .form-select {
+    flex: 0 0 auto;
+    width: auto;
+    min-width: 96px;
+  }
+}
+
+// 二维码识别的拖放区。虚线边框 + 点击 / 键盘都能触发；
+// --over 是高亮态（拖拽悬停）。
+.devtool-net-drop {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 180px;
+  padding: v.$space-6;
+  border: 2px dashed var(--color-border);
+  border-radius: v.$radius-field;
+  background: var(--color-background-page);
+  color: var(--color-text-secondary);
+  text-align: center;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background-color 0.15s ease, color 0.15s ease;
+
+  &:hover,
+  &:focus-visible {
+    border-color: var(--color-brand-primary);
+    color: var(--color-brand-primary);
+    outline: 0;
+  }
+
+  &--over {
+    border-color: var(--color-brand-primary);
+    background: var(--color-brand-secondary);
+    color: var(--color-brand-primary);
+  }
+}
+
+// 纵向堆叠的小段说明（拖放区下方那两条）。
+.devtool-net-stack {
+  display: flex;
+  flex-direction: column;
+  gap: v.$space-2;
+}
+
+// 面板内的小标题（h2 / h3）。DevToolShell 已经渲染了页面唯一的 h1，
+// 工具内部不允许再出现 h1。
+.devtool-net-heading {
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: 0.9rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+// 结果分区之间的间距（重定向链、响应头表这类）。
+.devtool-net-section {
+  display: flex;
+  flex-direction: column;
+  gap: v.$space-2;
+  margin-top: v.$space-4;
+}
+
+// 识别结果里的大图：限制高度，避免长图把整页撑开。
+.devtool-net-preview-img {
+  width: auto;
+  max-height: 320px;
+  object-fit: contain;
+}
+
+// 条形码预览的 SVG：按容器宽度铺满，高度由 viewBox 比例决定。
+.devtool-net-barcode-svg {
+  width: 100%;
+  height: auto;
+}
+
+// 响应头 / DNS 记录表：值列允许断词，名称列保持单行。
+.devtool-net-table {
+  td {
+    word-break: break-all;
+  }
+
+  th:first-child,
+  td:first-child {
+    white-space: nowrap;
+  }
+}

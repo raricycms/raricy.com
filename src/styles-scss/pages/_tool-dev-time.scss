@@ -1,0 +1,155 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// 开发者工具 · 时间与链接家族（时间戳 / Cron / JWT / UUID / URL 参数 / UTM / 网址提取）
+//
+// 只放这一族工具页**独有**的类名；共享原语住在 `pages/_tool-dev.scss`。
+// 规则：
+//   · 按钮 / 字段表面只用全站三档与字段令牌（.btn* / .form-control / .form-select），
+//     这里不重写按钮外观；
+//   · 颜色全部走 `var(--color-*)` 令牌，聚焦一律 `--shadow-focus-brand`；
+//   · `tests/unit/css-tsx-classes.test.ts` 会静态对账：.tsx 里出现的类名必须在编译后
+//     CSS 里有定义 —— 这里出现的每一条都真的被这一族组件用到。
+// ─────────────────────────────────────────────────────────────────────────────
+@use '../abstracts/variables' as v;
+
+// 工具条里的弹性输入：输入框吃掉剩余宽度，按钮保持自身宽度。
+.devtool-time-grow {
+  flex: 1 1 260px;
+  min-width: 0;
+}
+
+// 分段小标题。工具组件里不能出现 h1（页面外壳 DevToolShell 已经渲染了标题），
+// 需要分段时用 h2 挂这个类。
+.devtool-time-title {
+  margin: v.$space-4 0 v.$space-2;
+  color: var(--color-text-primary);
+  font-size: 1rem;
+  font-weight: 600;
+  line-height: 1.4;
+
+  // 放进工具条时不要额外上边距：工具条自己已经有下边距。
+  .devtool-bar & {
+    margin: 0;
+  }
+}
+
+// 一行「标签 — 值 — 操作」：时间戳结果、UUID 列表、网址列表共用。
+.devtool-time-row {
+  align-items: center;
+  gap: v.$space-2;
+  padding: 6px 8px;
+}
+
+.devtool-time-row__label {
+  flex: 0 0 auto;
+  min-width: 8.5em;
+  color: var(--color-text-secondary);
+  font-size: 0.82rem;
+}
+
+.devtool-time-row__value {
+  flex: 1 1 auto;
+  min-width: 0;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.devtool-time-index {
+  flex: 0 0 auto;
+  min-width: 2.5em;
+  color: var(--color-text-secondary);
+  font-size: 0.82rem;
+  text-align: right;
+}
+
+.devtool-time-empty {
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: 0.85rem;
+}
+
+// 徽章行（状态 / 警告 / 统计计数）。
+.devtool-time-badges {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: v.$space-2;
+  margin-bottom: v.$space-2;
+}
+
+// 复选框组（网址提取的选项）。
+.devtool-time-checks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 v.$space-4;
+  margin: v.$space-2 0 v.$space-3;
+}
+
+// 字段级错误列表（cron 解析失败时逐条列出）。
+.devtool-time-error-list {
+  margin: 0 0 v.$space-3;
+  padding-left: 1.4em;
+
+  li {
+    margin-bottom: 4px;
+  }
+}
+
+// 两列字段网格（UTM 参数）；窄屏自动落回单列。
+.devtool-time-fields,
+.devtool-time-subgrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: v.$space-2 v.$space-4;
+  margin-bottom: v.$space-3;
+}
+
+.devtool-time-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+
+  .form-label {
+    margin-bottom: 0;
+  }
+}
+
+// 工具条里的定宽控件（版本选择 / 数量）。
+.devtool-time-select {
+  flex: 0 0 auto;
+  width: auto;
+  min-width: 10.5em;
+}
+
+.devtool-time-count {
+  flex: 0 0 auto;
+  width: 6.5em;
+}
+
+// URL 参数编辑的一行：键 / 值 / 编码开关 / 操作。
+.devtool-time-param {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.6fr) auto auto;
+  align-items: center;
+  gap: v.$space-2;
+  padding: 4px 0;
+
+  @media (max-width: 767.98px) {
+    grid-template-columns: minmax(0, 1fr) auto auto;
+
+    // 窄屏把「值」放到第二行占满，键与开关 / 操作各占一行的一格。
+    > input:nth-of-type(2) {
+      grid-column: 1 / -1;
+      grid-row: 2;
+    }
+  }
+}
+
+.devtool-time-param__check {
+  margin-bottom: 0;
+  white-space: nowrap;
+}
+
+.devtool-time-param__actions {
+  display: flex;
+  gap: 4px;
+}

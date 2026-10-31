@@ -412,4 +412,17 @@ export const RULES = {
    * 反复重排把库写热。桶键：profile:save:{用户 id}。
    */
   profileSave: { limit: 30, windowMs: 60 * 1000 },
+  /**
+   * 开发者工具「网站响应头查看」（GET /api/tool/http-headers）。
+   *
+   * 【为什么必须有】它是全站**唯一**代用户发起外网请求的路由：一次调用最多
+   * 1 + 3 次真实出站 HTTP（跟随重定向）。SSRF 判据挡住了内网（见
+   * `src/lib/dev-tools/net-guard.ts` 文件头），但外网流量本身仍需要一个上界，
+   * 否则一个脚本就能把本站当免费代理/放大器用。
+   *
+   * 【为什么是 20/分】正常人查一两个站；20 给足余量，对脚本是一道硬墙。
+   * 取不到 IP 时**整条跳过**（clientIp 的约定见 src/lib/request-ip.ts，别传占位串）。
+   * 桶键：tool-header:ip:{IP}。
+   */
+  toolHeaderFetchPerIp: { limit: 20, windowMs: 60 * 1000 },
 } as const;

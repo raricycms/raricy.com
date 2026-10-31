@@ -1,0 +1,242 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// 开发者工具 · 数据与格式家族（JSON / 数据转换 / 文本 Diff）
+//
+// 只放这一族工具页**独有**的类名；跨工具共用的输入 / 输出 / 表格 / 徽章等原语
+// 住在 `pages/_tool-dev.scss`，别在这里重抄一遍。
+// 这里出现的每个类名都必须真的被 .tsx 用到（`tests/unit/css-tsx-classes.test.ts`
+// 只查「用到的类有没有样式」，不查反向），并跟着工具页一起提交。
+//
+// 动效一律不做：这三类工具的结果是「一次性算出来的值」，淡入/展开动画只会让
+// 「点完到底有没有生效」更难判断。
+// ─────────────────────────────────────────────────────────────────────────────
+@use '../abstracts/variables' as v;
+
+// 一页里多块面板 / 分栏之间的统一纵向间距（页面外壳只负责标题，工作区从这里开始）。
+.devtool-stack {
+  display: flex;
+  flex-direction: column;
+  gap: v.$space-4;
+}
+
+// 操作条里的标签与勾选项不占额外行高：.form-label / .form-check 自带下边距，
+// 在横向排布的 .devtool-bar 里会顶出一截空白。
+.devtool-bar .form-label,
+.devtool-bar .form-check {
+  margin-bottom: 0;
+}
+
+// 操作条里的下拉框：宽度按内容收，不占满整行。
+.devtool-select {
+  width: auto;
+  min-width: 8rem;
+  max-width: 100%;
+}
+
+// 错误区：一行文案 + 定位信息 + 片段。三者之间用统一间距，免得各页各写一份 margin。
+.devtool-error-block {
+  display: flex;
+  flex-direction: column;
+  gap: v.$space-2;
+}
+
+// 面板内的小标题（h2）。页面顶部的大标题由 DevToolShell 的 h1 负责，这里只做分区。
+.devtool-subtitle {
+  margin: 0;
+  color: var(--color-text-primary);
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+// 说明型列表（有损项、不支持的语法）。
+.devtool-notes {
+  margin: 0;
+  padding-left: 1.2rem;
+  color: var(--color-text-secondary);
+  font-size: 0.82rem;
+  line-height: 1.7;
+}
+
+// ── JSON 树形查看器 ──────────────────────────────────────────────────────────
+
+.devtool-tree {
+  padding: v.$space-2 v.$space-3;
+  background: var(--color-background-page);
+  border-radius: v.$radius-field;
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  line-height: 1.7;
+}
+
+.devtool-tree__row {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 1px 4px;
+  border-radius: v.$radius-small;
+
+  &:hover {
+    background: var(--color-background-subtle);
+  }
+}
+
+.devtool-tree__toggle {
+  flex: none;
+  width: 1.2em;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--color-text-secondary);
+  font: inherit;
+  line-height: 1;
+  text-align: center;
+  cursor: pointer;
+
+  &--placeholder {
+    visibility: hidden;
+    cursor: default;
+  }
+}
+
+.devtool-tree__key {
+  flex: none;
+  color: var(--color-text-primary);
+}
+
+.devtool-tree__index {
+  flex: none;
+  color: var(--color-text-secondary);
+}
+
+.devtool-tree__type {
+  flex: none;
+  color: var(--color-text-secondary);
+  font-size: 0.72rem;
+}
+
+.devtool-tree__value {
+  min-width: 0;
+  word-break: break-all;
+
+  &--string {
+    color: var(--color-success-primary);
+  }
+
+  &--number {
+    color: var(--color-brand-primary);
+  }
+
+  &--boolean {
+    color: var(--color-warning-primary);
+  }
+
+  &--null {
+    color: var(--color-text-secondary);
+    font-style: italic;
+  }
+
+  &--empty {
+    color: var(--color-text-secondary);
+  }
+}
+
+.devtool-tree__children {
+  margin-left: 10px;
+  padding-left: 10px;
+  border-left: 1px dashed var(--color-border);
+}
+
+.devtool-tree__more {
+  margin: 0;
+  padding: 2px 4px;
+  color: var(--color-text-secondary);
+  font-size: 0.75rem;
+}
+
+// ── JSON 路径查询 ────────────────────────────────────────────────────────────
+
+.devtool-path__input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.devtool-path__hit {
+  display: flex;
+  flex-direction: column;
+  gap: v.$space-2;
+  padding: 8px 10px;
+  border-radius: v.$radius-small;
+
+  &:hover {
+    background: var(--color-background-subtle);
+  }
+}
+
+.devtool-path__path {
+  color: var(--color-brand-primary);
+  font-size: 0.8rem;
+  word-break: break-all;
+}
+
+.devtool-path__value {
+  max-height: 200px;
+  font-size: 0.78rem;
+}
+
+// ── 文本 Diff ────────────────────────────────────────────────────────────────
+
+.devtool-diff {
+  max-height: 560px;
+  overflow: auto;
+  border-radius: v.$radius-field;
+  background: var(--color-background-page);
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  line-height: 1.6;
+}
+
+.devtool-diff__row {
+  display: flex;
+  align-items: baseline;
+  gap: v.$space-2;
+  padding: 0 10px;
+
+  &--add {
+    background: var(--color-success-secondary);
+  }
+
+  &--remove {
+    background: var(--color-warning-secondary);
+  }
+}
+
+.devtool-diff__line-no {
+  flex: none;
+  width: 3.2em;
+  color: var(--color-text-secondary);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  user-select: none;
+}
+
+.devtool-diff__sign {
+  flex: none;
+  width: 1em;
+  color: var(--color-text-secondary);
+  text-align: center;
+  user-select: none;
+}
+
+.devtool-diff__row--add .devtool-diff__sign {
+  color: var(--color-success-primary);
+}
+
+.devtool-diff__row--remove .devtool-diff__sign {
+  color: var(--color-warning-primary);
+}
+
+.devtool-diff__text {
+  flex: 1 1 auto;
+  min-width: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+}

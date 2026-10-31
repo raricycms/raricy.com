@@ -1,0 +1,231 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// 开发者工具 · 代码与文本家族（正则 / SQL / 代码格式化 / 文本 / 颜色 / 状态码 / MIME / UA）
+//
+// 只放这一族工具页**独有**的类名；共享原语住在 `pages/_tool-dev.scss`
+// （`.devtool-split` / `.devtool-output` / `.devtool-table` / `.devtool-kv` /
+// `.devtool-badge` / `.devtool-bar` / `.devtool-input` / `.devtool-hint` /
+// `.devtool-error` / `.devtool-list` / `.devtool-row` / `.devtool-status` …），
+// 全站通用的字段与按钮直接复用 `.form-control` / `.form-select` / `.btn-*`。
+//
+// 命名纪律：本家族一律用 `devtool-<工具>__` 前缀，避免与其它家族分片撞名
+// （main.scss 里 data → code → time → net 依次加载，后加载的同名规则会静默覆盖）。
+// 例外是两个跨工具的小工具类：`.devtool-search`（搜索框宽度）与
+// `.devtool-field--select`（下拉宽度），它们只在本族用到，名字通用但定义只在这里。
+// ─────────────────────────────────────────────────────────────────────────────
+@use '../abstracts/variables' as v;
+
+// ── 家族内的小标题 ───────────────────────────────────────────────────────────
+.devtool-code__subhead {
+  margin: v.$space-6 0 v.$space-3;
+  color: var(--color-text-primary);
+  font-size: 1.05rem;
+  font-weight: 600;
+
+  &:first-child {
+    margin-top: 0;
+  }
+}
+
+// ── 搜索框 / 下拉宽度 ─────────────────────────────────────────────────────────
+.devtool-search {
+  width: 100%;
+  max-width: 380px;
+}
+
+.devtool-field--select {
+  width: auto;
+  min-width: 120px;
+}
+
+// ── 正则测试 ─────────────────────────────────────────────────────────────────
+.devtool-regex__pattern {
+  flex: 1 1 240px;
+  min-width: 0;
+}
+
+// 匹配高亮区：与 `.devtool-output` 同一套表面，但内容由片段拼成（不是 pre 里的纯文本，
+// 所以不能用 `white-space` 的 pre 默认值之外的东西）。
+.devtool-regex__highlight {
+  max-height: 320px;
+  min-height: 140px;
+  padding: 14px 16px;
+  overflow: auto;
+  border-radius: v.$radius-field;
+  background: var(--color-background-page);
+  color: var(--color-text-primary);
+  font-family: var(--font-mono);
+  font-size: 0.875rem;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+// 命中片段用 <mark>：只给底色与字色，不加粗、不改字号 —— 高亮不能把文本「撑动」。
+.devtool-regex__hit {
+  padding: 0 2px;
+  border-radius: 3px;
+  background: var(--color-brand-secondary);
+  color: var(--color-brand-primary);
+}
+
+.devtool-regex__matches {
+  max-height: 360px;
+}
+
+.devtool-regex__match {
+  min-width: 0;
+}
+
+.devtool-regex__meta {
+  color: var(--color-text-secondary);
+  font-size: 0.82rem;
+  line-height: 1.6;
+}
+
+.devtool-regex__groups {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: v.$space-1;
+}
+
+.devtool-regex__group {
+  display: flex;
+  align-items: baseline;
+  gap: v.$space-2;
+  font-size: 0.82rem;
+}
+
+.devtool-regex__group-name {
+  flex: none;
+  color: var(--color-brand-primary);
+  font-family: var(--font-mono);
+}
+
+.devtool-regex__group-value {
+  min-width: 0;
+  font-family: var(--font-mono);
+  word-break: break-all;
+}
+
+// ── 文本统计卡片 ─────────────────────────────────────────────────────────────
+.devtool-text__stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: v.$space-2;
+  margin: v.$space-4 0;
+}
+
+.devtool-text__stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: v.$space-3 v.$space-4;
+  border-radius: v.$radius-large;
+  background: var(--color-background-page);
+}
+
+.devtool-text__stat-value {
+  color: var(--color-text-primary);
+  font-size: 1.3rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.devtool-text__stat-label {
+  color: var(--color-text-secondary);
+  font-size: 0.8rem;
+}
+
+// ── 颜色转换 ─────────────────────────────────────────────────────────────────
+.devtool-color__input {
+  flex: 1 1 280px;
+  min-width: 0;
+}
+
+// 色块预览：高度只给下限，颜色由内联 style 给。色值label 自带卡片底色 —— 不靠
+// 「按颜色算黑/白字」，因为暗色主题下页面底色不是白，透明色合成结果完全不同。
+.devtool-color__swatch {
+  display: flex;
+  align-items: flex-end;
+  min-height: 120px;
+  margin-top: v.$space-4;
+  padding: v.$space-4;
+  border-radius: v.$radius-field;
+  font-size: 0.9rem;
+}
+
+.devtool-color__swatch-label {
+  padding: 2px 8px;
+  border-radius: v.$radius-small;
+  background: var(--color-background-card);
+  color: var(--color-text-primary);
+  font-size: 0.82rem;
+}
+
+.devtool-color__value-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: v.$space-4;
+}
+
+.devtool-color__value-row {
+  display: flex;
+  align-items: center;
+  gap: v.$space-3;
+  padding: 6px 8px;
+  border-radius: v.$radius-small;
+
+  &:hover {
+    background: var(--color-background-subtle);
+  }
+}
+
+.devtool-color__value-label {
+  flex: none;
+  width: 48px;
+  color: var(--color-text-secondary);
+  font-size: 0.8rem;
+}
+
+.devtool-color__value {
+  flex: 1 1 auto;
+  min-width: 0;
+  color: var(--color-text-primary);
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  word-break: break-all;
+}
+
+.devtool-color__contrast-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: v.$space-3;
+}
+
+// 白/黑底的卡片：底色与字色都由内联 style 给（取决于对比的那一端），这里只有版面。
+.devtool-color__contrast-card {
+  display: flex;
+  flex-direction: column;
+  gap: v.$space-2;
+  padding: v.$space-4;
+  border-radius: v.$radius-field;
+}
+
+.devtool-color__contrast-title {
+  font-size: 0.82rem;
+  opacity: 0.8;
+}
+
+.devtool-color__ratio {
+  font-size: 1.6rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.devtool-color__level-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: v.$space-1;
+}
