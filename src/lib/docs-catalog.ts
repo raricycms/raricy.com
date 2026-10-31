@@ -329,7 +329,7 @@ export const DOC_ENTRIES: readonly DocEntry[] = [
     group: 'dev',
     slug: 'plan/page-ui-audit',
     title: '功能页面 UI 调研报告',
-    summary: '六类简陋问题、页面宽度来源、逐页优先级与局部重构范围；调研完成，界面未实施。',
+    summary: '六类简陋问题、逐页 UI-01–UI-12 的本地实施与验收记录；含指南页间距修复，未推送部署。',
   },
   {
     group: 'dev',
