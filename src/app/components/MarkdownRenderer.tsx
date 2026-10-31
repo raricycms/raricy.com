@@ -31,8 +31,11 @@ export default function MarkdownRenderer({
   interactive = true,
   resolver: sharedResolver,
   refreshToken,
+  containerId = 'userContentContainer',
 }: {
   content: string;
+  /** 正文容器 id；内联剪贴板等嵌套实例必须传唯一值，避免页面出现重复 id。 */
+  containerId?: string;
   /**
    * 内容引用（`[@…]`）的处理方式。**由服务端决定，不是客户端开关。**
    *
@@ -195,17 +198,17 @@ export default function MarkdownRenderer({
         <div
           ref={containerRef}
           className="blog-content-container"
-          id="userContentContainer"
+          id={containerId}
           // 已经 DOMPurify 净化；对象 memo 住的理由见上面 innerHtml 的说明
           dangerouslySetInnerHTML={innerHtml}
         />
       ) : (
         <div
           className="blog-content-container"
-          id="userContentContainer"
+          id={containerId}
           ref={containerRef}
         >
-          <div id="loading-indicator" className="text-center my-4">
+          <div id={`${containerId}-loading`} className="text-center my-4">
             <div className="spinner-border text-primary" role="status">
               <span className="visually-hidden">加载中...</span>
             </div>

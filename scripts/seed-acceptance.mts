@@ -16,17 +16,23 @@ import { hashPassword } from '../src/lib/password';
 import { createBlog } from '../src/lib/blog-service';
 import { createClip } from '../src/lib/clipboard-service';
 import { nowForDb } from '../src/lib/db-time';
+import sharp from 'sharp';
 
-const url = (process.env.DATABASE_URL ?? '').replace(/\/g, '/');
+const url = (process.env.DATABASE_URL ?? '').replace(/\\/g, '/');
 if (!url.includes('/tests/.tmp/acceptance-') || !url.endsWith('.db')) {
   throw new Error('拒绝在非 acceptance 隔离库上运行（DATABASE_URL 必须指向 tests/.tmp/acceptance-*.db）');
 }
 
 const PASSWORD = 'Acceptance-2026!';
-const PNG =
-  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg';
-const RAW = `${PNG}${'A'.repeat(9000)}`;
-const DATA_IMAGE = `data:image/png;base64,${RAW.slice(0, RAW.length - (RAW.length % 4))}`;
+const DATA_IMAGE = `data:image/png;base64,${(
+  await sharp(
+    Buffer.from(
+      '<svg xmlns="http://www.w3.org/2000/svg" width="320" height="120"><rect width="320" height="120" fill="#dbeafe"/><text x="20" y="70" font-size="28" fill="#1d4ed8">历史 data 位图</text></svg>'
+    )
+  )
+    .png()
+    .toBuffer()
+).toString('base64')}`;
 
 async function main(): Promise<void> {
   const passwordHash = await hashPassword(PASSWORD);

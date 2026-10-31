@@ -91,10 +91,15 @@ function InteractiveVote({ voteId, initial }: InteractiveVoteProps): ReactNode {
 }
 
 /** 旧 Markdown 剪贴板的一层内联：只读、外部引用口径（不再嵌套展开）。 */
-function InlineClipboardMarkdown({ content }: { content: string }) {
+function InlineClipboardMarkdown({ content, refId }: { content: string; refId: string }) {
   return (
     <div className="site-embed-clipboard-inline">
-      <MarkdownRenderer content={content} contentRefs="external" interactive={false} />
+      <MarkdownRenderer
+        content={content}
+        contentRefs="external"
+        interactive={false}
+        containerId={`clipboard-inline-${refId}`}
+      />
     </div>
   );
 }
@@ -120,7 +125,12 @@ export function SiteEmbedView(
       typeof resolvedInline.data.content === 'string' &&
       resolvedInline.data.content.length > 0
     ) {
-      return <InlineClipboardMarkdown content={resolvedInline.data.content} />;
+      return (
+        <InlineClipboardMarkdown
+          content={resolvedInline.data.content}
+          refId={resolvedInline.ref}
+        />
+      );
     }
   }
 
