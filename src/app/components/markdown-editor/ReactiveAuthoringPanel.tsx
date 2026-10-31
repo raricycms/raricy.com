@@ -1,13 +1,18 @@
 'use client';
 
 // ─────────────────────────────────────────────────────────────────────────────
-// ReactiveAuthoringPanel.tsx —— Reactive 模式的作者工具（分析 / 补全 / 组件挑选）
+// ReactiveAuthoringPanel.tsx —— Reactive 作者工具（诊断与组件挑选）
 //
-// 【分工】分析、补全与格式化**都来自 CodeMirror 扩展**（`reactiveAuthoring`）：
+// 【分工】分析、补全与格式化**都来自 CodeMirror 扩展 / lib/md-editor 适配层**：
 //   · 本文件只画结果与转发动作，不自己跑解析器，也不自己拼组件模板；
 //   · 诊断的原文位置是 UTF-16 range，点击直接交给 `revealReactiveDiagnostic`；
-//   · 组件目录来自 `reactive-md/authoring` 的 `getNativeComponentCatalog('zh')`，
-//     模板只由 `applyReactiveTemplate` 插入 —— 抄一份模板就会和上游两个版本。
+//   · 组件目录来自**站点当前编译配置**（`lib/md-editor/reactive-authoring.ts` 的
+//     `getSiteComponentCatalog` / `filterSiteComponents`），模板只由
+//     `applyReactiveTemplate` 插入 —— 抄一份模板就会和上游两个版本。
+//
+// 【诊断默认收起】它是一块常驻的编辑区附属条：数量与状态（检查中 / 错误 / 警告）
+// 一眼可见，明细默认不占版面。展开后逐条列出「第几行第几列 + 原因」，点一条就把
+// 光标定位过去。没有诊断时也明确显示「未发现问题」，而不是让面板时有时无。
 //
 // 【补全不劫持编辑器键盘】候选列表只是普通按钮：Esc / Tab 在编辑器里仍走
 // CodeMirror 自带的那条「先 Esc 再 Tab 离开编辑区」；这里只在列表自己获得焦点时
@@ -22,13 +27,20 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
   type RefObject,
 } from 'react';
-import { Plus, Search, X } from 'lucide-react';
+import { ChevronDown, Plus, Search, X } from 'lucide-react';
 import { formatLocalDiagnostic, type Diagnostic } from 'reactive-md';
+import type { AuthorCompletion } from '@/lib/md-editor/reactive-authoring';
 import {
-  getNativeComponentCatalog,
-  type NativeComponentDefinition,
-} from 'reactive-md/authoring';
-import type { AuthorAnalysis, AuthorCompletion } from '@/lib/md-editor/reactive-authoring';
+  filterSiteComponents,
+  getSiteComponentCatalog,
+  type SiteComponentEntry,
+} from '@/lib/md-editor/reactive-authoring';
+
+/** 诊断只需要这几个字段；格式分析的返回与 CM6 作者分析都满足它。 */
+export type PanelDiagnostic = Pick<
+  Diagnostic,
+  'code' | 'severity' | 'message' | 'line' | 'column' | 'range'
+>;
 
 const COMPLETION_KIND_LABELS: Record<AuthorCompletion['kind'], string> = {
   tag: '标签',
@@ -37,63 +49,105 @@ const COMPLETION_KIND_LABELS: Record<AuthorCompletion['kind'], string> = {
   value: '值',
 };
 
-function diagnosticText(diagnostic: Diagnostic): string {
+function diagnosticText(diagnostic: PanelDiagnostic): string {
   try {
-    return formatLocalDiagnostic(diagnostic, 'zh');
+    return formatLocalDiagnostic(diagnostic as Diagnostic, 'zh');
   } catch {
     // 未知宿主诊断没有模板；它的 message 本来就是给人看的。
     return diagnostic.message;
   }
 }
 
-function diagnosticKey(diagnostic: Diagnostic, index: number): string {
+function diagnosticKey(diagnostic: PanelDiagnostic, index: number): string {
   return `${diagnostic.code}:${diagnostic.range.start}:${diagnostic.range.end}:${index}`;
 }
 
 export interface ReactiveAuthoringPanelProps {
-  /** 最近一次分析；null = 尚未分析（初始加载 / 刚切回 Markdown 时被清空）。 */
-  analysis: AuthorAnalysis | null;
+  /** 当前正文的诊断（来自异步格式分析，或 CM6 作者分析兜底）。 */
+  diagnostics: readonly PanelDiagnostic[];
+  /** true = message 已由格式分析本地化，直接显示（不要再按 code 模板重排）。 */
+  localized?: boolean;
+  /** true = 分析在飞（正文刚变、结果未到）；计数照旧显示上一版。 */
+  pending?: boolean;
   /** null = 没有打开补全；[] = 打开但没有候选。 */
   completions: AuthorCompletion[] | null;
   /** 格式化等动作的一句话结果。 */
   status: string | null;
+  /** 分析失败（例如 worker 不可用且回退也失败）时的明确状态；null = 正常。 */
+  failure?: string | null;
   onSelectCompletion: (item: AuthorCompletion) => void;
   onCloseCompletions: () => void;
-  onRevealDiagnostic: (diagnostic: Diagnostic) => void;
+  onRevealDiagnostic: (diagnostic: PanelDiagnostic) => void;
 }
 
 /**
- * 分析摘要 + 诊断列表 + 补全候选。
+ * 分析摘要 + 可收起的诊断列表 + 补全候选。
  *
- * 计数始终显示（0 也显示）：切换格式后清零，是「现在这份正文没有错误」的
- * 明确答复，而不是一块时有时无的横幅让用户猜。
+ * 计数始终显示（0 也显示）：它是「现在这份正文有没有问题」的明确答复，
+ * 而不是一块时有时无的横幅让用户猜。
  */
 export default function ReactiveAuthoringPanel({
-  analysis,
+  diagnostics,
+  localized = false,
+  pending = false,
   completions,
   status,
+  failure = null,
   onSelectCompletion,
   onCloseCompletions,
   onRevealDiagnostic,
 }: ReactiveAuthoringPanelProps) {
-  const diagnostics = analysis?.diagnostics ?? [];
+  const [expanded, setExpanded] = useState(false);
+  const listRef = useRef<HTMLUListElement>(null);
   const errors = diagnostics.filter((item) => item.severity === 'error').length;
   const warnings = diagnostics.length - errors;
+
+  const stateText = failure
+    ? '检查失败'
+    : pending
+      ? '检查中…'
+      : diagnostics.length > 0
+        ? `错误 ${errors} · 警告 ${warnings}`
+        : '未发现问题';
 
   return (
     <section className="md-authoring" aria-label="Reactive 作者工具">
       <div className="md-authoring__summary">
         <span className="md-authoring__title">Reactive 检查</span>
-        <span className={`md-authoring__count${errors > 0 ? ' is-error' : ''}`}>
-          错误 {errors}
+        <span
+          className={`md-authoring__state${errors > 0 || failure ? ' is-error' : warnings > 0 ? ' is-warning' : ''}`}
+          role="status"
+          aria-live="polite"
+        >
+          {stateText}
         </span>
-        <span className={`md-authoring__count${warnings > 0 ? ' is-warning' : ''}`}>
-          警告 {warnings}
-        </span>
+        {diagnostics.length > 0 && (
+          <button
+            type="button"
+            className="md-authoring__toggle"
+            aria-expanded={expanded}
+            aria-controls="md-authoring-diagnostics"
+            onClick={() => setExpanded((value) => !value)}
+          >
+            {expanded ? '收起明细' : '查看明细'}
+            <ChevronDown
+              size={13}
+              strokeWidth={2}
+              aria-hidden="true"
+              className={expanded ? 'is-flipped' : undefined}
+            />
+          </button>
+        )}
       </div>
 
-      {diagnostics.length > 0 && (
-        <ul className="md-authoring__diagnostics" aria-label="诊断列表">
+      {/* 分析在飞时明细先不画：上一份结果的偏移对不上新正文（点击会定位错）。 */}
+      {expanded && !pending && diagnostics.length > 0 && (
+        <ul
+          id="md-authoring-diagnostics"
+          ref={listRef}
+          className="md-authoring__diagnostics"
+          aria-label="诊断列表"
+        >
           {diagnostics.map((diagnostic, index) => (
             <li key={diagnosticKey(diagnostic, index)}>
               <button
@@ -106,7 +160,9 @@ export default function ReactiveAuthoringPanel({
                 <span className="md-authoring__severity">
                   {diagnostic.severity === 'error' ? '错误' : '警告'}
                 </span>
-                <span className="md-authoring__message">{diagnosticText(diagnostic)}</span>
+                <span className="md-authoring__message">
+                  {localized ? diagnostic.message : diagnosticText(diagnostic)}
+                </span>
                 <span className="md-authoring__position numeric">
                   第 {diagnostic.line} 行 {diagnostic.column} 列
                 </span>
@@ -180,38 +236,65 @@ export default function ReactiveAuthoringPanel({
 
 // ── 组件挑选 ────────────────────────────────────────────────────────────────
 
-function matchesQuery(component: NativeComponentDefinition, term: string): boolean {
-  if (!term) return true;
-  return [component.id, component.label, component.description, ...component.keywords].some(
-    (value) => value.toLowerCase().includes(term)
-  );
-}
-
 export interface ReactiveComponentPickerProps {
   /** 触发按钮：Esc / 关闭时把焦点还给它。 */
   triggerRef: RefObject<HTMLButtonElement | null>;
+  /** 光标处的容器祖先（用于上游的结构过滤）。 */
+  ancestors?: readonly string[];
   /** `restoreFocus=false` 用于点外面关闭（焦点该留在用户点的地方）。 */
   onClose: (restoreFocus: boolean) => void;
   onInsert: (componentId: string) => void;
 }
 
 /**
- * 「插入组件」弹层。目录按 group 分组、可搜索中文；选中后由调用方走
+ * 「插入组件」弹层。目录按站点配置分组、可搜索中文；选中后由调用方走
  * `applyReactiveTemplate`（一次事务），本组件不碰编辑器的文档。
+ *
+ * 键盘：搜索框自动聚焦，↑ / ↓ 在可插入条目间移动，Enter 插入当前高亮项，
+ * Esc 关闭。焦点始终留在搜索框上（roving 的是高亮），所以「打开 → 打字 → ↓ →
+ * Enter」全程不用碰鼠标。
  */
 export function ReactiveComponentPicker({
   triggerRef,
+  ancestors = [],
   onClose,
   onInsert,
 }: ReactiveComponentPickerProps) {
   const [query, setQuery] = useState('');
+  const [activeKey, setActiveKey] = useState<string | null>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
-  const catalog = useMemo(() => getNativeComponentCatalog('zh'), []);
+
+  // 目录来自站点当前编译配置；祖先上下文每次打开时由调用方算好传入。
+  const catalog = useMemo(() => getSiteComponentCatalog(), []);
+
+  const groups = useMemo(() => {
+    const term = query.trim().toLowerCase();
+    if (!term) {
+      // 没有搜索词时无需走上游过滤的字符串匹配，但仍按祖先上下文收窄：
+      // 只该出现在某个容器里的组件不会在容器外面变成永远插不对的死模板。
+      const byContext = filterSiteComponents('', ancestors);
+      const allowed = new Set(byContext.flatMap((group) => group.entries.map((e) => e.id)));
+      return catalog
+        .map((group) => ({
+          ...group,
+          entries: group.entries.filter((entry) => allowed.has(entry.id)),
+        }))
+        .filter((group) => group.entries.length > 0);
+    }
+    return filterSiteComponents(query, ancestors);
+  }, [catalog, query, ancestors]);
+
+  const flat = useMemo(() => groups.flatMap((group) => group.entries), [groups]);
 
   useEffect(() => {
     searchRef.current?.focus();
   }, []);
+
+  // 高亮项：搜索词或上下文变化后落到第一条。
+  useEffect(() => {
+    setActiveKey(flat[0]?.id ?? null);
+  }, [flat]);
 
   useEffect(() => {
     const onPointerDown = (event: MouseEvent) => {
@@ -236,18 +319,6 @@ export function ReactiveComponentPicker({
     };
   }, [onClose, triggerRef]);
 
-  const groups = useMemo(() => {
-    const term = query.trim().toLowerCase();
-    return catalog.groups
-      .map((group) => ({
-        group,
-        components: catalog.components.filter(
-          (component) => component.group === group.id && matchesQuery(component, term)
-        ),
-      }))
-      .filter((entry) => entry.components.length > 0);
-  }, [catalog, query]);
-
   /** Tab 在弹层内部循环：它是浮层，不该把焦点送到看不见的正文里去。 */
   function trapTab(event: ReactKeyboardEvent<HTMLDivElement>) {
     if (event.key !== 'Tab') return;
@@ -265,6 +336,49 @@ export function ReactiveComponentPicker({
         : index + 1;
     event.preventDefault();
     items[next]?.focus();
+  }
+
+  function onSearchKeyDown(event: ReactKeyboardEvent<HTMLInputElement>) {
+    if (event.nativeEvent.isComposing) return;
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      if (flat.length === 0) return;
+      event.preventDefault();
+      const index = flat.findIndex((entry) => entry.id === activeKey);
+      const delta = event.key === 'ArrowDown' ? 1 : -1;
+      const next = index < 0 ? 0 : (index + delta + flat.length) % flat.length;
+      setActiveKey(flat[next]?.id ?? null);
+      return;
+    }
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      const entry = flat.find((item) => item.id === activeKey) ?? flat[0];
+      if (entry) onInsert(entry.id);
+    }
+  }
+
+  function renderItem(component: SiteComponentEntry) {
+    const active = component.id === activeKey;
+    return (
+      <button
+        key={component.id}
+        type="button"
+        className={`md-component-picker__item${active ? ' is-active' : ''}`}
+        title={component.help}
+        aria-current={active ? 'true' : undefined}
+        onMouseDown={(event) => event.preventDefault()}
+        onMouseEnter={() => setActiveKey(component.id)}
+        onClick={() => onInsert(component.id)}
+      >
+        <span className="md-component-picker__copy">
+          <span className="md-component-picker__label">
+            {component.title}
+            {component.inline && <span className="md-component-picker__badge">行内</span>}
+          </span>
+          <span className="md-component-picker__desc">{component.description}</span>
+        </span>
+        <Plus size={14} strokeWidth={2} className="md-component-picker__add" aria-hidden="true" />
+      </button>
+    );
   }
 
   return (
@@ -293,11 +407,12 @@ export function ReactiveComponentPicker({
           ref={searchRef}
           type="search"
           value={query}
-          placeholder="搜索组件"
+          placeholder="搜索组件（名称 / 说明）"
           aria-label="搜索组件"
           autoComplete="off"
           spellCheck={false}
           onChange={(event) => setQuery(event.target.value)}
+          onKeyDown={onSearchKeyDown}
         />
       </label>
 
@@ -307,7 +422,7 @@ export function ReactiveComponentPicker({
             没有匹配的组件。
           </p>
         ) : (
-          groups.map(({ group, components }) => (
+          groups.map((group) => (
             <div
               key={group.id}
               className="md-component-picker__group"
@@ -317,31 +432,7 @@ export function ReactiveComponentPicker({
               <div className="md-component-picker__group-title" aria-hidden="true">
                 {group.label}
               </div>
-              {components.map((component) => (
-                <button
-                  key={component.id}
-                  type="button"
-                  className="md-component-picker__item"
-                  onMouseDown={(event) => event.preventDefault()}
-                  onClick={() => onInsert(component.id)}
-                >
-                  <span className="md-component-picker__copy">
-                    <span className="md-component-picker__label">
-                      {component.label}
-                      {component.inline && (
-                        <span className="md-component-picker__badge">行内</span>
-                      )}
-                    </span>
-                    <span className="md-component-picker__desc">{component.description}</span>
-                  </span>
-                  <Plus
-                    size={14}
-                    strokeWidth={2}
-                    className="md-component-picker__add"
-                    aria-hidden="true"
-                  />
-                </button>
-              ))}
+              {group.entries.map(renderItem)}
             </div>
           ))
         )}

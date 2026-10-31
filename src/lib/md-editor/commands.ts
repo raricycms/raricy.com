@@ -254,6 +254,32 @@ export function insertLink(): EditorCommand {
   };
 }
 
+/**
+ * 插入外链图片（`![alt](url)`）。
+ *
+ * 与「上传图片」不是一件事：那颗按钮**新传一张**、插本站 raw 地址；这里写的是
+ * 任何已有地址。选中的文字当 alt，否则插占位并选中 **URL 那一格** —— 外链图片
+ * 绝大多数情况下人是先拿到地址再回头补描述，把光标停在 alt 上等于每次都要再走一格。
+ */
+export function insertImage(): EditorCommand {
+  return (view) => {
+    const { state } = view;
+    const edits: RangeEdit[] = [];
+    for (const { from, to } of state.selection.ranges) {
+      const text = state.sliceDoc(from, to) || '图片描述';
+      const markdown = `![${text}](https://)`;
+      edits.push({
+        changes: [{ from, to, insert: markdown }],
+        shift: markdown.length - (to - from),
+        // `![` + alt + `](` 之后 = URL 起点；选中 `https://` 让第一次输入直接替换
+        from: from + text.length + 4,
+        to: from + text.length + 12,
+      });
+    }
+    return applyEdits(view, edits);
+  };
+}
+
 /** 插入围栏代码块。选中的内容原样放进围栏里（不缩进、不转义 —— 保真优先）。 */
 export function insertCodeBlock(): EditorCommand {
   return (view) => {

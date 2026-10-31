@@ -14,12 +14,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import MarkdownEditor, { type MarkdownEditorHandle } from '@/app/components/MarkdownEditor';
-import {
-  CONTENT_FORMATS,
-  CONTENT_FORMAT_LABELS,
-  DEFAULT_CONTENT_FORMAT,
-  type ContentFormat,
-} from '@/lib/content-format';
+import { DEFAULT_CONTENT_FORMAT, type ContentFormat } from '@/lib/content-format';
 
 function toast(msg: string, type: string) {
   if (typeof window === 'undefined') return;
@@ -37,6 +32,8 @@ export interface EditClip {
   publicity: boolean;
   /** 库里的正文格式（null / 缺省 = 认不出；读口不猜 markdown）。 */
   format?: ContentFormat | null;
+  /** 库里的语法版本（随草稿恢复；提交由服务端按编译器重新定版本）。 */
+  syntaxVersion?: string | null;
 }
 
 /**
@@ -54,7 +51,6 @@ const CLIP_LABELS: ReadonlyArray<readonly [keyof ClipFields, string]> = [
   ['title', '标题'],
   ['content', '正文'],
   ['publicity', '共享设置'],
-  ['format', '正文格式'],
 ];
 
 export default function UploadForm({ clip }: { clip?: EditClip }) {
@@ -152,7 +148,9 @@ export default function UploadForm({ clip }: { clip?: EditClip }) {
       // 兜底 textarea（判据见上面那段注释）。**不要**在这里改读其它来源。
       content: getContent(),
       publicity: publicityRef.current,
-      format: formatRef.current,
+      // 格式不再有表单控件：编辑器是唯一知情人（含「插入组件后自动升级」）。
+      // 编辑器没起来（回退 textarea）时才读 state。
+      format: editorRef.current?.isReady() ? editorRef.current.getFormat() : formatRef.current,
     };
   }
 
@@ -253,6 +251,27 @@ export default function UploadForm({ clip }: { clip?: EditClip }) {
   async function doSave(stayOnPage: boolean) {
     // 存的是**这一刻**的表单：之后不管用户怎么改，成功回调都用这一份做判断。
     const data = readFields();
+
+    // ★ 格式以编辑器等到的**权威判定**为准 ★ 它返回与判定同一份的正文 ——
+    // 判定期间用户可能又敲了几个字，拿判定前的正文配判定后的格式就是错配。
+    const prepared = editorRef.current?.isReady()
+      ? await editorRef.current.prepareSubmit?.()
+      : undefined;
+    if (!aliveRef.current) return;
+    if (prepared?.blocked) {
+      // 无效增强语法：正文与格式留在草稿里，绝不静默按 Markdown 保存。
+      editorRef.current?.flushDraft();
+      editorRef.current?.focus();
+      const count = prepared.blocked.diagnostics.length;
+      const message = `${prepared.blocked.message}${count > 0 ? `（${count} 条诊断）` : ''}`;
+      if (stayOnPage) toast(message, 'error');
+      else alert(message);
+      return;
+    }
+    if (prepared) {
+      data.content = prepared.content;
+      data.format = prepared.format;
+    }
 
     if (!data.title || !data.content) {
       toast('标题和正文不能为空', 'warning');
@@ -440,27 +459,11 @@ export default function UploadForm({ clip }: { clip?: EditClip }) {
             />
           </div>
 
-          <div className="clipboard-form__group">
-            <label htmlFor="format">正文格式</label>
-            <select
-              className="form-control"
-              id="format"
-              name="format"
-              value={format}
-              onChange={(e) => setFormat(e.target.value as ContentFormat)}
-            >
-              {CONTENT_FORMATS.map((value) => (
-                <option key={value} value={value}>
-                  {CONTENT_FORMAT_LABELS[value]}
-                </option>
-              ))}
-            </select>
-          </div>
+          {/* 正文格式不再由作者选择：普通 Markdown 直接写，插了组件 / 写了增强语法
+              就自动按 Reactive 保存。格式由编辑器给出，随请求显式提交。 */}
 
           <div className="clipboard-form__group">
-            <label htmlFor="clipboard-editor">
-              正文（{CONTENT_FORMAT_LABELS[format]}）
-            </label>
+            <label htmlFor="clipboard-editor">正文</label>
             {/* 外观全在 .md-editor（styles-scss/components/_markdown-editor.scss）；
                 `#clipboard-editor` 这个 id 只是表单与 e2e 的元素钩子。
                 只有新建页给草稿键：编辑态的正文是服务端那一份，本地草稿在编辑态
@@ -469,6 +472,7 @@ export default function UploadForm({ clip }: { clip?: EditClip }) {
               id="clipboard-editor"
               ref={editorRef}
               initialValue={clip?.content ?? ''}
+              initialSyntaxVersion={clip?.syntaxVersion ?? null}
               draftKey={isEdit ? undefined : DRAFT_KEY}
               format={format}
               onDraftFormatRestored={setFormat}

@@ -20,12 +20,7 @@ import type { CategoryHierarchy } from '@/lib/blog-service';
 // 它拖着 prisma，值导出会把服务端依赖拉进客户端包。理由见该文件头。
 import { BLOG_VISIBILITIES, VISIBILITY_LABEL, VISIBILITY_DESCRIPTION } from '@/lib/blog-visibility';
 import type { BlogVisibility } from '@/lib/blog-visibility';
-import {
-  CONTENT_FORMATS,
-  CONTENT_FORMAT_LABELS,
-  DEFAULT_CONTENT_FORMAT,
-  type ContentFormat,
-} from '@/lib/content-format';
+import { DEFAULT_CONTENT_FORMAT, type ContentFormat } from '@/lib/content-format';
 
 function toast(msg: string, type: string) {
   if (typeof window === 'undefined') return;
@@ -48,6 +43,8 @@ export interface BlogFormBlog {
   contentMarkdown: string;
   /** 库里的正文格式（null / 缺省 = 认不出；读口不猜 markdown）。 */
   format?: ContentFormat | null;
+  /** 库里的语法版本（随草稿恢复；提交由服务端按编译器重新定版本）。 */
+  syntaxVersion?: string | null;
 }
 
 export interface BlogFormBanInfo {
@@ -84,7 +81,6 @@ const FIELD_LABELS: ReadonlyArray<readonly [keyof FormFields, string]> = [
   ['categoryId', '栏目'],
   ['visibility', '可见范围'],
   ['allowAnonymousComments', '匿名评论开关'],
-  ['format', '正文格式'],
   ['content', '正文'],
 ];
 
@@ -213,7 +209,9 @@ export default function BlogForm({ categories, blog = null, banInfo = null }: Bl
       visibility: formValue(form, 'visibility'),
       allowAnonymousComments:
         form.querySelector<HTMLInputElement>('[name="allowAnonymous"]')?.checked ?? false,
-      format: formValue(form, 'format'),
+      // 格式不再有表单控件：编辑器是唯一知情人（含「插入组件后自动升级」）。
+      // 编辑器没起来（回退 textarea）时才读 state —— 那时也没有自动识别的入口。
+      format: editorRef.current?.isReady() ? editorRef.current.getFormat() : format,
       content: getContent(),
     };
   }
@@ -257,30 +255,49 @@ export default function BlogForm({ categories, blog = null, banInfo = null }: Bl
       jumpTimerRef.current = null;
     }
 
-    // 提交的是**这一刻**的表单：之后不管用户怎么改，成功回调都用这一份做判断。
-    const snapshot = readFields(form);
-    const { title, description, categoryId, visibility, allowAnonymousComments, format, content } =
-      snapshot;
-
-    if (!title || !description || !content) {
-      toast('请填写完整信息', 'warning');
-      return;
-    }
-    if (title.length > 30) {
-      toast('标题不能超过30个字符', 'warning');
-      return;
-    }
-    if (description.length > 100) {
-      toast('描述不能超过100个字符', 'warning');
-      return;
-    }
-    if (content.length > 250000) {
-      toast('内容不能超过250000个字符', 'warning');
-      return;
-    }
-
+    // ★ 先占锁，再等格式判定 ★ 判定是异步的（worker），不占锁的话连点两下就是
+    // 两笔并发的 prepare + 两笔 POST（新建态 = 两篇文章）。
     savingRef.current = true;
     try {
+      // 提交的是**这一刻**的表单：之后不管用户怎么改，成功回调都用这一份做判断。
+      let snapshot = readFields(form);
+      // ★ 格式以编辑器等到的**权威判定**为准 ★ 它返回与判定同一份的正文 ——
+      // 不能拿判定前读的正文去配判定后的格式（中间可能又敲了几个字）。
+      const prepared = editorRef.current?.isReady()
+        ? await editorRef.current.prepareSubmit?.()
+        : undefined;
+      if (!aliveRef.current) return;
+      if (prepared?.blocked) {
+        // 无效增强语法：诊断在编辑器里，正文与格式都留在草稿里 —— 绝不静默存成 Markdown。
+        editorRef.current?.flushDraft();
+        editorRef.current?.focus();
+        const count = prepared.blocked.diagnostics.length;
+        toast(`${prepared.blocked.message}${count > 0 ? `（${count} 条诊断）` : ''}`, 'error');
+        return;
+      }
+      if (prepared) {
+        snapshot = { ...snapshot, content: prepared.content, format: prepared.format };
+      }
+
+      const { title, description, categoryId, visibility, allowAnonymousComments, format, content } =
+        snapshot;
+
+      if (!title || !description || !content) {
+        toast('请填写完整信息', 'warning');
+        return;
+      }
+      if (title.length > 30) {
+        toast('标题不能超过30个字符', 'warning');
+        return;
+      }
+      if (description.length > 100) {
+        toast('描述不能超过100个字符', 'warning');
+        return;
+      }
+      if (content.length > 250000) {
+        toast('内容不能超过250000个字符', 'warning');
+        return;
+      }
       // 这一笔要写的是**哪一篇**：编辑态是服务端给的那篇；新建态若是「提交过一次、
       // 有改动因而留在页面上」的那一篇，就是它（见 pinnedId 的说明）。
       const targetId = blog?.id ?? pinnedId;
@@ -520,27 +537,9 @@ export default function BlogForm({ categories, blog = null, banInfo = null }: Bl
           </span>
         </div>
 
-        {/* 正文格式：新文档默认 Markdown；编辑态显示库里的值并原样回写。
-            reactive 的写入闸门在服务端（当前会 400），这里**不隐藏选项** ——
-            选了就如实收到服务端的拒绝文案。 */}
-        <div className="form-group">
-          <label htmlFor="format" className="form-label">
-            正文格式
-          </label>
-          <select
-            className="form-control"
-            id="format"
-            name="format"
-            value={format}
-            onChange={(e) => setFormat(e.target.value as ContentFormat)}
-          >
-            {CONTENT_FORMATS.map((value) => (
-              <option key={value} value={value}>
-                {CONTENT_FORMAT_LABELS[value]}
-              </option>
-            ))}
-          </select>
-        </div>
+        {/* 正文格式不再由作者选择：普通 Markdown 直接写，插了组件 / 写了增强语法
+            就自动按 Reactive 保存。格式由编辑器给出（`getFormat()`），这里只负责
+            把它原样提交 —— 作者界面没有这一格。 */}
 
         <div className="form-group">
           <label className="form-label">内容</label>
@@ -551,6 +550,7 @@ export default function BlogForm({ categories, blog = null, banInfo = null }: Bl
               id="editor"
               ref={editorRef}
               initialValue={initialMarkdown}
+              initialSyntaxVersion={blog?.syntaxVersion ?? null}
               draftKey={isEdit ? undefined : DRAFT_KEY}
               format={format}
               referenceMode={visibilityValue !== 'internal' && previewAsVisitor ? 'external' : 'expand'}
