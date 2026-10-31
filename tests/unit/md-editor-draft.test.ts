@@ -29,7 +29,7 @@ afterEach(() => {
 describe('读写', () => {
   it('没有草稿时读回 null', () => {
     const store = createDraftStore(KEY, { debounceMs: 5 });
-    expect(store.read()).toEqual({ ok: true, value: null, format: 'markdown' });
+    expect(store.read()).toEqual({ ok: true, value: null, format: 'markdown', syntaxVersion: null });
     store.dispose();
   });
 
