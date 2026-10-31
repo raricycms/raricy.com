@@ -10,6 +10,7 @@
 
 | 文档 | 状态与剩余范围 |
 |------|----------------|
+| `docs/plan/reactive-md-unification-plan.md` | 后续实施主计划（2026-11-01）：修复并合并 PR #20、补齐 Markdown 兼容与预算、博客和云剪贴板全量应用、四入口编辑器与发布回滚；待实施 |
 | `docs/plan/frontend-content-ia-audit.md` | 全站 50 项文案与 IA 重构及产品规则已落地（2026-10-30）；含实现对账、本地验收及索引迁移/回填要求，待发布 |
 | `docs/plan/story-rebuild-plan.md` | 故事区重做方案与本地调研完成（2026-10-31）；初审/复审工具、作品编辑、美术、页面与发布均未实施 |
 | `docs/plan/story-rebuild-research.md` | 故事区调研依据：本地数据统计、旧故事与博客关系、实现约束；不等于全量内容分类或生产核验 |
@@ -23,9 +24,9 @@
 
 | 文档 | 状态与剩余范围 |
 |------|----------------|
-| `docs/plan/editor-plan.md` | M0–M2 与导出已交付；M3 就地装饰、M4 表格辅助 / 大纲未做，真实设备 / IME 与长文预算尚无完整验收证据（§7.2） |
+| `docs/plan/editor-plan.md` | M0–M2 与导出已交付；M3 就地装饰、M4 表格辅助 / 大纲未做，原待办见 §7.2；统一渲染与工具栏后续目标转入 ReactiveMD 全量应用计划 |
 | `docs/plan/format-converter-roadmap.md` | 八个能力区已有首轮本地功能；剩余验收、功能缺口与长期候选见 §16 |
-| `docs/plan/reactive-md-migration-plan.md` | 当前依赖 `reactive-md@0.6.1`，M2–M6 部分交付且 reactive 写入开放；剩余灰度与回滚演练、全量语料分类、作者工具和响应头观测见 §12.6 |
+| `docs/plan/reactive-md-migration-plan.md` | `reactive-md@0.6.1` 早期接入与实施记录；旧剩余范围见 §12.6，后续执行目标以 ReactiveMD 全量应用计划为准 |
 
 ### 已交付的设计与实施记录
 

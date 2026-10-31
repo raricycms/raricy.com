@@ -405,9 +405,15 @@ export const DOC_ENTRIES: readonly DocEntry[] = [
   },
   {
     group: 'dev',
+    slug: 'plan/reactive-md-unification-plan',
+    title: 'ReactiveMD 全量应用与编辑器重整计划',
+    summary: '修复合并 PR #20、兼容 Markdown、博客与云剪贴板全量切换及四入口编辑器。',
+  },
+  {
+    group: 'dev',
     slug: 'plan/reactive-md-migration-plan',
     title: 'ReactiveMD 接入博客区方案（渲染器换代）',
-    summary: 'ReactiveMD 接入与实施记录；灰度、语料分类、作者工具与观测仍有后续工作。',
+    summary: '早期接入方案与实施记录；后续目标转入 ReactiveMD 全量应用与编辑器重整计划。',
   },
   {
     group: 'dev',
