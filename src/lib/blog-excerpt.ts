@@ -39,6 +39,7 @@ import { compileLocal, createLocalRuntime } from 'reactive-md';
 import type { LocalNode, LocalRuntime } from 'reactive-md';
 import type { ContentFormat } from './content-format';
 import { reactiveCompileOptions, SITE_EMBED_TAG } from './reactive/host-components';
+import { applyLegacyHtmlCompat } from './reactive/legacy-compat';
 
 /** 摘要默认长度（UTF-16 码元）。主页高卡片一行放得下的量级，也是本模块的调用口径。 */
 export const DEFAULT_EXCERPT_MAX = 280;
@@ -173,6 +174,9 @@ const REACTIVE_SKIPPED_NODE_TYPES = new Set([
 /** 声明节点与宿主组件没有「读者可见的正文」，整棵子树丢掉。 */
 const REACTIVE_SKIPPED_COMPONENTS = new Set(['computed', 'const', 'validation', SITE_EMBED_TAG]);
 
+/** 行内容器不产生分隔；其它容器（标题 / 段落 / 块组件）之间补一个换行。 */
+const REACTIVE_INLINE_CONTAINERS = new Set(['emphasis', 'strong', 'delete', 'underline', 'mark', 'sup', 'sub', 'span', 'link']);
+
 /**
  * 叶子文本里可能残留的 token：`[@…]` 引用、脚注标记、未解析的 `{{ }}`、以及缺配的
  * 原始标签。摘要不是安全边界（React 按纯文本渲染），但漏出来会让人以为主页坏了。
@@ -211,7 +215,12 @@ function collectReactiveText(nodes: readonly LocalNode[], runtime: LocalRuntime,
     if (node.type === 'hostComponent') continue;
     if (node.type === 'component' && REACTIVE_SKIPPED_COMPONENTS.has(node.name ?? '')) continue;
 
-    if (node.children?.length) collectReactiveText(node.children, runtime, out);
+    if (node.children?.length) {
+      const block = !REACTIVE_INLINE_CONTAINERS.has(node.type);
+      if (block) out.push('\n');
+      collectReactiveText(node.children, runtime, out);
+      if (block) out.push('\n');
+    }
   }
 }
 
@@ -219,10 +228,10 @@ function collectReactiveText(nodes: readonly LocalNode[], runtime: LocalRuntime,
  * ReactiveMD 正文 → 纯文本摘要。编译或建运行时失败返回空串（不降级成源码）。
  * 运行时只读初值，收集完立即 dispose。
  */
-function reactiveExcerpt(source: string, max: number): string {
+function reactiveExcerpt(source: string, format: ContentFormat, max: number): string {
   let result: ReturnType<typeof compileLocal>;
   try {
-    result = compileLocal(source, reactiveCompileOptions('reactive'));
+    result = compileLocal(applyLegacyHtmlCompat(source).source, reactiveCompileOptions(format));
   } catch {
     return '';
   }
@@ -234,7 +243,7 @@ function reactiveExcerpt(source: string, max: number): string {
     const chunks: string[] = [];
     collectReactiveText(result.document.nodes, runtime, chunks);
     // 复用 Markdown 那套收尾（标记清理 / 空白折叠 / 代理对安全截断）。
-    return blogExcerpt(chunks.join('\n'), max);
+    return blogExcerpt(chunks.join(''), max);
   } catch {
     return '';
   } finally {
@@ -258,8 +267,11 @@ export function buildBlogExcerpt(
   format: ContentFormat | null | undefined,
   max = DEFAULT_EXCERPT_MAX
 ): string {
-  if (format !== 'reactive') return blogExcerpt(content, max);
   if (typeof content !== 'string' || !content) return '';
   if (!(max > 0)) return '';
-  return reactiveExcerpt(content, max);
+  if (format !== 'markdown' && format !== 'reactive') {
+    // 未知格式不猜；保留旧摘要器作为**格式未知**的兜底，而不是兼容警告的出口。
+    return blogExcerpt(content, max);
+  }
+  return reactiveExcerpt(content, format, max);
 }

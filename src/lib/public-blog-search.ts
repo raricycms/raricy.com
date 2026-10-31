@@ -6,8 +6,9 @@ import { prisma } from './db';
 import { INDEXABLE_VISIBILITIES } from './blog-visibility';
 import { parseContentFormat } from './content-format';
 import { reactiveCompileOptions } from './reactive/host-components';
+import { applyLegacyHtmlCompat } from './reactive/legacy-compat';
 
-export const PUBLIC_SEARCH_VERSION = 'public-body/1';
+export const PUBLIC_SEARCH_VERSION = 'public-body/2';
 export type SearchAvailability = 'ready' | 'metadata-only' | 'partial';
 
 /** 编码为纯 ASCII FTS 词项；用户输入无法注入 MATCH 运算符。 */
@@ -24,7 +25,9 @@ export async function publicBodyText(source: string, rawFormat: unknown): Promis
   if (!format) return { text: '', status: 'missing' };
   try {
     const { compileLocal } = await import('reactive-md');
-    const result = compileLocal(source, reactiveCompileOptions(format));
+    // 与阅读 / 预览同一套历史 HTML 兼容；否则旧 HTML 文章会 body_status='missing'。
+    const compat = applyLegacyHtmlCompat(source);
+    const result = compileLocal(compat.source, reactiveCompileOptions(format));
     if (!result.ok) return { text: '', status: 'missing' };
     const visit = (node: LocalNode): string => {
       // fallback / htmlDocument / component / hostComponent / interpolation 均不取源码或状态。

@@ -291,6 +291,15 @@
   max-width: 100%;
 }
 
+// 历史 data 位图：真实字节由宿主组件渲染（上游图片闸门不接受 data:）。
+.site-embed--image {
+  display: block;
+  width: auto;
+  height: auto;
+  max-width: 100%;
+  border-radius: 12px;
+}
+
 .site-embed__status {
   margin: 1rem 0;
   padding: 0.75rem 1rem;
@@ -449,4 +458,16 @@
   color: var(--color-text-secondary);
   font-size: 0.85rem;
   line-height: 1.6;
+}
+
+// 旧 Markdown 剪贴板的一层内联（成员视图 / 预览）。静态导出仍用链接卡片。
+.site-embed-clipboard-inline {
+  margin: 1.25rem 0;
+  padding: 1rem 1.1rem;
+  border-radius: 12px;
+  background: var(--color-background-content);
+
+  > .blog-content-container-container > .blog-content-container {
+    margin: 0;
+  }
 }

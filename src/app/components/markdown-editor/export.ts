@@ -492,7 +492,7 @@ export async function renderStaticMarkup(input: ReactiveStaticMarkupInput): Prom
       ? { adaptedSource: input.adaptedSource, hostData: input.hostData ?? {} }
       : // 与预览共用同一份客户端取数 / 适配（client-compile）—— 两处各写一份的话，
         // 「导出里能看见的引用」与「预览里能看见的引用」会慢慢漂开。
-        await adaptReactivePreview(input.source, createClientReferenceReader());
+        await adaptReactivePreview(input.source, createClientReferenceReader(), 'expand', input.format);
 
   const compiled = compileLocal(adapted.adaptedSource, reactiveCompileOptions(input.format));
   if (!compiled.ok) {

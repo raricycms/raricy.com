@@ -38,9 +38,10 @@ export default async function ClipDetailPage({ params }: { params: Promise<{ id:
     syntaxVersion: clip.syntaxVersion,
   });
   const reactiveDocument =
-    readRender.snapshot?.document ??
-    (readRender.bundle?.result.ok ? readRender.bundle.result.document : null);
-  const hostData = readRender.snapshot?.hostData ?? readRender.bundle?.hostData;
+    readRender.bundle?.result.ok
+      ? readRender.bundle.result.document
+      : readRender.snapshot?.document ?? null;
+  const hostData = readRender.bundle?.hostData ?? readRender.snapshot?.hostData;
 
   return (
     // ⚠️ 外面这层 .clipboard-page **不是可省的包装**：页边距 / 宽度阶梯 / 上下留白
