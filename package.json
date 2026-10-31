@@ -44,7 +44,8 @@
     "postinstall": "node scripts/copy-mathjax-fonts.mjs && node scripts/copy-emoji-assets.mjs && node scripts/copy-converter-assets.mjs",
     "realtime:build": "tsc -p services/realtime/tsconfig.json",
     "search:rebuild": "tsx scripts/rebuild-public-search.mts",
-    "search:benchmark": "tsx scripts/benchmark-public-search.mts"
+    "search:benchmark": "tsx scripts/benchmark-public-search.mts",
+    "reactive:measure": "tsx scripts/reactive-budget-measure.mts"
   },
   "dependencies": {
     "@codemirror/commands": "6.11.1",
@@ -97,14 +98,12 @@
     "@types/react": "^19.0.4",
     "@types/react-dom": "^19.0.2",
     "@vitest/coverage-v8": "^2.1.9",
-    "esbuild": "0.28.2",
     "jsdom": "^25.0.1",
     "jsqr": "^1.4.0",
     "prisma": "^6.2.1",
     "sass": "^1.99.0",
     "tsx": "^4.23.1",
     "typescript": "^5.7.3",
-    "vite": "8.3.5",
     "vitest": "^2.1.9",
     "@types/ws": "8.18.2"
   }
