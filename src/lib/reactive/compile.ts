@@ -53,6 +53,8 @@ export interface ReactiveCompileOutcome {
   adapterVersion: string;
   compilerVersion: string;
   syntaxVersion: string;
+  /** 历史 HTML 兼容改写的计数（只观测；不含正文）。 */
+  compatCounts: Record<string, number>;
   cacheKey: string;
   cacheHit: boolean;
   compileMs: number;
@@ -172,7 +174,12 @@ export async function compileReactiveSource(
   // 只记诊断码与耗时，绝不打印正文（源码可能含私有内容）。
   console.info(
     '[reactive]',
-    JSON.stringify({ cacheHit, compileMs, codes: reactiveDiagnosticCodes(result) })
+    JSON.stringify({
+      cacheHit,
+      compileMs,
+      codes: reactiveDiagnosticCodes(result),
+      compat: prepared.compat.counts,
+    })
   );
   // 慢编译告警：`compileLocal` 是同步的，落在被 await 的渲染路径上，编译期间整个
   // 进程的其它请求一起排队（见 host-components.ts 的 REACTIVE_MAX_SYNTAX_NODES）。
@@ -203,6 +210,7 @@ export async function compileReactiveSource(
     adapterVersion: prepared.adapterVersion,
     compilerVersion: REACTIVE_COMPILER_VERSION,
     syntaxVersion: LOCAL_SYNTAX_VERSION,
+    compatCounts: prepared.compat.counts,
     cacheKey,
     cacheHit,
     compileMs,

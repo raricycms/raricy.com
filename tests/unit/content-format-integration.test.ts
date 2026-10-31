@@ -152,9 +152,9 @@ describe('博客格式：validateBlogData / 落库 / 读出口', () => {
     expect(typeof snap?.documentJson).toBe('string');
   });
 
-  it('Reactive 原生 HTML 安全回退可与交互内容一起发布并存入快照', async () => {
+  it('历史 HTML 属性被净化后正文仍可读，并与交互组件一起发布', async () => {
     const u = await makeUser();
-    const content = '<div style="color:red">{{ missing }}\n\n<counter bind="n" label="N" initial="2">';
+    const content = '<div style="color:red" class="legacy">红色正文</div>\n\n<counter bind="n" label="N" initial="2" />';
     const id = await createBlog(u.id, {
       ...BLOG_BASE, content, categoryId: null, visibility: 'internal', format: 'reactive',
     });
@@ -162,7 +162,8 @@ describe('博客格式：validateBlogData / 落库 / 读出口', () => {
     expect(snapshot).not.toBeNull();
     expect(snapshot!.compilerVersion).toBe('reactive-md/0.7.0');
     const document = JSON.parse(snapshot!.documentJson);
-    expect(document.nodes[0]).toMatchObject({ type: 'fallback', value: '<div style="color:red">{{ missing }}' });
+    expect(JSON.stringify(document)).toContain('红色正文');
+    expect(JSON.stringify(document)).not.toContain('color:red');
     expect(document.bindings.n).toBeDefined();
   });
 
