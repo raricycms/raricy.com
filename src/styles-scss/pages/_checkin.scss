@@ -83,27 +83,7 @@
   }
 }
 
-// ---- 页面版式：今日任务为主、排行榜为侧栏 ----
-
-.checkin-layout {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: $space-4;
-  align-items: start;
-
-  // 桌面才分栏；窄屏保持「任务 → 排行」的阅读顺序。
-  @media (min-width: 900px) {
-    grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
-    gap: $space-6;
-  }
-}
-
-.checkin-layout__main,
-.checkin-layout__side {
-  min-width: 0;
-}
-
-// ---- 签到卡片 ----
+// ---- 页面版式：整宽概览卡 + 下方独立排行榜 ----
 
 .checkin-card {
   background: var(--color-background-card);
@@ -118,16 +98,47 @@
   }
 }
 
+// 桌面两栏：左边一组「问候 + 累计天数」，右边今日操作。左侧是一个信息组，
+// 问候与日期相邻，主指标在下方；不让三块各占一列散在整宽卡片里。
+.checkin-card__inner {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: $space-6;
+  align-items: center;
+
+  @media (min-width: 900px) {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: $space-8;
+  }
+}
+
+.checkin-card__summary {
+  display: flex;
+  flex-direction: column;
+  gap: $space-4;
+  min-width: 0;
+}
+
 .checkin-card__header {
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-start;
   align-items: center;
   gap: $space-3;
-  margin-bottom: $space-6;
+  margin-bottom: 0;
 
   @media (max-width: 768px) {
     flex-wrap: wrap;
   }
+}
+
+// 引导态（未发文）没有 inner 网格，标题与引导之间留一段距离；
+// 正文收在阅读行宽内，不因为卡片变宽而拉成一行长句。
+.checkin-card--guidance .checkin-card__header {
+  margin-bottom: $space-4;
+}
+
+.checkin-card--guidance .daily-quote-state {
+  max-width: 640px;
 }
 
 .checkin-card__greeting {
@@ -144,13 +155,16 @@
   border-radius: $radius-max;
 }
 
-// 今日任务行：签到按钮与「查看今日一言」并排；签到后退成状态条，今日一言接任主操作。
+// 今日任务：签到按钮与「查看今日一言」并排；签到后退成状态条。
 .checkin-card__task {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: $space-3;
-  margin-bottom: $space-6;
+
+  @media (min-width: 900px) {
+    justify-content: flex-end;
+  }
 }
 
 // ---- 签到按钮（高级动画版） ----
@@ -285,72 +299,98 @@
   }
 }
 
-// ---- 统计行 ----
+// ---- 累计签到天数 ----
 
+// 这里是概览卡里唯一的大号数字：不做灰底小方块，直接作为一眼可见的指标。
 .checkin-stats {
-  display: flex;
-  justify-content: flex-start;
-  gap: $space-2;
+  display: block;
 }
 
 .checkin-stats__item {
-  text-align: center;
-  padding: $space-3 $space-6;
-  background: var(--color-background-subtle);
-  border-radius: $radius-large;
-
-  @media (max-width: 768px) {
-    padding: $space-2 $space-4;
-  }
+  text-align: left;
 }
 
 .checkin-stats__label {
+  margin-top: $space-1;
   font-size: 0.8rem;
   color: var(--color-text-secondary);
 }
 
 .checkin-stats__value {
-  font-size: 1.5rem;
-  font-weight: 700;
+  font-size: 3rem;
+  font-weight: 800;
   color: var(--color-brand-primary);
-  line-height: 1.2;
+  line-height: 1;
   display: inline-block;
+
+  @media (max-width: 768px) {
+    font-size: 2.5rem;
+  }
 
   &--bounce {
     animation: countBounce 0.6s ease;
   }
 }
 
-// ---- 排行榜 ----
+// ---- 排行榜（独立整宽区，位于概览卡下方） ----
 
 .checkin-leaderboard {
+  margin-top: $space-6;
   background: var(--color-background-card);
   border-radius: 30px;
-  padding: $space-6;
+  padding: $space-8;
 
   @media (max-width: 768px) {
-    padding: $space-4;
+    padding: $space-6 $space-4;
     border-radius: 20px;
   }
+}
+
+.checkin-leaderboard__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: $space-3;
+  margin-bottom: $space-4;
 }
 
 .checkin-leaderboard__title {
   font-size: 1.05rem;
   font-weight: 700;
-  margin: 0 0 $space-4;
+  margin: 0;
   color: var(--color-text-primary);
 }
 
-.checkin-leaderboard__list {
-  display: flex;
-  flex-direction: column;
-  gap: $space-1;
+.checkin-leaderboard__toggle {
+  @include m.btn-secondary;
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: $space-2 $space-4;
+  font-size: 0.875rem;
+  font-family: inherit;
 }
 
+// 前十默认两列（桌面）；展开后仍是同一张网格，不产生内部滚动条。
+.checkin-leaderboard__list {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: $space-1 $space-2;
+
+  @media (min-width: 768px) {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: $space-1 $space-4;
+  }
+}
+
+// 行内版式沿用 HEAD：名次 / 头像 / 名字 / 天数。列表本身改成两列网格，
+// 但每一行仍是独立可读的一条，不做卡片化。
 .checkin-leaderboard__item {
   display: flex;
   align-items: center;
   gap: $space-3;
+  min-width: 0;
   padding: 10px 14px;
   border-radius: $radius-large;
   transition: background 0.15s ease;
@@ -430,6 +470,26 @@
   flex-shrink: 0;
 }
 
+.checkin-leaderboard__foot {
+  display: flex;
+  justify-content: center;
+  margin-top: $space-4;
+}
+
+// 折叠时若「我」在前十之外，单独保留自己那一行；与榜单之间靠留白和标签分开。
+.checkin-leaderboard__self {
+  margin-top: $space-3;
+  padding-top: $space-3;
+}
+
+.checkin-leaderboard__self-label {
+  margin: 0 0 $space-1;
+  padding: 0 $space-2;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+}
+
 // ---- 今日签到到手的小鱼干 ----
 
 .checkin-today-reward {
@@ -464,7 +524,7 @@
 
 .checkin-empty {
   text-align: center;
-  padding: $space-8;
+  padding: $space-6 $space-4;
   color: var(--color-text-secondary);
   font-size: 0.95rem;
 }

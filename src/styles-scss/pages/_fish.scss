@@ -4,9 +4,12 @@
 // ═══════════════════════════════════════════════════════
 //  账户页（/fish）
 //
-//  宽屏：左「余额 + 三个主操作」、右「更多」入口列表；窄屏单列、主操作在前。
-//  `.fish-card__actions` 的子元素被 e2e 逐个断言（在视口内、高 ≥44px、不横向溢出），
-//  所以三个主操作必须留在这一个容器里，次级入口放进 `.fish-more`。
+//  版式自上而下：整宽「余额 + 三个主操作」概览卡 → 商城 / 练手盘两张服务卡 →
+//  最近流水。`.fish-card__actions` 的子元素被 e2e 逐个断言（在视口内、高 ≥44px、
+//  不横向溢出），所以三个主操作必须留在这一个容器里。
+//
+//  `.fish-more` 是旧市场兼容页的任务选择列表，与这里无关 —— 服务卡样式收在
+//  `.fish-services` / `.fish-service` 里，别把 `.fish-more` 一起改掉。
 // ═══════════════════════════════════════════════════════
 
 .fish-page {
@@ -24,15 +27,16 @@
   }
 }
 
-.fish-account {
+// 概览卡：桌面余额在左、三个操作在右；窄屏竖排，余额仍是视觉锚点。
+.fish-overview {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  gap: $space-4;
-  align-items: start;
+  gap: $space-6;
+  align-items: center;
 
-  @media (min-width: 768px) {
-    grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
-    gap: $space-6;
+  @media (min-width: 900px) {
+    grid-template-columns: minmax(0, 1fr) minmax(320px, 420px);
+    gap: $space-8;
   }
 }
 
@@ -49,33 +53,46 @@
   }
 }
 
+// 余额不再套一层浅灰内卡：整张概览卡只有它一个大号数字。
 .fish-card__balance {
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
   gap: $space-2;
-  margin-bottom: $space-4;
-  padding: $space-6;
-  background: var(--color-background-subtle);
-  border-radius: $radius-large;
+  min-width: 0;
+}
+
+.fish-card__balance-label {
+  font-size: 0.875rem;
+  color: var(--color-text-secondary);
+  font-weight: 500;
+}
+
+.fish-card__balance-value {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: $space-1 $space-2;
+  min-width: 0;
 }
 
 .fish-card__balance-number {
-  font-size: 3rem;
+  max-width: 100%;
+  font-size: 3.25rem;
   font-weight: 800;
   color: var(--color-brand-primary);
   line-height: 1;
   overflow-wrap: anywhere;
 
-  @media (max-width: 420px) {
-    font-size: 2.5rem;
+  @media (max-width: 768px) {
+    font-size: 2.75rem;
   }
 }
 
-.fish-card__balance-label {
-  font-size: 0.9rem;
+.fish-card__balance-unit {
+  flex: none;
+  font-size: 0.95rem;
   color: var(--color-text-secondary);
-  font-weight: 500;
+  white-space: nowrap;
 }
 
 .fish-card__actions {
@@ -129,7 +146,8 @@
   }
 }
 
-// 次级业务入口（商城 / 练手盘）。统计与交易记录归练手盘内部。
+// 旧市场兼容页（/fish/market）的任务选择列表。账户页的服务卡用的是
+// .fish-services / .fish-service，别把两者合并。
 .fish-more {
   background: var(--color-background-card);
   border-radius: 30px;
@@ -217,7 +235,155 @@
   flex: none;
   width: 18px;
   height: 18px;
-  color: var(--color-text-tertiary);
+  color: var(--color-text-secondary);
+}
+
+// ── 商城 / 练手盘服务卡 ─────────────────────────────────────────────────────
+.fish-services {
+  margin-top: $space-4;
+}
+
+.fish-services__grid {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: $space-4;
+
+  @media (min-width: 768px) {
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  }
+}
+
+.fish-service {
+  background: var(--color-background-card);
+  border-radius: 30px;
+  min-width: 0;
+
+  @media (max-width: 768px) {
+    border-radius: 20px;
+  }
+}
+
+.fish-service .fish-entry {
+  min-height: 112px;
+  padding: $space-6;
+  border-radius: inherit;
+  gap: $space-4;
+}
+
+.fish-service .fish-entry__icon svg {
+  width: 26px;
+  height: 26px;
+}
+
+.fish-service .fish-entry__name {
+  font-size: 1.05rem;
+}
+
+// ── 最近流水 ───────────────────────────────────────────────────────────────
+.fish-recent {
+  margin-top: $space-4;
+  padding: $space-6;
+  background: var(--color-background-card);
+  border-radius: 30px;
+
+  @media (max-width: 768px) {
+    padding: $space-4;
+    border-radius: 20px;
+  }
+}
+
+.fish-recent__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: $space-3;
+}
+
+.fish-recent__title {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--color-text-primary);
+}
+
+.fish-recent__all {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  min-height: 44px;
+  color: var(--color-brand-primary);
+  font-size: 0.875rem;
+  text-decoration: none;
+
+  svg {
+    width: 16px;
+    height: 16px;
+  }
+
+  &:hover {
+    text-decoration: underline;
+  }
+}
+
+.fish-recent__list {
+  margin-top: $space-1;
+}
+
+/* 金额不省略、不截断：窄屏放不下时整块换到下一行并靠右，
+   时间与金额因此不会叠在一起。 */
+.fish-recent__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: $space-1 $space-4;
+  padding: 10px 0;
+}
+
+.fish-recent__text {
+  flex: 1 1 160px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.fish-recent__desc {
+  font-size: 0.95rem;
+  color: var(--color-text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fish-recent__time {
+  font-size: 0.78rem;
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+}
+
+.fish-recent__amount {
+  flex: none;
+  margin-left: auto;
+  font-size: 1rem;
+  font-weight: 700;
+  white-space: nowrap;
+
+  &--in {
+    color: var(--color-success-primary);
+  }
+
+  &--out {
+    color: var(--color-warning-primary);
+  }
+}
+
+.fish-recent__empty {
+  margin: $space-2 0 0;
+  color: var(--color-text-secondary);
+  font-size: 0.9rem;
 }
 
 // ═══════════════════════════════════════════════════════

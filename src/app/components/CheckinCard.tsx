@@ -147,41 +147,44 @@ export default function CheckinCard({
 
   return (
     <div className="checkin-card">
-      <div className="checkin-card__header">
-        <span className="checkin-card__greeting">你好，{username}</span>
-        <span className="checkin-card__date numeric">{today}</span>
-      </div>
-
-      {/* 今日任务与今日一言并排：未签到时只有签到一颗；签到后签到按钮退成状态，
-          今日一言变成这一块的主操作 —— 原先三颗按钮竖着堆在中轴上。 */}
-      <div className="checkin-card__task">
-        <button
-          className={btnClass}
-          onClick={doCheckinFlow}
-          disabled={done || btnPhase === 'loading' || btnPhase === 'success'}
-        >
-          <span
-            className={
-              'checkin-button__particles' +
-              (btnPhase === 'success' ? ' checkin-button__particles--active' : '')
-            }
-          />
-          {btnText}
-        </button>
-        {done && (
-          <button ref={quoteTrigger} type="button" className="daily-quote-primary" onClick={() => setQuoteOpen(true)}>
-            查看今日一言
-          </button>
-        )}
-      </div>
-
-      {/* 统计只有签到天数一格 */}
-      <div className="checkin-stats">
-        <div className="checkin-stats__item">
-          <div className={'numeric ' + ('checkin-stats__value' + (countBounce ? ' checkin-stats__value--bounce' : ''))}>
-            {count}
+      <div className="checkin-card__inner">
+        {/* 左侧是一组信息：问候与日期相邻，累计天数作为这组里的主指标。 */}
+        <div className="checkin-card__summary">
+          <div className="checkin-card__header">
+            <span className="checkin-card__greeting">你好，{username}</span>
+            <span className="checkin-card__date numeric">{today}</span>
           </div>
-          <div className="checkin-stats__label">累计签到天数</div>
+          <div className="checkin-stats">
+            <div className="checkin-stats__item">
+              <div className={'numeric ' + ('checkin-stats__value' + (countBounce ? ' checkin-stats__value--bounce' : ''))}>
+                {count}
+              </div>
+              <div className="checkin-stats__label">累计签到天数</div>
+            </div>
+          </div>
+        </div>
+
+        {/* 今日任务与今日一言：未签到时只有签到一颗；签到后签到按钮退成状态，
+            今日一言变成这一块的主操作。 */}
+        <div className="checkin-card__task">
+          <button
+            className={btnClass}
+            onClick={doCheckinFlow}
+            disabled={done || btnPhase === 'loading' || btnPhase === 'success'}
+          >
+            <span
+              className={
+                'checkin-button__particles' +
+                (btnPhase === 'success' ? ' checkin-button__particles--active' : '')
+              }
+            />
+            {btnText}
+          </button>
+          {done && (
+            <button ref={quoteTrigger} type="button" className="daily-quote-primary" onClick={() => setQuoteOpen(true)}>
+              查看今日一言
+            </button>
+          )}
         </div>
       </div>
 
@@ -197,58 +200,51 @@ const RANK_CLASS: Record<number, string> = {
   3: ' checkin-leaderboard__rank--top3',
 };
 
-function LeaderboardList({
-  entries,
+function LeaderboardItem({
+  entry,
   unit,
-  emptyText,
   currentUserId,
 }: {
-  entries: LeaderboardEntry[];
+  entry: LeaderboardEntry;
   unit: string;
-  emptyText: string;
   currentUserId: string;
 }) {
-  if (entries.length === 0) {
-    return <div className="checkin-empty">{emptyText}</div>;
-  }
   return (
-    <div className="checkin-leaderboard__list">
-      {entries.map((e) => (
-        <div
-          key={e.userId}
-          className={
-            'checkin-leaderboard__item' +
-            (e.userId === currentUserId ? ' checkin-leaderboard__item--self' : '')
-          }
-        >
-          <span className={`checkin-leaderboard__rank numeric${RANK_CLASS[e.rank] ?? ''}`}>
-            {e.rank >= 1 && e.rank <= 3 ? (
-              <MedalIcon rank={e.rank as 1 | 2 | 3} />
-            ) : (
-              `#${e.rank}`
-            )}
-          </span>
-          <Link className="checkin-leaderboard__user" href={`/u/${e.userId}`}>
-            {/* 此前这里按 `e.avatarPath` 分支 —— 而那一列**永远是 null**（本站没有
-              * 头像上传入口），所以排行榜一直显示灰方块占位。那个判据本身也是错的：
-              * 磁盘上的遗留头像文件跟这一列毫无关系（读口会自己找到它们）。
-              * <Avatar> 走同一条永不 404 的读口，不需要任何分支。 */}
-            <Avatar
-              userId={e.userId}
-              frameUrl={e.frameUrl}
-              alt=""
-              imgClassName="checkin-leaderboard__avatar"
-            />
-            <span className="checkin-leaderboard__name">{e.username}</span>
-          </Link>
-          <span className="checkin-leaderboard__count">
-            <span className="numeric">{e.value}</span> {unit}
-          </span>
-        </div>
-      ))}
+    <div
+      className={
+        'checkin-leaderboard__item' +
+        (entry.userId === currentUserId ? ' checkin-leaderboard__item--self' : '')
+      }
+    >
+      <span className={`checkin-leaderboard__rank numeric${RANK_CLASS[entry.rank] ?? ''}`}>
+        {entry.rank >= 1 && entry.rank <= 3 ? (
+          <MedalIcon rank={entry.rank as 1 | 2 | 3} />
+        ) : (
+          `#${entry.rank}`
+        )}
+      </span>
+      <Link className="checkin-leaderboard__user" href={`/u/${entry.userId}`}>
+        {/* 此前这里按 `e.avatarPath` 分支 —— 而那一列**永远是 null**（本站没有
+          * 头像上传入口），所以排行榜一直显示灰方块占位。那个判据本身也是错的：
+          * 磁盘上的遗留头像文件跟这一列毫无关系（读口会自己找到它们）。
+          * <Avatar> 走同一条永不 404 的读口，不需要任何分支。 */}
+        <Avatar
+          userId={entry.userId}
+          frameUrl={entry.frameUrl}
+          alt=""
+          imgClassName="checkin-leaderboard__avatar"
+        />
+        <span className="checkin-leaderboard__name">{entry.username}</span>
+      </Link>
+      <span className="checkin-leaderboard__count">
+        <span className="numeric">{entry.value}</span> {unit}
+      </span>
     </div>
   );
 }
+
+/** 默认只露前十；展开显示服务端给的全部（最多 50），不做内部滚动。 */
+const LEADERBOARD_VISIBLE = 10;
 
 // 只剩签到天数榜 —— 早先「签到天数榜 / 累计值榜」的双 tab 已随后者一起下线。
 export function CheckinLeaderboards({
@@ -258,15 +254,70 @@ export function CheckinLeaderboards({
   countEntries: LeaderboardEntry[];
   currentUserId: string;
 }) {
+  const [expanded, setExpanded] = useState(false);
+  const topToggleRef = useRef<HTMLButtonElement>(null);
+  const visible = expanded ? countEntries : countEntries.slice(0, LEADERBOARD_VISIBLE);
+  const selfIndex = countEntries.findIndex((e) => e.userId === currentUserId);
+  // 前十之外的人，折叠时仍能看到自己的名次；这里只把服务端已经算好的那一行取出来，
+  // 不重排、不重算名次。
+  const selfOutside = !expanded && selfIndex >= LEADERBOARD_VISIBLE;
+  const selfEntry = selfOutside ? countEntries[selfIndex] : null;
+
   return (
-    <div className="checkin-leaderboard">
-      <h3 className="checkin-leaderboard__title">签到天数榜</h3>
-      <LeaderboardList
-        entries={countEntries}
-        unit="天"
-        emptyText="还没有人签到，快来抢占第一名吧！"
-        currentUserId={currentUserId}
-      />
-    </div>
+    <section className="checkin-leaderboard" aria-labelledby="checkin-leaderboard-title">
+      <div className="checkin-leaderboard__head">
+        <h2 className="checkin-leaderboard__title" id="checkin-leaderboard-title">签到天数榜</h2>
+        {countEntries.length > LEADERBOARD_VISIBLE && (
+          <button
+            ref={topToggleRef}
+            type="button"
+            className="checkin-leaderboard__toggle"
+            aria-expanded={expanded}
+            aria-controls="checkin-leaderboard-body"
+            onClick={() => setExpanded((v) => !v)}
+          >
+            {expanded ? '收起' : <>展开全部 <span className="numeric">{countEntries.length}</span> 人</>}
+          </button>
+        )}
+      </div>
+
+      {countEntries.length === 0 ? (
+        <div className="checkin-empty">还没有人签到，快来抢占第一名吧！</div>
+      ) : (
+        <div id="checkin-leaderboard-body">
+          <div className="checkin-leaderboard__list">
+            {visible.map((e) => (
+              <LeaderboardItem key={e.userId} entry={e} unit="天" currentUserId={currentUserId} />
+            ))}
+          </div>
+          {selfEntry && (
+            <div className="checkin-leaderboard__self">
+              <p className="checkin-leaderboard__self-label">你的排名</p>
+              <LeaderboardItem entry={selfEntry} unit="天" currentUserId={currentUserId} />
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* 展开后底部再给一个收起入口：50 人名单不必滚回顶部。 */}
+      {expanded && (
+        <div className="checkin-leaderboard__foot">
+          <button
+            type="button"
+            className="checkin-leaderboard__toggle"
+            aria-expanded={expanded}
+            aria-controls="checkin-leaderboard-body"
+            onClick={() => {
+              setExpanded(false);
+              // 收起后这颗底部按钮会被卸载；焦点回到稳定的顶部入口，
+              // 否则键盘用户会被丢到 body 上。
+              topToggleRef.current?.focus();
+            }}
+          >
+            收起
+          </button>
+        </div>
+      )}
+    </section>
   );
 }
