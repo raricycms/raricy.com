@@ -392,11 +392,6 @@
     grid-column: auto;
   }
 
-  // 组件面板的基线规则嵌在 `.md-editor` 里（权重更高），这里必须带同前缀才盖得住
-  .md-editor .md-toolbar__menu--components {
-    max-height: 46vh;
-  }
-
   .md-toolbar__menu-item,
   .md-toolbar__chip,
   .md-toolbar__emoji-toggle {
@@ -1310,5 +1305,14 @@
       // iOS 聚焦 < 16px 的可编辑区会强制放大整页（同 _composer.scss）
       font-size: 16px;
     }
+  }
+}
+
+// ── 窄屏组件面板高度（必须排在上面 `.md-editor` 里那条基线之后）──────────────
+// 基线 `.md-editor .md-toolbar__menu--components` 的 min(440px, 70vh) 权重相同、
+// 位置更靠后；放在前面的媒体查询会被它盖掉。46vh 让菜单留在 50vh 的编辑区本体内。
+@media (max-width: 767px) {
+  .md-editor .md-toolbar__menu--components {
+    max-height: 46vh;
   }
 }
