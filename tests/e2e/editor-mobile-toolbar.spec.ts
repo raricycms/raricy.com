@@ -369,7 +369,7 @@ test.describe('编辑器工具条：核心入口（博客 / 云剪贴板）', ()
 
       // ① 表情现在收在 Insert 里：菜单 → 展开表情 → 挑一个 → 落进正文
       const emojiGrid = await openEmoji(page, editor);
-      await assertWithinEditor(page, editor, emojiGrid);
+      await assertWithinEditor(page, editor, page.locator(`${editor} .md-toolbar__menu--insert`));
       expect(await deadItems(emojiGrid), '有表情点不到（被祖先裁掉或被盖住）').toEqual([]);
       const emojiTexts = await emojiGrid.getByRole('menuitem').allTextContents();
       expect(emojiTexts).not.toContain('\uFE0F');
@@ -444,7 +444,7 @@ test.describe('编辑器工具条：核心入口（博客 / 云剪贴板）', ()
 
       // ④ 真点**最后一个**表情（最后一行的最右一格）
       const grid = await openEmoji(page, editor);
-      await assertWithinEditor(page, editor, grid);
+      await assertWithinEditor(page, editor, page.locator(`${editor} .md-toolbar__menu--insert`));
       expect(await deadItems(grid), '320px 下有表情点不到（被裁或被盖）').toEqual([]);
       await grid.locator('.md-toolbar__emoji').last().click();
       await expect(page.locator(`${editor} .md-toolbar__menu--insert`)).toHaveCount(0);
