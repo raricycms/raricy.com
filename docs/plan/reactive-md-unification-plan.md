@@ -607,3 +607,15 @@ P1 新增测试以实际合并文件为准，不在测试里复制一套实现�
   `%TEMP%/raricy-reactive-deploy-audit-20261101.md`：本仓库/工作树**没有**
   `deploy.sh`；它只在目标环境可能存在（本地未跟踪），未 SSH 核验，不能据此断言
   服务器脚本缺功能。`docs/deploy.md` 给的命令顺序与人工缺口按事实记录。
+
+### P6 最终只读复验 r7（2026-11-01，外层执行）
+
+固定产品代码 `a7b1e963`（`reactive-md@0.7.0` / `local-draft-3` / 节点预算 50,000 /
+compat `/4`），只读本地业务库副本，未修改任何业务数据，报告只由 root 读取。
+
+- 5,105 篇 = 4,909 博客 + 196 剪贴板。
+- **5,104 ok / 1 `local.math.display` 局部 fallback / 0 failed / 0 formatMismatch /
+  0 scanFailures**；1 literalized 为 vimtutor 类按键文字（`<TAB>` 等）的字面保护，
+  不误判格式、不阻塞普通 Markdown 保存。
+- 与 r6 相比，媒体 padding `compat /4`、İ / 裸 table / 键名规则已在最终实现中稳定；
+  该结果不替代生产发布前的最终核验（生产库仍需在发布窗口按 `docs/deploy.md` 执行）。
