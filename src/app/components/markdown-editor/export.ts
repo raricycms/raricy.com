@@ -283,6 +283,91 @@ export function collectDocumentImageUrls(document: Pick<LocalDocument, 'nodes'>)
   return [...urls];
 }
 
+/**
+ * 父文档 hostData 里**一层**内联剪贴板子文档。
+ *
+ * 子剪贴板由 ref-adapter 以 `external` 适配并单独编译，`document` 与它的 `hostData`
+ * 原子成对；缺一个就不会内联（渲染器退回链接卡片），这里也一并跳过。
+ *
+ * ⚠️ **只取一层**：子文档自身的嵌套剪贴板 / 投票 / 收藏夹在 external 适配下已是
+ * 字面量；这里绝不递归读取任何私有引用，导出件不得越过访客预览的边界。
+ */
+function collectInlineClipboardDocuments(hostData: SiteHostData): LocalDocument[] {
+  const documents: LocalDocument[] = [];
+  for (const data of Object.values(hostData)) {
+    if (data.kind !== 'clipboard' || data.status !== 'ready') continue;
+    if (!data.document || !data.hostData) continue;
+    documents.push(data.document);
+  }
+  return documents;
+}
+
+/**
+ * 把成功预取的 data URL 写回一层内联子文档的 image 节点。
+ *
+ * 为什么必须改写子文档而不是只收集：`ReactiveSubDocument` 没有 `imageResolver`
+ * 入口（它是静态子表面，按设计不接收导出专用参数），子图默认只会拿到源码里的
+ * URL。预取成功 → 换成 data URL，导出件离线也有图；预取失败 / 非白名单 →
+ * **保留原地址**，与导出件里的音频、链接同一口径（联网加载），不伪造空图。
+ *
+ * 返回原文档对象（===）表示没有任何替换，调用方据此避免无谓克隆。
+ */
+function inlineDocumentImageData(
+  document: LocalDocument,
+  resolvedImages: ReadonlyMap<string, string>,
+  base?: string
+): LocalDocument {
+  const pageUrl = pageBase(base);
+  const dataUrlFor = (url: string): string | undefined =>
+    resolvedImages.get(url) ?? resolvedImages.get(resolveUrl(url, pageUrl));
+
+  let changed = false;
+  const visit = (node: LocalNode): LocalNode => {
+    let next = node;
+    if (node.children?.length) {
+      let childrenChanged = false;
+      const children = node.children.map((child) => {
+        const mapped = visit(child);
+        if (mapped !== child) childrenChanged = true;
+        return mapped;
+      });
+      if (childrenChanged) next = { ...next, children };
+    }
+    if (node.type === 'image' && typeof node.url === 'string' && node.url !== '') {
+      const dataUrl = dataUrlFor(node.url);
+      if (dataUrl) {
+        next = { ...next, url: dataUrl };
+        changed = true;
+      }
+    }
+    return next;
+  };
+
+  const nodes = document.nodes.map(visit);
+  return changed ? { ...document, nodes } : document;
+}
+
+/**
+ * 把一层内联子文档的图片替换成已预取的 data URL；**不改子 hostData 本身**。
+ * 只克隆发生替换的那几个 host 条目，未命中的文档原样复用。
+ */
+function applyInlineClipboardImageData(
+  hostData: SiteHostData,
+  resolvedImages: ReadonlyMap<string, string>,
+  base?: string
+): SiteHostData {
+  let next: Record<string, SiteHostData[string]> | null = null;
+  for (const [key, data] of Object.entries(hostData)) {
+    if (data.kind !== 'clipboard' || data.status !== 'ready') continue;
+    if (!data.document || !data.hostData) continue;
+    const document = inlineDocumentImageData(data.document, resolvedImages, base);
+    if (document === data.document) continue;
+    next ??= { ...hostData };
+    next[key] = { ...data, document };
+  }
+  return next ?? hostData;
+}
+
 function bytesToBase64(bytes: Uint8Array): string {
   let binary = '';
   // 分块：`String.fromCharCode(...bytes)` 在长图上会撞调用栈上限。
@@ -512,10 +597,20 @@ export async function renderStaticMarkup(input: ReactiveStaticMarkupInput): Prom
 
   // 图片地址从**编译后的 AST** 取，不从源码跑正则：代码围栏 / 行内代码里的
   // `![](...)` 只是字符串，不是会被渲染的图片节点。
-  const imageUrls = collectDocumentImageUrls(compiled.document).filter((url) =>
-    isAllowedReactiveUrl(url, 'image')
-  );
+  //
+  // ★ 父 AST + 一层内联子文档一起收集、一次预取 ★：子文档是独立编译产物，
+  // 不在父 AST 里；只收集父图会让内联子正文的图片继续联网（P1-3 交接缺口）。
+  // 共用同一个 `prefetchImages`：白名单、单图/总字节/整体预算与失败降级都不变。
+  const inlineDocuments = collectInlineClipboardDocuments(adapted.hostData);
+  const imageUrls = [
+    ...new Set([
+      ...collectDocumentImageUrls(compiled.document),
+      ...inlineDocuments.flatMap((document) => collectDocumentImageUrls(document)),
+    ]),
+  ].filter((url) => isAllowedReactiveUrl(url, 'image'));
   const resolvedImages = await prefetchImages(imageUrls, input.base);
+  // 预取成功的子图写回子 document（不改子 hostData）；失败的保持原地址。
+  const hostData = applyInlineClipboardImageData(adapted.hostData, resolvedImages, input.base);
 
   const runtime = createLocalRuntime(compiled.document);
   const container = document.createElement('div');
@@ -531,7 +626,7 @@ export async function renderStaticMarkup(input: ReactiveStaticMarkupInput): Prom
           runtime,
           mode: 'static',
           locale: 'zh',
-          hostData: adapted.hostData,
+          hostData,
           hostRenderer: renderSiteEmbedStatic,
           urlPolicy: (url: string, kind: 'image' | 'link') =>
             isAllowedReactiveUrl(url, kind),

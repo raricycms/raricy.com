@@ -218,13 +218,13 @@ describe('ReactiveMD 静态导出', () => {
       arrayBuffer: async () => new Uint8Array([0x89, 0x50, 0x4e, 0x47]).buffer,
     }) as unknown as Response;
 
-  function stubReactiveFetch() {
+  function stubReactiveFetch(clipContent = '不应内联的正文') {
     const fetchMock = vi.fn(async (input: string | URL | Request) => {
       const url = String(input);
       if (url.includes('/api/clipboard/')) {
         return jsonResponse({
           code: 200,
-          clip: { title: '一段笔记', content: '不应内联的正文', format: 'markdown', version: 'v1' },
+          clip: { title: '一段笔记', content: clipContent, format: 'markdown', version: 'v1' },
         });
       }
       if (url.includes('/api/votes/')) {
@@ -277,10 +277,11 @@ describe('ReactiveMD 静态导出', () => {
     expect(html).not.toContain('<panel');
     expect(html).not.toContain('[@');
 
-    // 四类宿主卡片按只读形态出现（剪贴板仍是链接卡片，不内联正文）
-    expect(html).toContain('site-embed-clipboard');
-    expect(html).toContain('一段笔记');
-    expect(html).not.toContain('不应内联的正文');
+    // 四类宿主按只读形态出现；Markdown 子剪贴板（P1-3 起）内联静态子文档，
+    // 不再退回链接卡片。
+    expect(html).toContain('site-embed-clipboard-inline');
+    expect(html).not.toContain('href="/clipboard/AbCd1234"');
+    expect(html).toContain('不应内联的正文');
     expect(html).toContain('vote-embed');
     expect(html).toContain('favorite-embed');
     expect(html).toContain('site-embed--audio');
@@ -294,7 +295,7 @@ describe('ReactiveMD 静态导出', () => {
     const fetchMock = stubReactiveFetch();
     const source = '剪贴板 [@AbCd1234]';
 
-    // 成员 / expand：按既有口径取数并给链接卡片。
+    // 成员 / expand：按既有口径取数；Markdown 子剪贴板内联静态子文档。
     const expanded = await renderStaticMarkup({
       source,
       format: 'markdown',
@@ -302,9 +303,10 @@ describe('ReactiveMD 静态导出', () => {
       base: ORIGIN,
     });
     expect(fetchMock.mock.calls.some(([url]) => String(url).includes('/api/clipboard/'))).toBe(true);
-    expect(expanded).toContain('site-embed-clipboard');
+    expect(expanded).toContain('site-embed-clipboard-inline');
+    expect(expanded).toContain('不应内联的正文');
 
-    // 访客 / external：一个业务请求都不发，token 原样保留。
+    // 访客 / external：一个业务请求都不发，token 原样保留，也不生成子文档。
     fetchMock.mockClear();
     const external = await renderStaticMarkup({
       source,
@@ -316,6 +318,79 @@ describe('ReactiveMD 静态导出', () => {
     expect(external).toContain('[@AbCd1234]');
     expect(external).not.toContain('site-embed-clipboard');
     expect(external).not.toContain('不应内联的正文');
+  });
+
+  it('P1-3：父图与一层内联子图都预取成 data URL；子公式不走栅格；不递归私有引用', async () => {
+    const fetchMock = stubReactiveFetch(
+      [
+        '子正文',
+        '',
+        '![子图](/api/images/BbCcDdEe11/raw)',
+        '',
+        '嵌套剪贴板 [@ZzYyXx99]',
+        '',
+        '公式 $a^2+b^2=c^2$',
+      ].join('\n')
+    );
+    const html = await renderStaticMarkup({
+      source: '![父图](/api/images/AaBbCcDd10/raw)\n\n剪贴板 [@AbCd1234]',
+      format: 'markdown',
+      base: ORIGIN,
+    });
+
+    expect(html).toContain('site-embed-clipboard-inline');
+    expect(html).toContain('子正文');
+    const dataImages = (html.match(/data:image\/png;base64,/g) ?? []).length;
+    expect(dataImages, '父图与内联子图都应转成 data URL').toBeGreaterThanOrEqual(2);
+    expect(html).not.toContain('/api/images/AaBbCcDd10/raw');
+    expect(html).not.toContain('/api/images/BbCcDdEe11/raw');
+
+    // 子公式由同一静态引擎渲染成 KaTeX span（字体在 screen.css 的 data:font 里），
+    // 不是裸 `$…$`，也没有被栅格化成图片。
+    expect(html).toContain('local-math');
+    expect(html).not.toContain('$a^2+b^2=c^2$');
+
+    // 子适配固定 external：嵌套剪贴板保留字面量，**不递归取数**。
+    expect(
+      fetchMock.mock.calls.some(([url]) => String(url).includes('/api/clipboard/ZzYyXx99'))
+    ).toBe(false);
+    expect(html).toContain('[@ZzYyXx99]');
+  });
+
+  it('P1-3：子图取不到时保留站点绝对地址，其余图照常内联（不伪造空图）', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: string | URL | Request) => {
+        const url = String(input);
+        if (url.includes('/api/clipboard/')) {
+          return jsonResponse({
+            code: 200,
+            clip: {
+              title: '一段笔记',
+              content: '子正文\n\n![子图](/api/images/BbCcDdEe11/raw)',
+              format: 'markdown',
+              version: 'v1',
+            },
+          });
+        }
+        if (url.includes('/api/images/BbCcDdEe11/raw')) {
+          return { ok: false, headers: { get: () => null } } as unknown as Response;
+        }
+        if (url.includes('/api/images/AaBbCcDd10/raw')) return imageResponse();
+        return { ok: false, headers: { get: () => null } } as unknown as Response;
+      })
+    );
+
+    const html = await renderStaticMarkup({
+      source: '![父图](/api/images/AaBbCcDd10/raw)\n\n剪贴板 [@AbCd1234]',
+      format: 'markdown',
+      base: ORIGIN,
+    });
+
+    // 父图成功 → 1 个 data URL；子图失败 → 仍是联网地址（与音频 / 链接同口径）
+    expect((html.match(/data:image\/png;base64,/g) ?? [])).toHaveLength(1);
+    expect(html).toContain(`${ORIGIN}/api/images/BbCcDdEe11/raw`);
+    expect(html).toContain('子正文');
   });
 
   it('取不到的图片保留 alt 回退，不让整篇失败', async () => {
