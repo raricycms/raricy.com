@@ -46,8 +46,10 @@ import type {
  * /2：修复 section/progress/table 组件误拆、线性扫描、align 取值、引用块缩进代码。
  * /3：历史 HTML 音视频转为 `[[媒体:<10hex>]]` + mediaSources（controls / source /
  *     track，preload 默认 none，无 autoplay）。
+ * /4：媒体块替换时连**块内换行**一起中和，避免 token 后的软换行变成多余 `<br>`
+ *     （播放器下方约 170px 空洞）。输出 AST 变了，旧快照必须 stale。
  */
-export const LEGACY_COMPAT_VERSION = 'reactive-legacy-compat/3';
+export const LEGACY_COMPAT_VERSION = 'reactive-legacy-compat/4';
 
 export interface LegacyDataImageAsset {
   url: string;
@@ -222,6 +224,29 @@ function writeVisiblePrefix(
   if (text.length > length) return false;
   for (let index = 0; index < text.length; index += 1) chars[start + index] = text[index];
   neutralizeRange(chars, start + text.length, start + length);
+  return true;
+}
+
+/**
+ * 音视频整块替换专用：剩余区间连**换行**也一起中和。
+ *
+ * 媒体块是多行标签（`<video>` + `<source>` + `<track>` + `</video>`）；若保留块内
+ * 换行，Markdown 软换行会把每个换行渲染成 `<br>` —— 播放器与下一段正文之间凭空
+ * 多出约 170px。整块在语义上是一个内联 token，所以内部换行也不该留下版面。
+ * 剩余空间用**空格**而不是零宽：零宽会让上游多解析出一个只有不可见文字的段落，
+ * 仍然带段落上下边距；空格是行尾空白，不会生成空段落。
+ * 块**之后**的换行不在区间里，段落间距保持原样；长度仍严格不变。
+ * 超大区块不走空格补齐（见 `MAX_MEDIA_BLOCK_CHARS`），避免重现长空白卡编译。
+ */
+function writeMediaReplacement(
+  chars: string[],
+  start: number,
+  length: number,
+  text: string
+): boolean {
+  if (text.length > length) return false;
+  for (let index = 0; index < text.length; index += 1) chars[start + index] = text[index];
+  for (let index = text.length; index < length; index += 1) chars[start + index] = ' ';
   return true;
 }
 
@@ -519,6 +544,9 @@ function removeBlocks(chars: string[], masked: string, counts: MutableCounts): v
  *   · 不可用的地址 → 只留「视频 / 音频」四个字。
  * 整块替换，长度补齐。
  */
+/** 媒体整块替换的上限：更长的块不铺空格（长空白会拖慢上游编译），走字面/链接回退。 */
+const MAX_MEDIA_BLOCK_CHARS = 4_096;
+
 const MEDIA_PRELOAD: ReadonlySet<string> = new Set(['none', 'metadata', 'auto']);
 const MEDIA_TRACK_KIND: ReadonlySet<NonNullable<SiteMediaTrackItem['kind']>> = new Set([
   'subtitles',
@@ -654,13 +682,15 @@ function convertMediaBlocks(
       const openTag = rawBlock.slice(0, openEnd - start);
       const inner = rawBlock.slice(openEnd - start, close - start);
       const url = readAttr(openTag, 'src') ?? readSourceChild(inner);
+      const blockLength = closeEnd - start;
+      const padded = blockLength <= MAX_MEDIA_BLOCK_CHARS;
 
       // 站内受控音频仍走现有 `[@音频/<id>]`（音频 kind），不改 media。
       if (tag === 'audio') {
         const controlled = url?.match(/^\/api\/audio\/([A-Za-z0-9]{10})\/raw$/);
         if (controlled) {
           const token = `[@音频/${controlled[1]}]`;
-          if (writeVisiblePrefix(chars, start, closeEnd - start, token)) {
+          if (padded && writeMediaReplacement(chars, start, blockLength, token)) {
             count(counts, 'audio-ref');
             cursor = closeEnd;
             continue;
@@ -682,7 +712,7 @@ function convertMediaBlocks(
         }
         if (ref) {
           const token = `[[媒体:${ref}]]`;
-          if (writeVisiblePrefix(chars, start, closeEnd - start, token)) {
+          if (padded && writeMediaReplacement(chars, start, blockLength, token)) {
             mediaSources[ref] = payload;
             count(counts, 'media');
             cursor = closeEnd;
@@ -708,8 +738,10 @@ function convertMediaBlocks(
         desired = '视频';
         count(counts, 'video-drop');
       }
-      if (!writeVisiblePrefix(chars, start, closeEnd - start, desired)) {
-        neutralizeRange(chars, start, closeEnd);
+      if (!padded || !writeMediaReplacement(chars, start, blockLength, desired)) {
+        if (!writeVisiblePrefix(chars, start, blockLength, desired)) {
+          neutralizeRange(chars, start, closeEnd);
+        }
       }
       cursor = closeEnd;
     }
