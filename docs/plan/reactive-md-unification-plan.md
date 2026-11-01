@@ -515,3 +515,21 @@ P1 新增测试以实际合并文件为准，不在测试里复制一套实现�
   不参与决策，只有 `off` 是事故回退（`docs/deploy.md`）。
 - 剩余：最终全量 vitest、生产 build、逐 spec e2e（含冷启动首请求无 JS）；P6 生产发布
   与真实业务库只读扫描由外层执行。
+
+### P6 真实库只读语料（外层执行，2026-11-01）
+
+匿名聚合结果（不含正文 / 标题 / 作者，报告只由外层读取）：
+
+- 共 **5,105** 篇 = **4,909 博客 + 196 剪贴板**；编译实现固定为 `62190794`，
+  50 篇/批、每批 120s 超时，只读 `node:sqlite`（不写 WAL）。
+- **5,104 ok / 1 局部数学语义 fallback / 0 failed / 0 scanFailures /
+  0 formatMismatch / 0 literalized**。
+- 唯一 fallback 是一篇 139 字符的 Markdown，诊断 `local.math.display`、
+  compatCounts 空、`detectedFormat=markdown`、未字面化。这是**新引擎内的局部公式
+  容错**（该公式节点按字面显示，同篇其他段落正常），**不是整篇退回旧渲染器**：
+  `read-render.ts` 只在编译失败 / 快照不可用时才 unavailable，`shouldFallbackToLegacy`
+  不参与阅读决策；合成夹具 `$$\begin{nope}…\end{nope}$$` 已复现（`ok:true`、
+  `local.math.display`，前后段落均为正常 text / paragraph 节点）。
+- 另有 4 条 `local.html.fallback`；三篇 178,480 / 197,541 / 184,687 字符的历史长诗
+  全部 `ok` 且无诊断。节点预算 50,000。
+- 以上是**本地/外层只读扫描**结果，不替代发布前生产核验；本会话未读取业务原文。
