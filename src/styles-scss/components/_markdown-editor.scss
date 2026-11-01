@@ -21,8 +21,11 @@
   border: 1px solid var(--color-border);
   border-radius: 20px;
   background: var(--color-background-page);
-  // 圆角要真的裁掉里面那三层（工具条 / 编辑区 / 页脚）的直角
-  overflow: hidden;
+  // 圆角要真的裁掉里面那三层（工具条 / 编辑区 / 页脚）的直角。
+  // ⚠️ 用 clip 而不是 hidden：hidden 仍是**可滚动容器** —— 打开 Components
+  // 菜单时浏览器会把聚焦元素滚动进视野，把整个外壳横向滚 20px，左侧「插入」
+  // 首字与底栏「0 字」被裁掉（320px 实测）。clip 不允许滚动，只做裁剪。
+  overflow: clip;
 }
 
 // 显示 img / 拖拽徽标 etc 都不该溢出这个盒子
