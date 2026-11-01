@@ -175,6 +175,13 @@ export default function Toolbar({
   const [openMenu, setOpenMenu] = useState<MenuKey>(null);
   const [emojiOpen, setEmojiOpen] = useState(false);
   const [formatState, setFormatState] = useState<FormatState>(null);
+  /**
+   * Components 菜单的上下文（光标所在的容器祖先）。
+   *
+   * 只在**点开菜单**时算一次，不是逐键分析；上游解析有长度上限
+   * （`AUTHOR_TOOL_LENGTH_LIMIT`，见 `getComponentAncestors`），超长正文直接
+   * 返回空 = 不按上下文过滤，不会把菜单卡住。
+   */
   const [componentAncestors, setComponentAncestors] = useState<string[]>([]);
 
   const toolbarRef = useRef<HTMLDivElement>(null);
@@ -222,11 +229,9 @@ export default function Toolbar({
           setFormatState(null);
         }
         if (menu === 'components') {
-          try {
-            setComponentAncestors(getComponentAncestors(view));
-          } catch {
-            setComponentAncestors([]);
-          }
+          // 有界的一次同步解析（见 getComponentAncestors）；失败 / 超长时为空，
+          // 菜单退回「全部组件」，不会因为上下文算不出来就整块消失。
+          setComponentAncestors(getComponentAncestors(view));
         }
       }
       setEmojiOpen(false);

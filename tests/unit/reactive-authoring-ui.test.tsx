@@ -21,6 +21,7 @@ import {
   useState,
   type ComponentProps,
   type ReactElement,
+  type RefObject,
 } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -67,6 +68,31 @@ interface AuthoringOptions {
 }
 
 // ── 替身 ─────────────────────────────────────────────────────────────────────
+interface MockDiagnostic {
+  code: string;
+  severity: 'error' | 'warning';
+  message: string;
+  line: number;
+  column: number;
+  range: { start: number; end: number };
+}
+
+/** 分析结果的替身形状；author / fallback / mode 是后端合并后才会出现的可选字段。 */
+interface MockAnalysisResult {
+  effective: string;
+  valid: boolean;
+  publishable: boolean;
+  evidence: string[];
+  candidates: string[];
+  codes: string[];
+  diagnostics: MockDiagnostic[];
+  declaredVersion: string | null;
+  syntaxVersion: string | null;
+  author?: unknown;
+  fallback?: boolean;
+  mode?: string;
+}
+
 const mocks = vi.hoisted(() => {
   const catalog = {
     groups: [
@@ -109,17 +135,18 @@ const mocks = vi.hoisted(() => {
       evidence: [] as string[],
       candidates: [] as string[],
       codes: [] as string[],
-      diagnostics: [] as Array<{
-        code: string;
-        severity: 'error' | 'warning';
-        message: string;
-        line: number;
-        column: number;
-        range: { start: number; end: number };
-      }>,
+      diagnostics: [] as MockDiagnostic[],
       declaredVersion: null as string | null,
       syntaxVersion: null as string | null,
+    } as MockAnalysisResult,
+    /** 需要手动控制 resolve 时序的用例覆盖它。 */
+    analyzeImpl: null as null | ((source: string, revision: number) => Promise<unknown>),
+    /** 新建分析器时收到的选项（测 worker → fallback 的 UI 提示）。 */
+    analyzerOptions: null as null | {
+      onModeChange?: (mode: 'worker' | 'fallback' | 'unknown', detail?: string) => void;
     },
+    applyReactiveAuthorAnalysis: vi.fn(),
+    clearReactiveAuthorAnalysis: vi.fn(),
   };
 });
 
@@ -184,6 +211,8 @@ vi.mock('@/lib/md-editor/reactive-authoring', () => {
     applyReactiveCompletion: mocks.applyReactiveCompletion,
     formatReactiveDocument: mocks.formatReactiveDocument,
     revealReactiveDiagnostic: mocks.revealReactiveDiagnostic,
+    applyReactiveAuthorAnalysis: mocks.applyReactiveAuthorAnalysis,
+    clearReactiveAuthorAnalysis: mocks.clearReactiveAuthorAnalysis,
     getComponentAncestors: vi.fn(() => []),
     getSiteComponentCatalog: () => groups,
     filterSiteComponents: (query: string) => {
@@ -220,13 +249,16 @@ vi.mock('@/app/components/MarkdownRenderer', () => ({ default: () => null }));
 // 格式分析器是后端契约（worker）；单测里只要一个不排后台任务的替身 ——
 // 无候选语法的正文根本不会调用它，需要结果的用例各自再覆盖。
 vi.mock('@/lib/reactive/format-observer', () => ({
-  createFormatAnalyzer: () => ({
-    analyze: async (_source: string, revision = 1) => ({
-      revision,
-      ...mocks.analyzeResult,
-    }),
-    dispose: () => {},
-  }),
+  createFormatAnalyzer: (options: NonNullable<typeof mocks.analyzerOptions>) => {
+    mocks.analyzerOptions = options;
+    return {
+      analyze: async (source: string, revision = 1) =>
+        mocks.analyzeImpl
+          ? mocks.analyzeImpl(source, revision)
+          : { revision, ...mocks.analyzeResult },
+      dispose: () => {},
+    };
+  },
 }));
 
 vi.mock('@/app/components/markdown-editor/ResourcePanel', () => ({ default: () => null }));
@@ -283,6 +315,9 @@ beforeEach(() => {
   mocks.applyReactiveCompletion.mockClear();
   mocks.formatReactiveDocument.mockClear();
   mocks.revealReactiveDiagnostic.mockClear();
+  mocks.applyReactiveAuthorAnalysis.mockClear();
+  mocks.clearReactiveAuthorAnalysis.mockClear();
+  mocks.analyzerOptions = null;
   mocks.reactiveAuthoring.mockImplementation(() => []);
   mocks.getReactiveCompletions.mockReturnValue([]);
   mocks.applyReactiveCompletion.mockReturnValue(true);
@@ -298,6 +333,7 @@ beforeEach(() => {
     declaredVersion: null,
     syntaxVersion: null,
   };
+  mocks.analyzeImpl = null;
   document.body.innerHTML = '';
 });
 
@@ -444,73 +480,163 @@ describe('组件挑选：搜索、分组、插入与焦点返回', () => {
 
 let setFormat: (format: ContentFormat) => void = () => {};
 
-function EditorHarness({ initialFormat }: { initialFormat: ContentFormat }) {
+function EditorHarness({
+  initialFormat,
+  initialValue = '# 标题\n\n正文',
+  handleRef,
+}: {
+  initialFormat: ContentFormat;
+  initialValue?: string;
+  handleRef?: RefObject<MarkdownEditorHandle | null>;
+}) {
   const [format, setCurrentFormat] = useState<ContentFormat>(initialFormat);
   setFormat = setCurrentFormat;
   return createElement(MarkdownEditor, {
-    initialValue: '# 标题\n\n正文',
+    initialValue,
     format,
+    ref: handleRef,
   });
 }
 
-describe('MarkdownEditor：Reactive 分析 / 诊断 / 补全 / 格式化', () => {
-  it('初始加载就启用扩展并显示计数；诊断可点击定位', async () => {
-    const container = mount(createElement(EditorHarness, { initialFormat: 'reactive' }));
+describe('MarkdownEditor：Reactive 诊断 / 补全 / 格式化', () => {
+  const REACTIVE_DIAGNOSTICS = {
+    effective: 'reactive',
+    valid: true,
+    publishable: true,
+    evidence: ['component:slider'],
+    candidates: ['component:slider'],
+    codes: [],
+    diagnostics: [
+      {
+        code: 'component.unknown',
+        severity: 'error' as const,
+        message: '未知组件 <slidr>',
+        line: 2,
+        column: 3,
+        range: { start: 2, end: 8 },
+      },
+      {
+        code: 'footnote.unsupported',
+        severity: 'warning' as const,
+        message: '脚注按原文显示',
+        line: 4,
+        column: 1,
+        range: { start: 20, end: 24 },
+      },
+    ],
+    declaredVersion: null,
+    syntaxVersion: 'local-draft-3',
+  };
+
+  it('分析结果落地后显示计数；诊断可展开并点击定位', async () => {
+    mocks.analyzeResult = REACTIVE_DIAGNOSTICS;
+    const ref = createRef<MarkdownEditorHandle>();
+    const container = mount(
+      createElement(EditorHarness, {
+        initialFormat: 'markdown',
+        initialValue: '<slider bind="a">',
+        handleRef: ref,
+      })
+    );
+
+    await act(async () => {
+      await ref.current!.prepareSubmit();
+    });
+
     expect(mocks.reactiveAuthoring).toHaveBeenCalledTimes(1);
     expect(container.querySelector('.md-authoring')).not.toBeNull();
-
-    const options = lastAuthoringOptions();
-    await act(async () => options.onAnalysis(ANALYSIS));
-
     expect(container.textContent).toContain('错误 1');
     expect(container.textContent).toContain('警告 1');
-    // 明细默认收起：先展开，再读逐条文案与位置
+
     await click(container, '.md-authoring__toggle');
-    // 优先 formatLocalDiagnostic(d, 'zh')
-    expect(container.textContent).toContain('译:未知组件 <slidr>');
+    expect(container.textContent).toContain('未知组件 <slidr>');
     expect(container.textContent).toContain('第 2 行 3 列');
 
     await click(container, '.md-authoring__diagnostic');
     expect(mocks.revealReactiveDiagnostic).toHaveBeenCalledTimes(1);
-    const [view, diagnostic] = mocks.revealReactiveDiagnostic.mock.calls[0];
-    expect((view as EditorView).state).toBeTruthy();
-    expect(diagnostic).toBe(ANALYSIS.diagnostics[0]);
+    expect(mocks.revealReactiveDiagnostic.mock.calls[0][1]).toMatchObject({
+      code: 'component.unknown',
+    });
   });
 
-  it('补全：扩展回调与工具条按钮都能出候选，选中后调用 applyReactiveCompletion', async () => {
-    const container = mount(createElement(EditorHarness, { initialFormat: 'reactive' }));
-    const options = lastAuthoringOptions();
+  it('worker 的 author.tokens / 诊断交给 CM6 装饰（不在主线程重算）', async () => {
+    const author = {
+      tokens: [{ kind: 'tag', range: { start: 0, end: 8 } }],
+      diagnostics: [
+        {
+          code: 'component.unknown',
+          severity: 'error' as const,
+          message: '未知组件 <slidr>',
+          line: 1,
+          column: 1,
+          range: { start: 0, end: 8 },
+        },
+      ],
+    };
+    mocks.analyzeResult = { ...REACTIVE_DIAGNOSTICS, author };
+    const ref = createRef<MarkdownEditorHandle>();
+    const container = mount(
+      createElement(EditorHarness, {
+        initialFormat: 'reactive',
+        initialValue: '<slidr>',
+        handleRef: ref,
+      })
+    );
 
-    await act(async () => options.onCompletions?.(COMPLETIONS));
+    await act(async () => {
+      await ref.current!.prepareSubmit();
+    });
+
+    expect(mocks.applyReactiveAuthorAnalysis).toHaveBeenCalledTimes(1);
+    const [view, analysis] = mocks.applyReactiveAuthorAnalysis.mock.calls[0];
+    expect(view).toBe(EditorView.findFromDOM(container.querySelector('.cm-content')!));
+    expect(analysis).toEqual(author);
+  });
+
+  it('worker 回退主线程检查时，面板明确写「本地检查」', async () => {
+    const container = mount(createElement(EditorHarness, { initialFormat: 'reactive' }));
+    expect(mocks.analyzerOptions?.onModeChange).toBeTypeOf('function');
+
+    await act(async () => {
+      mocks.analyzerOptions!.onModeChange!('fallback');
+    });
+    expect(container.textContent).toContain('本地检查');
+
+    await act(async () => {
+      mocks.analyzerOptions!.onModeChange!('worker');
+    });
+    expect(container.textContent).not.toContain('本地检查');
+  });
+
+  it('工具条「更多 → 补全」出候选，选中后调用 applyReactiveCompletion', async () => {
+    const container = mount(createElement(EditorHarness, { initialFormat: 'reactive' }));
+
+    mocks.getReactiveCompletions.mockReturnValue(COMPLETIONS);
+    await click(container, '[aria-label="更多"]');
+    const completionItem = Array.from(container.querySelectorAll<HTMLElement>('[role="menuitem"]'))
+      .find((node) => node.textContent?.includes('补全'));
+    expect(completionItem).toBeTruthy();
+    await act(async () => completionItem!.click());
+
+    expect(mocks.getReactiveCompletions).toHaveBeenCalledTimes(1);
     expect(container.querySelectorAll('.md-authoring__completion')).toHaveLength(2);
     expect(container.textContent).toContain('滑块');
 
     await click(container, '.md-authoring__completion');
     expect(mocks.applyReactiveCompletion).toHaveBeenCalledTimes(1);
     expect(mocks.applyReactiveCompletion.mock.calls[0][1]).toBe(COMPLETIONS[0]);
-    // 选中后面板收起
     expect(container.querySelector('.md-authoring__completions')).toBeNull();
+  });
 
-    // 工具条「更多 → 补全」走 getReactiveCompletions
-    mocks.getReactiveCompletions.mockReturnValue([COMPLETIONS[1]]);
+  it('源码变化时立即丢弃旧候选', async () => {
+    const container = mount(createElement(EditorHarness, { initialFormat: 'reactive' }));
+    mocks.getReactiveCompletions.mockReturnValue(COMPLETIONS);
     await click(container, '[aria-label="更多"]');
     const completionItem = Array.from(container.querySelectorAll<HTMLElement>('[role="menuitem"]'))
       .find((node) => node.textContent?.includes('补全'));
-    expect(completionItem).toBeTruthy();
     await act(async () => completionItem!.click());
-    expect(mocks.getReactiveCompletions).toHaveBeenCalledTimes(1);
-    expect(container.querySelectorAll('.md-authoring__completion')).toHaveLength(1);
-    expect(container.textContent).toContain('图表');
-  });
-
-  it('源码变化时立即丢弃旧候选和诊断，避免把旧范围应用到新正文', async () => {
-    const container = mount(createElement(EditorHarness, { initialFormat: 'reactive' }));
-    const options = lastAuthoringOptions();
-    await act(async () => {
-      options.onAnalysis(ANALYSIS);
-      options.onCompletions?.(COMPLETIONS);
-    });
     expect(container.querySelector('.md-authoring__completions')).not.toBeNull();
+
     const view = EditorView.findFromDOM(container.querySelector('.cm-content')!)!;
     act(() => view.dispatch({ changes: { from: 0, insert: '新' } }));
     expect(container.querySelector('.md-authoring__completions')).toBeNull();
@@ -544,7 +670,7 @@ describe('MarkdownEditor：Reactive 分析 / 诊断 / 补全 / 格式化', () =>
     expect(container.textContent).toContain('没有需要格式化的内容');
   });
 
-  it('Markdown 模式不启用扩展、不显示诊断面板；Components 入口仍在', () => {
+  it('Markdown 模式不启用作者扩展、不显示诊断面板；Components 入口仍在', () => {
     const container = mount(createElement(EditorHarness, { initialFormat: 'markdown' }));
     expect(mocks.reactiveAuthoring).not.toHaveBeenCalled();
     expect(container.querySelector('.md-authoring')).toBeNull();
@@ -554,35 +680,57 @@ describe('MarkdownEditor：Reactive 分析 / 诊断 / 补全 / 格式化', () =>
 
 // ── 3. 格式切换：热替换，不重建 EditorState ──────────────────────────────────
 
-describe('格式切换：Compartment 热替换，正文与 DOM 原地不动', () => {
-  it('reactive → markdown → reactive 不重建编辑区，分析状态被清空', async () => {
-    const container = mount(createElement(EditorHarness, { initialFormat: 'reactive' }));
-    const options = lastAuthoringOptions();
-    await act(async () => options.onAnalysis(ANALYSIS));
-    expect(container.textContent).toContain('错误 1');
-
+describe('自动格式：热替换，正文与 DOM 原地不动', () => {
+  it('分析升级 → reactive 热装扩展；分析回 markdown → 卸下，节点不重建', async () => {
+    mocks.analyzeResult = {
+      effective: 'reactive',
+      valid: true,
+      publishable: true,
+      evidence: ['component:slider'],
+      candidates: ['component:slider'],
+      codes: [],
+      diagnostics: [],
+      declaredVersion: null,
+      syntaxVersion: 'local-draft-3',
+    };
+    const ref = createRef<MarkdownEditorHandle>();
+    const container = mount(
+      createElement(EditorHarness, {
+        initialFormat: 'markdown',
+        initialValue: '<slider bind="a">',
+        handleRef: ref,
+      })
+    );
     const contentBefore = container.querySelector('.cm-content');
     expect(contentBefore).not.toBeNull();
-    expect(contentBefore!.textContent).toContain('正文');
 
-    await act(async () => setFormat('markdown'));
-
-    // 扩展被取下来、诊断面板退场；Components 入口**不**按格式隐藏
-    expect(container.querySelector('.md-authoring')).toBeNull();
-    expect(container.querySelector('[aria-label="组件"]')).not.toBeNull();
+    await act(async () => {
+      await ref.current!.prepareSubmit();
+    });
     expect(mocks.reactiveAuthoring).toHaveBeenCalledTimes(1);
+    expect(container.querySelector('.md-authoring')).not.toBeNull();
 
+    mocks.analyzeResult = {
+      effective: 'markdown',
+      valid: true,
+      publishable: true,
+      evidence: [],
+      candidates: [],
+      codes: [],
+      diagnostics: [],
+      declaredVersion: null,
+      syntaxVersion: null,
+    };
+    await act(async () => {
+      await ref.current!.prepareSubmit();
+    });
+
+    // 新建的 Markdown 文档删光组件 → 回到 markdown；已保存 reactive 的下限另测
+    expect(container.querySelector('.md-authoring')).toBeNull();
+    expect(mocks.reactiveAuthoring).toHaveBeenCalledTimes(1);
     // 同一个 .cm-content 节点 = 没有重建 EditorState（重建会换掉整个 DOM）
     expect(container.querySelector('.cm-content')).toBe(contentBefore);
-    expect(contentBefore!.textContent).toContain('# 标题');
-
-    // 切回来：重新装扩展；旧分析不得复活
-    await act(async () => setFormat('reactive'));
-    expect(mocks.reactiveAuthoring).toHaveBeenCalledTimes(2);
-    expect(container.querySelector('.md-authoring')).not.toBeNull();
-    expect(container.textContent).toContain('未发现问题');
-    expect(container.textContent).not.toContain('译:未知组件 <slidr>');
-    expect(container.querySelector('.cm-content')).toBe(contentBefore);
+    expect(contentBefore!.textContent).toContain('<slider');
   });
 });
 
@@ -693,5 +841,149 @@ describe('prepareSubmit：无效增强语法绝不静默按 Markdown 保存', ()
       syntaxVersion: null,
       blocked: null,
     });
+  });
+
+  it('解析器认识但不可发布（publishable=false）→ blocked + 诊断', async () => {
+    mocks.analyzeResult = {
+      effective: 'reactive',
+      valid: true,
+      publishable: false,
+      evidence: ['component:slider'],
+      candidates: ['component:slider'],
+      codes: ['local.budget.exceeded'],
+      diagnostics: [
+        {
+          code: 'local.budget.exceeded',
+          severity: 'error',
+          message: '超过节点预算',
+          line: 1,
+          column: 1,
+          range: { start: 0, end: 8 },
+        },
+      ],
+      declaredVersion: null,
+      syntaxVersion: 'local-draft-3',
+    };
+    const ref = createRef<MarkdownEditorHandle>();
+    mount(
+      createElement(MarkdownEditor, {
+        initialValue: '<slider bind="a">',
+        format: 'markdown',
+        ref,
+      })
+    );
+    let snapshot!: EditorSubmitSnapshot;
+    await act(async () => {
+      snapshot = await ref.current!.prepareSubmit();
+    });
+    expect(snapshot.blocked).not.toBeNull();
+    expect(snapshot.blocked!.diagnostics).toHaveLength(1);
+    expect(snapshot.format).toBe('reactive');
+  });
+
+  it('等待分析期间正文又变了 → 重试并提交新正文', async () => {
+    const calls: string[] = [];
+    let release!: (value: unknown) => void;
+    const first = new Promise<unknown>((resolve) => {
+      release = resolve;
+    });
+    mocks.analyzeImpl = (source, revision) => {
+      calls.push(source);
+      if (calls.length === 1) return first;
+      return Promise.resolve({
+        revision,
+        effective: 'markdown',
+        valid: true,
+        publishable: true,
+        evidence: [],
+        candidates: [],
+        codes: [],
+        diagnostics: [],
+        declaredVersion: null,
+        syntaxVersion: null,
+      });
+    };
+
+    const ref = createRef<MarkdownEditorHandle>();
+    mount(
+      createElement(MarkdownEditor, {
+        initialValue: '<slider bind="a">',
+        format: 'markdown',
+        ref,
+      })
+    );
+
+    let pending!: Promise<EditorSubmitSnapshot>;
+    await act(async () => {
+      pending = ref.current!.prepareSubmit();
+    });
+
+    const view = EditorView.findFromDOM(document.querySelector('.cm-content')!)!;
+    await act(async () => {
+      view.dispatch({ changes: { from: view.state.doc.length, insert: '\n后续' } });
+    });
+
+    await act(async () => {
+      release({
+        revision: 1,
+        effective: 'reactive',
+        valid: true,
+        publishable: true,
+        evidence: ['component:slider'],
+        candidates: ['component:slider'],
+        codes: [],
+        diagnostics: [],
+        declaredVersion: null,
+        syntaxVersion: 'local-draft-3',
+      });
+    });
+
+    let snapshot!: EditorSubmitSnapshot;
+    await act(async () => {
+      snapshot = await pending;
+    });
+    expect(calls).toHaveLength(2);
+    expect(snapshot.content).toContain('后续');
+    expect(snapshot.format).toBe('markdown');
+  });
+
+  it('从 Components 插入过组件后即使正文没有标记也不降级', async () => {
+    const ref = createRef<MarkdownEditorHandle>();
+    const container = mount(
+      createElement(EditorHarness, {
+        initialFormat: 'markdown',
+        initialValue: '只剩普通正文了',
+        handleRef: ref,
+      })
+    );
+    await click(container, '[aria-label="组件"]');
+    await click(container, '.md-component-picker__item');
+
+    let snapshot!: EditorSubmitSnapshot;
+    await act(async () => {
+      snapshot = await ref.current!.prepareSubmit();
+    });
+    expect(snapshot.format).toBe('reactive');
+    expect(snapshot.blocked).toBeNull();
+  });
+
+  it('已保存为 reactive 的文档，正文删光增强语法也不降级，并带上权威版本', async () => {
+    const ref = createRef<MarkdownEditorHandle>();
+    mount(
+      createElement(MarkdownEditor, {
+        initialValue: '只剩普通正文了',
+        format: 'reactive',
+        initialSyntaxVersion: 'local-draft-3',
+        ref,
+      })
+    );
+
+    let snapshot!: EditorSubmitSnapshot;
+    await act(async () => {
+      snapshot = await ref.current!.prepareSubmit();
+    });
+    expect(snapshot.format).toBe('reactive');
+    expect(snapshot.syntaxVersion).toBe('local-draft-3');
+    expect(snapshot.blocked).toBeNull();
   });
 });

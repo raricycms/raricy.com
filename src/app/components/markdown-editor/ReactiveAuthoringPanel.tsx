@@ -75,6 +75,13 @@ export interface ReactiveAuthoringPanelProps {
   status: string | null;
   /** 分析失败（例如 worker 不可用且回退也失败）时的明确状态；null = 正常。 */
   failure?: string | null;
+  /**
+   * true = worker 不可用，已在主线程回退检查。
+   *
+   * 回退本身是**功能正常、体验变慢**：长文每次停顿都要在主线程编译。不提示的话
+   * 用户只会觉得「今天编辑器很卡」，而测试也看不出退化，所以计数旁边明说。
+   */
+  fallback?: boolean;
   onSelectCompletion: (item: AuthorCompletion) => void;
   onCloseCompletions: () => void;
   onRevealDiagnostic: (diagnostic: PanelDiagnostic) => void;
@@ -93,6 +100,7 @@ export default function ReactiveAuthoringPanel({
   completions,
   status,
   failure = null,
+  fallback = false,
   onSelectCompletion,
   onCloseCompletions,
   onRevealDiagnostic,
@@ -102,22 +110,30 @@ export default function ReactiveAuthoringPanel({
   const errors = diagnostics.filter((item) => item.severity === 'error').length;
   const warnings = diagnostics.length - errors;
 
-  const stateText = failure
+  const baseStateText = failure
     ? '检查失败'
     : pending
       ? '检查中…'
       : diagnostics.length > 0
         ? `错误 ${errors} · 警告 ${warnings}`
         : '未发现问题';
+  // 回退是「结果照旧、速度变差」，不是失败 —— 接在同一个状态串后面，
+  // 读屏（role=status / aria-live）会一起念出来。
+  const stateText = fallback ? `${baseStateText}（本地检查）` : baseStateText;
 
   return (
     <section className="md-authoring" aria-label="Reactive 作者工具">
       <div className="md-authoring__summary">
         <span className="md-authoring__title">Reactive 检查</span>
         <span
-          className={`md-authoring__state${errors > 0 || failure ? ' is-error' : warnings > 0 ? ' is-warning' : ''}`}
+          className={`md-authoring__state${errors > 0 || failure ? ' is-error' : warnings > 0 || fallback ? ' is-warning' : ''}`}
           role="status"
           aria-live="polite"
+          title={
+            fallback
+              ? '浏览器 Worker 不可用，已回退到主线程检查；长文编辑可能变慢。'
+              : undefined
+          }
         >
           {stateText}
         </span>

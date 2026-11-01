@@ -39,7 +39,7 @@ const DEFAULT_PORT = 3100;
 const { SEED_PASSWORD, SEED_USERS } = await import('../tests/e2e/seed.ts');
 
 function parseArgs(argv) {
-  const opts = { url: '/', wait: null, shot: null, as: null, html: false, console: false, port: DEFAULT_PORT, timeout: 30_000, width: null, height: null, clicks: [], typeText: null, typeFile: null, thenWait: null };
+  const opts = { url: '/', wait: null, shot: null, as: null, html: false, console: false, port: DEFAULT_PORT, timeout: 30_000, width: null, height: null, actions: [], typeText: null, typeFile: null, thenWait: null, assertNo: null };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     const next = () => argv[++i];
@@ -49,10 +49,12 @@ function parseArgs(argv) {
     else if (a === '--port') opts.port = Number(next());
     else if (a === '--width') opts.width = Number(next());
     else if (a === '--height') opts.height = Number(next());
-    else if (a === '--click') opts.clicks.push(next());
+    else if (a === '--click') opts.actions.push({ kind: 'selector', value: next() });
+    else if (a === '--click-name') opts.actions.push({ kind: 'name', value: next() });
     else if (a === '--type') opts.typeText = next();
     else if (a === '--type-file') opts.typeFile = next();
     else if (a === '--then-wait') opts.thenWait = next();
+    else if (a === '--assert-no') opts.assertNo = next();
     else if (a === '--timeout') opts.timeout = Number(next());
     else if (a === '--html') opts.html = true;
     else if (a === '--console') opts.console = true;
@@ -72,9 +74,11 @@ const HELP = `用法: npx tsx scripts/probe-page.mjs <路径> [选项]
   --port <端口>                   主站端口，默认 ${DEFAULT_PORT}
   --width <像素> / --height <像素>  视口（默认 Playwright 的 1280×720）
   --click <选择器>                等 --wait 之后依次点击（可重复；用于打开菜单）
+  --click-name <文本>             按可访问名点击按钮（子串匹配，可重复）
   --type <文本>                   点击 .cm-content 后一次性输入（编辑器用例）
   --type-file <文件>              同上，从 UTF-8 文件读（避开 shell 引号 / 换行）
   --then-wait <选择器>            点击 / 输入之后再等一个选择器（如预览编译完成）
+  --assert-no <选择器>            最后断言该选择器不存在（不存在则失败退出）
   --timeout <毫秒>                总超时，默认 30000
 
 注意：需要 e2e 的 webServer 已在跑（npm run e2e:ci 那套）。这个脚本不做断言、不算测试。
@@ -137,15 +141,32 @@ async function main() {
       console.log(`输入了 ${typed.length} 个字符`);
     }
 
-    for (const selector of opts.clicks) {
-      await page.locator(selector).first().click({ timeout: opts.timeout });
-      console.log(`点击：${selector}`);
+    for (const action of opts.actions) {
+      if (action.kind === 'name') {
+        // 以可访问名**开头**匹配：组件卡片的名字是「标题 + 说明」，
+        // 前缀匹配能区分「锚点」与「跳转与锚点」这类包含关系。
+        const escaped = action.value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        await page
+          .getByRole('button', { name: new RegExp(`^${escaped}`) })
+          .first()
+          .click({ timeout: opts.timeout });
+        console.log(`点击按钮：${action.value}`);
+      } else {
+        await page.locator(action.value).first().click({ timeout: opts.timeout });
+        console.log(`点击：${action.value}`);
+      }
       await page.waitForTimeout(200);
     }
 
     if (opts.thenWait) {
       await page.waitForSelector(opts.thenWait, { timeout: opts.timeout });
       console.log(`选择器出现：${opts.thenWait}`);
+    }
+
+    if (opts.assertNo) {
+      const count = await page.locator(opts.assertNo).count();
+      if (count > 0) throw new Error(`断言失败：${opts.assertNo} 出现了 ${count} 个`);
+      console.log(`断言通过：${opts.assertNo} 不存在`);
     }
 
     console.log(`标题：${await page.title()}`);

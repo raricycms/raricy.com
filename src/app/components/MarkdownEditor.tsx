@@ -7,16 +7,19 @@
 // 判定、剪贴板的 Ctrl+S 与每分钟自动保存**仍归各自的表单**（§5.3）。表单通过
 // `ref.getDoc()` 同步取最新原文 —— 绝不从防抖后的预览状态取提交内容。
 //
-// 【预览永远挂载】预览面板不做懒挂载，代价是每次防抖后都要跑一遍整篇渲染，
-// 换来三件事：切到「并排 / 预览」是瞬时的（没有加载态闪烁）、导出能直接读屏幕上
-// 那棵 DOM（导出件与所见逐字一致）、没有「导出时预览还没渲染完」的竞态。
-// 引用取数有会话级缓存（ContentRefResolver），同样的引用不会因重渲染重复请求。
+// 【预览统一走新引擎】无论 Markdown 还是 Reactive，预览都由 `ReactivePreview`
+// （compat → 引用适配 → worker 编译 → ReactiveDocument）渲染，与阅读页同一套
+// 配置。**不再保留旧的 MarkdownRenderer 分支** —— 两套引擎的表格 / HTML 清洗 /
+// 数学 / 脚注 / 引用内联会静默漂开，而「追加组件后普通正文排版不变」正是靠
+// 同一套引擎 + 站点级 `markdownBreaks: true` 保证的。
 //
-// 【预览是只读的】`interactive={false}` —— 投票小组件的按钮全部禁用、不发任何
-// 业务写请求（M0 就钉住了，见 blog-content-dom.ts）。预览里点不动任何东西。
+// 【预览可本地交互，但不写业务】`ReactivePreview` 以 interactive + preview 渲染：
+// 滑块 / 输入 / 图表可试；投票 / 收藏等站点嵌入只读。预览不发出任何业务写请求。
+//
+// 【导出 / 打印】等待当前正文的格式判定后，用 `renderStaticMarkup`（同一套 compat +
+// 适配 + 编译选项）渲染**静态初始状态**；不再走预览 DOM 或旧的 blog-renderer。
 //
 // 【主题】编辑器配色全走站点 CSS 变量，不需要监听 `data-theme`（见 cm-theme.ts）。
-// 预览里的代码高亮由 MarkdownRenderer 自己的 useHljsThemeStyles 跟随。
 // ─────────────────────────────────────────────────────────────────────────────
 
 import {
@@ -27,6 +30,8 @@ import {
   useReducer,
   useRef,
   useState,
+  type ComponentProps,
+  type ComponentType,
 } from 'react';
 import {
   Compartment,
@@ -44,33 +49,29 @@ import ResourcePanel from './markdown-editor/ResourcePanel';
 import ReactiveAuthoringPanel from './markdown-editor/ReactiveAuthoringPanel';
 import { editorBaseTheme } from './markdown-editor/cm-theme';
 import {
-  absolutizeSiteUrls,
   buildExportHtml,
   downloadHtml,
-  localizeFragmentLinks,
   printHtml,
   REACTIVE_EXPORT_NOTE,
   renderStaticMarkup,
   safeFilename,
-  stripInteractiveShells,
 } from './markdown-editor/export';
-import MarkdownRenderer from './MarkdownRenderer';
 import ReactivePreview from './reactive/ReactivePreview';
-import { ContentRefProcessor } from '@/lib/content-ref-processor';
-import { ContentRefResolver } from '@/lib/content-ref-resolver';
 import type { ContentFormat } from '@/lib/content-format';
-import { renderBlogMarkdown } from '@/lib/blog-renderer';
-import { enhanceBlogContent } from '@/lib/blog-content-dom';
 import { IMAGE_ACCEPT, uploadImageFile } from '@/lib/image-client';
 import * as cmd from '@/lib/md-editor/commands';
 import {
+  AUTHOR_TOOL_LENGTH_LIMIT,
+  applyReactiveAuthorAnalysis,
   applyReactiveCompletion,
+  clearReactiveAuthorAnalysis,
   formatReactiveDocument,
   getReactiveCompletions,
   reactiveAuthoring,
   revealReactiveDiagnostic,
   type AuthorAnalysis,
   type AuthorCompletion,
+  type ReactiveAuthorAnalysis,
 } from '@/lib/md-editor/reactive-authoring';
 import { createDraftStore, type DraftStore } from '@/lib/md-editor/draft';
 import {
@@ -120,6 +121,37 @@ const SPLIT_MIN_WIDTH = 768;
 
 type ViewMode = 'edit' | 'split' | 'preview';
 
+/**
+ * `ReactivePreview` 的向前兼容外观：Markdown 父文档也需要它（统一预览引擎），
+ * 且必须把 `format` 传下去，Markdown 子剪贴板才会按「内联一层」处理（契约 §5.2）。
+ *
+ * ⚠️ 这层 cast 是**临时**的：`format` 的真实签名由后端的
+ * `ReactivePreviewProps` 提供（后端树 WIP，尚未提交到本树）。合并后**必须删掉**
+ * 这里的别名、直接使用真实 props —— 别让它变成「传了但没人读」的永久假接线。
+ */
+type ReactivePreviewCompatProps = ComponentProps<typeof ReactivePreview> & {
+  format?: ContentFormat;
+};
+const ReactivePreviewCompat = ReactivePreview as unknown as ComponentType<ReactivePreviewCompatProps>;
+
+/**
+ * `FormatAnalysis` / 分析器选项的向前兼容扩展。
+ *
+ * 后端 WIP 已给 `FormatAnalysis` 增加 `author` / `mode` / `fallback`，并给
+ * `createFormatAnalyzer` 增加 `onModeChange` / `onFallback`；本树合并前这两个
+ * 字段还不存在。用**可选字段**读：旧实现下取不到就不画装饰 / 不提示回退，
+ * 新实现下自动生效。合并后删掉这两个别名，让 tsc 直接校验真实签名。
+ */
+type FormatAnalysisCompat = FormatAnalysis & {
+  author?: ReactiveAuthorAnalysis | null;
+  mode?: 'worker' | 'fallback' | 'unknown';
+  fallback?: boolean;
+};
+type FormatAnalyzerOptionsCompat = Parameters<typeof createFormatAnalyzer>[0] & {
+  onModeChange?: (mode: 'worker' | 'fallback' | 'unknown', detail?: string) => void;
+  onFallback?: (detail?: string) => void;
+};
+
 export interface MarkdownEditorHandle {
   /** 最新原文（同步）。提交与草稿都从这里取。 */
   getDoc(): string;
@@ -161,8 +193,11 @@ export interface MarkdownEditorProps {
   /** 是否给公式按钮（剪贴板有、博客没有）。 */
   withMath?: boolean;
   /**
-   * 正文语言。`reactive` 时预览面板改走 ReactiveMD（`ReactivePreview`），
-   * Markdown 的一切（含导出 / 打印）保持原样。**默认 markdown，行为不变。**
+   * 正文格式的**下限**（服务端 / 草稿给的值）。
+   *
+   * 两种格式的预览与导出都走同一套新引擎；这一项只决定「哪些用户工具可见」与
+   * 「提交时能不能降级」：`reactive` 是下限，删光组件也不自动变回 markdown。
+   * 默认 markdown —— 全新文档按分析结果自动升级（见 `effectiveFormat`）。
    */
   format?: ContentFormat;
   /** 对外文章可按访客预览；默认保留成员编辑与引用能力。 */
@@ -226,14 +261,17 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(
     // 不搬进 React state —— 25 万字的字符串每敲一下都过一遍 state 没意义。
     const [, bump] = useReducer((n: number) => n + 1, 0);
 
-    /** 会话级引用缓存：跨预览重渲染复用，编辑器销毁即释放（§5.1）。 */
-    const resolverRef = useRef<ContentRefResolver | null>(null);
-    const resolverModeRef = useRef(referenceMode);
-    if (!resolverRef.current || resolverModeRef.current !== referenceMode) {
-      resolverRef.current?.invalidate();
-      resolverRef.current = new ContentRefResolver(referenceMode);
-      resolverModeRef.current = referenceMode;
-    }
+    /**
+     * 当前正文的同步镜像 + 文档代次。
+     *
+     * 代次在**每次 docChanged 立刻**递增（不等 350ms 防抖）。所有异步结果
+     * （worker 分析、提交判定）回来时必须核对代次 / 原文，旧结果绝不能贴到
+     * 新正文上 —— 否则保存会先写下一版旧内容，界面诊断也可能闪回旧状态。
+     */
+    const latestSourceRef = useRef(initialValue);
+    const documentGenerationRef = useRef(0);
+    /** 提交判定函数（buildSnapshot 在它定义之前）；每次渲染刷新引用。 */
+    const prepareSubmitRef = useRef<(() => Promise<EditorSubmitSnapshot>) | null>(null);
 
     const draftRef = useRef<DraftStore | null>(null);
     const [draftChoice, setDraftChoice] = useState<string | null>(null);
@@ -261,14 +299,15 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(
     const [initFailed, setInitFailed] = useState(false);
 
     /**
-     * 「插入组件后自动升级为 Reactive」。
+     * 「插入组件后自动升级为 Reactive」的**粘性事实**。
      *
      * 作者界面不再要求先手动选格式：从 Components 菜单插一个 `<slider>` 进来，
      * 这份正文就已经是增强语法了。`format` 是**服务端 / 草稿给的下限**，这里只
      * 单向上调（reactive 不会因为删光组件自动降回 markdown，见计划 §3.1）。
      *
-     * 完整的自动识别（手写组件 / 表达式，不经过菜单）等后端异步分析契约稳定后
-     * 接进来 —— 在此之前只用「插入动作」这一个确定事实，不猜。
+     * 手写组件 / 表达式由异步格式分析识别（`detectedReactive`）；这里的粘性位
+     * 补的是「刚插入、分析还没回来」以及「插了又删光」这两种分析结果本身无法
+     * 认定的情况 —— 只看最终正文会把它们误判成普通 Markdown。
      */
     const [componentInserted, setComponentInserted] = useState(false);
 
@@ -281,6 +320,18 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(
     const [analysisPending, setAnalysisPending] = useState(false);
     /** worker + 主线程回退都失败时的明确状态（不静默按 Markdown 保存）。 */
     const [analysisFailure, setAnalysisFailure] = useState<string | null>(null);
+    /**
+     * worker 回报的作者分析（tokens / 诊断），只用于源码装饰。
+     *
+     * 它**不是**格式判定的副本：`formatAnalysis` 给面板与提交用，这一份给 CM6
+     * StateField 用。两者一起落地、一起作废，但正文一变就必须先清空 —— 旧偏移
+     * 贴在新文字上不会报错，只会把着色与下划线指到别的字上。
+     */
+    const [authorAnalysis, setAuthorAnalysis] = useState<ReactiveAuthorAnalysis | null>(null);
+    /** 这份 authorAnalysis 对应的原文（贴装饰前再核对一次）。 */
+    const authorAnalysisSourceRef = useRef<string | null>(null);
+    /** worker 失效、已回退主线程检查 —— 必须在 UI 明示，不能静默变慢。 */
+    const [analysisFallback, setAnalysisFallback] = useState(false);
     const analyzerRef = useRef<ReturnType<typeof createFormatAnalyzer> | null>(null);
     const analysisRevisionRef = useRef(0);
     const analysisTimerRef = useRef<number | null>(null);
@@ -288,19 +339,20 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(
     const invalidEnhanced = formatAnalysis?.effective === 'invalid-enhanced';
     const detectedReactive = formatAnalysis?.effective === 'reactive';
     /**
-     * 插入组件后的即时升级只是**分析落地前**的临时状态：一旦有了分析结果，
-     * 就以解析器为准（有效 → reactive；无效 → 仍显示诊断并阻止发布；
-     * 新建的 Markdown 文档删光组件 → 回到 markdown）。已保存为 reactive 的
-     * 文档由 `format` 这个下限兜住，永不自动降级。
+     * 一旦从 Components 插入过组件，这份正文就是增强文档：**删光组件也不自动
+     * 降级**（审查 3.2）。`componentInserted` 是粘性的；只有从未插入过组件的
+     * 全新 Markdown 才走 markdown。
      */
-    const forcedReactive = componentInserted && formatAnalysis === null;
     const effectiveFormat: ContentFormat =
-      format === 'reactive' || forcedReactive || detectedReactive ? 'reactive' : 'markdown';
+      format === 'reactive' || componentInserted || detectedReactive ? 'reactive' : 'markdown';
     const effectiveFormatRef = useRef(effectiveFormat);
     effectiveFormatRef.current = effectiveFormat;
     /** `format` 的同步副本：提交判定在 async 回调里读，不能拿到旧闭包。 */
     const formatFloorRef = useRef(format);
     formatFloorRef.current = format;
+    /** 插入过组件（粘性）—— 提交时与 `format==='reactive'` 同样是不能降级的底线。 */
+    const componentInsertedRef = useRef(componentInserted);
+    componentInsertedRef.current = componentInserted;
 
     /**
      * 草稿里存的格式：**无效增强语法仍记 reactive**。
@@ -321,8 +373,6 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(
     const draftSyntaxVersion = draftSyntaxVersionRef.current;
 
     // ── Reactive 作者工具 ───────────────────────────────────────────────────
-    /** 最近一次分析；切到 Markdown / 重新挂载扩展时清空（由扩展重新填）。 */
-    const [authoringAnalysis, setAuthoringAnalysis] = useState<AuthorAnalysis | null>(null);
     /** null = 补全面板没开；[] = 开了但当前位置没有候选。 */
     const [authoringCompletions, setAuthoringCompletions] = useState<AuthorCompletion[] | null>(
       null
@@ -530,6 +580,12 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(
     const requestCompletions = useCallback(() => {
       const v = viewRef.current;
       if (!v || effectiveFormatRef.current !== 'reactive') return;
+      if (v.state.doc.length > AUTHOR_TOOL_LENGTH_LIMIT) {
+        // 同步解析在主线程；超长正文直接说明，不假装「没有候选」。
+        setAuthoringCompletions(null);
+        setAuthoringStatus('正文超过 5 万字符，暂不支持补全；编辑与保存不受影响。');
+        return;
+      }
       setAuthoringStatus(null);
       try {
         setAuthoringCompletions(getReactiveCompletions(v) ?? []);
@@ -551,6 +607,10 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(
     const formatAuthoringDocument = useCallback(() => {
       const v = viewRef.current;
       if (!v) return;
+      if (v.state.doc.length > AUTHOR_TOOL_LENGTH_LIMIT) {
+        setAuthoringStatus('正文超过 5 万字符，暂不支持格式化；编辑与保存不受影响。');
+        return;
+      }
       const changed = formatReactiveDocument(v);
       setAuthoringStatus(changed ? '已格式化，可一步撤销。' : '没有需要格式化的内容。');
       v.focus();
@@ -581,8 +641,9 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(
         setFormatAnalysis(null);
         setAnalysisPending(false);
         setAnalysisFailure(null);
-        // 没有 `<` / `{{` 就不可能有组件了：插入动作留下的临时升级一并清掉。
-        setComponentInserted(false);
+        authorAnalysisSourceRef.current = null;
+        setAuthorAnalysis(null);
+        // 注意：**不**清 componentInserted。插入过组件就是增强文档，删光也不降级。
         return;
       }
       setAnalysisPending(true);
@@ -594,11 +655,15 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(
           return;
         }
         const revision = (analysisRevisionRef.current += 1);
+        const generation = documentGenerationRef.current;
         void analyzer
           .analyze(source, revision)
           .then((result) => {
             if (destroyedRef.current) return;
-            // 乱序 / 被更新正文取代的结果一律丢弃（契约 §2）。
+            // 乱序 / 被更新正文取代的结果一律丢弃（契约 §2）：revision、代次、
+            // 原文三重核对 —— 防抖窗口里 docChanged 不会推进 revision，只看它不够。
+            if (generation !== documentGenerationRef.current) return;
+            if (source !== latestSourceRef.current) return;
             if (result.revision !== analysisRevisionRef.current) return;
             if (result.effective === 'superseded') {
               if (result.revision === analysisRevisionRef.current) setAnalysisPending(false);
@@ -607,6 +672,16 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(
             setFormatAnalysis(result);
             setAnalysisPending(false);
             setAnalysisFailure(null);
+            // worker 已经把 authoring analysis 一起算好了（includeAuthorAnalysis）；
+            // 这里只负责把它交给 CM6 装饰，不在主线程再跑一遍（审查 3.3）。
+            const compatible = result as FormatAnalysisCompat;
+            const nextAuthor = compatible.author ?? null;
+            authorAnalysisSourceRef.current = nextAuthor ? source : null;
+            setAuthorAnalysis(nextAuthor);
+            // 后端把「worker / fallback」带在结果上；旧实现没有这个字段时不改状态。
+            if (typeof compatible.fallback === 'boolean') {
+              setAnalysisFallback(compatible.fallback);
+            }
             if (result.syntaxVersion) syntaxVersionRef.current = result.syntaxVersion;
             // 草稿来自旧语法版本：明确提示，别让它在保存时被服务端拒绝时才暴露。
             const restored = restoredDraftVersionRef.current;
@@ -631,13 +706,20 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(
     useEffect(() => {
       let analyzer: ReturnType<typeof createFormatAnalyzer> | null = null;
       try {
-        analyzer = createFormatAnalyzer({
+        // onModeChange 是新契约的可选字段（见 FormatAnalyzerOptionsCompat）：
+        // worker 不可用时上游回退主线程，编辑会变慢 —— 面板必须说出来。
+        const analyzerOptions: FormatAnalyzerOptionsCompat = {
           createWorker: () =>
             // MarkdownEditor 在 src/app/components；worker 在 src/lib/reactive。
             new Worker(new URL('../../lib/reactive/compile.worker.ts', import.meta.url), {
               type: 'module',
             }) as unknown as LocalCompileWorker,
-        });
+          onModeChange: (nextMode) => {
+            if (destroyedRef.current) return;
+            setAnalysisFallback(nextMode === 'fallback');
+          },
+        };
+        analyzer = createFormatAnalyzer(analyzerOptions);
         analyzerRef.current = analyzer;
       } catch {
         // Worker 起不来时上游调度器会异步回退主线程；这里只是兜底标记，
@@ -719,10 +801,15 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(
           insertAnchorRef.current?.map(update.changes);
           const text = update.state.doc.toString();
           docRef.current = text;
+          latestSourceRef.current = text;
+          // 立刻推进代次：在飞的分析 / 提交判定从这一刻起就过期了。
+          documentGenerationRef.current += 1;
+          // 候选与装饰都绑定于旧源码偏移：正文一变先全部收起，再等新分析。
+          // 装饰的 StateField 自己也会在 docChanged 时清空，这里同步镜像状态。
+          authorAnalysisSourceRef.current = null;
+          setAuthorAnalysis(null);
           if (effectiveFormatRef.current === 'reactive') {
-            // 候选和诊断绑定于旧源码偏移；正文变化后先收起，再等待新分析。
             setAuthoringCompletions(null);
-            setAuthoringAnalysis(null);
           }
           bump();
           schedulePreview(text);
@@ -817,7 +904,6 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(
     // 新格式上就是假报警。
     useEffect(() => {
       const generation = (reactiveGenerationRef.current += 1);
-      setAuthoringAnalysis(null);
       setAuthoringCompletions(null);
       setAuthoringStatus(null);
       const v = viewRef.current;
@@ -826,20 +912,43 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(
       const extension =
         effectiveFormat === 'reactive'
           ? reactiveAuthoring({
-              onAnalysis: (next) => {
-                if (destroyedRef.current || reactiveGenerationRef.current !== generation) return;
-                setAuthoringAnalysis(next);
-              },
               onCompletions: (items) => {
                 if (destroyedRef.current || reactiveGenerationRef.current !== generation) return;
                 setAuthoringCompletions(items);
                 setAuthoringStatus(null);
+              },
+              onTooLong: () => {
+                if (destroyedRef.current || reactiveGenerationRef.current !== generation) return;
+                setAuthoringCompletions(null);
+                setAuthoringStatus('正文超过 5 万字符，暂不支持补全；编辑与保存不受影响。');
               },
             })
           : [];
 
       v.dispatch({ effects: reactiveCompartmentRef.current.reconfigure(extension) });
     }, [effectiveFormat]);
+
+    /**
+     * 把 worker 的 authoring analysis 贴回编辑区。
+     *
+     * 必须排在上面那条 Compartment effect **之后**：`markdown → reactive` 切换时
+     * 新扩展要先装进 state，StateEffect 才找得到承载它的 StateField。正文在
+     * worker 回来之后又变过（`authorAnalysisSourceRef` 与当前 doc 不一致）时
+     * 一律清空 —— 旧偏移不贴到新文字上。
+     */
+    useEffect(() => {
+      const v = viewRef.current;
+      if (!v) return;
+      if (effectiveFormat !== 'reactive') {
+        clearReactiveAuthorAnalysis(v);
+        return;
+      }
+      if (authorAnalysis && authorAnalysisSourceRef.current === v.state.doc.toString()) {
+        applyReactiveAuthorAnalysis(v, authorAnalysis);
+      } else {
+        clearReactiveAuthorAnalysis(v);
+      }
+    }, [authorAnalysis, effectiveFormat, view]);
 
     useEffect(() => () => draftRef.current?.dispose(), []);
 
@@ -887,19 +996,17 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(
     const snapshotBusyRef = useRef(false);
 
     /**
-     * 取**导出 / 打印用的正文快照**：拿此刻编辑器里的原文，跑一遍与预览**同一套**
-     * 管线（引用预处理 → blog-renderer → blog-content-dom），在离屏容器里跑完后处理
-     * 再取出正文 HTML。
+     * 取**导出 / 打印用的正文快照**。
      *
-     * 【为什么不直接读预览面板那棵 DOM】预览是**防抖 400ms** 的，背后还挂着一条异步
-     * 取数 —— 敲完最后一个字**立刻**点导出，读到的正是**敲之前**那一版。这个错误
-     * 不报错、不提示，导出件只是安静地少一段。所以导出必须自己按**当时**的原文算一份。
+     * 两件事合在一起：
+     *   1. 先等**当前正文**的格式判定（与保存同一条 `prepareSubmit`）：刚插入组件、
+     *      350ms 分析还没回来时立刻点导出，不能按旧格式走另一套引擎（审查 5.4）；
+     *   2. 无论 Markdown 还是 Reactive，都用**统一的新引擎**做静态渲染
+     *      （`renderStaticMarkup` → compat + 引用适配 + `reactiveCompileOptions(format)`），
+     *      不再保留旧的 blog-renderer / MarkdownRenderer 分支（审查 5.1）。
      *
-     * 【为什么挂进 document 而不是在内存里拼】MathJax 排公式要量字号，脱离文档的
-     * 元素量出来是 0，公式会退化成原文。离屏放置（left:-100000px）不可见、不影响版面。
-     *
-     * 失败（取数或渲染抛异常）时给一句 toast 并返回 null —— 宁可什么都不下载，
-     * 也不要静默给一份缺内容的文件。
+     * 判定 blocked（无效增强语法 / 不可发布）时明确提示并拒绝导出 —— 宁可什么都不
+     * 下载，也不要给一份按错误格式生成的残缺文件。
      */
     const buildSnapshot = useCallback(async (): Promise<{
       title: string;
@@ -907,61 +1014,37 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(
       footerNote?: string;
     } | null> => {
       if (snapshotBusyRef.current) {
-        // ★ 第二次点击必须**说话** ★ 早退本身是对的（连点两下不该渲染两遍、下两份），
-        // 但静默早退在用户那边就是「点了没反应」—— 而这一趟偏偏是最慢的一趟
-        // （整篇引用取数 + MathJax），越慢越容易连点，也就越容易撞上。
         notify('正在生成导出内容，请稍候…', 'warning');
         return null;
       }
       snapshotBusyRef.current = true;
-      let holder: HTMLDivElement | null = null;
       try {
-        const source = viewRef.current?.state.doc.toString() ?? docRef.current;
-        // reactive 走 ReactiveMD 的静态渲染（`mode="static"`，初始状态）；
-        // 旧管线只服务 Markdown 文档 —— 两种语言不能互换解析器。
-        if (effectiveFormatRef.current === 'reactive') {
-          const bodyHtml = await renderStaticMarkup({ source, format: 'reactive' });
-          return { title, bodyHtml, footerNote: REACTIVE_EXPORT_NOTE };
+        const prepare = prepareSubmitRef.current;
+        if (!prepare) {
+          notify('导出失败：编辑器还没准备好，请稍后再试', 'error');
+          return null;
         }
-        const resolver = resolverRef.current;
-        if (!resolver) return null;
-        // 本轮的真值（含投票小组件要用的那格）随 text 一起出来 —— 见 preprocessRound。
-        const { text, entries } = await new ContentRefProcessor(resolver).preprocessRound(source);
-        const rendered = renderBlogMarkdown(text);
-
-        holder = document.createElement('div');
-        holder.className = 'blog-content-container';
-        holder.style.cssText = 'position:absolute;left:-100000px;top:0;width:760px;';
-        holder.innerHTML = rendered.html;
-        document.body.appendChild(holder);
-
-        // 不传 voteGeneration：这个 holder 每次都是**新建的元素**，不存在
-        // 「元素还在、数据换了」那种要不掉 `data-rendered` 缓存的情况。
-        // 小组件的数据取自**这一轮**的 entries（与正文同一次取数）：不回头问会话缓存，
-        // 免得缓存在这两段之间被作废成另一代。
-        enhanceBlogContent(holder, {
-          interactive: false,
-          mathCount: rendered.mathCount,
-          voteData: (id) => {
-            const hit = entries.get(`vote:${id}`);
-            return hit ? (hit.data ?? null) : undefined;
-          },
+        const prepared = await prepare();
+        if (prepared.blocked) {
+          notify(`导出失败：${prepared.blocked.message}`, 'error');
+          return null;
+        }
+        const bodyHtml = await renderStaticMarkup({
+          source: prepared.content,
+          format: prepared.format,
         });
-        // 剥掉只在站内页面上才成立的空壳（代码块的「复制」按钮）；
-        // 把相对地址解析成这一页的绝对地址；纯 `#锚点` 摘掉 target（就地跳）。
-        stripInteractiveShells(holder);
-        absolutizeSiteUrls(holder);
-        localizeFragmentLinks(holder);
-
-        return { title, bodyHtml: holder.innerHTML };
+        return {
+          title,
+          bodyHtml,
+          footerNote: prepared.format === 'reactive' ? REACTIVE_EXPORT_NOTE : undefined,
+        };
       } catch {
         notify('导出失败：正文没能渲染出来，请稍后再试', 'error');
         return null;
       } finally {
-        holder?.remove();
         snapshotBusyRef.current = false;
       }
-    }, [notify, refreshToken, title]);
+    }, [notify, title]);
 
     const onExportHtml = useCallback(() => {
       void (async () => {
@@ -994,7 +1077,8 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(
         viewRef.current?.state.doc.toString() ?? docRef.current;
 
       // 已保存为 reactive 的文档是**下限**：即使删光组件也不自动降级。
-      const floorReactive = formatFloorRef.current === 'reactive';
+      const floorReactive =
+        formatFloorRef.current === 'reactive' || componentInsertedRef.current;
       for (let attempt = 0; attempt < SUBMIT_ANALYSIS_ATTEMPTS; attempt += 1) {
         const content = currentSource();
         if (!mightContainReactiveSyntax(content)) {
@@ -1018,6 +1102,7 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(
           };
         }
         const revision = (analysisRevisionRef.current += 1);
+        const generation = documentGenerationRef.current;
         let result: FormatAnalysis;
         try {
           result = await analyzer.analyze(content, revision);
@@ -1032,8 +1117,13 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(
             },
           };
         }
-        // 等待期间用户又改了正文 / 又排了一次分析 —— 这一份不再是「当前」。
-        if (result.effective === 'superseded' || result.revision !== revision) {
+        // 等待期间用户又改了正文 —— 这一份不再是「当前」，用新正文重来。
+        if (
+          result.effective === 'superseded' ||
+          result.revision !== revision ||
+          generation !== documentGenerationRef.current ||
+          currentSource() !== content
+        ) {
           continue;
         }
         // 与实时分析共用同一份结果：提交完的界面计数不该回到上一版。
@@ -1050,6 +1140,19 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(
             syntaxVersion: result.syntaxVersion ?? syntaxVersionRef.current,
             blocked: {
               message: '正文含无效的增强语法，已保留草稿；请按诊断修正后再保存',
+              diagnostics,
+            },
+          };
+        }
+        // 解析器认识这份增强语法，但发布闸门（预算 / 降级 / 未知宿主）仍可能
+        // 拒绝。服务端会 400 —— 前端必须同样拦下并给出诊断，而不是只回一句通用错误。
+        if (result.effective === 'reactive' && !result.publishable) {
+          return {
+            content,
+            format: 'reactive',
+            syntaxVersion: result.syntaxVersion ?? syntaxVersionRef.current,
+            blocked: {
+              message: '正文暂时不能发布，请按诊断修正后再保存',
               diagnostics,
             },
           };
@@ -1090,6 +1193,8 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(
       }),
       [prepareSubmit]
     );
+    // buildSnapshot 定义在 prepareSubmit 之前，用引用拿到最新实现。
+    prepareSubmitRef.current = prepareSubmit;
 
     /** 恢复旧草稿：整体替换正文，并把它作为一次可撤销的操作留下。 */
     function applyDraft(value: string) {
@@ -1170,10 +1275,11 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(
           analysisFailure !== null ||
           (formatAnalysis?.candidates.length ?? 0) > 0) && (
           <ReactiveAuthoringPanel
-            diagnostics={formatAnalysis?.diagnostics ?? authoringAnalysis?.diagnostics ?? []}
+            diagnostics={formatAnalysis?.diagnostics ?? []}
             localized={formatAnalysis !== null}
             pending={analysisPending}
             failure={analysisFailure}
+            fallback={analysisFallback}
             completions={authoringCompletions}
             status={authoringStatus}
             onSelectCompletion={pickCompletion}
@@ -1227,24 +1333,18 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(
               </button>
             </div>
             <div className="md-editor__preview-body" ref={previewBodyRef}>
-              {effectiveFormat === 'reactive' ? (
-                /*
-                 * reactive：预览由 ReactivePreview 自己防抖 + 适配 + 编译，
-                 * 旧的 Markdown 管线（ContentRefProcessor → blog-renderer →
-                 * blog-content-dom）**一行都不跑** —— 它读不懂 reactive 语法，
-                 * 跑一遍只会把源码当 Markdown 重新解释。
-                 */
-                <ReactivePreview key={referenceMode} source={previewDoc} refreshToken={refreshToken} referenceMode={referenceMode} />
-              ) : (
-                <MarkdownRenderer
-                  content={previewDoc}
-                  key={referenceMode}
-                  contentRefs={referenceMode}
-                  interactive={false}
-                  resolver={resolverRef.current}
-                  refreshToken={refreshToken}
-                />
-              )}
+              {/*
+                预览**全部**走统一引擎：普通 Markdown 与增强文档同一份 compat /
+                引用适配 / 编译选项，避免「预览一套、阅读另一套」。Markdown 父
+                文档同样传 format，Markdown 子剪贴板按约定内联一层。
+              */}
+              <ReactivePreviewCompat
+                key={`${referenceMode}:${effectiveFormat}`}
+                source={previewDoc}
+                refreshToken={refreshToken}
+                referenceMode={referenceMode}
+                format={effectiveFormat}
+              />
             </div>
           </div>
         </div>

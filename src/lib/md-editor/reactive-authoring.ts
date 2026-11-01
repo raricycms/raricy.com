@@ -1,29 +1,30 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // md-editor/reactive-authoring.ts —— ReactiveMD 作者工具的 CM6 适配层
 //
-// 【职责】把上游 `reactive-md/authoring` 的**纯函数**接到 CodeMirror 6 上：
-//   · 防抖分析原文 → 装饰器着色 + 诊断下划线（外加交给宿主的面板数据）；
-//   · Ctrl/Cmd+Space 触发补全（列表由宿主渲染，本模块只管取数与落地）；
-//   · 原生组件模板、格式化、诊断定位。
+// 【职责】把上游 `reactive-md/authoring` 的**用户触发**的纯函数接到 CodeMirror 6：
+//   · Ctrl/Cmd+Space 补全（列表由宿主渲染，本模块只管取数与落地）；
+//   · 组件模板 / 格式化 / 诊断定位。
 //
-// 【为什么用上游公开入口】分析 / 补全 / 格式化的词法、schema 与编译预算都必须
-// 和预览/阅读页**同一份**。自己再解析一遍，两边对「什么算 reactive 语法」迟早
-// 会分叉，而且分叉时不报错。编译选项统一走 `reactiveCompileOptions('reactive')`，
-// 宿主组件 schema 与节点预算因此与预览一致。
-//
-// 【几条静默错】
-//   · 分析是**防抖**的：每次改动都把上一份待执行的计时器清掉。不清的话，旧文档的
-//     诊断会在新文档上闪一下，甚至覆盖新结果；
-//   · 卸载后计时器必须停：否则回调会打到已经不在的 React 树上；
-//   · 光标移动**不**重新分析（只有 `docChanged` 才排），否则每一帧都跑一遍解析；
-//   · 所有改动都走一次 `dispatch`（一个事务 = 一步撤销），绝不重建 EditorState
-//     —— 重建会丢撤销历史与选区；
-//   · 上游 token / 诊断的 range 是原文 UTF-16 偏移，进装饰器前按当前文档长度夹紧；
-//     range 越界会让 EditorView 抛错，而错误发生在下一次渲染。
+// 【逐键分析已经**移出主线程**】这里曾经在每次 `docChanged` 后 250ms 同步调用
+// `analyzeLocalSource`（内含完整编译），与编辑器新增的 worker 格式分析并存 ——
+// 20 万字符正文会卡住 UI，而 worker 失效时更会被静默。现在：
+//   · 正文格式 / 诊断 / 计数只来自 `@/lib/reactive/format-observer`（worker +
+//     revision），见 MarkdownEditor；
+//   · 本模块不再做任何自动解析，只提供**接收** worker 结果的入口
+//     （`applyReactiveAuthorAnalysis`）：调用方在核对 revision / 原文之后把
+//     `FormatAnalysis.author` 的 tokens 与诊断交给它，StateField 负责贴成
+//     `cm-reactive-*` / `cm-reactive-diagnostic--*` 装饰。正文一变（任何来源）
+//     装饰立即清空 —— 旧偏移贴在新文字上，看起来「还挺对」，但已经指错了地方；
+//   · 补全 / 格式化是**用户显式触发**的，且有 `AUTHOR_TOOL_LENGTH_LIMIT` 上限；
+//     超长正文直接给一句状态，不在主线程硬算。
 //
 // 【类名契约】token 用 `cm-reactive-<kind>`，诊断用
 // `cm-reactive-diagnostic--error` / `--warning`。CSS 由 UI 侧提供，本模块只负责
 // 加类名与 `title`（诊断 message）。
+//
+// 【为什么用上游公开入口】补全 / 格式化的词法、schema 与编译预算必须和
+// 预览 / 阅读页**同一份**。自己再解析一遍，两边对「什么算 reactive 语法」迟早
+// 会分叉，而且分叉时不报错。编译选项统一走 `reactiveCompileOptions('reactive')`。
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { StateEffect, StateField, type Extension, type Range } from '@codemirror/state';
@@ -31,13 +32,10 @@ import { isolateHistory } from '@codemirror/commands';
 import {
   Decoration,
   EditorView,
-  ViewPlugin,
   keymap,
   type DecorationSet,
-  type ViewUpdate,
 } from '@codemirror/view';
 import {
-  analyzeLocalSource,
   completeLocalSource,
   createLocalComponentCatalogForOptions,
   filterLocalComponentCatalog,
@@ -60,38 +58,14 @@ export type { AuthorAnalysis, AuthorCompletion } from 'reactive-md/authoring';
 /** 与预览 / 阅读页完全一致的宿主 schema、节点预算与语法开关。 */
 const COMPILE_OPTIONS = reactiveCompileOptions('reactive');
 
-/** 停手一小会儿再分析：比逐键解析省得多，又赶得上视觉上的「即时」。 */
-const ANALYSIS_DEBOUNCE_MS = 250;
-
 /**
- * 组件目录来自**站点当前编译配置**，不维护第二份清单。
+ * 用户显式触发作者工具（补全 / 格式化）的正文长度上限。
  *
- * `createLocalComponentCatalogForOptions(COMPILE_OPTIONS)` 与编译器读同一份 host schema /
- * 预算，于是「菜单里点得出来」和「预览里编译得过」天然一致。站点没有宿主能力的组件
- * 不会凭空出现在这里（`<site-embed>` 是 host component，上游目录不收录它 ——
- * 引用走「插入引用」面板，不走 Components）。
- *
- * 目录在一次模块求值里算好：选项是静态的，`localComponentCatalogKey` 也只是为了
- * 上游自己的缓存口径；这里没有随正文变化的输入。
+ * 两者都是**同步**的上游解析。普通长文里「按一下 Ctrl+Space 卡三秒」同样是
+ * 静默劣化，所以超过这个长度直接拒绝并说明原因；编辑本身不受影响。
+ * 50k 与站点预算注释里的「200k 最坏约 3s」不是一个东西 —— 这是交互预算。
  */
-const SITE_ENTRIES: readonly LocalComponentCatalogEntry[] =
-  createLocalComponentCatalogForOptions(COMPILE_OPTIONS, 'zh');
-
-const SITE_GROUPS = localComponentCatalogGroups(SITE_ENTRIES);
-
-const EMPTY_ANALYSIS: AuthorAnalysis = { tokens: [], bindings: [], diagnostics: [] };
-
-/** 上游 token kind → 站内固定类名（未列出的 kind 不着色）。 */
-const TOKEN_CLASSES: Readonly<Record<string, string>> = {
-  tag: 'cm-reactive-tag',
-  attribute: 'cm-reactive-attribute',
-  string: 'cm-reactive-string',
-  expression: 'cm-reactive-expression',
-  binding: 'cm-reactive-binding',
-  comment: 'cm-reactive-comment',
-  math: 'cm-reactive-math',
-  code: 'cm-reactive-code',
-};
+export const AUTHOR_TOOL_LENGTH_LIMIT = 50_000;
 
 interface SourceSpan {
   start: number;
@@ -110,12 +84,30 @@ function clampSpan(span: SourceSpan, length: number): { from: number; to: number
 }
 
 /* -------------------------------------------------------------------------- */
-/* 装饰                                                                        */
+/* 装饰：接收 worker 的作者分析                                               */
 /* -------------------------------------------------------------------------- */
 
-const setAnalysis = StateEffect.define<AuthorAnalysis>();
+/**
+ * worker 回报的作者分析里本模块要画的那部分。
+ *
+ * 刻意收窄成 `tokens` / `diagnostics`：完整的 `AuthorAnalysis` 还带 bindings，
+ * 装饰用不上；收窄也让调用方不必为了贴装饰多传一份数据。
+ */
+export type ReactiveAuthorAnalysis = Pick<AuthorAnalysis, 'tokens' | 'diagnostics'>;
 
-function buildDecorations(length: number, analysis: AuthorAnalysis): DecorationSet {
+/** 上游 token kind → 站内固定类名（未列出的 kind 不着色）。 */
+const TOKEN_CLASSES: Readonly<Record<string, string>> = {
+  tag: 'cm-reactive-tag',
+  attribute: 'cm-reactive-attribute',
+  string: 'cm-reactive-string',
+  expression: 'cm-reactive-expression',
+  binding: 'cm-reactive-binding',
+  comment: 'cm-reactive-comment',
+  math: 'cm-reactive-math',
+  code: 'cm-reactive-code',
+};
+
+function buildDecorations(length: number, analysis: ReactiveAuthorAnalysis): DecorationSet {
   const marks: Range<Decoration>[] = [];
   for (const token of analysis.tokens) {
     const className = TOKEN_CLASSES[token.kind];
@@ -136,93 +128,84 @@ function buildDecorations(length: number, analysis: AuthorAnalysis): DecorationS
   return Decoration.set(marks, true);
 }
 
+/** null = 清空（正文已变，或当前没有可用的分析）。 */
+const setAuthorAnalysis = StateEffect.define<ReactiveAuthorAnalysis | null>();
+
 /**
- * 分析结果住 StateField，文档一变就立刻清空 —— 旧偏移的装饰不能继续贴在新文字上
- * （它们在防抖窗口里看起来「还挺对」，但已经指错了地方）。
+ * 装饰住 StateField，**docChanged 一律立即清空**。
+ *
+ * 清空不能等下一次分析：防抖窗口里旧偏移仍会命中新文字，看起来「还挺对」，
+ * 但已经指错了地方。调用方在核对 revision / 原文之后才 dispatch 新值。
  */
-const analysisDecorations = StateField.define<DecorationSet>({
+const authorAnalysisDecorations = StateField.define<DecorationSet>({
   create: () => Decoration.none,
   update(value, tr) {
     for (const effect of tr.effects) {
-      if (effect.is(setAnalysis)) return buildDecorations(tr.state.doc.length, effect.value);
+      if (effect.is(setAuthorAnalysis)) {
+        return effect.value === null
+          ? Decoration.none
+          : buildDecorations(tr.state.doc.length, effect.value);
+      }
     }
     return tr.docChanged ? Decoration.none : value;
   },
   provide: (field) => EditorView.decorations.from(field),
 });
 
-/* -------------------------------------------------------------------------- */
-/* 防抖分析                                                                    */
-/* -------------------------------------------------------------------------- */
-
-function analysisExtension(options: {
-  onAnalysis: (analysis: AuthorAnalysis) => void;
-}): Extension {
-  return ViewPlugin.fromClass(
-    class {
-      private timer: ReturnType<typeof setTimeout> | null = null;
-      private destroyed = false;
-
-      constructor(private readonly view: EditorView) {
-        // 打开一篇已有正文的文档时也要先给出一份分析
-        this.schedule();
-      }
-
-      update(update: ViewUpdate): void {
-        if (update.docChanged) this.schedule();
-      }
-
-      destroy(): void {
-        this.destroyed = true;
-        this.clearTimer();
-      }
-
-      private schedule(): void {
-        this.clearTimer();
-        this.timer = setTimeout(() => {
-          this.timer = null;
-          if (this.destroyed) return;
-          const source = this.view.state.doc.toString();
-          let analysis: AuthorAnalysis;
-          try {
-            analysis = analyzeLocalSource(source, COMPILE_OPTIONS);
-          } catch {
-            analysis = EMPTY_ANALYSIS;
-          }
-          // 计时器回调与文档更新在同一线程，但卸载可能发生在回调排上之后
-          if (this.destroyed) return;
-          this.view.dispatch({ effects: setAnalysis.of(analysis) });
-          try {
-            options.onAnalysis(analysis);
-          } catch {
-            /* 宿主回调的异常不拖垮编辑器 */
-          }
-        }, ANALYSIS_DEBOUNCE_MS);
-      }
-
-      private clearTimer(): void {
-        if (this.timer === null) return;
-        clearTimeout(this.timer);
-        this.timer = null;
-      }
-    }
-  );
+/**
+ * 把 worker 算好的分析贴成装饰。
+ *
+ * 调用方必须**先核对这份结果仍对应当前正文**（revision / 原文 / 代次）；
+ * 本函数仍按当前文档长度夹紧每一次区间 —— 上游给的是 UTF-16 偏移，越界会让
+ * EditorView 在下一次渲染时抛错，而错误现场早已不在调用点。
+ */
+export function applyReactiveAuthorAnalysis(
+  view: EditorView,
+  analysis: ReactiveAuthorAnalysis
+): void {
+  view.dispatch({ effects: setAuthorAnalysis.of(analysis) });
 }
+
+/** 收起装饰（切走格式 / 正文变化 / 结果作废时）。 */
+export function clearReactiveAuthorAnalysis(view: EditorView): void {
+  view.dispatch({ effects: setAuthorAnalysis.of(null) });
+}
+
+/**
+ * 组件目录来自**站点当前编译配置**，不维护第二份清单。
+ *
+ * `createLocalComponentCatalogForOptions(COMPILE_OPTIONS)` 与编译器读同一份 host schema /
+ * 预算，于是「菜单里点得出来」和「预览里编译得过」天然一致。站点没有宿主能力的组件
+ * 不会凭空出现在这里（`<site-embed>` 是 host component，上游目录不收录它 ——
+ * 引用走「插入引用」面板，不走 Components）。
+ *
+ * 目录在一次模块求值里算好：选项是静态的，`localComponentCatalogKey` 也只是为了
+ * 上游自己的缓存口径；这里没有随正文变化的输入。
+ */
+const SITE_ENTRIES: readonly LocalComponentCatalogEntry[] =
+  createLocalComponentCatalogForOptions(COMPILE_OPTIONS, 'zh');
+
+const SITE_GROUPS = localComponentCatalogGroups(SITE_ENTRIES);
 
 /* -------------------------------------------------------------------------- */
 /* 补全                                                                        */
 /* -------------------------------------------------------------------------- */
 
-function completionExtension(
-  onCompletions?: (items: AuthorCompletion[]) => void
-): Extension {
+function completionExtension(options: {
+  onCompletions?: (items: AuthorCompletion[]) => void;
+  onTooLong?: () => void;
+}): Extension {
   return keymap.of([
     {
       key: 'Mod-Space',
       run(view) {
         // 输入法组合期间不抢键、不改文档；Escape 的原生行为一概不碰
-        if (!onCompletions || view.composing) return false;
-        onCompletions(getReactiveCompletions(view));
+        if ((!options.onCompletions && !options.onTooLong) || view.composing) return false;
+        if (view.state.doc.length > AUTHOR_TOOL_LENGTH_LIMIT) {
+          options.onTooLong?.();
+          return true;
+        }
+        options.onCompletions?.(getReactiveCompletions(view));
         return true;
       },
     },
@@ -232,6 +215,7 @@ function completionExtension(
 /** 当前光标处的建议（宿主按钮可以直接调；没有结果时返回空数组）。 */
 export function getReactiveCompletions(view: EditorView): AuthorCompletion[] {
   if (view.composing) return [];
+  if (view.state.doc.length > AUTHOR_TOOL_LENGTH_LIMIT) return [];
   const at = view.state.selection.main.head;
   try {
     return completeLocalSource(view.state.doc.toString(), at, COMPILE_OPTIONS);
@@ -355,9 +339,16 @@ export function filterSiteComponents(
 
 /**
  * 光标处的容器祖先（最外 → 最内），交给 `filterSiteComponents` 做上下文过滤。
- * 解析失败一律返回空数组：菜单退回「全部组件」比整块菜单消失好。
+ *
+ * 这是**打开 Components 菜单时**的一次同步解析，与逐键分析不是一回事：它只在
+ * 用户点开菜单时跑一次，不是每键都跑。但 20 万字符正文仍可能顿一下，所以沿用
+ * `AUTHOR_TOOL_LENGTH_LIMIT` 作为上限 —— 超长时不猜（返回空 = 不按上下文过滤，
+ * 菜单显示全部条目），而不是把 UI 卡住。
+ *
+ * 解析失败同样返回空数组：菜单退回「全部组件」比整块菜单消失好。
  */
 export function getComponentAncestors(view: EditorView): string[] {
+  if (view.state.doc.length > AUTHOR_TOOL_LENGTH_LIMIT) return [];
   try {
     return [
       ...localCatalogAncestors(
@@ -415,6 +406,7 @@ export function applyReactiveTemplate(view: EditorView, componentId: string): bo
 export function formatReactiveDocument(view: EditorView): boolean {
   if (view.state.readOnly || view.composing) return false;
   const state = view.state;
+  if (state.doc.length > AUTHOR_TOOL_LENGTH_LIMIT) return false;
   const before = state.doc.toString();
   let after: string;
   try {
@@ -449,12 +441,10 @@ export function revealReactiveDiagnostic(view: EditorView, diagnostic: Diagnosti
 /* -------------------------------------------------------------------------- */
 
 export function reactiveAuthoring(options: {
-  onAnalysis: (analysis: AuthorAnalysis) => void;
   onCompletions?: (items: AuthorCompletion[]) => void;
+  onTooLong?: () => void;
 }): Extension {
-  return [
-    analysisExtension(options),
-    analysisDecorations,
-    completionExtension(options.onCompletions),
-  ];
+  // 逐键分析不在本模块跑：装饰由 `applyReactiveAuthorAnalysis` 用 worker 的
+  // 结果喂养（见本文件头）。这里只装 StateField 与用户触发的补全键位。
+  return [authorAnalysisDecorations, completionExtension(options)];
 }
