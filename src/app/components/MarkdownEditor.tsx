@@ -1214,7 +1214,7 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(
 
           <div className="md-editor__pane md-editor__pane--preview">
             <div className="md-editor__preview-bar">
-              <span className="md-editor__preview-label">预览（只读）</span>
+              <span className="md-editor__preview-label">预览</span>
               <button
                 type="button"
                 className="md-editor__refresh"
