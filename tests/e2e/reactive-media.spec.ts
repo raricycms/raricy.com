@@ -27,6 +27,8 @@ test('历史 video/source/track 在阅读页仍是受限可播放控件', async 
     '<source src="/media/not-exists.mp4" type="video/mp4">',
     '<track kind="subtitles" src="/media/not-exists.vtt" srclang="zh" label="中文字幕" default>',
     '</video>',
+    '',
+    '视频下方正文。',
   ].join('\n');
 
   const created = await page.request.post('/api/blogs', {
@@ -54,6 +56,15 @@ test('历史 video/source/track 在阅读页仍是受限可播放控件', async 
   await expect(
     video.locator('track[src="/media/not-exists.vtt"][kind="subtitles"][srclang="zh"][label="中文字幕"]')
   ).toHaveCount(1);
+
+  // 媒体块内部的多行标签不能变成多个软换行：播放器到下一段之间只应有正常
+  // 段落间距（修复前实测约 170px 的空洞，来自 token 后残留的 <br>）。
+  const videoBox = await video.boundingBox();
+  const anchorBox = await container.getByText('视频下方正文', { exact: false }).boundingBox();
+  expect(videoBox, '播放器没有布局盒').not.toBeNull();
+  expect(anchorBox, '播放器后的正文没有布局盒').not.toBeNull();
+  const gap = anchorBox!.y - (videoBox!.y + videoBox!.height);
+  expect(gap, '播放器与下一段之间的空白异常').toBeLessThan(80);
 
   // 转换后的 token 是内部协议，绝不能以字面量漏到正文。
   await expect(container).not.toContainText('[[媒体:');
