@@ -460,7 +460,8 @@
   line-height: 1.6;
 }
 
-// 旧 Markdown 剪贴板的一层内联（成员视图 / 预览）。静态导出仍用链接卡片。
+// Markdown 剪贴板的一层内联（成员视图 / 预览 / 导出）。内容是同版本静态子文档，
+// 不再经过旧 Markdown 管线；Reactive 子剪贴板与 external 快照仍是链接卡片。
 .site-embed-clipboard-inline {
   margin: 1.25rem 0;
   padding: 1rem 1.1rem;

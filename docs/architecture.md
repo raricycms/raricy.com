@@ -2033,8 +2033,10 @@ source-map 偏移不变）：
   救活了原文，会用**原始正文**再检测一次，原文已具增强身份（invalid-enhanced）就返回
   格式不匹配，不把“字面化后的文档”当成普通 Markdown 落库。
 - 历史正文的快照用 `npm run reactive:backfill` 回填（默认 dry-run、`--apply` 幂等可
-  重跑）。Reactive 旧语法版本（含 `syntaxVersion = null`）先报 blocker，必须先跑
-  `reactive:migrate-v07`。可恢复性演练见 `docs/deploy.md`「回滚」。
+  重跑）。同内容版本但编译签名陈旧（compiler / adapter / compat / options 变过）的行
+  会按当前包重建，不会被 `contentVersion` 命中后永久跳过。Reactive 旧语法版本（含
+  `syntaxVersion = null`）先报 blocker，必须先跑 `reactive:migrate-v07`。可恢复性演练见
+  `docs/deploy.md`「回滚」。
 
 #### 宿主组件 `site-embed`
 
@@ -2043,10 +2045,13 @@ source-map 偏移不变）：
 - 标签与 hostData 原子成对；作者伪造的 `<site-embed` 在盖码后转义。`SiteEmbedView`
   只把投票接成交互，其余委托静态渲染；任何分支都不 `dangerouslySetInnerHTML`，
   链接只由校验过的 kind/ref 拼。
-- **剪贴板内联按子格式决定**：Markdown 子剪贴板在 `expand` 下携带一层正文，由
-  `MarkdownRenderer` 以 `external` 引用口径只读渲染（不嵌套 Reactive 运行时、
-  字面表达式不进父文档绑定作用域）；Reactive 子剪贴板仍只给链接卡片。`external`
-  视图所有剪贴板 / 投票 / 收藏夹保留字面量，零业务请求。
+- **剪贴板内联按子格式决定**：Markdown 子剪贴板在 `expand` 下携带一份同版本
+  **静态子文档**（compat → external 引用适配 → 该格式的编译选项），由
+  `ReactiveSubDocument` 以 `mode="static"` 渲染（不嵌套交互运行时、字面表达式
+  不进父文档绑定作用域，子适配固定 external、不递归读取私有资源）。Reactive
+  子剪贴板仍只给链接卡片。`external` 视图所有剪贴板 / 投票 / 收藏夹保留字面量，
+  零业务请求，因此快照里永远没有子产物。原始 `content` 只用于那趟编译，不随
+  hostData 下发。
 - 预算沿用旧管线：主循环 50 处、收藏夹 3、音频 3、50 次取数、4 并发、展开后
   50 万字符；单处失败只保留字面量。
 

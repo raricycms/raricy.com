@@ -30,8 +30,8 @@
 //
 // 【两种格式】`blogExcerpt` 保持原样，只处理 Markdown；`buildBlogExcerpt` 按
 // `ContentFormat` 分派。reactive 文档走编译后的 AST：容器（panel / card / tabs）里的
-// 文字保留，`computed` / `const` / `validation` / 宿主组件标签丢弃，`{{ }}` 用**初始**
-// 运行时状态求值（出错就整段省略，绝不回显表达式源码），脚注标记与 `[@…]` token 丢弃。
+// 文字保留，`computed` / `const` / `validation` / `if` / 宿主组件标签丢弃，`{{ }}` 用
+// **初始**运行时状态求值（出错就整段省略，绝不回显表达式源码），脚注标记与 `[@…]` token 丢弃。
 // 编译失败返回空串 —— 宁可没有摘要，也不能把源码漏到主页上。
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -171,8 +171,21 @@ const REACTIVE_SKIPPED_NODE_TYPES = new Set([
   'fallback',
 ]);
 
-/** 声明节点与宿主组件没有「读者可见的正文」，整棵子树丢掉。 */
-const REACTIVE_SKIPPED_COMPONENTS = new Set(['computed', 'const', 'validation', SITE_EMBED_TAG]);
+/**
+ * 声明节点、宿主组件与条件分支没有「读者此刻可见的正文」，整棵子树丢掉。
+ *
+ * `if` 与 `public-blog-search.ts` 的 `SKIPPED_COMPONENTS` 同口径：摘要**不执行读者
+ * 交互**，也就不去求值 `when`。条件为假的分支当然不能出现在摘要里；条件为真的分支
+ * 同样不取 —— 否则「摘要里能读到、正文里要展开才看得到」会变成第二种可见性规则，
+ * 而且它依赖运行时状态，无法用一条静态摘要表达。
+ */
+const REACTIVE_SKIPPED_COMPONENTS = new Set([
+  'computed',
+  'const',
+  'validation',
+  'if',
+  SITE_EMBED_TAG,
+]);
 
 /** 行内容器不产生分隔；其它容器（标题 / 段落 / 块组件）之间补一个换行。 */
 const REACTIVE_INLINE_CONTAINERS = new Set(['emphasis', 'strong', 'delete', 'underline', 'mark', 'sup', 'sub', 'span', 'link']);

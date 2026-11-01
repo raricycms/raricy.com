@@ -1,3 +1,4 @@
+import type { LocalDocument } from 'reactive-md';
 import type { ContentFormat } from '../content-format';
 
 export type ReferenceKind = 'image' | 'audio' | 'vote' | 'favorite' | 'clipboard';
@@ -24,6 +25,16 @@ export interface ResolvedReference {
 export interface SiteEmbedData extends ResolvedReference {
   kind: SiteEmbedKind;
   ref: string;
+  /**
+   * 内联 Markdown 子剪贴板的**同版本静态产物**（compat + external 适配 + 同一组
+   * 编译选项）。只在成员 expand 视图里生成；external 快照永远没有它。
+   *
+   * 与 `hostData` 成对出现：缺一个就退回链接卡片，绝不发「有标签没数据」的半套。
+   * 子文档是独立编译的，内部绑定 / 表达式不会进入父文档作用域。
+   */
+  document?: LocalDocument;
+  /** 子文档自己的 hostData（`${kind}:${ref}`），与父文档的键空间隔离。 */
+  hostData?: SiteHostData;
 }
 
 export type SiteHostData = Readonly<Record<string, SiteEmbedData>>;
