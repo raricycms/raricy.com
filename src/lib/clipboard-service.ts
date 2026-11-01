@@ -16,7 +16,7 @@ import {
 } from './content-format';
 import type { ContentFormat, ContentWriteErrorCode } from './content-format';
 import type { ExternalClipData } from './reactive/ref-types';
-import { buildReactiveSnapshotForWrite } from './reactive/publish';
+import { validateContentForPublish } from './reactive/publish';
 import { createHash } from 'node:crypto';
 
 // 校验上限
@@ -40,7 +40,7 @@ export type ClipContentWriteGate =
  * 与博客侧逐条一致（见 blog-service.resolveBlogContentFormat）：省略 = 保留原值
  * （新建默认 markdown）；非法请求值 / 未知存量值 → 拒绝。
  *
- * reactive 能不能发布不在这里判：它要编译并生成同版本快照，见 createClip / updateClip。
+ * reactive 能不能发布不在这里判：它需要保存前语法检查，见 createClip / updateClip。
  */
 export function resolveClipContentFormat(
   requested: unknown,
@@ -120,23 +120,22 @@ export async function createClip(
   const id = generateShortId(8);
   const now = nowForDb();
 
-  // reactive：先编译并生成同版本快照；编不出来就整笔拒绝（不落半篇）。
-  const snapshot = await buildReactiveSnapshotForWrite({
-    kind: 'clipboard',
-    contentId: id,
+  // 保存前保留既有语法检查；数据库仅写原文和必要元数据。
+  const validation = await validateContentForPublish({
+
     content: input.content,
     format: write.format,
   });
-  if (!snapshot.ok) {
+  if (!validation.ok) {
     return {
       ok: false,
-      reason: snapshot.reason === 'format_mismatch' ? 'format_mismatch' : 'reactive_invalid',
+      reason: validation.reason === 'format_mismatch' ? 'format_mismatch' : 'reactive_invalid',
     };
   }
-  if (write.format === 'markdown' && snapshot.detectedFormat === 'reactive') {
+  if (write.format === 'markdown' && validation.detectedFormat === 'reactive') {
     return { ok: false, reason: 'format_mismatch' };
   }
-  const syntaxVersion = snapshot.syntaxVersion;
+  const syntaxVersion = validation.syntaxVersion;
 
   await prisma.$transaction([
     prisma.clipBoard.create({
@@ -157,9 +156,6 @@ export async function createClip(
         },
       },
     }),
-    ...(snapshot && snapshot.ok
-      ? [prisma.reactiveSnapshot.create({ data: snapshot.row })]
-      : []),
   ]);
 
   return { ok: true, id };
@@ -197,7 +193,7 @@ export async function updateClip(
   const clip = await prisma.clipBoard.findFirst({
     where: { id: clipId, ignore: false },
     // content.format 是写入闸门的当前值；content / syntaxVersion 用来判断要不要
-    // 重新生成同版本快照（只改标题时不必重编）。
+    // 重新检查正文（只改标题时不必重编）。
     select: {
       id: true,
       authorId: true,
@@ -213,26 +209,25 @@ export async function updateClip(
 
   const oldContent = clip.content?.content ?? '';
   const oldFormat = clip.content ? parseContentFormat(clip.content.format) : null;
-  const snapshot =
+  const validation =
     !clip.content || oldFormat !== write.format || oldContent !== input.content
-      ? await buildReactiveSnapshotForWrite({
-          kind: 'clipboard',
-          contentId: clipId,
+      ? await validateContentForPublish({
+
           content: input.content,
           format: write.format,
         })
       : null;
-  if (snapshot && !snapshot.ok) {
+  if (validation && !validation.ok) {
     return {
       ok: false,
-      reason: snapshot.reason === 'format_mismatch' ? 'format_mismatch' : 'reactive_invalid',
+      reason: validation.reason === 'format_mismatch' ? 'format_mismatch' : 'reactive_invalid',
     };
   }
-  if (snapshot && write.format === 'markdown' && snapshot.detectedFormat === 'reactive') {
+  if (validation && write.format === 'markdown' && validation.detectedFormat === 'reactive') {
     return { ok: false, reason: 'format_mismatch' };
   }
-  const syntaxVersion = snapshot
-    ? snapshot.syntaxVersion
+  const syntaxVersion = validation
+    ? validation.syntaxVersion
     : write.format === 'reactive'
       ? clip.content?.syntaxVersion ?? null
       : null;
@@ -262,32 +257,7 @@ export async function updateClip(
         },
       },
     }),
-    ...(snapshot && snapshot.ok
-      ? [
-          prisma.reactiveSnapshot.upsert({
-            where: {
-              uq_reactive_snapshot_version: {
-                kind: 'clipboard',
-                contentId: clipId,
-                contentVersion: snapshot.contentVersion,
-              },
-            },
-            create: snapshot.row,
-            update: {
-              format: snapshot.row.format,
-              scope: snapshot.row.scope,
-              syntaxVersion: snapshot.row.syntaxVersion,
-              compilerVersion: snapshot.row.compilerVersion,
-              adapterVersion: snapshot.row.adapterVersion,
-              optionsKey: snapshot.row.optionsKey,
-              documentJson: snapshot.row.documentJson,
-              hostDataJson: snapshot.row.hostDataJson,
-              digest: snapshot.row.digest,
-              generatedAt: snapshot.row.generatedAt,
-            },
-          }),
-        ]
-      : []),
+
   ]);
 
   return { ok: true, id: clipId };

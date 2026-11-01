@@ -37,7 +37,7 @@ describe('ReactiveMD 0.7 正文迁移', () => {
     expect(plan.blockers).toEqual([]);
     expect(plan.rows).toHaveLength(2);
     await applyReactiveV07Migration(plan);
-    expect(await prisma.reactiveSnapshot.count({ where: { contentId: { in: [blogId, clipId] }, format: 'reactive' } })).toBe(2);
+    expect(await prisma.reactiveSnapshot.count({ where: { contentId: { in: [blogId, clipId] }, format: 'reactive' } })).toBe(0);
     const current = await planReactiveV07Migration();
     expect(current.alreadyApplied).toBe(true);
     expect(current.blockers).toEqual([]);
@@ -45,7 +45,7 @@ describe('ReactiveMD 0.7 正文迁移', () => {
     expect((await prisma.clipText.findUniqueOrThrow({ where: { clipId } })).content).toContain('<option value="free">自由</option>');
   });
 
-  it('同时迁移显式和隐式旧版本，生成同版本快照且只执行一次', async () => {
+  it('同时迁移显式和隐式旧版本，不写编译快照且只执行一次', async () => {
     const { blogId, clipId } = await oldSources();
     const plan = await planReactiveV07Migration();
     expect(plan.blockers).toEqual([]);
@@ -58,8 +58,7 @@ describe('ReactiveMD 0.7 正文迁移', () => {
     expect(clip.content).toContain('<!-- reactive-md: local-draft-3 -->');
     expect([blog.syntaxVersion, clip.syntaxVersion]).toEqual(['local-draft-3', 'local-draft-3']);
     const snapshots = await prisma.reactiveSnapshot.findMany({ where: { contentId: { in: [blogId, clipId] }, format: 'reactive' } });
-    expect(snapshots).toHaveLength(2);
-    expect(snapshots.every((row) => row.syntaxVersion === 'local-draft-3' && row.compilerVersion === 'reactive-md/0.7.0')).toBe(true);
+    expect(snapshots).toHaveLength(0);
     expect((await planReactiveV07Migration()).alreadyApplied).toBe(true);
     await expect(applyReactiveV07Migration(plan)).rejects.toThrow('already applied');
   });
@@ -86,7 +85,7 @@ describe('ReactiveMD 0.7 正文迁移', () => {
     expect(await prisma.reactiveSourceMigration.count()).toBe(0);
   });
 
-  it('长文：站点预算内、上游默认预算外，仍能完整迁移并生成快照', async () => {
+  it('长文：站点预算内、上游默认预算外，仍能完整迁移且不写快照', async () => {
     const user = await makeUser();
     const blogId = await createBlog(user.id, {
       title: '长文', content: '初始', description: '', visibility: 'internal', categoryId: null,
@@ -107,7 +106,7 @@ describe('ReactiveMD 0.7 正文迁移', () => {
     const row = await prisma.blogContent.findUniqueOrThrow({ where: { blogId } });
     expect(row.syntaxVersion).toBe('local-draft-3');
     expect(row.content).toContain('<!-- reactive-md: local-draft-3 -->');
-    expect(await prisma.reactiveSnapshot.count({ where: { kind: 'blog', contentId: blogId, format: 'reactive' } })).toBe(1);
+    expect(await prisma.reactiveSnapshot.count({ where: { kind: 'blog', contentId: blogId, format: 'reactive' } })).toBe(0);
   });
 
   it('空库也能完成一次性标记，重复应用被拒', async () => {

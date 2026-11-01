@@ -12,7 +12,7 @@ try {
   if (plan.blockers.length) process.exitCode = 1;
   else if (args.includes('--apply') && !plan.alreadyApplied) {
     await applyReactiveV07Migration(plan);
-    console.log('Migration committed. Run npm run search:rebuild before restarting the service.');
+    console.log('Source migration committed. Public search can be repaired separately with npm run search:rebuild.');
   }
 } finally {
   await prisma.$disconnect();

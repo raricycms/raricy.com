@@ -40,6 +40,7 @@ import { MAX_CARD_ITEMS } from '../favorite-refs';
 import { reactiveCompileOptions } from './host-components';
 import { adaptReactiveReferences, compatMediaSources } from './ref-adapter';
 import { applyLegacyHtmlCompat } from './legacy-compat';
+import { sourceForCurrentCompiler } from './source-migration';
 import type { ReferenceReader, ResolvedReference, SiteHostData } from './ref-types';
 
 /** 适配后的预览源码 + 渲染它所需的 hostData（与 `adaptReactiveReferences` 同形）。 */
@@ -243,7 +244,7 @@ export async function adaptReactivePreview(
   parentFormat: 'markdown' | 'reactive' = 'reactive'
 ): Promise<AdaptedReactivePreview> {
   // 与阅读页同一条兼容规则（等长改写，预览与终稿逐字一致）。
-  const compat = applyLegacyHtmlCompat(source);
+  const compat = applyLegacyHtmlCompat(sourceForCurrentCompiler(source));
   const adapted = await adaptReactiveReferences(compat.source, {
     mode,
     parentFormat,

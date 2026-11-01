@@ -1,40 +1,10 @@
 #!/usr/bin/env node
-// ─────────────────────────────────────────────────────────────────────────────
-// migrate.mjs —— 数据库迁移 runner（替代历史 CLI 的 `db upgrade`）
-//
-// 为什么不用 prisma migrate：schema.prisma 头部明确写了「不要对本库跑 prisma
-// migrate」——本库 0_init 是从历史库反向生成的基线（Prisma migrate 不认识本库的
-// 迁移历史；DateTime 格式陷阱也要避开它的 normalize）。所有 schema
-// 改动一律走 prisma/migrations/<n>_<name>/migration.sql 手写 SQL，由本脚本统一应用。
-//
-// 用法：
-//   npm run migrate -- up                 应用所有 pending SQL，随后执行 Reactive 数据阶段
-//   npm run migrate -- status             列出 applied / pending（只读）
-//   npm run migrate -- mark <name>        标记为已应用（不执行 SQL），用于 baseline
-//   npm run migrate -- verify             比对 checksum（只读）
-//
-// `up` 的完整顺序（结构迁移之后才进入数据阶段）：
-//   1. 手写 SQL 结构迁移（本文件）
-//   2. Reactive 旧语法正文升级（src/lib/reactive/migrate-v07）
-//   3. 历史编译快照回填（src/lib/reactive/backfill）
-//   4. 必要时重建公开正文索引（src/lib/public-blog-search）
-//
-// 数据阶段由 scripts/reactive-migrate-data.ts 在**子进程**里执行：status / verify /
-// help 不加载 reactive-md 与编译器，也不需要数据阶段依赖；同时子进程拿到的是本文件
-// 解析后的**同一个绝对 DATABASE_URL**，不会因为 cwd / 相对路径不同落到另一个库。
-//
-// 阶段之间**不是一个大事务**：SQL、正文升级、快照回填、索引重建各自提交。数据阶段
-// 失败时本脚本明确报告「结构已完成、数据未完成」，修复后重跑 `up` 会从断点继续
-// （正文升级有一次性标记 + 同事务保护；回填与索引重建都是幂等的）。
-//
-// 跟踪表：自己维护 _raricy_migrations（name PK, applied_at, checksum）。
-// 不动 Prisma 自带的 _prisma_migrations（保持 schema.prisma 头部的隔离约束）。
-//
-// 驱动：SQL 执行走 `prisma db execute`（与生成 client 使用同一套驱动），避免再装
-// better-sqlite3 / pg / mysql2。子进程一律用 process.execPath + 参数数组，不拼 shell。
-// ─────────────────────────────────────────────────────────────────────────────
+// 手写 SQL 迁移 runner：只应用 prisma/migrations 的结构变更。
+// _raricy_migrations 记录历史与 checksum；不使用 Prisma migrate。
+// RMD 源码升级和搜索重建是独立运维操作，不参与 SQL up。
+// SQL 子进程与跟踪连接使用同一规范化 DATABASE_URL。
 
-import { execFileSync, spawnSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -46,9 +16,6 @@ const MIGRATIONS_DIR = path.join(ROOT, 'prisma', 'migrations');
 const SCHEMA_PATH = path.join(ROOT, 'prisma', 'schema.prisma');
 const PRISMA_DIR = path.dirname(SCHEMA_PATH);
 const PRISMA_CLI = path.join(ROOT, 'node_modules', 'prisma', 'build', 'index.js');
-const VITE_NODE_CLI = path.join(ROOT, 'node_modules', 'vite-node', 'vite-node.mjs');
-const DATA_PHASE_CONFIG = path.join(ROOT, 'scripts', 'reactive-vite.config.ts');
-const DATA_PHASE_SCRIPT = path.join(ROOT, 'scripts', 'reactive-migrate-data.ts');
 const TABLE_NAME = '_raricy_migrations';
 
 const green = (s) => `\x1b[32m${s}\x1b[0m`;
@@ -115,7 +82,7 @@ function loadDatabaseUrl() {
     die(red('错误：DATABASE_URL 未设置（看 .env 或临时 DATABASE_URL=... npm run migrate -- up）'));
   }
   const resolved = resolveDatabaseUrl(process.env.DATABASE_URL);
-  // 统一改写成绝对值：本进程、prisma db execute 与数据阶段子进程读同一份。
+  // 统一改写成绝对值：本进程、prisma db execute 与SQL 子进程读同一份。
   process.env.DATABASE_URL = resolved;
   return resolved;
 }
@@ -215,7 +182,7 @@ function applySqlFile(name) {
     }
     // process.execPath + 参数数组：不经过 shell，Windows 路径带空格 / 引号也不会被拆开，
     // 且显式 env 保证 DATABASE_URL 与 PrismaClient 用的是同一个地址。
-    execFileSync(process.execPath, [PRISMA_CLI, 'db', 'execute', '--file', file, '--schema', SCHEMA_PATH], {
+    execFileSync(process.execPath, [PRISMA_CLI, 'db', 'execute', '--file', file, '--url', process.env.DATABASE_URL], {
       stdio: ['ignore', 'inherit', 'inherit'],
       env: process.env,
     });
@@ -225,7 +192,7 @@ function applySqlFile(name) {
   }
 }
 
-// ── Prisma / 数据阶段依赖 ───────────────────────────────────────────────────
+// ── Prisma 依赖 ───────────────────────────────────────────────────
 
 function prismaHint(error) {
   const message = String(error instanceof Error ? error.message : error);
@@ -257,73 +224,19 @@ async function assertDatabaseReachable(prisma) {
   }
 }
 
-/** 数据阶段依赖必须在**任何 SQL 写库之前**检查；本命令不会隐式安装或生成任何东西。 */
-function preflightDataPhase() {
-  const required = [
-    [PRISMA_CLI, 'Prisma CLI（node_modules/prisma）'],
-    [path.join(ROOT, 'node_modules', '.prisma', 'client', 'index.js'), '已生成的 Prisma Client'],
-    [VITE_NODE_CLI, 'vite-node（node_modules/vite-node）'],
-    [DATA_PHASE_CONFIG, 'Reactive 数据阶段的 vite-node 配置'],
-    [DATA_PHASE_SCRIPT, 'Reactive 数据阶段脚本'],
-    [path.join(ROOT, 'node_modules', 'reactive-md', 'package.json'), 'reactive-md（精确锁定版本）'],
-  ];
-  const missing = required.filter(([file]) => !fs.existsSync(file));
-  if (missing.length === 0) return;
-  console.error(red('错误：Reactive 数据阶段缺少依赖或生成产物，未开始任何数据库写入：'));
-  for (const [file, label] of missing) console.error(red(`  - ${label}：${file}`));
-  console.error(yellow('  处理：先运行 `npm ci`，再运行 `npx prisma generate`；本命令不会自动安装或联网。'));
-  process.exit(1);
-}
-
-/** 数据阶段在独立进程里跑；它只认 DATABASE_URL，不读测试运行器的配置。 */
-function runDataPhase() {
-  const result = spawnSync(
-    process.execPath,
-    [VITE_NODE_CLI, '--config', DATA_PHASE_CONFIG, DATA_PHASE_SCRIPT],
-    {
-      cwd: ROOT,
-      env: process.env,
-      stdio: 'inherit',
-      windowsHide: true,
-    }
-  );
-  if (result.error) {
-    console.error(red(`\n错误：无法启动 Reactive 数据阶段：${result.error.message}`));
-    return 1;
-  }
-  if (typeof result.status === 'number') return result.status;
-  console.error(red(`\n错误：Reactive 数据阶段被信号终止（${result.signal ?? 'unknown'}）。`));
-  return 1;
-}
-
 // ── 命令 ────────────────────────────────────────────────────────────────────
 
 function usage() {
   console.log(`用法：npm run migrate -- <命令>
 
-命令：
-  up                 应用所有 pending SQL，然后执行 Reactive 数据阶段
-                     （旧语法升级 → 快照回填 → 必要时重建公开索引）
-  status             列出已应用 / 待应用（只读，不执行数据阶段）
-  mark <name>        标记迁移为已应用（不执行 SQL），用于基线（baseline）
-  verify             比对已应用的 checksum 与当前文件内容（只读）
+  up                 应用所有 pending 手写 SQL（不编译或改写正文）
+  status             只读列出已应用 / 待应用迁移
+  mark <name>        标记为已应用，不执行 SQL（用于基线）
+  verify             只读校验已应用迁移的 checksum
 
-环境：
-  DATABASE_URL       缺省时读取 cwd/.env 或仓库根 .env；相对 SQLite 路径按
-                     prisma/ 目录解析，并改写成绝对路径传给所有子阶段。
-  Reactive 数据阶段需要已安装依赖与已生成的 Prisma Client；本命令不会自动安装。
-
-适用场景：
-  • 全新部署：直接 \`npm run migrate -- up\`（依次应用 0_init / 1_oauth / ...，
-    再完成数据阶段）
-  • 存量库（表已经在，只需补记基线）：
-      npm run migrate -- mark 0_init    # 标记 0_init 为已应用
-      npm run migrate -- up             # 之后只应用新迁移
-  • 只想诊断 / 修复某个数据阶段：保留独立的
-      npm run reactive:migrate-v07 [-- --apply]
-      npm run reactive:backfill [-- --apply]
-      npm run search:rebuild
-    （正常发布不需要单独跑它们；详见 docs/deploy.md）`);
+DATABASE_URL 缺省读 cwd/.env 或仓库根 .env；相对 SQLite 地址按 prisma/ 解析。
+先安装依赖并生成 Prisma Client。源码升级使用独立 reactive:migrate-v07；
+公开搜索索引修复使用 search:rebuild。两者不作为 SQL 迁移成功的条件。`);
 }
 
 async function cmdUp(prisma) {
@@ -342,18 +255,7 @@ async function cmdUp(prisma) {
     console.log(green(`  ✓ ${name} 已应用`));
     count++;
   }
-  if (count === 0) console.log(yellow('SQL 阶段：没有 pending 迁移，继续执行 Reactive 数据阶段。'));
-  else console.log(green(`\nSQL 阶段完成：共应用 ${count} 个迁移。`));
-
-  const dataStatus = runDataPhase();
-  if (dataStatus !== 0) {
-    console.error(red(`\n✗ 部分完成：SQL 结构迁移已完成，但 Reactive 数据阶段失败（退出码 ${dataStatus}）。`));
-    console.error(yellow('  数据阶段尚未全部完成，不要把它当成一次成功迁移。'));
-    console.error(yellow('  修复上述阻塞后重跑 `npm run migrate -- up`：已完成的阶段幂等，会从断点继续。'));
-    process.exitCode = 1;
-    return;
-  }
-  console.log(green('\n✓ 迁移完成：SQL 结构 + Reactive 数据阶段。'));
+  console.log(green(count === 0 ? '没有待应用的 SQL 迁移。' : `SQL 迁移完成：共应用 ${count} 个迁移。`));
 }
 
 async function cmdStatus(prisma) {
@@ -440,7 +342,6 @@ async function main() {
     die(red(`错误：找不到 ${SCHEMA_PATH}`));
   }
   loadDatabaseUrl();
-  if (cmd === 'up') preflightDataPhase();
 
   const prisma = await createPrisma();
   try {

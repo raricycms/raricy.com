@@ -211,7 +211,7 @@ describe('博客写接口：format 的默认、保留与拒绝', () => {
     expect(detail.blog).toMatchObject({ format: 'markdown', syntax_version: null });
   });
 
-  it('POST format=reactive（可编译）→ 200，正文与快照一起落库', async () => {
+  it('POST format=reactive（可编译）→ 200，只保存正文，不写快照', async () => {
     const author = await makeUser({ role: 'core' });
     await login(author.id);
 
@@ -225,7 +225,7 @@ describe('博客写接口：format 的默认、保留与拒绝', () => {
     });
     expect(
       await prisma.reactiveSnapshot.count({ where: { kind: 'blog', contentId: blog_id } })
-    ).toBe(1);
+    ).toBe(0);
   });
 
   it('POST format=reactive（无法编译）→ 400，且不落库', async () => {
@@ -265,7 +265,7 @@ describe('博客写接口：format 的默认、保留与拒绝', () => {
     });
   });
 
-  it('★ PUT 到存量 reactive 的文章（可编译）→ 200，正文 / 快照同版本更新 ★', async () => {
+  it('★ PUT 到存量 reactive 的文章（可编译）→ 200，源码更新、不写快照 ★', async () => {
     const author = await makeUser({ role: 'core' });
     const blog = await makeBlog({ authorId: author.id, content: 'reactive 源码' });
     await prisma.blogContent.update({
@@ -286,7 +286,7 @@ describe('博客写接口：format 的默认、保留与拒绝', () => {
     });
     expect(
       await prisma.reactiveSnapshot.count({ where: { kind: 'blog', contentId: blog.id } })
-    ).toBe(1);
+    ).toBe(0);
 
     const broken = await updateBlog(
       put({ ...base, content: '<panel title="未闭合">', format: 'reactive' }),
@@ -331,7 +331,7 @@ describe('剪贴板写接口：format 的默认、保留与拒绝', () => {
     });
     expect(
       await prisma.reactiveSnapshot.count({ where: { kind: 'clipboard', contentId: id } })
-    ).toBe(1);
+    ).toBe(0);
 
     const before = await prisma.clipBoard.count();
     const broken = await createClip(
@@ -385,7 +385,7 @@ describe('剪贴板写接口：format 的默认、保留与拒绝', () => {
     });
     expect(
       await prisma.reactiveSnapshot.count({ where: { kind: 'clipboard', contentId: reactiveId } })
-    ).toBe(1);
+    ).toBe(0);
   });
 
   it('GET /api/clipboard 列表**不**改形状（格式只在详情里给）', async () => {

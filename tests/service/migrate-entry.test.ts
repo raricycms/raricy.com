@@ -1,26 +1,13 @@
-// ─────────────────────────────────────────────────────────────────────────────
-// migrate-entry.test.ts —— `npm run migrate -- up` 的真实隔离 SQLite 验收
-//
-// 覆盖的是**入口行为**，不是 Reactive 迁移算法本身（后者已有
-// reactive-v07-migration / reactive-backfill 用例）：
-//   · 空库首次 up：结构 + 数据阶段一次完成；
-//   · 结构已完成（无 pending SQL）时仍补做旧语法升级 / 快照回填 / 索引重建；
-//   · 重复 up 幂等，不重写正文 / 不重复写快照 / 无变化不重建索引；
-//   · v07 blocker 在写入前拦截；回填 blocked 时非零退出且跳过索引重建；
-//   · status / verify 只读（空库连跟踪表都不建）；
-//   · 相对 DATABASE_URL / 缺省 .env / Windows 路径带空格时仍只碰目标库，不碰诱饵库。
-//
-// 所有库都建在 os.tmpdir() 下带空格的独立目录里；不读 instance/ 或 .env 的真库。
-// ─────────────────────────────────────────────────────────────────────────────
-
+// SQL-only 入口验收：空库应用结构；错误 / 旧版本正文不触发数据阶段；
+// 重复 up、status、verify 不改正文，DATABASE_URL 正确隔离。
+// 数据库使用 tests/helpers 的隔离临时目录，不读取业务库。
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { createRequire } from 'node:module';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
-import { PUBLIC_SEARCH_VERSION } from '@/lib/public-blog-search';
+import { TMP_DIR } from '../helpers/db-template';
 
 const { DatabaseSync } = createRequire(import.meta.url)('node:sqlite') as typeof import('node:sqlite');
 
@@ -32,7 +19,10 @@ const MIGRATION_COUNT = fs
   .filter((entry) => entry.isDirectory() && fs.existsSync(path.join(ROOT, 'prisma', 'migrations', entry.name, 'migration.sql')))
   .length;
 
-const SANDBOX = fs.mkdtempSync(path.join(os.tmpdir(), 'raricy migrate entry '));
+// 与其它真实 SQLite 测试共用被忽略的测试目录，但每轮单独建子目录。
+// 本机 Windows 上 schema-engine 可写工作区，系统 TEMP 则会返回 readonly database。
+fs.mkdirSync(TMP_DIR, { recursive: true });
+const SANDBOX = fs.mkdtempSync(path.join(TMP_DIR, 'migrate entry '));
 const BASE_DB = path.join(SANDBOX, 'base.db');
 
 const BASE_ENV = { ...process.env };
@@ -185,273 +175,51 @@ afterAll(() => {
   fs.rmSync(SANDBOX, { recursive: true, force: true });
 });
 
-describe('migrate up 入口', () => {
-  it('空库首次部署：SQL 结构 + Reactive 数据阶段一次完成', { timeout: 120_000 }, () => {
-    const applied = one<{ n: number }>(BASE_DB, 'SELECT COUNT(*) AS n FROM _raricy_migrations');
-    expect(Number(applied.n)).toBe(MIGRATION_COUNT);
-    expect(Number(one<{ n: number }>(BASE_DB, 'SELECT COUNT(*) AS n FROM reactive_source_migrations').n)).toBe(1);
-    expect(
-      all<{ name: string }>(
-        BASE_DB,
-        "SELECT name FROM sqlite_master WHERE type IN ('table','view') AND name IN ('reactive_snapshots','public_blog_search','public_blog_search_state') ORDER BY name"
-      ).map((row) => row.name)
-    ).toEqual(['public_blog_search', 'public_blog_search_state', 'reactive_snapshots']);
+describe('migrate up 仅应用 SQL', () => {
+  it('空库首跑只应用结构，不写 Reactive 标记或快照', () => {
+    expect(one<{ n: number }>(BASE_DB, 'SELECT COUNT(*) AS n FROM _raricy_migrations').n).toBe(MIGRATION_COUNT);
+    expect(one<{ n: number }>(BASE_DB, 'SELECT COUNT(*) AS n FROM reactive_source_migrations').n).toBe(0);
+    expect(one<{ n: number }>(BASE_DB, 'SELECT COUNT(*) AS n FROM reactive_snapshots').n).toBe(0);
   });
-
-  it('无 pending SQL 时仍升级旧正文、回填 Markdown 快照并重建公开索引', { timeout: 180_000 }, () => {
-    const db = path.join(SANDBOX, 'content data.db');
-    copyDb(BASE_DB, db);
-    resetReactiveMarker(db);
-    seedContent(db);
-
-    const result = run(['up'], { url: `file:${db}` });
-    expectOk(result, '结构已完成仍执行数据阶段');
-    expect(output(result)).toContain('SQL 阶段：没有 pending 迁移');
-
-    const old = one<{ content: string; syntax_version: string }>(
-      db,
-      "SELECT content, syntax_version FROM blog_contents WHERE blog_id='blog-old'"
-    );
-    expect(old.syntax_version).toBe('local-draft-3');
-    expect(old.content).toContain('local-draft-3');
-    expect(old.content).toContain('旧正文标记词');
-    expect(
-      one<{ syntax_version: string }>(db, "SELECT syntax_version FROM clip_text WHERE clip_id='clip-old'").syntax_version
-    ).toBe('local-draft-3');
-
-    const snapshots = all<{ kind: string; content_id: string; format: string }>(
-      db,
-      "SELECT kind, content_id, format FROM reactive_snapshots ORDER BY kind, content_id"
-    );
-    expect(snapshots).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ kind: 'blog', content_id: 'blog-md', format: 'markdown' }),
-        expect.objectContaining({ kind: 'blog', content_id: 'blog-old', format: 'reactive' }),
-        expect.objectContaining({ kind: 'clipboard', content_id: 'clip-old', format: 'reactive' }),
-      ])
-    );
-    expect(Number(one<{ n: number }>(db, 'SELECT COUNT(*) AS n FROM reactive_source_migrations').n)).toBe(1);
-    // 归档作者的内容不在回填 / 公开索引的作用域内；覆盖检查也必须排除它，
-    // 否则每次 up 都会把「归档文章缺 state」误判成缺口并全量重建。
-    expect(snapshots.some((row) => row.content_id === 'blog-archived')).toBe(false);
-
-    const state = all<{ blog_id: string; version: string; body_status: string }>(
-      db,
-      'SELECT blog_id, version, body_status FROM public_blog_search_state ORDER BY blog_id'
-    );
-    expect(state.map((row) => row.blog_id)).toEqual(['blog-md', 'blog-old']);
-    expect(state.every((row) => row.version === PUBLIC_SEARCH_VERSION && row.body_status === 'ready')).toBe(true);
-    expect(
-      one<{ body: string }>(db, "SELECT body FROM public_blog_search WHERE blog_id='blog-old'").body
-    ).toContain('旧正文标记词');
-    expect(
-      one<{ body: string }>(db, "SELECT body FROM public_blog_search WHERE blog_id='blog-md'").body
-    ).toContain('公开索引标记词');
-
-    // 第二次 up：正文 / 快照 / 标记都不重写，索引无变化时跳过重建。
-    const beforeHash = fileHash(db);
-    const beforeContent = one<{ content: string; syntax_version: string }>(
-      db,
-      "SELECT content, syntax_version FROM blog_contents WHERE blog_id='blog-old'"
-    );
-    const beforeSnapshots = Number(one<{ n: number }>(db, 'SELECT COUNT(*) AS n FROM reactive_snapshots').n);
-
-    const again = run(['up'], { url: `file:${db}` });
-    expectOk(again, '重复 up');
-    const againOutput = output(again);
-    expect(againOutput).toContain('旧语法升级：已完成（跳过）');
-    expect(againOutput).toMatch(/快照回填：scanned=\d+ skipped=\d+ refreshed=0 written=0 blocked=0 failed=0/);
-    expect(againOutput).toContain('公开索引：已是最新（跳过）');
-    expect(
-      one<{ content: string; syntax_version: string }>(
-        db,
-        "SELECT content, syntax_version FROM blog_contents WHERE blog_id='blog-old'"
-      )
-    ).toEqual(beforeContent);
-    expect(Number(one<{ n: number }>(db, 'SELECT COUNT(*) AS n FROM reactive_snapshots').n)).toBe(beforeSnapshots);
-    expect(Number(one<{ n: number }>(db, 'SELECT COUNT(*) AS n FROM reactive_source_migrations').n)).toBe(1);
-    expect(fileHash(db)).toBe(beforeHash);
+  it('错误或旧版正文不阻塞 SQL up，正文、快照与索引均不改写', () => {
+    const target = path.join(SANDBOX, 'content.db');
+    copyDb(BASE_DB, target);
+    seedContent(target);
+    exec(target, "UPDATE clip_text SET content='<radio-group>', syntax_version='local-draft-3'");
+    const before = fileHash(target);
+    for (let i = 0; i < 2; i++) {
+      const result = run(['up'], { url: `file:${target}` });
+      expectOk(result, '含错误正文的重复 up');
+      expect(output(result)).not.toContain('[reactive]');
+    }
+    expect(fileHash(target)).toBe(before);
+    expect(one<{ n: number }>(target, 'SELECT COUNT(*) AS n FROM reactive_snapshots').n).toBe(0);
+    expect(one<{ n: number }>(target, 'SELECT COUNT(*) AS n FROM public_blog_search_state').n).toBe(0);
   });
-
-  it('v07 blocker 在写入前拦截；修复后重跑接续', { timeout: 180_000 }, () => {
-    const db = path.join(SANDBOX, 'blocked v07.db');
-    copyDb(BASE_DB, db);
-    resetReactiveMarker(db);
-    seedContent(db);
-    exec(
-      db,
-      `UPDATE clip_text SET content='<external name="foo" type="number">', syntax_version='local-draft-2'
-       WHERE clip_id='clip-old'`
-    );
-
-    const blocked = run(['up'], { url: `file:${db}` });
-    expect(blocked.status).not.toBe(0);
-    expect(output(blocked)).toContain('旧语法升级被阻塞，未写入任何正文');
-    expect(output(blocked)).toContain('local.upgrade.tag');
-    expect(
-      one<{ syntax_version: string }>(db, "SELECT syntax_version FROM blog_contents WHERE blog_id='blog-old'").syntax_version
-    ).toBe('local-draft-2');
-    expect(Number(one<{ n: number }>(db, 'SELECT COUNT(*) AS n FROM reactive_source_migrations').n)).toBe(0);
-    expect(Number(one<{ n: number }>(db, 'SELECT COUNT(*) AS n FROM reactive_snapshots').n)).toBe(0);
-    expect(Number(one<{ n: number }>(db, 'SELECT COUNT(*) AS n FROM public_blog_search_state').n)).toBe(0);
-
-    exec(
-      db,
-      `UPDATE clip_text SET content='<!-- reactive-md: local-draft-3 -->
-
-修好了', syntax_version='local-draft-3' WHERE clip_id='clip-old'`
-    );
-    const resumed = run(['up'], { url: `file:${db}` });
-    expectOk(resumed, '修复 blocker 后重跑');
-    expect(
-      one<{ syntax_version: string }>(db, "SELECT syntax_version FROM blog_contents WHERE blog_id='blog-old'").syntax_version
-    ).toBe('local-draft-3');
-    expect(Number(one<{ n: number }>(db, 'SELECT COUNT(*) AS n FROM reactive_source_migrations').n)).toBe(1);
-    expect(Number(one<{ n: number }>(db, 'SELECT COUNT(*) AS n FROM public_blog_search_state').n)).toBe(2);
+  it('status / verify 只读；空库不创建跟踪表', () => {
+    const target = path.join(SANDBOX, 'readonly.db');
+    copyDb(BASE_DB, target);
+    const before = fileHash(target);
+    expectOk(run(['status'], { url: `file:${target}` }), 'status');
+    expectOk(run(['verify'], { url: `file:${target}` }), 'verify');
+    expect(fileHash(target)).toBe(before);
+    const empty = path.join(SANDBOX, 'empty.db');
+    open(empty).close();
+    expectOk(run(['status'], { url: `file:${empty}` }), 'empty status');
+    expect(run(['verify'], { url: `file:${empty}` }).status).not.toBe(0);
+    expect(one<{ n: number }>(empty, "SELECT COUNT(*) AS n FROM sqlite_master WHERE name='_raricy_migrations'").n).toBe(0);
   });
-
-  it('回填 blocked 时非零退出、不重建索引；修复后重跑完成', { timeout: 180_000 }, () => {
-    const db = path.join(SANDBOX, 'blocked backfill.db');
-    copyDb(BASE_DB, db);
-    // 这里刻意不放旧 Reactive 正文（base 已有一次性标记）：先让 v07 顺利跳过，
-    // 才能单独验证回填失败会挡住索引阶段。
-    exec(
-      db,
-      `INSERT INTO users (id, username, email, password_hash, role, created_at)
-         VALUES ('author', 'author', 'author@example.test', 'x', 'core', 1700000000000);
-       INSERT INTO blogs (id, title, description, author_id, created_at, ignore, visibility)
-         VALUES
-           ('blog-md', '公开标题', '', 'author', 1700000000000, 0, 'public'),
-           ('blog-bad', '坏格式', '', 'author', 1700000000000, 0, 'internal');
-       INSERT INTO blog_contents (blog_id, content, updated_at, format, syntax_version)
-         VALUES
-           ('blog-md', '# 公开标题
-
-公开索引标记词', 1700000000000, 'markdown', NULL),
-           ('blog-bad', '无法识别的格式', 1700000000000, 'binary', NULL)`
-    );
-
-    const blocked = run(['up'], { url: `file:${db}` });
-    expect(blocked.status).not.toBe(0);
-    expect(output(blocked)).toContain('快照回填存在阻塞');
-    expect(output(blocked)).toContain('invalid_content_format');
-    // 公开索引阶段没有执行：公开 Markdown 仍无 state。
-    expect(Number(one<{ n: number }>(db, 'SELECT COUNT(*) AS n FROM public_blog_search_state').n)).toBe(0);
-
-    exec(db, "UPDATE blog_contents SET format='markdown' WHERE blog_id='blog-bad'");
-    const resumed = run(['up'], { url: `file:${db}` });
-    expectOk(resumed, '修复回填 blocker 后重跑');
-    expect(Number(one<{ n: number }>(db, 'SELECT COUNT(*) AS n FROM public_blog_search_state').n)).toBe(1);
-    expect(
-      Number(one<{ n: number }>(db, "SELECT COUNT(*) AS n FROM reactive_snapshots WHERE content_id='blog-bad'").n)
-    ).toBe(1);
-  });
-
-  it('status / verify 只读；空库连跟踪表都不创建', { timeout: 120_000 }, () => {
-    const db = path.join(SANDBOX, 'readonly status.db');
-    copyDb(BASE_DB, db);
-    const beforeHash = fileHash(db);
-    const beforeRows = one<{ n: number }>(db, 'SELECT COUNT(*) AS n FROM _raricy_migrations');
-
-    const status = run(['status'], { url: `file:${db}` });
-    expectOk(status, 'status');
-    expect(output(status)).toContain('Pending:');
-    const verify = run(['verify'], { url: `file:${db}` });
-    expectOk(verify, 'verify');
-    expect(output(verify)).toContain('所有已应用迁移 checksum 一致');
-
-    expect(one<{ n: number }>(db, 'SELECT COUNT(*) AS n FROM _raricy_migrations')).toEqual(beforeRows);
-    expect(fileHash(db)).toBe(beforeHash);
-
-    const empty = path.join(SANDBOX, 'empty readonly.db');
-    const handle = open(empty);
-    handle.close();
-    const emptyStatus = run(['status'], { url: `file:${empty}` });
-    expectOk(emptyStatus, '空库 status');
-    expect(output(emptyStatus)).toContain('尚不存在');
-    // 没有跟踪表 ≠ checksum 一致：verify 必须非零，且不能把空库说成绿色。
-    const emptyVerify = run(['verify'], { url: `file:${empty}` });
-    expect(emptyVerify.status).toBe(2);
-    expect(output(emptyVerify)).toContain('从未通过本迁移系统应用过迁移');
-    expect(output(emptyVerify)).not.toContain('所有已应用迁移 checksum 一致');
-    expect(
-      all<{ name: string }>(empty, "SELECT name FROM sqlite_master WHERE type='table' AND name='_raricy_migrations'")
-    ).toEqual([]);
-  });
-
-  it('快照刷新后索引未完成时，下一次 up 靠持久版本恢复（跨运行）', { timeout: 180_000 }, () => {
-    const db = path.join(SANDBOX, 'stale signature.db');
-    copyDb(BASE_DB, db);
-    resetReactiveMarker(db);
-    seedContent(db);
-    expectOk(run(['up'], { url: `file:${db}` }), '首次生成索引');
-
-    // 模拟一次「编译签名已变化、但索引还停留在旧版本」的中间态：
-    // 快照全是旧签名；state / FTS 行齐全但版本是旧的；另有无关文档坏格式。
-    exec(
-      db,
-      `UPDATE reactive_snapshots SET compiler_version='reactive-md/old';
-       UPDATE public_blog_search_state SET version='old-search-version';
-       UPDATE public_blog_search SET version='old-search-version', body='STALE INDEX BODY';
-       INSERT INTO blogs (id, title, description, author_id, created_at, ignore, visibility)
-         VALUES ('blog-block', '坏格式', '', 'author', 1700000000000, 0, 'internal');
-       INSERT INTO blog_contents (blog_id, content, updated_at, format, syntax_version)
-         VALUES ('blog-block', '无法识别的格式', 1700000000000, 'binary', NULL)`
-    );
-
-    // Run 1：回填刷新公开快照后，被另一篇坏格式挡住 → 索引阶段没执行，退出非零。
-    const first = run(['up'], { url: `file:${db}` });
-    expect(first.status).not.toBe(0);
-    expect(output(first)).toContain('invalid_content_format');
-    expect(
-      one<{ version: string; body: string }>(
-        db,
-        "SELECT s.version AS version, p.body AS body FROM public_blog_search_state s JOIN public_blog_search p ON p.blog_id=s.blog_id WHERE s.blog_id='blog-md'"
-      )
-    ).toEqual({ version: 'old-search-version', body: 'STALE INDEX BODY' });
-
-    // 修掉 blocker。Run 2 的回填已经没有 refreshed（快照在 Run 1 已刷新），
-    // 只能靠持久化的 state 版本判断「旧索引需要重建」。
-    exec(db, "UPDATE blog_contents SET format='markdown' WHERE blog_id='blog-block'");
-    const second = run(['up'], { url: `file:${db}` });
-    expectOk(second, '修复 blocker 后第二次 up');
-    expect(output(second)).toMatch(/快照回填：.*refreshed=0 .*written=1/);
-    expect(output(second)).toContain('索引缺失或版本不一致');
-
-    const recovered = one<{ version: string; body: string }>(
-      db,
-      "SELECT s.version AS version, p.body AS body FROM public_blog_search_state s JOIN public_blog_search p ON p.blog_id=s.blog_id WHERE s.blog_id='blog-md'"
-    );
-    expect(recovered.version).toBe(PUBLIC_SEARCH_VERSION);
-    expect(recovered.body).toContain('公开索引标记词');
-    expect(recovered.body).not.toContain('STALE INDEX BODY');
-    expect(
-      Number(one<{ n: number }>(db, "SELECT COUNT(*) AS n FROM public_blog_search_state WHERE version='old-search-version'").n)
-    ).toBe(0);
-  });
-
-  it('缺省 DATABASE_URL 从 cwd .env 读取；相对路径与空格只落到目标库', { timeout: 180_000 }, () => {
-    const db = path.join(SANDBOX, 'env target with space.db');
-    copyDb(BASE_DB, db);
-    const decoy = path.join(SANDBOX, 'decoy.db');
-    const decoyHandle = open(decoy);
-    decoyHandle.exec('CREATE TABLE decoy_marker (value TEXT); INSERT INTO decoy_marker VALUES (\'untouched\')');
-    decoyHandle.close();
-    const decoyHash = fileHash(decoy);
-
-    // 相对路径的基点是 prisma/（Prisma 自己的规则），故意包含空格。
-    const relative = path.relative(PRISMA_DIR, db);
-    const cwd = path.join(SANDBOX, 'env cwd');
-    fs.mkdirSync(cwd, { recursive: true });
-    fs.writeFileSync(path.join(cwd, '.env'), `DATABASE_URL="file:${relative}"\nSECRET_KEY="synthetic-only"\n`, 'utf8');
-
-    // 不传 DATABASE_URL：入口应读 cwd/.env，并把同一个绝对地址交给数据子进程。
-    const result = run(['up'], { cwd });
-    expectOk(result, '缺省 DATABASE_URL + 相对路径');
-    expect(output(result)).toContain('数据阶段完成');
-    expect(Number(one<{ n: number }>(db, 'SELECT COUNT(*) AS n FROM _raricy_migrations').n)).toBe(MIGRATION_COUNT);
-    expect(Number(one<{ n: number }>(db, 'SELECT COUNT(*) AS n FROM reactive_source_migrations').n)).toBe(1);
-    expect(all<{ value: string }>(decoy, 'SELECT value FROM decoy_marker')).toEqual([{ value: 'untouched' }]);
+  it('cwd .env 中含空格的相对地址只使用目标库，不碰诱饵库', () => {
+    const cwd = path.join(SANDBOX, 'cwd space');
+    fs.mkdirSync(cwd);
+    const target = path.join(cwd, 'target space.db');
+    const decoy = path.join(cwd, 'decoy.db');
+    copyDb(BASE_DB, target); copyDb(BASE_DB, decoy);
+    const relative = path.relative(PRISMA_DIR, target).replaceAll('\\', '/');
+    fs.writeFileSync(path.join(cwd, '.env'), `DATABASE_URL="file:${relative}"\n`);
+    const targetHash = fileHash(target), decoyHash = fileHash(decoy);
+    expectOk(run(['up'], { cwd }), 'relative up');
+    expect(fileHash(target)).toBe(targetHash);
     expect(fileHash(decoy)).toBe(decoyHash);
   });
 });

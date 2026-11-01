@@ -20,7 +20,7 @@
     "probe:ws": "node scripts/probe-binance-ws.mjs",
     "check:links": "node scripts/check-links.mjs",
     "reactive:corpus": "node --experimental-sqlite node_modules/vite-node/vite-node.mjs --config vitest.config.ts scripts/reactive-corpus-report.mjs",
-    "reactive:migrate-v07": "vite-node --config vitest.config.ts scripts/reactive-migrate-v07.ts",
+    "reactive:migrate-v07": "vite-node --config scripts/reactive-vite.config.ts scripts/reactive-migrate-v07.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
@@ -43,10 +43,9 @@
     "converter:check": "node scripts/copy-converter-assets.mjs --check",
     "postinstall": "node scripts/copy-mathjax-fonts.mjs && node scripts/copy-emoji-assets.mjs && node scripts/copy-converter-assets.mjs",
     "realtime:build": "tsc -p services/realtime/tsconfig.json",
-    "search:rebuild": "tsx scripts/rebuild-public-search.mts",
-    "search:benchmark": "tsx scripts/benchmark-public-search.mts",
+    "search:rebuild": "vite-node --config scripts/reactive-vite.config.ts scripts/rebuild-public-search.mts",
+    "search:benchmark": "vite-node --config scripts/reactive-vite.config.ts scripts/benchmark-public-search.mts",
     "reactive:measure": "vite-node --config vitest.config.ts scripts/reactive-budget-measure.mts",
-    "reactive:backfill": "vite-node --config vitest.config.ts scripts/reactive-backfill-snapshots.ts",
     "acceptance:seed": "vite-node --config vitest.config.ts scripts/seed-acceptance.mts"
   },
   "dependencies": {

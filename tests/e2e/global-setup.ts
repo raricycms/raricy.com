@@ -448,8 +448,18 @@ export default async function globalSetup() {
         },
       });
     }
-    const { rebuildPublicBlogSearch } = await import('../../src/lib/public-blog-search');
-    await rebuildPublicBlogSearch(prisma);
+    // Playwright 把本文件转成 CJS；RMD 编译器只提供 ESM。
+    // 复用正式索引入口在 ESM loader 中准备测试索引，避免 CJS 间接 require 编译器。
+    execFileSync(process.execPath, [
+      path.join(PROJECT_ROOT, 'node_modules/vite-node/vite-node.mjs'),
+      '--config', path.join(PROJECT_ROOT, 'scripts/reactive-vite.config.ts'),
+      path.join(PROJECT_ROOT, 'scripts/rebuild-public-search.mts'),
+    ], {
+      cwd: PROJECT_ROOT,
+      env: { ...process.env, DATABASE_URL: `file:${E2E_DB}` },
+      stdio: 'inherit',
+      windowsHide: true,
+    });
   } finally {
     await prisma.$disconnect();
   }

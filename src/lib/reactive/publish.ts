@@ -1,32 +1,15 @@
-// ─────────────────────────────────────────────────────────────────────────────
-// publish.ts — reactive 正文发布前的可信快照生成（服务端）
-//
-// 【为什么动态 import `compile`】`compile` → `prepare` → `ref-reader` 会拖进
-// clipboard / vote / favorite 三个 service；而这三个 service 又要 import 本模块来做
-// 写入闸门。静态 import 会形成模块环，环在求值期炸不炸取决于加载顺序。把最重的那段
-// 放进函数体内 `await import()`，服务的模块图只依赖本文件与 `snapshot-store`。
-//
-// 【快照固定按 external 生成】公开快照不得含会话数据（user_voted、成员私有引用）。
-// 成员阅读时的 expand 展开走的是**实时编译**，不写进快照。
-// ─────────────────────────────────────────────────────────────────────────────
-
+// 发布前的语法 / 格式检查。编译结果用完即弃，不产生持久快照。
+// compile-content 延迟加载，避开引用服务与内容 service 的模块环。
 import { LOCAL_SYNTAX_VERSION } from 'reactive-md';
 import type { ContentFormat, ContentWriteErrorCode } from '../content-format';
-import { isoWithOffset, nowForDb } from '../db-time';
 import { shouldRejectReactive } from './diagnostics';
 import { detectReactiveSyntax, documentEvidence } from './detect-format';
-import {
-  reactiveContentVersion,
-  toSnapshotRow,
-  type ReactiveSnapshotRow,
-  type SnapshotKind,
-} from './snapshot-store';
+import { findLeadingVersionDirective } from './version-directive';
+import { SourceCompatibilityError } from './source-migration';
 
-export interface BuildReactiveSnapshotInput {
-  kind: SnapshotKind;
-  contentId: string;
+export interface ValidateContentInput {
   content: string;
-  /** 正文语言。Markdown 与 reactive 的编译选项不同，快照签名也不同。 */
+  /** 正文语言；检查不改变原文和存储格式。 */
   format: ContentFormat;
 }
 
@@ -41,11 +24,9 @@ export class ReactivePublishError extends Error {
   }
 }
 
-export type BuildReactiveSnapshotResult =
+export type ValidateContentResult =
   | {
       ok: true;
-      row: ReactiveSnapshotRow;
-      contentVersion: string;
       /** 写回正文行 `syntax_version` 的值：Markdown 恒为 null。 */
       syntaxVersion: string | null;
       /** 解析器实际认出的格式（用于写入格式不匹配闸门）。 */
@@ -57,24 +38,20 @@ export type BuildReactiveSnapshotResult =
       codes: string[];
     };
 
-/**
- * 编译一次（external 权限）并产出可随正文同事务写入的快照行。
- *
- * 编译失败或命中回退码都返回 `ok: false` —— 调用方必须拒绝这次发布，不能落一个
- * 「正文是 reactive、却没有可读快照」的版本（计划 D2）。
- */
-export async function buildReactiveSnapshotForWrite(
-  input: BuildReactiveSnapshotInput,
-): Promise<BuildReactiveSnapshotResult> {
+/** 使用 external 引用范围检查发布内容，不访问读者会话数据，不写数据库。 */
+export async function validateContentForPublish(
+  input: ValidateContentInput,
+): Promise<ValidateContentResult> {
   // 延迟加载：避开 service ↔ compile 的模块环，见文件头。
   const { compileContent } = await import('./compile-content');
 
-  const compiled = await compileContent({
-    source: input.content,
-    format: input.format,
-    mode: 'external',
-    viewer: null,
-  });
+  let compiled: Awaited<ReturnType<typeof compileContent>>;
+  try {
+    compiled = await compileContent({ source: input.content, format: input.format, mode: 'external', viewer: null });
+  } catch (error) {
+    if (!(error instanceof SourceCompatibilityError)) throw error;
+    return { ok: false, reason: 'compile', codes: ['site.source.compatibility'] };
+  }
 
   const { outcome } = compiled;
   if (!outcome.result.ok) {
@@ -107,22 +84,11 @@ export async function buildReactiveSnapshotForWrite(
 
   const detectedFormat: ContentFormat =
     documentEvidence(outcome.result.document).length > 0 ? 'reactive' : 'markdown';
-  const syntaxVersion = input.format === 'reactive' ? LOCAL_SYNTAX_VERSION : null;
-  const contentVersion = reactiveContentVersion(input.format, syntaxVersion, input.content);
-  const generatedAt = isoWithOffset(nowForDb());
-  const row = toSnapshotRow(
-    input.kind,
-    input.contentId,
-    contentVersion,
-    input.format,
-    { document: outcome.result.document, hostData: outcome.hostData },
-    generatedAt ?? '',
-  );
-
+  const syntaxVersion = input.format === 'reactive'
+    ? findLeadingVersionDirective(input.content)?.version ?? LOCAL_SYNTAX_VERSION
+    : null;
   return {
     ok: true,
-    row,
-    contentVersion,
     syntaxVersion,
     detectedFormat,
   };

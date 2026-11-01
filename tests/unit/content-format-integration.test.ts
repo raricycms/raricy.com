@@ -1,3 +1,4 @@
+import { resolveReadRender } from '@/lib/reactive/read-render';
 // ─────────────────────────────────────────────────────────────────────────────
 // content-format-integration.test.ts —— 内容格式的**写入闸门与落库/读出口**
 //
@@ -133,7 +134,7 @@ describe('博客格式：validateBlogData / 落库 / 读出口', () => {
     expect(row?.syntaxVersion).toBeNull();
   });
 
-  it('createBlog 写 reactive：正文、syntaxVersion 与同版本快照一起落库', async () => {
+  it('createBlog 写 reactive：保存正文与 syntaxVersion，不写快照', async () => {
     const u = await makeUser();
     const content = '# 标题\n\n正文 **加粗**';
     const id = await createBlog(u.id, {
@@ -147,9 +148,7 @@ describe('博客格式：validateBlogData / 落库 / 读出口', () => {
     expect(row?.format).toBe('reactive');
     expect(row?.syntaxVersion).toBe('local-draft-3');
     const snap = await prisma.reactiveSnapshot.findFirst({ where: { kind: 'blog', contentId: id } });
-    expect(snap).not.toBeNull();
-    expect(snap?.scope).toBe('external');
-    expect(typeof snap?.documentJson).toBe('string');
+    expect(snap).toBeNull();
   });
 
   it('历史 HTML 属性被净化后正文仍可读，并与交互组件一起发布', async () => {
@@ -159,9 +158,10 @@ describe('博客格式：validateBlogData / 落库 / 读出口', () => {
       ...BLOG_BASE, content, categoryId: null, visibility: 'internal', format: 'reactive',
     });
     const snapshot = await prisma.reactiveSnapshot.findFirst({ where: { kind: 'blog', contentId: id } });
-    expect(snapshot).not.toBeNull();
-    expect(snapshot!.compilerVersion).toBe('reactive-md/0.7.0');
-    const document = JSON.parse(snapshot!.documentJson);
+    expect(snapshot).toBeNull();
+    const rendered = await resolveReadRender({ kind: 'blog', id, source: content, format: 'reactive', viewer: u, mode: 'expand' });
+    if (!rendered.bundle?.result.ok) throw new Error('live compilation failed');
+    const document = rendered.bundle.result.document;
     expect(JSON.stringify(document)).toContain('红色正文');
     expect(JSON.stringify(document)).not.toContain('color:red');
     expect(document.bindings.n).toBeDefined();
@@ -270,7 +270,7 @@ describe('博客格式：validateBlogData / 落库 / 读出口', () => {
     const snapshot = await prisma.reactiveSnapshot.findFirst({
       where: { kind: 'blog', contentId: id, format: 'markdown' },
     });
-    expect(snapshot).not.toBeNull();
+    expect(snapshot).toBeNull();
   });
 
   it('更新省略 format → 保留库里原值（markdown 仍是 markdown）', async () => {
@@ -288,7 +288,7 @@ describe('博客格式：validateBlogData / 落库 / 读出口', () => {
     expect(row?.format).toBe('markdown');
   });
 
-  it('更新 reactive → 重新生成同版本快照；改回 markdown 也允许（显式）', async () => {
+  it('更新 reactive → 更新原文、不写快照；改回 markdown 也允许（显式）', async () => {
     const u = await makeUser();
     const id = await makeReactiveBlog(u.id);
 
@@ -308,7 +308,7 @@ describe('博客格式：validateBlogData / 落库 / 读出口', () => {
     expect(row?.content).toBe('# 新 reactive\n\n正文');
     expect(row?.format).toBe('reactive');
     expect(row?.syntaxVersion).toBe('local-draft-3');
-    expect(await prisma.reactiveSnapshot.count({ where: { kind: 'blog', contentId: id, format: 'reactive' } })).toBe(1);
+    expect(await prisma.reactiveSnapshot.count({ where: { kind: 'blog', contentId: id, format: 'reactive' } })).toBe(0);
 
     const downgraded = await updateBlog(
       id,
@@ -353,7 +353,7 @@ describe('博客格式：validateBlogData / 落库 / 读出口', () => {
 
 // ── 3. 剪贴板：落库、读出口、对外解析 ────────────────────────────────────────
 describe('剪贴板格式：createClip / updateClip / getClip / resolvePublicClipRefs', () => {
-  it('新建默认 markdown；显式 reactive 生成同版本快照；无法编译时整笔拒绝', async () => {
+  it('新建默认 markdown；显式 reactive 只保存源码；无法编译时整笔拒绝', async () => {
     const u = await makeUser();
     const ok = await createClip(u.id, { title: 't', content: 'c' });
     expect(ok.ok).toBe(true);
@@ -371,7 +371,7 @@ describe('剪贴板格式：createClip / updateClip / getClip / resolvePublicCli
       expect(row?.syntaxVersion).toBe('local-draft-3');
       expect(
         await prisma.reactiveSnapshot.count({ where: { kind: 'clipboard', contentId: reactive.id, format: 'reactive' } })
-      ).toBe(1);
+      ).toBe(0);
     }
 
     expect(
@@ -431,7 +431,7 @@ describe('剪贴板格式：createClip / updateClip / getClip / resolvePublicCli
     expect(reactive?.syntaxVersion).toBe('local-draft-3');
     expect(
       await prisma.reactiveSnapshot.count({ where: { kind: 'clipboard', contentId: reactiveId, format: 'reactive' } })
-    ).toBe(1);
+    ).toBe(0);
 
     expect(
       await updateClip(reactiveId, u.id, {

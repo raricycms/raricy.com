@@ -31,6 +31,7 @@ import {
 } from './host-components';
 import { reactiveDiagnosticCodes } from './diagnostics';
 import { checkSyntaxBudget } from './syntax-budget';
+import { sourceForCurrentCompiler } from './source-migration';
 import type { AdaptedSourceSegment } from './source-map';
 import type { ContentFormat } from '../content-format';
 import type { ReferenceMode, SiteHostData } from './ref-types';
@@ -63,6 +64,7 @@ export interface ReactiveCompileOutcome {
 
 export interface ReactiveCompileInput {
   source: string;
+  syntaxVersion?: string | null;
   format: ContentFormat;
   mode: ReferenceMode;
   viewer: { id: string; role?: string; archivedAt?: Date | null } | null;
@@ -168,7 +170,8 @@ export async function compileReactiveSource(
     };
   }
 
-  const prepared = await prepareReactiveDocument(input.source, {
+  const source = sourceForCurrentCompiler(input.source, input.syntaxVersion);
+  const prepared = await prepareReactiveDocument(source, {
     mode: input.mode,
     format: input.format,
     viewer: input.viewer,

@@ -11,14 +11,14 @@ import {
 } from './source-migration';
 import { isoWithOffset, nowForDb } from '../db-time';
 import { runAsBackendOps } from '../audit-context';
-import { buildReactiveSnapshotForWrite } from './publish';
-import type { ReactiveSnapshotRow, SnapshotKind } from './snapshot-store';
+import { validateContentForPublish } from './publish';
+type ContentKind = 'blog' | 'clipboard';
 
 const MIGRATION_NAME = 'reactive-md-local-draft-3';
 const OLD_SYNTAX = 'local-draft-2';
 
 interface SourceRow {
-  kind: SnapshotKind;
+  kind: ContentKind;
   id: string;
   source: string;
   syntaxVersion: string | null;
@@ -26,11 +26,10 @@ interface SourceRow {
 
 interface PreparedRow extends SourceRow {
   migratedSource: string;
-  snapshot: ReactiveSnapshotRow;
 }
 
 export interface MigrationBlocker {
-  kind: SnapshotKind;
+  kind: ContentKind;
   id: string;
   codes: string[];
 }
@@ -104,18 +103,18 @@ export async function planReactiveV07Migration(): Promise<ReactiveV07Plan> {
         blockers.push({ kind: item.kind, id: item.id, codes: migrated.diagnostics.map((d) => d.code) });
         continue;
       }
-      const snapshot = await buildReactiveSnapshotForWrite({ kind: item.kind, contentId: item.id, content: migrated.source, format: 'reactive' });
-      if (!snapshot.ok) {
-        blockers.push({ kind: item.kind, id: item.id, codes: snapshot.codes });
+      const validation = await validateContentForPublish({ content: migrated.source, format: 'reactive' });
+      if (!validation.ok) {
+        blockers.push({ kind: item.kind, id: item.id, codes: validation.codes });
         continue;
       }
-      rows.push({ ...item, migratedSource: migrated.source, snapshot: snapshot.row });
+      rows.push({ ...item, migratedSource: migrated.source });
     }
     return { alreadyApplied, rows, blockers };
   });
 }
 
-/** 调用前须停写并备份数据库。正文、快照和一次性标记在同一事务提交。 */
+/** 调用前须停写并备份数据库。正文和一次性标记在同一事务提交。 */
 export async function applyReactiveV07Migration(plan: ReactiveV07Plan): Promise<void> {
   if (plan.alreadyApplied || plan.blockers.length) throw new Error('Migration already applied or blocked');
   await runAsBackendOps(() => prisma.$transaction(async (tx) => {
@@ -128,12 +127,7 @@ export async function applyReactiveV07Migration(plan: ReactiveV07Plan): Promise<
         ? await tx.blogContent.updateMany({ where: { blogId: row.id, ...predicate }, data: { content: row.migratedSource, syntaxVersion: LOCAL_SYNTAX_VERSION } })
         : await tx.clipText.updateMany({ where: { clipId: row.id, ...predicate }, data: { content: row.migratedSource, syntaxVersion: LOCAL_SYNTAX_VERSION } });
       if (updated.count !== 1) throw new Error(`Source changed during migration: ${row.kind}:${row.id}`);
-      const { id, kind, contentId, contentVersion, ...snapshotData } = row.snapshot;
-      await tx.reactiveSnapshot.upsert({
-        where: { uq_reactive_snapshot_version: { kind, contentId, contentVersion } },
-        create: row.snapshot,
-        update: snapshotData,
-      });
+
     }
     // 捕获准备之后新增或被修改成旧版本的正文，避免留下未迁移的行。
     const old = { format: 'reactive', OR: [{ syntaxVersion: null }, { syntaxVersion: { not: LOCAL_SYNTAX_VERSION } }] };

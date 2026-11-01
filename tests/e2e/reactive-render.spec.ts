@@ -1,12 +1,11 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// reactive-render.spec.ts — ReactiveMD 的**发布 → 阅读**闭环（flag=off 的默认线上口径）
+// reactive-render.spec.ts — ReactiveMD 的发布、源码保存与按需阅读闭环
 //
 // 为什么这条必须在真浏览器里：静态正文由客户端组件的 `mode="static"` 做 SSR，
-// 「无 JS 也有正文」「快照读得出来」「reactive 源码没有掉进旧 Markdown 解析器」
+// 「无 JS 也有正文」「无快照也能交互」「reactive 源码没有掉进旧 Markdown 解析器」
 // 三件事单测都盖不住。
 //
-// 数据用 API 造（顺带覆盖写入闸门）：reactive 发布前必须编译成功并与快照同事务落库；
-// flag=off 时阅读页应展示 reactive-static，而不是 legacy 的 Markdown 产物。
+// 数据用 API 造；不准备任何持久编译快照。
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { test, expect } from '@playwright/test';
@@ -57,6 +56,41 @@ async function createBlogViaApi(
 }
 
 test.describe('ReactiveMD 发布与阅读', () => {
+  for (const width of [1280, 390]) {
+  test(`云剪贴板旧版 RMD 保存原文，radio-group 与滑块可交互，更新后正常重读（${width}px）`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await loginViaApi(page, SEED_USERS.core.username);
+    const title = `source-only-${uniqueTag()}`;
+    const source = [
+      '<!-- reactive-md: local-draft-2 -->', '', '旧片段正文', '',
+      '<radio-group bind="pace" label="节奏" initial="guided">',
+      '<option value="guided">跟随</option>', '<option value="free">自由</option>',
+      '</radio-group>', '', '<slider bind="n" label="人数" initial="2" min="1" max="5">',
+      '', '人数 {{ n }} 人，节奏 {{ pace }}。',
+    ].join('\n');
+    const response = await page.request.post('/api/clipboard', { data: { title, content: source, format: 'reactive', publicity: true } });
+    expect(response.status(), await response.text()).toBe(200);
+    const { id } = await response.json();
+    await page.goto(`/clipboard/${id}`);
+    const body = page.locator('.reactive-document');
+    await expect(body).toContainText('人数 2 人');
+    const slider = body.locator('input[type="range"]');
+    await slider.focus(); await slider.press('ArrowRight');
+    await expect(body).toContainText('人数 3 人');
+    await body.getByRole('radio', { name: '自由' }).check();
+    await expect(body).toContainText('节奏 free');
+    const { clip: stored } = await (await page.request.get(`/api/clipboard/${id}`)).json();
+    expect(stored.content).toBe(source);
+    expect(stored.syntax_version).toBe('local-draft-2');
+    const edited = source.replace('旧片段正文', '更新后的片段正文');
+    const updated = await page.request.put(`/api/clipboard/${id}`, { data: { title, content: edited, format: 'reactive', publicity: true } });
+    expect(updated.status(), await updated.text()).toBe(200);
+    await page.reload();
+    await expect(body).toContainText('更新后的片段正文');
+    await expect(body).toContainText('人数 2 人');
+  });
+  }
+
   test('reactive 发布后阅读页默认可交互，引用 / 脚注 / 软换行都在', async ({
     page,
   }) => {

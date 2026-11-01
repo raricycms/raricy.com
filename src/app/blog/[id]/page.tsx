@@ -174,13 +174,11 @@ export default async function BlogDetailPage({ params }: { params: Promise<{ id:
   // #userContentContainer` 这层外壳（e2e 与 _clipboard/_blog 样式都钉着它）。
   // 只有 legacy 分支由 MarkdownRenderer 自己产出这两个节点。
   const contentRenderer = readRender.choice.renderer;
-  // 统一后正常阅读的产物可能来自同版本持久快照（访客 / 无成员引用）或本次现编译
-  // （成员引用展开）。两者都以 `reactive` 返回，由 `staticFirst` 给 SSR 静态首屏。
+  // 按当前源码编译，staticFirst 先给 SSR 首屏，再接管为交互视图。
   const reactiveDocument =
-    readRender.bundle?.result.ok ? readRender.bundle.result.document : readRender.snapshot?.document ?? null;
-  const reactiveHostData = readRender.bundle?.hostData ?? readRender.snapshot?.hostData;
-  const staticDocument =
-    readRender.snapshot?.document ?? (readRender.bundle?.result.ok ? readRender.bundle.result.document : null);
+    readRender.bundle?.result.ok ? readRender.bundle.result.document : null;
+  const reactiveHostData = readRender.bundle?.hostData;
+  const staticDocument = reactiveDocument;
   const staticHostData = reactiveHostData;
   let contentNode: ReactNode;
   if (contentRenderer === 'reactive' && reactiveDocument) {

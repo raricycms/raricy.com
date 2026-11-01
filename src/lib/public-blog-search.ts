@@ -7,27 +7,17 @@ import { INDEXABLE_VISIBILITIES } from './blog-visibility';
 import { parseContentFormat } from './content-format';
 import { reactiveCompileOptions } from './reactive/host-components';
 import { applyLegacyHtmlCompat } from './reactive/legacy-compat';
-import { currentSnapshotSignature } from './reactive/snapshot-store';
+import { currentCompileSignature } from './reactive/compile-identity';
+import { sourceForCurrentCompiler } from './reactive/source-migration';
 
-// ⚠️ 只改 `publicBodyText` 的**文字提取规则**（不改编译输入）时必须 bump 这个基础版本：
-// 它不在快照编译签名里。编译包 / 兼容层 / 选项 / 语法版本变化会自动进入下面的组合版本。
-export const PUBLIC_SEARCH_BASE_VERSION = 'public-body/2';
+// 改正文提取规则时递增基础版本；包 / 语法 / 兼容规则 / 选项变化自动进入组合版本。
+export const PUBLIC_SEARCH_BASE_VERSION = 'public-body/3';
 
-/**
- * 真正写进 `public_blog_search_state.version` / FTS `version` 的持久版本。
- *
- * 它 = 正文提取规则版本 + Markdown / Reactive 两套**当前编译签名**。持久化进 state
- * 的意义：一次 up 刷新了快照、却在索引阶段失败 / 被别的文档 blocker 挡住时，state
- * 仍是旧签名；下一次 up 即使回填 `refreshed=0`，覆盖检查也会按版本不等判定需要重建。
- * 只依赖「本次进程 summary.refreshed > 0」不够 —— 重跑时它已经归零。
- *
- * 用 JSON 而不是 `|` 拼接：签名里出现分隔符也不会碰撞。升级后第一次 up 会因旧
- * state 行（`public-body/2`）不匹配而全量重建一次，之后只有真实签名变化才重建。
- */
+/** 独立索引的失效身份，不依赖数据库快照或 SQL 迁移。 */
 export const PUBLIC_SEARCH_VERSION = JSON.stringify([
   PUBLIC_SEARCH_BASE_VERSION,
-  currentSnapshotSignature('markdown'),
-  currentSnapshotSignature('reactive'),
+  currentCompileSignature('markdown'),
+  currentCompileSignature('reactive'),
 ]);
 export type SearchAvailability = 'ready' | 'metadata-only' | 'partial';
 
@@ -49,7 +39,7 @@ export async function publicBodyText(source: string, rawFormat: unknown): Promis
   try {
     const { compileLocal } = await import('reactive-md');
     // 与阅读 / 预览同一套历史 HTML 兼容；否则旧 HTML 文章会 body_status='missing'。
-    const compat = applyLegacyHtmlCompat(source);
+    const compat = applyLegacyHtmlCompat(sourceForCurrentCompiler(source));
     const result = compileLocal(compat.source, reactiveCompileOptions(format));
     if (!result.ok) return { text: '', status: 'missing' };
     const visit = (node: LocalNode): string => {

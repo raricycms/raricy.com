@@ -11,13 +11,7 @@
 //     `${kind}:${ref}`（计划 §5.2）。改属性名 → 数据永远取不到，页面只剩
 //     `local-host-unavailable` 占位，且不报错。
 //
-// 【选项键只有一份实现：上游的 `localCompileOptionsKey()`】
-// 缓存键与快照签名里的 optionsKey 都由 `localCompileOptionsKey(reactiveCompileOptions(…))`
-// 现算（见 `compile.ts` 与 `snapshot-store.ts`），本模块**不另写一份**。
-//
-// 这里曾经有一个 `reactiveCompileOptionsKeyFor(format)` 的固定字符串实现，零调用点 —— 
-// 那是「同一组选项」的第二个真相源：谁要是顺手改用它，缓存键与快照签名会悄悄换成
-// 另一套字符串，命中率静默下降、快照全判 stale，且不报任何错。已删除，别再抄回来。
+// 选项键复用上游 localCompileOptionsKey，用于内存缓存和公开索引失效。
 // ─────────────────────────────────────────────────────────────────────────────
 
 import type { LocalCompileOptions, LocalHostComponentSchema } from 'reactive-md';
@@ -50,8 +44,8 @@ export const SITE_EMBED_TAG = 'site-embed';
  *
  * 取 50,000 的理由：本地语料里已知最长的三篇诗文最终 AST 是 16,951 / 23,188 /
  * 22,600，50k 给累计节点留出足够余量，同时仍是一个**有界**的拒绝阈值。最坏情况
- * （200k 高结构正文）约 3s，所以正常阅读路径必须优先走发布时生成的持久快照，
- * 不能让每次未命中都付这份同步成本（见 `read-render.ts` 与 `publish.ts`）。
+ * （200k 高结构正文）约 3s；阅读复用有界内存缓存，保留复杂度闸门，
+ * 冷编译耗时继续观测，不把编译结果持久保存为正文数据。
  *
  * 调大之前先跑 `npm run reactive:measure` 并记录冷编译 p50/p95；不要用 100k 的
  * 观测配置直接替换生产值。

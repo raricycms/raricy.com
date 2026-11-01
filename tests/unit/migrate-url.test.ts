@@ -5,7 +5,9 @@ import { describe, expect, it } from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { isMainModule, resolveDatabaseUrl } from '../../scripts/migrate.mjs';
+import { createRequire } from 'node:module';
+// 运维入口交给 Node 原生加载，避免 Vite 重写 import.meta 干扰入口判定。
+const { isMainModule, resolveDatabaseUrl } = createRequire(import.meta.url)('../../scripts/migrate.mjs') as typeof import('../../scripts/migrate.mjs');
 
 // 平台中立：不要用 `path.resolve('C:/...')` —— 在 POSIX 上它是相对路径。
 const PRISMA_DIR = path.join(os.tmpdir(), 'raricy repo', 'prisma');

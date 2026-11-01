@@ -20,7 +20,7 @@ export type ContentFormatWriteResult =
 /**
  * Omitted updates preserve the stored language.
  *
- * Reactive writes are accepted here; the **compile + snapshot** check is the service's
+ * Reactive writes are accepted here; the syntax / format validation is the service's
  * job (a request that cannot be compiled must not be stored at all).
  */
 export function resolveContentWriteFormat(
