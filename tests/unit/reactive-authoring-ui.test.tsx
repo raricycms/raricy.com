@@ -147,6 +147,8 @@ const mocks = vi.hoisted(() => {
     },
     applyReactiveAuthorAnalysis: vi.fn(),
     clearReactiveAuthorAnalysis: vi.fn(),
+    /** 预览收到的 props（验证 format 真的传下去，而不是只接了类型）。 */
+    previewProps: null as null | Record<string, unknown>,
   };
 });
 
@@ -244,7 +246,12 @@ vi.mock('@/app/components/markdown-editor/export', () => ({
   safeFilename: vi.fn((value: string) => value),
   stripInteractiveShells: vi.fn(),
 }));
-vi.mock('@/app/components/reactive/ReactivePreview', () => ({ default: () => null }));
+vi.mock('@/app/components/reactive/ReactivePreview', () => ({
+  default: (props: Record<string, unknown>) => {
+    mocks.previewProps = props;
+    return null;
+  },
+}));
 vi.mock('@/app/components/MarkdownRenderer', () => ({ default: () => null }));
 // 格式分析器是后端契约（worker）；单测里只要一个不排后台任务的替身 ——
 // 无候选语法的正文根本不会调用它，需要结果的用例各自再覆盖。
@@ -318,6 +325,7 @@ beforeEach(() => {
   mocks.applyReactiveAuthorAnalysis.mockClear();
   mocks.clearReactiveAuthorAnalysis.mockClear();
   mocks.analyzerOptions = null;
+  mocks.previewProps = null;
   mocks.reactiveAuthoring.mockImplementation(() => []);
   mocks.getReactiveCompletions.mockReturnValue([]);
   mocks.applyReactiveCompletion.mockReturnValue(true);
@@ -668,6 +676,16 @@ describe('MarkdownEditor：Reactive 诊断 / 补全 / 格式化', () => {
     mocks.formatReactiveDocument.mockReturnValue(false);
     await openFormat();
     expect(container.textContent).toContain('没有需要格式化的内容');
+  });
+
+  it('预览始终走统一引擎，并把当前格式传下去（Markdown 子剪贴板内联一层）', () => {
+    const markdown = mount(createElement(EditorHarness, { initialFormat: 'markdown' }));
+    expect(mocks.previewProps?.format).toBe('markdown');
+    expect(mocks.previewProps?.source).toBe('# 标题\n\n正文');
+    markdown.remove();
+
+    mount(createElement(EditorHarness, { initialFormat: 'reactive' }));
+    expect(mocks.previewProps?.format).toBe('reactive');
   });
 
   it('Markdown 模式不启用作者扩展、不显示诊断面板；Components 入口仍在', () => {

@@ -30,8 +30,6 @@ import {
   useReducer,
   useRef,
   useState,
-  type ComponentProps,
-  type ComponentType,
 } from 'react';
 import {
   Compartment,
@@ -69,7 +67,6 @@ import {
   getReactiveCompletions,
   reactiveAuthoring,
   revealReactiveDiagnostic,
-  type AuthorAnalysis,
   type AuthorCompletion,
   type ReactiveAuthorAnalysis,
 } from '@/lib/md-editor/reactive-authoring';
@@ -120,37 +117,6 @@ const SUBMIT_ANALYSIS_ATTEMPTS = 3;
 const SPLIT_MIN_WIDTH = 768;
 
 type ViewMode = 'edit' | 'split' | 'preview';
-
-/**
- * `ReactivePreview` 的向前兼容外观：Markdown 父文档也需要它（统一预览引擎），
- * 且必须把 `format` 传下去，Markdown 子剪贴板才会按「内联一层」处理（契约 §5.2）。
- *
- * ⚠️ 这层 cast 是**临时**的：`format` 的真实签名由后端的
- * `ReactivePreviewProps` 提供（后端树 WIP，尚未提交到本树）。合并后**必须删掉**
- * 这里的别名、直接使用真实 props —— 别让它变成「传了但没人读」的永久假接线。
- */
-type ReactivePreviewCompatProps = ComponentProps<typeof ReactivePreview> & {
-  format?: ContentFormat;
-};
-const ReactivePreviewCompat = ReactivePreview as unknown as ComponentType<ReactivePreviewCompatProps>;
-
-/**
- * `FormatAnalysis` / 分析器选项的向前兼容扩展。
- *
- * 后端 WIP 已给 `FormatAnalysis` 增加 `author` / `mode` / `fallback`，并给
- * `createFormatAnalyzer` 增加 `onModeChange` / `onFallback`；本树合并前这两个
- * 字段还不存在。用**可选字段**读：旧实现下取不到就不画装饰 / 不提示回退，
- * 新实现下自动生效。合并后删掉这两个别名，让 tsc 直接校验真实签名。
- */
-type FormatAnalysisCompat = FormatAnalysis & {
-  author?: ReactiveAuthorAnalysis | null;
-  mode?: 'worker' | 'fallback' | 'unknown';
-  fallback?: boolean;
-};
-type FormatAnalyzerOptionsCompat = Parameters<typeof createFormatAnalyzer>[0] & {
-  onModeChange?: (mode: 'worker' | 'fallback' | 'unknown', detail?: string) => void;
-  onFallback?: (detail?: string) => void;
-};
 
 export interface MarkdownEditorHandle {
   /** 最新原文（同步）。提交与草稿都从这里取。 */
@@ -685,14 +651,11 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(
             if (result.effective === 'markdown') setComponentInserted(false);
             // worker 已经把 authoring analysis 一起算好了（includeAuthorAnalysis）；
             // 这里只负责把它交给 CM6 装饰，不在主线程再跑一遍（审查 3.3）。
-            const compatible = result as FormatAnalysisCompat;
-            const nextAuthor = compatible.author ?? null;
+            const nextAuthor = result.author ?? null;
             authorAnalysisSourceRef.current = nextAuthor ? source : null;
             setAuthorAnalysis(nextAuthor);
-            // 后端把「worker / fallback」带在结果上；旧实现没有这个字段时不改状态。
-            if (typeof compatible.fallback === 'boolean') {
-              setAnalysisFallback(compatible.fallback);
-            }
+            // worker / fallback 由 FormatAnalysis 直接回报，不用再从选项回调猜。
+            setAnalysisFallback(result.fallback);
             if (result.syntaxVersion) syntaxVersionRef.current = result.syntaxVersion;
             // 草稿来自旧语法版本：明确提示，别让它在保存时被服务端拒绝时才暴露。
             const restored = restoredDraftVersionRef.current;
@@ -717,9 +680,8 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(
     useEffect(() => {
       let analyzer: ReturnType<typeof createFormatAnalyzer> | null = null;
       try {
-        // onModeChange 是新契约的可选字段（见 FormatAnalyzerOptionsCompat）：
         // worker 不可用时上游回退主线程，编辑会变慢 —— 面板必须说出来。
-        const analyzerOptions: FormatAnalyzerOptionsCompat = {
+        analyzer = createFormatAnalyzer({
           createWorker: () =>
             // MarkdownEditor 在 src/app/components；worker 在 src/lib/reactive。
             new Worker(new URL('../../lib/reactive/compile.worker.ts', import.meta.url), {
@@ -729,8 +691,7 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(
             if (destroyedRef.current) return;
             setAnalysisFallback(nextMode === 'fallback');
           },
-        };
-        analyzer = createFormatAnalyzer(analyzerOptions);
+        });
         analyzerRef.current = analyzer;
       } catch {
         // Worker 起不来时上游调度器会异步回退主线程；这里只是兜底标记，
@@ -1351,7 +1312,7 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(
                 引用适配 / 编译选项，避免「预览一套、阅读另一套」。Markdown 父
                 文档同样传 format，Markdown 子剪贴板按约定内联一层。
               */}
-              <ReactivePreviewCompat
+              <ReactivePreview
                 key={`${referenceMode}:${effectiveFormat}`}
                 source={previewDoc}
                 refreshToken={refreshToken}
