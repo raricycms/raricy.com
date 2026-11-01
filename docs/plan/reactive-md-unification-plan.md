@@ -611,7 +611,8 @@ P1 新增测试以实际合并文件为准，不在测试里复制一套实现�
 ### P6 最终只读复验 r7（2026-11-01，外层执行）
 
 固定产品代码 `a7b1e963`（`reactive-md@0.7.0` / `local-draft-3` / 节点预算 50,000 /
-compat `/4`），只读本地业务库副本，未修改任何业务数据，报告只由 root 读取。
+compat `/4`），用 `DatabaseSync readOnly:true` 直接读取**现有本地开发库（只读连接）**，
+未复制数据库、未修改任何业务数据，报告只由 root 读取。
 
 - 5,105 篇 = 4,909 博客 + 196 剪贴板。
 - **5,104 ok / 1 `local.math.display` 局部 fallback / 0 failed / 0 formatMismatch /
