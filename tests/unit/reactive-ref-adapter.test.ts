@@ -12,8 +12,17 @@
 // 要的是行为，不是实现细节。
 // ─────────────────────────────────────────────────────────────────────────────
 
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { createElement } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
+import { compileLocal } from 'reactive-md';
+import ReactiveSubDocument from '@/app/components/reactive/ReactiveSubDocument';
+import { renderSiteEmbedStatic } from '@/app/components/reactive/site-embed-static';
 import { ADAPTER_VERSION, adaptReactiveReferences, scanReactiveReferences } from '@/lib/reactive/ref-adapter';
+import { applyLegacyHtmlCompat } from '@/lib/reactive/legacy-compat';
+import { reactiveCompileOptions } from '@/lib/reactive/host-components';
 import {
   locateDiagnosticRange,
   mapAdaptedRangeToSource,
@@ -406,18 +415,35 @@ describe('剪贴板引用：Markdown 父文档内联一层，Reactive 父文档�
     });
   }
 
-  it('★ Markdown 父文档 + Markdown 子剪贴板 → hostData 携带一层内容 ★', async () => {
+  it('★ Markdown 父文档 + Markdown 子剪贴板 → hostData 携带同版本静态子文档 ★', async () => {
     const result = await adapt('markdown', 'expand');
     const data = result.hostData[`clipboard:${CLIP_ID}`];
     expect(data).toMatchObject({ kind: 'clipboard', status: 'ready', title: '子剪贴板' });
-    expect(data.content).toBe(content);
+    // 原始正文不再下发：消费者只有编译后的子文档。
+    expect(data.content).toBeUndefined();
+    expect(data.document).toBeDefined();
+    expect(data.hostData).toBeDefined();
+
+    // 与详情页同一条准备链：compat → external 适配 → markdown 编译选项。
+    const compat = applyLegacyHtmlCompat(content);
+    const direct = await adaptReactiveReferences(compat.source, {
+      mode: 'external',
+      parentFormat: 'markdown',
+      dataImages: compat.dataImages,
+    });
+    const compiled = compileLocal(direct.adaptedSource, reactiveCompileOptions('markdown'));
+    expect(compiled.ok).toBe(true);
+    if (!compiled.ok) return;
+    expect(data.document).toEqual(compiled.document);
+    expect(data.hostData).toEqual(direct.hostData);
   });
 
   it('Markdown 子剪贴板即使父文档是 Reactive 也内联（format 升级后阅读不变）', async () => {
     const result = await adapt('reactive', 'expand');
     const data = result.hostData[`clipboard:${CLIP_ID}`];
     expect(data.kind).toBe('clipboard');
-    expect(data.content).toBe(content);
+    expect(data.document).toBeDefined();
+    expect(data.content).toBeUndefined();
   });
 
   it('external 视图不取数、不携带正文（全部保留字面量）', async () => {
@@ -438,5 +464,111 @@ describe('剪贴板引用：Markdown 父文档内联一层，Reactive 父文档�
       }),
     });
     expect(result.hostData[`clipboard:${CLIP_ID}`].content).toBeUndefined();
+    expect(result.hostData[`clipboard:${CLIP_ID}`].document).toBeUndefined();
+  });
+
+  it('子正文按自己的 Markdown 语义清洗：媒体、公式与详情页同一份产物', async () => {
+    const media =
+      '<video src="https://third-party.example/a.mp4"></video>\n\n公式 $x^2$ 与 **粗体**。\n\n[@AbCd5678]';
+    const result = await adaptReactiveReferences(`前 [@${CLIP_ID}] 后`, {
+      mode: 'expand',
+      parentFormat: 'markdown',
+      resolve: async () => ({
+        status: 'ready',
+        title: '媒体子剪贴板',
+        format: 'markdown',
+        content: media,
+        version: 'v1',
+      }),
+    });
+    const data = result.hostData[`clipboard:${CLIP_ID}`];
+    expect(data.document).toBeDefined();
+    if (!data.document) return;
+
+    const types: string[] = [];
+    const walk = (nodes: typeof data.document.nodes): void => {
+      for (const node of nodes) {
+        types.push(node.type);
+        if (node.children) walk(node.children);
+      }
+    };
+    walk(data.document.nodes);
+
+    // 历史 `<video>` 被 compat 转成链接，不会留下会发第三方请求的媒体节点；
+    // 公式按 Markdown 模板编译成 inlineMath 节点；嵌套剪贴板 token 仍是字面量（不递归）。
+    expect(types).not.toContain('htmlDocument');
+    expect(types).not.toContain('hostComponent');
+    expect(types).toContain('inlineMath');
+    expect(types).toContain('link');
+    expect(JSON.stringify(data.document)).not.toContain('<video');
+    expect(JSON.stringify(data.document)).toContain('third-party.example/a.mp4');
+    expect(JSON.stringify(data.document)).toContain('[@AbCd5678]');
+
+    // 与详情页（clipboard 的阅读路径）同一条准备链逐字一致。
+    const compat = applyLegacyHtmlCompat(media);
+    const direct = await adaptReactiveReferences(compat.source, {
+      mode: 'external',
+      parentFormat: 'markdown',
+      dataImages: compat.dataImages,
+    });
+    const compiled = compileLocal(direct.adaptedSource, reactiveCompileOptions('markdown'));
+    expect(compiled.ok).toBe(true);
+    if (!compiled.ok) return;
+    expect(data.document).toEqual(compiled.document);
+
+    // 内联渲染与「详情页同一条准备链的产物」用同一份静态渲染器必须逐字一致：
+    // 历史 `<video>` 只留链接、公式仍由同一个文档视图渲染。
+    const inlineHtml = renderToStaticMarkup(
+      createElement(ReactiveSubDocument, {
+        document: data.document,
+        hostData: data.hostData,
+        hostRenderer: renderSiteEmbedStatic,
+      })
+    );
+    const detailHtml = renderToStaticMarkup(
+      createElement(ReactiveSubDocument, {
+        document: compiled.document,
+        hostData: direct.hostData,
+        hostRenderer: renderSiteEmbedStatic,
+      })
+    );
+    expect(inlineHtml).toBe(detailHtml);
+    expect(inlineHtml).not.toContain('<video');
+    expect(inlineHtml).toContain('third-party.example/a.mp4');
+    expect(inlineHtml).toContain('data-render-mode="static"');
+
+    // 宿主渲染入口：有子产物就内联，没有（external 快照 / 子编译失败）就退回卡片。
+    const node = {
+      type: 'component',
+      id: 'clip-embed',
+      range: { start: 0, end: 0 },
+      attrs: { kind: 'clipboard', ref: CLIP_ID },
+    };
+    const inlined = renderToStaticMarkup(
+      createElement('div', null, renderSiteEmbedStatic(node, data, { mode: 'interactive' } as never))
+    );
+    expect(inlined).toContain('clipboard-inline');
+    const card = renderToStaticMarkup(
+      createElement(
+        'div',
+        null,
+        renderSiteEmbedStatic(
+          node,
+          { ...data, document: undefined, hostData: undefined },
+          { mode: 'interactive' } as never
+        )
+      )
+    );
+    expect(card).toContain('site-embed-clipboard');
+    expect(card).not.toContain('clipboard-inline');
+  });
+
+  it('SiteEmbedView 不再引用旧 Markdown 渲染器（内联只剩新引擎一条路）', () => {
+    const view = readFileSync(
+      resolve(import.meta.dirname, '../../src/app/components/reactive/SiteEmbedView.tsx'),
+      'utf8'
+    );
+    expect(view).not.toContain('MarkdownRenderer');
+    expect(view).not.toContain('InlineClipboardMarkdown');
   });
 });

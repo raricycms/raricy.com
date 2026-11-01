@@ -2033,10 +2033,13 @@ source-map 偏移不变）：
 - 标签与 hostData 原子成对；作者伪造的 `<site-embed` 在盖码后转义。`SiteEmbedView`
   只把投票接成交互，其余委托静态渲染；任何分支都不 `dangerouslySetInnerHTML`，
   链接只由校验过的 kind/ref 拼。
-- **剪贴板内联按子格式决定**：Markdown 子剪贴板在 `expand` 下携带一层正文，由
-  `MarkdownRenderer` 以 `external` 引用口径只读渲染（不嵌套 Reactive 运行时、
-  字面表达式不进父文档绑定作用域）；Reactive 子剪贴板仍只给链接卡片。`external`
-  视图所有剪贴板 / 投票 / 收藏夹保留字面量，零业务请求。
+- **剪贴板内联按子格式决定**：Markdown 子剪贴板在 `expand` 下携带一份同版本
+  **静态子文档**（compat → external 引用适配 → 该格式的编译选项），由
+  `ReactiveSubDocument` 以 `mode="static"` 渲染（不嵌套交互运行时、字面表达式
+  不进父文档绑定作用域，子适配固定 external、不递归读取私有资源）。Reactive
+  子剪贴板仍只给链接卡片。`external` 视图所有剪贴板 / 投票 / 收藏夹保留字面量，
+  零业务请求，因此快照里永远没有子产物。原始 `content` 只用于那趟编译，不随
+  hostData 下发。
 - 预算沿用旧管线：主循环 50 处、收藏夹 3、音频 3、50 次取数、4 并发、展开后
   50 万字符；单处失败只保留字面量。
 

@@ -109,7 +109,10 @@ describe('compileReactivePreview', () => {
       ref: CLIP_ID,
       status: 'ready',
     });
-    expect(hostData[`clipboard:${CLIP_ID}`].content).toBe('# 不该被内联的正文');
+    // 原始正文只用于编译；预览与阅读拿到的是同版本静态子文档。
+    expect(hostData[`clipboard:${CLIP_ID}`].content).toBeUndefined();
+    expect(hostData[`clipboard:${CLIP_ID}`].document).toBeTruthy();
+    expect(hostData[`clipboard:${CLIP_ID}`].hostData).toBeTruthy();
 
     // 取数只发生在需要它的三类上；图床 / 音频不占请求。
     expect(calls.sort()).toEqual(
