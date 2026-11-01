@@ -33,12 +33,21 @@ import { SITE_REACTIVE_COMPONENT_NAMES } from './component-names';
 import { maskMarkdownCode } from '../favorite-refs';
 import { dataImageRef, MAX_DATA_IMAGE_CHARS, parseLegacyDataImage } from './data-image';
 import { isAllowedReactiveUrl } from './url-policy';
+import type {
+  SiteMediaPayload,
+  SiteMediaPreload,
+  SiteMediaSources,
+  SiteMediaSourceItem,
+  SiteMediaTrackItem,
+} from './ref-types';
 
 /**
  * 兼容规则的显式版本。**改任何规则都要递增** —— 它进快照签名。
  * /2：修复 section/progress/table 组件误拆、线性扫描、align 取值、引用块缩进代码。
+ * /3：历史 HTML 音视频转为 `[[媒体:<10hex>]]` + mediaSources（controls / source /
+ *     track，preload 默认 none，无 autoplay）。
  */
-export const LEGACY_COMPAT_VERSION = 'reactive-legacy-compat/2';
+export const LEGACY_COMPAT_VERSION = 'reactive-legacy-compat/3';
 
 export interface LegacyDataImageAsset {
   url: string;
@@ -55,6 +64,8 @@ export interface LegacyCompatResult {
   counts: Record<string, number>;
   /** `[@图片/<ref>]` → 受限 data 位图。真实字节只随 hostData 交给宿主组件。 */
   dataImages: Record<string, LegacyDataImageAsset>;
+  /** `[[媒体/<10hex>]]` → 历史 HTML 音视频的受限播放数据（纯 JSON）。 */
+  mediaSources: SiteMediaSources;
 }
 
 type MutableCounts = Record<string, number>;
@@ -496,7 +507,113 @@ function removeBlocks(chars: string[], masked: string, counts: MutableCounts): v
  *   · 不可用的地址 → 只留「视频 / 音频」四个字。
  * 整块替换，长度补齐。
  */
-function convertMediaBlocks(chars: string[], masked: string, counts: MutableCounts): void {
+const MEDIA_PRELOAD: ReadonlySet<string> = new Set(['none', 'metadata', 'auto']);
+const MEDIA_TRACK_KIND: ReadonlySet<NonNullable<SiteMediaTrackItem['kind']>> = new Set([
+  'subtitles',
+  'captions',
+  'descriptions',
+  'chapters',
+  'metadata',
+]);
+const SAFE_MIME = /^[A-Za-z0-9.+-]+\/[A-Za-z0-9.+-]+$/;
+
+/** 标签里是否出现过某属性（布尔属性 `loop` / `muted` / `default` 等）。 */
+function hasAttr(tag: string, name: string): boolean {
+  return new RegExp(`(?:^|\\s)${name}(?:\\s|=|/|>)`, 'i').test(tag);
+}
+
+function safeMediaType(value: string | null): string | undefined {
+  if (!value || value.length > 100 || !SAFE_MIME.test(value)) return undefined;
+  return value;
+}
+
+/** 解析一个 `<video>` / `<audio>` 区块；没有任何可用 src 时返回 null。 */
+function readMediaPayload(
+  media: 'video' | 'audio',
+  openTag: string,
+  inner: string
+): SiteMediaPayload | null {
+  const direct = readAttr(openTag, 'src');
+  const src = direct && isAllowedReactiveUrl(direct, 'link') ? direct : undefined;
+
+  const sources: SiteMediaSourceItem[] = [];
+  for (const match of inner.matchAll(/<source\b[^>]*>/gi)) {
+    const source = readAttr(match[0], 'src');
+    if (!source || !isAllowedReactiveUrl(source, 'link')) continue;
+    const item: SiteMediaSourceItem = { src: source };
+    const type = safeMediaType(readAttr(match[0], 'type'));
+    if (type) item.type = type;
+    sources.push(item);
+  }
+
+  const tracks: SiteMediaTrackItem[] = [];
+  if (media === 'video') {
+    for (const match of inner.matchAll(/<track\b[^>]*>/gi)) {
+      const source = readAttr(match[0], 'src');
+      if (!source || !isAllowedReactiveUrl(source, 'link')) continue;
+      const item: SiteMediaTrackItem = { src: source };
+      const kind = readAttr(match[0], 'kind')?.toLowerCase();
+      if (kind && MEDIA_TRACK_KIND.has(kind as NonNullable<SiteMediaTrackItem['kind']>)) {
+        item.kind = kind as NonNullable<SiteMediaTrackItem['kind']>;
+      }
+      const srclang = readAttr(match[0], 'srclang');
+      if (srclang && /^[A-Za-z0-9-]{1,16}$/.test(srclang)) item.srclang = srclang;
+      const label = readAttr(match[0], 'label')?.replace(/[\u0000-\u001f]/g, '').slice(0, 200);
+      if (label) item.label = label;
+      if (hasAttr(match[0], 'default')) item.default = true;
+      tracks.push(item);
+    }
+  }
+
+  if (!src && sources.length === 0) return null;
+
+  const payload: SiteMediaPayload = { media };
+  if (src) payload.src = src;
+  if (sources.length > 0) payload.sources = sources;
+  if (tracks.length > 0) payload.tracks = tracks;
+
+  const poster = readAttr(openTag, 'poster');
+  if (media === 'video' && poster && isAllowedReactiveUrl(poster, 'image')) {
+    payload.poster = poster;
+  }
+  const preload = readAttr(openTag, 'preload')?.toLowerCase();
+  if (preload && MEDIA_PRELOAD.has(preload)) payload.preload = preload as SiteMediaPreload;
+
+  if (hasAttr(openTag, 'loop')) payload.loop = true;
+  if (hasAttr(openTag, 'muted')) payload.muted = true;
+  if (hasAttr(openTag, 'playsinline')) payload.playsInline = true;
+  const crossorigin = readAttr(openTag, 'crossorigin')?.toLowerCase();
+  if (crossorigin === 'anonymous' || crossorigin === 'use-credentials') {
+    payload.crossorigin = crossorigin;
+  }
+  if (media === 'video') {
+    for (const [key, name] of [
+      ['width', 'width'],
+      ['height', 'height'],
+    ] as const) {
+      const raw = readAttr(openTag, name);
+      if (raw && /^\d{1,5}$/.test(raw) && Number(raw) > 0) payload[key] = Number(raw);
+    }
+  }
+  return payload;
+}
+
+/**
+ * 旧 HTML 音视频 → 受限媒体 host（保留可播放 controls）：
+ *   · 站内受控音频 → 现有 `[@音频/<id>]`（raw 路由判权）；
+ *   · 其余有安全 src / `<source>` 的区块 → `[[媒体:<10 hex>]]` + mediaSources
+ *     （适配器展开成 `site-embed kind="media"`，阅读 / 导出共用同一渲染器）；
+ *   · 装不下 token / 没有可用地址 → 保持既有链接 / 文本回退。
+ *
+ * 产品口径：controls 恒开、preload 默认 none、**永不带 autoplay**；
+ * source / track 结构保留；URL 已在这一层过策略，渲染器还会再验一次。
+ */
+function convertMediaBlocks(
+  chars: string[],
+  masked: string,
+  counts: MutableCounts,
+  mediaSources: Record<string, SiteMediaPayload>
+): void {
   const lower = masked.toLowerCase();
   for (const tag of ['video', 'audio'] as const) {
     let cursor = 0;
@@ -525,13 +642,47 @@ function convertMediaBlocks(chars: string[], masked: string, counts: MutableCoun
       const openTag = rawBlock.slice(0, openEnd - start);
       const inner = rawBlock.slice(openEnd - start, close - start);
       const url = readAttr(openTag, 'src') ?? readSourceChild(inner);
-      let desired: string;
+
+      // 站内受控音频仍走现有 `[@音频/<id>]`（音频 kind），不改 media。
       if (tag === 'audio') {
         const controlled = url?.match(/^\/api\/audio\/([A-Za-z0-9]{10})\/raw$/);
         if (controlled) {
-          desired = `[@音频/${controlled[1]}]`;
-          count(counts, 'audio-ref');
-        } else if (url && isAllowedReactiveUrl(url, 'link')) {
+          const token = `[@音频/${controlled[1]}]`;
+          if (writeVisiblePrefix(chars, start, closeEnd - start, token)) {
+            count(counts, 'audio-ref');
+            cursor = closeEnd;
+            continue;
+          }
+        }
+      }
+
+      const payload = readMediaPayload(tag, openTag, inner);
+      if (payload) {
+        const base = JSON.stringify(payload);
+        let ref = '';
+        // 同一文档内唯一：用当前条目数做盐，撞键再递增；同 payload 也不复用 token。
+        for (let salt = Object.keys(mediaSources).length; salt < 10_000; salt += 1) {
+          const candidate = dataImageRef(`${base}#${salt}`).slice(0, 10);
+          if (!mediaSources[candidate]) {
+            ref = candidate;
+            break;
+          }
+        }
+        if (ref) {
+          const token = `[[媒体:${ref}]]`;
+          if (writeVisiblePrefix(chars, start, closeEnd - start, token)) {
+            mediaSources[ref] = payload;
+            count(counts, 'media');
+            cursor = closeEnd;
+            continue;
+          }
+        }
+      }
+
+      // 回退：保留原来的链接 / 文本行为（token 装不下或没有安全地址）。
+      let desired: string;
+      if (tag === 'audio') {
+        if (url && isAllowedReactiveUrl(url, 'link')) {
           desired = `[音频](${url})`;
           count(counts, 'audio-link');
         } else {
@@ -995,11 +1146,12 @@ export function applyLegacyHtmlCompat(source: string): LegacyCompatResult {
     !source.includes('\\[') &&
     !source.includes('data:image')
   ) {
-    return { source, changed: false, counts: {}, dataImages: {} };
+    return { source, changed: false, counts: {}, dataImages: {}, mediaSources: {} };
   }
   const chars = source.split('');
   const counts: MutableCounts = {};
   const dataImages: Record<string, LegacyDataImageAsset> = {};
+  const mediaSources: Record<string, SiteMediaPayload> = {};
 
   // 顺序很重要：先抹掉整块危险能力，再转换音视频，最后逐标签处理。
   //
@@ -1008,7 +1160,7 @@ export function applyLegacyHtmlCompat(source: string): LegacyCompatResult {
   // 掩码还写着 `<` 而被二次处理。这样 200k 正文不必反复重跑掩码扫描。
   const masked = maskProtectedContent(source);
   removeBlocks(chars, masked, counts);
-  convertMediaBlocks(chars, masked, counts);
+  convertMediaBlocks(chars, masked, counts, mediaSources);
   // 未配对数学只扫正文：HTML 标签内部（属性值可能含 `$`）整体盖掉。
   normalizeUnpairedMath(
     chars,
@@ -1031,5 +1183,5 @@ export function applyLegacyHtmlCompat(source: string): LegacyCompatResult {
   transformTags(chars, masked, counts, dataImages);
 
   const result = chars.join('');
-  return { source: result, changed: result !== source, counts, dataImages };
+  return { source: result, changed: result !== source, counts, dataImages, mediaSources };
 }

@@ -500,14 +500,20 @@ describe('剪贴板引用：Markdown 父文档内联一层，Reactive 父文档�
     };
     walk(data.document.nodes);
 
-    // 历史 `<video>` 被 compat 转成链接，不会留下会发第三方请求的媒体节点；
+    // 历史 `<video>` 走受限 media host（可播放 controls，preload=none、无 autoplay）；
     // 公式按 Markdown 模板编译成 inlineMath 节点；嵌套剪贴板 token 仍是字面量（不递归）。
     expect(types).not.toContain('htmlDocument');
-    expect(types).not.toContain('hostComponent');
+    expect(types).toContain('hostComponent');
+    const mediaKeys = Object.keys(data.hostData ?? {}).filter((key) => key.startsWith('media:'));
+    expect(mediaKeys).toHaveLength(1);
+    expect(data.hostData?.[mediaKeys[0]]).toMatchObject({
+      kind: 'media',
+      status: 'ready',
+      payload: { media: 'video', src: 'https://third-party.example/a.mp4' },
+    });
     expect(types).toContain('inlineMath');
-    expect(types).toContain('link');
     expect(JSON.stringify(data.document)).not.toContain('<video');
-    expect(JSON.stringify(data.document)).toContain('third-party.example/a.mp4');
+    expect(JSON.stringify(data.hostData)).toContain('third-party.example/a.mp4');
     expect(JSON.stringify(data.document)).toContain('[@AbCd5678]');
 
     // 与详情页（clipboard 的阅读路径）同一条准备链逐字一致。
@@ -516,6 +522,7 @@ describe('剪贴板引用：Markdown 父文档内联一层，Reactive 父文档�
       mode: 'external',
       parentFormat: 'markdown',
       dataImages: compat.dataImages,
+      mediaSources: compat.mediaSources,
     });
     const compiled = compileLocal(direct.adaptedSource, reactiveCompileOptions('markdown'));
     expect(compiled.ok).toBe(true);
@@ -539,7 +546,11 @@ describe('剪贴板引用：Markdown 父文档内联一层，Reactive 父文档�
       })
     );
     expect(inlineHtml).toBe(detailHtml);
-    expect(inlineHtml).not.toContain('<video');
+    // 产品口径：保留可播放 controls、默认 preload=none、绝无 autoplay。
+    expect(inlineHtml).toContain('<video');
+    expect(inlineHtml).toContain('controls');
+    expect(inlineHtml).toContain('preload="none"');
+    expect(inlineHtml).not.toContain('autoplay');
     expect(inlineHtml).toContain('third-party.example/a.mp4');
     expect(inlineHtml).toContain('data-render-mode="static"');
 

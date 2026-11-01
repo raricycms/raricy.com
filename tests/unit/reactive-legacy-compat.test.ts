@@ -268,7 +268,11 @@ describe('applyLegacyHtmlCompat', () => {
 
     const video = '<video src="https://e.com/a$b$c.mp4"></video>';
     const compat = applyLegacyHtmlCompat(video);
-    expect(compat.source).toContain('https://e.com/a$b$c.mp4');
+    // 视频改走 media token；属性值必须从原文读，不能被数学掩码改成 xxxx。
+    expect(Object.values(compat.mediaSources)[0]).toMatchObject({
+      media: 'video',
+      src: 'https://e.com/a$b$c.mp4',
+    });
     expect(compat.source).not.toContain('axxxxc');
   });
 
@@ -372,14 +376,18 @@ describe('applyLegacyHtmlCompat', () => {
     expect(json).not.toContain('"type":"inlineMath"');
   });
 
-  it('旧 HTML 音视频：站内音频变引用 token，外链变链接', () => {
+  it('旧 HTML 音视频：站内音频仍走引用 token，外链走 media host', () => {
     const audio = applyLegacyHtmlCompat(
       '<audio controls src="/api/audio/abcdefghij/raw"></audio>'
     );
     expect(audio.source).toContain('[@音频/abcdefghij]');
+    expect(audio.mediaSources).toEqual({});
 
     const video = applyLegacyHtmlCompat('<video src="https://example.com/a.mp4"></video>');
-    expect(video.source).toContain('[视频](https://example.com/a.mp4)');
+    expect(video.source).toMatch(/\[\[媒体:[a-f0-9]{10}\]\]/);
+    expect(Object.values(video.mediaSources)).toEqual([
+      { media: 'video', src: 'https://example.com/a.mp4' },
+    ]);
   });
 
   it('不支持的 class 剥掉后不再触发 attribute 回退', () => {
@@ -506,5 +514,82 @@ describe('键名 / 普通文字里的组件同名标签', () => {
     const result = compile(compat.source);
     expect(result.ok).toBe(true);
     expect(JSON.stringify(documentOf(result).nodes)).toContain('"name":"tab"');
+  });
+});
+
+describe('历史 HTML 音视频 → 受限 media host', () => {
+  it('保留 controls 语义的 src / poster / preload / source / track，丢弃 autoplay', async () => {
+    const source = [
+      '<video controls autoplay src="https://cdn.example.com/a.mp4"',
+      ' poster="/api/images/abcdefghijklmnopqrstuvwx/raw" preload="metadata" loop muted playsinline width="640" height="360">',
+      '<source src="https://cdn.example.com/b.webm" type="video/webm">',
+      '<track kind="subtitles" src="/api/audio/abcdefghij/raw" srclang="zh-CN" label="中文字幕" default>',
+      '</video>',
+    ].join('');
+    const compat = applyLegacyHtmlCompat(source);
+    const token = /\[\[媒体:([a-f0-9]{10})\]\]/.exec(compat.source);
+    expect(token, compat.source).toBeTruthy();
+    expect(compat.source).not.toContain('autoplay');
+    const payload = compat.mediaSources[token![1]];
+    expect(payload).toMatchObject({
+      media: 'video',
+      src: 'https://cdn.example.com/a.mp4',
+      poster: '/api/images/abcdefghijklmnopqrstuvwx/raw',
+      preload: 'metadata',
+      loop: true,
+      muted: true,
+      playsInline: true,
+      width: 640,
+      height: 360,
+    });
+    expect(payload.sources).toEqual([{ src: 'https://cdn.example.com/b.webm', type: 'video/webm' }]);
+    expect(payload.tracks).toEqual([
+      {
+        src: '/api/audio/abcdefghij/raw',
+        kind: 'subtitles',
+        srclang: 'zh-CN',
+        label: '中文字幕',
+        default: true,
+      },
+    ]);
+    expect(payload).not.toHaveProperty('autoplay');
+
+    const adapted = await adaptReactiveReferences(compat.source, {
+      mode: 'external',
+      parentFormat: 'markdown',
+      mediaSources: compat.mediaSources,
+    });
+    expect(adapted.adaptedSource).toContain(`<site-embed kind="media" ref="${token![1]}" />`);
+    expect(adapted.hostData[`media:${token![1]}`]).toMatchObject({
+      kind: 'media',
+      status: 'ready',
+      payload,
+    });
+    const result = compile(adapted.adaptedSource);
+    expect(result.ok).toBe(true);
+    expect(JSON.stringify(documentOf(result).nodes)).toContain('"kind":"media"');
+  });
+
+  it('外部 audio 走 media；站内受控音频仍走 [@音频]；危险协议不生成 media', () => {
+    const external = applyLegacyHtmlCompat('<audio src="https://cdn.example.com/a.mp3"></audio>');
+    expect(external.source).toMatch(/\[\[媒体:[a-f0-9]{10}\]\]/);
+    expect(Object.values(external.mediaSources)).toEqual([
+      { media: 'audio', src: 'https://cdn.example.com/a.mp3' },
+    ]);
+
+    const controlled = applyLegacyHtmlCompat('<audio src="/api/audio/abcdefghij/raw"></audio>');
+    expect(controlled.source).toContain('[@音频/abcdefghij]');
+    expect(controlled.mediaSources).toEqual({});
+
+    const unsafe = applyLegacyHtmlCompat('<video src="javascript:alert(1)"></video>');
+    expect(unsafe.source).not.toMatch(/\[\[媒体:/);
+    expect(unsafe.mediaSources).toEqual({});
+    expect(unsafe.source).toContain('视频');
+  });
+
+  it('最短的成对可播放区块也装得下 token', () => {
+    const tiny = applyLegacyHtmlCompat('<video src=a></video>');
+    expect(tiny.source).toMatch(/^\[\[媒体:[a-f0-9]{10}\]\]/);
+    expect(tiny.mediaSources).toHaveProperty(Object.keys(tiny.mediaSources)[0]);
   });
 });

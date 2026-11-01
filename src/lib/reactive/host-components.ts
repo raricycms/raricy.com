@@ -73,7 +73,7 @@ export const SITE_EMBED_SCHEMA: LocalHostComponentSchema = {
       kind: 'enum',
       required: true,
       static: true,
-      enum: ['audio', 'vote', 'favorite', 'clipboard', 'image'],
+      enum: ['audio', 'vote', 'favorite', 'clipboard', 'image', 'media'],
     },
     ref: {
       kind: 'string',
