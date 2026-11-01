@@ -8,6 +8,9 @@ import { parseContentFormat } from './content-format';
 import { reactiveCompileOptions } from './reactive/host-components';
 import { applyLegacyHtmlCompat } from './reactive/legacy-compat';
 
+// ⚠️ 改 `publicBodyText` 的文字提取规则时必须 bump 这个值：它不在快照编译签名里，
+// 迁移器的「快照签名刷新」判据看不到这类变化。迁移 39 的 state 行以它为准，值一变
+// 覆盖检查就会要求重建。编译包 / 兼容层 / 选项变化由快照签名自动触发重建，不需要手改。
 export const PUBLIC_SEARCH_VERSION = 'public-body/2';
 export type SearchAvailability = 'ready' | 'metadata-only' | 'partial';
 
