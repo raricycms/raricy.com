@@ -2023,8 +2023,10 @@ source-map 偏移不变）：
   救活了原文，会用**原始正文**再检测一次，原文已具增强身份（invalid-enhanced）就返回
   格式不匹配，不把“字面化后的文档”当成普通 Markdown 落库。
 - 历史正文的快照用 `npm run reactive:backfill` 回填（默认 dry-run、`--apply` 幂等可
-  重跑）。Reactive 旧语法版本（含 `syntaxVersion = null`）先报 blocker，必须先跑
-  `reactive:migrate-v07`。可恢复性演练见 `docs/deploy.md`「回滚」。
+  重跑）。同内容版本但编译签名陈旧（compiler / adapter / compat / options 变过）的行
+  会按当前包重建，不会被 `contentVersion` 命中后永久跳过。Reactive 旧语法版本（含
+  `syntaxVersion = null`）先报 blocker，必须先跑 `reactive:migrate-v07`。可恢复性演练见
+  `docs/deploy.md`「回滚」。
 
 #### 宿主组件 `site-embed`
 
