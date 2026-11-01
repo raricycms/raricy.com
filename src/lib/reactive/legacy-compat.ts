@@ -48,8 +48,9 @@ import type {
  *     track，preload 默认 none，无 autoplay）。
  * /4：媒体块替换时连**块内换行**一起中和，避免 token 后的软换行变成多余 `<br>`
  *     （播放器下方约 170px 空洞）。输出 AST 变了，旧快照必须 stale。
+ * /5：保留 radio-group 的 option 子组件，避免合法 RMD 示例被误拆并阻塞迁移。
  */
-export const LEGACY_COMPAT_VERSION = 'reactive-legacy-compat/4';
+export const LEGACY_COMPAT_VERSION = 'reactive-legacy-compat/5';
 
 export interface LegacyDataImageAsset {
   url: string;
@@ -912,10 +913,10 @@ function convertMarkdownDataImages(
 /**
  * 这些上游组件容器把 `<option>` 当**结构化子组件**（模板本身自带）。
  * 旧 HTML 的 `<option>` 只可能出现在 `<select>` 里；因此只有祖先命中这一组时，
- * 才把没有 bind/label 的 `<option>` 保留为组件子结构。组件目录矩阵测试会逐个
- * 模板编译，验证这个集合没有漏。
+ * 才把没有 bind/label 的 `<option>` 保留为组件子结构。上游目录模板不一定包含
+ * radio-group 这样的兼容别名，所以还需单独覆盖这些别名。
  */
-const OPTION_CONTAINER_COMPONENTS = new Set(['multi-select', 'choices', 'quiz', 'select']);
+const OPTION_CONTAINER_COMPONENTS = new Set(['multi-select', 'choices', 'radio-group', 'quiz', 'select']);
 
 /**
  * 名字本身就是普通英文 / 键名的子组件：光秃秃出现（无属性、无对应父容器）时

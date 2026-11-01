@@ -307,6 +307,19 @@ describe('applyLegacyHtmlCompat', () => {
     }
   });
 
+  it('RMD 示例的 radio-group 保留选项并能通过站点编译', () => {
+    const source = [
+      '<radio-group bind="pace" label="节奏" initial="guided">',
+      '<option value="guided">跟随</option>',
+      '<option value="free">自由</option>',
+      '</radio-group>',
+    ].join('\n');
+    const compat = applyLegacyHtmlCompat(source);
+    expect(compat.source).toBe(source);
+    expect(compileLocal(compat.source, reactiveCompileOptions('reactive')).ok).toBe(true);
+    expect(applyLegacyHtmlCompat(compat.source).source).toBe(source);
+  });
+
   it('组件容器里的 <option> 保留；旧 <select><option> 仍解包（含 label 属性）', () => {
     const component = applyLegacyHtmlCompat(
       '<multi-select bind="s" label="主题"><option value="a">A</option></multi-select>'

@@ -22,6 +22,29 @@ async function oldSources() {
 }
 
 describe('ReactiveMD 0.7 正文迁移', () => {
+  it('示例的 radio-group 在博客和剪贴板迁移后仍保留选项，当前版本复检不误阻塞', async () => {
+    const { blogId, clipId } = await oldSources();
+    const source = [
+      '<!-- reactive-md: local-draft-2 -->', '',
+      '<radio-group bind="pace" label="节奏" initial="guided">',
+      '<option value="guided">跟随</option>',
+      '<option value="free">自由</option>',
+      '</radio-group>',
+    ].join('\n');
+    await prisma.blogContent.update({ where: { blogId }, data: { content: source } });
+    await prisma.clipText.update({ where: { clipId }, data: { content: source } });
+    const plan = await planReactiveV07Migration();
+    expect(plan.blockers).toEqual([]);
+    expect(plan.rows).toHaveLength(2);
+    await applyReactiveV07Migration(plan);
+    expect(await prisma.reactiveSnapshot.count({ where: { contentId: { in: [blogId, clipId] }, format: 'reactive' } })).toBe(2);
+    const current = await planReactiveV07Migration();
+    expect(current.alreadyApplied).toBe(true);
+    expect(current.blockers).toEqual([]);
+    expect((await prisma.blogContent.findUniqueOrThrow({ where: { blogId } })).content).toContain('<option value="guided">跟随</option>');
+    expect((await prisma.clipText.findUniqueOrThrow({ where: { clipId } })).content).toContain('<option value="free">自由</option>');
+  });
+
   it('同时迁移显式和隐式旧版本，生成同版本快照且只执行一次', async () => {
     const { blogId, clipId } = await oldSources();
     const plan = await planReactiveV07Migration();
