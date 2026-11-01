@@ -242,6 +242,11 @@ DATABASE_URL="file:/绝对路径/instance/database/db.db" npm run migrate -- up
 ```
 
 `npm run migrate -- verify` 比对已应用迁移的 checksum 与当前文件，发现漂移会报错。
+对**没有 `_raricy_migrations`** 的库（例如 `prisma db push` 生成的测试库），`verify`
+会明确报「跟踪表不存在」并非零退出 —— 它不会把「从未应用过迁移」说成 checksum 一致。
+`status` / `verify` 是只读的；`up` 在 SQL 之后还会执行 Reactive 数据阶段（旧语法升级 /
+快照回填 / 必要时索引重建），详见下文「ReactiveMD 0.7 / 统一渲染的发布顺序」。
+纯 DDL 改动也会触发一次数据阶段扫描，但已完成的正文与快照会被跳过，不会重复写。
 
 #### 取消投喂手续费后的历史返还
 
@@ -644,34 +649,48 @@ node --experimental-sqlite node_modules/vite-node/vite-node.mjs --config vitest.
 # 1) 安装锁定依赖 + 生成 Prisma client
 npm ci && npx prisma generate
 
-# 2) 结构迁移（手写 runner；不要用 prisma migrate）
-DATABASE_URL="file:/绝对路径/db.db" npm run migrate -- status
+# 2) 结构 + 数据阶段：一条命令完成（手写 runner；不要用 prisma migrate）
+DATABASE_URL="file:/绝对路径/db.db" npm run migrate -- status   # 只读：确认 pending
 DATABASE_URL="file:/绝对路径/db.db" npm run migrate -- up
-DATABASE_URL="file:/绝对路径/db.db" npm run migrate -- verify
+DATABASE_URL="file:/绝对路径/db.db" npm run migrate -- verify   # 只读：校验 checksum
+```
 
-# 3) 旧 Reactive 语法版本迁移：先预检，确认 blockers 为空
+`up` 在 SQL 结构迁移之后**自动执行数据阶段**，顺序固定：
+
+1. 旧 Reactive 正文升级（原文 + 新快照 + 一次性标记同一事务）；
+2. 历史编译快照回填（Markdown 与当前版本 Reactive）；
+3. 公开正文索引重建（正文被升级、快照编译签名刷新，或索引覆盖缺失 / 版本不一致时）。
+
+数据阶段失败时 `up` 非零退出，并明确打印「SQL 结构已完成、Reactive 数据未完成」。
+修复后**重跑同一条 `up`** 即可接续：v07 有一次性标记与事务保护，回填与索引重建幂等。
+`status` / `verify` 仍是只读命令，不会触发上述任何阶段，也不会顺手创建跟踪表。
+数据阶段需要已安装的 `reactive-md`、`vite-node` 和已生成的 Prisma Client；缺依赖时
+`up` 会在任何 SQL 写库之前报错，不会自动安装或联网。
+
+独立命令保留给诊断 / 修复，正常发布不需要单独跑：
+
+```bash
+# v07：先看 blockers（只读），确认后显式 --apply
 DATABASE_URL="file:/绝对路径/db.db" npm run reactive:migrate-v07
-# 再应用（原文 + 快照 + 一次性标记同一事务；中途失败整批回滚）
 DATABASE_URL="file:/绝对路径/db.db" npm run reactive:migrate-v07 -- --apply
-
-# 4) 历史编译快照回填（可中断重跑；默认 dry-run，--apply 才写）
+# 回填：默认 dry-run / --limit 试跑，--apply 才写
 DATABASE_URL="file:/绝对路径/db.db" npm run reactive:backfill -- --limit 200
 DATABASE_URL="file:/绝对路径/db.db" npm run reactive:backfill -- --apply
-
-# 5) 公开搜索索引重建（PUBLIC_SEARCH_VERSION 变化后必须）
+# 强制重建公开索引（正常 up 只在必要时重建）
 DATABASE_URL="file:/绝对路径/db.db" npm run search:rebuild
 ```
 
 - **停写 + 一致备份**：SQLite 备份必须包含 WAL 一致性（`sqlite3 db.db ".backup ..."`，
   或先停服再拷贝 `db.db`/`-wal`/`-shm`）。正文 / 图床 / 音频 / 快照同一时点。
-- `reactive:migrate-v07` 的 blockers：未知语法版本、新激活 `<external>`、draft-2 动态
-  `min/max/required`、列已是当前版本但正文声明旧版本。全部解决后再 `--apply`；
-  一次性标记写入后不要手工重跑。
-- `reactive:backfill` 补缺失的快照；已有同内容版本行只有在**编译签名也是当前签名**
+- `up` 内 v07 的 blockers：未知语法版本、新激活 `<external>`、draft-2 动态
+  `min/max/required`、列已是当前版本但正文声明旧版本。blockers 在**写入前**拦截整批；
+  全部解决后再重跑 `up`。一次性标记写入后不要手工重跑 `reactive:migrate-v07 -- --apply`。
+- 回填会补缺失的快照；已有同内容版本行只有在**编译签名也是当前签名**
   （syntax / compiler / adapter（含 compat）/ options 全一致）时才跳过，签名陈旧的
   行会按当前包就地重建（报告里的 `refreshed`；dry-run 只统计不写）。Reactive 旧语法
   版本（`syntaxVersion` 不等于当前 `local-draft-3`，包括 `null`）会报
-  `site.backfill.legacy-syntax` blocker，不会擅自生成“当前版本”快照；先完成第 3 步。
+  `site.backfill.legacy-syntax` blocker，不会擅自生成“当前版本”快照；`up` 会先完成
+  v07 再回填，所以正常流程不会撞到这一条。
 - **运行配置**：统一管线**默认启用**，不需要设置任何 `REACTIVE_MD_*` 变量。部署环境里
   遗留的 `REACTIVE_MD_MODE=shadow` 等同启用；`REACTIVE_MD_PERCENT` 与
   `renderer_override` 不再参与阅读决策（字段仅为旧消费者保留）。**只有**
@@ -688,7 +707,14 @@ DATABASE_URL="file:/绝对路径/db.db" npm run search:rebuild
 
 ### 公开正文索引发布
 
-应用迁移后、切换新服务前，对同一目标库执行回填：
+`npm run migrate -- up` 会在数据阶段按需重建公开索引：v07 升级过博客正文、回填刷新了
+陈旧快照签名（编译包 / 兼容层 / 选项变化），或索引覆盖缺失 / `PUBLIC_SEARCH_VERSION`
+不一致时执行；没有变化就跳过，不每次付全量重建成本。索引重建失败会让 `up` 非零退出，
+修复后重跑即可。只改 `publicBodyText` 的文字提取规则而不改编译输入时，**必须同时 bump
+`PUBLIC_SEARCH_VERSION`**，否则迁移器无法从快照签名看出索引内容已过时。
+
+需要强制修复（例如手工删过索引表、只改了 `PUBLIC_SEARCH_VERSION` 而未触发其它条件）时，
+再对**同一个目标库**跑：
 
 ```bash
 DATABASE_URL="file:/绝对路径/instance/database/db.db" npm run search:rebuild

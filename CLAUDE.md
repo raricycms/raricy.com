@@ -310,6 +310,11 @@ raricy.com（聪明山）—— 个人博客 / 故事 / 工具集 / 剪贴板 / 
 （`status` / `up` / `mark <name>` / `verify`）；跟踪表 `_raricy_migrations` 自维护，
 新迁移用 `CREATE TABLE IF NOT EXISTS` 保持幂等。
 
+`up` 在 SQL 之后还会执行 Reactive 数据阶段（旧语法升级 → 快照回填 → 必要时索引重建），
+由 `scripts/reactive-migrate-data.ts` 子进程复用既有实现；`status` / `verify` 只读，
+不触发这些阶段。数据阶段失败时 `up` 报「结构已完成、数据未完成」并非零退出，修复后
+重跑即接续。独立的 `reactive:*` / `search:rebuild` 只用于诊断或强制修复。
+
 ### 鱼干写路径
 
 `docs/architecture.md` §6.3 是主副本（**§6.3.1 是「这里曾经跨进程」的历史注记** ——
@@ -623,7 +628,8 @@ ftyp 品牌 / 声明归一化 / `planImageUpload` —— 服务端与浏览器�
   **已经另起了入口**（`listPublicBlogs`）—— 已有一条钉现状的用例，谁加了过滤会当场红。
 - **对外正文仅经公开索引检索**（`public-blog-search.ts`）：不往匿名查询添加原始正文
   LIKE。FTS 候选、计数、分页与片段都受当前 public 白名单约束。原文/格式/可见性/软删除
-  改动先由 SQL 触发器撤旧索引，服务写入后重建；历史数据用 `npm run search:rebuild` 回填。
+  改动先由 SQL 触发器撤旧索引，服务写入后重建；历史数据由 `npm run migrate -- up`
+  在必要时自动回填，`npm run search:rebuild` 只作强制修复。
   索引不完整时明确降级为元数据查询，绝不索引引用资源、隐藏数据或失败的 Reactive 源码。
 - 词汇（三档的名字 / 白名单 / 解析 / **文案表**）住在 `src/lib/blog-visibility.ts`，
   那是个**零依赖**模块：发文表单与文章卡片都是客户端组件，而 `blog-service` 拖着 prisma

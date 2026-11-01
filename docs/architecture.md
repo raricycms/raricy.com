@@ -897,7 +897,8 @@ URL 请来抓」。（`robots.ts` 的**路径级**规则不需要动 —— `/ex
 交互组件内部状态、条件分支、实现源码、引用 token 与引用资源均不收录。编译失败只收元数据，
 正文缺失状态被记录并在检索时提示。正文/格式/可见性/软删除变化由触发器先撤旧索引，
 写服务完成后重建；索引写入事务重验原文以拒绝并发旧版本。
-历史回填用 `npm run search:rebuild`，基准用 `npm run search:benchmark`（仅系统临时合成库）。
+历史回填由 `npm run migrate -- up` 在必要时自动执行（正文升级 / 快照签名刷新 / 覆盖缺失）；
+`npm run search:rebuild` 是强制修复入口，基准用 `npm run search:benchmark`（仅系统临时合成库）。
 未回填或索引故障时明确降级为标题/简介/作者检索；没有长期结果缓存。
 
 **它不能静态化**：根 layout 读 cookie 取登录态（顶栏要按档位渲染），整棵树因此都是动态的。
@@ -2036,10 +2037,11 @@ source-map 偏移不变）：
   再编译；Reactive 失败仍拒绝发布。**字面化只用于阅读容错**：写入路径若发现字面化
   救活了原文，会用**原始正文**再检测一次，原文已具增强身份（invalid-enhanced）就返回
   格式不匹配，不把“字面化后的文档”当成普通 Markdown 落库。
-- 历史正文的快照用 `npm run reactive:backfill` 回填（默认 dry-run、`--apply` 幂等可
-  重跑）。同内容版本但编译签名陈旧（compiler / adapter / compat / options 变过）的行
+- 历史正文的快照由 `npm run migrate -- up` 的数据阶段回填（默认入口；独立的
+  `reactive:backfill` 保留给诊断 / 修复，dry-run 默认、`--apply` 幂等可重跑）。
+  同内容版本但编译签名陈旧（compiler / adapter / compat / options 变过）的行
   会按当前包重建，不会被 `contentVersion` 命中后永久跳过。Reactive 旧语法版本（含
-  `syntaxVersion = null`）先报 blocker，必须先跑 `reactive:migrate-v07`。可恢复性演练见
+  `syntaxVersion = null`）先报 blocker；正常 `up` 会先跑 v07 再回填。可恢复性演练见
   `docs/deploy.md`「回滚」。
 
 #### 宿主组件 `site-embed`
