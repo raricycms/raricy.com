@@ -574,3 +574,18 @@ P1 新增测试以实际合并文件为准，不在测试里复制一套实现�
   预取失败回退原地址。`md-editor-export` 30 用例通过。
 - 相关复验：10 文件 / 198 用例 + typecheck exit 0；媒体 e2e 见
   `tests/e2e/reactive-media.spec.ts`（最终 build 后跑）。
+
+### P6 最终验证（2026-11-01）
+
+- 最终全量 vitest：289 files / 5,720 tests / exit 0，无 unhandled errors（`93063bbd`）。
+- 最终生产 build：exit 0；最终 typecheck：exit 0。
+- 逐 spec e2e（最终 build）：102 passed —— 冷启动无 JS 首请求、媒体受限控件、
+  真实 Worker、reactive-render 8、编辑器 desktop/mobile、mobile-toolbar
+  desktop/mobile、resources desktop/mobile、hardening、draft（Ctrl+S / 自动保存 /
+  草稿）、upload、clipboard-layout / math、save-navigation。逐条命令与日志见
+  `%TEMP%/raricy-reactive-handoff-20261101.md`。
+- 本地开发库只读扫描：r6 5,105 = 4,909 + 196；5,104 ok / 1 局部 math fallback /
+  0 failed / 0 formatMismatch / 0 scanFailures / 1 literalized（键名示意），
+  不替代生产核验。
+- 预览：3128 回环生产服务 + 独立合成库/账号/样例 ID/截图保留，供外层功能验收。
+- 剩余：远端 PR 合并、生产部署/备份/回填/搜索重建由外层在验收后执行。
