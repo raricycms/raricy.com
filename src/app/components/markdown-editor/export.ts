@@ -465,6 +465,11 @@ export interface ReactiveStaticMarkupInput {
   source: string;
   /** 正文语言：决定 `markdownBreaks` 等编译选项。 */
   format: ContentFormat;
+  /**
+   * 引用口径，必须与**导出那一刻的预览**一致（终审 F2）：
+   * `external` = 访客视图，私有剪贴板 / 投票 / 收藏夹保留字面量；默认 `expand`。
+   */
+  referenceMode?: 'expand' | 'external';
   /** 解析相对地址的基准（页面地址）；不传取 `location.href`。 */
   base?: string;
   /** 已适配的源码与 hostData（预览侧已做过同一趟时可复用）。 */
@@ -492,7 +497,12 @@ export async function renderStaticMarkup(input: ReactiveStaticMarkupInput): Prom
       ? { adaptedSource: input.adaptedSource, hostData: input.hostData ?? {} }
       : // 与预览共用同一份客户端取数 / 适配（client-compile）—— 两处各写一份的话，
         // 「导出里能看见的引用」与「预览里能看见的引用」会慢慢漂开。
-        await adaptReactivePreview(input.source, createClientReferenceReader(), 'expand', input.format);
+        await adaptReactivePreview(
+          input.source,
+          createClientReferenceReader(),
+          input.referenceMode ?? 'expand',
+          input.format
+        );
 
   const compiled = compileLocal(adapted.adaptedSource, reactiveCompileOptions(input.format));
   if (!compiled.ok) {

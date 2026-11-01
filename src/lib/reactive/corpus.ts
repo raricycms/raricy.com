@@ -32,6 +32,7 @@ import { compileLocal, LOCAL_SYNTAX_VERSION } from 'reactive-md';
 import { shouldRejectReactive } from './diagnostics';
 import { detectReactiveSyntax, documentEvidence, literalizeReactiveSyntax } from './detect-format';
 import { applyLegacyHtmlCompat, LEGACY_COMPAT_VERSION } from './legacy-compat';
+import { checkSyntaxBudget } from './syntax-budget';
 import { REACTIVE_COMPILER_VERSION, REACTIVE_MAX_SYNTAX_NODES, reactiveCompileOptions } from './host-components';
 
 export const CORPUS_SCAN_SCHEMA_VERSION = 1;
@@ -673,6 +674,17 @@ function compileCorpusDocument(document: CorpusDocument): CorpusCompileScan {
 }
 
 function compileCorpusDocumentUnsafe(document: CorpusDocument): CorpusCompileScan {
+  const budget = checkSyntaxBudget(document.content);
+  if (budget) {
+    return {
+      status: 'failed',
+      codes: [budget.diagnostic.code],
+      compatCounts: {},
+      detectedFormat: document.format,
+      literalized: false,
+      formatMismatch: false,
+    };
+  }
   const compat = applyLegacyHtmlCompat(document.content);
   const options = reactiveCompileOptions(document.format);
   let result = compileLocal(compat.source, options);

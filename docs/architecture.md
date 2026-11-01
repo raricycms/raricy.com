@@ -1990,7 +1990,12 @@ bot 接口，私密夹也能**复制成公开**、能导出 JSON —— 它的�
 source-map 偏移不变）：
 
 - 剥掉上游不支持的标签 / 属性（font、center、`</br>`、多余 `</details>`、
-  `class` / `style` / `id` 等），保留可读子节点；
+  `class` / `style` / `id` 等），保留可读子节点；`align` 只保留上游接受的
+  `left/center/right/justify`，其它取值整条属性剥掉；
+- 与原生 HTML 同名的组件（`section` / `table` / `progress` / `option` 等）按
+  **组件参数**（`color`、`page-size`、插值属性、`bind/label/key`、组件容器祖先）
+  区分，不能只按 `bind/label/key`；合法组件必须原样留给编译器，否则会静默丢组件、
+  并让 invalid-enhanced 在首次编译就“成功”而绕过写入闸门；
 - `script` / `style` / `iframe` / `object` / `embed` / SVG / MathML / 整页 HTML
   连同内容移除，不执行、不输出源码；
 - 缩进代码、围栏代码、行内代码、`<pre>` / `<code>`、数学区域不参与改写；
@@ -2002,6 +2007,11 @@ source-map 偏移不变）：
 - **data 位图**：只认 jpeg / png / gif / webp + base64 + 魔数 + 长度上限，
   转成 `[@图片/<ref>]`，由宿主 `image` 组件渲染真实 `<img>`。上游图片闸门不接受
   `data:`，因此不能只在 URL 白名单里放宽；>8KB 的图片也必须在兼容层被截住。
+- **线性扫描**：标签闭合、数学定界符、音视频 / 危险块配对都只向前推进；
+  未闭合起点不会再让每个 `<` / `\(` 扫到文末（25 万 `<` 从约 30s 降到毫秒级）。
+- **编译前语法预算**（`syntax-budget.ts`）：屏蔽区之外的未闭合 `<` > 512 或
+  `{{` > 128 时，直接返回 `site.syntax-budget` 并保留原文，不进入上游同步编译；
+  代码 / 数学 / 正常成对标签不计入。写入因此明确拒绝，阅读显示不可用而不是卡死。
 - 兼容规则有显式 `LEGACY_COMPAT_VERSION`，并入快照签名；规则变化会让旧快照 stale。
 
 #### 快照、缓存与阅读

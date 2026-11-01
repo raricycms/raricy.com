@@ -427,3 +427,59 @@ describe('applyLegacyHtmlCompat', () => {
     expect(flatten(documentOf(result).nodes)).toContain('点我');
   });
 });
+
+describe('与原生 HTML 同名的合法组件', () => {
+  it('section / table / progress 不被当成历史标签解包，保留真实组件节点', () => {
+    const cases: { source: string; name: string }[] = [
+      { source: '<section color="#45536f">\n\n正文\n\n</section>', name: 'section' },
+      {
+        source: '<table label="数据" page-size="5">\n| 名称 |\n| --- |\n| 甲 |\n</table>',
+        name: 'table',
+      },
+      { source: '<progress label="进度" value="{{ 40 }}">', name: 'progress' },
+    ];
+    for (const { source, name } of cases) {
+      const compat = applyLegacyHtmlCompat(source);
+      expect(compat.source, source).toContain(`<${name}`);
+      expect(compat.counts['unwrapped-tag'] ?? 0, source).toBe(0);
+      const result = compileLocal(compat.source, reactiveCompileOptions('reactive'));
+      expect(result.ok, source).toBe(true);
+      expect(JSON.stringify(documentOf(result).nodes), source).toContain(`"type":"component"`);
+      expect(JSON.stringify(documentOf(result).nodes), source).toContain(`"name":"${name}"`);
+    }
+
+    // 缺必填属性时必须是“组件诊断”，不能悄悄解包成纯文本 —— 后者会让作者
+    // 以为进度条存进去了。
+    const missingLabel = applyLegacyHtmlCompat('<progress value="{{ 40 }}">');
+    expect(missingLabel.source).toContain('<progress');
+    const failed = compile(missingLabel.source);
+    expect(failed.ok).toBe(false);
+    expect(failed.diagnostics.map((d) => d.code)).toContain('local.label.required');
+  });
+
+  it('没有组件证据的同名历史标签仍然解包（普通正文不被硬判）', () => {
+    const section = applyLegacyHtmlCompat('<section>历史正文</section>');
+    expect(section.source).not.toContain('<section');
+    expect(flatten(documentOf(compile(section.source)).nodes)).toContain('历史正文');
+
+    const select = applyLegacyHtmlCompat('<select><option label="A">A</option></select>');
+    expect(select.source).not.toContain('<select');
+  });
+
+  it('align 取值不在上游白名单时整条属性剥掉，正文仍可读', () => {
+    const compat = applyLegacyHtmlCompat('<div align="middle">正文</div>');
+    expect(compat.source).not.toContain('align');
+    expect(compat.counts['dropped-attribute']).toBe(1);
+    const result = compile(compat.source);
+    expect(result.ok).toBe(true);
+    expect(result.diagnostics).toEqual([]);
+    expect(flatten(documentOf(result).nodes)).toContain('正文');
+  });
+
+  it('引用块里的缩进代码逐字保留（示例里的标签不被改写）', () => {
+    const source = '> 示例：\n>\n>     <font color="red">x</font>\n>\n> 结束';
+    const compat = applyLegacyHtmlCompat(source);
+    expect(compat.changed).toBe(false);
+    expect(compat.source).toBe(source);
+  });
+});

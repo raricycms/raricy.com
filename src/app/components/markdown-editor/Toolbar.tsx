@@ -340,11 +340,18 @@ export default function Toolbar({
       onRun={action}
       disabled={disabled || opts.disabled}
       aria-pressed={opts.active === undefined ? undefined : opts.active}
+      // 快捷键走 aria-keyshortcuts，不再混进可访问名：否则读屏会把菜单项念成
+      // 「粗体 Ctrl+B」，按名字定位/朗读都对不上真正的命令名。
+      aria-keyshortcuts={opts.shortcut?.replace(/Ctrl\+/g, 'Control+')}
       className={`md-toolbar__menu-item${opts.active ? ' is-active' : ''}`}
     >
       <Icon size={15} strokeWidth={2} aria-hidden="true" />
       <span className="md-toolbar__menu-label">{label}</span>
-      {opts.shortcut && <span className="md-toolbar__menu-kbd">{opts.shortcut}</span>}
+      {opts.shortcut && (
+        <span aria-hidden="true" className="md-toolbar__menu-kbd">
+          {opts.shortcut}
+        </span>
+      )}
     </MenuButton>
   );
 
@@ -656,6 +663,7 @@ export default function Toolbar({
               {onRequestCompletions && (
                 <MenuButton
                   role="menuitem"
+                  aria-keyshortcuts="Control+Space"
                   onRun={() => {
                     onRequestCompletions();
                     closeMenu(false);
@@ -664,7 +672,9 @@ export default function Toolbar({
                 >
                   <ListFilter size={15} strokeWidth={2} aria-hidden="true" />
                   <span className="md-toolbar__menu-label">补全</span>
-                  <span className="md-toolbar__menu-kbd">Ctrl+Space</span>
+                  <span aria-hidden="true" className="md-toolbar__menu-kbd">
+                    Ctrl+Space
+                  </span>
                 </MenuButton>
               )}
             </div>

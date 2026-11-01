@@ -216,7 +216,14 @@ describe('博客格式：validateBlogData / 落库 / 读出口', () => {
 
   it('★ markdown 格式的 invalid-enhanced 也不能被字面化后接受 ★', async () => {
     const u = await makeUser();
-    for (const content of ['<panel title="未闭合">', '{{ 1 + }}']) {
+    for (const content of [
+      '<panel title="未闭合">',
+      '{{ 1 + }}',
+      // 半截增强：解析器还没认出结构、但诊断位置已指向已知组件 / 未闭合插值。
+      '<panel title="x"',
+      '文字 {{ 未闭合',
+      '<section color="#000"',
+    ]) {
       await expect(
         createBlog(u.id, {
           ...BLOG_BASE,
@@ -228,6 +235,23 @@ describe('博客格式：validateBlogData / 落库 / 读出口', () => {
       ).rejects.toMatchObject({ code: 'content_format_mismatch' });
     }
     expect(await prisma.blog.count()).toBe(0);
+    expect(await prisma.reactiveSnapshot.count()).toBe(0);
+  });
+
+  it('超预算的未闭合标签正文被明确拒绝，不落库、不截断原文', async () => {
+    const u = await makeUser();
+    const content = '<'.repeat(250_000);
+    await expect(
+      createBlog(u.id, {
+        ...BLOG_BASE,
+        content,
+        categoryId: null,
+        visibility: 'internal',
+        format: 'markdown',
+      })
+    ).rejects.toMatchObject({ code: 'content_unrenderable' });
+    expect(await prisma.blog.count()).toBe(0);
+    expect(await prisma.blogContent.count()).toBe(0);
     expect(await prisma.reactiveSnapshot.count()).toBe(0);
   });
 
@@ -366,14 +390,16 @@ describe('剪贴板格式：createClip / updateClip / getClip / resolvePublicCli
     expect(await prisma.clipBoard.count()).toBe(0);
   });
 
-  it('★ 剪贴板 markdown 的 invalid-enhanced 也拒绝 ★', async () => {
+  it('★ 剪贴板 markdown 的 invalid-enhanced / 半截增强也拒绝 ★', async () => {
     const u = await makeUser();
-    const result = await createClip(u.id, {
-      title: 't',
-      content: '<panel title="未闭合">',
-      format: 'markdown',
-    });
-    expect(result).toEqual({ ok: false, reason: 'format_mismatch' });
+    for (const content of ['<panel title="未闭合">', '<panel title="x"', '文字 {{ 未闭合']) {
+      const result = await createClip(u.id, {
+        title: 't',
+        content,
+        format: 'markdown',
+      });
+      expect(result, content).toEqual({ ok: false, reason: 'format_mismatch' });
+    }
     expect(await prisma.clipBoard.count()).toBe(0);
   });
 

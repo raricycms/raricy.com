@@ -533,3 +533,26 @@ P1 新增测试以实际合并文件为准，不在测试里复制一套实现�
 - 另有 4 条 `local.html.fallback`；三篇 178,480 / 197,541 / 184,687 字符的历史长诗
   全部 `ok` 且无诊断。节点预算 50,000。
 - 以上是**本地/外层只读扫描**结果，不替代发布前生产核验；本会话未读取业务原文。
+
+### 终审收口（后端 compat / detect，2026-11-01）
+
+- `9ccf195c`：与 HTML 同名的合法组件（section / table / progress）按组件参数保留，
+  目录矩阵测试改为断言真实 `component` 节点；compat 的标签闭合、数学、音视频 /
+  危险块配对全部改为线性扫描；引用块内缩进代码受保护；`align` 取值校验；
+  `LEGACY_COMPAT_VERSION` 升到 `/2`。
+- 编译前语法预算 `syntax-budget.ts`：屏蔽区外未闭合 `<` > 512 或 `{{` > 128 时，
+  返回 `site.syntax-budget` 并保留原文，不进入上游同步编译（写入拒绝，阅读明确不可用）。
+  隔离实测（`compileReactiveSource` 全路径，250k 字符）：
+  - 25 万未闭合 `<`：修复前 30.7s → 修复后 **14ms**，`ok:false site.syntax-budget`；
+  - 5 万未闭合 `{{`（250k 字符）：修复前 19.9s → 修复后 **31ms**，同样拒绝；
+  - 25 万 `<video>`：**111ms**，`ok:true`；
+  - 23.5 万未闭合 `<script>`：**92ms**，`ok:true`（整块删除）；
+  - 15 万未闭合 `\(`：**25ms**，`ok:true`；
+  - 25 万字符正常混排正文：**1.26s**，`ok:true`，无诊断。
+- `8c3e003c`：半截增强识别 —— 已知组件无闭合 `>`、`{{` 未闭合通过解析器原始诊断
+  + 屏蔽区 + 组件表判定为 invalid-enhanced，写入 API 拒绝；历史 Markdown 仍可局部容错。
+- `b7e0bf21`：`ReactiveDocumentLazy` 改 `next/dynamic(ssr:true)`，冷启动无 JS 首屏
+  不再只有 Suspense 空壳（待新构建 e2e 复测）。
+- 历史 HTML 媒体可播放性：旧白名单确实允许 video/audio；当前 compat 外部视频只给链接。
+  接口需求写在 `%TEMP%/raricy-reactive-media-compat-needs-20261101.md`，由消费者修复路
+  在 hostData / SiteEmbedView 落地后，本会话再改 compat（不能 silently 视为已兼容）。

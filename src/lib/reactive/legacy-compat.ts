@@ -34,8 +34,11 @@ import { maskMarkdownCode } from '../favorite-refs';
 import { dataImageRef, MAX_DATA_IMAGE_CHARS, parseLegacyDataImage } from './data-image';
 import { isAllowedReactiveUrl } from './url-policy';
 
-/** 兼容规则的显式版本。**改任何规则都要递增** —— 它进快照签名。 */
-export const LEGACY_COMPAT_VERSION = 'reactive-legacy-compat/1';
+/**
+ * 兼容规则的显式版本。**改任何规则都要递增** —— 它进快照签名。
+ * /2：修复 section/progress/table 组件误拆、线性扫描、align 取值、引用块缩进代码。
+ */
+export const LEGACY_COMPAT_VERSION = 'reactive-legacy-compat/2';
 
 export interface LegacyDataImageAsset {
   url: string;
@@ -134,7 +137,7 @@ const LEGACY_UNKNOWN_TAGS = new Set([
 const COMPONENT_TAGS = new Set<string>([...SITE_REACTIVE_COMPONENT_NAMES, 'site-embed']);
 
 /** 与原生 HTML 同名、需要靠属性区分「组件还是旧标签」的标签。 */
-const HTML_COLLISION_TAGS = new Set([
+export const HTML_COLLISION_TAGS: ReadonlySet<string> = new Set([
   'input', 'textarea', 'select', 'table', 'section', 'progress', 'option',
 ]);
 
@@ -263,10 +266,11 @@ function findTagEnd(source: string, start: number): number {
       continue;
     }
     if (char === '>') return index + 1;
-    // data 位图的 img 标签可以到 512k；普通标签也按同一上限截断，
-    // 避免把整篇当成一个标签，同时保证大图不会漏过兼容处理。
-    if (index - start > MAX_DATA_IMAGE_CHARS + 8192) return -1;
   }
+  // 一直扫到 EOF 都没有 `>`。**不要再按字符逐个重试**：调用方在拿到 -1 时
+  // 可以直接结束本阶段 —— 从这个 `<` 到文末都没有闭合符，后面的 `<` 更不会有。
+  // 原先的「扫到 512k 上限就返回 -1、调用方下标只 +1」是 O(n²)：
+  // 25 万个未闭合 `<` 会扫 3×10^10 次比较，单进程整站排队。
   return -1;
 }
 
@@ -285,6 +289,27 @@ function maskChars(text: string): string {
  * 规则：上一行是空行、且本行以 4 个空格或 Tab 开头 → 代码块开始，直到遇到非空
  * 且不再缩进的行。
  */
+/**
+ * 去掉引用块前缀（`>` / `> ` / 多层 `> >`），返回块内容。
+ *
+ * CommonMark 的缩进代码也可以在引用块里：`>     <font>示例</font>` 的原始行
+ * 以 `>` 开头，只看行首 4 空格会漏掉它，示例里的标签会被兼容层改写。
+ */
+function blockquoteContent(line: string): string {
+  let index = 0;
+  let depth = 0;
+  while (depth < 16) {
+    let probe = index;
+    while (probe < line.length && (line[probe] === ' ' || line[probe] === '\t')) probe += 1;
+    if (line[probe] !== '>') break;
+    probe += 1;
+    if (line[probe] === ' ') probe += 1;
+    index = probe;
+    depth += 1;
+  }
+  return index === 0 ? line : line.slice(index);
+}
+
 function maskIndentedCode(source: string): string {
   const lines = source.split('\n');
   let inCode = false;
@@ -292,72 +317,175 @@ function maskIndentedCode(source: string): string {
   for (let index = 0; index < lines.length; index += 1) {
     const line = lines[index];
     const body = line.endsWith('\r') ? line.slice(0, -1) : line;
-    const indented = /^(?: {4}|\t)/.test(body);
+    const content = blockquoteContent(body);
+    const indented = /^(?: {4}|\t)/.test(content);
+    const blank = content.trim() === '';
     if (inCode) {
-      if (indented || body.trim() === '') {
+      if (indented || blank) {
         lines[index] = maskChars(line);
       } else {
         inCode = false;
       }
     }
-    if (!inCode && previousBlank && indented && body.trim() !== '') {
+    if (!inCode && previousBlank && indented && content.trim() !== '') {
       inCode = true;
       lines[index] = maskChars(line);
     }
-    previousBlank = body.trim() === '';
+    previousBlank = blank;
   }
   return lines.join('\n');
 }
 
+/** 转义美元（`\$5`）不是数学定界符：先盖掉，别让单 `$` 配对把它当起点。 */
+function maskEscapedDollars(source: string): string {
+  const chars = source.split('');
+  for (let index = 0; index + 1 < source.length; index += 1) {
+    if (source[index] === '\\' && source[index + 1] === '$') {
+      chars[index] = 'x';
+      chars[index + 1] = 'x';
+      index += 1;
+    }
+  }
+  return chars.join('');
+}
+
+/**
+ * 顺序配对定界符并盖成 x（等长）。
+ *
+ * ⚠️ 不能再用 `open[\s\S]*?close` 的全局正则：未闭合 / 大量起点时，正则会对
+ * 每一个起点都扫到文末（O(n²)）。这里用 `indexOf` 只向前推进；一对盖完就跳到
+ * 闭符之后，整体线性。找不到闭符直接结束本组。
+ */
+function maskDelimitedPairs(
+  source: string,
+  open: string,
+  close: string,
+  sameLine = false,
+  minContent = 0
+): string {
+  const chars = source.split('');
+  let cursor = 0;
+  for (;;) {
+    const start = source.indexOf(open, cursor);
+    if (start < 0) break;
+    const searchFrom = start + open.length;
+    const end = source.indexOf(close, searchFrom);
+    if (end < 0) break;
+    if (end - searchFrom < minContent) {
+      // `$$` 的两个 `$` 相邻：不是空内容的行内公式，别把它们配成一对。
+      cursor = searchFrom;
+      continue;
+    }
+    if (sameLine) {
+      const newline = source.indexOf('\n', searchFrom);
+      if (newline >= 0 && newline < end) {
+        // 行内公式不跨行：这个起点作废，从下一格继续找（仍线性）。
+        cursor = searchFrom;
+        continue;
+      }
+    }
+    for (let index = start; index < end + close.length; index += 1) {
+      if (source[index] !== '\n' && source[index] !== '\r') chars[index] = 'x';
+    }
+    cursor = end + close.length;
+  }
+  return chars.join('');
+}
+
+/**
+ * HTML 的 `<pre>` / `<code>` 内部按字面显示：只保护内部，标签本身仍可被剥属性。
+ * 顺序配对而不是回溯正则 —— 大量未闭合 `<pre` 同样不能退化。
+ */
+function maskHtmlCodeElements(source: string): string {
+  const chars = source.split('');
+  const lower = source.toLowerCase();
+  for (const name of ['pre', 'code'] as const) {
+    let cursor = 0;
+    for (;;) {
+      const open = lower.indexOf(`<${name}`, cursor);
+      if (open < 0) break;
+      const boundary = lower[open + 1 + name.length];
+      if (boundary && /[a-z0-9:-]/.test(boundary)) {
+        cursor = open + 1;
+        continue;
+      }
+      const openEnd = findTagEnd(source, open);
+      if (openEnd < 0) break;
+      const close = lower.indexOf(`</${name}`, openEnd);
+      if (close < 0) break;
+      const closeEnd = findTagEnd(source, close);
+      if (closeEnd < 0) break;
+      for (let index = openEnd; index < close; index += 1) {
+        if (source[index] !== '\n' && source[index] !== '\r') chars[index] = 'x';
+      }
+      cursor = closeEnd;
+    }
+  }
+  return chars.join('');
+}
+
 export function maskProtectedContent(source: string): string {
   let out = maskIndentedCode(maskMarkdownCode(source));
-  const mask = (pattern: RegExp): void => {
-    out = out.replace(pattern, (match) => maskChars(match));
-  };
-  // 数学区域：与 markdown-math.ts 的四组定界符同口径。
-  mask(/\$\$[\s\S]*?\$\$/g);
-  mask(/\\\[[\s\S]*?\\\]/g);
-  mask(/\$[^$\n]+?\$/g);
-  mask(/\\\([\s\S]*?\\\)/g);
-  // 转义美元（`\$5`）不是数学定界符。
-  mask(/\\\$/g);
-  // HTML 的 <pre> / <code> 内部按字面显示：只保护内部，标签本身仍可被剥属性。
-  out = out.replace(
-    /(<(pre|code)\b[^>]*>)([\s\S]*?)(<\/\2\s*>)/gi,
-    (_match, open: string, _name: string, inner: string, close: string) =>
-      `${open}${'x'.repeat(inner.length)}${close}`
-  );
+  out = maskEscapedDollars(out);
+  // 数学区域：与 markdown-math.ts 的四组定界符同口径。顺序配对，线性。
+  out = maskDelimitedPairs(out, '$$', '$$');
+  out = maskDelimitedPairs(out, '\\[', '\\]');
+  out = maskDelimitedPairs(out, '$', '$', true, 1);
+  out = maskDelimitedPairs(out, '\\(', '\\)');
+  out = maskHtmlCodeElements(out);
   return out;
 }
 
 // ── 整块能力 ────────────────────────────────────────────────────────────────
 
-/** 危险 / 不支持整块：连同内容一起抹成空格。 */
+/**
+ * 危险 / 不支持整块：连同内容一起删除。
+ *
+ * 用「开标签 → 向后找第一个闭标签」的顺序扫描，而不是 `<tag>[\s\S]*?</tag>`
+ * 全局正则：后者在大量未闭合开标签时会对每个起点扫到文末（O(n²)）。
+ * `chars[open] !== '<'` 兼作「已被前一轮删除」的跳过判断，所以不需要重新取掩码。
+ */
 function removeBlocks(chars: string[], masked: string, counts: MutableCounts): void {
-  const names = REMOVE_BLOCK_TAGS.join('|');
-  const paired = new RegExp(`<(${names})\\b[^>]*>[\\s\\S]*?<\\/\\1\\s*>`, 'gi');
-  for (const match of masked.matchAll(paired)) {
-    if (masked[(match.index ?? 0)] !== '<') continue;
-    neutralizeRange(chars, match.index ?? 0, (match.index ?? 0) + match[0].length);
-    count(counts, 'removed-block');
-  }
-  // 自闭合 / 空元素写法。
-  const selfClosing = new RegExp(`<(${names})\\b[^>]*?\\/\\s*>`, 'gi');
-  for (const match of masked.matchAll(selfClosing)) {
-    if (masked[(match.index ?? 0)] !== '<') continue;
-    neutralizeRange(chars, match.index ?? 0, (match.index ?? 0) + match[0].length);
-    count(counts, 'removed-block');
-  }
-  // 未闭合的 script / style：旧浏览器会一直吃到 EOF；这里也清到结尾。
-  //
-  // ⚠️ 必须在**上面的改写之后**重新取掩码：否则已配对删除的 `<style>…</style>`
-  // 仍会出现在旧掩码里，这个「到 EOF」的正则会把后面所有正文一起清掉。
-  const afterPaired = maskProtectedContent(chars.join(''));
-  const unclosed = /<(script|style)\b[^>]*>[\s\S]*$/gi;
-  for (const match of afterPaired.matchAll(unclosed)) {
-    if (afterPaired[(match.index ?? 0)] !== '<') continue;
-    neutralizeRange(chars, match.index ?? 0, (match.index ?? 0) + match[0].length);
-    count(counts, 'removed-unclosed');
+  const lower = masked.toLowerCase();
+  for (const name of REMOVE_BLOCK_TAGS) {
+    let cursor = 0;
+    for (;;) {
+      const open = lower.indexOf(`<${name}`, cursor);
+      if (open < 0) break;
+      const boundary = lower[open + 1 + name.length];
+      if (boundary && /[a-z0-9:-]/.test(boundary)) {
+        cursor = open + 1;
+        continue;
+      }
+      const openEnd = findTagEnd(masked, open);
+      if (openEnd < 0) break;
+      if (chars[open] !== '<') {
+        cursor = openEnd;
+        continue;
+      }
+      // 自闭合 / 空元素写法。
+      if (/\/\s*>$/.test(masked.slice(open, openEnd))) {
+        neutralizeRange(chars, open, openEnd);
+        count(counts, 'removed-block');
+        cursor = openEnd;
+        continue;
+      }
+      const close = lower.indexOf(`</${name}`, openEnd);
+      if (close < 0) {
+        // 未闭合的 script / style：旧浏览器会一直吃到 EOF；这里也清到结尾。
+        // 其它标签留给后面的标签扫描。
+        if (name === 'script' || name === 'style') {
+          neutralizeRange(chars, open, masked.length);
+          count(counts, 'removed-unclosed');
+        }
+        break;
+      }
+      const closeEnd = findTagEnd(masked, close);
+      if (closeEnd < 0) break;
+      neutralizeRange(chars, open, closeEnd);
+      count(counts, 'removed-block');
+      cursor = closeEnd;
+    }
   }
 }
 
@@ -369,43 +497,58 @@ function removeBlocks(chars: string[], masked: string, counts: MutableCounts): v
  * 整块替换，长度补齐。
  */
 function convertMediaBlocks(chars: string[], masked: string, counts: MutableCounts): void {
-  const block = /<(video|audio)\b([^>]*)>([\s\S]*?)<\/\1\s*>/gi;
-  for (const match of masked.matchAll(block)) {
-    const start = match.index ?? 0;
-    if (chars[start] !== '<') continue;
-    const tag = match[1].toLowerCase();
-    // ⚠️ 属性必须从**原文**取：`masked` 会把 `$…$` / 链接目标盖成 x，
-    // 用它生成 URL 会把 `https://e.com/a$b$c.mp4` 悄悄改成 `axxxxc.mp4`。
-    const rawBlock = chars.slice(start, start + match[0].length).join('');
-    const openEnd = rawBlock.indexOf('>');
-    const openTag = openEnd === -1 ? rawBlock : rawBlock.slice(0, openEnd + 1);
-    const closeStart = rawBlock.toLowerCase().lastIndexOf('</');
-    const inner = openEnd === -1
-      ? ''
-      : rawBlock.slice(openEnd + 1, closeStart > openEnd ? closeStart : rawBlock.length);
-    const url = readAttr(openTag, 'src') ?? readSourceChild(inner);
-    let desired: string;
-    if (tag === 'audio') {
-      const controlled = url?.match(/^\/api\/audio\/([A-Za-z0-9]{10})\/raw$/);
-      if (controlled) {
-        desired = `[@音频/${controlled[1]}]`;
-        count(counts, 'audio-ref');
-      } else if (url && isAllowedReactiveUrl(url, 'link')) {
-        desired = `[音频](${url})`;
-        count(counts, 'audio-link');
-      } else {
-        desired = '音频';
-        count(counts, 'audio-drop');
+  const lower = masked.toLowerCase();
+  for (const tag of ['video', 'audio'] as const) {
+    let cursor = 0;
+    for (;;) {
+      const start = lower.indexOf(`<${tag}`, cursor);
+      if (start < 0) break;
+      const boundary = lower[start + 1 + tag.length];
+      if (boundary && /[a-z0-9:-]/.test(boundary)) {
+        cursor = start + 1;
+        continue;
       }
-    } else if (url && isAllowedReactiveUrl(url, 'link')) {
-      desired = `[视频](${url})`;
-      count(counts, 'video-link');
-    } else {
-      desired = '视频';
-      count(counts, 'video-drop');
-    }
-    if (!writeVisiblePrefix(chars, start, match[0].length, desired)) {
-      neutralizeRange(chars, start, start + match[0].length);
+      const openEnd = findTagEnd(masked, start);
+      if (openEnd < 0) break;
+      if (chars[start] !== '<') {
+        cursor = openEnd;
+        continue;
+      }
+      const close = lower.indexOf(`</${tag}`, openEnd);
+      // 后面已经没有闭标签：再往后找也是同一个结果，直接结束（不要逐个重扫）。
+      if (close < 0) break;
+      const closeEnd = findTagEnd(masked, close);
+      if (closeEnd < 0) break;
+      // ⚠️ 属性必须从**原文**取：`masked` 会把 `$…$` / 链接目标盖成 x，
+      // 用它生成 URL 会把 `https://e.com/a$b$c.mp4` 悄悄改成 `axxxxc.mp4`。
+      const rawBlock = chars.slice(start, closeEnd).join('');
+      const openTag = rawBlock.slice(0, openEnd - start);
+      const inner = rawBlock.slice(openEnd - start, close - start);
+      const url = readAttr(openTag, 'src') ?? readSourceChild(inner);
+      let desired: string;
+      if (tag === 'audio') {
+        const controlled = url?.match(/^\/api\/audio\/([A-Za-z0-9]{10})\/raw$/);
+        if (controlled) {
+          desired = `[@音频/${controlled[1]}]`;
+          count(counts, 'audio-ref');
+        } else if (url && isAllowedReactiveUrl(url, 'link')) {
+          desired = `[音频](${url})`;
+          count(counts, 'audio-link');
+        } else {
+          desired = '音频';
+          count(counts, 'audio-drop');
+        }
+      } else if (url && isAllowedReactiveUrl(url, 'link')) {
+        desired = `[视频](${url})`;
+        count(counts, 'video-link');
+      } else {
+        desired = '视频';
+        count(counts, 'video-drop');
+      }
+      if (!writeVisiblePrefix(chars, start, closeEnd - start, desired)) {
+        neutralizeRange(chars, start, closeEnd);
+      }
+      cursor = closeEnd;
     }
   }
 }
@@ -460,6 +603,19 @@ function stripUnsupportedAttrs(
     if (!allowedAttr(tagName, name)) {
       blankRange(chars, nameStart, valueEnd);
       count(counts, 'dropped-attribute');
+    } else if (name === 'align') {
+      // 上游只接受 left / center / right / justify；`align="middle"` 这类历史
+      // 值会让整块 HTML 退化成源码文本。取值不在白名单就整条属性抹掉。
+      const rawValue = chars
+        .slice(valueStart, valueEnd)
+        .join('')
+        .replace(/^["']|["']$/g, '')
+        .trim()
+        .toLowerCase();
+      if (!['left', 'center', 'right', 'justify'].includes(rawValue)) {
+        blankRange(chars, nameStart, valueEnd);
+        count(counts, 'dropped-attribute');
+      }
     }
   }
 }
@@ -566,6 +722,40 @@ function convertMarkdownDataImages(
  */
 const OPTION_CONTAINER_COMPONENTS = new Set(['multi-select', 'choices', 'quiz', 'select']);
 
+/**
+ * 与原生 HTML 同名、但属性本身就能证明是上游组件的标签。
+ *
+ * `section` 的 `color`、`table` 的分页 / 排序参数都没有 `bind/label/key`；
+ * 只按 `COMPONENT_ATTR` 判会把它们当历史 HTML 解包（合法组件永久丢失，
+ * 还会让 invalid-enhanced 文本在首次编译就“成功”从而绕过写入闸门）。
+ */
+const COMPONENT_PARAM_ATTRS: Readonly<Record<string, RegExp>> = {
+  section: /\bcolor\s*=/i,
+  table: /\b(?:page-size|searchable|sortable)\b/i,
+  progress: /\bvalue\s*=/i,
+};
+
+/** 属性值里出现 `{{ … }}` 时，这个同名标签只可能是上游组件。 */
+const COMPONENT_INTERPOLATION_ATTR = /\{\{[\s\S]*?\}\}/;
+
+export function looksLikeComponentTag(
+  name: string,
+  raw: string,
+  componentStack: readonly string[]
+): boolean {
+  if (name === 'option') {
+    // `<option>` 只看祖先：它没有自己的 bind，旧 HTML 的
+    // `<select><option label="A">` 也带 `label`，按属性判会把历史正文
+    // 留成孤立的组件标签（随后编译失败）。多选 / choices / quiz 的模板子项
+    // 一定有对应组件容器祖先。
+    return componentStack.some((tag) => OPTION_CONTAINER_COMPONENTS.has(tag));
+  }
+  if (COMPONENT_ATTR.test(raw)) return true;
+  if (COMPONENT_INTERPOLATION_ATTR.test(raw)) return true;
+  const extra = COMPONENT_PARAM_ATTRS[name];
+  return extra ? extra.test(raw) : false;
+}
+
 function transformTags(
   chars: string[],
   masked: string,
@@ -587,16 +777,17 @@ function transformTags(
     }
     if (masked.startsWith('<!', index) || masked.startsWith('<?', index)) {
       const end = findTagEnd(masked, index);
-      if (end !== -1) {
-        neutralizeRange(chars, index, end);
-        count(counts, 'removed-declaration');
-        index = end - 1;
-      }
+      if (end === -1) break; // 到 EOF 都没有 `>`：后面也不可能有完整标签。
+      neutralizeRange(chars, index, end);
+      count(counts, 'removed-declaration');
+      index = end - 1;
       continue;
     }
 
     const end = findTagEnd(masked, index);
-    if (end === -1) continue;
+    // 从当前位置到文末没有 `>`：后面的 `<` 都不会构成标签。直接结束标签扫描
+    // （线性上界；原先是 index+1 继续试，未闭合输入会退化成 O(n²)）。
+    if (end === -1) break;
     // 原文取属性值：masked 只用于定位，不能用来读 URL / data payload。
     const raw = chars.slice(index, end).join('');
     const nameMatch = /^<\s*(\/?)\s*([A-Za-z][A-Za-z0-9:-]*)/.exec(raw);
@@ -629,15 +820,7 @@ function transformTags(
           continue;
         }
         // 没有对应的组件开标签：按旧 HTML 闭标签处理（见下方 ALLOWED / UNWRAP）。
-      } else if (
-        // `<option>` 只看祖先：它没有自己的 bind，旧 HTML 的
-        // `<select><option label="A">` 也带 `label`，按属性判会把历史正文
-        // 留成孤立的组件标签（随后编译失败）。多选 / choices / quiz 的模板子项
-        // 一定有对应组件容器祖先。
-        name === 'option'
-          ? componentStack.some((tag) => OPTION_CONTAINER_COMPONENTS.has(tag))
-          : COMPONENT_ATTR.test(raw)
-      ) {
+      } else if (looksLikeComponentTag(name, raw, componentStack)) {
         componentStack.push(name);
         index = end - 1;
         continue;

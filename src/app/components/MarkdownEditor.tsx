@@ -140,6 +140,14 @@ export interface MarkdownEditorHandle {
    * 这是唯一允许在提交路径上做完整编译的地方（一次保存一次，不是每键）。
    */
   prepareSubmit(): Promise<EditorSubmitSnapshot>;
+  /**
+   * 保存**成功**后把服务端已持有的格式抬成持久下限（只升不降）。
+   *
+   * 表单的 `format` prop 只反映「进页面时」的库值；同页保存成功后服务端已经
+   * 持有这份 reactive，本页必须跟着抬 —— 否则之后删光增强语法再保存，会因为
+   * 表单仍传 markdown 而被静默降级（终审 F1）。传 markdown 不会降级。
+   */
+  pinSavedFormat(format: ContentFormat, syntaxVersion?: string | null): void;
 }
 
 export interface MarkdownEditorProps {
@@ -298,6 +306,13 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(
     const authorAnalysisSourceRef = useRef<string | null>(null);
     /** worker 失效、已回退主线程检查 —— 必须在 UI 明示，不能静默变慢。 */
     const [analysisFallback, setAnalysisFallback] = useState(false);
+    /**
+     * 当前正文真的在跑格式检查（含纯 Markdown 里的 `<`）。
+     *
+     * 回退提示只在「确实在检查」时出现：普通正文（没有任何候选语法）根本不排
+     * 编译，这时把 worker 的技术状态铺给用户只是噪音。
+     */
+    const [analysisActive, setAnalysisActive] = useState(false);
     const analyzerRef = useRef<ReturnType<typeof createFormatAnalyzer> | null>(null);
     const analysisRevisionRef = useRef(0);
     const analysisTimerRef = useRef<number | null>(null);
@@ -305,35 +320,57 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(
     const invalidEnhanced = formatAnalysis?.effective === 'invalid-enhanced';
     const detectedReactive = formatAnalysis?.effective === 'reactive';
     /**
+     * 同页保存成功抬起来的持久下限（终审 F1）。
+     *
+     * `format` prop 是**进页面时**的库值；保存成功后服务端已持有本次提交的格式，
+     * 表单会把 `format` 一起抬起来。这一位是编辑器自己的同步兜底 —— 保存回调
+     * 与下一次提交之间可能只隔一个微任务，不能等 prop 重渲染。
+     * 只升不降：markdown 的保存不会把它清掉。
+     */
+    const [savedReactiveFloor, setSavedReactiveFloor] = useState(false);
+    const savedReactiveFloorRef = useRef(false);
+    const formatFloor: ContentFormat =
+      format === 'reactive' || savedReactiveFloor ? 'reactive' : 'markdown';
+    /**
      * 当前生效格式（只用于界面与预览，提交以 `prepareSubmit` 的判定为准）。
      *
-     * 三档来源，优先级从高到低：
-     *   1. `format === 'reactive'` —— 已保存的增强文档，**永久下限**，删光组件也
-     *      不降级（审查 3.2 / 计划 §3.1）；
+     * 四档来源，优先级从高到低：
+     *   1. `formatFloor` —— 服务端 / 草稿给的下限 + 同页保存成功后抬起的下限；
+     *      已保存的增强文档**永久下限**，删光组件也不降级（审查 3.2 / 计划 §3.1）；
      *   2. `detectedReactive` —— 解析器对**当前正文**的有效增强语法事实；
-     *   3. `componentInserted && (分析在飞 / 失败)` —— 刚插入组件、结果还没回来
-     *      的临时升级。一旦当前正文的分析落地为 markdown，第 3 条必须失效，
+     *   3. `invalidEnhanced` —— 解析器确认是增强语法但有错，仍按增强文档处理；
+     *   4. `componentInserted && (分析在飞 / 失败)` —— 刚插入组件、结果还没回来
+     *      的临时升级。一旦当前正文的分析落地为 markdown，第 4 条必须失效，
      *      否则「新建 MD 插入后删光」会凭空存成 reactive（本轮协调要求）。
      */
     const insertionPending = componentInserted && (analysisPending || analysisFailure !== null);
     const effectiveFormat: ContentFormat =
-      format === 'reactive' || detectedReactive || invalidEnhanced || insertionPending
+      formatFloor === 'reactive' || detectedReactive || invalidEnhanced || insertionPending
         ? 'reactive'
         : 'markdown';
     const effectiveFormatRef = useRef(effectiveFormat);
     effectiveFormatRef.current = effectiveFormat;
-    /** `format` 的同步副本：提交判定在 async 回调里读，不能拿到旧闭包。 */
-    const formatFloorRef = useRef(format);
-    formatFloorRef.current = format;
+    /** 下限的同步副本：提交判定在 async 回调里读，不能拿到旧闭包。 */
+    const formatFloorRef = useRef(formatFloor);
+    formatFloorRef.current = formatFloor;
 
     /**
-     * 草稿里存的格式：**无效增强语法仍记 reactive**。
+     * 草稿里存的格式：**只用已落地的解析事实 / 下限，不用临时升级**（终审 F5）。
      *
-     * 这是「不静默降级」的最后一道保险：正文里有一段坏掉的 `<slider>` 时，草稿若
-     * 记成 markdown，下次恢复出来就是一份被当作普通文本的增强文档 —— 用户看不到
-     * 任何提示。存 reactive + 诊断，恢复时按增强文档继续编辑。
+     * - 无效增强语法仍记 reactive：正文里有一段坏掉的 `<slider>` 时，草稿若记成
+     *   markdown，恢复后会被当成普通文本，用户看不到任何提示；
+     * - **只认「已落地、且对应当前正文」的结果**：`insertionPending` 与旧一遍
+     *   分析遗留的 `detectedReactive` / `invalidEnhanced` 都不算身份 —— 正文刚
+     *   变、新结果还没回来时，旧事实可能已经不属于这份正文。写进草稿会把一份
+     *   普通 Markdown 永久抬成 reactive；恢复时正文原样还在，重新分析会按最终
+     *   事实升级或保持 Markdown。
      */
-    const draftFormat: ContentFormat = invalidEnhanced ? 'reactive' : effectiveFormat;
+    const settledReactive =
+      !analysisPending &&
+      analysisFailure === null &&
+      (detectedReactive || invalidEnhanced);
+    const draftFormat: ContentFormat =
+      formatFloor === 'reactive' || settledReactive ? 'reactive' : 'markdown';
     const draftFormatRef = useRef(draftFormat);
     draftFormatRef.current = draftFormat;
     /** 草稿随附的语法版本：Reactive 用分析给的权威值，Markdown 恒 null。 */
@@ -613,6 +650,7 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(
         setFormatAnalysis(null);
         setAnalysisPending(false);
         setAnalysisFailure(null);
+        setAnalysisActive(false);
         authorAnalysisSourceRef.current = null;
         setAuthorAnalysis(null);
         // 当前正文连一个增强语法候选都没有：插入过组件也已删光。清掉临时升级 ——
@@ -620,6 +658,7 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(
         setComponentInserted(false);
         return;
       }
+      setAnalysisActive(true);
       setAnalysisPending(true);
       analysisTimerRef.current = window.setTimeout(() => {
         analysisTimerRef.current = null;
@@ -1004,6 +1043,9 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(
         const bodyHtml = await renderStaticMarkup({
           source: prepared.content,
           format: prepared.format,
+          // 导出跟随当前预览口径（终审 F2）：访客视角预览是 external 时，
+          // 私有剪贴板 / 投票 / 收藏夹保留字面量，导出件不得越过同一边界。
+          referenceMode,
         });
         return {
           title,
@@ -1016,7 +1058,7 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(
       } finally {
         snapshotBusyRef.current = false;
       }
-    }, [notify, title]);
+    }, [notify, title, referenceMode]);
 
     const onExportHtml = useCallback(() => {
       void (async () => {
@@ -1169,6 +1211,17 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(
         getFormat: () => effectiveFormatRef.current,
         getSyntaxVersion: () => syntaxVersionRef.current,
         prepareSubmit,
+        pinSavedFormat: (savedFormat, savedVersion) => {
+          // 只升不降：保存成 markdown 不会撤销已经保存过的 reactive 身份。
+          if (savedFormat !== 'reactive') return;
+          if (savedVersion) syntaxVersionRef.current = savedVersion;
+          if (savedReactiveFloorRef.current) return;
+          // 同步写 ref：表单的成功回调可能紧接着就发起下一笔，不能等重渲染。
+          savedReactiveFloorRef.current = true;
+          setSavedReactiveFloor(true);
+          formatFloorRef.current = 'reactive';
+          effectiveFormatRef.current = 'reactive';
+        },
       }),
       [prepareSubmit]
     );
@@ -1248,10 +1301,16 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(
         {/*
           诊断条：增强语法（含无效的）或确实有诊断时才出现。默认收起，只在标题行
           显示「检查中 / 错误 N · 警告 M / 未发现问题」。普通 Markdown 不占版面。
+
+          ⚠️ 唯一的例外是 worker 回退（`analysisActive && analysisFallback`）：
+          纯 Markdown 里只要有一个 `<`，格式检查就会在主线程跑，这时必须说一句
+          「本地检查」；否则用户只感到变卡，而页面上一切正常（终审 F4）。
+          普通正文没在检查时不排编译，也不会出现这块技术提示。
         */}
         {(effectiveFormat === 'reactive' ||
           invalidEnhanced ||
           analysisFailure !== null ||
+          (analysisActive && analysisFallback) ||
           (formatAnalysis?.candidates.length ?? 0) > 0) && (
           <ReactiveAuthoringPanel
             diagnostics={formatAnalysis?.diagnostics ?? []}

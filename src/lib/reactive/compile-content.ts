@@ -15,6 +15,7 @@
 import type { ContentFormat } from '../content-format';
 import { compileReactiveSource, type ReactiveCompileInput, type ReactiveCompileOutcome } from './compile';
 import { literalizeReactiveSyntax } from './detect-format';
+import { SYNTAX_BUDGET_CODE } from './syntax-budget';
 
 export interface CompileContentInput extends ReactiveCompileInput {
   format: ContentFormat;
@@ -29,6 +30,11 @@ export interface CompileContentResult {
 export async function compileContent(input: CompileContentInput): Promise<CompileContentResult> {
   const first = await compileReactiveSource(input);
   if (first.result.ok || input.format !== 'markdown') return { outcome: first };
+  // 超预算不是「历史 Markdown 外形」：字面化会把 `{{` 膨胀成实体并再编译一次，
+  // 既救不回来也不该把资源继续烧下去。明确失败并保留原文。
+  if (first.result.diagnostics.some((diagnostic) => diagnostic.code === SYNTAX_BUDGET_CODE)) {
+    return { outcome: first };
+  }
 
   const literal = literalizeReactiveSyntax(input.source);
   if (!literal.changed) return { outcome: first };

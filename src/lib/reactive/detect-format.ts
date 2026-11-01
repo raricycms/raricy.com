@@ -36,8 +36,14 @@ import {
 } from 'reactive-md';
 import { SITE_REACTIVE_COMPONENT_NAMES } from './component-names';
 import { shouldRejectReactive } from './diagnostics';
-import { applyLegacyHtmlCompat, maskProtectedContent } from './legacy-compat';
+import {
+  HTML_COLLISION_TAGS,
+  applyLegacyHtmlCompat,
+  looksLikeComponentTag,
+  maskProtectedContent,
+} from './legacy-compat';
 import { reactiveCompileOptions } from './host-components';
+import { SYNTAX_BUDGET_CODE, checkSyntaxBudget } from './syntax-budget';
 import { findLeadingVersionDirective } from './version-directive';
 
 /** 当前语法版本的权威导出（草稿 / 写 API 契约用；来自上游 LOCAL_SYNTAX_VERSION）。 */
@@ -119,6 +125,51 @@ function analysisEvidence(source: string, analysis: AuthorAnalysis | undefined):
   return [...evidence];
 }
 
+/**
+ * 「半截增强」：已知组件标签没有闭合 `>`、或 `{{` 未闭合。
+ *
+ * 这类输入在 authoring token 里通常**没有** tag / expression 证据（解析器还没
+ * 认出结构），但 parser 的**原始诊断**仍带准确位置。只看诊断 + 屏蔽区：
+ *   · 代码 / 数学 / `<pre><code>` 里的示例不会产生这些诊断；
+ *   · 未知普通标签（`<marquee`）名字不在组件表里，不算；
+ *   · 与 HTML 同名的标签（`<select` / `<table`）只在属性确实像组件时才算，
+ *     避免把历史 HTML 的残缺写法硬判成增强语法。
+ * 返回 evidence 形状与 `analysisEvidence` 一致，交给同一条写入闸门。
+ */
+function halfEnhancedEvidence(source: string, result: LocalCompileResult): string[] {
+  if (result.ok) return [];
+  const protectedMask = maskProtectedContent(source);
+  // 插值检测要再盖掉完整 HTML 标签：属性值里的 `{{` 不是正文插值。
+  const outsideTags = protectedMask.replace(/<[^>]*>/g, (match) => 'x'.repeat(match.length));
+  const evidence = new Set<string>();
+  for (const diagnostic of result.diagnostics) {
+    if (diagnostic.code === SYNTAX_BUDGET_CODE) {
+      evidence.add('syntax-budget');
+      continue;
+    }
+    const start = diagnostic.range.start;
+    const end = diagnostic.range.end;
+    if (start < 0 || end <= start || end > source.length) continue;
+    if (
+      diagnostic.code === 'local.interpolation' &&
+      diagnostic.messageKey === 'local.interpolation.unclosed' &&
+      outsideTags.startsWith('{{', start)
+    ) {
+      evidence.add('interpolation');
+      continue;
+    }
+    if (diagnostic.code !== 'local.tag.unclosed') continue;
+    const raw = source.slice(start, end);
+    const match = /^<\s*\/?\s*([A-Za-z][A-Za-z0-9-]*)/.exec(raw);
+    if (!match) continue;
+    const name = match[1].toLowerCase();
+    if (!COMPONENT_NAMES.has(name)) continue;
+    if (HTML_COLLISION_TAGS.has(name) && !looksLikeComponentTag(name, raw, [])) continue;
+    evidence.add(`component:${name}`);
+  }
+  return [...evidence];
+}
+
 function declaredVersion(source: string): string | null {
   const declaration = findLeadingVersionDirective(source);
   return declaration?.version ?? null;
@@ -151,7 +202,9 @@ export function classifyReactiveSyntax(
       declaredVersion: declaration,
     };
   }
-  const evidence = analysisEvidence(source, analysis);
+  const evidence = [
+    ...new Set([...analysisEvidence(source, analysis), ...halfEnhancedEvidence(source, result)]),
+  ];
   const format: ContentFormatName = evidence.length > 0 ? 'reactive' : 'markdown';
   return {
     format,
@@ -187,6 +240,22 @@ export function detectReactiveSyntax(
   source: string,
   options: LocalCompileOptions = reactiveCompileOptions('markdown')
 ): ReactiveSyntaxDetection {
+  // 编译前的语法复杂度闸门：上游对大量未闭合 `<` / `{{` 是超线性的（25 万 `<`
+  // 实测约 30s）。超预算直接给出诊断并保留原文，绝不进入 compileLocal。
+  const budget = checkSyntaxBudget(source);
+  if (budget) {
+    return finalizeReactiveDetection({
+      format: 'reactive',
+      reactive: true,
+      valid: false,
+      publishable: false,
+      evidence: ['syntax-budget'],
+      diagnostics: [budget.diagnostic],
+      codes: [budget.diagnostic.code],
+      declaredVersion: declaredVersion(source),
+    });
+  }
+
   // 历史 HTML 先过兼容层，避免把「旧标签」误判成编译失败。等长改写，诊断位置不变。
   const compat = applyLegacyHtmlCompat(source);
   const result = compileLocal(compat.source, options);

@@ -81,6 +81,13 @@ export default function ReactivePreview({
   const [rendered, setRendered] = useState<RenderedPreview | null>(null);
   const [errors, setErrors] = useState<Diagnostic[]>([]);
   const [pending, setPending] = useState(false);
+  /**
+   * 预览的编译回退到了主线程（浏览器 Worker 起不来 / 运行中失败）。
+   *
+   * 回退后每次 300ms 防抖都会在主线程整篇编译，长文会明显变卡；不提示的话
+   * 用户只看到「今天预览很慢」（终审 F4）。只做一句短提示，不铺技术细节。
+   */
+  const [fallback, setFallback] = useState(false);
 
   const schedulerRef = useRef<LocalCompileScheduler | null>(null);
   /** 最近几次适配结果，按 adaptedSource 索引（见文件头「hostData 按源码配对」）。 */
@@ -95,6 +102,7 @@ export default function ReactivePreview({
 
   // ── 调度器：整个挂载期一个 ────────────────────────────────────────────────
   useEffect(() => {
+    setFallback(false);
     const scheduler = new LocalCompileScheduler({
       createWorker: () =>
         new Worker(new URL('../../../lib/reactive/compile.worker.ts', import.meta.url), {
@@ -113,6 +121,7 @@ export default function ReactivePreview({
         setRendered({ document: outcome.result.document, hostData });
       },
       onPendingChange: setPending,
+      onModeChange: (mode) => setFallback(mode === 'fallback'),
     });
     schedulerRef.current = scheduler;
     return () => {
@@ -178,6 +187,11 @@ export default function ReactivePreview({
             </li>
           ))}
         </ul>
+      )}
+      {fallback && (
+        <p className="reactive-preview__status" role="status">
+          本地检查：预览仍可用，编译可能较慢。
+        </p>
       )}
       {rendered ? (
         <ReactiveDocument

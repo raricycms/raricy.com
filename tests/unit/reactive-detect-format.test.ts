@@ -110,3 +110,54 @@ describe('classifyReactiveSyntax —— worker 结果分类（不重复编译）
     expect(detected.valid).toBe(false);
   });
 });
+
+describe('半截增强：未闭合标签 / 插值', () => {
+  it('已知组件没有闭合 `>`、未闭合 `{{` → invalid-enhanced 且不可发布', () => {
+    const cases = [
+      { source: '<panel title="x"', evidence: 'component:panel' },
+      { source: '文字 {{ 未闭合', evidence: 'interpolation' },
+      { source: '<section color="#000"', evidence: 'component:section' },
+      { source: '<table page-size="5"', evidence: 'component:table' },
+      { source: '<progress value="{{ 40 }}"', evidence: 'component:progress' },
+    ];
+    for (const { source, evidence } of cases) {
+      const detected = detectReactiveSyntax(source);
+      expect(detected.format, source).toBe('reactive');
+      expect(detected.valid, source).toBe(false);
+      expect(detected.publishable, source).toBe(false);
+      expect(detected.literalized, source).toBeUndefined();
+      expect(detected.evidence, source).toContain(evidence);
+      expect(detected.diagnostics.length, source).toBeGreaterThan(0);
+    }
+  });
+
+  it('代码 / 数学 / 未知普通 HTML 的半截写法不被误判', () => {
+    for (const source of [
+      '`<panel title="x"`',
+      '```\n<panel title="x"\n```',
+      '    <panel title="x"',
+      '示例 <marquee 文本',
+    ]) {
+      const detected = detectReactiveSyntax(source);
+      expect(detected.format, source).toBe('markdown');
+      expect(detected.publishable, source).toBe(true);
+    }
+    // 未知普通标签：历史 Markdown 仍可保存（字面量降级）。
+    const select = detectReactiveSyntax('<select 文本');
+    expect(select.format).toBe('markdown');
+    expect(select.publishable).toBe(true);
+    expect(select.literalized).toBe(true);
+  });
+
+  it('worker 分类路径同样识别半截增强（不依赖 authoring token）', () => {
+    const options = reactiveCompileOptions('markdown');
+    for (const source of ['<panel title="x"', '文字 {{ 未闭合']) {
+      const result = compileLocal(source, options);
+      const analysis = analyzeLocalSource(source, options, { diagnostics: false });
+      const detected = classifyReactiveSyntax(source, result, analysis);
+      expect(detected.format, source).toBe('reactive');
+      expect(detected.valid, source).toBe(false);
+      expect(detected.publishable, source).toBe(false);
+    }
+  });
+});

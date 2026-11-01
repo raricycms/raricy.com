@@ -312,6 +312,14 @@ export default function UploadForm({ clip }: { clip?: EditClip }) {
       // 更不 router.push（那会把人从**他现在**这一页上拽走）。
       if (!aliveRef.current) return;
       if (response.ok && result.code === 200) {
+        // ★ 保存成功后把格式下限抬到服务端已持有的值 ★（终审 F1）
+        // 同页保存过 reactive 之后，表单仍可能拿着进页面时的 markdown；不抬下限，
+        // 删光增强语法再保存就会静默把已保存的 reactive 覆盖成 markdown。
+        // 只升不降；内容与草稿清理由下面那段按「有没有新改动」决定，不受影响。
+        if (data.format === 'reactive') {
+          setFormat('reactive');
+          editorRef.current?.pinSavedFormat('reactive', prepared?.syntaxVersion ?? null);
+        }
         // 这一笔落在服务端的哪一篇（两个接口都回 `{ id }`）。新建的第一笔成功之后
         // 它就是这一页的 id —— 提交那一步要跳过去，有未保存改动而留下时还要钉住它。
         const savedId =
