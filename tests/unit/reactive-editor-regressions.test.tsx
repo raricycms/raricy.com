@@ -20,7 +20,13 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { ContentFormat } from '@/lib/content-format';
-import { DRAFT_DEBOUNCE_MS, encodeDraftValue } from '@/lib/md-editor/draft';
+import {
+  DRAFT_DEBOUNCE_MS,
+  draftMetaKey,
+  encodeDraftMeta,
+  encodeDraftValue,
+  type DraftEntry,
+} from '@/lib/md-editor/draft';
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -123,6 +129,14 @@ import MarkdownEditor from '@/app/components/MarkdownEditor';
 
 const KEY = 'reactive-regression-draft';
 
+/** 按新存储形态播种：主键原文 + 旁路元数据（格式 / 版本）。 */
+function seedDraft(entry: DraftEntry): void {
+  window.localStorage.setItem(KEY, encodeDraftValue(entry));
+  const meta = encodeDraftMeta(entry);
+  if (meta === null) window.localStorage.removeItem(draftMetaKey(KEY));
+  else window.localStorage.setItem(draftMetaKey(KEY), meta);
+}
+
 beforeEach(() => {
   vi.useFakeTimers();
   window.localStorage.clear();
@@ -218,9 +232,8 @@ describe('草稿：只切格式也要把正文与新格式一起存下', () => {
     await h.click('#pick-reactive');
     await tick(DRAFT_DEBOUNCE_MS + 50);
 
-    expect(window.localStorage.getItem(KEY)).toBe(
-      encodeDraftValue({ format: 'reactive', text: '正文一个字都没动', syntaxVersion: null })
-    );
+    expect(window.localStorage.getItem(KEY)).toBe('正文一个字都没动');
+    expect(window.localStorage.getItem(draftMetaKey(KEY))).toContain('"format":"reactive"');
     h.unmount();
   });
 
@@ -236,8 +249,8 @@ describe('草稿：只切格式也要把正文与新格式一起存下', () => {
   });
 
   it('初次挂载不覆盖正等用户选择的旧草稿', async () => {
-    const oldDraft = encodeDraftValue({ format: 'reactive', text: '上次没发出去的草稿', syntaxVersion: null });
-    window.localStorage.setItem(KEY, oldDraft);
+    seedDraft({ format: 'reactive', text: '上次没发出去的草稿', syntaxVersion: null });
+    const oldDraft = window.localStorage.getItem(KEY);
 
     const h = await mountEditor({
       initialValue: '服务端那一版正文',
@@ -254,10 +267,7 @@ describe('草稿：只切格式也要把正文与新格式一起存下', () => {
 
 describe('草稿恢复按钮：最终正文与格式保持一致', () => {
   it('恢复一份 reactive 草稿 → 表单格式跟着变，落盘的也是 reactive', async () => {
-    window.localStorage.setItem(
-      KEY,
-      encodeDraftValue({ format: 'reactive', text: '草稿里的正文', syntaxVersion: null })
-    );
+    seedDraft({ format: 'reactive', text: '草稿里的正文', syntaxVersion: null });
     const onFormatRestored = vi.fn();
     const h = await mountEditor({
       initialValue: '当前正文',
@@ -270,15 +280,14 @@ describe('草稿恢复按钮：最终正文与格式保持一致', () => {
     expect(h.formatLabel()).toBe('reactive');
 
     await tick(DRAFT_DEBOUNCE_MS + 50);
-    expect(window.localStorage.getItem(KEY)).toBe(
-      encodeDraftValue({ format: 'reactive', text: '草稿里的正文', syntaxVersion: null })
-    );
+    expect(window.localStorage.getItem(KEY)).toBe('草稿里的正文');
+    expect(window.localStorage.getItem(draftMetaKey(KEY))).toContain('"format":"reactive"');
     h.unmount();
   });
 
   it('自动恢复时不拿表单原来的格式回写（草稿格式才是真相）', async () => {
-    const draft = encodeDraftValue({ format: 'reactive', text: '草稿正文', syntaxVersion: null });
-    window.localStorage.setItem(KEY, draft);
+    seedDraft({ format: 'reactive', text: '草稿正文', syntaxVersion: null });
+    const draft = window.localStorage.getItem(KEY);
 
     const onFormatRestored = vi.fn();
     // 新建页没有服务端初值 → 直接自动恢复；这里刻意让表单**不采纳**恢复的格式，

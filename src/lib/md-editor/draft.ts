@@ -40,28 +40,55 @@ export interface DraftEntry {
 }
 
 /**
- * ★ 格式怎么存：markdown 仍是**裸正文**，只有非 markdown 才套信封 ★
+ * ★ 格式怎么存：**正文永远是裸正文，格式/版本放旁路元数据** ★
  *
- * 老草稿（Vditor 时代留下的）在 localStorage 里就是一段裸 Markdown，键名也一直
- * 沿用 —— 它们必须原样恢复成 markdown。所以 markdown 这一档的落盘形态一个字都
- * 不能变；reactive 用带前缀的 JSON 信封，读回时认前缀。
+ * 旧阅读器（回滚后的构建、同一浏览器里还没刷新的旧标签页）只会读主键。任何
+ * 「把 JSON 信封写在主键里」的方案，在它眼里都是一段以 `{` 开头的普通 Markdown
+ * —— 用户一保存就把信封写进文章（审查 4.2）。所以当前写入形态是：
  *
- * 前缀外层的任何内容（包括一段以 `{` 开头的旧正文）都按裸 Markdown 恢复 ——
- * **绝不因为「看起来像 JSON」就猜成 reactive**。猜错等于把一份 Markdown 交给
- * ReactiveMD 解析器，页面上通常看不出异常，只是内容悄悄变样。
+ *   · `key`          —— 原文，逐字节就是用户写的内容（老阅读器照常显示）；
+ *   · `key + ':meta'`—— JSON `{ version, format, syntaxVersion }`，只给新阅读器。
  *
- * v1 → v2：v2 多了 `syntaxVersion`。**v1 继续读**（未知版本记 null），
- * 于是升级后浏览器里那份没写完的草稿照常恢复 —— 丢草稿是静默的，没有提示。
+ * 老阅读器读到 reactive 草稿时会把源码当 Markdown 显示：这是**降级但保留原文**，
+ * 不会产生 JSON 正文；新阅读器读回格式与版本。markdown 草稿不需要元数据（主键
+ * 裸正文即全部信息），写入时顺手清掉可能残留的旧 meta。
+ *
+ * 历史兼容：v1（`{text, format}`）与早期 v2（`{text, format, syntaxVersion}`）
+ * 信封仍可读 —— 升级前浏览器里留下的那些草稿照常恢复。未知形态一律按裸 Markdown
+ * 恢复，绝不因为「看起来像 JSON」就猜成 reactive。
  */
 const DRAFT_ENVELOPE_V1 = 'raricy-md-draft:v1:';
 const DRAFT_ENVELOPE_V2 = 'raricy-md-draft:v2:';
+
+/** 旁路元数据键（相对主键）。 */
+export function draftMetaKey(key: string): string {
+  return `${key}:meta`;
+}
+
+/**
+ * 正文指纹（FNV-1a 32 位）。只用来判断「元数据还配不配得上主键里的正文」：
+ * 旧标签页 / 回滚构建只写主键、不碰 meta，若不校验，它保存的新正文会被新阅读器
+ * 按旧的 reactive 格式恢复。指纹不一致 → 忽略 meta，按 Markdown 恢复。
+ */
+function textFingerprint(text: string): string {
+  let hash = 0x811c9dc5;
+  for (let index = 0; index < text.length; index += 1) {
+    hash ^= text.charCodeAt(index);
+    hash = Math.imul(hash, 0x01000193) >>> 0;
+  }
+  return hash.toString(16).padStart(8, '0');
+}
 
 /** 取信封里的字符串字段；形态不对返回 null（不抛）。 */
 function envelopeString(value: unknown): string | null {
   return typeof value === 'string' ? value : null;
 }
 
-/** 把 localStorage 里的原样字符串解成草稿。null = 没有草稿。 */
+function looksLikeLegacyEnvelope(raw: string): boolean {
+  return raw.startsWith(DRAFT_ENVELOPE_V1) || raw.startsWith(DRAFT_ENVELOPE_V2);
+}
+
+/** 把**历史信封**解成草稿。裸正文 / 坏信封返回 null（调用方再按 Markdown 处理）。 */
 export function parseDraftValue(raw: string | null): DraftEntry | null {
   if (raw === null) return null;
   for (const [prefix, versioned] of [
@@ -89,20 +116,47 @@ export function parseDraftValue(raw: string | null): DraftEntry | null {
       // 信封坏了就按旧草稿处理：原文仍然还给用户，绝不把它丢掉。
     }
   }
-  return { format: 'markdown', text: raw, syntaxVersion: null };
+  return null;
 }
 
-/** 落盘形态（见上面「格式怎么存」）。 */
+/** 主键里存的永远是原文（见上面「格式怎么存」）。 */
 export function encodeDraftValue(entry: DraftEntry): string {
-  if (entry.format === 'markdown') return entry.text;
-  return (
-    DRAFT_ENVELOPE_V2 +
-    JSON.stringify({
-      format: entry.format,
-      text: entry.text,
-      syntaxVersion: entry.syntaxVersion,
-    })
-  );
+  return entry.text;
+}
+
+/** 旁路元数据；markdown + 无版本时返回 null（不需要写）。 */
+export function encodeDraftMeta(entry: DraftEntry): string | null {
+  if (entry.format === 'markdown' && entry.syntaxVersion === null) return null;
+  return JSON.stringify({
+    version: 1,
+    format: entry.format,
+    syntaxVersion: entry.syntaxVersion,
+    hash: textFingerprint(entry.text),
+  });
+}
+
+/** 解析旁路元数据；形态不对返回 null（退回 markdown，正文不受影响）。 */
+export function parseDraftMeta(
+  raw: string | null,
+  text: string
+): { format: ContentFormat; syntaxVersion: string | null } | null {
+  if (raw === null) return null;
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object') return null;
+    const format = (parsed as { format?: unknown }).format;
+    if (format !== 'markdown' && format !== 'reactive') return null;
+    // 主键被旧阅读器改过 → 指纹对不上，元数据作废（正文仍是安全的）。
+    const hash = (parsed as { hash?: unknown }).hash;
+    if (typeof hash === 'string' && hash !== textFingerprint(text)) return null;
+    const version = (parsed as { syntaxVersion?: unknown }).syntaxVersion;
+    return {
+      format,
+      syntaxVersion: typeof version === 'string' ? version : null,
+    };
+  } catch {
+    return null;
+  }
 }
 
 export interface DraftStore {
@@ -157,12 +211,34 @@ export function createDraftStore(key: string, options: DraftStoreOptions = {}): 
 
   function write(): void {
     if (stopped || pending === null) return;
-    const value = encodeDraftValue(pending);
+    const entry = pending;
     pending = null;
+    const metaKey = draftMetaKey(key);
+    // ★ 先写正文，再写元数据 ★
+    // 正文写失败 → 清掉可能残留的旧 meta，避免「旧正文 + 新格式」错配。
     try {
-      window.localStorage.setItem(key, value);
+      window.localStorage.setItem(key, entry.text);
     } catch {
       notifyUnavailable();
+      try {
+        window.localStorage.removeItem(metaKey);
+      } catch {
+        /* 已经不可写；read 会按裸 Markdown 恢复 */
+      }
+      return;
+    }
+    // 元数据失败时正文仍然完整保留；读回时按 Markdown 恢复（不产生 JSON 正文）。
+    try {
+      const meta = encodeDraftMeta(entry);
+      if (meta === null) window.localStorage.removeItem(metaKey);
+      else window.localStorage.setItem(metaKey, meta);
+    } catch {
+      notifyUnavailable();
+      try {
+        window.localStorage.removeItem(metaKey);
+      } catch {
+        /* 同上 */
+      }
     }
   }
 
@@ -182,15 +258,27 @@ export function createDraftStore(key: string, options: DraftStoreOptions = {}): 
   return {
     read() {
       try {
-        const entry = parseDraftValue(window.localStorage.getItem(key));
-        return entry === null
-          ? { ok: true, value: null, format: 'markdown', syntaxVersion: null }
-          : {
-              ok: true,
-              value: entry.text,
-              format: entry.format,
-              syntaxVersion: entry.syntaxVersion,
-            };
+        const raw = window.localStorage.getItem(key);
+        if (raw === null) {
+          return { ok: true, value: null, format: 'markdown', syntaxVersion: null };
+        }
+        // 历史信封（v1 / 早期 v2）优先按信封解；裸正文才看旁路元数据。
+        const legacy = looksLikeLegacyEnvelope(raw) ? parseDraftValue(raw) : null;
+        if (legacy) {
+          return {
+            ok: true,
+            value: legacy.text,
+            format: legacy.format,
+            syntaxVersion: legacy.syntaxVersion,
+          };
+        }
+        const meta = parseDraftMeta(window.localStorage.getItem(draftMetaKey(key)), raw);
+        return {
+          ok: true,
+          value: raw,
+          format: meta?.format ?? 'markdown',
+          syntaxVersion: meta?.syntaxVersion ?? null,
+        };
       } catch {
         notifyUnavailable();
         return { ok: false };
@@ -233,6 +321,7 @@ export function createDraftStore(key: string, options: DraftStoreOptions = {}): 
       pending = null;
       try {
         window.localStorage.removeItem(key);
+        window.localStorage.removeItem(draftMetaKey(key));
       } catch {
         notifyUnavailable();
       }

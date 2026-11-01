@@ -14,6 +14,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   createDraftStore,
+  draftMetaKey,
+  encodeDraftMeta,
   encodeDraftValue,
   parseDraftValue,
 } from '@/lib/md-editor/draft';
@@ -24,6 +26,7 @@ afterEach(() => {
   vi.useRealTimers();
   vi.restoreAllMocks();
   window.localStorage.removeItem(KEY);
+  window.localStorage.removeItem(draftMetaKey(KEY));
 });
 
 describe('读写', () => {
@@ -163,26 +166,74 @@ describe('组件卸载（站内换页根本不发 pagehide）', () => {
   });
 });
 
-describe('草稿格式：老草稿一律按 markdown 恢复', () => {
+describe('草稿格式：主键永远是原文，格式走旁路元数据', () => {
+  /** 只读主键的老阅读器：不是历史信封就原样当 Markdown。 */
+  function readLikeOldReader(): { format: string; text: string } | null {
+    const raw = window.localStorage.getItem(KEY);
+    if (raw === null) return null;
+    const legacy = parseDraftValue(raw);
+    return legacy ? { format: legacy.format, text: legacy.text } : { format: 'markdown', text: raw };
+  }
+
   it('裸正文（Vditor 时代的老草稿）恢复成 markdown', () => {
-    expect(parseDraftValue('# 旧草稿')).toEqual({ format: 'markdown', text: '# 旧草稿', syntaxVersion: null });
+    vi.useFakeTimers();
+    window.localStorage.setItem(KEY, '# 旧草稿');
+    const store = createDraftStore(KEY);
+    expect(store.read()).toEqual({
+      ok: true,
+      value: '# 旧草稿',
+      format: 'markdown',
+      syntaxVersion: null,
+    });
+    store.dispose();
   });
 
   it('★ 看起来像 JSON 的旧正文也不猜成 reactive ★', () => {
     const old = '{"format":"reactive","text":"这是正文"}';
-    expect(parseDraftValue(old)).toEqual({ format: 'markdown', text: old, syntaxVersion: null });
+    window.localStorage.setItem(KEY, old);
+    const store = createDraftStore(KEY);
+    expect(store.read()).toEqual({
+      ok: true,
+      value: old,
+      format: 'markdown',
+      syntaxVersion: null,
+    });
+    store.dispose();
   });
 
-  it('坏掉的信封不丢正文，仍按 markdown 恢复', () => {
+  it('坏掉的历史信封不丢正文，仍按 markdown 恢复', () => {
     const broken = 'raricy-md-draft:v1:{not json';
-    expect(parseDraftValue(broken)).toEqual({ format: 'markdown', text: broken, syntaxVersion: null });
+    window.localStorage.setItem(KEY, broken);
+    const store = createDraftStore(KEY);
+    expect(store.read()).toEqual({
+      ok: true,
+      value: broken,
+      format: 'markdown',
+      syntaxVersion: null,
+    });
+    store.dispose();
   });
 
-  it('reactive 草稿连格式一起落盘、一起恢复', () => {
+  it('reactive 草稿：主键是原文，格式/版本在旁路元数据里', () => {
     vi.useFakeTimers();
     const store = createDraftStore(KEY, { debounceMs: 500 });
-    store.schedule({ format: 'reactive', text: '人数：{{ people }}', syntaxVersion: 'local-draft-3' });
+    store.schedule({
+      format: 'reactive',
+      text: '人数：{{ people }}',
+      syntaxVersion: 'local-draft-3',
+    });
     vi.advanceTimersByTime(500);
+
+    // ★ 旧阅读器 / 回滚后的旧构建只读主键：看到的是原文，不是 JSON 信封 ★
+    expect(window.localStorage.getItem(KEY)).toBe('人数：{{ people }}');
+    expect(readLikeOldReader()).toEqual({
+      format: 'markdown',
+      text: '人数：{{ people }}',
+    });
+    expect(JSON.parse(window.localStorage.getItem(draftMetaKey(KEY))!)).toMatchObject({
+      format: 'reactive',
+      syntaxVersion: 'local-draft-3',
+    });
     expect(store.read()).toEqual({
       ok: true,
       value: '人数：{{ people }}',
@@ -192,9 +243,48 @@ describe('草稿格式：老草稿一律按 markdown 恢复', () => {
     store.dispose();
   });
 
-  it('markdown 的落盘形态一个字都没变（老草稿续用同一把键）', () => {
-    expect(encodeDraftValue({ format: 'markdown', text: '普通正文', syntaxVersion: null })).toBe('普通正文');
-    expect(parseDraftValue('普通正文')).toEqual({ format: 'markdown', text: '普通正文', syntaxVersion: null });
+  it('markdown 落盘形态一个字都没变，也不留元数据', () => {
+    vi.useFakeTimers();
+    const store = createDraftStore(KEY, { debounceMs: 500 });
+    store.schedule('普通正文');
+    vi.advanceTimersByTime(500);
+    expect(window.localStorage.getItem(KEY)).toBe('普通正文');
+    expect(window.localStorage.getItem(draftMetaKey(KEY))).toBeNull();
+    expect(encodeDraftValue({ format: 'markdown', text: '普通正文', syntaxVersion: null })).toBe(
+      '普通正文'
+    );
+    store.dispose();
+  });
+
+  it('旧阅读器只改主键 → 指纹不匹配，元数据作废、按 markdown 恢复', () => {
+    vi.useFakeTimers();
+    const store = createDraftStore(KEY, { debounceMs: 500 });
+    store.schedule({ format: 'reactive', text: '原正文', syntaxVersion: 'local-draft-3' });
+    vi.advanceTimersByTime(500);
+
+    // 模拟回滚后的旧构建 / 旧标签页：只写主键（它不认 meta）。
+    window.localStorage.setItem(KEY, '旧构建改写的正文');
+    expect(store.read()).toEqual({
+      ok: true,
+      value: '旧构建改写的正文',
+      format: 'markdown',
+      syntaxVersion: null,
+    });
+    store.dispose();
+  });
+
+  it('从 reactive 改回 markdown 时清掉旧元数据', () => {
+    vi.useFakeTimers();
+    const store = createDraftStore(KEY, { debounceMs: 500 });
+    store.schedule({ format: 'reactive', text: '正文', syntaxVersion: 'local-draft-3' });
+    vi.advanceTimersByTime(500);
+    expect(window.localStorage.getItem(draftMetaKey(KEY))).not.toBeNull();
+
+    store.schedule({ format: 'markdown', text: '正文', syntaxVersion: null });
+    vi.advanceTimersByTime(500);
+    expect(window.localStorage.getItem(draftMetaKey(KEY))).toBeNull();
+    expect(store.read()).toMatchObject({ format: 'markdown', syntaxVersion: null });
+    store.dispose();
   });
 
   it('v1 信封继续读：没有版本字段的旧 reactive 草稿按 null 恢复', () => {
@@ -206,7 +296,7 @@ describe('草稿格式：老草稿一律按 markdown 恢复', () => {
     });
   });
 
-  it('v2 信封连语法版本一起恢复', () => {
+  it('v2 信封连语法版本一起恢复（升级前写下的那些）', () => {
     const v2 =
       'raricy-md-draft:v2:' +
       JSON.stringify({ format: 'reactive', text: '新正文', syntaxVersion: 'local-draft-3' });
@@ -215,6 +305,13 @@ describe('草稿格式：老草稿一律按 markdown 恢复', () => {
       text: '新正文',
       syntaxVersion: 'local-draft-3',
     });
+  });
+
+  it('新 writer 的 reactive 结果也能被「只认历史信封」的解析器按原文读回', () => {
+    const entry = { format: 'reactive' as const, text: '正文', syntaxVersion: 'local-draft-3' };
+    expect(encodeDraftValue(entry)).toBe('正文');
+    expect(parseDraftValue(encodeDraftValue(entry))).toBeNull();
+    expect(encodeDraftMeta(entry)).toContain('"format":"reactive"');
   });
 });
 
