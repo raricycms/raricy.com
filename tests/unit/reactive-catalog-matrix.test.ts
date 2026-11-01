@@ -10,7 +10,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { getNativeComponentCatalog, renderNativeSnippet } from 'reactive-md/authoring';
-import { compileLocal } from 'reactive-md';
+import { compileLocal, type LocalDocument } from 'reactive-md';
 import { reactiveCompileOptions } from '@/lib/reactive/host-components';
 import { applyLegacyHtmlCompat } from '@/lib/reactive/legacy-compat';
 
@@ -21,18 +21,35 @@ function instantiate(component: ReturnType<typeof getNativeComponentCatalog>['co
     .replace(/\{\{select:(.*?)\}\}/g, '$1');
 }
 
+function componentNames(document: LocalDocument): string[] {
+  const names: string[] = [];
+  const walk = (nodes: LocalDocument['nodes']): void => {
+    for (const node of nodes) {
+      if (node.type === 'component' && node.name) names.push(node.name);
+      if (node.children) walk(node.children);
+    }
+  };
+  walk(document.nodes);
+  return names;
+}
+
 describe('Components 目录模板 × 统一编译管线', () => {
   const catalog = getNativeComponentCatalog('zh');
 
-  it('★ 目录非空，且每个插入模板都编译成功、无未知组件 ★', () => {
+  it('★ 目录非空，且每个模板都真的编译成对应组件节点 ★', () => {
     expect(catalog.components.length).toBeGreaterThan(20);
     for (const component of catalog.components) {
       const source = instantiate(component);
       const compat = applyLegacyHtmlCompat(source);
+      // 只断言 ok 不够：section / table / progress 被当成历史 HTML 解包后同样 ok，
+      // 但组件语义已经永久丢失。这里必须看到真实 component 节点。
+      expect(compat.source, `${component.id} 的标签被 compat 改写`).toContain(`<${component.id}`);
       const result = compileLocal(compat.source, reactiveCompileOptions('reactive'));
       const codes = result.diagnostics.map((d) => d.code);
       expect(result.ok, `${component.id}: ${codes.join(', ')}`).toBe(true);
       expect(codes, component.id).not.toContain('local.component.unknown');
+      if (!result.ok) continue; // 上面的断言已失败；这里只为类型收窄
+      expect(componentNames(result.document), component.id).toContain(component.id);
     }
   });
 

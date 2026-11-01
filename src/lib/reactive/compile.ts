@@ -30,6 +30,7 @@ import {
   reactiveCompileOptions,
 } from './host-components';
 import { reactiveDiagnosticCodes } from './diagnostics';
+import { checkSyntaxBudget } from './syntax-budget';
 import type { AdaptedSourceSegment } from './source-map';
 import type { ContentFormat } from '../content-format';
 import type { ReferenceMode, SiteHostData } from './ref-types';
@@ -139,6 +140,33 @@ export async function compileReactiveSource(
   input: ReactiveCompileInput
 ): Promise<ReactiveCompileOutcome> {
   const startedAt = performance.now();
+
+  // 编译前的语法复杂度闸门：上游对海量未闭合 `<` / `{{` 是超线性的，且 compileLocal
+  // 是同步的。超预算明确拒绝并保留原文，不进入 prepare / compile（见 syntax-budget.ts）。
+  const budget = checkSyntaxBudget(input.source);
+  if (budget) {
+    const compileMs = Math.round((performance.now() - startedAt) * 1000) / 1000;
+    console.info(
+      '[reactive]',
+      JSON.stringify({ cacheHit: false, compileMs, codes: [budget.diagnostic.code], compat: {} })
+    );
+    return {
+      result: { ok: false, diagnostics: [budget.diagnostic] },
+      adaptedSource: input.source,
+      hostData: {},
+      segments: [],
+      referenceSnapshotId: '',
+      sourceHash: '',
+      adaptedHash: '',
+      adapterVersion: 'syntax-budget',
+      compilerVersion: REACTIVE_COMPILER_VERSION,
+      syntaxVersion: LOCAL_SYNTAX_VERSION,
+      compatCounts: {},
+      cacheKey: 'syntax-budget',
+      cacheHit: false,
+      compileMs,
+    };
+  }
 
   const prepared = await prepareReactiveDocument(input.source, {
     mode: input.mode,

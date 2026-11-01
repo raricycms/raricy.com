@@ -3,6 +3,7 @@ import { prisma } from '../db';
 import { reactiveCompileOptions } from './host-components';
 import { applyLegacyHtmlCompat } from './legacy-compat';
 import { shouldRejectReactive } from './diagnostics';
+import { checkSyntaxBudget } from './syntax-budget';
 import {
   findDynamicConstraintActivations,
   findStaleVersionDeclaration,
@@ -55,6 +56,12 @@ export async function planReactiveV07Migration(): Promise<ReactiveV07Plan> {
     const rows: PreparedRow[] = [];
     const blockers: MigrationBlocker[] = [];
     for (const item of sources) {
+      // 迁移也会同步编译 / 迁移正文；超预算的病态源码不能在迁移里跑满 CPU。
+      const budget = checkSyntaxBudget(item.source);
+      if (budget) {
+        blockers.push({ kind: item.kind, id: item.id, codes: [budget.diagnostic.code] });
+        continue;
+      }
       if (item.syntaxVersion === LOCAL_SYNTAX_VERSION) {
         // 列已是当前版本，正文却仍声明旧版本（含正文深处）：一次性标记不能掩盖它。
         const stale = findStaleVersionDeclaration(item.source);

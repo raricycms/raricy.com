@@ -17,14 +17,28 @@ import {
   type LocalCompileWorkerScope,
 } from 'reactive-md';
 import { applyLegacyHtmlCompat } from './legacy-compat';
+import { checkSyntaxBudget } from './syntax-budget';
 
 const session = createLocalCompileSession();
 const compile = session.compile.bind(session);
 const compileShared = session.compileShared.bind(session);
 
-session.compile = (source, options) => compile(applyLegacyHtmlCompat(source).source, options);
-session.compileShared = (source, options) =>
-  compileShared(applyLegacyHtmlCompat(source).source, options);
+// 主线程与 worker 用同一道预算闸门：否则按一次键就能让 worker 里跑 30s 的
+// 未闭合 `<` 编译（编辑器的 pending 会一直挂着，用户只看到“检查中”）。
+function guarded<T extends { ok: boolean; diagnostics: unknown[] }>(
+  run: (source: string, options?: Parameters<typeof compile>[1]) => T,
+  source: string,
+  options?: Parameters<typeof compile>[1]
+): T {
+  const budget = checkSyntaxBudget(source);
+  if (budget) {
+    return { ok: false, diagnostics: [budget.diagnostic] } as T;
+  }
+  return run(applyLegacyHtmlCompat(source).source, options);
+}
+
+session.compile = (source, options) => guarded(compile, source, options);
+session.compileShared = (source, options) => guarded(compileShared, source, options);
 
 startLocalCompileWorker(self as unknown as LocalCompileWorkerScope, {
   createSession: () => session,

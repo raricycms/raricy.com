@@ -24,6 +24,7 @@ import {
 } from 'reactive-md';
 import { reactiveCompileOptions } from './host-components';
 import { applyLegacyHtmlCompat } from './legacy-compat';
+import { checkSyntaxBudget } from './syntax-budget';
 import {
   classifyReactiveSyntax,
   finalizeReactiveDetection,
@@ -166,11 +167,14 @@ export class ReactiveFormatAnalyzer {
       createWorker: options.createWorker,
       // worker 不可用时上游会回调这里；仍是异步调度，不在按键同步路径上。
       // ⚠️ 主线程路径也必须先过 compat，否则与 worker / 阅读结果不一致。
-      fallbackCompile: (source, compileOptions) =>
-        compileLocal(
+      fallbackCompile: (source, compileOptions) => {
+        const budget = checkSyntaxBudget(source);
+        if (budget) return { ok: false, diagnostics: [budget.diagnostic] };
+        return compileLocal(
           applyLegacyHtmlCompat(source).source,
           compileOptions ?? reactiveCompileOptions('markdown')
-        ),
+        );
+      },
       onModeChange: (mode, detail) => {
         this.mode = mode;
         if (mode === 'fallback') options.onFallback?.(detail);
