@@ -667,11 +667,20 @@ DATABASE_URL="file:/绝对路径/db.db" npm run search:rebuild
 - `reactive:migrate-v07` 的 blockers：未知语法版本、新激活 `<external>`、draft-2 动态
   `min/max/required`、列已是当前版本但正文声明旧版本。全部解决后再 `--apply`；
   一次性标记写入后不要手工重跑。
-- `reactive:backfill` 只补缺失的快照；已有同内容版本行跳过。Reactive 旧版本未迁移时
-  会报 blocker，不会擅自改写。
+- `reactive:backfill` 只补缺失的快照；已有同内容版本行跳过。Reactive 旧语法版本
+  （`syntaxVersion` 不等于当前 `local-draft-3`，包括 `null`）会报
+  `site.backfill.legacy-syntax` blocker，不会擅自生成“当前版本”快照；先完成第 3 步。
+- **运行配置**：统一管线**默认启用**，不需要设置任何 `REACTIVE_MD_*` 变量。部署环境里
+  遗留的 `REACTIVE_MD_MODE=shadow` 等同启用；`REACTIVE_MD_PERCENT` 与
+  `renderer_override` 不再参与阅读决策（字段仅为旧消费者保留）。**只有**
+  `REACTIVE_MD_MODE=off` 是事故回退：Markdown 回旧渲染器，Reactive 仍只走静态快照。
+  验收时不要用 `on` / 百分比把测试强行打开 —— 不设变量才是生产真实状态。
 - **回滚**：代码与数据必须成对恢复。只恢复代码 / 关闭交互 / 读旧 AST 都不会撤销已写入
   的新语法或旧语法迁移。恢复备份点之后的新写入如何保留 / 重放，必须在演练中明确，
   不能无记录覆盖。Markdown 的持久快照是可重建缓存，不是独立备份。
+  隔离演练见 `tests/service/reactive-rollback-drill.test.ts`：一致备份 → 迁移 → 还原
+  数据库文件 → 断言正文 / 语法版本 / 一次性标记 / 快照都回到迁移前；生产演练还要把
+  代码同时恢复到备份点对应的提交。
 - 发布后观察 `[reactive-read]` / `[reactive-slow]` 的结构化字段（renderer、reason、
   耗时、缓存命中、诊断码），不记录正文。
 

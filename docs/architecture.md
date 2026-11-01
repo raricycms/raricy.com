@@ -1994,8 +1994,10 @@ source-map 偏移不变）：
 - `script` / `style` / `iframe` / `object` / `embed` / SVG / MathML / 整页 HTML
   连同内容移除，不执行、不输出源码；
 - 缩进代码、围栏代码、行内代码、`<pre>` / `<code>`、数学区域不参与改写；
-- 未配对数学定界符换成全角字面量，不吞掉后半句；转义 `\$`、链接目标、HTML 属性
-  URL 不动；
+- **未配对数学**：只有未闭合的 `$$` 与 `\(` / `\[` 需要容错（否则整篇
+  `local.math.unclosed`），换成可读字面量、不吞掉后半句；**单个 `$` 上游本来就按
+  普通文字处理**（`价格 $5` 原样显示），不改。转义 `\$`、reference definition、
+  裸 URL、图片 alt 与 HTML 属性 URL 一律不动；
 - 历史 `<video>` / `<audio>` 转成链接或 `[@音频/<id>]`；
 - **data 位图**：只认 jpeg / png / gif / webp + base64 + 魔数 + 长度上限，
   转成 `[@图片/<ref>]`，由宿主 `image` 组件渲染真实 `<img>`。上游图片闸门不接受
@@ -2017,7 +2019,12 @@ source-map 偏移不变）：
   `{ok, document?, diagnostics}`。冷编译 / 长文预算见 `host-components.ts` 的实测注释
   与 `scripts/reactive-budget-measure.mts`。
 - Markdown 编译失败时 `compile-content.ts` 做一次字面量降级（把 `{{` / 组件标签转实体）
-  再编译；Reactive 失败仍拒绝发布。
+  再编译；Reactive 失败仍拒绝发布。**字面化只用于阅读容错**：写入路径若发现字面化
+  救活了原文，会用**原始正文**再检测一次，原文已具增强身份（invalid-enhanced）就返回
+  格式不匹配，不把“字面化后的文档”当成普通 Markdown 落库。
+- 历史正文的快照用 `npm run reactive:backfill` 回填（默认 dry-run、`--apply` 幂等可
+  重跑）。Reactive 旧语法版本（含 `syntaxVersion = null`）先报 blocker，必须先跑
+  `reactive:migrate-v07`。可恢复性演练见 `docs/deploy.md`「回滚」。
 
 #### 宿主组件 `site-embed`
 
