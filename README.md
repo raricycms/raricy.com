@@ -75,20 +75,12 @@ npm run dev                              # http://localhost:3000
 
 ## 工具脚本
 
-**数据库迁移阶段统一使用 `npm run migrate -- up`**：它先应用手写 SQL 结构迁移，再依次
-完成 Reactive 旧语法正文升级、历史编译快照回填，以及必要时的公开正文索引重建。正常升级
-无论 schema 是否变化都要跑 `up`。数据阶段失败会非零退出并把状态标成「结构已完成、数据
-未完成」；修复后重跑同一条命令即可接续。`status` / `verify` 仍是只读，不会触发这些阶段。
+**数据库只保存正文源码与必要元数据。** 博客和云剪贴板通过 ReactiveMD 按需编译、
+输出静态首屏并由浏览器接管交互；编译结果复用内存缓存，不写数据库快照。
 
-发布时先安装锁定依赖并生成 Prisma Client（`npm ci --include=dev && npx prisma generate`
-—— `npm ci` 会清掉生成产物），再跑 `status` / `up` / `verify`；**之后仍按发布流程
-`npm run build`，并按原有服务方式重启**。停写与备份见 `docs/deploy.md`。
-
-`search:benchmark` 在系统临时目录验证合成语料性能。Reactive 的独立命令保留给
-诊断 / 修复：`npm run reactive:migrate-v07`（默认预检，`--apply` 才写库）、
-`npm run reactive:backfill`（默认 dry-run）、`npm run search:rebuild`（强制重建索引）、
-`npm run reactive:corpus -- --db <sqlite> --out <json> --compile`（只读扫描语料并实际
-编译）、`npm run reactive:measure`（逐场景实测节点预算）。发布顺序见 `docs/deploy.md`。
+发布时安装依赖并生成 Prisma Client，再执行 `npm run migrate -- up`（只处理手写 SQL），
+然后构建并按原方式重启。旧 RMD 源码升级与公开索引修复使用独立命令，不阻塞 SQL 迁移。
+停写与备份仍见 `docs/deploy.md`。
 
 | 命令 | 作用 |
 |------|------|
@@ -100,10 +92,9 @@ npm run dev                              # http://localhost:3000
 | `npm run e2e` | 端到端（直接跑 Playwright，**不**自动 build —— 见下方警告） |
 | `npm run e2e:ci` | 同上，但先 build（CI / 全新环境用） |
 | `npm run probe:page -- /路径` | **看一眼**某个页面（起真浏览器 → 打开 → 可选等选择器 / 截图 / 打印 HTML / 打印 console 报错）。要登录加 `--as core`。**不做断言、不算测试** —— 要断言就写进 `tests/e2e/*.spec.ts` |
-| `npm run migrate -- up` | 应用 pending 手写 SQL，然后执行 Reactive 数据阶段（旧语法升级 / 快照回填 / 必要时索引重建）。可重复跑，失败后从断点接续 |
-| `npm run migrate -- status` / `verify` | 只读查看 pending / 校验 checksum；不触发数据阶段、不建跟踪表 |
-| `npm run reactive:migrate-v07` | 诊断 / 修复用：旧 Reactive 语法版本预检 / 迁移（`--apply` 同事务写原文 + 快照 + 标记） |
-| `npm run reactive:backfill` | 诊断 / 修复用：历史编译快照回填（默认 dry-run，`--apply` 写库） |
+| `npm run migrate -- up` | 只应用 pending 手写 SQL；不编译正文、不回填快照或重建索引 |
+| `npm run migrate -- status` / `verify` | 只读查看 pending / 校验 checksum，不建跟踪表 |
+| `npm run reactive:migrate-v07` | 独立旧语法预检 / 迁移（默认只读，`--apply` 写原文与完成标记，不写快照） |
 | `npm run search:rebuild` | 诊断 / 修复用：强制重建公开正文索引（正常 up 只在必要时重建） |
 | `npm run reactive:corpus` | 只读语料扫描；`--compile` 用统一 compat + 生产预算实际编译 |
 | `npm run reactive:measure` | 逐场景 / 逐预算实测，带子进程超时 |
@@ -128,7 +119,7 @@ npm run dev                              # http://localhost:3000
 - 站内反代：`proxy_pass http://127.0.0.1:3000`，**务必**透传 `Host: $http_host` / `X-Forwarded-Host` / `X-Forwarded-Proto`。
 - `instance/` 需在部署机器上是**真实目录**：头像、图床、故事、表情包落盘。
 - 数据库以 Prisma 0_init 为基线；正常升级与改 schema 都用 `npm run migrate -- up`
-  （先手写 SQL，再执行结构后数据阶段）。**不要**跑 `prisma migrate dev` / `db push` ——
+  （只执行手写 SQL）。**不要**跑 `prisma migrate dev` / `db push` ——
   生产库没有 `_prisma_migrations` 表，它们会提议 reset 整个库。详见 `docs/deploy.md`
   §4「修改 schema 后」与「ReactiveMD 0.7 / 统一渲染的发布顺序」。
 

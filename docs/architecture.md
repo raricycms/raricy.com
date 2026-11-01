@@ -1952,140 +1952,43 @@ bot 接口，私密夹也能**复制成公开**、能导出 JSON —— 它的�
 
 ### 6.23 ReactiveMD 统一渲染器（博客 / 剪贴板，2026-11）
 
-博客与云剪贴板的**目标入口默认全部走 ReactiveMD**：Markdown 与 `format='reactive'`
-的正文都进入同一套准备、编译、渲染管线。`src/lib/reactive/read-render.ts` 是阅读页
-唯一的路径决策入口；页面不自己判格式，也**绝不把 reactive 源码交给旧 Markdown
-解析器**。旧引擎只剩显式事故回退 `REACTIVE_MD_MODE=off`（只对 Markdown 生效）。
+博客与云剪贴板共用 ReactiveMD 引擎和编辑器。普通作者写 Markdown，需要时混写组件
+和表达式；工具栏保留 Insert、Components、上传图片、插入引用。
 
-#### 格式与自动识别
+**存储与显示：**正文表只写源码、格式与必要语法版本。`read-render.ts` 从当前源码
+调用 `compile-content.ts`，输出可序列化编译结果；页面先渲染静态初始正文，再由浏览器
+runtime 接管交互。`compile.ts` 复用有界内存 LRU，hostData 每次按当前查看者权限准备，
+不进入跨请求共享的编译缓存。进程重启或缓存淘汰不改变阅读结果。
 
-- **`format`**（迁移 35）：`markdown` | `reactive`，描述**内容本身**，仍随 API 返回。
-  未知值不猜，读取按不可用处理；写入闸门拒绝。
-- 百分比灰度与逐篇 `renderer_override` 不再参与正常阅读决策；字段保留给旧消费者。
-- 作者界面不提供手动格式选择。`src/lib/reactive/detect-format.ts` 从解析器事实推导
-  三态：
-  - `markdown`：普通 Markdown / 历史 HTML / 未知普通标签 / 代码或数学里的示例；
-  - `reactive`：有效组件、绑定、插值、theme / version / computed / validation /
-    external 声明；
-  - `invalid-enhanced`：解析器已识别出已知增强结构但编译失败 —— 保留增强身份、
-    给出可定位诊断、阻止发布并保留草稿，**不静默字面化**。
-- 未知角括号标签（`<TAB>` 等）按历史 HTML 解包，不会仅凭
-  `local.component.unknown` 被标成 Reactive。
-- 写入 API：有效增强语法配 `format:'markdown'` 返回具名 400。稳定错误码在
-  `src/lib/content-format.ts`：`invalid_content_format` / `content_format_mismatch` /
-  `content_unrenderable`。
-- 编辑器逐键推导走 `src/lib/reactive/format-observer.ts` 的
-  `createFormatAnalyzer()`：上游 `LocalCompileScheduler` worker + revision；主线程只
-  调度，兼容扫描也在 `compile.worker.ts` 内完成。
+**写入：**`publish.ts` 保留现有语法与格式检查，检查结果用完即弃。博客与剪贴板 service
+不生成或写入持久编译快照。现有保存 / 发布 API、草稿和编辑器行为保持；不新建云端
+草稿副本系统。`reactive_snapshots` 旧表暂留兼容历史，不参与正文读写。
 
-#### 排版规则：软换行全站一致
+**兼容与版本：**历史 Markdown 兼容规则、软换行、公式和 URL 策略保持唯一来源。
+合法 RMD 组件及别名的结构子项不能被 HTML 清洗拆除。已知 draft-2 内容由
+`source-migration.ts` 在安全检查后只对解释副本适配；不更改存储原文、时间或通知。
+声明冲突、未知修订或不安全语义变化只影响对应文档；显式持久升级用独立运维命令。
 
-`reactiveCompileOptions()` 对 **Markdown 与 Reactive 都是 `markdownBreaks: true`**。
-单换行在两种格式里都渲染成 `<br>`。这是「无缝混写」的前提：普通多行 Markdown
-追加组件、format 自动升级后，原有换行 / 公式 / 引用结构不得变化。Reactive 作者若要
-分段不换行，使用空行或显式标签。
+**引用：**`[@...]` 经适配器进入 `site-embed`。成员资源由原有服务授权；访客不读取
+剪贴板、投票和收藏夹正文、标题或版本，保留字面量。图床与音频继续由资源接口授权。
+Markdown 剪贴板内联一层，Reactive 剪贴板卡片显示；预览不执行投票等业务写操作。
+引用不可用局部占位，不让父文档失败；不能以条件隐藏代替权限。
 
-#### 历史 HTML 兼容层
+**首屏与输出：**`ReactiveDocument` 的 `staticFirst` 路径保证无 JS 首屏可读，正常阅读
+可交互，卸载释放状态与计时器。复制 / 下载原文使用存储源码，静态 / 交互 HTML 导出
+按当前授权临时适配并编译，不依赖数据库快照。
 
-`src/lib/reactive/legacy-compat.ts` 在引用适配**之前**做**等长**改写（保证
-source-map 偏移不变）：
+**失败与事故回退：**单篇编译失败返回 unavailable，不把增强源码交给旧 Markdown
+解析器。`REACTIVE_MD_MODE=off` 保留事故开关：Markdown 暂用旧引擎，Reactive 使用
+本次编译的静态输出。源码大小、累计节点和引用展开预算继续生效。
 
-- 剥掉上游不支持的标签 / 属性（font、center、`</br>`、多余 `</details>`、
-  `class` / `style` / `id` 等），保留可读子节点；`align` 只保留上游接受的
-  `left/center/right/justify`，其它取值整条属性剥掉；
-- 与原生 HTML 同名的组件（`section` / `table` / `progress` / `option` 等）按
-  **组件参数**（`color`、`page-size`、插值属性、`bind/label/key`、组件容器祖先）
-  区分，不能只按 `bind/label/key`；合法组件必须原样留给编译器，否则会静默丢组件、
-  并让 invalid-enhanced 在首次编译就“成功”而绕过写入闸门；
-- `script` / `style` / `iframe` / `object` / `embed` / SVG / MathML / 整页 HTML
-  连同内容移除，不执行、不输出源码；
-- 缩进代码、围栏代码、行内代码、`<pre>` / `<code>`、数学区域不参与改写；
-- **未配对数学**：只有未闭合的 `$$` 与 `\(` / `\[` 需要容错（否则整篇
-  `local.math.unclosed`），换成可读字面量、不吞掉后半句；**单个 `$` 上游本来就按
-  普通文字处理**（`价格 $5` 原样显示），不改。转义 `\$`、reference definition、
-  裸 URL、图片 alt 与 HTML 属性 URL 一律不动；
-- 历史 `<video>` / `<audio>` → 受限 `site-embed kind="media"`（compat 写
-  `[[媒体:<10hex>]]` + `mediaSources`）：保留 controls / `<source>` / `<track>` /
-  poster，默认 `preload="none"`、**永不 autoplay**，拒绝 data:/javascript:；
-  站内受控 `/api/audio/<id>/raw` 仍走 `[@音频/<id>]`。块内换行用行尾空格补齐，
-  不留下多余 `<br>`（兼容层版本最终 `/4`）；
-- **data 位图**：只认 jpeg / png / gif / webp + base64 + 魔数 + 长度上限，
-  转成 `[@图片/<ref>]`，由宿主 `image` 组件渲染真实 `<img>`。上游图片闸门不接受
-  `data:`，因此不能只在 URL 白名单里放宽；>8KB 的图片也必须在兼容层被截住。
-- **线性扫描**：标签闭合、数学定界符、音视频 / 危险块配对都只向前推进；
-  未闭合起点不会再让每个 `<` / `\(` 扫到文末（25 万 `<` 从约 30s 降到毫秒级）。
-- **编译前语法预算**（`syntax-budget.ts`）：屏蔽区之外的未闭合 `<` > 512 或
-  `{{` > 128 时，直接返回 `site.syntax-budget` 并保留原文，不进入上游同步编译；
-  代码 / 数学 / 正常成对标签不计入。写入因此明确拒绝，阅读显示不可用而不是卡死。
-- 兼容规则有显式 `LEGACY_COMPAT_VERSION`，并入快照签名；规则变化会让旧快照 stale。
+**运维：**SQL `up` 只做结构迁移。旧源码升级、公开搜索索引修复均独立执行，不再有
+快照回填或“全站 RMD 必须编译成功”的部署前置。公开索引仍是数据库中的可重建检索
+数据，失效身份来自独立编译配置；失败不回滚正文，按现有可见性规则降级检索。
 
-#### 快照、缓存与阅读
+范围及原设计取舍见 `docs/plan/reactive-md-simplification-plan.md`；早期统一渲染实施
+记录见 `docs/plan/reactive-md-unification-plan.md`。当前发布命令见 `docs/deploy.md`。
 
-- 发布时 Markdown 与 reactive 都编译并写入同版本快照（`reactive_snapshots`，迁移
-  36）。内容版本 = `sha256(format, syntaxVersion, 原文)`；快照签名含语法版本、编译器
-  版本、适配器 + 兼容层版本、按格式现算的选项键。正文与快照同事务写入。
-- 阅读优先读同版本快照（访客 / 不含成员引用的正文），成员引用展开按本人权限现编译；
-  快照引用数据变化时按 external 重编。版本 / 签名不符按 stale 拒读。
-- 正常阅读返回 `reactive`，页面用 `staticFirst` 先给 SSR 静态首屏，再水合为可交互
-  组件；`REACTIVE_MD_MODE=off` 时 reactive 仍只走静态快照，绝不回旧解析器。
-  `reactive-static` 只用于事故回退 / 成员编译失败时的静态兜底。
-- 编译缓存键 = `sha256(adaptedSource) + 语法版本 + reactive-md/0.7.0 + 适配器版本 +
-  选项键`；LRU 挂 `globalThis`（Next 独立 compilation 会有多份模块实例），只缓存
-  `{ok, document?, diagnostics}`。冷编译 / 长文预算见 `host-components.ts` 的实测注释
-  与 `scripts/reactive-budget-measure.mts`。
-- Markdown 编译失败时 `compile-content.ts` 做一次字面量降级（把 `{{` / 组件标签转实体）
-  再编译；Reactive 失败仍拒绝发布。**字面化只用于阅读容错**：写入路径若发现字面化
-  救活了原文，会用**原始正文**再检测一次，原文已具增强身份（invalid-enhanced）就返回
-  格式不匹配，不把“字面化后的文档”当成普通 Markdown 落库。
-- 历史正文的快照由 `npm run migrate -- up` 的数据阶段回填（默认入口；独立的
-  `reactive:backfill` 保留给诊断 / 修复，dry-run 默认、`--apply` 幂等可重跑）。
-  同内容版本但编译签名陈旧（compiler / adapter / compat / options 变过）的行
-  会按当前包重建，不会被 `contentVersion` 命中后永久跳过。Reactive 旧语法版本（含
-  `syntaxVersion = null`）先报 blocker；正常 `up` 会先跑 v07 再回填。可恢复性演练见
-  `docs/deploy.md`「回滚」。
-
-#### 宿主组件 `site-embed`
-
-- `kind`：`audio` | `vote` | `favorite` | `clipboard` | `image` | `media`；`ref` 为
-  受限短 id。`image` 只由兼容层为受限 data 位图生成，渲染前再验 MIME / 魔数。
-  `media` 承载历史 HTML `<video>` / `<audio>`（compat 写成 `[[媒体:<10 hex>]]`
-  token，适配器展开）：保留 `controls`、`<source>` / `<track>` 与安全属性，
-  默认 `preload="none"`、**永不 autoplay**，渲染前逐 URL 过 `isAllowedReactiveUrl`；
-  静态阅读 / 预览 / 导出共用同一控件。数据形状以
-  `src/lib/reactive/ref-types.ts` 的 `SiteMediaPayload` 为准。
-- 标签与 hostData 原子成对；作者伪造的 `<site-embed` 在盖码后转义。`SiteEmbedView`
-  只把投票接成交互，其余委托静态渲染；任何分支都不 `dangerouslySetInnerHTML`，
-  链接只由校验过的 kind/ref 拼。
-- **剪贴板内联按子格式决定**：Markdown 子剪贴板在 `expand` 下携带一份同版本
-  **静态子文档**（compat → external 引用适配 → 该格式的编译选项），由
-  `ReactiveSubDocument` 以 `mode="static"` 渲染（不嵌套交互运行时、字面表达式
-  不进父文档绑定作用域，子适配固定 external、不递归读取私有资源）。Reactive
-  子剪贴板仍只给链接卡片。`external` 视图所有剪贴板 / 投票 / 收藏夹保留字面量，
-  零业务请求，因此快照里永远没有子产物。原始 `content` 只用于那趟编译，不随
-  hostData 下发。
-- 预算沿用旧管线：主循环 50 处、收藏夹 3、音频 3、50 次取数、4 并发、展开后
-  50 万字符；单处失败只保留字面量。
-
-#### 搜索、摘要、导出与语料扫描
-
-- `blog-excerpt.ts` 对 Markdown 与 reactive 都从编译 AST 取文本（只读初值，不执行
-  读者交互；未知格式才用旧兜底）。
-- `public-blog-search.ts` 的正文提取先过兼容层；持久 state 版本 =
-  `PUBLIC_SEARCH_BASE_VERSION`（提取规则，当前 `public-body/2`）+ Markdown / Reactive
-  当前编译签名，跨运行失败后能靠版本不等自愈；索引完整性不足时明确降级为元数据检索。
-- 导出统一走 `renderStaticMarkup`：同一 compat / 适配 / 编译配置，静态初始状态，
-  图片允许的才预取，交互不可用。
-- **只读语料扫描**：`npm run reactive:corpus -- --db <sqlite> --out <report> --compile`。
-  `node:sqlite` 以 `readOnly:true` 打开，不读 `.env`、不用 Prisma；统一 compat +
-  生产预算实际编译，报告只有 ID / 类别 / 计数与诊断码，不含正文 / 标题 / 作者。
-  不展开业务引用（引用边界由静态扫描单列）。长文问题应在发布前用这条命令先发现。
-
-#### 样式与边界
-
-- 样式在 `src/styles-scss/pages/blog/_reactive-md.scss`；`image` / 剪贴板内联的
-  外壳也在这里。
-- 评论、讨论、故事、站内文档仍走各自旧管线；它们按 `format` 判断增强剪贴板，
-  只给链接，不把其源码内联进旧解析器。
 ### 6.24 开发者工具合集（`/tool/dev`，2026-10）
 
 **定位**：把原先散在「编码 / 解码」「加密 / 安全」两组里的开发者工具，和新增的

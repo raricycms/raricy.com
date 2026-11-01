@@ -90,7 +90,7 @@ GitHub 上仍是原来的反引号，两边不冲突。
 | 文档 | 讲什么 |
 |------|--------|
 | `plan/README.md` | 计划索引：按状态查找剩余工作、实施记录与更新约定 |
-| `plan/reactive-md-simplification-plan.md` | ReactiveMD 简化提案：源码持久化、按需编译、移除数据库快照，保留编辑、引用、首屏与导出，解耦部署 |
+| `plan/reactive-md-simplification-plan.md` | ReactiveMD 简化方案及实施记录：源码渲染、移除数据库快照、SQL-only 迁移，保留编辑、引用、首屏与导出 |
 | `plan/story-rebuild-plan.md` | 故事区重做总计划：内容工具、三个作品样板、分批上线与持续选编（方案完成，未实施） |
 | `plan/story-review-tooling.md` | 故事初审与编辑工作台：只读导入、AI 全文覆盖、人工复审、作品建档与增量更新 |
 | `plan/story-editorial-design.md` | 故事编辑、美术与出版：作者确认、定稿、图文设计、出版包、迁移与撤回 |

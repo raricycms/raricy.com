@@ -10,8 +10,6 @@
 
 | 文档 | 状态与剩余范围 |
 |------|----------------|
-| `docs/plan/reactive-md-simplification-plan.md` | 重新调研后的简化提案（2026-11-02，未实施）：源码持久化、按需编译与进程内缓存，移除数据库快照，解耦保存、源码升级、检索与部署；保留完整作者与阅读体验 |
-| `docs/plan/reactive-md-unification-plan.md` | 统一渲染与四入口编辑器的设计 / 实施记录；新简化提案保留其产品目标，拟替代持久快照和部署门禁，尚未实施替代 |
 | `docs/plan/story-rebuild-plan.md` | 故事区重做方案与本地调研完成（2026-10-31）；初审/复审工具、作品编辑、美术、页面与发布均未实施 |
 | `docs/plan/story-review-tooling.md` | 故事工作台设计：先人工复审闭环，再接 AI 初审、版本与作品关联；全部为待实施提案 |
 | `docs/plan/story-editorial-design.md` | 故事制作流程：作者确认、定稿、设计简报、配图、Codex 交接和可撤回出版；待作品试点 |
@@ -23,6 +21,8 @@
 
 | 文档 | 状态与剩余范围 |
 |------|----------------|
+| `docs/plan/reactive-md-simplification-plan.md` | 按用户收缩范围完成本地实现及验收（2026-11-02，未发布）：源码渲染、移除持久快照、SQL-only 迁移；原提案的更大范围候选不在本轮 |
+| `docs/plan/reactive-md-unification-plan.md` | 统一渲染和四入口编辑器的历史实施记录；持久快照与部署门禁已由源码渲染方案替代，兼容与编辑器成果保留 |
 | `docs/plan/editor-plan.md` | M0–M2 与导出已交付；M3 就地装饰、M4 表格辅助 / 大纲未做，原待办见 §7.2；统一渲染与工具栏后续目标转入 ReactiveMD 全量应用计划 |
 | `docs/plan/format-converter-roadmap.md` | 八个能力区已有首轮本地功能；剩余验收、功能缺口与长期候选见 §16 |
 | `docs/plan/reactive-md-migration-plan.md` | `reactive-md@0.6.1` 早期接入与实施记录；旧剩余范围见 §12.6，后续执行目标以 ReactiveMD 全量应用计划为准 |

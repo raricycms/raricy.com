@@ -244,9 +244,8 @@ DATABASE_URL="file:/绝对路径/instance/database/db.db" npm run migrate -- up
 `npm run migrate -- verify` 比对已应用迁移的 checksum 与当前文件，发现漂移会报错。
 对**没有 `_raricy_migrations`** 的库（例如 `prisma db push` 生成的测试库），`verify`
 会明确报「跟踪表不存在」并非零退出 —— 它不会把「从未应用过迁移」说成 checksum 一致。
-`status` / `verify` 是只读的；`up` 在 SQL 之后还会执行 Reactive 数据阶段（旧语法升级 /
-快照回填 / 必要时索引重建），详见下文「ReactiveMD 0.7 / 统一渲染的发布顺序」。
-纯 DDL 改动也会触发一次数据阶段扫描，但已完成的正文与快照会被跳过，不会重复写。
+`status` / `verify` 是只读的；`up` 只应用手写 SQL，不执行 RMD 正文检查、快照
+回填或公开索引重建。旧源码升级与索引修复是独立运维操作，见下文发布顺序。
 
 #### 取消投喂手续费后的历史返还
 
@@ -334,7 +333,7 @@ SELECT name, checksum FROM _raricy_migrations WHERE name LIKE '21_%';        -- 
 
 ```bash
 # 严格按 lockfile 装（不要 npm install —— 可能把 Next 升到 16.x 启动即崩）
-# --include=dev：构建、迁移数据阶段（vite-node）与运维脚本都需要 devDependencies
+# --include=dev：构建与运维脚本都需要 devDependencies
 npm ci --include=dev
 #   添加 PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 可省 Playwright 浏览器下载（生产不需要）
 
@@ -591,9 +590,7 @@ git pull
 npm ci --include=dev
 npx prisma generate
 
-# 正常升级**每次**都跑 up，不是只有 schema.prisma 改动时才跑：
-# 它先应用 pending 手写 SQL（可能没有），再执行 Reactive 数据阶段
-# （旧语法升级 / 快照回填 / 必要时重建公开索引）。
+# 应用 pending 手写 SQL（可能没有）；不扫描或编译正文。
 # 停写与一致备份按 §4「修改 schema 后」与 §10 执行；发布窗口顺序见 §14。
 DATABASE_URL="file:/绝对路径/instance/database/db.db" npm run migrate -- status
 DATABASE_URL="file:/绝对路径/instance/database/db.db" npm run migrate -- up
@@ -655,99 +652,51 @@ journalctl -u raricy-next -f      # 观察启动日志
 
 ### ReactiveMD 0.7 / 统一渲染的发布顺序
 
-统一管线后 **Markdown 与 reactive 都** 会编译并写同版本快照（迁移 36/40）。发布窗口
-按下面顺序执行；任一步失败就停，不启动版本不匹配的新服务。
+Markdown 与 Reactive 正文都由 RMD 按需编译并输出首屏，浏览器接管交互。数据库保存
+原文，不保存编译树；缓存未命中或进程重启会重新编译，不需要快照回填。
+
+正常升级按既有停写与一致备份流程操作，再执行：
 
 ```bash
-# 0) 安装锁定依赖 + 生成 Prisma Client
-#    必须在预检之前：预检本身用 vite-node；npm ci 又会清掉生成的 client。
-#    --include=dev 确保 vite-node 等 dev 工具可用。
-npm ci --include=dev && npx prisma generate
-
-# 1) 预检（只读，不碰 Prisma）：生产库副本 / 停写后的快照上跑
-node --experimental-sqlite node_modules/vite-node/vite-node.mjs --config vitest.config.ts   scripts/reactive-corpus-report.mjs --db /绝对路径/db.db   --out "$TMPDIR/reactive-corpus.json" --compile
-
-# 2) 结构 + 数据阶段：一条命令完成（手写 runner；不要用 prisma migrate）
-#    正常升级每次都跑 up；没有 pending SQL 也会继续数据阶段。
-DATABASE_URL="file:/绝对路径/db.db" npm run migrate -- status   # 只读：确认 pending
+npm ci --include=dev
+npx prisma generate
 DATABASE_URL="file:/绝对路径/db.db" npm run migrate -- up
-DATABASE_URL="file:/绝对路径/db.db" npm run migrate -- verify   # 只读：校验 checksum
+npm run build
+# 然后按既有服务配置重启并观察日志
 ```
 
-`up` 在 SQL 结构迁移之后**自动执行数据阶段**，顺序固定：
+`migrate -- up` 只执行 SQL。单篇 RMD 无法编译不影响该命令的成功，也不应成为重启前
+的隐式全站门禁。`status` / `verify` 可用于只读核对结构迁移历史。
 
-1. 旧 Reactive 正文升级（原文 + 新快照 + 一次性标记同一事务）；
-2. 历史编译快照回填（Markdown 与当前版本 Reactive）；
-3. 公开正文索引重建（正文被升级，或索引 state 版本 / 覆盖与当前不一致时）。索引
-   state 版本包含 Markdown / Reactive 两套当前编译签名，所以「上次刷新了快照、索引
-   没做完」在跨运行重跑时仍会被版本不等发现。
-
-数据阶段失败时 `up` 非零退出，并明确打印「SQL 结构已完成、Reactive 数据未完成」。
-修复后**重跑同一条 `up`** 即可接续：v07 有一次性标记与事务保护，回填与索引重建幂等。
-`status` / `verify` 仍是只读命令，不会触发上述任何阶段，也不会顺手创建跟踪表。
-数据阶段需要已安装的 `reactive-md`、`vite-node` 和已生成的 Prisma Client；缺依赖时
-`up` 会在任何 SQL 写库之前报错，不会自动安装或联网。
-
-独立命令保留给诊断 / 修复，正常发布不需要单独跑：
+已知 draft-2 正文在通过安全检查后，可在内存中适配到当前语法；不写回正文，不更新
+文章时间。未知版本、声明冲突或存在语义变化时只影响该篇，需作者修复或显式升级。
+确有持久源码升级需求时，在备份后独立操作：
 
 ```bash
-# v07：先看 blockers（只读），确认后显式 --apply
 DATABASE_URL="file:/绝对路径/db.db" npm run reactive:migrate-v07
 DATABASE_URL="file:/绝对路径/db.db" npm run reactive:migrate-v07 -- --apply
-# 回填：默认 dry-run / --limit 试跑，--apply 才写
-DATABASE_URL="file:/绝对路径/db.db" npm run reactive:backfill -- --limit 200
-DATABASE_URL="file:/绝对路径/db.db" npm run reactive:backfill -- --apply
-# 强制重建公开索引（正常 up 只在必要时重建）
-DATABASE_URL="file:/绝对路径/db.db" npm run search:rebuild
 ```
 
-- **停写 + 一致备份**：SQLite 备份必须包含 WAL 一致性（`sqlite3 db.db ".backup ..."`，
-  或先停服再拷贝 `db.db`/`-wal`/`-shm`）。正文 / 图床 / 音频 / 快照同一时点。
-- `up` 内 v07 的 blockers：未知语法版本、新激活 `<external>`、draft-2 动态
-  `min/max/required`、列已是当前版本但正文声明旧版本。blockers 在**写入前**拦截整批；
-  全部解决后再重跑 `up`。一次性标记写入后不要手工重跑 `reactive:migrate-v07 -- --apply`。
-- 回填会补缺失的快照；已有同内容版本行只有在**编译签名也是当前签名**
-  （syntax / compiler / adapter（含 compat）/ options 全一致）时才跳过，签名陈旧的
-  行会按当前包就地重建（报告里的 `refreshed`；dry-run 只统计不写）。Reactive 旧语法
-  版本（`syntaxVersion` 不等于当前 `local-draft-3`，包括 `null`）会报
-  `site.backfill.legacy-syntax` blocker，不会擅自生成“当前版本”快照；`up` 会先完成
-  v07 再回填，所以正常流程不会撞到这一条。
-- **运行配置**：统一管线**默认启用**，不需要设置任何 `REACTIVE_MD_*` 变量。部署环境里
-  遗留的 `REACTIVE_MD_MODE=shadow` 等同启用；`REACTIVE_MD_PERCENT` 与
-  `renderer_override` 不再参与阅读决策（字段仅为旧消费者保留）。**只有**
-  `REACTIVE_MD_MODE=off` 是事故回退：Markdown 回旧渲染器，Reactive 仍只走静态快照。
-  验收时不要用 `on` / 百分比把测试强行打开 —— 不设变量才是生产真实状态。
-- **回滚**：代码与数据必须成对恢复。只恢复代码 / 关闭交互 / 读旧 AST 都不会撤销已写入
-  的新语法或旧语法迁移。恢复备份点之后的新写入如何保留 / 重放，必须在演练中明确，
-  不能无记录覆盖。Markdown 的持久快照是可重建缓存，不是独立备份。
-  隔离演练见 `tests/service/reactive-rollback-drill.test.ts`：一致备份 → 迁移 → 还原
-  数据库文件 → 断言正文 / 语法版本 / 一次性标记 / 快照都回到迁移前；生产演练还要把
-  代码同时恢复到备份点对应的提交。
-- 发布后观察 `[reactive-read]` / `[reactive-slow]` 的结构化字段（renderer、reason、
-  耗时、缓存命中、诊断码），不记录正文。
+默认命令只读报告，`--apply` 保留原文并发复核与事务保护，写入安全升级结果及完成
+标记；不写编译快照。不要为绕过诊断直接改版本声明，或手工重复执行数据变换 SQL。
+
+历史 `reactive_snapshots` 表和已应用迁移保留，不再由正文读写路径使用；本次不 DROP
+表、不篡改历史 SQL 或 checksum。原 `reactive:backfill` 命令已退出，不需替代回填步骤。
 
 ### 公开正文索引发布
 
-`npm run migrate -- up` 会在数据阶段按需重建公开索引：v07 升级过博客正文，或索引
-state 版本 / 覆盖与当前不一致时执行；没有变化就跳过，不每次付全量重建成本。
-`PUBLIC_SEARCH_VERSION` 不是静态字符串：它是「正文提取规则基础版本
-`PUBLIC_SEARCH_BASE_VERSION` + 当前 Markdown / Reactive 编译签名」的组合，并持久写进
-`public_blog_search_state.version`。因此一次运行刷新了快照、却在索引阶段失败或被别的
-文档 blocker 挡住时，下一次 `up` 即使回填 `refreshed=0` 也会按版本不等重建，不会永久
-保留旧索引。索引重建失败会让 `up` 非零退出，修复后重跑即可。
+搜索索引独立于正文存储与 RMD 缓存。正文写入后尽力更新，失败不回滚已保存的文章；
+缺失、陈旧或不可编译的索引明确降级为元数据检索，不对原始正文做 LIKE 兜底。
 
-只改 `publicBodyText` 的文字提取规则而不改编译输入时，**必须 bump
-`PUBLIC_SEARCH_BASE_VERSION`**，否则迁移器无法从编译签名看出索引内容已过时。
-
-需要强制修复（例如手工删过索引表、只改了 `PUBLIC_SEARCH_BASE_VERSION` 而未触发其它
-条件）时，再对**同一个目标库**跑：
+需要修复或更新提取规则时独立运行：
 
 ```bash
-DATABASE_URL="file:/绝对路径/instance/database/db.db" npm run search:rebuild
+DATABASE_URL="file:/绝对路径/db.db" npm run search:rebuild
 ```
 
-该命令回填当前 public 且未删除的文章。必须显式指定与迁移相同的数据库，避免落到本机默认开发库。
-重建命令可重复运行，不修改文章内容；失败须处理后再重试。若索引尚未就绪，公开搜索页面会
-明确降级为标题、简介和作者检索。源码中 `PUBLIC_SEARCH_BASE_VERSION` 或编译签名改变时，
-`up` 的覆盖检查会要求重新回填。
-新建、编辑、可见性变更和删除/恢复已维护索引，触发器先撤旧片段；索引异常查服务日志。
+版本由 `PUBLIC_SEARCH_BASE_VERSION` 与当前编译身份共同组成，已与快照模块解耦。
+只改文字 / 词项提取规则时递增基础版本；编译器、语法、选项、兼容规则变化会自动
+使旧索引失效。索引重建失败可单独重试，不把它拼回 SQL 迁移。
+
+公开索引只提取当前白名单文章的静态可见文字，不索引条件隐藏数据、读者状态或站内
+引用资源正文；公开可见性与分页 / 计数规则继续由原有服务层保证。

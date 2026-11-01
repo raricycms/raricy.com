@@ -1,5 +1,8 @@
 # ReactiveMD 全量应用与编辑器重整计划
 
+> 后续修订：`docs/plan/reactive-md-simplification-plan.md` 按用户确认撤去持久快照与部署门禁。
+> 本文下方的快照、回填及原文 / 快照同事务要求保留为历史记录，不再作为当前目标。
+
 > **状态：本地实现及验收完成；远端 PR 合并 / 生产发布待确认范围（2026-11-01）。**
 > 本地最终 commit `a7b1e963`，全量 vitest 289 files / 5,720 tests / exit 0，
 > 最终 build / typecheck exit 0，按验收矩阵的 e2e 全部通过（唯一用例 106）。

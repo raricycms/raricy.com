@@ -310,10 +310,9 @@ raricy.com（聪明山）—— 个人博客 / 故事 / 工具集 / 剪贴板 / 
 （`status` / `up` / `mark <name>` / `verify`）；跟踪表 `_raricy_migrations` 自维护，
 新迁移用 `CREATE TABLE IF NOT EXISTS` 保持幂等。
 
-`up` 在 SQL 之后还会执行 Reactive 数据阶段（旧语法升级 → 快照回填 → 必要时索引重建），
-由 `scripts/reactive-migrate-data.ts` 子进程复用既有实现；`status` / `verify` 只读，
-不触发这些阶段。数据阶段失败时 `up` 报「结构已完成、数据未完成」并非零退出，修复后
-重跑即接续。独立的 `reactive:*` / `search:rebuild` 只用于诊断或强制修复。
+`up` 只执行手写 SQL，不编译或改写正文。ReactiveMD 直接从源码按需编译，复用内存
+缓存，不读写数据库快照。旧源码修订升级与公开索引修复由独立命令执行，不能再次绑回
+SQL 入口。`status` / `verify` 仍只读。
 
 ### 鱼干写路径
 
@@ -484,7 +483,7 @@ ftyp 品牌 / 声明归一化 / `planImageUpload` —— 服务端与浏览器�
 **ReactiveMD 渲染器（2026-10）**：主副本是 `docs/architecture.md` §6.23，文件头在
 `src/lib/reactive/`（`read-render.ts` 决策、`diagnostics.ts` 回退、`ref-adapter.ts`
 引用、`compile.ts` 缓存）。三条不能破：reactive 源码**永不**交给旧 Markdown 解析器
-（认不出或编译失败 → `unavailable` / 本次请求现算的静态正文）；`<site-embed>` 标签与
+（认不出或编译失败 → `unavailable`；可读正文由本次请求编译）；`<site-embed>` 标签与
 `${kind}:${ref}` 的 hostData **原子成对**（缺数据只保留字面量，绝不发半套）；`external`
 模式**零业务请求**（剪贴板、投票与收藏夹均保留字面量）。灰度只住 `renderer-select.ts` +
 `REACTIVE_MD_MODE` / `REACTIVE_MD_PERCENT`，别在页面里另判 cohort。
@@ -611,7 +610,7 @@ ftyp 品牌 / 声明归一化 / `planImageUpload` —— 服务端与浏览器�
 - **「对外可读」与「可列举 / 可索引」是两件事**：`link` 读得到，但不进 sitemap、不许索引。
 - **对外视图按资源类型展开引用**（`contentRefs='external'`）：图床与音频维持 raw
   路由的公开规则；**所有剪贴板、投票、收藏夹均保留字面量**。剪贴板仅站内共享，
-  external 不读取正文、标题或版本，也不随 RSC 下发。适配器版本 2 使旧引用快照失效。
+  external 不读取正文、标题或版本，也不随 RSC 下发。引用数据按当前请求的权限准备。
 - **sitemap 与 `/explore` 必须列同一个集合**（都用 `INDEXABLE_BLOG_WHERE`）。这不是洁癖：
   多一层过滤就会出现「搜索引擎收录了一篇，读者在公开列表上翻不到」，而那条差异
   **不会有任何报错**。同理 `exclude_from_all` 与专注模式的栏目屏蔽**不作用于对外列表** ——
