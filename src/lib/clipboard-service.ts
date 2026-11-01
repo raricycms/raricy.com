@@ -15,7 +15,6 @@ import {
   resolveContentWriteFormat,
 } from './content-format';
 import type { ContentFormat, ContentWriteErrorCode } from './content-format';
-import { detectReactiveSyntax } from './reactive/detect-format';
 import type { ExternalClipData } from './reactive/ref-types';
 import { buildReactiveSnapshotForWrite } from './reactive/publish';
 import { createHash } from 'node:crypto';
@@ -129,12 +128,9 @@ export async function createClip(
     format: write.format,
   });
   if (!snapshot.ok) {
-    const detected = detectReactiveSyntax(input.content);
     return {
       ok: false,
-      reason: write.format === 'markdown' && detected.format === 'reactive'
-        ? 'format_mismatch'
-        : 'reactive_invalid',
+      reason: snapshot.reason === 'format_mismatch' ? 'format_mismatch' : 'reactive_invalid',
     };
   }
   if (write.format === 'markdown' && snapshot.detectedFormat === 'reactive') {
@@ -227,12 +223,9 @@ export async function updateClip(
         })
       : null;
   if (snapshot && !snapshot.ok) {
-    const detected = detectReactiveSyntax(input.content);
     return {
       ok: false,
-      reason: write.format === 'markdown' && detected.format === 'reactive'
-        ? 'format_mismatch'
-        : 'reactive_invalid',
+      reason: snapshot.reason === 'format_mismatch' ? 'format_mismatch' : 'reactive_invalid',
     };
   }
   if (snapshot && write.format === 'markdown' && snapshot.detectedFormat === 'reactive') {

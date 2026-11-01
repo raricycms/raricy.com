@@ -214,6 +214,23 @@ describe('博客格式：validateBlogData / 落库 / 读出口', () => {
     expect((await prisma.blogContent.findUniqueOrThrow({ where: { blogId: id } })).content).toBe('普通 Markdown');
   });
 
+  it('★ markdown 格式的 invalid-enhanced 也不能被字面化后接受 ★', async () => {
+    const u = await makeUser();
+    for (const content of ['<panel title="未闭合">', '{{ 1 + }}']) {
+      await expect(
+        createBlog(u.id, {
+          ...BLOG_BASE,
+          content,
+          categoryId: null,
+          visibility: 'internal',
+          format: 'markdown',
+        })
+      ).rejects.toMatchObject({ code: 'content_format_mismatch' });
+    }
+    expect(await prisma.blog.count()).toBe(0);
+    expect(await prisma.reactiveSnapshot.count()).toBe(0);
+  });
+
   it('未知普通标签的历史 Markdown 仍可保存（不被误判成增强语法）', async () => {
     const u = await makeUser();
     const id = await createBlog(u.id, {
@@ -343,6 +360,17 @@ describe('剪贴板格式：createClip / updateClip / getClip / resolvePublicCli
     const result = await createClip(u.id, {
       title: 't',
       content: '<counter bind="n" label="N" initial="1" />',
+      format: 'markdown',
+    });
+    expect(result).toEqual({ ok: false, reason: 'format_mismatch' });
+    expect(await prisma.clipBoard.count()).toBe(0);
+  });
+
+  it('★ 剪贴板 markdown 的 invalid-enhanced 也拒绝 ★', async () => {
+    const u = await makeUser();
+    const result = await createClip(u.id, {
+      title: 't',
+      content: '<panel title="未闭合">',
       format: 'markdown',
     });
     expect(result).toEqual({ ok: false, reason: 'format_mismatch' });
