@@ -136,11 +136,64 @@ const DYNAMIC_CONSTRAINTS: Readonly<Record<string, ReadonlySet<string>>> = {
 };
 
 /**
+ * 从属性名结束位置（`attrEnd`）找出**属性值区间**（引号内，或无引号值）。
+ *
+ * 这是「这一处 `{{ … }}` 到底在不在属性值里」的唯一判据。不能只靠 token 顺序：
+ * `analyzeLocalSource` 在开标签结束之后仍会为正文里的插值发 `expression` token，
+ * 而 `currentAttr` 会一直停在上一个属性上 —— 那会把普通正文误判成动态约束。
+ */
+function attributeValueRange(source: string, attrEnd: number): SourceRange | null {
+  let i = attrEnd;
+  while (i < source.length && /\s/.test(source[i])) i += 1;
+  if (source[i] !== '=') return null;
+  i += 1;
+  while (i < source.length && /\s/.test(source[i])) i += 1;
+
+  const quote = source[i];
+  if (quote === '"' || quote === "'") {
+    const start = i + 1;
+    const end = source.indexOf(quote, start);
+    return end === -1 ? null : { start, end };
+  }
+  // 无引号值：到空白或标签结束为止。仍返回精确区间，调用方按 token 边界比较。
+  const start = i;
+  while (i < source.length && !/[\s>]/.test(source[i])) i += 1;
+  return i > start ? { start, end: i } : null;
+}
+
+/**
+ * 开标签结束的位置（`>` 之后）。跳过引号内的 `>`，未闭合返回 -1。
+ *
+ * 属性 token 只覆盖属性名，不覆盖标签结束；没有这一格，「`<slider …>` 之后的
+ * 正文插值」会继续套用最后一个属性。
+ */
+function tagContentEnd(source: string, from: number): number {
+  let quote: string | null = null;
+  for (let i = from; i < source.length; i += 1) {
+    const ch = source[i];
+    if (quote) {
+      if (ch === quote) quote = null;
+      continue;
+    }
+    if (ch === '"' || ch === "'") {
+      quote = ch;
+      continue;
+    }
+    if (ch === '>') return i + 1;
+  }
+  return -1;
+}
+
+/**
  * draft-2 → draft-3 的**动态约束激活**检查。
  *
  * 上游迁移器只检查新激活 `<external>`；发布说明同时把「动态 min/max/required」
  * 列为可能改变原字面语义的变化。这里用上游 `analyzeLocalSource` 的 token /
  * expression 事实判断：同一标签上的动态属性出现表达式 `{{ … }}` 即阻塞。
+ *
+ * 判据必须同时满足：表达式在**该开标签内**（`tagContentEnd` 之前），且落在
+ * 约束属性的**值区间**里（`attributeValueRange`）。只看「最近一个 attribute」
+ * 会把开标签之后的普通插值误判成 `min/max`，整批合法文档被卡住。
  *
  * 在所有 draft-2 行上都要跑（不只在预算失败分支），短文档也一样。
  */
@@ -163,25 +216,38 @@ export function findDynamicConstraintActivations(source: string): Diagnostic[] {
 
   const diagnostics: Diagnostic[] = [];
   let currentTag: string | null = null;
-  let currentAttr: string | null = null;
+  let currentAttr: { name: string; value: SourceRange | null } | null = null;
+  let tagEnd = -1;
   for (const token of analysis.tokens) {
     if (token.kind === 'tag') {
       currentTag = source.slice(token.range.start, token.range.end).toLowerCase();
       currentAttr = null;
+      tagEnd = tagContentEnd(source, token.range.end);
       continue;
     }
     if (token.kind === 'attribute') {
-      currentAttr = source.slice(token.range.start, token.range.end).toLowerCase();
+      currentAttr =
+        tagEnd >= 0 && token.range.start >= tagEnd
+          ? null
+          : {
+              name: source.slice(token.range.start, token.range.end).toLowerCase(),
+              value: attributeValueRange(source, token.range.end),
+            };
       continue;
     }
     if (token.kind !== 'expression' || !currentTag || !currentAttr) continue;
-    if (!DYNAMIC_CONSTRAINTS[currentTag]?.has(currentAttr)) continue;
+    // 开标签之后的普通正文插值不是属性值。未闭合标签（tagEnd = -1）继续按
+    // 属性值区间判 —— 那是一个解析错误，不在本函数里掩盖。
+    if (tagEnd >= 0 && token.range.start >= tagEnd) continue;
+    if (!DYNAMIC_CONSTRAINTS[currentTag]?.has(currentAttr.name)) continue;
+    const value = currentAttr.value;
+    if (!value || token.range.start < value.start || token.range.end > value.end) continue;
     diagnostics.push(
       upgradeDiagnostic(
         'site.migration.dynamic-constraint',
         source,
         token.range,
-        `${currentTag}.${currentAttr} becomes a dynamic constraint in local-draft-3`
+        `${currentTag}.${currentAttr.name} becomes a dynamic constraint in local-draft-3`
       )
     );
   }
