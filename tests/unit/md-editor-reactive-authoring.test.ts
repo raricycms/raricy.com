@@ -15,12 +15,15 @@ import { EditorState, type Extension } from '@codemirror/state';
 import { EditorView } from '@codemirror/view';
 import { history, undo } from '@codemirror/commands';
 import {
+  AUTHOR_TOOL_LENGTH_LIMIT,
+  applyReactiveAuthorAnalysis,
   applyReactiveCompletion,
   applyReactiveTemplate,
+  clearReactiveAuthorAnalysis,
   formatReactiveDocument,
+  getComponentAncestors,
   getReactiveCompletions,
   reactiveAuthoring,
-  type AuthorAnalysis,
 } from '@/lib/md-editor/reactive-authoring';
 
 if (typeof Range.prototype.getClientRects !== 'function') {
@@ -127,44 +130,111 @@ describe('补全', () => {
   });
 });
 
-describe('reactiveAuthoring 分析', () => {
-  it('按原文 UTF-16 区间交付错误并画出诊断下划线', () => {
-    const source = '<input bind="a" label="A" bogus="x">';
-    const seen: AuthorAnalysis[] = [];
-    const view = makeView(source, {
-      extensions: [reactiveAuthoring({ onAnalysis: (analysis) => seen.push(analysis) })],
+describe('reactiveAuthoring：不再逐键同步分析', () => {
+  it('改动正文不再排主线程分析，也不产生装饰 / 诊断', () => {
+    const view = makeView('<input bind="a" label="A" bogus="x">', {
+      extensions: [reactiveAuthoring({})],
     });
 
-    vi.advanceTimersByTime(400);
-    expect(seen).toHaveLength(1);
+    vi.advanceTimersByTime(1000);
+    view.dispatch({ changes: { from: 0, insert: ' ' } });
+    vi.advanceTimersByTime(1000);
 
-    const diagnostic = seen[0].diagnostics.find((item) => item.code === 'local.attribute.unknown');
-    expect(diagnostic).toBeDefined();
-    expect(diagnostic!.range.start).toBe(source.indexOf('bogus'));
-    expect(source.slice(diagnostic!.range.start, diagnostic!.range.end)).toBe('bogus');
+    // 逐键分析已移到 worker 的 format-observer（MarkdownEditor 消费）；
+    // 本模块只保留用户触发的补全键位，不再同步解析。
+    expect(view.dom.querySelector('.cm-reactive-diagnostic--error')).toBeNull();
+    expect(view.dom.querySelector('.cm-reactive-tag')).toBeNull();
+    expect(view.state.doc.toString().startsWith(' <input')).toBe(true);
+  });
+});
 
-    const mark = view.dom.querySelector('.cm-reactive-diagnostic--error');
-    expect(mark).not.toBeNull();
-    expect(mark!.textContent).toBe('bogus');
-    expect(mark!.getAttribute('title')).toBe(diagnostic!.message);
+describe('worker 作者分析 → 源码装饰', () => {
+  it('把 tokens 与诊断贴成类名 / title，正文一变立即清空', () => {
+    const source = '<input bind="a" bogus="x">';
+    const view = makeView(source, { extensions: [reactiveAuthoring({})] });
+    const bogus = source.indexOf('bogus');
+
+    applyReactiveAuthorAnalysis(view, {
+      tokens: [
+        { kind: 'tag', range: { start: 0, end: 6 } },
+        { kind: 'attribute', range: { start: 7, end: 13 } },
+      ],
+      diagnostics: [
+        {
+          code: 'local.attribute.unknown',
+          severity: 'error',
+          message: '未知属性 bogus',
+          line: 1,
+          column: bogus + 1,
+          range: { start: bogus, end: bogus + 5 },
+        },
+      ],
+    });
+
+    expect(view.dom.querySelector('.cm-reactive-tag')?.textContent).toBe('<input');
+    expect(view.dom.querySelector('.cm-reactive-attribute')?.textContent).toBe('bind="a"');
+    const diagnostic = view.dom.querySelector('.cm-reactive-diagnostic--error');
+    expect(diagnostic?.textContent).toBe('bogus');
+    expect(diagnostic?.getAttribute('title')).toBe('未知属性 bogus');
+
+    // 旧偏移不能留在新文字上（不报错，只会指错地方）
+    view.dispatch({ changes: { from: 0, insert: ' ' } });
+    expect(view.dom.querySelector('.cm-reactive-tag')).toBeNull();
+    expect(view.dom.querySelector('.cm-reactive-diagnostic--error')).toBeNull();
   });
 
-  it('光标移动不重新分析；改动后旧分析不再回调', () => {
-    const seen: AuthorAnalysis[] = [];
-    const view = makeView('<input bind="a" label="A">', {
-      extensions: [reactiveAuthoring({ onAnalysis: (analysis) => seen.push(analysis) })],
+  it('越界区间按当前文档长度夹紧，不抛错', () => {
+    const view = makeView('短', { extensions: [reactiveAuthoring({})] });
+    expect(() =>
+      applyReactiveAuthorAnalysis(view, {
+        tokens: [{ kind: 'tag', range: { start: -5, end: 999 } }],
+        diagnostics: [
+          {
+            code: 'x',
+            severity: 'warning',
+            message: '越界',
+            line: 1,
+            column: 1,
+            range: { start: 10, end: 20 },
+          },
+        ],
+      })
+    ).not.toThrow();
+    expect(view.dom.querySelector('.cm-reactive-tag')).not.toBeNull();
+    // 零点长度的诊断不画（否则会在语法上多出一条空 mark）
+    expect(view.dom.querySelector('.cm-reactive-diagnostic--warning')).toBeNull();
+  });
+
+  it('clear 收起全部装饰', () => {
+    const view = makeView('<slider>', { extensions: [reactiveAuthoring({})] });
+    applyReactiveAuthorAnalysis(view, {
+      tokens: [{ kind: 'tag', range: { start: 0, end: 8 } }],
+      diagnostics: [],
     });
-    vi.advanceTimersByTime(400);
-    expect(seen).toHaveLength(1);
+    expect(view.dom.querySelector('.cm-reactive-tag')).not.toBeNull();
+    clearReactiveAuthorAnalysis(view);
+    expect(view.dom.querySelector('.cm-reactive-tag')).toBeNull();
+  });
+});
 
-    view.dispatch({ selection: { anchor: 3 } });
-    vi.advanceTimersByTime(400);
-    expect(seen).toHaveLength(1);
+describe('作者工具的长度上限', () => {
+  const longDoc = 'a'.repeat(AUTHOR_TOOL_LENGTH_LIMIT + 1);
 
-    view.dispatch({ changes: { from: 25, insert: ' ' } });
-    destroyView(view);
-    vi.advanceTimersByTime(400);
-    expect(seen).toHaveLength(1);
+  it('超长正文不补全', () => {
+    const view = makeView(longDoc, { anchor: longDoc.length });
+    expect(getReactiveCompletions(view)).toEqual([]);
+  });
+
+  it('超长正文不格式化，正文保持不变', () => {
+    const view = makeView(longDoc);
+    expect(formatReactiveDocument(view)).toBe(false);
+    expect(view.state.doc.length).toBe(longDoc.length);
+  });
+
+  it('超长正文打开 Components 菜单不做祖先解析', () => {
+    // 超过上限直接返回空 = 不按上下文过滤；菜单仍显示全部条目，但不卡 UI。
+    const view = makeView(`<panel>\n${longDoc}`, { anchor: 8 });
+    expect(getComponentAncestors(view)).toEqual([]);
   });
 });
 

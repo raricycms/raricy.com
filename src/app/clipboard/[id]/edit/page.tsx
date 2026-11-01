@@ -58,6 +58,9 @@ export default async function ClipEditPage({
           content: clip.content ?? '',
           publicity: clip.publicity,
           format: clip.format,
+          // 与博客编辑页同一口径：格式与语法版本一起交给编辑器，恢复 / 导出
+          // 时不必把它当成「版本未知」；提交时服务端仍按当前编译器重定。
+          syntaxVersion: clip.syntaxVersion,
         }}
       />
     </div>
