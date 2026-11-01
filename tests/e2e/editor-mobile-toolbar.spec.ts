@@ -235,7 +235,7 @@ async function deadItems(menu: Locator): Promise<string[]> {
     // 只拿 el（例如 emoji grid）的 box 不够：它还可能被外层 Insert 菜单的
     // `overflow-y: auto` 裁掉，滚出外层视口的按钮不该算「点不到」。
     let clip = el.getBoundingClientRect();
-    for (let node: HTMLElement | null = el; node; node = node.parentElement) {
+    for (let node: Element | null = el; node; node = node.parentElement) {
       const overflow = getComputedStyle(node);
       if (/(auto|scroll|hidden)/.test(`${overflow.overflowX}${overflow.overflowY}`)) {
         const rect = node.getBoundingClientRect();
