@@ -290,6 +290,34 @@ describe('ReactiveMD 静态导出', () => {
     expect(html).toContain('初始状态');
   });
 
+  it('F2：referenceMode=external 与访客预览同边界，私有引用不取数、保留字面量', async () => {
+    const fetchMock = stubReactiveFetch();
+    const source = '剪贴板 [@AbCd1234]';
+
+    // 成员 / expand：按既有口径取数并给链接卡片。
+    const expanded = await renderStaticMarkup({
+      source,
+      format: 'markdown',
+      referenceMode: 'expand',
+      base: ORIGIN,
+    });
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes('/api/clipboard/'))).toBe(true);
+    expect(expanded).toContain('site-embed-clipboard');
+
+    // 访客 / external：一个业务请求都不发，token 原样保留。
+    fetchMock.mockClear();
+    const external = await renderStaticMarkup({
+      source,
+      format: 'markdown',
+      referenceMode: 'external',
+      base: ORIGIN,
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(external).toContain('[@AbCd1234]');
+    expect(external).not.toContain('site-embed-clipboard');
+    expect(external).not.toContain('不应内联的正文');
+  });
+
   it('取不到的图片保留 alt 回退，不让整篇失败', async () => {
     vi.stubGlobal(
       'fetch',

@@ -49,7 +49,12 @@ const mocks = vi.hoisted(() => {
   class FakeScheduler {
     schedule = vi.fn();
     dispose = vi.fn();
-    constructor(public options: { onResult: (outcome: unknown) => void }) {
+    constructor(
+      public options: {
+        onResult: (outcome: unknown) => void;
+        onModeChange?: (mode: 'worker' | 'fallback', detail?: string) => void;
+      }
+    ) {
       instances.push(this);
     }
   }
@@ -443,6 +448,18 @@ describe('刷新引用：同一份源码也要重取、重编译', () => {
 
     expect(scheduler.schedule, '旧代次不得再排进调度器').toHaveBeenCalledTimes(1);
     expect(h.container.textContent, '旧结果不得覆盖已渲染的新结果').toContain('新');
+    h.unmount();
+  });
+
+  it('F4：worker 回退主线程时，预览明示「本地检查」而不是静默变慢', async () => {
+    mocks.adaptReactivePreview.mockResolvedValue({ adaptedSource: 'SRC', hostData: {} });
+    const h = await mountPreview('正文');
+    await tick(1);
+    const scheduler = h.scheduler();
+
+    expect(h.container.textContent).not.toContain('本地检查');
+    act(() => scheduler.options.onModeChange?.('fallback', 'worker boom'));
+    expect(h.container.textContent).toContain('本地检查');
     h.unmount();
   });
 });

@@ -326,6 +326,15 @@ export default function BlogForm({ categories, blog = null, banInfo = null }: Bl
         return;
       }
 
+      // ★ 保存成功后把格式下限抬到服务端已持有的值 ★（终审 F1）
+      // 表单的 `format` 是进页面时的库值，同页保存成功不会自己变；不在这里抬，
+      // 之后删光增强语法再保存就会以 markdown 覆盖掉已保存的 reactive。
+      // 只升不降；pinSavedFormat 同时同步编辑器的内部下限与语法版本。
+      if (snapshot.format === 'reactive') {
+        setFormat('reactive');
+        editorRef.current?.pinSavedFormat('reactive', prepared?.syntaxVersion ?? null);
+      }
+
       // 新建的第一笔成功之后，把这一页钉在这篇文章上（见 pinnedId 的说明）：
       // 之后再点提交是 PUT 它，而不是又发一篇。编辑态本来就钉着服务端那篇。
       const targetBlogId: string | null =
