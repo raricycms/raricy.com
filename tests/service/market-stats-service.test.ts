@@ -142,7 +142,7 @@ describe('已结清的战绩', () => {
     const one = stats.byLeverage.find((b) => b.key === '1')!;
     expect(one.realizedUnits).toBe(997);
 
-    expectLedgerConsistent('统计读路径不改账，跑一遍是确认开平仓那一侧仍然自洽');
+    await expectLedgerConsistent('统计读路径不改账，跑一遍是确认开平仓那一侧仍然自洽');
   });
 
   it('★ 已结清但**没有对应流水**的仓位照样进统计（盈亏的来源是仓位行，不是账本）', async () => {
@@ -160,7 +160,7 @@ describe('已结清的战绩', () => {
     const flows = await prisma.fishTransaction.count({ where: { userId: user.id } });
     expect(flows).toBe(0);
     // 用户是 makeUser 造的（没有鱼干），所以这条不变式仍然成立：0 == 0
-    expectLedgerConsistent('直接插行不动账本');
+    await expectLedgerConsistent('直接插行不动账本');
   });
 
   it('平仓实发合计与账本里的 market_sell 之和相等（今天恰好相等 —— 相等不等于可以换源）', async () => {
@@ -175,7 +175,7 @@ describe('已结清的战绩', () => {
     });
     expect(stats.payoutUnits).toBe(sells._sum.amount ?? 0);
     // 反过来说明为什么**不能**反过来用账本当来源：见上一条（没有流水的那两类平仓）
-    expectLedgerConsistent();
+    await expectLedgerConsistent();
   });
 
   it('只算自己的：另一个人的仓位不进我的统计', async () => {
@@ -222,7 +222,7 @@ describe('已结清的战绩', () => {
       where: { userId, type: MARKET_SELL_TYPE },
     });
     expect(flows).toBe(0);
-    expectLedgerConsistent('强平不动账本');
+    await expectLedgerConsistent('强平不动账本');
   });
 
   it('★ 手动平掉一个跌穿爆仓价的杠杆仓：同样计亏损，但**不算爆仓**', async () => {
@@ -239,7 +239,7 @@ describe('已结清的战绩', () => {
     expect(stats.losses).toBe(1);
     expect(stats.liquidated, '它是手动平的，不是爆仓').toBe(0);
     expect(stats.realizedUnits).toBe(-10000);
-    expectLedgerConsistent();
+    await expectLedgerConsistent();
   });
 });
 
