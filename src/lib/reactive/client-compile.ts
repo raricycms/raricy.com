@@ -38,7 +38,7 @@ import { compileLocal, type LocalCompileResult } from 'reactive-md';
 import { parseContentFormat } from '../content-format';
 import { MAX_CARD_ITEMS } from '../favorite-refs';
 import { reactiveCompileOptions } from './host-components';
-import { adaptReactiveReferences } from './ref-adapter';
+import { adaptReactiveReferences, compatMediaSources } from './ref-adapter';
 import { applyLegacyHtmlCompat } from './legacy-compat';
 import type { ReferenceReader, ResolvedReference, SiteHostData } from './ref-types';
 
@@ -248,6 +248,7 @@ export async function adaptReactivePreview(
     mode,
     parentFormat,
     dataImages: compat.dataImages,
+    mediaSources: compatMediaSources(compat),
     resolve: mode === 'expand' ? reader : undefined,
   });
   return { adaptedSource: adapted.adaptedSource, hostData: adapted.hostData };

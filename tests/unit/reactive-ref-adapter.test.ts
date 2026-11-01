@@ -20,7 +20,12 @@ import { describe, expect, it } from 'vitest';
 import { compileLocal } from 'reactive-md';
 import ReactiveSubDocument from '@/app/components/reactive/ReactiveSubDocument';
 import { renderSiteEmbedStatic } from '@/app/components/reactive/site-embed-static';
-import { ADAPTER_VERSION, adaptReactiveReferences, scanReactiveReferences } from '@/lib/reactive/ref-adapter';
+import {
+  ADAPTER_VERSION,
+  adaptReactiveReferences,
+  scanReactiveReferences,
+} from '@/lib/reactive/ref-adapter';
+import type { SiteMediaPayload } from '@/lib/reactive/ref-types';
 import { applyLegacyHtmlCompat } from '@/lib/reactive/legacy-compat';
 import { reactiveCompileOptions } from '@/lib/reactive/host-components';
 import {
@@ -41,6 +46,7 @@ const AUDIO_ID = 'EeFfGgHh20'; // 10 位
 const VOTE_ID = 'AbCdEf123'; // 9 位
 const CLIP_ID = 'AbCd1234'; // 8 位
 const FAV_ID = '123456'; // 6 位数字
+const MEDIA_REF = 'abcdef1234'; // compat 的 10 位小写十六进制
 
 const tag = (kind: string, ref: string) => `<site-embed kind="${kind}" ref="${ref}" />`;
 
@@ -572,3 +578,93 @@ describe('剪贴板引用：Markdown 父文档内联一层，Reactive 父文档�
     expect(view).not.toContain('InlineClipboardMarkdown');
   });
 });
+
+// ═══ 历史 HTML 音视频：compat token → media kind ═════════════════════════════
+
+describe('历史 HTML 音视频 token（media kind）', () => {
+  const mediaPayload = {
+    media: 'video' as const,
+    src: 'https://cdn.example/video.mp4',
+    poster: 'https://cdn.example/poster.jpg',
+    sources: [{ src: 'https://cdn.example/video.webm', type: 'video/webm' }],
+    tracks: [
+      {
+        src: 'https://cdn.example/zh.vtt',
+        kind: 'subtitles' as const,
+        srclang: 'zh',
+        label: '中文',
+        default: true,
+      },
+    ],
+    preload: 'none' as const,
+    loop: true,
+    muted: true,
+    playsInline: true,
+    width: 640,
+    height: 360,
+  };
+  const token = `[[媒体:${MEDIA_REF}]]`;
+
+  it('扫描出 media；external 也展开为标签 + hostData（纯正文派生数据）', async () => {
+    const source = `前 ${token} 后`;
+    expect(scanReactiveReferences(source).map((slot) => slot.kind)).toEqual(['media']);
+
+    let resolveCalls = 0;
+    const result = await adaptReactiveReferences(source, {
+      mode: 'external',
+      mediaSources: { [MEDIA_REF]: mediaPayload },
+      resolve: async () => {
+        resolveCalls += 1;
+        return undefined;
+      },
+    });
+
+    expect(resolveCalls).toBe(0);
+    expect(result.adaptedSource).toContain(tag('media', MEDIA_REF));
+    expect(result.hostData[`media:${MEDIA_REF}`]).toMatchObject({
+      kind: 'media',
+      ref: MEDIA_REF,
+      status: 'ready',
+    });
+    expect(result.hostData[`media:${MEDIA_REF}`].payload).toEqual(mediaPayload);
+  });
+
+  it('代码块 / 行内代码里的同形 token 原样保留', async () => {
+    const fenced = `\`\`\`\n${token}\n\`\`\``;
+    const inline = '`' + token + '`';
+    const result = await adaptReactiveReferences(`前 ${token} 后\n\n${fenced}\n\n${inline}`, {
+      mode: 'external',
+      mediaSources: { [MEDIA_REF]: mediaPayload },
+    });
+    expect(result.adaptedSource).toContain(fenced);
+    expect(result.adaptedSource).toContain(inline);
+    expect(result.adaptedSource.match(/kind="media"/g) ?? []).toHaveLength(1);
+  });
+
+  it('mediaSources 缺键 / 形状非法 → 保留字面量，不发明组件', async () => {
+    const source = `前 ${token} 后`;
+    const invalid: Record<string, SiteMediaPayload>[] = [
+      {},
+      { [MEDIA_REF]: { media: 'video' } },
+    ];
+    for (const mediaSources of invalid) {
+      const result = await adaptReactiveReferences(source, {
+        mode: 'external',
+        mediaSources,
+      });
+      expect(result.adaptedSource).toContain(token);
+      expect(result.hostData[`media:${MEDIA_REF}`]).toBeUndefined();
+    }
+  });
+
+  it(`media 与图片 / 剪贴板共用 ${MAX_BLOG_REF_ITEMS} 处预算`, async () => {
+    const tokens = Array.from({ length: MAX_BLOG_REF_ITEMS + 1 }, () => token).join(' ');
+    const result = await adaptReactiveReferences(tokens, {
+      mode: 'external',
+      mediaSources: { [MEDIA_REF]: mediaPayload },
+    });
+    expect(result.adaptedSource.match(/kind="media"/g) ?? []).toHaveLength(MAX_BLOG_REF_ITEMS);
+    expect(result.adaptedSource).toContain(token);
+  });
+});
+

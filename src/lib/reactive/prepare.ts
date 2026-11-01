@@ -1,4 +1,4 @@
-import { adaptReactiveReferences, ADAPTER_VERSION } from './ref-adapter';
+import { adaptReactiveReferences, ADAPTER_VERSION, compatMediaSources } from './ref-adapter';
 import { createServiceReferenceReader } from './ref-reader';
 import { reactiveContentHash } from './cache';
 import { applyLegacyHtmlCompat } from './legacy-compat';
@@ -22,6 +22,8 @@ export async function prepareReactiveDocument(
     mode: context.mode,
     parentFormat: context.format,
     dataImages: compat.dataImages,
+    // 前向兼容桥：主后端在 media 接线后给 compat 返回值加 mediaSources。
+    mediaSources: compatMediaSources(compat),
     resolve: context.mode === 'expand'
       ? createServiceReferenceReader('expand', context.viewer, context.clientIp)
       : undefined,

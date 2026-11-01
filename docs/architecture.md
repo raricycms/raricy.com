@@ -2040,8 +2040,13 @@ source-map 偏移不变）：
 
 #### 宿主组件 `site-embed`
 
-- `kind`：`audio` | `vote` | `favorite` | `clipboard` | `image`；`ref` 为受限短
-  id。`image` 只由兼容层为受限 data 位图生成，渲染前再验 MIME / 魔数。
+- `kind`：`audio` | `vote` | `favorite` | `clipboard` | `image` | `media`；`ref` 为
+  受限短 id。`image` 只由兼容层为受限 data 位图生成，渲染前再验 MIME / 魔数。
+  `media` 承载历史 HTML `<video>` / `<audio>`（compat 写成 `[[媒体:<10 hex>]]`
+  token，适配器展开）：保留 `controls`、`<source>` / `<track>` 与安全属性，
+  默认 `preload="none"`、**永不 autoplay**，渲染前逐 URL 过 `isAllowedReactiveUrl`；
+  静态阅读 / 预览 / 导出共用同一控件。数据形状以
+  `src/lib/reactive/ref-types.ts` 的 `SiteMediaPayload` 为准。
 - 标签与 hostData 原子成对；作者伪造的 `<site-embed` 在盖码后转义。`SiteEmbedView`
   只把投票接成交互，其余委托静态渲染；任何分支都不 `dangerouslySetInnerHTML`，
   链接只由校验过的 kind/ref 拼。
