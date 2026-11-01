@@ -10,7 +10,8 @@
 
 | 文档 | 状态与剩余范围 |
 |------|----------------|
-| `docs/plan/reactive-md-unification-plan.md` | 后续实施主计划（2026-11-01）：修复并合并 PR #20、补齐 Markdown 兼容与预算、博客和云剪贴板全量应用、四入口编辑器与发布回滚；待实施 |
+| `docs/plan/reactive-md-simplification-plan.md` | 重新调研后的简化提案（2026-11-02，未实施）：源码持久化、按需编译与进程内缓存，移除数据库快照，解耦保存、源码升级、检索与部署；保留完整作者与阅读体验 |
+| `docs/plan/reactive-md-unification-plan.md` | 统一渲染与四入口编辑器的设计 / 实施记录；新简化提案保留其产品目标，拟替代持久快照和部署门禁，尚未实施替代 |
 | `docs/plan/story-rebuild-plan.md` | 故事区重做方案与本地调研完成（2026-10-31）；初审/复审工具、作品编辑、美术、页面与发布均未实施 |
 | `docs/plan/story-review-tooling.md` | 故事工作台设计：先人工复审闭环，再接 AI 初审、版本与作品关联；全部为待实施提案 |
 | `docs/plan/story-editorial-design.md` | 故事制作流程：作者确认、定稿、设计简报、配图、Codex 交接和可撤回出版；待作品试点 |

@@ -387,6 +387,12 @@ export const DOC_ENTRIES: readonly DocEntry[] = [
   },
   {
     group: 'dev',
+    slug: 'plan/reactive-md-simplification-plan',
+    title: 'ReactiveMD 功能与架构简化方案',
+    summary: '源码持久化、按需编译、移除数据库快照，并解耦版本升级、检索与部署。',
+  },
+  {
+    group: 'dev',
     slug: 'plan/reactive-md-unification-plan',
     title: 'ReactiveMD 全量应用与编辑器重整计划',
     summary: '修复合并 PR #20、兼容 Markdown、博客与云剪贴板全量切换及四入口编辑器。',
