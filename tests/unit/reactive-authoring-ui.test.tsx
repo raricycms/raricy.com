@@ -147,6 +147,8 @@ const mocks = vi.hoisted(() => {
     },
     applyReactiveAuthorAnalysis: vi.fn(),
     clearReactiveAuthorAnalysis: vi.fn(),
+    /** 预览收到的 props（验证 format 真的传下去，而不是只接了类型）。 */
+    previewProps: null as null | Record<string, unknown>,
   };
 });
 
@@ -244,7 +246,12 @@ vi.mock('@/app/components/markdown-editor/export', () => ({
   safeFilename: vi.fn((value: string) => value),
   stripInteractiveShells: vi.fn(),
 }));
-vi.mock('@/app/components/reactive/ReactivePreview', () => ({ default: () => null }));
+vi.mock('@/app/components/reactive/ReactivePreview', () => ({
+  default: (props: Record<string, unknown>) => {
+    mocks.previewProps = props;
+    return null;
+  },
+}));
 vi.mock('@/app/components/MarkdownRenderer', () => ({ default: () => null }));
 // 格式分析器是后端契约（worker）；单测里只要一个不排后台任务的替身 ——
 // 无候选语法的正文根本不会调用它，需要结果的用例各自再覆盖。
@@ -318,6 +325,7 @@ beforeEach(() => {
   mocks.applyReactiveAuthorAnalysis.mockClear();
   mocks.clearReactiveAuthorAnalysis.mockClear();
   mocks.analyzerOptions = null;
+  mocks.previewProps = null;
   mocks.reactiveAuthoring.mockImplementation(() => []);
   mocks.getReactiveCompletions.mockReturnValue([]);
   mocks.applyReactiveCompletion.mockReturnValue(true);
@@ -670,6 +678,16 @@ describe('MarkdownEditor：Reactive 诊断 / 补全 / 格式化', () => {
     expect(container.textContent).toContain('没有需要格式化的内容');
   });
 
+  it('预览始终走统一引擎，并把当前格式传下去（Markdown 子剪贴板内联一层）', () => {
+    const markdown = mount(createElement(EditorHarness, { initialFormat: 'markdown' }));
+    expect(mocks.previewProps?.format).toBe('markdown');
+    expect(mocks.previewProps?.source).toBe('# 标题\n\n正文');
+    markdown.remove();
+
+    mount(createElement(EditorHarness, { initialFormat: 'reactive' }));
+    expect(mocks.previewProps?.format).toBe('reactive');
+  });
+
   it('Markdown 模式不启用作者扩展、不显示诊断面板；Components 入口仍在', () => {
     const container = mount(createElement(EditorHarness, { initialFormat: 'markdown' }));
     expect(mocks.reactiveAuthoring).not.toHaveBeenCalled();
@@ -947,7 +965,18 @@ describe('prepareSubmit：无效增强语法绝不静默按 Markdown 保存', ()
     expect(snapshot.format).toBe('markdown');
   });
 
-  it('从 Components 插入过组件后即使正文没有标记也不降级', async () => {
+  it('新建 Markdown 插入组件后是临时升级；删光后按最终解析事实保存为 markdown', async () => {
+    mocks.analyzeResult = {
+      effective: 'markdown',
+      valid: true,
+      publishable: true,
+      evidence: [],
+      candidates: [],
+      codes: [],
+      diagnostics: [],
+      declaredVersion: null,
+      syntaxVersion: null,
+    };
     const ref = createRef<MarkdownEditorHandle>();
     const container = mount(
       createElement(EditorHarness, {
@@ -959,11 +988,20 @@ describe('prepareSubmit：无效增强语法绝不静默按 Markdown 保存', ()
     await click(container, '[aria-label="组件"]');
     await click(container, '.md-component-picker__item');
 
+    // 真实插入会改动正文 → 分析在飞，此时临时按增强文档预览 / 给工具。
+    const view = EditorView.findFromDOM(container.querySelector('.cm-content')!)!;
+    act(() => view.dispatch({ changes: { from: view.state.doc.length, insert: '\n<slider bind="a">' } }));
+    expect(ref.current!.getFormat()).toBe('reactive');
+
+    // 删光组件：预筛直接判定没有增强候选，临时升级必须撤掉。
+    act(() => view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: '只剩普通正文了' } }));
+    expect(ref.current!.getFormat()).toBe('markdown');
+
     let snapshot!: EditorSubmitSnapshot;
     await act(async () => {
       snapshot = await ref.current!.prepareSubmit();
     });
-    expect(snapshot.format).toBe('reactive');
+    expect(snapshot.format).toBe('markdown');
     expect(snapshot.blocked).toBeNull();
   });
 

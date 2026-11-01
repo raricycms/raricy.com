@@ -30,8 +30,6 @@ import {
   useReducer,
   useRef,
   useState,
-  type ComponentProps,
-  type ComponentType,
 } from 'react';
 import {
   Compartment,
@@ -69,7 +67,6 @@ import {
   getReactiveCompletions,
   reactiveAuthoring,
   revealReactiveDiagnostic,
-  type AuthorAnalysis,
   type AuthorCompletion,
   type ReactiveAuthorAnalysis,
 } from '@/lib/md-editor/reactive-authoring';
@@ -120,37 +117,6 @@ const SUBMIT_ANALYSIS_ATTEMPTS = 3;
 const SPLIT_MIN_WIDTH = 768;
 
 type ViewMode = 'edit' | 'split' | 'preview';
-
-/**
- * `ReactivePreview` 的向前兼容外观：Markdown 父文档也需要它（统一预览引擎），
- * 且必须把 `format` 传下去，Markdown 子剪贴板才会按「内联一层」处理（契约 §5.2）。
- *
- * ⚠️ 这层 cast 是**临时**的：`format` 的真实签名由后端的
- * `ReactivePreviewProps` 提供（后端树 WIP，尚未提交到本树）。合并后**必须删掉**
- * 这里的别名、直接使用真实 props —— 别让它变成「传了但没人读」的永久假接线。
- */
-type ReactivePreviewCompatProps = ComponentProps<typeof ReactivePreview> & {
-  format?: ContentFormat;
-};
-const ReactivePreviewCompat = ReactivePreview as unknown as ComponentType<ReactivePreviewCompatProps>;
-
-/**
- * `FormatAnalysis` / 分析器选项的向前兼容扩展。
- *
- * 后端 WIP 已给 `FormatAnalysis` 增加 `author` / `mode` / `fallback`，并给
- * `createFormatAnalyzer` 增加 `onModeChange` / `onFallback`；本树合并前这两个
- * 字段还不存在。用**可选字段**读：旧实现下取不到就不画装饰 / 不提示回退，
- * 新实现下自动生效。合并后删掉这两个别名，让 tsc 直接校验真实签名。
- */
-type FormatAnalysisCompat = FormatAnalysis & {
-  author?: ReactiveAuthorAnalysis | null;
-  mode?: 'worker' | 'fallback' | 'unknown';
-  fallback?: boolean;
-};
-type FormatAnalyzerOptionsCompat = Parameters<typeof createFormatAnalyzer>[0] & {
-  onModeChange?: (mode: 'worker' | 'fallback' | 'unknown', detail?: string) => void;
-  onFallback?: (detail?: string) => void;
-};
 
 export interface MarkdownEditorHandle {
   /** 最新原文（同步）。提交与草稿都从这里取。 */
@@ -299,15 +265,15 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(
     const [initFailed, setInitFailed] = useState(false);
 
     /**
-     * 「插入组件后自动升级为 Reactive」的**粘性事实**。
+     * 「刚插入过组件」——**只用于分析落地前的临时升级**，不是永久下限。
      *
      * 作者界面不再要求先手动选格式：从 Components 菜单插一个 `<slider>` 进来，
-     * 这份正文就已经是增强语法了。`format` 是**服务端 / 草稿给的下限**，这里只
-     * 单向上调（reactive 不会因为删光组件自动降回 markdown，见计划 §3.1）。
+     * 这份正文就已经是增强语法了。插入后立刻保存时，分析还没回来，靠这一位让
+     * `effectiveFormat` 立即是 reactive（提交仍会等分析）。
      *
-     * 手写组件 / 表达式由异步格式分析识别（`detectedReactive`）；这里的粘性位
-     * 补的是「刚插入、分析还没回来」以及「插了又删光」这两种分析结果本身无法
-     * 认定的情况 —— 只看最终正文会把它们误判成普通 Markdown。
+     * 但**最终以解析事实为准**：新建的 Markdown 插了又删光 → 分析（或预筛）判定
+     * 为 markdown 时，这一位必须清掉，不能凭空把一份普通 Markdown 存成 reactive。
+     * 真正「永不下限」的只有 `format === 'reactive'`（已保存的增强文档）。
      */
     const [componentInserted, setComponentInserted] = useState(false);
 
@@ -339,20 +305,26 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(
     const invalidEnhanced = formatAnalysis?.effective === 'invalid-enhanced';
     const detectedReactive = formatAnalysis?.effective === 'reactive';
     /**
-     * 一旦从 Components 插入过组件，这份正文就是增强文档：**删光组件也不自动
-     * 降级**（审查 3.2）。`componentInserted` 是粘性的；只有从未插入过组件的
-     * 全新 Markdown 才走 markdown。
+     * 当前生效格式（只用于界面与预览，提交以 `prepareSubmit` 的判定为准）。
+     *
+     * 三档来源，优先级从高到低：
+     *   1. `format === 'reactive'` —— 已保存的增强文档，**永久下限**，删光组件也
+     *      不降级（审查 3.2 / 计划 §3.1）；
+     *   2. `detectedReactive` —— 解析器对**当前正文**的有效增强语法事实；
+     *   3. `componentInserted && (分析在飞 / 失败)` —— 刚插入组件、结果还没回来
+     *      的临时升级。一旦当前正文的分析落地为 markdown，第 3 条必须失效，
+     *      否则「新建 MD 插入后删光」会凭空存成 reactive（本轮协调要求）。
      */
+    const insertionPending = componentInserted && (analysisPending || analysisFailure !== null);
     const effectiveFormat: ContentFormat =
-      format === 'reactive' || componentInserted || detectedReactive ? 'reactive' : 'markdown';
+      format === 'reactive' || detectedReactive || invalidEnhanced || insertionPending
+        ? 'reactive'
+        : 'markdown';
     const effectiveFormatRef = useRef(effectiveFormat);
     effectiveFormatRef.current = effectiveFormat;
     /** `format` 的同步副本：提交判定在 async 回调里读，不能拿到旧闭包。 */
     const formatFloorRef = useRef(format);
     formatFloorRef.current = format;
-    /** 插入过组件（粘性）—— 提交时与 `format==='reactive'` 同样是不能降级的底线。 */
-    const componentInsertedRef = useRef(componentInserted);
-    componentInsertedRef.current = componentInserted;
 
     /**
      * 草稿里存的格式：**无效增强语法仍记 reactive**。
@@ -643,7 +615,9 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(
         setAnalysisFailure(null);
         authorAnalysisSourceRef.current = null;
         setAuthorAnalysis(null);
-        // 注意：**不**清 componentInserted。插入过组件就是增强文档，删光也不降级。
+        // 当前正文连一个增强语法候选都没有：插入过组件也已删光。清掉临时升级 ——
+        // 新建 Markdown 以最终事实为准；已保存 reactive 由 `format` 下限兜住。
+        setComponentInserted(false);
         return;
       }
       setAnalysisPending(true);
@@ -672,16 +646,16 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(
             setFormatAnalysis(result);
             setAnalysisPending(false);
             setAnalysisFailure(null);
+            // 当前正文（含刚插入又删光的组件）最终按解析器判定：markdown 就
+            // 撤掉临时升级；invalid / reactive 则继续保持增强身份。
+            if (result.effective === 'markdown') setComponentInserted(false);
             // worker 已经把 authoring analysis 一起算好了（includeAuthorAnalysis）；
             // 这里只负责把它交给 CM6 装饰，不在主线程再跑一遍（审查 3.3）。
-            const compatible = result as FormatAnalysisCompat;
-            const nextAuthor = compatible.author ?? null;
+            const nextAuthor = result.author ?? null;
             authorAnalysisSourceRef.current = nextAuthor ? source : null;
             setAuthorAnalysis(nextAuthor);
-            // 后端把「worker / fallback」带在结果上；旧实现没有这个字段时不改状态。
-            if (typeof compatible.fallback === 'boolean') {
-              setAnalysisFallback(compatible.fallback);
-            }
+            // worker / fallback 由 FormatAnalysis 直接回报，不用再从选项回调猜。
+            setAnalysisFallback(result.fallback);
             if (result.syntaxVersion) syntaxVersionRef.current = result.syntaxVersion;
             // 草稿来自旧语法版本：明确提示，别让它在保存时被服务端拒绝时才暴露。
             const restored = restoredDraftVersionRef.current;
@@ -706,9 +680,8 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(
     useEffect(() => {
       let analyzer: ReturnType<typeof createFormatAnalyzer> | null = null;
       try {
-        // onModeChange 是新契约的可选字段（见 FormatAnalyzerOptionsCompat）：
         // worker 不可用时上游回退主线程，编辑会变慢 —— 面板必须说出来。
-        const analyzerOptions: FormatAnalyzerOptionsCompat = {
+        analyzer = createFormatAnalyzer({
           createWorker: () =>
             // MarkdownEditor 在 src/app/components；worker 在 src/lib/reactive。
             new Worker(new URL('../../lib/reactive/compile.worker.ts', import.meta.url), {
@@ -718,8 +691,7 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(
             if (destroyedRef.current) return;
             setAnalysisFallback(nextMode === 'fallback');
           },
-        };
-        analyzer = createFormatAnalyzer(analyzerOptions);
+        });
         analyzerRef.current = analyzer;
       } catch {
         // Worker 起不来时上游调度器会异步回退主线程；这里只是兜底标记，
@@ -1076,9 +1048,10 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(
       const currentSource = () =>
         viewRef.current?.state.doc.toString() ?? docRef.current;
 
-      // 已保存为 reactive 的文档是**下限**：即使删光组件也不自动降级。
-      const floorReactive =
-        formatFloorRef.current === 'reactive' || componentInsertedRef.current;
+      // 已保存为 reactive 的文档是**唯一下限**：即使删光组件也不自动降级。
+      // 「插入过组件」不是下限 —— 新建 Markdown 插了又删光时，最终保存按本次
+      // 分析判定（无增强语法就是 markdown），否则会凭空改写文档格式。
+      const floorReactive = formatFloorRef.current === 'reactive';
       for (let attempt = 0; attempt < SUBMIT_ANALYSIS_ATTEMPTS; attempt += 1) {
         const content = currentSource();
         if (!mightContainReactiveSyntax(content)) {
@@ -1320,6 +1293,7 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(
 
           <div className="md-editor__pane md-editor__pane--preview">
             <div className="md-editor__preview-bar">
+              {/* 本地控件可操作，但预览不发任何业务写请求（投票 / 收藏只读）。 */}
               <span className="md-editor__preview-label">预览</span>
               <button
                 type="button"
@@ -1338,7 +1312,7 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(
                 引用适配 / 编译选项，避免「预览一套、阅读另一套」。Markdown 父
                 文档同样传 format，Markdown 子剪贴板按约定内联一层。
               */}
-              <ReactivePreviewCompat
+              <ReactivePreview
                 key={`${referenceMode}:${effectiveFormat}`}
                 source={previewDoc}
                 refreshToken={refreshToken}

@@ -157,7 +157,7 @@ describe('worker 作者分析 → 源码装饰', () => {
     applyReactiveAuthorAnalysis(view, {
       tokens: [
         { kind: 'tag', range: { start: 0, end: 6 } },
-        { kind: 'attribute', range: { start: 7, end: 13 } },
+        { kind: 'attribute', range: { start: 7, end: 15 } },
       ],
       diagnostics: [
         {

@@ -618,6 +618,7 @@ export default function Toolbar({
               </MenuButton>
               <MenuButton
                 role="menuitem"
+                title="导出静态 HTML：正文按初始状态，预览里临时拖动的值不会写入"
                 onRun={() => {
                   onExportHtml();
                   closeMenu(false);
@@ -628,6 +629,7 @@ export default function Toolbar({
               </MenuButton>
               <MenuButton
                 role="menuitem"
+                title="打印 / 存为 PDF：正文按初始状态，预览里临时拖动的值不会写入"
                 onRun={() => {
                   onPrint();
                   closeMenu(false);
