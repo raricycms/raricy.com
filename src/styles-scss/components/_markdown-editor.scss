@@ -28,6 +28,7 @@
 // 显示 img / 拖拽徽标 etc 都不该溢出这个盒子
 .md-editor__body {
   position: relative;
+  z-index: 0;
   display: flex;
   // 下限而不是定高：外壳的 height 由调用方按页面给（博客 60vh / 剪贴板 50vh）
   min-height: 240px;
@@ -35,6 +36,11 @@
 
 // ── 工具条 ──────────────────────────────────────────────────────────────────
 .md-toolbar {
+  // 浮层必须整体盖在 .md-editor__body 之上：body 是 position:relative，
+  // 不抬工具条的话它会盖住 Insert / Components 菜单（DOM 在、却点不到）。
+  position: relative;
+  z-index: 1000;
+  isolation: isolate;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
