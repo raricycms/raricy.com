@@ -10,6 +10,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import type { SourceRange } from 'reactive-md';
+import { maskMarkdownCode } from '../favorite-refs';
 
 /** 当前版本指令的精确文本（由调用方传入当前 LOCAL_SYNTAX_VERSION 时构造）。 */
 export function currentDeclaration(version: string): string {
@@ -66,4 +67,26 @@ export function findLeadingVersionDirective(source: string): LeadingDeclaration 
     return null;
   }
   return null;
+}
+
+
+/**
+ * 找出**正文任意位置**的版本指令（代码块 / 行内代码之外）。
+ *
+ * 前导声明由 `findLeadingVersionDirective` 负责；这里是迁移兜底：一行标成当前
+ * 版本、正文深处却残留旧声明时，一次性标记不能让阅读页编译失败。
+ */
+export function findVersionDirectives(source: string): LeadingDeclaration[] {
+  const masked = maskMarkdownCode(source);
+  const re = /<!--\s*reactive-md:\s*([A-Za-z0-9.-]+)\s*-->/g;
+  const found: LeadingDeclaration[] = [];
+  for (const match of masked.matchAll(re)) {
+    const start = match.index ?? 0;
+    if (masked[start] !== '<') continue; // 被盖码
+    found.push({
+      version: match[1],
+      range: { start, end: start + match[0].length },
+    });
+  }
+  return found;
 }

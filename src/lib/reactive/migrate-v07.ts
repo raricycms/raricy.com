@@ -1,5 +1,8 @@
-import { LOCAL_SYNTAX_VERSION } from 'reactive-md';
+import { compileLocal, LOCAL_SYNTAX_VERSION } from 'reactive-md';
 import { prisma } from '../db';
+import { reactiveCompileOptions } from './host-components';
+import { applyLegacyHtmlCompat } from './legacy-compat';
+import { shouldRejectReactive } from './diagnostics';
 import {
   findDynamicConstraintActivations,
   findStaleVersionDeclaration,
@@ -53,10 +56,26 @@ export async function planReactiveV07Migration(): Promise<ReactiveV07Plan> {
     const blockers: MigrationBlocker[] = [];
     for (const item of sources) {
       if (item.syntaxVersion === LOCAL_SYNTAX_VERSION) {
-        // 列已是当前版本，正文却仍声明旧版本：一次性标记不能掩盖它。
+        // 列已是当前版本，正文却仍声明旧版本（含正文深处）：一次性标记不能掩盖它。
         const stale = findStaleVersionDeclaration(item.source);
         if (stale.length > 0) {
           blockers.push({ kind: item.kind, id: item.id, codes: stale.map((d) => d.code) });
+          continue;
+        }
+        // 列当前但正文本身不可编译 / 语义不安全：一次性标记之后阅读页会一直拒绝。
+        const probe = compileLocal(
+          applyLegacyHtmlCompat(item.source).source,
+          reactiveCompileOptions('reactive')
+        );
+        if (!probe.ok || shouldRejectReactive(probe)) {
+          blockers.push({
+            kind: item.kind,
+            id: item.id,
+            codes: [
+              'site.migration.current-invalid',
+              ...probe.diagnostics.map((d) => d.code),
+            ],
+          });
         }
         continue;
       }

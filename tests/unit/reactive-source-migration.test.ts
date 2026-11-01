@@ -7,7 +7,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { describe, expect, it } from 'vitest';
-import { compileLocal, LOCAL_SYNTAX_VERSION } from 'reactive-md';
+import { compileLocal, LOCAL_SYNTAX_VERSION, migrateLocalSource } from 'reactive-md';
 import { migrateLocalSourceWithSiteBudget } from '@/lib/reactive/source-migration';
 import { findLeadingVersionDirective } from '@/lib/reactive/version-directive';
 import { reactiveCompileOptions } from '@/lib/reactive/host-components';
@@ -54,9 +54,12 @@ describe('migrateLocalSourceWithSiteBudget', () => {
   it('上游只因默认预算失败时，用站点预算完成迁移', () => {
     const source = longDraft2Source();
 
-    // 前提：站点配置能编译，上游迁移器拒绝。
+    // 前提：站点配置能编译，**上游迁移器本身确实因默认 10k 预算拒绝**。
     const compiled = compileLocal(source.replace(OLD_DECLARATION, `<!-- reactive-md: ${LOCAL_SYNTAX_VERSION} -->`), reactiveCompileOptions('reactive'));
     expect(compiled.ok).toBe(true);
+    const upstream = migrateLocalSource(source, { fromVersion: 'local-draft-2' });
+    expect(upstream.ok).toBe(false);
+    expect(upstream.diagnostics.map((d) => d.code)).toEqual(['local.budget']);
 
     const migrated = migrateLocalSourceWithSiteBudget(source, 'local-draft-2');
     expect(migrated.ok).toBe(true);

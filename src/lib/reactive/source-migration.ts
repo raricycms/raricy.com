@@ -40,7 +40,7 @@ import {
   type SourceRange,
 } from 'reactive-md';
 import { reactiveCompileOptions } from './host-components';
-import { currentDeclaration, findLeadingVersionDirective, type LeadingDeclaration } from './version-directive';
+import { currentDeclaration, findLeadingVersionDirective, findVersionDirectives, type LeadingDeclaration } from './version-directive';
 
 
 
@@ -188,18 +188,19 @@ export function findDynamicConstraintActivations(source: string): Diagnostic[] {
   return diagnostics;
 }
 
-/** 列已是当前版本、正文却仍声明旧版本：一次性标记不能掩盖它。 */
+/** 列已是当前版本、正文却仍声明旧版本：一次性标记不能掩盖它（含正文深处的声明）。 */
 export function findStaleVersionDeclaration(source: string): Diagnostic[] {
-  const declaration = findLeadingVersionDirective(source);
-  if (!declaration || declaration.version === LOCAL_SYNTAX_VERSION) return [];
-  return [
+  const stale = findVersionDirectives(source).filter(
+    (declaration) => declaration.version !== LOCAL_SYNTAX_VERSION
+  );
+  return stale.map((declaration) =>
     upgradeDiagnostic(
       'site.migration.stale-declaration',
       source,
       declaration.range,
       `content declares ${declaration.version} while the row says ${LOCAL_SYNTAX_VERSION}`
-    ),
-  ];
+    )
+  );
 }
 
 /**
