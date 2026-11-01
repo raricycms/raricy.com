@@ -7,11 +7,28 @@ import { INDEXABLE_VISIBILITIES } from './blog-visibility';
 import { parseContentFormat } from './content-format';
 import { reactiveCompileOptions } from './reactive/host-components';
 import { applyLegacyHtmlCompat } from './reactive/legacy-compat';
+import { currentSnapshotSignature } from './reactive/snapshot-store';
 
-// ⚠️ 改 `publicBodyText` 的文字提取规则时必须 bump 这个值：它不在快照编译签名里，
-// 迁移器的「快照签名刷新」判据看不到这类变化。迁移 39 的 state 行以它为准，值一变
-// 覆盖检查就会要求重建。编译包 / 兼容层 / 选项变化由快照签名自动触发重建，不需要手改。
-export const PUBLIC_SEARCH_VERSION = 'public-body/2';
+// ⚠️ 只改 `publicBodyText` 的**文字提取规则**（不改编译输入）时必须 bump 这个基础版本：
+// 它不在快照编译签名里。编译包 / 兼容层 / 选项 / 语法版本变化会自动进入下面的组合版本。
+export const PUBLIC_SEARCH_BASE_VERSION = 'public-body/2';
+
+/**
+ * 真正写进 `public_blog_search_state.version` / FTS `version` 的持久版本。
+ *
+ * 它 = 正文提取规则版本 + Markdown / Reactive 两套**当前编译签名**。持久化进 state
+ * 的意义：一次 up 刷新了快照、却在索引阶段失败 / 被别的文档 blocker 挡住时，state
+ * 仍是旧签名；下一次 up 即使回填 `refreshed=0`，覆盖检查也会按版本不等判定需要重建。
+ * 只依赖「本次进程 summary.refreshed > 0」不够 —— 重跑时它已经归零。
+ *
+ * 用 JSON 而不是 `|` 拼接：签名里出现分隔符也不会碰撞。升级后第一次 up 会因旧
+ * state 行（`public-body/2`）不匹配而全量重建一次，之后只有真实签名变化才重建。
+ */
+export const PUBLIC_SEARCH_VERSION = JSON.stringify([
+  PUBLIC_SEARCH_BASE_VERSION,
+  currentSnapshotSignature('markdown'),
+  currentSnapshotSignature('reactive'),
+]);
 export type SearchAvailability = 'ready' | 'metadata-only' | 'partial';
 
 /** 编码为纯 ASCII FTS 词项；用户输入无法注入 MATCH 运算符。 */
@@ -67,14 +84,15 @@ export async function syncPublicBlogSearch(blogId: string, db: PrismaClient = pr
   const format = row.content.format;
   const body = await publicBodyText(source, format);
   const tokens = searchTerms(body.text);
+  const version = PUBLIC_SEARCH_VERSION;
   await db.$transaction(async tx => {
     const current = await tx.blog.findUnique({ where: { id: blogId }, include: { content: true } });
     if (!current || current.ignore || !(INDEXABLE_VISIBILITIES as readonly string[]).includes(current.visibility) || current.content?.content !== source || current.content?.format !== format) return;
     await tx.$executeRaw`DELETE FROM public_blog_search WHERE blog_id = ${blogId}`;
     await tx.$executeRaw`INSERT INTO public_blog_search(rowid,blog_id,body,folded,tokens,version,body_status)
-      SELECT rowid,id,${body.text},${body.text.toLowerCase()},${tokens},${PUBLIC_SEARCH_VERSION},${body.status}
+      SELECT rowid,id,${body.text},${body.text.toLowerCase()},${tokens},${version},${body.status}
       FROM blogs WHERE id=${blogId}`;
-    await tx.$executeRaw`INSERT OR REPLACE INTO public_blog_search_state(blog_id,version,body_status) VALUES(${blogId},${PUBLIC_SEARCH_VERSION},${body.status})`;
+    await tx.$executeRaw`INSERT OR REPLACE INTO public_blog_search_state(blog_id,version,body_status) VALUES(${blogId},${version},${body.status})`;
   });
 }
 
@@ -93,20 +111,21 @@ export async function rebuildPublicBlogSearch(db: PrismaClient = prisma) {
 
 export async function searchPublicBlogIds(tx: Prisma.TransactionClient, q: string, categoryIds: number[] | null, page: number, perPage: number) {
   const publicWhere = Prisma.sql`b.visibility IN (${Prisma.join(INDEXABLE_VISIBILITIES)}) AND b.ignore=0 AND u.archived_at IS NULL`;
+  const version = PUBLIC_SEARCH_VERSION;
   const coverage = await tx.$queryRaw<{ missing: bigint; partial: bigint }[]>`SELECT
-    SUM(CASE WHEN p.blog_id IS NULL OR p.version != ${PUBLIC_SEARCH_VERSION} THEN 1 ELSE 0 END) AS missing,
+    SUM(CASE WHEN p.blog_id IS NULL OR p.version != ${version} THEN 1 ELSE 0 END) AS missing,
     SUM(CASE WHEN p.body_status = 'missing' THEN 1 ELSE 0 END) AS partial
     FROM blogs b JOIN users u ON u.id=b.author_id LEFT JOIN public_blog_search_state p ON p.blog_id=b.id WHERE ${publicWhere}`;
   const availability: SearchAvailability = Number(coverage[0]?.missing || 0) > 0 ? 'metadata-only' : Number(coverage[0]?.partial || 0) > 0 ? 'partial' : 'ready';
   const folded = q.toLowerCase();
   const bodyMatches = availability === 'metadata-only' ? Prisma.sql`SELECT -1 AS rowid` : Prisma.sql`SELECT rowid FROM public_blog_search
-    WHERE public_blog_search MATCH ${searchTerms(folded, true)} AND version=${PUBLIC_SEARCH_VERSION} AND body_status='ready'`;
+    WHERE public_blog_search MATCH ${searchTerms(folded, true)} AND version=${version} AND body_status='ready'`;
   const meta = Prisma.sql`instr(lower(b.title),${folded})>0 OR instr(lower(b.description),${folded})>0 OR instr(lower(u.username),${folded})>0`;
   const filter = Prisma.sql`${publicWhere} AND (${meta} OR b.rowid IN (${bodyMatches}))
     ${categoryIds ? Prisma.sql`AND b.category_id IN (${Prisma.join(categoryIds.length ? categoryIds : [-1])})` : Prisma.empty}`;
   const counts = await tx.$queryRaw<{ count: bigint }[]>`SELECT COUNT(*) AS count FROM blogs b JOIN users u ON u.id=b.author_id WHERE ${filter}`;
   const hits = await tx.$queryRaw<{ id: string; snippet: string | null }[]>`SELECT ranked.id,
-    CASE WHEN ${availability !== 'metadata-only'} AND p.version=${PUBLIC_SEARCH_VERSION} AND p.body_status='ready' AND instr(p.folded,${folded})>0 THEN substr(p.body,MAX(1,instr(p.folded,${folded})-55),180) ELSE NULL END AS snippet
+    CASE WHEN ${availability !== 'metadata-only'} AND p.version=${version} AND p.body_status='ready' AND instr(p.folded,${folded})>0 THEN substr(p.body,MAX(1,instr(p.folded,${folded})-55),180) ELSE NULL END AS snippet
     FROM (SELECT b.rowid AS blogrow,b.id FROM blogs b JOIN users u ON u.id=b.author_id
       WHERE ${filter}
       ORDER BY (CASE WHEN instr(lower(b.title),${folded})>0 THEN 8 ELSE 0 END

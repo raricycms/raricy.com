@@ -3,10 +3,12 @@
 
 import { describe, expect, it } from 'vitest';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { isMainModule, resolveDatabaseUrl } from '../../scripts/migrate.mjs';
 
-const PRISMA_DIR = path.resolve('C:/repo/prisma');
+// 平台中立：不要用 `path.resolve('C:/...')` —— 在 POSIX 上它是相对路径。
+const PRISMA_DIR = path.join(os.tmpdir(), 'raricy repo', 'prisma');
 const MIGRATE_SCRIPT = path.resolve(import.meta.dirname, '../../scripts/migrate.mjs');
 
 describe('resolveDatabaseUrl', () => {
@@ -15,11 +17,18 @@ describe('resolveDatabaseUrl', () => {
     expect(resolved).toBe(`file:${path.resolve(PRISMA_DIR, '../instance/database/dev.db')}?connection_limit=1`);
   });
 
-  it('绝对盘符路径与编码空格归一化为同一绝对地址', () => {
+  it.runIf(process.platform === 'win32')('Windows 盘符路径与编码空格归一化为绝对地址', () => {
     const withSpace = resolveDatabaseUrl('file:C:/data%20dir/db.db', PRISMA_DIR);
     expect(withSpace).toBe(`file:${path.resolve('C:/data dir/db.db')}`);
     const slashDrive = resolveDatabaseUrl('file:/C:/data dir/db.db', PRISMA_DIR);
     expect(slashDrive).toBe(`file:${path.resolve('C:/data dir/db.db')}`);
+  });
+
+  it.runIf(process.platform !== 'win32')('POSIX 绝对路径与编码空格归一化为绝对地址', () => {
+    expect(resolveDatabaseUrl('file:/var/lib/db.db', PRISMA_DIR)).toBe(`file:${path.resolve('/var/lib/db.db')}`);
+    expect(resolveDatabaseUrl('file:/var/lib/data%20dir/db.db', PRISMA_DIR)).toBe(
+      `file:${path.resolve('/var/lib/data dir/db.db')}`
+    );
   });
 
   it('非 file: URL 与无法安全改写的 UNC 路径原样返回', () => {

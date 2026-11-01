@@ -122,8 +122,10 @@ async function run(): Promise<number> {
   }
 
   // 3) 公开正文索引：只在必要时重建 ------------------------------------------
-  // `refreshed > 0` 说明编译签名（包 / 兼容层 / 选项）变过；索引覆盖可能仍然齐全，
-  // 但正文与片段是旧编译器的产物。只查 state 版本会把这种情况永远跳过。
+  // **跨运行恢复靠 PUBLIC_SEARCH_VERSION 里持久化的编译签名**：一次运行刷新了快照
+  // 却在索引阶段失败时，state 仍是旧签名，下一次 up 即使 refreshed=0 也会按版本不等
+  // 重建。下面的 refreshed 只是同一次运行的附加触发（覆盖人工篡改快照等边缘情况），
+  // 不是恢复依据。
   const compileSignatureChanged = summary.refreshed > 0;
   let needsRebuild: boolean;
   try {

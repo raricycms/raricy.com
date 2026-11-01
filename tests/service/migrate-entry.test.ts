@@ -20,6 +20,7 @@ import { createRequire } from 'node:module';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { PUBLIC_SEARCH_VERSION } from '@/lib/public-blog-search';
 
 const { DatabaseSync } = createRequire(import.meta.url)('node:sqlite') as typeof import('node:sqlite');
 
@@ -239,7 +240,7 @@ describe('migrate up 入口', () => {
       'SELECT blog_id, version, body_status FROM public_blog_search_state ORDER BY blog_id'
     );
     expect(state.map((row) => row.blog_id)).toEqual(['blog-md', 'blog-old']);
-    expect(state.every((row) => row.version === 'public-body/2' && row.body_status === 'ready')).toBe(true);
+    expect(state.every((row) => row.version === PUBLIC_SEARCH_VERSION && row.body_status === 'ready')).toBe(true);
     expect(
       one<{ body: string }>(db, "SELECT body FROM public_blog_search WHERE blog_id='blog-old'").body
     ).toContain('旧正文标记词');
@@ -378,34 +379,55 @@ describe('migrate up 入口', () => {
     ).toEqual([]);
   });
 
-  it('索引覆盖完整但编译签名变化时仍重建（不静默跳过）', { timeout: 180_000 }, () => {
+  it('快照刷新后索引未完成时，下一次 up 靠持久版本恢复（跨运行）', { timeout: 180_000 }, () => {
     const db = path.join(SANDBOX, 'stale signature.db');
     copyDb(BASE_DB, db);
     resetReactiveMarker(db);
     seedContent(db);
     expectOk(run(['up'], { url: `file:${db}` }), '首次生成索引');
-    expect(
-      one<{ body: string }>(db, "SELECT body FROM public_blog_search WHERE blog_id='blog-md'").body
-    ).toContain('公开索引标记词');
 
-    // 模拟：索引 state / FTS 行都齐全，但快照是旧编译签名。回填会 refreshed，
-    // 即使覆盖检查说「没问题」，也必须重建索引，不能把旧编译产物当成最新。
+    // 模拟一次「编译签名已变化、但索引还停留在旧版本」的中间态：
+    // 快照全是旧签名；state / FTS 行齐全但版本是旧的；另有无关文档坏格式。
     exec(
       db,
-      `UPDATE reactive_snapshots SET compiler_version='reactive-md/old'
-         WHERE kind='blog' AND content_id='blog-md';
-       UPDATE public_blog_search SET body='STALE INDEX BODY' WHERE blog_id='blog-md'`
+      `UPDATE reactive_snapshots SET compiler_version='reactive-md/old';
+       UPDATE public_blog_search_state SET version='old-search-version';
+       UPDATE public_blog_search SET version='old-search-version', body='STALE INDEX BODY';
+       INSERT INTO blogs (id, title, description, author_id, created_at, ignore, visibility)
+         VALUES ('blog-block', '坏格式', '', 'author', 1700000000000, 0, 'internal');
+       INSERT INTO blog_contents (blog_id, content, updated_at, format, syntax_version)
+         VALUES ('blog-block', '无法识别的格式', 1700000000000, 'binary', NULL)`
     );
 
-    const result = run(['up'], { url: `file:${db}` });
-    expectOk(result, '编译签名变化后重跑 up');
-    expect(output(result)).toContain('快照编译签名已变化');
+    // Run 1：回填刷新公开快照后，被另一篇坏格式挡住 → 索引阶段没执行，退出非零。
+    const first = run(['up'], { url: `file:${db}` });
+    expect(first.status).not.toBe(0);
+    expect(output(first)).toContain('invalid_content_format');
     expect(
-      one<{ body: string }>(db, "SELECT body FROM public_blog_search WHERE blog_id='blog-md'").body
-    ).toContain('公开索引标记词');
+      one<{ version: string; body: string }>(
+        db,
+        "SELECT s.version AS version, p.body AS body FROM public_blog_search_state s JOIN public_blog_search p ON p.blog_id=s.blog_id WHERE s.blog_id='blog-md'"
+      )
+    ).toEqual({ version: 'old-search-version', body: 'STALE INDEX BODY' });
+
+    // 修掉 blocker。Run 2 的回填已经没有 refreshed（快照在 Run 1 已刷新），
+    // 只能靠持久化的 state 版本判断「旧索引需要重建」。
+    exec(db, "UPDATE blog_contents SET format='markdown' WHERE blog_id='blog-block'");
+    const second = run(['up'], { url: `file:${db}` });
+    expectOk(second, '修复 blocker 后第二次 up');
+    expect(output(second)).toMatch(/快照回填：.*refreshed=0 .*written=1/);
+    expect(output(second)).toContain('索引缺失或版本不一致');
+
+    const recovered = one<{ version: string; body: string }>(
+      db,
+      "SELECT s.version AS version, p.body AS body FROM public_blog_search_state s JOIN public_blog_search p ON p.blog_id=s.blog_id WHERE s.blog_id='blog-md'"
+    );
+    expect(recovered.version).toBe(PUBLIC_SEARCH_VERSION);
+    expect(recovered.body).toContain('公开索引标记词');
+    expect(recovered.body).not.toContain('STALE INDEX BODY');
     expect(
-      one<{ body: string }>(db, "SELECT body FROM public_blog_search WHERE blog_id='blog-md'").body
-    ).not.toContain('STALE INDEX BODY');
+      Number(one<{ n: number }>(db, "SELECT COUNT(*) AS n FROM public_blog_search_state WHERE version='old-search-version'").n)
+    ).toBe(0);
   });
 
   it('缺省 DATABASE_URL 从 cwd .env 读取；相对路径与空格只落到目标库', { timeout: 180_000 }, () => {
