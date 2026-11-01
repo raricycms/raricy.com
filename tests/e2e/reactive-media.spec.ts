@@ -13,8 +13,9 @@ import { test, expect } from '@playwright/test';
 import { SEED_PASSWORD, SEED_USERS } from './seed';
 import { uniqueTag } from './helpers';
 
-test('历史 video/source/track 在阅读页仍是受限可播放控件', async ({ request, page }) => {
-  const login = await request.post('/api/auth/login', {
+test('历史 video/source/track 在阅读页仍是受限可播放控件', async ({ page }) => {
+  // 用 page.request 登录：它和页面共享 cookie，internal 文章才能被作者读到。
+  const login = await page.request.post('/api/auth/login', {
     data: { username: SEED_USERS.core.username, password: SEED_PASSWORD },
   });
   expect(login.status()).toBe(200);
@@ -28,7 +29,7 @@ test('历史 video/source/track 在阅读页仍是受限可播放控件', async 
     '</video>',
   ].join('\n');
 
-  const created = await request.post('/api/blogs', {
+  const created = await page.request.post('/api/blogs', {
     data: {
       title: `media-${uniqueTag()}`,
       description: 'media e2e',

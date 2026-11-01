@@ -231,18 +231,35 @@ async function hittable(locator: Locator): Promise<boolean> {
 async function deadItems(menu: Locator): Promise<string[]> {
   return menu.evaluate((el) => {
     const dead: string[] = [];
-    const box = el.getBoundingClientRect();
+    // 可视裁剪框 = 元素自身与**所有可滚动 / 裁剪祖先**的交集。
+    // 只拿 el（例如 emoji grid）的 box 不够：它还可能被外层 Insert 菜单的
+    // `overflow-y: auto` 裁掉，滚出外层视口的按钮不该算「点不到」。
+    let clip = el.getBoundingClientRect();
+    for (let node: HTMLElement | null = el; node; node = node.parentElement) {
+      const overflow = getComputedStyle(node);
+      if (/(auto|scroll|hidden)/.test(`${overflow.overflowX}${overflow.overflowY}`)) {
+        const rect = node.getBoundingClientRect();
+        clip = {
+          top: Math.max(clip.top, rect.top),
+          bottom: Math.min(clip.bottom, rect.bottom),
+          left: Math.max(clip.left, rect.left),
+          right: Math.min(clip.right, rect.right),
+          width: Math.min(clip.right, rect.right) - Math.max(clip.left, rect.left),
+          height: Math.min(clip.bottom, rect.bottom) - Math.max(clip.top, rect.top),
+        } as DOMRect;
+      }
+    }
     el.querySelectorAll<HTMLElement>('button').forEach((it) => {
       const b = it.getBoundingClientRect();
       // 菜单内部可滚动：滚出可视区的条目**不算点不到**（真实用户会先滚）。
-      // 只检查此刻落在菜单可视框内的那部分 —— 它们才该“看得见就点得到”。
+      // 只检查此刻落在裁剪框内的那部分 —— 它们才该“看得见就点得到”。
       const visible =
         b.width > 0 &&
         b.height > 0 &&
-        b.top >= box.top - 1 &&
-        b.bottom <= box.bottom + 1 &&
-        b.left >= box.left - 1 &&
-        b.right <= box.right + 1;
+        b.top >= clip.top - 1 &&
+        b.bottom <= clip.bottom + 1 &&
+        b.left >= clip.left - 1 &&
+        b.right <= clip.right + 1;
       if (!visible) return;
       const hit = document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2);
       if (!hit || !(it === hit || it.contains(hit))) {

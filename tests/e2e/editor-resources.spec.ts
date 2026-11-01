@@ -198,8 +198,11 @@ test.describe('插入引用面板', () => {
     await expect(img).toHaveAttribute('alt', imageName);
 
     // 音频：展开成真播放器（同源字节），不是外链
-    const audio = preview.locator('audio.rich-audio-ref');
+    // 统一引擎的音频宿主：controls + preload=none，src 仍是受控 raw 路由。
+    const audio = preview.locator('audio.site-embed--audio');
     await expect(audio).toHaveCount(1);
+    await expect(audio).toHaveAttribute('controls', '');
+    await expect(audio).toHaveAttribute('preload', 'none');
     await expect(audio).toHaveAttribute('src', /^\/api\/audio\/[A-Za-z0-9]{10}\/raw$/);
 
     // 剪贴板：展开成它自己的正文

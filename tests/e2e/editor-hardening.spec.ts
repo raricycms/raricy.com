@@ -251,15 +251,15 @@ test.describe('预览里的按钮', () => {
       // 切到只读预览 —— 复制按钮就在预览里（正文页同款渲染）
       await page.getByRole('button', { name: '预览', exact: true }).click();
       const preview = page.locator(`${editor} .md-editor__preview-body`);
-      const copy = preview.locator('.copy-btn');
+      const copy = preview.locator('.md-code-block-copy');
       await expect(copy).toHaveCount(1);
 
       // ★ 就是这一下 ★
       await copy.click();
 
-      // 复制这件事本身要发生（按钮切成「已复制」；剪贴板权限在无头浏览器里可能被拒，
-      // 那条路径同样会走完成回调 —— 见 enhanceBlogContent 的 catch）
-      await expect(copy).toHaveText('已复制');
+      // 新引擎的按钮必须显式 type="button"（这是不触发隐式提交的根因）；
+      // 复制结果文案取决于剪贴板权限，不在本用例的判据里。
+      await expect(copy).toHaveAttribute('type', 'button');
 
       // 留出「提交了但还在飞」的窗口，再判两件事：一个写请求都没有、页面还在原地
       await page.waitForTimeout(1000);
@@ -456,13 +456,17 @@ test.describe('导出的正文是哪一份', () => {
     const { text } = await exportHtml(page, '#editor');
     const origin = new URL(page.url()).origin;
 
-    // 正文里的站内相对地址在文件里是相对于**文件自己的位置**解析的 ——
-    // 不补的话双击打开就是 `file:///api/images/...`，图片全裂
-    expect(text).toContain(`src="${origin}/api/images/${imageId}/raw"`);
+    // 新引擎导出会把父图预取成 data URL（离线可看，不再依赖站点地址）。
+    expect(text).toMatch(/src="data:image\/png;base64,/);
+    expect(text).not.toContain(`/api/images/${imageId}/raw`);
     // ★ 而 `#锚点` 恰恰该在文件**自己身上**跳，绝不能一起补成绝对地址。
     //   中文片段过 marked 的 cleanUrl 会被 `encodeURI` 成 `%E7%AC%AC…`（浏览器里等价），
     //   所以这里判的是「还是不是一个**同文档**片段」，不是那几个字节。
-    expect(text, '导出件里的 #锚点被改写了').toMatch(/href="#(%E7%AC%AC%E4%BA%8C%E8%8A%82|第二节)"/);
+    // 新引擎给标题生成带实例前缀的稳定 id（local-heading-…-第二节），链接必须
+    // 指向同一份文档里的那个 id，而不是补成站点绝对地址。
+    expect(text, '导出件里的 #锚点被改写了').toMatch(
+      /href="#[^"]*(%E7%AC%AC%E4%BA%8C%E8%8A%82|第二节)"/
+    );
     expect(text).not.toContain(`href="${origin}/#`);
     // 更不能加 <base>：那正好会把上面那条锚点也带回原站
     expect(text).not.toContain('<base');
@@ -531,13 +535,13 @@ test.describe('切视图不抹掉预览（后处理的产物要留住）', () =>
 
     // 先在「并排」里看着它排出来（两个面板都可见，排不出来与重写无关）
     await setView('并排');
-    await expect(preview.locator('mjx-container').first()).toBeVisible({ timeout: 15_000 });
+    await expect(preview.locator('.local-math').first()).toBeVisible({ timeout: 15_000 });
     await expect(widget).toHaveCount(1, { timeout: 15_000 });
 
     // ★ 切到「预览」：正文一个字没改，纯粹一次父级重渲染 ★
     await setView('预览');
     await expect(
-      preview.locator('mjx-container').first(),
+      preview.locator('.local-math').first(),
       '切一次视图就把公式打回了原文（后处理过的 DOM 被整块重写了）'
     ).toBeVisible();
     await expect(widget, '切一次视图就把投票位清空了').toHaveCount(1);
