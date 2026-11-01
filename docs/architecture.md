@@ -2003,7 +2003,11 @@ source-map 偏移不变）：
   `local.math.unclosed`），换成可读字面量、不吞掉后半句；**单个 `$` 上游本来就按
   普通文字处理**（`价格 $5` 原样显示），不改。转义 `\$`、reference definition、
   裸 URL、图片 alt 与 HTML 属性 URL 一律不动；
-- 历史 `<video>` / `<audio>` 转成链接或 `[@音频/<id>]`；
+- 历史 `<video>` / `<audio>` → 受限 `site-embed kind="media"`（compat 写
+  `[[媒体:<10hex>]]` + `mediaSources`）：保留 controls / `<source>` / `<track>` /
+  poster，默认 `preload="none"`、**永不 autoplay**，拒绝 data:/javascript:；
+  站内受控 `/api/audio/<id>/raw` 仍走 `[@音频/<id>]`。块内换行用行尾空格补齐，
+  不留下多余 `<br>`（兼容层版本最终 `/4`）；
 - **data 位图**：只认 jpeg / png / gif / webp + base64 + 魔数 + 长度上限，
   转成 `[@图片/<ref>]`，由宿主 `image` 组件渲染真实 `<img>`。上游图片闸门不接受
   `data:`，因此不能只在 URL 白名单里放宽；>8KB 的图片也必须在兼容层被截住。

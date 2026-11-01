@@ -1,7 +1,10 @@
 # ReactiveMD 全量应用与编辑器重整计划
 
-> **状态：部分交付（P0-P5 代码已实施并合入编辑器收口；本轮待跑最终全量 / build / e2e，
-> P6 生产发布与真实库扫描待外层执行）。校对日期：2026-11-01。**
+> **状态：本地实现及验收完成；远端 PR 合并 / 生产发布待确认范围（2026-11-01）。**
+> 本地最终 commit `a7b1e963`，全量 vitest 289 files / 5,720 tests / exit 0，
+> 最终 build / typecheck exit 0，按验收矩阵的 e2e 全部通过（唯一用例 106）。
+> **远端 `main` 合并、生产部署、备份/迁移/回填/搜索重建与真实发布范围尚未执行**，
+> 等 root / 站长确认；远端 PR #20 仍未合并。
 > 本文安排 PR #20 的修复与合并、Markdown 兼容补齐、博客和云剪贴板全量使用
 > ReactiveMD，以及共用编辑器的工具栏重整。编写本计划不代表已修复、合并或发布功能。
 > 后续目标以本文为准；`docs/plan/reactive-md-migration-plan.md` 保留早期接入设计与
@@ -401,7 +404,8 @@ P1 新增测试以实际合并文件为准，不在测试里复制一套实现�
 - [ ] 临时迁移策略退出正常路径，文档状态与实际实现一致。
 
 实施记录追加在本文后续章节：每项记录提交、实际差异、验证命令、结果和剩余限制。
-在这些检查全部完成之前，保持本计划“待实施”或“部分交付”的准确状态。
+本地实现与验收已完成；**远端合并、生产发布与发布范围确认之前**，本计划整体仍保持
+“本地完成、远端/生产待确认”的状态，不写成已发布。
 
 ---
 
@@ -552,11 +556,13 @@ P1 新增测试以实际合并文件为准，不在测试里复制一套实现�
   - 25 万字符正常混排正文：**1.26s**，`ok:true`，无诊断。
 - `8c3e003c`：半截增强识别 —— 已知组件无闭合 `>`、`{{` 未闭合通过解析器原始诊断
   + 屏蔽区 + 组件表判定为 invalid-enhanced，写入 API 拒绝；历史 Markdown 仍可局部容错。
-- `b7e0bf21`：`ReactiveDocumentLazy` 改 `next/dynamic(ssr:true)`，冷启动无 JS 首屏
-  不再只有 Suspense 空壳（待新构建 e2e 复测）。
-- 历史 HTML 媒体可播放性：旧白名单确实允许 video/audio；当前 compat 外部视频只给链接。
-  接口需求写在 `%TEMP%/raricy-reactive-media-compat-needs-20261101.md`，由消费者修复路
-  在 hostData / SiteEmbedView 落地后，本会话再改 compat（不能 silently 视为已兼容）。
+- **冷启动 SSR 最终实现**：`4e413e82` 把阅读入口改为静态 import（`React.lazy` 与
+  客户端外壳里的 `next/dynamic(ssr:true)` 都不产出服务端正文）。冷启动首请求 +
+  关闭 JS 的 e2e 已通过：正文段落有真实布局盒、位于 `.reactive-document` 内。
+- **历史 HTML 媒体最终实现**：`613e5f91` + `61015036` 走 `site-embed kind="media"`，
+  保留 controls / source / track / poster，默认 `preload="none"`、无 autoplay；
+  `LEGACY_COMPAT_VERSION` 最终为 **`/4`**（`/3` 媒体 + `/4` 去掉块内软换行空白）。
+  真实浏览器的受控 WAV 播放（ready/play/currentTime）与访客导出零取数已由 e2e 关闭。
 
 ### 终审第二轮收口（媒体 / 键名误判，2026-11-01）
 
@@ -572,20 +578,32 @@ P1 新增测试以实际合并文件为准，不在测试里复制一套实现�
 - **导出子图预取**：`58e3c4ff` 让内联 Markdown 子文档保留原 URL，由
   `ReactiveSubDocument` 的可选 `imageResolver` 在渲染时换成预取 data URL；
   预取失败回退原地址。`md-editor-export` 30 用例通过。
-- 相关复验：10 文件 / 198 用例 + typecheck exit 0；媒体 e2e 见
-  `tests/e2e/reactive-media.spec.ts`（最终 build 后跑）。
+- 相关复验：10 文件 / 198 用例 + typecheck exit 0；媒体 e2e
+  `tests/e2e/reactive-media.spec.ts`、真实播放 `reactive-media-playback.spec.ts`、
+  访客导出 `export-external-boundary.spec.ts` 均在最终 build 上通过。
 
 ### P6 最终验证（2026-11-01）
 
-- 最终全量 vitest：289 files / 5,720 tests / exit 0，无 unhandled errors（`93063bbd`）。
-- 最终生产 build：exit 0；最终 typecheck：exit 0。
-- 逐 spec e2e（最终 build）：102 passed —— 冷启动无 JS 首请求、媒体受限控件、
-  真实 Worker、reactive-render 8、编辑器 desktop/mobile、mobile-toolbar
-  desktop/mobile、resources desktop/mobile、hardening、draft（Ctrl+S / 自动保存 /
-  草稿）、upload、clipboard-layout / math、save-navigation。逐条命令与日志见
-  `%TEMP%/raricy-reactive-handoff-20261101.md`。
+- 最终全量 vitest：289 files / 5,720 tests / exit 0，无 unhandled errors
+  （`93063bbd`；之后仅 QA 局部修复，按外层口径保留相关证据、未重跑全量）。
+- 最终生产 build：`build-final10.log` exit 0；最终 typecheck：`tsc-final10.log` exit 0。
+- 逐 spec e2e（最终 build，按 spec+project+title 去重，复跑不重复计数）：
+  **106 unique passed** —— 冷启动无 JS 首请求、媒体受限控件、真实播放、
+  访客导出、真实 Worker、reactive-render 8、编辑器 desktop/mobile 各 8、
+  mobile-toolbar desktop/mobile 各 12、resources desktop/mobile 各 7、
+  hardening 10、draft 8（Ctrl+S / 自动保存 / 草稿）、upload 10、
+  clipboard-layout / math 各 1、save-navigation 7、320 边界 2。
+  日志/截图清单见 `%TEMP%/raricy-reactive-handoff-20261101.md`。
+- QA 三项：320 浮层裁切（overflow:clip + popover 收工具条）、媒体 gap
+  （compat /4）、真实播放 / 访客导出均已由最终 e2e 关闭。
+- 长媒体性能：约 250k 闭合媒体（短 src + 240k fallback）160ms / ok / tail 保留；
+  400k data 图 284ms / ok / tail 保留（`compileReactiveSource` 全路径）。
 - 本地开发库只读扫描：r6 5,105 = 4,909 + 196；5,104 ok / 1 局部 math fallback /
   0 failed / 0 formatMismatch / 0 scanFailures / 1 literalized（键名示意），
   不替代生产核验。
 - 预览：3128 回环生产服务 + 独立合成库/账号/样例 ID/截图保留，供外层功能验收。
-- 剩余：远端 PR 合并、生产部署/备份/回填/搜索重建由外层在验收后执行。
+- 剩余：**远端 PR 合并、生产部署/备份/迁移/回填/搜索重建、发布范围确认**由
+  root / 站长在验收后执行。发布入口核对见
+  `%TEMP%/raricy-reactive-deploy-audit-20261101.md`：本仓库/工作树**没有**
+  `deploy.sh`；它只在目标环境可能存在（本地未跟踪），未 SSH 核验，不能据此断言
+  服务器脚本缺功能。`docs/deploy.md` 给的命令顺序与人工缺口按事实记录。
