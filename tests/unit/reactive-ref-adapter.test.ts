@@ -22,9 +22,12 @@ import ReactiveSubDocument from '@/app/components/reactive/ReactiveSubDocument';
 import { renderSiteEmbedStatic } from '@/app/components/reactive/site-embed-static';
 import {
   ADAPTER_VERSION,
+  __resetInlineMarkdownCacheForTests,
   adaptReactiveReferences,
+  prepareInlineMarkdownDocument,
   scanReactiveReferences,
 } from '@/lib/reactive/ref-adapter';
+import { checkSyntaxBudget } from '@/lib/reactive/syntax-budget';
 import type { SiteMediaPayload } from '@/lib/reactive/ref-types';
 import { applyLegacyHtmlCompat } from '@/lib/reactive/legacy-compat';
 import { reactiveCompileOptions } from '@/lib/reactive/host-components';
@@ -679,3 +682,47 @@ describe('历史 HTML 音视频 token（media kind）', () => {
   });
 });
 
+// ═══ 子正文：共享语法预算 + 有界纯产物缓存 ═══════════════════════════════════
+
+describe('内联子文档：语法预算与有界缓存', () => {
+  it('★ 50k 未闭合 `<` 不进入 compileLocal：很快返回 null（共享 syntax-budget）', async () => {
+    __resetInlineMarkdownCacheForTests();
+    const malicious = '<'.repeat(50_000);
+    expect(checkSyntaxBudget(malicious)?.diagnostic.code).toBe('site.syntax-budget');
+
+    const started = performance.now();
+    expect(await prepareInlineMarkdownDocument(malicious)).toBeNull();
+    const elapsed = performance.now() - started;
+    // 旧实现会把这 50k 交给 compileLocal（超线性）；预算闸门必须先拦下。
+    expect(elapsed).toBeLessThan(1000);
+
+    // 重复提交同一份恶意内容命中缓存里的 null，仍然快速返回。
+    const second = performance.now();
+    expect(await prepareInlineMarkdownDocument(malicious)).toBeNull();
+    expect(performance.now() - second).toBeLessThan(1000);
+  });
+
+  it('★ 50k 未闭合 `{{` 同样被预算拦下', async () => {
+    __resetInlineMarkdownCacheForTests();
+    const malicious = '{{'.repeat(25_000);
+    expect(checkSyntaxBudget(malicious)?.diagnostic.code).toBe('site.syntax-budget');
+
+    const started = performance.now();
+    expect(await prepareInlineMarkdownDocument(malicious)).toBeNull();
+    expect(performance.now() - started).toBeLessThan(1000);
+  });
+
+  it('缓存只复用同一份纯产物；不同内容不串', async () => {
+    __resetInlineMarkdownCacheForTests();
+    const first = await prepareInlineMarkdownDocument('# 甲\n\n正文甲');
+    const again = await prepareInlineMarkdownDocument('# 甲\n\n正文甲');
+    const other = await prepareInlineMarkdownDocument('# 乙\n\n正文乙');
+
+    expect(first).not.toBeNull();
+    expect(again).toBe(first); // 命中缓存 → 同一个不可变产物
+    expect(other).not.toBeNull();
+    expect(other).not.toBe(first);
+    expect(JSON.stringify(other?.document)).toContain('正文乙');
+    expect(JSON.stringify(other?.document)).not.toContain('正文甲');
+  });
+});

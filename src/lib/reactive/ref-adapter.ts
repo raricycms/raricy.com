@@ -57,7 +57,12 @@
 // （tests/unit/reactive-ref-adapter.test.ts）。
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { compileLocal, type LocalDocument } from 'reactive-md';
+import {
+  compileLocal,
+  LOCAL_SYNTAX_VERSION,
+  localCompileOptionsKey,
+  type LocalDocument,
+} from 'reactive-md';
 import {
   CLIPBOARD_ID_LEN,
   IMAGE_ID_LEN,
@@ -70,9 +75,18 @@ import {
 } from '@/lib/content-refs';
 import { collectAudioRefs } from '@/lib/audio-refs';
 import { isFavoriteId, maskMarkdownCode, MAX_FAVORITE_REFS } from '@/lib/favorite-refs';
-import { applyLegacyHtmlCompat } from './legacy-compat';
-import { reactiveCompileOptions } from './host-components';
+import { applyLegacyHtmlCompat, LEGACY_COMPAT_VERSION } from './legacy-compat';
+import {
+  REACTIVE_COMPILER_VERSION,
+  reactiveCompileOptions,
+} from './host-components';
 import { literalizeReactiveSyntax } from './detect-format';
+import {
+  checkSyntaxBudget,
+  MAX_UNCLOSED_INTERPOLATIONS,
+  MAX_UNCLOSED_TAGS,
+} from './syntax-budget';
+import { BoundedLruCache } from './bounded-cache';
 import type {
   DataImageSource,
   ExternalClipData,
@@ -438,8 +452,76 @@ export interface InlineMarkdownArtifact {
   hostData: SiteHostData;
 }
 
+/** 产物形状版本：改 `InlineMarkdownArtifact` 形状时递增，别只依赖 ADAPTER_VERSION。 */
+const INLINE_ARTIFACT_VERSION = 'inline-artifact/1';
+
+/**
+ * 子编译缓存键的身份段。**所有会改变产物的版本都在这里**：
+ * adapter（本文件输出形状）/ compat（历史 HTML 规则）/ 编译器 / 语法版本 / 选项键。
+ * 漏一段就会静默命中「另一次编译」的产物。
+ */
+const INLINE_CACHE_IDENTITY = [
+  INLINE_ARTIFACT_VERSION,
+  ADAPTER_VERSION,
+  LEGACY_COMPAT_VERSION,
+  REACTIVE_COMPILER_VERSION,
+  LOCAL_SYNTAX_VERSION,
+  localCompileOptionsKey(reactiveCompileOptions('markdown')),
+  // 预算阈值变了，旧的 null（超预算）不能继续命中。
+  `${MAX_UNCLOSED_TAGS}:${MAX_UNCLOSED_INTERPOLATIONS}`,
+].join('|');
+
+const INLINE_CACHE_MAX_ENTRIES = 64;
+const INLINE_CACHE_MAX_BYTES = 8 * 1024 * 1024;
+
+interface InlineCacheGlobal {
+  __raricyInlineMarkdownCache?: BoundedLruCache<InlineMarkdownArtifact | null>;
+}
+
+/** 只估算有界性；失败返回 null = 不缓存（缓存失败绝不拖垮渲染）。 */
+function estimateInlineArtifactBytes(value: InlineMarkdownArtifact | null): number | null {
+  if (value === null) return 4;
+  try {
+    const serialized = JSON.stringify(value);
+    return typeof serialized === 'string' ? serialized.length : null;
+  } catch {
+    return null;
+  }
+}
+
+function getInlineCache(): BoundedLruCache<InlineMarkdownArtifact | null> {
+  const g = globalThis as typeof globalThis & InlineCacheGlobal;
+  if (!g.__raricyInlineMarkdownCache) {
+    g.__raricyInlineMarkdownCache = new BoundedLruCache<InlineMarkdownArtifact | null>({
+      maxEntries: INLINE_CACHE_MAX_ENTRIES,
+      maxBytes: INLINE_CACHE_MAX_BYTES,
+      sizeOf: estimateInlineArtifactBytes,
+    });
+  }
+  return g.__raricyInlineMarkdownCache;
+}
+
+function inlineCacheKey(content: string): string {
+  return `${INLINE_CACHE_IDENTITY}\u0000${content}`;
+}
+
+/** 仅测试：清空子编译缓存，避免用例之间共享同一份产物。 */
+export function __resetInlineMarkdownCacheForTests(): void {
+  const g = globalThis as typeof globalThis & InlineCacheGlobal;
+  g.__raricyInlineMarkdownCache?.clear();
+}
+
+/** 仅测试 / 观测：当前缓存条数与近似占用。 */
+export function inlineMarkdownCacheStats(): { entries: number; bytes: number } {
+  const cache = getInlineCache();
+  return { entries: cache.size, bytes: cache.bytes };
+}
+
 /**
  * 子正文的一趟完整准备：compat → external 引用适配 → 当前 Markdown 编译选项。
+ *
+ * 子正文和父正文一样必须先过共享的 `checkSyntaxBudget`；`compileLocal` 对海量
+ * 未闭合 `<` / `{{` 是超线性的，而这段编译可能被 50k 的成员剪贴板内容触发。
  */
 async function buildInlineMarkdown(source: string): Promise<{
   result: ReturnType<typeof compileLocal>;
@@ -467,21 +549,43 @@ async function buildInlineMarkdown(source: string): Promise<{
  * 仍失败就返回 `null`（调用方退回链接卡片，绝不把源码塞进正文）。
  *
  * 只做**一层**：子适配是 external，剪贴板 token 不会被展开，因此这里不可能递归。
+ *
+ * 【缓存只放纯产物】键 = 内容 + adapter/compat/compiler/syntax/options；值是
+ * `document` 与子 `hostData`（正文派生，不含任何成员权限数据）。父视图的 hostData
+ * 与 runtime 绝不进这里。
  */
 export async function prepareInlineMarkdownDocument(
   content: string
 ): Promise<InlineMarkdownArtifact | null> {
   if (typeof content !== 'string' || content.length === 0) return null;
+
+  const cache = getInlineCache();
+  const key = inlineCacheKey(content);
+  const cached = cache.get(key);
+  if (cached !== undefined) return cached;
+
   try {
+    // ★ 共享预算闸门 ★ 与 compile.ts / detect-format.ts 同一条规则；命中即
+    // 明确不编译，返回 null 让调用方走链接卡片。
+    if (checkSyntaxBudget(content)) {
+      cache.set(key, null);
+      return null;
+    }
+
     let built = await buildInlineMarkdown(content);
     if (!built.result.ok) {
       const literal = literalizeReactiveSyntax(content);
       if (literal.changed) built = await buildInlineMarkdown(literal.source);
     }
-    if (!built.result.ok) return null;
-    return { document: built.result.document, hostData: built.hostData };
+    const artifact =
+      built.result.ok
+        ? { document: built.result.document, hostData: built.hostData }
+        : null;
+    cache.set(key, artifact);
+    return artifact;
   } catch {
     // 子正文的任何失败只影响这一处：调用方看到 null，退回链接卡片。
+    cache.set(key, null);
     return null;
   }
 }
