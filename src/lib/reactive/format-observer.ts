@@ -18,9 +18,12 @@ import {
   LocalCompileScheduler,
   compileLocal,
   formatLocalDiagnostic,
+  type AuthorAnalysis,
+  type LocalCompileMode,
   type LocalCompileWorker,
 } from 'reactive-md';
 import { reactiveCompileOptions } from './host-components';
+import { applyLegacyHtmlCompat } from './legacy-compat';
 import {
   classifyReactiveSyntax,
   finalizeReactiveDetection,
@@ -53,6 +56,17 @@ export interface FormatAnalysis {
   diagnostics: FormattedDiagnostic[];
   declaredVersion: string | null;
   syntaxVersion: string | null;
+  /** worker 返回的作者分析（可与装饰共用，避免主线程再跑一遍）。 */
+  analysis: AuthorAnalysis | null;
+  /** 前端装饰的稳定形状（tokens + 诊断）。 */
+  author?: {
+    tokens: AuthorAnalysis['tokens'];
+    diagnostics: AuthorAnalysis['diagnostics'];
+  } | null;
+  /** worker = 正常；fallback = 主线程降级（UI 应提示）。 */
+  mode: LocalCompileMode | 'unknown';
+  /** 便捷布尔：mode === 'fallback'。 */
+  fallback: boolean;
 }
 
 export interface ReactiveFormatAnalyzerOptions {
@@ -60,6 +74,10 @@ export interface ReactiveFormatAnalyzerOptions {
   createWorker(): LocalCompileWorker;
   /** 合并窗口；默认交给上游 150ms。 */
   delayMs?: number;
+  /** worker 失效 / 恢复时通知 UI；不要在降级时静默。 */
+  onModeChange?: (mode: LocalCompileMode, detail?: string) => void;
+  /** 降级专用回调（与 onModeChange 同源，便于 UI 直接提示）。 */
+  onFallback?: (detail?: string) => void;
 }
 
 interface Pending {
@@ -72,9 +90,31 @@ function candidatesOf(detection: ReactiveSyntaxDetection): string[] {
   return detection.evidence.filter((item) => item !== 'bindings');
 }
 
+/** 被更新源码取代 / 分析器已释放时的统一结果（调用方只按 revision 丢弃）。 */
+function superseded(revision: number, mode: LocalCompileMode | 'unknown'): FormatAnalysis {
+  return {
+    revision,
+    effective: 'superseded',
+    valid: false,
+    publishable: false,
+    evidence: [],
+    candidates: [],
+    codes: [],
+    diagnostics: [],
+    declaredVersion: null,
+    syntaxVersion: null,
+    analysis: null,
+    author: null,
+    mode,
+    fallback: mode === 'fallback',
+  };
+}
+
 function toAnalysis(
   revision: number,
-  detection: ReactiveSyntaxDetection
+  detection: ReactiveSyntaxDetection,
+  analysis: AuthorAnalysis | undefined,
+  mode: LocalCompileMode | 'unknown'
 ): FormatAnalysis {
   const effective: FormatEffective =
     detection.format === 'reactive'
@@ -100,6 +140,12 @@ function toAnalysis(
     })),
     declaredVersion: detection.declaredVersion,
     syntaxVersion: detection.syntaxVersion,
+    analysis: analysis ?? null,
+    author: analysis
+      ? { tokens: analysis.tokens, diagnostics: analysis.diagnostics }
+      : null,
+    mode,
+    fallback: mode === 'fallback',
   };
 }
 
@@ -109,6 +155,7 @@ function toAnalysis(
 export class ReactiveFormatAnalyzer {
   private readonly scheduler: LocalCompileScheduler;
   private readonly pending = new Map<string, Pending>();
+  private mode: LocalCompileMode | 'unknown' = 'unknown';
   private disposed = false;
   private revisionFallback = 0;
 
@@ -118,8 +165,17 @@ export class ReactiveFormatAnalyzer {
       delay: options.delayMs,
       createWorker: options.createWorker,
       // worker 不可用时上游会回调这里；仍是异步调度，不在按键同步路径上。
+      // ⚠️ 主线程路径也必须先过 compat，否则与 worker / 阅读结果不一致。
       fallbackCompile: (source, compileOptions) =>
-        compileLocal(source, compileOptions ?? reactiveCompileOptions('markdown')),
+        compileLocal(
+          applyLegacyHtmlCompat(source).source,
+          compileOptions ?? reactiveCompileOptions('markdown')
+        ),
+      onModeChange: (mode, detail) => {
+        this.mode = mode;
+        if (mode === 'fallback') options.onFallback?.(detail);
+        options.onModeChange?.(mode, detail);
+      },
       onResult: (outcome) => {
         const entry = this.pending.get(outcome.source);
         if (!entry) return; // 已被更新源码取代
@@ -129,7 +185,12 @@ export class ReactiveFormatAnalyzer {
             entry.revision,
             finalizeReactiveDetection(
               classifyReactiveSyntax(entry.source, outcome.result, outcome.analysis)
-            )
+            ),
+            outcome.analysis,
+            // 用**这次结果实际走的模式**，不是上一次 onModeChange 留下的值：
+            // 首个结果返回前 mode 仍是 unknown，而 worker 首轮成功时不会补发
+            // 一次 'worker' 回调。
+            outcome.mode
           )
         );
       },
@@ -140,34 +201,12 @@ export class ReactiveFormatAnalyzer {
   analyze(source: string, revision?: number): Promise<FormatAnalysis> {
     const id = revision ?? (this.revisionFallback += 1);
     if (this.disposed) {
-      return Promise.resolve({
-        revision: id,
-        effective: 'superseded',
-        valid: false,
-        publishable: false,
-        evidence: [],
-        candidates: [],
-        codes: [],
-        diagnostics: [],
-        declaredVersion: null,
-        syntaxVersion: null,
-      });
+      return Promise.resolve(superseded(id, this.mode));
     }
     // 旧观察作废：它们对应更早的正文。调用方仍可按 revision 丢弃。
     for (const [key, entry] of this.pending) {
       this.pending.delete(key);
-      entry.resolve({
-        revision: entry.revision,
-        effective: 'superseded',
-        valid: false,
-        publishable: false,
-        evidence: [],
-        candidates: [],
-        codes: [],
-        diagnostics: [],
-        declaredVersion: null,
-        syntaxVersion: null,
-      });
+      entry.resolve(superseded(entry.revision, this.mode));
     }
     return new Promise<FormatAnalysis>((resolve) => {
       this.pending.set(source, { source, revision: id, resolve });
@@ -178,18 +217,7 @@ export class ReactiveFormatAnalyzer {
   dispose(): void {
     this.disposed = true;
     for (const entry of this.pending.values()) {
-      entry.resolve({
-        revision: entry.revision,
-        effective: 'superseded',
-        valid: false,
-        publishable: false,
-        evidence: [],
-        candidates: [],
-        codes: [],
-        diagnostics: [],
-        declaredVersion: null,
-        syntaxVersion: null,
-      });
+      entry.resolve(superseded(entry.revision, this.mode));
     }
     this.pending.clear();
     this.scheduler.dispose();

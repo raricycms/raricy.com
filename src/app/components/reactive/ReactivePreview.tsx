@@ -41,6 +41,8 @@ import {
   createClientReferenceReader,
 } from '@/lib/reactive/client-compile';
 import type { SiteHostData } from '@/lib/reactive/ref-types';
+import type { ContentFormat } from '@/lib/content-format';
+import { applyLegacyHtmlCompat } from '@/lib/reactive/legacy-compat';
 import ReactiveDocument from './ReactiveDocument';
 
 const DEFAULT_DEBOUNCE_MS = 300;
@@ -55,6 +57,8 @@ export interface ReactivePreviewProps {
   /** 作者原文（未适配）。 */
   source: string;
   referenceMode?: 'expand' | 'external';
+  /** 父文档格式：Markdown 父文档里的 Markdown 剪贴板保持内联一层。 */
+  format?: ContentFormat;
   /** 适配防抖；调度器自身还会再合并 150ms（上游默认）。 */
   debounceMs?: number;
   /**
@@ -70,6 +74,7 @@ export interface ReactivePreviewProps {
 export default function ReactivePreview({
   source,
   referenceMode = 'expand',
+  format = 'reactive',
   debounceMs = DEFAULT_DEBOUNCE_MS,
   refreshToken = 0,
 }: ReactivePreviewProps) {
@@ -95,7 +100,8 @@ export default function ReactivePreview({
         new Worker(new URL('../../../lib/reactive/compile.worker.ts', import.meta.url), {
           type: 'module',
         }) as unknown as LocalCompileWorker,
-      fallbackCompile: (src) => compileLocal(src, reactiveCompileOptions('reactive')),
+      fallbackCompile: (src) =>
+        compileLocal(applyLegacyHtmlCompat(src).source, reactiveCompileOptions(format)),
       onResult: (outcome: LocalCompileOutcome) => {
         if (!outcome.result.ok) {
           // 坏文档不渲染：保留上一版成功结果，只把诊断摆出来。
@@ -114,7 +120,7 @@ export default function ReactivePreview({
       scheduler.dispose();
       hostDataBySourceRef.current.clear();
     };
-  }, []);
+  }, [format]);
 
   // ── 「刷新引用」：换一份会话级 reader ────────────────────────────────────
   // ⚠️ 不能只让适配「再跑一遍」：缓存本身就挂在 reader 上，成功与失败都在里面。
@@ -137,7 +143,7 @@ export default function ReactivePreview({
     const timer = window.setTimeout(() => {
       void (async () => {
         try {
-          const adapted = await adaptReactivePreview(source, reader, referenceMode);
+          const adapted = await adaptReactivePreview(source, reader, referenceMode, format);
           if (generation !== generationRef.current) return;
           const store = hostDataBySourceRef.current;
           store.set(adapted.adaptedSource, adapted.hostData);
@@ -147,7 +153,7 @@ export default function ReactivePreview({
           }
           schedulerRef.current?.schedule(
             adapted.adaptedSource,
-            reactiveCompileOptions('reactive')
+            reactiveCompileOptions(format)
           );
         } catch (error) {
           if (generation !== generationRef.current) return;
@@ -157,7 +163,7 @@ export default function ReactivePreview({
     }, Math.max(0, debounceMs));
 
     return () => window.clearTimeout(timer);
-  }, [source, debounceMs, refreshToken, referenceMode]);
+  }, [source, debounceMs, refreshToken, referenceMode, format]);
 
   return (
     <div
