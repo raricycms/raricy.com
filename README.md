@@ -70,10 +70,14 @@ npm run dev                              # http://localhost:3000
 
 ## 工具脚本
 
-**正常发布只跑 `npm run migrate -- up`**：它先应用手写 SQL 结构迁移，再依次完成
-Reactive 旧语法正文升级、历史编译快照回填，以及必要时的公开正文索引重建。数据阶段
-失败会非零退出并把状态标成「结构已完成、数据未完成」；修复后重跑同一条命令即可接续。
-`status` / `verify` 仍是只读，不会触发这些阶段。
+**数据库迁移阶段统一使用 `npm run migrate -- up`**：它先应用手写 SQL 结构迁移，再依次
+完成 Reactive 旧语法正文升级、历史编译快照回填，以及必要时的公开正文索引重建。正常升级
+无论 schema 是否变化都要跑 `up`。数据阶段失败会非零退出并把状态标成「结构已完成、数据
+未完成」；修复后重跑同一条命令即可接续。`status` / `verify` 仍是只读，不会触发这些阶段。
+
+发布时先安装锁定依赖并生成 Prisma Client（`npm ci --include=dev && npx prisma generate`
+—— `npm ci` 会清掉生成产物），再跑 `status` / `up` / `verify`；**之后仍按发布流程
+`npm run build`，并按原有服务方式重启**。停写与备份见 `docs/deploy.md`。
 
 `search:benchmark` 在系统临时目录验证合成语料性能。Reactive 的独立命令保留给
 诊断 / 修复：`npm run reactive:migrate-v07`（默认预检，`--apply` 才写库）、
@@ -118,10 +122,10 @@ Reactive 旧语法正文升级、历史编译快照回填，以及必要时的�
 
 - 站内反代：`proxy_pass http://127.0.0.1:3000`，**务必**透传 `Host: $http_host` / `X-Forwarded-Host` / `X-Forwarded-Proto`。
 - `instance/` 需在部署机器上是**真实目录**：头像、图床、故事、表情包落盘。
-- 数据库以 Prisma 0_init 为基线；改 schema 用 `npm run migrate -- up`（手写 SQL + 结构后
-  数据阶段）。**不要**跑 `prisma migrate dev` / `db push` —— 生产库没有
-  `_prisma_migrations` 表，它们会提议 reset 整个库。详见 `docs/deploy.md` §4
-  「修改 schema 后」与「ReactiveMD 0.7 / 统一渲染的发布顺序」。
+- 数据库以 Prisma 0_init 为基线；正常升级与改 schema 都用 `npm run migrate -- up`
+  （先手写 SQL，再执行结构后数据阶段）。**不要**跑 `prisma migrate dev` / `db push` ——
+  生产库没有 `_prisma_migrations` 表，它们会提议 reset 整个库。详见 `docs/deploy.md`
+  §4「修改 schema 后」与「ReactiveMD 0.7 / 统一渲染的发布顺序」。
 
 ## 关键约定
 

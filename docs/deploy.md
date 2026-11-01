@@ -334,8 +334,14 @@ SELECT name, checksum FROM _raricy_migrations WHERE name LIKE '21_%';        -- 
 
 ```bash
 # 严格按 lockfile 装（不要 npm install —— 可能把 Next 升到 16.x 启动即崩）
-npm ci
+# --include=dev：构建、迁移数据阶段（vite-node）与运维脚本都需要 devDependencies
+npm ci --include=dev
 #   添加 PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 可省 Playwright 浏览器下载（生产不需要）
+
+# ⚠️ npm ci 会清掉 node_modules/.prisma/client 等生成产物（postinstall 不跑 generate）。
+# 装完必须生成 Prisma Client；npm run build 内含这步，但 migrate status/up 在 build
+# 之前执行，所以发布顺序里要先单独跑：
+npx prisma generate
 ```
 
 `npm ci` 会跑 `postinstall`，把三个静态素材目录从 npm 包里**生成**出来
@@ -580,13 +586,22 @@ sqlite3 /backup/db-20260718.db "select count(*) from users"
 ```bash
 cd /srv/raricy.com
 git pull
-npm ci
-# 如果 prisma/schema.prisma 改了（走项目自己的迁移脚本，不是 prisma migrate）
+
+# npm ci 会清掉生成的 Prisma Client；--include=dev 确保 vite-node 等迁移工具可用
+npm ci --include=dev
+npx prisma generate
+
+# 正常升级**每次**都跑 up，不是只有 schema.prisma 改动时才跑：
+# 它先应用 pending 手写 SQL（可能没有），再执行 Reactive 数据阶段
+# （旧语法升级 / 快照回填 / 必要时重建公开索引）。
+# 停写与一致备份按 §4「修改 schema 后」与 §10 执行；发布窗口顺序见 §14。
 DATABASE_URL="file:/绝对路径/instance/database/db.db" npm run migrate -- status
 DATABASE_URL="file:/绝对路径/instance/database/db.db" npm run migrate -- up
-npm run build     # 内含 prisma generate，会同步 Prisma Client 类型
+DATABASE_URL="file:/绝对路径/instance/database/db.db" npm run migrate -- verify
+
+npm run build                     # 构建；内含 prisma generate，同步 Prisma Client 类型
 sudo systemctl restart raricy-next
-journalctl -u raricy-next -f    # 观察启动日志
+journalctl -u raricy-next -f      # 观察启动日志
 ```
 
 ### 升级 Node
@@ -594,7 +609,8 @@ journalctl -u raricy-next -f    # 观察启动日志
 不要用 apt 装 Node 16 那种。推荐：
 - `nvm` / 官方二进制（NodeSource / Node.js foundation）
 - 升级后：`hash -r npm && which node && node -v`
-- 然后 `npm ci && npm run build` 重新构建 native binding
+- 然后 `npm ci --include=dev && npm run build` 重新构建 native binding
+  （build 内含 `prisma generate`；要在 build 前跑 `migrate` 时，先单独 generate）
 
 ### 下线账户微服务（一次性收尾）
 
@@ -643,13 +659,16 @@ journalctl -u raricy-next -f    # 观察启动日志
 按下面顺序执行；任一步失败就停，不启动版本不匹配的新服务。
 
 ```bash
-# 0) 预检（只读，不碰 Prisma）：生产库副本 / 停写后的快照上跑
+# 0) 安装锁定依赖 + 生成 Prisma Client
+#    必须在预检之前：预检本身用 vite-node；npm ci 又会清掉生成的 client。
+#    --include=dev 确保 vite-node 等 dev 工具可用。
+npm ci --include=dev && npx prisma generate
+
+# 1) 预检（只读，不碰 Prisma）：生产库副本 / 停写后的快照上跑
 node --experimental-sqlite node_modules/vite-node/vite-node.mjs --config vitest.config.ts   scripts/reactive-corpus-report.mjs --db /绝对路径/db.db   --out "$TMPDIR/reactive-corpus.json" --compile
 
-# 1) 安装锁定依赖 + 生成 Prisma client
-npm ci && npx prisma generate
-
 # 2) 结构 + 数据阶段：一条命令完成（手写 runner；不要用 prisma migrate）
+#    正常升级每次都跑 up；没有 pending SQL 也会继续数据阶段。
 DATABASE_URL="file:/绝对路径/db.db" npm run migrate -- status   # 只读：确认 pending
 DATABASE_URL="file:/绝对路径/db.db" npm run migrate -- up
 DATABASE_URL="file:/绝对路径/db.db" npm run migrate -- verify   # 只读：校验 checksum
