@@ -28,6 +28,13 @@ import UploadForm from '@/app/clipboard/upload/UploadForm';
 const stubs = vi.hoisted(() => ({
   /** 桩编辑器里的正文（getDoc 读它，用例直接改）。 */
   doc: { value: '' },
+  /** prepareSubmit 返回的格式 / 语法版本（用例可改）。 */
+  format: { value: 'markdown' as string },
+  version: { value: null as string | null },
+  /** 表单保存成功后要求编辑器抬下限的调用。 */
+  pins: [] as Array<[string, string | null]>,
+  /** 编辑器最近一次收到的 format prop。 */
+  editorFormat: { value: 'markdown' as string },
   /** router.push 的去向。 */
   pushes: [] as string[],
 }));
@@ -46,15 +53,25 @@ vi.mock('next/navigation', () => ({
 vi.mock('@/app/components/MarkdownEditor', async () => {
   const { forwardRef, useImperativeHandle } = await import('react');
   return {
-    default: forwardRef(function FakeEditor(_props: unknown, ref: unknown) {
+    default: forwardRef(function FakeEditor(props: { format?: string }, ref: unknown) {
+      stubs.editorFormat.value = props.format ?? 'markdown';
       useImperativeHandle(ref as never, () => ({
         getDoc: () => stubs.doc.value,
         isReady: () => true,
-        getFormat: () => 'markdown',
-        getSyntaxVersion: () => null,
+        getFormat: () => stubs.format.value,
+        getSyntaxVersion: () => stubs.version.value,
         clearDraft: () => {},
         flushDraft: () => {},
         focus: () => {},
+        prepareSubmit: async () => ({
+          content: stubs.doc.value,
+          format: stubs.format.value,
+          syntaxVersion: stubs.version.value,
+          blocked: null,
+        }),
+        pinSavedFormat: (format: string, version: string | null) => {
+          stubs.pins.push([format, version]);
+        },
       }));
       return null;
     }),
@@ -113,6 +130,10 @@ beforeEach(() => {
   toasts = [];
   stubs.pushes.length = 0;
   stubs.doc.value = '';
+  stubs.format.value = 'markdown';
+  stubs.version.value = null;
+  stubs.pins = [];
+  stubs.editorFormat.value = 'markdown';
   (window as unknown as { showToast?: (m: string, t: string) => void }).showToast = (m, t) => {
     toasts.push([m, t]);
   };
@@ -445,5 +466,29 @@ describe('提交撞上在飞的那一笔：这次点击的意图算不算完成'
     });
     await settle();
     expect(stubs.pushes, '没有未保存的改动了，该跳到这一篇').toEqual(['/clipboard/clip0001']);
+  });
+});
+
+describe('终审 F1：同页保存成功后格式下限必须抬起', () => {
+  it('响应成功且提交的是 reactive → 要求编辑器抬下限，并把 format prop 一起改成 reactive', async () => {
+    const calls = stubGatedFetch();
+    const { form } = await mount();
+    stubs.format.value = 'reactive';
+    stubs.version.value = 'local-draft-3';
+    stubs.doc.value = '<slider bind="a">\n\n正文';
+    const title = document.querySelector('#title') as HTMLInputElement;
+    await setTitle(title, '格式下限标题');
+
+    await submit(form);
+    expect(calls).toHaveLength(1);
+    expect(JSON.parse(calls[0].body).format).toBe('reactive');
+
+    await act(async () => {
+      calls[0].resolve();
+    });
+    await settle();
+
+    expect(stubs.pins).toContainEqual(['reactive', 'local-draft-3']);
+    expect(stubs.editorFormat.value).toBe('reactive');
   });
 });

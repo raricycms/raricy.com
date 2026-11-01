@@ -33,19 +33,36 @@ import BlogForm from '@/app/components/BlogForm';
 const stubs = vi.hoisted(() => ({
   /** 桩编辑器里的正文（getDoc 读它）。 */
   doc: { value: '正文内容' },
+  /** prepareSubmit 返回的格式 / 语法版本（用例可改）。 */
+  format: { value: 'markdown' as string },
+  version: { value: null as string | null },
+  /** 表单保存成功后要求编辑器抬下限的调用。 */
+  pins: [] as Array<[string, string | null]>,
+  /** 编辑器最近一次收到的 format prop（验证表单状态真的抬了）。 */
+  editorFormat: { value: 'markdown' as string },
 }));
 
 vi.mock('@/app/components/MarkdownEditor', async () => {
   const { forwardRef, useImperativeHandle } = await import('react');
   return {
-    default: forwardRef(function FakeEditor(_props: unknown, ref: unknown) {
+    default: forwardRef(function FakeEditor(props: { format?: string }, ref: unknown) {
+      stubs.editorFormat.value = props.format ?? 'markdown';
       useImperativeHandle(ref as never, () => ({
         getDoc: () => stubs.doc.value,
         isReady: () => true,
-        getFormat: () => 'markdown',
-        getSyntaxVersion: () => null,
+        getFormat: () => stubs.format.value,
+        getSyntaxVersion: () => stubs.version.value,
         clearDraft: () => {},
         flushDraft: () => {},
+        prepareSubmit: async () => ({
+          content: stubs.doc.value,
+          format: stubs.format.value,
+          syntaxVersion: stubs.version.value,
+          blocked: null,
+        }),
+        pinSavedFormat: (format: string, version: string | null) => {
+          stubs.pins.push([format, version]);
+        },
       }));
       return null;
     }),
@@ -75,6 +92,11 @@ let roots: Array<ReturnType<typeof createRoot>> = [];
 
 beforeEach(() => {
   calls = [];
+  stubs.doc.value = '正文内容';
+  stubs.format.value = 'markdown';
+  stubs.version.value = null;
+  stubs.pins = [];
+  stubs.editorFormat.value = 'markdown';
   vi.stubGlobal(
     'fetch',
     vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -152,6 +174,15 @@ async function submit(form: HTMLFormElement) {
   });
 }
 
+/** 让 onSubmit 里 await 之后的成功分支跑完。 */
+async function settle(): Promise<void> {
+  for (let i = 0; i < 5; i += 1) {
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+  }
+}
+
 /** 编辑态的一篇文章：栏目 7、可见性站内、匿名评论已关。 */
 function editBlog(overrides: Partial<NonNullable<Props['blog']>> = {}): NonNullable<Props['blog']> {
   return {
@@ -199,6 +230,26 @@ describe('编辑页：整体覆盖时栏目与可见范围必须原样带上', (
       description: '原摘要',
       content: '正文内容',
     });
+  });
+});
+
+describe('终审 F1：同页保存成功后格式下限必须抬起', () => {
+  it('POST 成功且提交的是 reactive → 要求编辑器抬下限，并把 format prop 一起改成 reactive', async () => {
+    stubs.format.value = 'reactive';
+    stubs.version.value = 'local-draft-3';
+    stubs.doc.value = '<slider bind="a">\n\n正文';
+    const { container, form } = await mount();
+    await setValue(container.querySelector('#title') as HTMLInputElement, '新标题');
+    await setValue(container.querySelector('#description') as HTMLTextAreaElement, '新摘要');
+    await choose(container, 'category', '前端');
+
+    await submit(form);
+    await settle();
+
+    expect(calls[0].body.format).toBe('reactive');
+    expect(stubs.pins).toContainEqual(['reactive', 'local-draft-3']);
+    // 表单自己的 format 也必须抬 —— 下一次渲染编辑器拿到的下限才是 reactive
+    expect(stubs.editorFormat.value).toBe('reactive');
   });
 });
 

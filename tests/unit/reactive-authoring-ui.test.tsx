@@ -329,6 +329,7 @@ beforeEach(() => {
   mocks.clearReactiveAuthorAnalysis.mockClear();
   mocks.analyzerOptions = null;
   mocks.previewProps = null;
+  window.localStorage.clear();
   mocks.reactiveAuthoring.mockImplementation(() => []);
   mocks.getReactiveCompletions.mockReturnValue([]);
   mocks.applyReactiveCompletion.mockReturnValue(true);
@@ -494,16 +495,22 @@ let setFormat: (format: ContentFormat) => void = () => {};
 function EditorHarness({
   initialFormat,
   initialValue = '# 标题\n\n正文',
+  initialSyntaxVersion = null,
+  draftKey,
   handleRef,
 }: {
   initialFormat: ContentFormat;
   initialValue?: string;
+  initialSyntaxVersion?: string | null;
+  draftKey?: string;
   handleRef?: RefObject<MarkdownEditorHandle | null>;
 }) {
   const [format, setCurrentFormat] = useState<ContentFormat>(initialFormat);
   setFormat = setCurrentFormat;
   return createElement(MarkdownEditor, {
     initialValue,
+    initialSyntaxVersion,
+    draftKey,
     format,
     ref: handleRef,
   });
@@ -1026,5 +1033,112 @@ describe('prepareSubmit：无效增强语法绝不静默按 Markdown 保存', ()
     expect(snapshot.format).toBe('reactive');
     expect(snapshot.syntaxVersion).toBe('local-draft-3');
     expect(snapshot.blocked).toBeNull();
+  });
+});
+
+// ── 5. 同页保存后的持久下限 / 草稿身份 / 回退提示 ───────────────────────────
+
+describe('终审回归：F1 保存成功后抬下限、F4 回退提示、F5 草稿不写临时身份', () => {
+  it('F1：pinSavedFormat 把 reactive 抬成持久下限，之后纯文字提交不降级；markdown 不会压低', async () => {
+    const ref = createRef<MarkdownEditorHandle>();
+    mount(
+      createElement(MarkdownEditor, {
+        initialValue: '只剩普通正文了',
+        format: 'markdown',
+        ref,
+      })
+    );
+
+    // 模拟「同页保存成功」：服务端已持有 reactive，表单回调抬下限。
+    act(() => ref.current!.pinSavedFormat('reactive', 'local-draft-3'));
+    expect(ref.current!.getFormat()).toBe('reactive');
+
+    let snapshot!: EditorSubmitSnapshot;
+    await act(async () => {
+      snapshot = await ref.current!.prepareSubmit();
+    });
+    expect(snapshot.format).toBe('reactive');
+    expect(snapshot.syntaxVersion).toBe('local-draft-3');
+
+    // 再保存成 markdown（例如服务端归一化）也不能把已保存的增强身份压低。
+    act(() => ref.current!.pinSavedFormat('markdown', null));
+    expect(ref.current!.getFormat()).toBe('reactive');
+  });
+
+  it('F4：纯 Markdown（含 `<`）遇到 worker 回退时，语法检查条明示「本地检查」', async () => {
+    const container = mount(
+      createElement(EditorHarness, {
+        initialFormat: 'markdown',
+        initialValue: '内嵌 <br> 的普通 Markdown',
+      })
+    );
+    // 普通正文没有诊断面板 —— 回退前不占版面
+    expect(container.querySelector('.md-authoring')).toBeNull();
+    expect(mocks.analyzerOptions?.onModeChange).toBeTypeOf('function');
+
+    await act(async () => {
+      mocks.analyzerOptions!.onModeChange!('fallback');
+    });
+    expect(container.querySelector('.md-authoring')).not.toBeNull();
+    expect(container.textContent).toContain('本地检查');
+  });
+
+  it('F5：插入组件后分析未落地就落盘，草稿不把临时升级写成 reactive', async () => {
+    const KEY = 'ui-f5-draft';
+    const ref = createRef<MarkdownEditorHandle>();
+    const container = mount(
+      createElement(EditorHarness, {
+        initialFormat: 'markdown',
+        initialValue: '普通正文',
+        draftKey: KEY,
+        handleRef: ref,
+      })
+    );
+
+    await click(container, '[aria-label="组件"]');
+    await click(container, '.md-component-picker__item');
+    const view = EditorView.findFromDOM(container.querySelector('.cm-content')!)!;
+    act(() =>
+      view.dispatch({ changes: { from: view.state.doc.length, insert: '\n<slider bind="a">' } })
+    );
+
+    // 此刻分析还在飞（analysisPending=true），临时身份是 reactive；
+    // 草稿必须只记「已落地的解析事实」= markdown。
+    act(() => ref.current!.flushDraft());
+    expect(window.localStorage.getItem(KEY)).toContain('<slider');
+    expect(window.localStorage.getItem(`${KEY}:meta`)).toBeNull();
+  });
+
+  it('F5：恢复一份没有格式元数据的含组件草稿时，重新分析能升级为 reactive', async () => {
+    const KEY = 'ui-f5-restore';
+    window.localStorage.setItem(KEY, '<slider bind="a">\n\n人数 {{ a }}');
+    mocks.analyzeResult = {
+      effective: 'reactive',
+      valid: true,
+      publishable: true,
+      evidence: ['component:slider'],
+      candidates: ['component:slider'],
+      codes: [],
+      diagnostics: [],
+      declaredVersion: null,
+      syntaxVersion: 'local-draft-3',
+    };
+    const ref = createRef<MarkdownEditorHandle>();
+    const container = mount(
+      createElement(EditorHarness, {
+        initialFormat: 'markdown',
+        initialValue: '空白',
+        draftKey: KEY,
+        handleRef: ref,
+      })
+    );
+
+    await click(container, '.md-editor__draft-btn');
+    let snapshot!: EditorSubmitSnapshot;
+    await act(async () => {
+      snapshot = await ref.current!.prepareSubmit();
+    });
+    expect(snapshot.format).toBe('reactive');
+    expect(snapshot.syntaxVersion).toBe('local-draft-3');
   });
 });
