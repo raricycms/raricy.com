@@ -723,6 +723,31 @@ function convertMarkdownDataImages(
 const OPTION_CONTAINER_COMPONENTS = new Set(['multi-select', 'choices', 'quiz', 'select']);
 
 /**
+ * 名字本身就是普通英文 / 键名的子组件：光秃秃出现（无属性、无对应父容器）时
+ * 按历史文字处理，而不是按组件。
+ *
+ * `Press <tab>.`、SVG 教程里的 `<text>`、示意图里的 `<node>` 都是普通 Markdown；
+ * 把它们当组件会编译失败、再把整篇误判成 invalid-enhanced。真正写在父容器里的
+ * `<tabs><tab …></tab></tabs>` 仍按组件保留。
+ */
+const BARE_AMBIGUOUS_COMPONENTS: Readonly<Record<string, ReadonlySet<string>>> = {
+  tab: new Set(['tabs']),
+  step: new Set(['steps']),
+  node: new Set(['diagram']),
+  edge: new Set(['diagram']),
+  // `<text>` / `<column>` 没有稳定的父容器语义：光秃秃时一律按文字。
+  text: new Set(),
+  column: new Set(),
+};
+
+/** 标签名之后是否真的有属性（`>` / `/` / 空白不算）。 */
+function rawTagHasAttributes(raw: string): boolean {
+  const match = /^<\s*\/?\s*[A-Za-z][A-Za-z0-9:-]*/.exec(raw);
+  if (!match) return false;
+  return /[^\s>/]/.test(raw.slice(match[0].length));
+}
+
+/**
  * 与原生 HTML 同名、但属性本身就能证明是上游组件的标签。
  *
  * `section` 的 `color`、`table` 的分页 / 排序参数都没有 `bind/label/key`；
@@ -804,26 +829,41 @@ function transformTags(
     // 旧 HTML 的那一种继续走下面的解包 / 净化，组件的那一种连属性都不能动。
     if (COMPONENT_TAGS.has(name) && !/[A-Z]/.test(rawName)) {
       if (!HTML_COLLISION_TAGS.has(name)) {
-        if (!closing) componentStack.push(name);
-        else {
+        if (!closing) {
+          const parents = BARE_AMBIGUOUS_COMPONENTS[name];
+          const bareAndUnparented =
+            parents !== undefined &&
+            !rawTagHasAttributes(raw) &&
+            !componentStack.some((tag) => parents.has(tag));
+          if (!bareAndUnparented) {
+            componentStack.push(name);
+            index = end - 1;
+            continue;
+          }
+          // 落到下面的历史 HTML 分支：这是 `Press <tab>.` 之类的普通文字。
+        } else {
           const at = componentStack.lastIndexOf(name);
-          if (at !== -1) componentStack.length = at;
+          if (at !== -1) {
+            componentStack.length = at;
+            index = end - 1;
+            continue;
+          }
+          // 没有对应的组件开标签：按历史 HTML 闭标签处理。
         }
-        index = end - 1;
-        continue;
-      }
-      if (closing) {
-        const at = componentStack.lastIndexOf(name);
-        if (at !== -1) {
-          componentStack.length = at;
+      } else {
+        if (closing) {
+          const at = componentStack.lastIndexOf(name);
+          if (at !== -1) {
+            componentStack.length = at;
+            index = end - 1;
+            continue;
+          }
+          // 没有对应的组件开标签：按旧 HTML 闭标签处理（见下方 ALLOWED / UNWRAP）。
+        } else if (looksLikeComponentTag(name, raw, componentStack)) {
+          componentStack.push(name);
           index = end - 1;
           continue;
         }
-        // 没有对应的组件开标签：按旧 HTML 闭标签处理（见下方 ALLOWED / UNWRAP）。
-      } else if (looksLikeComponentTag(name, raw, componentStack)) {
-        componentStack.push(name);
-        index = end - 1;
-        continue;
       }
     }
 

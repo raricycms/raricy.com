@@ -161,3 +161,34 @@ describe('半截增强：未闭合标签 / 插值', () => {
     }
   });
 });
+
+describe('键名示例 / 普通伪标签不误判（vimtutor 类正文）', () => {
+  it('键名、大小写标签、命令范围都仍按 Markdown 可保存', () => {
+    const snippets = [
+      'Press <ESC> then :q! <ENTER>.',
+      'Press <TAB>.',
+      'Press <tab>.',
+      'Press <Tab>.',
+      '<Help> / <F1>',
+      '箭头示意 < h l >',
+      "命令范围 :'<,'>",
+      'SVG 示例 <text>hello</text>',
+      '```text\nPress <tab>.\n```',
+    ];
+    for (const source of snippets) {
+      const detected = detectReactiveSyntax(source);
+      expect(detected.format, source).toBe('markdown');
+      expect(detected.publishable, source).toBe(true);
+      expect(detected.literalized, source).toBeUndefined();
+    }
+  });
+
+  it('真正的半截增强仍然阻断（带属性的已知组件 / 未闭合插值）', () => {
+    for (const source of ['<slider bind="a"', '<panel title="x"', '{{ 1 +']) {
+      const detected = detectReactiveSyntax(source);
+      expect(detected.format, source).toBe('reactive');
+      expect(detected.valid, source).toBe(false);
+      expect(detected.publishable, source).toBe(false);
+    }
+  });
+});

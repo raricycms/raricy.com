@@ -483,3 +483,28 @@ describe('与原生 HTML 同名的合法组件', () => {
     expect(compat.source).toBe(source);
   });
 });
+
+describe('键名 / 普通文字里的组件同名标签', () => {
+  it('光秃秃的 <tab> / <text> 按历史文字解包，不再当组件', () => {
+    const tab = applyLegacyHtmlCompat('Press <tab>.');
+    expect(tab.source).not.toContain('<tab');
+    // 解包用零宽字符保长度，不一定是空格；只要键名标签不再出现、正文仍在即可。
+    const tabText = flatten(documentOf(compile(tab.source)).nodes);
+    expect(tabText).toContain('Press');
+    expect(tabText).toContain('.');
+
+    const text = applyLegacyHtmlCompat('SVG 示例 <text>hello</text>');
+    expect(text.source).not.toContain('<text');
+    expect(flatten(documentOf(compile(text.source)).nodes)).toContain('hello');
+  });
+
+  it('真正在父容器里的 <tab> 仍是组件（标签与属性保留）', () => {
+    const source = '<tabs>\n<tab label="一">内容</tab>\n</tabs>';
+    const compat = applyLegacyHtmlCompat(source);
+    expect(compat.source).toContain('<tab label="一">');
+    expect(compat.source).toContain('</tab>');
+    const result = compile(compat.source);
+    expect(result.ok).toBe(true);
+    expect(JSON.stringify(documentOf(result).nodes)).toContain('"name":"tab"');
+  });
+});

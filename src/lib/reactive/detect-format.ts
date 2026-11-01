@@ -103,9 +103,28 @@ export function documentEvidence(document: LocalDocument): string[] {
 }
 
 /**
+ * 这个组件 token 是否带着属性（`<slider bind="a">`）而不是光秃秃的 `<tab>`。
+ *
+ * 键名示意（vimtutor 里的 `Press <tab>.`、SVG 教程里的 `<text>`）与已知组件
+ * 同名时，解析器会把它当组件并报缺父节点 / 缺属性。光秃秃的标签没有作者写
+ * 增强结构的意图，不能据此把整篇判成 invalid-enhanced；带属性的才算。
+ */
+function tagTokenHasAttributes(source: string, start: number, end: number): boolean {
+  const before = source.slice(Math.max(0, start - 2), start);
+  if (before.endsWith('</')) return false;
+  for (let index = end; index < source.length; index += 1) {
+    const char = source[index];
+    if (char === '>') return false;
+    if (!/\s/.test(char)) return true;
+  }
+  return false;
+}
+
+/**
  * 编译失败时从 authoring token 找证据。
  *
  * 只认**全小写**的组件名：`<TAB>` 是历史 HTML（兼容层会解包），不是组件。
+ * 普通作者的键名 / HTML 示例（`<tab>`、`<text>`）没有属性，不算增强证据。
  * `token.kind === 'expression'` 是屏蔽区之外的 `{{ … }}`；代码 / 数学不会产生它。
  */
 function analysisEvidence(source: string, analysis: AuthorAnalysis | undefined): string[] {
@@ -120,7 +139,9 @@ function analysisEvidence(source: string, analysis: AuthorAnalysis | undefined):
     const raw = source.slice(token.range.start, token.range.end);
     if (raw !== raw.toLowerCase()) continue;
     const name = raw.toLowerCase();
-    if (COMPONENT_NAMES.has(name)) evidence.add(`component:${name}`);
+    if (!COMPONENT_NAMES.has(name)) continue;
+    if (!tagTokenHasAttributes(source, token.range.start, token.range.end)) continue;
+    evidence.add(`component:${name}`);
   }
   return [...evidence];
 }
@@ -164,6 +185,11 @@ function halfEnhancedEvidence(source: string, result: LocalCompileResult): strin
     if (!match) continue;
     const name = match[1].toLowerCase();
     if (!COMPONENT_NAMES.has(name)) continue;
+    if (/^<\s*\//.test(raw)) continue;
+    // 光秃秃的 `<tab>` / `<text>` 是键名 / HTML 示例；只有带属性的半截标签
+    // （`<slider bind="a"`）才是作者真的在写增强结构。
+    const afterName = raw.slice(match[0].length);
+    if (!/[^\s>/]/.test(afterName)) continue;
     if (HTML_COLLISION_TAGS.has(name) && !looksLikeComponentTag(name, raw, [])) continue;
     evidence.add(`component:${name}`);
   }

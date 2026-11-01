@@ -474,3 +474,28 @@ describe('剪贴板格式：createClip / updateClip / getClip / resolvePublicCli
     expect(member.ok && member.clip.content).toBe('md 正文');
   });
 });
+
+describe('普通作者的键名示例（vimtutor 类正文）', () => {
+  it('大小写键名 / 命令范围按 Markdown 保存，不触发 invalid-enhanced', async () => {
+    const u = await makeUser();
+    const content = [
+      'Press <ESC> then :q! <ENTER>.',
+      'Press <TAB>.',
+      'Press <tab>.',
+      '<Help> / <F1>',
+      '箭头示意 < h l >',
+      "命令范围 :'<,'>",
+    ].join('\n\n');
+    const id = await createBlog(u.id, {
+      ...BLOG_BASE,
+      content,
+      categoryId: null,
+      visibility: 'internal',
+      format: 'markdown',
+    });
+    const row = await prisma.blogContent.findUniqueOrThrow({ where: { blogId: id } });
+    expect(row.format).toBe('markdown');
+    expect(row.syntaxVersion).toBeNull();
+    expect(row.content).toBe(content);
+  });
+});
