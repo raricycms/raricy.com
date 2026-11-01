@@ -48,10 +48,11 @@ import { LocalDocumentView } from 'reactive-md/react/unstyled';
 import 'reactive-md/screen.css';
 
 import { renderSiteEmbedStatic } from '@/app/components/reactive/site-embed-static';
+import ReactiveSubDocument from '@/app/components/reactive/ReactiveSubDocument';
 import type { ContentFormat } from '@/lib/content-format';
 import { adaptReactivePreview, createClientReferenceReader } from '@/lib/reactive/client-compile';
 import { reactiveCompileOptions } from '@/lib/reactive/host-components';
-import type { SiteHostData } from '@/lib/reactive/ref-types';
+import type { SiteEmbedData, SiteHostData } from '@/lib/reactive/ref-types';
 import { isAllowedReactiveUrl } from '@/lib/reactive/url-policy';
 import { MAX_REF_CONCURRENCY, createConcurrencyLimiter } from '@/lib/content-refs';
 
@@ -302,72 +303,6 @@ function collectInlineClipboardDocuments(hostData: SiteHostData): LocalDocument[
   return documents;
 }
 
-/**
- * 把成功预取的 data URL 写回一层内联子文档的 image 节点。
- *
- * 为什么必须改写子文档而不是只收集：`ReactiveSubDocument` 没有 `imageResolver`
- * 入口（它是静态子表面，按设计不接收导出专用参数），子图默认只会拿到源码里的
- * URL。预取成功 → 换成 data URL，导出件离线也有图；预取失败 / 非白名单 →
- * **保留原地址**，与导出件里的音频、链接同一口径（联网加载），不伪造空图。
- *
- * 返回原文档对象（===）表示没有任何替换，调用方据此避免无谓克隆。
- */
-function inlineDocumentImageData(
-  document: LocalDocument,
-  resolvedImages: ReadonlyMap<string, string>,
-  base?: string
-): LocalDocument {
-  const pageUrl = pageBase(base);
-  const dataUrlFor = (url: string): string | undefined =>
-    resolvedImages.get(url) ?? resolvedImages.get(resolveUrl(url, pageUrl));
-
-  let changed = false;
-  const visit = (node: LocalNode): LocalNode => {
-    let next = node;
-    if (node.children?.length) {
-      let childrenChanged = false;
-      const children = node.children.map((child) => {
-        const mapped = visit(child);
-        if (mapped !== child) childrenChanged = true;
-        return mapped;
-      });
-      if (childrenChanged) next = { ...next, children };
-    }
-    if (node.type === 'image' && typeof node.url === 'string' && node.url !== '') {
-      const dataUrl = dataUrlFor(node.url);
-      if (dataUrl) {
-        next = { ...next, url: dataUrl };
-        changed = true;
-      }
-    }
-    return next;
-  };
-
-  const nodes = document.nodes.map(visit);
-  return changed ? { ...document, nodes } : document;
-}
-
-/**
- * 把一层内联子文档的图片替换成已预取的 data URL；**不改子 hostData 本身**。
- * 只克隆发生替换的那几个 host 条目，未命中的文档原样复用。
- */
-function applyInlineClipboardImageData(
-  hostData: SiteHostData,
-  resolvedImages: ReadonlyMap<string, string>,
-  base?: string
-): SiteHostData {
-  let next: Record<string, SiteHostData[string]> | null = null;
-  for (const [key, data] of Object.entries(hostData)) {
-    if (data.kind !== 'clipboard' || data.status !== 'ready') continue;
-    if (!data.document || !data.hostData) continue;
-    const document = inlineDocumentImageData(data.document, resolvedImages, base);
-    if (document === data.document) continue;
-    next ??= { ...hostData };
-    next[key] = { ...data, document };
-  }
-  return next ?? hostData;
-}
-
 function bytesToBase64(bytes: Uint8Array): string {
   let binary = '';
   // 分块：`String.fromCharCode(...bytes)` 在长图上会撞调用栈上限。
@@ -609,8 +544,11 @@ export async function renderStaticMarkup(input: ReactiveStaticMarkupInput): Prom
     ]),
   ].filter((url) => isAllowedReactiveUrl(url, 'image'));
   const resolvedImages = await prefetchImages(imageUrls, input.base);
-  // 预取成功的子图写回子 document（不改子 hostData）；失败的保持原地址。
-  const hostData = applyInlineClipboardImageData(adapted.hostData, resolvedImages, input.base);
+  const hostData = adapted.hostData;
+  const resolveImage = (url: string): string | null =>
+    resolvedImages.get(url) ??
+    resolvedImages.get(resolveUrl(url, pageBase(input.base))) ??
+    null;
 
   const runtime = createLocalRuntime(compiled.document);
   const container = document.createElement('div');
@@ -627,7 +565,26 @@ export async function renderStaticMarkup(input: ReactiveStaticMarkupInput): Prom
           mode: 'static',
           locale: 'zh',
           hostData,
-          hostRenderer: renderSiteEmbedStatic,
+          hostRenderer: (node, data, ctx) => {
+            const record = data as Partial<SiteEmbedData> | undefined;
+            // 内联的 Markdown 子剪贴板：用同一份静态渲染表面，但把导出的图片
+            // 解析器传下去 —— 子图 URL 保持原样（策略可校验），预取的 data URL
+            // 只在渲染那一刻替换。
+            if (
+              record?.kind === 'clipboard' &&
+              record.document &&
+              record.hostData
+            ) {
+              return createElement(ReactiveSubDocument, {
+                document: record.document,
+                hostData: record.hostData,
+                hostRenderer: renderSiteEmbedStatic,
+                // 预取失败时回退到原 URL（导出件里仍可联网加载），不伪造空图。
+                imageResolver: (url: string) => resolveImage(url) ?? url,
+              });
+            }
+            return renderSiteEmbedStatic(node, data, ctx);
+          },
           urlPolicy: (url: string, kind: 'image' | 'link') =>
             isAllowedReactiveUrl(url, kind),
           imageResolver: (url: string) =>

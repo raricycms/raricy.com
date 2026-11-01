@@ -33,6 +33,14 @@ export interface ReactiveSubDocumentProps {
   hostData?: LocalHostData;
   /** 子文档里的宿主组件渲染器；由调用方传入，避免与 SiteEmbedView 成环。 */
   hostRenderer: LocalHostRenderer;
+  /**
+   * 图片解析（导出预取 / 预览已有缓存时用）。
+   *
+   * 静态导出的图片预取会把父图与内联子图一起转成 data URL；子图不能直接写回
+   * 文档 URL —— `LocalDocumentView` 的 URL 策略会拒绝 `data:`，整张图消失。
+   * 由这里按**原 URL** 解析成 data URL，渲染层仍看到合法地址。
+   */
+  imageResolver?: (url: string) => string | null;
   locale?: LocalLocale;
 }
 
@@ -40,6 +48,7 @@ export default function ReactiveSubDocument({
   document,
   hostData,
   hostRenderer,
+  imageResolver,
   locale = 'zh',
 }: ReactiveSubDocumentProps): ReactNode {
   const [state, setState] = useState<{ document: LocalDocument; runtime: LocalRuntime }>(
@@ -85,6 +94,7 @@ export default function ReactiveSubDocument({
         mode="static"
         hostData={hostData}
         hostRenderer={hostRenderer}
+        {...(imageResolver ? { imageResolver } : {})}
         urlPolicy={urlPolicy}
       />
     </div>
