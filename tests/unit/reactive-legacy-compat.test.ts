@@ -593,3 +593,40 @@ describe('历史 HTML 音视频 → 受限 media host', () => {
     expect(tiny.mediaSources).toHaveProperty(Object.keys(tiny.mediaSources)[0]);
   });
 });
+
+describe('兼容层的长度 / 裸 table 边界', () => {
+  it('İ 等小写变长字符不会让危险块 / 媒体 / pre 下标错位', () => {
+    const script = applyLegacyHtmlCompat('İstanbul\n\n<script>alert(1)</script>');
+    expect(script.counts['removed-block']).toBe(1);
+    expect(script.source).not.toContain('alert(1)');
+
+    const video = applyLegacyHtmlCompat('İstanbul\n\n<video src="https://e.com/a.mp4"></video>');
+    expect(video.source).toMatch(/\[\[媒体:[a-f0-9]{10}\]\]/);
+    expect(Object.values(video.mediaSources)[0]).toMatchObject({
+      media: 'video',
+      src: 'https://e.com/a.mp4',
+    });
+
+    const pre = applyLegacyHtmlCompat('İstanbul\n\n<pre><font color="red">x</font></pre>');
+    expect(pre.source).toContain('<font color="red">x</font>');
+    expect(pre.counts['unwrapped-tag'] ?? 0).toBe(0);
+  });
+
+  it('裸 <table> + Markdown 表格仍是组件；历史 HTML 表格仍是原生表格', () => {
+    const component = applyLegacyHtmlCompat(
+      '<table>\n| 名称 | 数值 |\n| --- | ---: |\n| 甲 | 1 |\n</table>'
+    );
+    expect(component.source).toContain('<table>');
+    const compiled = compile(component.source);
+    expect(compiled.ok).toBe(true);
+    expect(JSON.stringify(documentOf(compiled).nodes)).toContain('"name":"table"');
+
+    const html = applyLegacyHtmlCompat('<table><tr><td>甲</td></tr></table>');
+    expect(html.source).toContain('<table>');
+    const native = compile(html.source);
+    expect(native.ok).toBe(true);
+    const nativeJson = JSON.stringify(documentOf(native).nodes);
+    expect(nativeJson).not.toContain('"type":"component"');
+    expect(nativeJson).toContain('htmlTable');
+  });
+});

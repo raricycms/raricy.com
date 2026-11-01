@@ -407,9 +407,21 @@ function maskDelimitedPairs(
  * HTML 的 `<pre>` / `<code>` 内部按字面显示：只保护内部，标签本身仍可被剥属性。
  * 顺序配对而不是回溯正则 —— 大量未闭合 `<pre` 同样不能退化。
  */
+/**
+ * 只把 ASCII 大写转小写，**保持长度**。
+ *
+ * `String.prototype.toLowerCase()` 对 `İ`（U+0130）等字符会变长（1 → 2 个
+ * UTF-16 码元）；用它算出的下标再去索引原文会整体错位，后续 `<script>` /
+ * `<video>` / `<pre>` 的定位全偏一格。标签名本身只有 ASCII，所以这里只做
+ * ASCII 归一，长度与原文严格一致。
+ */
+function asciiLower(value: string): string {
+  return value.replace(/[A-Z]/g, (char) => char.toLowerCase());
+}
+
 function maskHtmlCodeElements(source: string): string {
   const chars = source.split('');
-  const lower = source.toLowerCase();
+  const lower = asciiLower(source);
   for (const name of ['pre', 'code'] as const) {
     let cursor = 0;
     for (;;) {
@@ -457,7 +469,7 @@ export function maskProtectedContent(source: string): string {
  * `chars[open] !== '<'` 兼作「已被前一轮删除」的跳过判断，所以不需要重新取掩码。
  */
 function removeBlocks(chars: string[], masked: string, counts: MutableCounts): void {
-  const lower = masked.toLowerCase();
+  const lower = asciiLower(masked);
   for (const name of REMOVE_BLOCK_TAGS) {
     let cursor = 0;
     for (;;) {
@@ -614,7 +626,7 @@ function convertMediaBlocks(
   counts: MutableCounts,
   mediaSources: Record<string, SiteMediaPayload>
 ): void {
-  const lower = masked.toLowerCase();
+  const lower = asciiLower(masked);
   for (const tag of ['video', 'audio'] as const) {
     let cursor = 0;
     for (;;) {
@@ -899,6 +911,20 @@ function rawTagHasAttributes(raw: string): boolean {
 }
 
 /**
+ * 裸 `<table>` 后紧跟的是 Markdown 表格（首行以 `|` 开头）。
+ *
+ * 上游 `table` 组件的 props 全部可选，所以 `<table>` + Markdown 表格 `| … |`
+ * 是合法组件；而历史 HTML 表格的 body 是 `<tr>/<td>`。只看开标签不带属性会把
+ * 前者误拆成原生表格。看一个**有界窗口**即可（不递归扫描整篇）。
+ */
+function looksLikeMarkdownTableAfter(chars: readonly string[], tagEnd: number): boolean {
+  const limit = Math.min(chars.length, tagEnd + 512);
+  let index = tagEnd;
+  while (index < limit && /\s/.test(chars[index])) index += 1;
+  return chars[index] === '|';
+}
+
+/**
  * 与原生 HTML 同名、但属性本身就能证明是上游组件的标签。
  *
  * `section` 的 `color`、`table` 的分页 / 排序参数都没有 `bind/label/key`；
@@ -1010,7 +1036,14 @@ function transformTags(
             continue;
           }
           // 没有对应的组件开标签：按旧 HTML 闭标签处理（见下方 ALLOWED / UNWRAP）。
-        } else if (looksLikeComponentTag(name, raw, componentStack)) {
+        } else if (
+          looksLikeComponentTag(name, raw, componentStack) ||
+          // 裸 `<table>` + Markdown 表格 body 也是合法组件（props 全可选）；
+          // 历史 HTML 表格的 body 是 `<tr>`，不会以 `|` 开头。
+          (name === 'table' &&
+            !rawTagHasAttributes(raw) &&
+            looksLikeMarkdownTableAfter(chars, end))
+        ) {
           componentStack.push(name);
           index = end - 1;
           continue;
