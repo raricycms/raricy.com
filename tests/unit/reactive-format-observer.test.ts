@@ -57,6 +57,17 @@ describe('FormatAnalysis：worker 降级与作者分析', () => {
     analyzer.dispose();
   });
 
+  it('半截增强（未闭合组件 / 插值）回到 invalid-enhanced，不按 Markdown 放行', async () => {
+    const analyzer = fallbackAnalyzer();
+    for (const source of ['<panel title="x"', '文字 {{ 未闭合']) {
+      const result = await analyzer.analyze(source, 9);
+      expect(result.effective, source).toBe('invalid-enhanced');
+      expect(result.publishable, source).toBe(false);
+      expect(result.diagnostics.length, source).toBeGreaterThan(0);
+    }
+    analyzer.dispose();
+  });
+
   it('新正文开始分析时，旧观察以 superseded 结束（调用方按 revision 丢弃）', async () => {
     const analyzer = fallbackAnalyzer();
     const first = analyzer.analyze('第一版正文', 1);
