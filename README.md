@@ -41,8 +41,13 @@ Next.js 15 + Prisma + SQLite 主站，自有 `instance/` 数据目录；实时�
 | `scripts/`     | 自检 / 运维 / 数据补偿脚本（详见下方「工具脚本」） |
 | `tests/`       | vitest 单测 + Playwright e2e |
 | `docs/`        | 全部文档 —— `docs/guide/` 给玩家与创作者、`docs/bot/` 给站外机器人开发者，其余给开发运维。见 `docs/README.md` |
+| `reports/`     | 本地过程材料（gitignored）：`research/` 放调研与评审，`announcements/` 放公告草稿 |
+| `.cache/typescript/` | TypeScript 增量缓存（gitignored）；开发、生产构建与源码检查分别使用独立文件 |
 | `instance/`    | 运行时数据（gitignored）：avatars / database / frames / images / stories / stickers / blogs |
 | `public/`      | 静态资源（图标 / CSS / favicon）；`static/{mathjax,emoji,converter}/` 是**生成的**（`npm ci` 的 postinstall 拷，见下方「工具脚本」） |
+
+根目录保留项目入口、工具配置与环境模板；一次性报告和公告草稿归入 `reports/`。
+临时日志、截图和探针仍写系统临时目录。
 
 ## 快速开始
 

@@ -321,27 +321,9 @@ export const DOC_ENTRIES: readonly DocEntry[] = [
   },
   {
     group: 'dev',
-    slug: 'plan/frontend-content-ia-audit',
-    title: '全站前端文案与信息架构审计',
-    summary: '50 项文案与 IA 重构及产品规则实现；附本地验收、索引回填与发布要求。',
-  },
-  {
-    group: 'dev',
-    slug: 'plan/page-ui-audit',
-    title: '功能页面 UI 调研报告',
-    summary: '六类简陋问题、逐页 UI-01–UI-12 的本地实施与验收记录；含指南页间距修复，未推送部署。',
-  },
-  {
-    group: 'dev',
     slug: 'plan/story-rebuild-plan',
     title: '故事区重做计划',
     summary: '内容工具、三个作品样板、分批上线与持续选编；方案完成，尚未实施。',
-  },
-  {
-    group: 'dev',
-    slug: 'plan/story-rebuild-research',
-    title: '故事区重做调研依据',
-    summary: '本地博客与旧故事统计、来源版本关系、现有实现和外部资料。',
   },
   {
     group: 'dev',

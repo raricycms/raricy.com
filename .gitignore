@@ -1,10 +1,12 @@
 /node_modules
 /.next
+/.cache/
 /services/realtime/dist/
 /out
 next-env.d.ts
 # 本地 agent 指令：个人部署约定与私有信息只在本机保存，不入库。
 /AGENTS.override.md
+/.claude/settings.local.json
 # 环境变量：真实密钥只存在于 .env*，绝不入库。
 # 只写 `.env` 不够 —— `.env.production` / `.env.local` 不匹配该模式，
 # 而 docs/deploy.md 恰恰让人创建 .env.production 放 SECRET_KEY，
@@ -30,9 +32,9 @@ coverage/
 /blob-report/
 /playwright/.cache/
 
-# ReactiveMD 语料报告的默认输出目录 —— 含存量文章 ID 与风险计数，不入库
+# 本地调研 / 评审 / 公告草稿及语料报告（可能含存量文章信息），不入库。
 /reports/
-# 本机一次性调研与评审：过程材料保留本地，不随项目发布。
+# 历史报告的根目录路径继续忽略；新增过程材料统一放 reports/。
 /ReactiveMD 语法缺口清单 · 2026-10-27.md
 /图标风格迁移调研 · 2026-10-23.md
 /PR18 评审 · 2026-10-26.md

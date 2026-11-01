@@ -17,6 +17,9 @@
     "那就先跑相关单测 —— 见 CLAUDE.md「验证纪律」。"
   ],
   "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "tsBuildInfoFile": "./.cache/typescript/tsconfig.typecheck.tsbuildinfo"
+  },
   "include": [
     "next-env.d.ts",
     "src/**/*.ts",
