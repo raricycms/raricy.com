@@ -1,9 +1,61 @@
 import type { LocalDocument } from 'reactive-md';
 import type { ContentFormat } from '../content-format';
 
-export type ReferenceKind = 'image' | 'audio' | 'vote' | 'favorite' | 'clipboard';
-export type SiteEmbedKind = 'audio' | 'vote' | 'favorite' | 'clipboard' | 'image';
+export type ReferenceKind = 'image' | 'audio' | 'vote' | 'favorite' | 'clipboard' | 'media';
+export type SiteEmbedKind = 'audio' | 'vote' | 'favorite' | 'clipboard' | 'image' | 'media';
 export type ReferenceMode = 'expand' | 'external';
+
+// ── 历史 HTML 音视频（`media` kind）──────────────────────────────────────────
+//
+// 旧 Markdown 白名单允许 `<video>` / `<audio>` / `<source>` / `<track>`。compat 把
+// 这些区块改写成 `[[媒体:<10 hex>]]` 短 token + `mediaSources`（等长改写是硬约束，
+// 见 needs 文档）；适配器再把 token 展开成 `site-embed kind="media"` 与 hostData。
+//
+// ★ 故意没有 `autoplay` ★ 产品决定禁止自动播放；渲染器即使收到也会忽略。
+// `controls` 恒为 true，由渲染器写死，不放进 payload。
+
+export type SiteMediaKind = 'video' | 'audio';
+export type SiteMediaPreload = 'none' | 'metadata' | 'auto';
+
+export interface SiteMediaSourceItem {
+  /** 已过 `isAllowedReactiveUrl(src, 'link')`；渲染器会再复核一次。 */
+  src: string;
+  /** 安全 MIME 形态（`video/mp4` 等）；渲染器按白名单过滤。 */
+  type?: string;
+}
+
+export interface SiteMediaTrackItem {
+  /** 已过 `isAllowedReactiveUrl(src, 'link')`；渲染器会再复核一次。 */
+  src: string;
+  kind?: 'subtitles' | 'captions' | 'descriptions' | 'chapters' | 'metadata';
+  srclang?: string;
+  label?: string;
+  default?: boolean;
+}
+
+export interface SiteMediaPayload {
+  media: SiteMediaKind;
+  /** 直接 src；可为空，此时必须有 `sources`。 */
+  src?: string;
+  /** `<source>` 子节点。无 `src` 有 `sources` 的媒体不能消失。 */
+  sources?: SiteMediaSourceItem[];
+  /** `<track>` 字幕 / 章节。 */
+  tracks?: SiteMediaTrackItem[];
+  /** 仅 video；走 `image` URL 策略（含受限历史 data 位图）。 */
+  poster?: string;
+  /** 缺省 / 非法 = `'none'`（产品口径）。 */
+  preload?: SiteMediaPreload;
+  loop?: boolean;
+  muted?: boolean;
+  playsInline?: boolean;
+  /** 仅 video；正整数或纯数字串（渲染器都会收紧成正整数）。 */
+  width?: number | string;
+  height?: number | string;
+  crossorigin?: 'anonymous' | 'use-credentials';
+}
+
+/** compat 返回的 `mediaSources`；键 = token 里的 10 位小写十六进制。 */
+export type SiteMediaSources = Readonly<Record<string, SiteMediaPayload>>;
 
 export interface ReferenceSlot {
   kind: ReferenceKind;

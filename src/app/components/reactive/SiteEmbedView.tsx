@@ -4,8 +4,8 @@
 // SiteEmbedView.tsx — `site-embed` 宿主组件的**交互渲染器**
 //
 // 只做一件事：把已经校验过的投票数据接到现有投票接口上。其余引用（含剪贴板
-// 内联子文档）、以及 static / 预览态，全部委托给 `site-embed-static.tsx` ——
-// 同一份标记、同一批类名，不维护第二套静态组件。
+// 内联子文档、历史 HTML 音视频）、以及 static / 预览态，全部委托给
+// `site-embed-static.tsx` —— 同一份标记、同一批类名，不维护第二套静态组件。
 //
 // 两条不能破的纪律：
 //   · **绝不 `dangerouslySetInnerHTML`**：标题、选项、用户名都是用户输入；

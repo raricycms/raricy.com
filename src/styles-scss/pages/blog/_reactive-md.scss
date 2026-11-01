@@ -291,6 +291,15 @@
   max-width: 100%;
 }
 
+// 历史 HTML 视频（`media` kind）：桌面宽度不超出正文列，窄屏等比收缩。
+.site-embed--video {
+  display: block;
+  width: auto;
+  height: auto;
+  max-width: 100%;
+  border-radius: 6px;
+}
+
 // 历史 data 位图：真实字节由宿主组件渲染（上游图片闸门不接受 data:）。
 .site-embed--image {
   display: block;
@@ -392,7 +401,8 @@
   .reactive-document .vote-embed-submit,
   .reactive-document .vote-embed-option[data-option-id],
   .reactive-document .vote-embed-link,
-  .reactive-document .site-embed--audio {
+  .reactive-document .site-embed--audio,
+  .reactive-document .site-embed--video {
     display: none !important;
   }
 }

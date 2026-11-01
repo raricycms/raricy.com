@@ -12,15 +12,24 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { createElement, act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
-import type { LocalNode, LocalRuntime } from 'reactive-md';
+import { compileLocal, type LocalNode, type LocalRuntime } from 'reactive-md';
 import type { LocalRenderContext } from 'reactive-md/react';
 import { SiteEmbedView } from '@/app/components/reactive/SiteEmbedView';
+import { reactiveCompileOptions } from '@/lib/reactive/host-components';
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 const AUDIO_ID = 'Ab12Cd34Ef';
 const VOTE_ID = 'Ab12Cd34E';
 const CLIP_ID = 'Ab12Cd34';
+const MEDIA_REF = 'abcdef1234';
+
+/** 内联剪贴板的新契约：hostData 只带同版本编译产物，不再带原始 content。 */
+function inlineClipboardDocument() {
+  const compiled = compileLocal('可内联的正文', reactiveCompileOptions('markdown'));
+  if (!compiled.ok) throw new Error('fixture compile failed');
+  return { document: compiled.document, hostData: {} };
+}
 
 interface Mounted {
   root: Root;
@@ -163,6 +172,132 @@ describe('static / 预览不发请求', () => {
   });
 });
 
+describe('历史 HTML 音视频（media kind）', () => {
+  const mediaPayload = (payload: Record<string, unknown>) => ({
+    kind: 'media',
+    ref: MEDIA_REF,
+    status: 'ready',
+    payload,
+  });
+
+  it('video：保留 controls / 图文属性，默认 preload=none，绝不 autoplay', () => {
+    const box = mount(
+      node('media', MEDIA_REF),
+      mediaPayload({
+        media: 'video',
+        src: 'https://cdn.example/video.mp4',
+        poster: 'https://cdn.example/poster.jpg',
+        preload: 'metadata',
+        loop: true,
+        muted: true,
+        playsInline: true,
+        width: 640,
+        height: 360,
+        autoplay: true,
+      }),
+      ctx('static')
+    );
+    const video = box.querySelector<HTMLVideoElement>(
+      'video.site-embed.site-embed--media.site-embed--video'
+    );
+    expect(video).not.toBeNull();
+    expect(video?.controls).toBe(true);
+    expect(video?.getAttribute('preload')).toBe('metadata');
+    expect(video?.getAttribute('src')).toBe('https://cdn.example/video.mp4');
+    expect(video?.getAttribute('poster')).toBe('https://cdn.example/poster.jpg');
+    expect(video?.loop).toBe(true);
+    expect(video?.muted).toBe(true);
+    expect(video?.playsInline).toBe(true);
+    expect(video?.width).toBe(640);
+    expect(video?.height).toBe(360);
+    expect(video?.autoplay).toBe(false);
+    expect(video?.hasAttribute('autoplay')).toBe(false);
+  });
+
+  it('缺省 preload 是 none；非法值也退回 none；非法的 poster / src 被丢弃', () => {
+    const box = mount(
+      node('media', MEDIA_REF),
+      mediaPayload({
+        media: 'video',
+        src: 'https://cdn.example/video.mp4',
+        poster: 'javascript:alert(1)',
+        preload: 'loud',
+      }),
+      ctx('static')
+    );
+    const video = box.querySelector<HTMLVideoElement>('video');
+    expect(video?.getAttribute('preload')).toBe('none');
+    expect(video?.getAttribute('poster')).toBeNull();
+  });
+
+  it('audio：无直接 src 时保留 <source> 子结构，不消失', () => {
+    const box = mount(
+      node('media', MEDIA_REF),
+      mediaPayload({
+        media: 'audio',
+        sources: [
+          { src: '/api/audio/Ab12Cd34Ef/raw', type: 'audio/mp4' },
+          { src: 'javascript:alert(1)', type: 'audio/ogg' },
+        ],
+        tracks: [
+          {
+            src: 'https://cdn.example/zh.vtt',
+            kind: 'subtitles',
+            srclang: 'zh',
+            label: '中文',
+            default: true,
+          },
+        ],
+      }),
+      ctx('static')
+    );
+    const audio = box.querySelector<HTMLAudioElement>(
+      'audio.site-embed.site-embed--media.site-embed--audio'
+    );
+    expect(audio).not.toBeNull();
+    expect(audio?.controls).toBe(true);
+    expect(audio?.getAttribute('preload')).toBe('none');
+    expect(audio?.getAttribute('src')).toBeNull();
+    expect(audio?.querySelectorAll('source')).toHaveLength(1);
+    expect(audio?.querySelector('source')?.getAttribute('src')).toBe(
+      '/api/audio/Ab12Cd34Ef/raw'
+    );
+    expect(audio?.querySelector('source')?.getAttribute('type')).toBe('audio/mp4');
+    const track = audio?.querySelector('track');
+    expect(track?.getAttribute('src')).toBe('https://cdn.example/zh.vtt');
+    expect(track?.getAttribute('kind')).toBe('subtitles');
+    expect(track?.getAttribute('srclang')).toBe('zh');
+    expect(track?.getAttribute('label')).toBe('中文');
+    expect((track as HTMLTrackElement | null)?.default).toBe(true);
+  });
+
+  it('没有任何可用媒体源 → 错误占位，不渲染半个控件', () => {
+    const box = mount(
+      node('media', MEDIA_REF),
+      mediaPayload({
+        media: 'video',
+        src: 'javascript:alert(1)',
+        sources: [{ src: 'data:video/mp4;base64,AAAA' }],
+      }),
+      ctx('static')
+    );
+    expect(box.querySelector('video')).toBeNull();
+    expect(box.querySelector('audio')).toBeNull();
+    expect(box.querySelector('.site-embed__status--error')?.textContent).toBe('内容加载失败');
+  });
+
+  it('静态 / 预览渲染不发任何请求', () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    mount(
+      node('media', MEDIA_REF),
+      mediaPayload({ media: 'video', src: 'https://cdn.example/video.mp4' }),
+      ctx('static')
+    );
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
 describe('投票交互沿用现有接口', () => {
   it('POST 形状与旧管线一致，成功后重新拉取结果', async () => {
     const voted = {
@@ -249,18 +384,33 @@ describe('校验与伪造', () => {
     expect(box.querySelector('.site-embed-clipboard-inline')).toBeNull();
   });
 
-  it('成员阅读的 Markdown 剪贴板走一层内联外壳（不渲染成链接卡片）', () => {
+  it('成员阅读的 Markdown 剪贴板走一层静态子文档外壳（不渲染成链接卡片）', () => {
     const box = mount(
       node('clipboard', CLIP_ID),
       embed('clipboard', CLIP_ID, 'ready', {
         title: '一段剪贴板',
         format: 'markdown',
-        content: '可内联的正文',
         payload: { href: 'javascript:alert(1)', title: '伪造标题' },
+        ...inlineClipboardDocument(),
       })
     );
     expect(box.querySelector('.site-embed-clipboard-inline')).not.toBeNull();
     expect(box.querySelector('a.site-embed-clipboard')).toBeNull();
+    expect(box.textContent).toContain('可内联的正文');
+  });
+
+  it('只有 content 没有编译产物时退回链接卡片（不把原始正文交给旧引擎）', () => {
+    const box = mount(
+      node('clipboard', CLIP_ID),
+      embed('clipboard', CLIP_ID, 'ready', {
+        title: '一段剪贴板',
+        format: 'markdown',
+        content: '不该内联的正文',
+      })
+    );
+    expect(box.querySelector('.site-embed-clipboard-inline')).toBeNull();
+    expect(box.querySelector(`a.site-embed-clipboard[href="/clipboard/${CLIP_ID}"]`)).not.toBeNull();
+    expect(box.textContent).not.toContain('不该内联的正文');
   });
 
   it('收藏夹条目里的 javascript: id 只作为文本，不成链接', () => {

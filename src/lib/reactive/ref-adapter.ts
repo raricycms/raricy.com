@@ -9,6 +9,7 @@
 //   投票（9 位）           → `<site-embed kind="vote" ref="…" />` + hostData
 //   收藏夹（6 位数字）      → `<site-embed kind="favorite" ref="…" />` + hostData
 //   剪贴板（8 位）          → `<site-embed kind="clipboard" ref="…" />` + hostData
+//   历史 HTML 音视频        → compat 的 `[[媒体/<10 hex>]]` → `media` kind + hostData
 //
 // 【不是渲染器，也不是取数层】本模块不 import prisma、不发 HTTP、不碰 React。
 // `resolve` 是调用方按当前权限上下文注入的 `ReferenceReader`（站内 expand 视图
@@ -83,6 +84,8 @@ import type {
   SiteEmbedData,
   SiteEmbedKind,
   SiteHostData,
+  SiteMediaPayload,
+  SiteMediaSources,
 } from './ref-types';
 import type { AdaptedSourceSegment, SegmentOrigin } from './source-map';
 import type { ContentFormat } from '../content-format';
@@ -92,7 +95,7 @@ import type { ContentFormat } from '../content-format';
  * §5.3）。**每次改变输出形状或转义规则都必须递增** —— 否则旧缓存会继续发一份
  * 按旧规则生成的源码。
  */
-export const ADAPTER_VERSION = 'reactive-ref-adapter/4';
+export const ADAPTER_VERSION = 'reactive-ref-adapter/5';
 
 /**
  * site-embed 的 ref 属性必须与宿主 schema 的 pattern 一致（`^[A-Za-z0-9]{1,32}$`，
@@ -107,6 +110,15 @@ const NUMERIC_REF_PATTERN = /\[@\s*(\w+)\s*\]/g;
 /** 兼容层为受限 data 位图生成的短 token（24 位十六进制内容寻址）。 */
 const DATA_IMAGE_PATTERN = /\[@图片\/([a-f0-9]{24})\]/g;
 
+/**
+ * 兼容层为历史 HTML 音视频生成的短 token。
+ *
+ * 固定 10 位十六进制：token 总长 17，最短的可播放成对区块（约 21 字符）也装得下，
+ * compat 因此能保持**等长改写**。用 `[[媒体:…]]` 而不是 `[@媒体/…]`，避免落进
+ * 表情 `[@合集/表情]` 的命名空间。
+ */
+const MEDIA_TOKEN_PATTERN = /\[\[媒体:([a-f0-9]{10})\]\]/g;
+
 /** 作者伪造的宿主标签前缀（只匹配到标签名，尖括号随后被转义）。 */
 const FORGED_EMBED_PATTERN = /<site-embed(?=[\s/>])/gi;
 
@@ -116,12 +128,30 @@ export interface ReactiveAdaptOptions {
   parentFormat?: ContentFormat;
   /** 兼容层提取的受限 data 位图；只由 token 引用，不自行扫描。 */
   dataImages?: Readonly<Record<string, DataImageSource>>;
+  /**
+   * 兼容层提取的历史 HTML 音视频（`[[媒体:<10 hex>]]` → `media` kind）。
+   *
+   * **external 也要带上**：URL 已在 compat 里过策略，不含成员私有载荷；
+   * 渲染权限仍由原资源路由判。缺键时 token 保留字面量。
+   */
+  mediaSources?: SiteMediaSources;
   /** `expand` 模式下的取数函数。`external` 模式**绝不调用**它。 */
   resolve?: ReferenceReader;
   /**
    * @deprecated 兼容旧调用形状；external 不消费任何剪贴板载荷。
    */
   externalClips?: Record<string, ExternalClipData>;
+}
+
+/**
+ * 前向兼容桥：`applyLegacyHtmlCompat` 的返回类型在媒体接线完成前还没有
+ * `mediaSources`。主后端加上该字段后这里照常工作；不要因为类型缺失就把
+ * 媒体数据丢掉。
+ */
+export function compatMediaSources(compat: unknown): SiteMediaSources | undefined {
+  if (!compat || typeof compat !== 'object') return undefined;
+  const value = (compat as { mediaSources?: unknown }).mediaSources;
+  return value && typeof value === 'object' ? (value as SiteMediaSources) : undefined;
 }
 
 export interface ReactiveAdaptResult {
@@ -173,6 +203,20 @@ function scanMasked(source: string, masked: string): ReferenceSlot[] {
     const ref = m[1];
     const start = m.index ?? 0;
     slots.push({ kind: 'image', ref, token: source.slice(start, start + m[0].length), start, end: start + m[0].length });
+  }
+
+  // 兼容层生成的历史 HTML 音视频 token。与 data 位图同一条纪律：只认 compat
+  // 写在原文里的固定形状，代码块里同形文本不展开（扫描跑在盖码副本上）。
+  for (const m of masked.matchAll(new RegExp(MEDIA_TOKEN_PATTERN.source, 'g'))) {
+    const ref = m[1];
+    const start = m.index ?? 0;
+    slots.push({
+      kind: 'media',
+      ref,
+      token: source.slice(start, start + m[0].length),
+      start,
+      end: start + m[0].length,
+    });
   }
 
   // 音频走现有 collector：它自带 `MAX_AUDIO_REFS=3`，且白名单字符集与
@@ -288,6 +332,20 @@ interface PlannedReplacement {
   data?: SiteEmbedData;
 }
 
+/** hostData 里 media payload 的最小形状检查；完整 URL / 属性白名单在渲染器。 */
+function isSiteMediaPayload(value: unknown): value is SiteMediaPayload {
+  if (!value || typeof value !== 'object') return false;
+  const payload = value as Partial<SiteMediaPayload>;
+  if (payload.media !== 'video' && payload.media !== 'audio') return false;
+  const hasSrc = typeof payload.src === 'string' && payload.src.length > 0;
+  const hasSources =
+    Array.isArray(payload.sources) &&
+    payload.sources.some(
+      (source) => source && typeof source.src === 'string' && source.src.length > 0
+    );
+  return hasSrc || hasSources;
+}
+
 /**
  * 把**一处** token 变成输出文本（以及可能的 hostData）。返回 `null` = 保留字面量。
  * 这一处不判预算；各类别显示预算由调用方统一执行，顺序才与旧管线一致。
@@ -298,6 +356,7 @@ function planReplacement(
   resolvedByKey: ReadonlyMap<string, ResolvedReference | undefined>,
   externalClips: Record<string, ExternalClipData>,
   dataImages: Readonly<Record<string, DataImageSource>>,
+  mediaSources: SiteMediaSources,
   parentFormat: ContentFormat | undefined
 ): PlannedReplacement | null {
   if (slot.kind === 'image') {
@@ -330,6 +389,19 @@ function planReplacement(
     const tag = embedTag('audio', slot.ref);
     if (!tag) return null;
     return { text: tag, data: { kind: 'audio', ref: slot.ref, status: 'ready' } };
+  }
+
+  if (slot.kind === 'media') {
+    // 历史 HTML 音视频：数据只来自 compat 的 mediaSources（正文派生、纯 JSON），
+    // **不取数、不读成员资源**。external 与 expand 都展开；缺条目保留字面量 token。
+    const media = mediaSources[slot.ref];
+    if (!isSiteMediaPayload(media)) return null;
+    const tag = embedTag('media', slot.ref);
+    if (!tag) return null;
+    return {
+      text: tag,
+      data: { kind: 'media', ref: slot.ref, status: 'ready', payload: media },
+    };
   }
 
   const key = `${slot.kind}:${slot.ref}`;
@@ -366,18 +438,21 @@ export interface InlineMarkdownArtifact {
   hostData: SiteHostData;
 }
 
-/** 子正文的一趟完整准备：compat → external 引用适配 → 当前 Markdown 编译选项。 */
+/**
+ * 子正文的一趟完整准备：compat → external 引用适配 → 当前 Markdown 编译选项。
+ */
 async function buildInlineMarkdown(source: string): Promise<{
   result: ReturnType<typeof compileLocal>;
   hostData: SiteHostData;
 }> {
   const compat = applyLegacyHtmlCompat(source);
   // ★ 固定 external ★：子剪贴板里的剪贴板 / 投票 / 收藏夹 token 保持字面量，
-  // 不递归取私有资源；图床与音频只拼地址 / id，权限仍由各自 raw 路由判。
+  // 不递归取私有资源；图床 / 音频 / 历史媒体只拼地址或 id，权限仍由原路由判。
   const adapted = await adaptReactiveReferences(compat.source, {
     mode: 'external',
     parentFormat: 'markdown',
     dataImages: compat.dataImages,
+    mediaSources: compatMediaSources(compat),
   });
   return {
     result: compileLocal(adapted.adaptedSource, reactiveCompileOptions('markdown')),
@@ -396,6 +471,7 @@ async function buildInlineMarkdown(source: string): Promise<{
 export async function prepareInlineMarkdownDocument(
   content: string
 ): Promise<InlineMarkdownArtifact | null> {
+  if (typeof content !== 'string' || content.length === 0) return null;
   try {
     let built = await buildInlineMarkdown(content);
     if (!built.result.ok) {
@@ -562,6 +638,7 @@ export async function adaptReactiveReferences(
       resolvedByKey,
       externalClips,
       options.dataImages ?? {},
+      options.mediaSources ?? {},
       options.parentFormat
     );
     if (!planned) continue;
