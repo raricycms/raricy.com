@@ -127,6 +127,21 @@ async function setViewMode(page: Page, editor: string, label: '编辑' | '并排
 }
 
 /**
+ * 在编辑区里写一段带语言的围栏代码。
+ *
+ * 高亮断言必须打在**新引擎真的产出的节点**上（`.md-code-block .hljs-*`），
+ * 不再依赖旧渲染器那两枚全局 `<style id="hljs-theme-*">`：新引擎按实例渲染，
+ * 那两枚 DOM 已经不存在，也不该为了测试把它们加回来。
+ */
+async function typeCodeBlock(page: Page, editor: string) {
+  await typeInEditor(page, editor, '```js');
+  await page.keyboard.press('Enter');
+  await page.keyboard.type('const answer = 42;');
+  await page.keyboard.press('Enter');
+  await page.keyboard.type('```');
+}
+
+/**
  * 走「插入 → 某一项」执行一个 Markdown 动作（粗体、标题……）。
  *
  * 四入口 IA 之后，所有 Markdown 写入动作都收在 Insert 菜单里；桌面与手机同一条
@@ -313,7 +328,7 @@ test.describe('编辑器跟随站点主题', () => {
     ['博客', '/blog/upload', BLOG_EDITOR],
     ['云剪贴板', '/clipboard/upload', CLIP_EDITOR],
   ] as const) {
-    test(`${name}编辑器：亮 / 暗切换时工具条底色与代码高亮轨道都跟着变`, async ({
+    test(`${name}编辑器：亮 / 暗切换时工具条底色与代码真实高亮都跟着变`, async ({
       page,
       isMobile,
     }) => {
@@ -324,52 +339,105 @@ test.describe('编辑器跟随站点主题', () => {
       await expect(page.locator(`${editor} .md-toolbar`)).toBeVisible();
       await openNavIfMobile(page, isMobile);
 
+      // 写一段真的会被高亮的语言围栏，再切到预览读新引擎产出的节点。
+      await typeCodeBlock(page, editor);
+      await setViewMode(page, editor, '预览');
+      const preview = page.locator(`${editor} .md-editor__preview-body`);
+      const keyword = preview.locator('.md-code-block .hljs-keyword');
+      await expect(keyword.first()).toBeVisible();
+      await expect(keyword.first()).toHaveText('const');
+
       // ── 亮色基线 ──────────────────────────────────────────────────────────
       await switchToTheme(page, 'light');
-      await expect(page.locator('#hljs-theme-light')).toHaveAttribute('media', 'all');
-      await expect(page.locator('#hljs-theme-dark')).toHaveAttribute('media', 'not all');
       const lightBg = await settledStyle(page, `${editor} .md-toolbar`, 'backgroundColor');
+      const lightToken = await settledStyle(
+        page,
+        `${editor} .md-editor__preview-body .md-code-block .hljs-keyword`,
+        'color'
+      );
+      const lightCodeBg = await settledStyle(
+        page,
+        `${editor} .md-editor__preview-body .md-code-block .md-code`,
+        'backgroundColor'
+      );
 
       // ── 切到暗色 ──────────────────────────────────────────────────────────
+      await openNavIfMobile(page, isMobile);
       await switchToTheme(page, 'dark');
-      await expect(page.locator('#hljs-theme-light')).toHaveAttribute('media', 'not all');
-      await expect(page.locator('#hljs-theme-dark')).toHaveAttribute('media', 'all');
       const darkBg = await settledStyle(page, `${editor} .md-toolbar`, 'backgroundColor');
+      const darkToken = await settledStyle(
+        page,
+        `${editor} .md-editor__preview-body .md-code-block .hljs-keyword`,
+        'color'
+      );
+      const darkCodeBg = await settledStyle(
+        page,
+        `${editor} .md-editor__preview-body .md-code-block .md-code`,
+        'backgroundColor'
+      );
 
-      // 「变量换了」不等于「颜色真的变了」—— 断言算出来的底色确实不同
-      //（编辑器配色全走站点 CSS 变量，缺一个变量就是静默不生效）
+      // 「变量换了」不等于「颜色真的变了」—— 工具条、token、代码底色三处都要变：
+      // 代码块如果只有底色跟随而 token 仍是浅色值，暗色下会出现几乎看不清的深蓝字。
       expect(darkBg).not.toBe(lightBg);
+      expect(darkToken).not.toBe(lightToken);
+      expect(darkCodeBg).not.toBe(lightCodeBg);
+      // token 不能退化成正文色（那说明高亮样式整块没生效，只剩裸文本）
+      const bodyColor = await settledStyle(
+        page,
+        `${editor} .md-editor__preview-body .md-document`,
+        'color'
+      );
+      expect(darkToken).not.toBe(bodyColor);
 
       // ── 切回亮色，确认是双向的而不是单程 ──────────────────────────────────
+      await openNavIfMobile(page, isMobile);
       await switchToTheme(page, 'light');
-      await expect(page.locator('#hljs-theme-light')).toHaveAttribute('media', 'all');
       expect(await settledStyle(page, `${editor} .md-toolbar`, 'backgroundColor')).toBe(lightBg);
+      expect(
+        await settledStyle(
+          page,
+          `${editor} .md-editor__preview-body .md-code-block .hljs-keyword`,
+          'color'
+        )
+      ).toBe(lightToken);
 
       expect(asset404, `静态资源 404：${asset404.join(', ')}`).toEqual([]);
       expect(pageErrors, `页面有未捕获错误：${pageErrors.join(' / ')}`).toEqual([]);
     });
   }
 
-  test('离开编辑页后，正文页的代码高亮仍然只有一份生效', async ({ page, isMobile }) => {
-    // 两份 <style>（github / monokai）是**全局单例、从不移除**：一个实例卸载时摘掉
-    // 它会连同还在页上的其他实例（正文页 + 编辑器预览同屏是常态）一起打回无高亮。
-    // 这条守的是「编辑器离开后没把正文页的高亮带走」——旧实现靠卸载时删 <link>，
-    // 新实现靠 media 开关，两者要防的是同一件事。
+  test('离开编辑页再回来，新引擎的代码高亮仍然正常（不再依赖全局单例样式）', async ({
+    page,
+    isMobile,
+  }) => {
+    // 旧实现把两份 hljs 主题挂成 `<style id="hljs-theme-*">` 全局单例，一个编辑器
+    // 卸载时摘掉会连累同屏的另一份。新引擎按实例渲染、没有全局单例可争——
+    // 但要守的行为还在：**离开再回来，代码高亮仍然正常**。
     await page.goto('/blog/upload');
     await expect(page.locator(`${BLOG_EDITOR} .md-toolbar`)).toBeVisible();
     await openNavIfMobile(page, isMobile);
 
-    // 走站内链接做客户端跳转 —— 整页刷新的话 <head> 本来就重建了，测不到卸载路径
+    // 走站内链接做客户端跳转，真的经历一次编辑器卸载
     await page.click('a[href="/blog"]');
     await expect(page).toHaveURL(/\/blog$/);
 
-    await expect(page.locator('#hljs-theme-light')).toHaveCount(1);
-    await expect(page.locator('#hljs-theme-dark')).toHaveCount(1);
-    // 且仍然只有一份生效
-    const medias = await page.evaluate(() => [
-      document.getElementById('hljs-theme-light')?.getAttribute('media'),
-      document.getElementById('hljs-theme-dark')?.getAttribute('media'),
-    ]);
-    expect(medias.filter((m) => m === 'all')).toHaveLength(1);
+    // 再回编辑器：写代码、预览，高亮节点与颜色都要在
+    await page.goto('/blog/upload');
+    await expect(page.locator(`${BLOG_EDITOR} .md-toolbar`)).toBeVisible();
+    await typeCodeBlock(page, BLOG_EDITOR);
+    await setViewMode(page, BLOG_EDITOR, '预览');
+    const keyword = page.locator(
+      `${BLOG_EDITOR} .md-editor__preview-body .md-code-block .hljs-keyword`
+    );
+    await expect(keyword.first()).toHaveText('const');
+    const tokenColor = await settledStyle(
+      page,
+      `${BLOG_EDITOR} .md-editor__preview-body .md-code-block .hljs-keyword`,
+      'color'
+    );
+    expect(tokenColor).not.toBe('');
+
+    // 旧渲染器的全局主题节点不再存在，也不该为了这条用例重新加回来
+    await expect(page.locator('#hljs-theme-light, #hljs-theme-dark')).toHaveCount(0);
   });
 });
