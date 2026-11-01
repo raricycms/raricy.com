@@ -489,7 +489,8 @@ P1 新增测试以实际合并文件为准，不在测试里复制一套实现�
 ### P5：搜索、摘要、导出与文档
 
 - `blog-excerpt.ts` 对两种格式都从编译 AST 取文本；`public-blog-search.ts` 过兼容层，
-  `PUBLIC_SEARCH_VERSION` 升为 `public-body/2`。
+  提取规则基础版本 `PUBLIC_SEARCH_BASE_VERSION` 为 `public-body/2`；持久 state 版本
+  另叠加 Markdown / Reactive 当前编译签名（见迁移入口）。
 - 导出统一走 `renderStaticMarkup`，静态初始状态；不依赖预览 DOM。
 - `../architecture.md` §6.23、`../deploy.md`、`../frontend-styles.md` §7.6、编辑器 / 云剪贴板 /
   内容引用指南与 README 已更新。

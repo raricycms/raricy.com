@@ -2070,8 +2070,9 @@ source-map 偏移不变）：
 
 - `blog-excerpt.ts` 对 Markdown 与 reactive 都从编译 AST 取文本（只读初值，不执行
   读者交互；未知格式才用旧兜底）。
-- `public-blog-search.ts` 的正文提取先过兼容层，`PUBLIC_SEARCH_VERSION` 已升为
-  `public-body/2`；索引完整性不足时明确降级为元数据检索。
+- `public-blog-search.ts` 的正文提取先过兼容层；持久 state 版本 =
+  `PUBLIC_SEARCH_BASE_VERSION`（提取规则，当前 `public-body/2`）+ Markdown / Reactive
+  当前编译签名，跨运行失败后能靠版本不等自愈；索引完整性不足时明确降级为元数据检索。
 - 导出统一走 `renderStaticMarkup`：同一 compat / 适配 / 编译配置，静态初始状态，
   图片允许的才预取，交互不可用。
 - **只读语料扫描**：`npm run reactive:corpus -- --db <sqlite> --out <report> --compile`。

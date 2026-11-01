@@ -659,7 +659,9 @@ DATABASE_URL="file:/绝对路径/db.db" npm run migrate -- verify   # 只读：�
 
 1. 旧 Reactive 正文升级（原文 + 新快照 + 一次性标记同一事务）；
 2. 历史编译快照回填（Markdown 与当前版本 Reactive）；
-3. 公开正文索引重建（正文被升级、快照编译签名刷新，或索引覆盖缺失 / 版本不一致时）。
+3. 公开正文索引重建（正文被升级，或索引 state 版本 / 覆盖与当前不一致时）。索引
+   state 版本包含 Markdown / Reactive 两套当前编译签名，所以「上次刷新了快照、索引
+   没做完」在跨运行重跑时仍会被版本不等发现。
 
 数据阶段失败时 `up` 非零退出，并明确打印「SQL 结构已完成、Reactive 数据未完成」。
 修复后**重跑同一条 `up`** 即可接续：v07 有一次性标记与事务保护，回填与索引重建幂等。
@@ -707,14 +709,19 @@ DATABASE_URL="file:/绝对路径/db.db" npm run search:rebuild
 
 ### 公开正文索引发布
 
-`npm run migrate -- up` 会在数据阶段按需重建公开索引：v07 升级过博客正文、回填刷新了
-陈旧快照签名（编译包 / 兼容层 / 选项变化），或索引覆盖缺失 / `PUBLIC_SEARCH_VERSION`
-不一致时执行；没有变化就跳过，不每次付全量重建成本。索引重建失败会让 `up` 非零退出，
-修复后重跑即可。只改 `publicBodyText` 的文字提取规则而不改编译输入时，**必须同时 bump
-`PUBLIC_SEARCH_VERSION`**，否则迁移器无法从快照签名看出索引内容已过时。
+`npm run migrate -- up` 会在数据阶段按需重建公开索引：v07 升级过博客正文，或索引
+state 版本 / 覆盖与当前不一致时执行；没有变化就跳过，不每次付全量重建成本。
+`PUBLIC_SEARCH_VERSION` 不是静态字符串：它是「正文提取规则基础版本
+`PUBLIC_SEARCH_BASE_VERSION` + 当前 Markdown / Reactive 编译签名」的组合，并持久写进
+`public_blog_search_state.version`。因此一次运行刷新了快照、却在索引阶段失败或被别的
+文档 blocker 挡住时，下一次 `up` 即使回填 `refreshed=0` 也会按版本不等重建，不会永久
+保留旧索引。索引重建失败会让 `up` 非零退出，修复后重跑即可。
 
-需要强制修复（例如手工删过索引表、只改了 `PUBLIC_SEARCH_VERSION` 而未触发其它条件）时，
-再对**同一个目标库**跑：
+只改 `publicBodyText` 的文字提取规则而不改编译输入时，**必须 bump
+`PUBLIC_SEARCH_BASE_VERSION`**，否则迁移器无法从编译签名看出索引内容已过时。
+
+需要强制修复（例如手工删过索引表、只改了 `PUBLIC_SEARCH_BASE_VERSION` 而未触发其它
+条件）时，再对**同一个目标库**跑：
 
 ```bash
 DATABASE_URL="file:/绝对路径/instance/database/db.db" npm run search:rebuild
@@ -722,5 +729,6 @@ DATABASE_URL="file:/绝对路径/instance/database/db.db" npm run search:rebuild
 
 该命令回填当前 public 且未删除的文章。必须显式指定与迁移相同的数据库，避免落到本机默认开发库。
 重建命令可重复运行，不修改文章内容；失败须处理后再重试。若索引尚未就绪，公开搜索页面会
-明确降级为标题、简介和作者检索。源码中 `PUBLIC_SEARCH_VERSION` 改变时也须重新回填。
+明确降级为标题、简介和作者检索。源码中 `PUBLIC_SEARCH_BASE_VERSION` 或编译签名改变时，
+`up` 的覆盖检查会要求重新回填。
 新建、编辑、可见性变更和删除/恢复已维护索引，触发器先撤旧片段；索引异常查服务日志。
