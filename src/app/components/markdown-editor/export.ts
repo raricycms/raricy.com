@@ -212,7 +212,10 @@ export function localizeFragmentLinks(root: HTMLElement): void {
  * 导出件是一份**死**的静态文件，留着它就是一颗按不动的按钮 —— 占版面、还误导人。
  */
 export function stripInteractiveShells(root: HTMLElement): void {
+  // 旧 MarkdownRenderer 的复制按钮。
   root.querySelectorAll('.copy-btn').forEach((el) => el.remove());
+  // 新引擎代码块自带「复制」按钮：行为由运行时 JS 挂，导出件里没有 JS → 死按钮。
+  root.querySelectorAll('.md-code-block-copy').forEach((el) => el.remove());
 }
 
 /**

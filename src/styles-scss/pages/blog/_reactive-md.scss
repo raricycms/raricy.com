@@ -216,7 +216,16 @@
   }
 
   // 代码底色显式恢复：页面通用 `pre` 规则（0,1,1）会盖过上游的 `.md-code`（0,1,0）。
+  // ⚠️ 上游还有一条 `.md-document .md-code-block > .md-code` 把底色设成透明，
+  // 它的特异度与本块的 `.reactive-document .md-document .md-code` 相同（都是 0,3,0），
+  // 而 screen.css 常常后加载 —— 平局按顺序判，于是变量变了、底色始终透明。
+  // 代码块内部必须再带一层 `.md-code-block >`（0,4,0）才稳定压过它。
   .md-code {
+    background: var(--code-bg);
+    color: var(--code-ink);
+  }
+
+  .md-code-block > .md-code {
     background: var(--code-bg);
     color: var(--code-ink);
   }
