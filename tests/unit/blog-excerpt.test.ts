@@ -121,6 +121,10 @@ describe('buildBlogExcerpt：按格式分派', () => {
     '',
     '<card title="卡片">卡片内容</card>',
     '',
+    '<if when="{{ false }}">条件隐藏哨兵</if>',
+    '',
+    '<if when="{{ true }}">条件成立也不进摘要</if>',
+    '',
     '<tabs bind="tab" initial="a">',
     '<tab label="甲" value="a">标签甲 {{ 1/0 }}</tab>',
     '<tab label="乙" value="b">标签乙</tab>',
@@ -143,6 +147,10 @@ describe('buildBlogExcerpt：按格式分派', () => {
     expect(out).not.toContain('{{');
     expect(out).not.toContain('<panel');
     expect(out).not.toContain('[@');
+    // 与 public-blog-search 的 SKIPPED_COMPONENTS 同口径：`if` 整棵子树不进摘要，
+    // 不执行读者交互、不按条件分支取文字。
+    expect(out).not.toContain('条件隐藏哨兵');
+    expect(out).not.toContain('条件成立也不进摘要');
   });
 
   it('{{ 2*3 }} 按初始状态求值成 6，失败的表达式整段省略（不回显源码）', () => {

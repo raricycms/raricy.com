@@ -4,7 +4,8 @@
 // 这份文件同时被两处使用：
 //   · `SiteEmbedView`（客户端）在 static / 预览态直接调用它；
 //   · 阅读页的 `reactive-static`（同版本快照或本次现编译）也走它。
-// 所以这里只允许纯数据与 React 元素：不 import 客户端模块、不读 window、不发请求。
+// 所以这里只允许纯数据与 React 元素：不读 window、不发请求。剪贴板内联的子文档
+// 交给 `ReactiveSubDocument`（它自己管 runtime 生命周期），本文件仍不持有 hooks。
 //
 // 类名沿用站内既有嵌入件的成品形态（`.vote-embed*` / `.favorite-embed*`），
 // 这样现有 SCSS 与 e2e 选择器不用为「换了个渲染器」改一遍。所有动态文本都由
@@ -13,8 +14,9 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import type { ReactNode } from 'react';
-import type { LocalNode } from 'reactive-md';
+import type { LocalDocument, LocalNode } from 'reactive-md';
 import type { LocalRenderContext } from 'reactive-md/react';
+import ReactiveSubDocument from './ReactiveSubDocument';
 import type { SiteEmbedData, SiteEmbedKind } from '@/lib/reactive/ref-types';
 import { CONTENT_FORMAT_LABELS, parseContentFormat } from '@/lib/content-format';
 import { parseLegacyDataImage } from '@/lib/reactive/data-image';
@@ -344,7 +346,18 @@ function ImageEmbed({ data }: { data: SiteEmbedData }): ReactNode {
   );
 }
 
-/** 剪贴板首期一律是链接卡片：**绝不渲染 content**，也不嵌套编译。 */
+/** 子产物形状的最小复核：不是合法 `LocalDocument` 就当没有，退回链接卡片。 */
+function isLocalDocument(value: unknown): value is LocalDocument {
+  return isRecord(value) && Array.isArray((value as { nodes?: unknown }).nodes);
+}
+
+/**
+ * 剪贴板嵌入。
+ *
+ * Markdown 子剪贴板在成员 expand 视图里带同一版本编译的 `document` + 子 `hostData`：
+ * 用静态子文档渲染（不嵌套交互运行时、不读原始 `content`）。Reactive 子剪贴板、
+ * external 快照、或子编译失败时都没有子产物 —— 此时是链接卡片。
+ */
 function ClipboardEmbed({
   clipboardId,
   data,
@@ -352,6 +365,18 @@ function ClipboardEmbed({
   clipboardId: string;
   data: SiteEmbedData;
 }): ReactNode {
+  const document = isLocalDocument(data.document) ? data.document : null;
+  const childHostData = isRecord(data.hostData) ? data.hostData : null;
+  if (document && childHostData) {
+    return (
+      <ReactiveSubDocument
+        document={document}
+        hostData={childHostData}
+        hostRenderer={renderSiteEmbedStatic}
+      />
+    );
+  }
+
   const title =
     typeof data.title === 'string' && data.title.length > 0
       ? data.title

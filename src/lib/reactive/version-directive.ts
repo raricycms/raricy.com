@@ -70,14 +70,59 @@ export function findLeadingVersionDirective(source: string): LeadingDeclaration 
 }
 
 
+/** 把 `[start, end)` 盖成空格（保留 CR/LF，保持长度与偏移不变）。 */
+function maskRange(chars: string[], start: number, end: number): void {
+  for (let i = start; i < end; i += 1) {
+    if (chars[i] !== '\r' && chars[i] !== '\n') chars[i] = ' ';
+  }
+}
+
 /**
- * 找出**正文任意位置**的版本指令（代码块 / 行内代码之外）。
+ * 盖住所有「作者在正文里展示的版本指令示例」：围栏 / 行内代码（`maskMarkdownCode`）、
+ * 缩进代码块（含引用块内）、以及 `<pre>` 内容。
+ *
+ * 只盖示例，不改判定：一条真的残留声明必须独占一行、不在代码里。漏掉缩进代码 /
+ * `<pre>` 的症状是「当前版本行里贴了一段升级示例 → 整批迁移被 `stale-declaration`
+ * 阻塞」，属于 fail-closed 的误伤。
+ */
+function maskVersionExamples(source: string): string {
+  const chars = maskMarkdownCode(source).split('');
+
+  for (const match of source.matchAll(/<pre\b[^>]*>[\s\S]*?<\/pre\s*>/gi)) {
+    const start = match.index ?? 0;
+    maskRange(chars, start, start + match[0].length);
+  }
+
+  // 缩进代码块：行首 4 空格 / Tab。引用块里的缩进代码先剥掉 `>` 前缀再判 ——
+  // `> 示例：\n>\n>     <!-- reactive-md: ... -->` 在 CommonMark 里是代码。
+  let offset = 0;
+  for (const rawLine of source.split('\n')) {
+    const line = rawLine.endsWith('\r') ? rawLine.slice(0, -1) : rawLine;
+    let contentStart = 0;
+    let rest = line;
+    for (;;) {
+      const quote = /^ {0,3}> ?/.exec(rest);
+      if (!quote) break;
+      contentStart += quote[0].length;
+      rest = rest.slice(quote[0].length);
+    }
+    if (/^(?: {4}|\t)/.test(rest)) {
+      maskRange(chars, offset + contentStart, offset + line.length);
+    }
+    offset += rawLine.length + 1;
+  }
+
+  return chars.join('');
+}
+
+/**
+ * 找出**正文任意位置**的版本指令（代码 / 示例之外）。
  *
  * 前导声明由 `findLeadingVersionDirective` 负责；这里是迁移兜底：一行标成当前
  * 版本、正文深处却残留旧声明时，一次性标记不能让阅读页编译失败。
  */
 export function findVersionDirectives(source: string): LeadingDeclaration[] {
-  const masked = maskMarkdownCode(source);
+  const masked = maskVersionExamples(source);
   const re = /<!--\s*reactive-md:\s*([A-Za-z0-9.-]+)\s*-->/g;
   const found: LeadingDeclaration[] = [];
   for (const match of masked.matchAll(re)) {

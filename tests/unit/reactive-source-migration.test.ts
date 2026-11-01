@@ -8,8 +8,14 @@
 
 import { describe, expect, it } from 'vitest';
 import { compileLocal, LOCAL_SYNTAX_VERSION, migrateLocalSource } from 'reactive-md';
-import { migrateLocalSourceWithSiteBudget } from '@/lib/reactive/source-migration';
-import { findLeadingVersionDirective } from '@/lib/reactive/version-directive';
+import {
+  findDynamicConstraintActivations,
+  migrateLocalSourceWithSiteBudget,
+} from '@/lib/reactive/source-migration';
+import {
+  findLeadingVersionDirective,
+  findVersionDirectives,
+} from '@/lib/reactive/version-directive';
 import { reactiveCompileOptions } from '@/lib/reactive/host-components';
 
 const OLD_DECLARATION = '<!-- reactive-md: local-draft-2 -->';
@@ -47,6 +53,99 @@ ${OLD_DECLARATION}
   it('正文开始后出现的指令不算（避免把代码示例当成声明）', () => {
     const source = `正文\n\n${OLD_DECLARATION}`;
     expect(findLeadingVersionDirective(source)).toBeNull();
+  });
+});
+
+describe('findDynamicConstraintActivations：只看约束属性的值区间', () => {
+  const CODES = (source: string) =>
+    findDynamicConstraintActivations(source).map((diagnostic) => diagnostic.code);
+
+  it('属性值里的动态 min/max/required 仍然阻塞（真阳性）', () => {
+    expect(
+      CODES(`<!-- reactive-md: local-draft-2 -->
+
+<number bind="b" label="B" initial="5" min="{{ b }}" max="10">`)
+    ).toEqual(['site.migration.dynamic-constraint']);
+
+    expect(
+      CODES(`<!-- reactive-md: local-draft-2 -->
+
+<input bind="b" required="{{ flag }}" />`)
+    ).toEqual(['site.migration.dynamic-constraint']);
+  });
+
+  it('★ 开标签之后的普通插值不是属性（不能再套用最后一个 min/max）', () => {
+    expect(
+      CODES(`<!-- reactive-md: local-draft-2 -->
+
+<slider bind="b" label="B" initial="1" min="0" max="10">
+
+当前值：{{ b }}`)
+    ).toEqual([]);
+  });
+
+  it('非约束属性里的插值不阻塞（value / label / initial）', () => {
+    expect(
+      CODES(`<!-- reactive-md: local-draft-2 -->
+
+<progress bind="p" label="{{ name }}" value="{{ p }}">`)
+    ).toEqual([]);
+  });
+
+  it('闭标签之后的插值也不阻塞', () => {
+    expect(
+      CODES(`<!-- reactive-md: local-draft-2 -->
+
+<date bind="d" label="D" initial="{{ today }}" min="2020-01-01"></date>
+
+之后 {{ d }}`)
+    ).toEqual([]);
+  });
+});
+
+describe('findVersionDirectives：代码示例里的版本指令不算残留声明', () => {
+  const CURRENT = '<!-- reactive-md: local-draft-3 -->';
+  const OLD = '<!-- reactive-md: local-draft-2 -->';
+
+  it('缩进代码块里的示例被屏蔽', () => {
+    const source = `${CURRENT}
+
+正文
+
+    ${OLD}
+
+尾部`;
+    expect(findVersionDirectives(source).map((row) => row.version)).toEqual(['local-draft-3']);
+  });
+
+  it('引用块里的缩进代码示例被屏蔽', () => {
+    const source = `${CURRENT}
+
+> 示例：
+>
+>     ${OLD}`;
+    expect(findVersionDirectives(source).map((row) => row.version)).toEqual(['local-draft-3']);
+  });
+
+  it('<pre> 里的示例被屏蔽（含属性）', () => {
+    const source = `${CURRENT}
+
+<pre class="example">${OLD}</pre>`;
+    expect(findVersionDirectives(source).map((row) => row.version)).toEqual(['local-draft-3']);
+  });
+
+  it('真正的正文深处残留旧声明仍然被找到', () => {
+    const source = `${CURRENT}
+
+正文
+
+${OLD}
+
+尾部`;
+    expect(findVersionDirectives(source).map((row) => row.version)).toEqual([
+      'local-draft-3',
+      'local-draft-2',
+    ]);
   });
 });
 

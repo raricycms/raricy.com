@@ -3,9 +3,9 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // SiteEmbedView.tsx — `site-embed` 宿主组件的**交互渲染器**
 //
-// 只做一件事：把已经校验过的投票数据接到现有投票接口上。其余三类引用、以及
-// static / 预览态，全部委托给 `site-embed-static.tsx` —— 同一份标记、同一批类名，
-// 不维护第二套静态组件。
+// 只做一件事：把已经校验过的投票数据接到现有投票接口上。其余引用（含剪贴板
+// 内联子文档）、以及 static / 预览态，全部委托给 `site-embed-static.tsx` ——
+// 同一份标记、同一批类名，不维护第二套静态组件。
 //
 // 两条不能破的纪律：
 //   · **绝不 `dangerouslySetInnerHTML`**：标题、选项、用户名都是用户输入；
@@ -23,7 +23,6 @@ import {
   VoteWidget,
 } from './site-embed-static';
 import type { VoteEmbedData } from '@/lib/blog-markdown';
-import MarkdownRenderer from '@/app/components/MarkdownRenderer';
 
 export interface SiteEmbedViewOptions {
   /** 编辑器预览：看得见、点不动，不发任何业务写请求。 */
@@ -90,23 +89,14 @@ function InteractiveVote({ voteId, initial }: InteractiveVoteProps): ReactNode {
   );
 }
 
-/** 旧 Markdown 剪贴板的一层内联：只读、外部引用口径（不再嵌套展开）。 */
-function InlineClipboardMarkdown({ content, refId }: { content: string; refId: string }) {
-  return (
-    <div className="site-embed-clipboard-inline">
-      <MarkdownRenderer
-        content={content}
-        contentRefs="external"
-        interactive={false}
-        containerId={`clipboard-inline-${refId}`}
-      />
-    </div>
-  );
-}
-
 /**
  * 宿主渲染入口。签名保持「位置参数」是因为它由 `hostRenderer` 直接调用；
  * 本函数自身不持有 hooks，交互态在 `<InteractiveVote>` 里 —— 直接调用也安全。
+ *
+ * 剪贴板**没有**交互分支：Markdown 子剪贴板在 expand 视图里携带同版本静态产物，
+ * 由 `renderSiteEmbedStatic` 用 `LocalDocumentView mode="static"` 渲染；其余情况
+ * （Reactive 子剪贴板 / external 快照 / 子编译失败）是链接卡片。旧 Markdown 引擎
+ * 不再出现在这条路径上 —— 同一份子正文在内联与详情页必须过同一套 compat / 编译配置。
  */
 export function SiteEmbedView(
   node: LocalNode,
@@ -114,26 +104,6 @@ export function SiteEmbedView(
   ctx: LocalRenderContext,
   options?: SiteEmbedViewOptions
 ): ReactNode {
-  // 旧 Markdown 剪贴板的一层内联：静态快照 / 导出仍用链接卡片（不嵌第二套运行时）；
-  // 成员阅读与预览走客户端 MarkdownRenderer，只读、不发业务写请求。
-  if (ctx.mode !== 'static') {
-    const resolvedInline = resolveSiteEmbed(node, data);
-    if (
-      resolvedInline.status === 'ready' &&
-      resolvedInline.kind === 'clipboard' &&
-      resolvedInline.data.format === 'markdown' &&
-      typeof resolvedInline.data.content === 'string' &&
-      resolvedInline.data.content.length > 0
-    ) {
-      return (
-        <InlineClipboardMarkdown
-          content={resolvedInline.data.content}
-          refId={resolvedInline.ref}
-        />
-      );
-    }
-  }
-
   // 预览与静态快照一律只读：不挂处理器、不发请求。
   if (ctx.mode === 'static' || options?.preview) {
     return renderSiteEmbedStatic(node, data, ctx);

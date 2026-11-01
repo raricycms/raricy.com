@@ -667,8 +667,10 @@ DATABASE_URL="file:/绝对路径/db.db" npm run search:rebuild
 - `reactive:migrate-v07` 的 blockers：未知语法版本、新激活 `<external>`、draft-2 动态
   `min/max/required`、列已是当前版本但正文声明旧版本。全部解决后再 `--apply`；
   一次性标记写入后不要手工重跑。
-- `reactive:backfill` 只补缺失的快照；已有同内容版本行跳过。Reactive 旧语法版本
-  （`syntaxVersion` 不等于当前 `local-draft-3`，包括 `null`）会报
+- `reactive:backfill` 补缺失的快照；已有同内容版本行只有在**编译签名也是当前签名**
+  （syntax / compiler / adapter（含 compat）/ options 全一致）时才跳过，签名陈旧的
+  行会按当前包就地重建（报告里的 `refreshed`；dry-run 只统计不写）。Reactive 旧语法
+  版本（`syntaxVersion` 不等于当前 `local-draft-3`，包括 `null`）会报
   `site.backfill.legacy-syntax` blocker，不会擅自生成“当前版本”快照；先完成第 3 步。
 - **运行配置**：统一管线**默认启用**，不需要设置任何 `REACTIVE_MD_*` 变量。部署环境里
   遗留的 `REACTIVE_MD_MODE=shadow` 等同启用；`REACTIVE_MD_PERCENT` 与

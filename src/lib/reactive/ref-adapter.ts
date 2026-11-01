@@ -40,10 +40,13 @@
 //   绝不整篇回退，也绝不因为一个坏 token 丢掉正文 —— 输出是逐段拼的，任何一段
 //   没被接受就原样留在 `source` segment 里。
 //
-// 【6】剪贴板首期**一律链接卡片**，不内联源码。ReactiveMD 与 Markdown 的语义
-//   兼容性还没验收，把（可能是 reactive 语法的）剪贴板正文拼进父文档等于拿作者
-//   内容做二次解析。所以 hostData 里对剪贴板**不携带 `content`** —— 没有东西
-//   可以误内联，渲染器只能画链接卡片。
+// 【6】剪贴板**不把正文拼进父源码**。Markdown 子剪贴板在 expand 下会生成一份
+//   独立的同版本静态产物（compat → external 适配 → 同一组编译选项），放在
+//   hostData 的 `document` / `hostData` 两格里；父文档只拿到 `<site-embed>` 标签。
+//   子正文按 Markdown 语义单独编译，代码屏蔽与伪造标签转义都在它自己的那趟里完成，
+//   **不递归读取**私有资源（子适配固定 external），绑定 / 表达式也不会进入父作用域。
+//   Reactive 子剪贴板仍只给链接卡片（不嵌套 Reactive 运行时）；external 视图
+//   对剪贴板保留字面量，因此快照里永远没有子产物。
 //
 // 数字 token 保留旧博客管线的宽松形态 `\[@\s*(\w+)\s*\]`（内部空白、下划线都认），
 // 按 id **长度**分流；具名音频 token 继续用 `audio-refs.ts` 自己的白名单正则。
@@ -53,6 +56,7 @@
 // （tests/unit/reactive-ref-adapter.test.ts）。
 // ─────────────────────────────────────────────────────────────────────────────
 
+import { compileLocal, type LocalDocument } from 'reactive-md';
 import {
   CLIPBOARD_ID_LEN,
   IMAGE_ID_LEN,
@@ -65,6 +69,9 @@ import {
 } from '@/lib/content-refs';
 import { collectAudioRefs } from '@/lib/audio-refs';
 import { isFavoriteId, maskMarkdownCode, MAX_FAVORITE_REFS } from '@/lib/favorite-refs';
+import { applyLegacyHtmlCompat } from './legacy-compat';
+import { reactiveCompileOptions } from './host-components';
+import { literalizeReactiveSyntax } from './detect-format';
 import type {
   DataImageSource,
   ExternalClipData,
@@ -85,7 +92,7 @@ import type { ContentFormat } from '../content-format';
  * §5.3）。**每次改变输出形状或转义规则都必须递增** —— 否则旧缓存会继续发一份
  * 按旧规则生成的源码。
  */
-export const ADAPTER_VERSION = 'reactive-ref-adapter/3';
+export const ADAPTER_VERSION = 'reactive-ref-adapter/4';
 
 /**
  * site-embed 的 ref 属性必须与宿主 schema 的 pattern 一致（`^[A-Za-z0-9]{1,32}$`，
@@ -353,6 +360,79 @@ function planReplacement(
   return { text: tag, data: makeEmbedData(slot.kind, slot.ref, resolved, true) };
 }
 
+/** 内联 Markdown 子剪贴板的静态产物（与详情页同一套 compat / options）。 */
+export interface InlineMarkdownArtifact {
+  document: LocalDocument;
+  hostData: SiteHostData;
+}
+
+/** 子正文的一趟完整准备：compat → external 引用适配 → 当前 Markdown 编译选项。 */
+async function buildInlineMarkdown(source: string): Promise<{
+  result: ReturnType<typeof compileLocal>;
+  hostData: SiteHostData;
+}> {
+  const compat = applyLegacyHtmlCompat(source);
+  // ★ 固定 external ★：子剪贴板里的剪贴板 / 投票 / 收藏夹 token 保持字面量，
+  // 不递归取私有资源；图床与音频只拼地址 / id，权限仍由各自 raw 路由判。
+  const adapted = await adaptReactiveReferences(compat.source, {
+    mode: 'external',
+    parentFormat: 'markdown',
+    dataImages: compat.dataImages,
+  });
+  return {
+    result: compileLocal(adapted.adaptedSource, reactiveCompileOptions('markdown')),
+    hostData: adapted.hostData,
+  };
+}
+
+/**
+ * 把一段 Markdown 子正文编译成可随 hostData 下发的静态产物。
+ *
+ * 与阅读 Markdown 的容错顺序一致：首次失败时先字面化 `{{ }}` / 组件标签再编译一次，
+ * 仍失败就返回 `null`（调用方退回链接卡片，绝不把源码塞进正文）。
+ *
+ * 只做**一层**：子适配是 external，剪贴板 token 不会被展开，因此这里不可能递归。
+ */
+export async function prepareInlineMarkdownDocument(
+  content: string
+): Promise<InlineMarkdownArtifact | null> {
+  try {
+    let built = await buildInlineMarkdown(content);
+    if (!built.result.ok) {
+      const literal = literalizeReactiveSyntax(content);
+      if (literal.changed) built = await buildInlineMarkdown(literal.source);
+    }
+    if (!built.result.ok) return null;
+    return { document: built.result.document, hostData: built.hostData };
+  } catch {
+    // 子正文的任何失败只影响这一处：调用方看到 null，退回链接卡片。
+    return null;
+  }
+}
+
+/**
+ * 为已生成的剪贴板 hostData 补上子产物，并移除原始正文。
+ *
+ * 原始 `content` 只用于这一趟编译；继续留在 hostData 里既没有消费者，也会让一份
+ * 私有正文随 RSC 多走一遍。`document` / `hostData` 必须成对写入；编译失败就都
+ * 不写，渲染端看到的就是链接卡片。
+ */
+async function attachInlineMarkdownDocuments(
+  hostData: Record<string, SiteEmbedData>
+): Promise<void> {
+  for (const data of Object.values(hostData)) {
+    if (data.kind !== 'clipboard' || typeof data.content !== 'string') continue;
+    const content = data.content;
+    // 原始正文只用于这一趟编译，任何状态下都不随 hostData 下发。
+    delete data.content;
+    if (data.status !== 'ready' || data.format !== 'markdown' || content.length === 0) continue;
+    const artifact = await prepareInlineMarkdownDocument(content);
+    if (!artifact) continue;
+    data.document = artifact.document;
+    data.hostData = artifact.hostData;
+  }
+}
+
 /** 作者伪造的宿主标签：盖码后定位，只转义开头的 `<`。 */
 function collectForgedEmbedEdits(source: string, masked: string): SourceEdit[] {
   const edits: SourceEdit[] = [];
@@ -517,6 +597,10 @@ export async function adaptReactiveReferences(
   }
 
   const { adaptedSource, segments } = assemble(source, edits);
+
+  // 子产物在父 hostData 定稿后补齐：它需要自己的那趟 compat / 适配 / 编译，
+  // 且只认本次权限下的 `content`。external 模式下这里没有任何剪贴板数据。
+  await attachInlineMarkdownDocuments(hostData);
 
   return {
     adaptedSource,

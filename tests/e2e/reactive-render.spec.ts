@@ -108,9 +108,13 @@ test.describe('ReactiveMD 发布与阅读', () => {
     await expect(container).toContainText('第一行');
     await expect(container).toContainText('第二行');
 
-    // 五类引用：图片内联、公开剪贴板是链接卡片、伪造宿主标签只是文字
+    // 五类引用：图片内联、Markdown 子剪贴板内联一层（新引擎静态子文档）、
+    // 伪造宿主标签只是文字
     await expect(container.locator(`img[src*="/api/images/${imageId}/raw"]`)).toHaveCount(1);
-    await expect(container.locator(`.site-embed-clipboard[href="/clipboard/${clipId}"]`)).toHaveCount(1);
+    const inlineClip = container.locator('.site-embed-clipboard-inline');
+    await expect(inlineClip).toHaveCount(1);
+    await expect(inlineClip).toContainText('剪贴板里的公开正文');
+    await expect(container.locator(`.site-embed-clipboard[href="/clipboard/${clipId}"]`)).toHaveCount(0);
     await expect(container.locator('.vote-embed')).toHaveCount(0);
     await expect(container).toContainText('<site-embed kind="vote"');
 
