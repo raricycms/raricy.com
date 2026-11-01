@@ -1104,6 +1104,12 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(
           setFormatAnalysis(result);
           setAnalysisPending(false);
           setAnalysisFailure(null);
+          // 提交路径也可能拿到更新的 authoring analysis（例如刚打开就保存，
+          // 实时防抖还没回来）。不贴回装饰会让语法着色停在上一次结果上。
+          const nextAuthor = result.author ?? null;
+          authorAnalysisSourceRef.current = nextAuthor ? content : null;
+          setAuthorAnalysis(nextAuthor);
+          setAnalysisFallback(result.fallback);
         }
         const diagnostics: EditorDiagnostic[] = result.diagnostics;
         if (result.effective === 'invalid-enhanced') {

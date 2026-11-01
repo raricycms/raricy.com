@@ -153,6 +153,40 @@ describe('applyLegacyHtmlCompat', () => {
     expect(isAllowedReactiveUrl(big, 'link')).toBe(false);
   });
 
+  it('★ 接近上限的 data 位图不会因参数展开触发栈溢出 ★', () => {
+    const payload =
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg';
+    const raw = `${payload}${'A'.repeat(400_000)}`;
+    const big = `data:image/png;base64,${raw.slice(0, raw.length - (raw.length % 4))}`;
+    const source = `<p>前</p><img src="${big}" alt="大图"><p>后</p>`;
+    let compat: ReturnType<typeof applyLegacyHtmlCompat> | null = null;
+    expect(() => {
+      compat = applyLegacyHtmlCompat(source);
+    }).not.toThrow();
+    expect(compat!.source).toHaveLength(source.length);
+    expect(compat!.source).toContain('[@图片/');
+    expect(compat!.source).not.toContain('base64');
+    expect(Object.keys(compat!.dataImages)).toHaveLength(1);
+    // 替换后的剩余区间必须是零宽而不是几十万个空格：巨型空白会让上游编译卡死。
+    const longestSpaceRun = Math.max(
+      0,
+      ...(compat!.source.match(/ +/g) ?? []).map((run) => run.length)
+    );
+    expect(longestSpaceRun).toBeLessThan(200);
+    expect(compile(compat!.source).ok).toBe(true);
+
+    // 被拒绝的大 data 图（魔数不对）同样不能留下巨型空格。
+    const rejected = `<p>前</p><img src="data:image/png;base64,${'A'.repeat(400_000)}" alt="大图"><p>后</p>`;
+    const rejectedCompat = applyLegacyHtmlCompat(rejected);
+    expect(rejectedCompat.counts['data-image-rejected']).toBe(1);
+    const rejectedSpaces = Math.max(
+      0,
+      ...(rejectedCompat.source.match(/ +/g) ?? []).map((run) => run.length)
+    );
+    expect(rejectedSpaces).toBeLessThan(200);
+    expect(compile(rejectedCompat.source).ok).toBe(true);
+  });
+
   it('Markdown 原生 data 图片同样走宿主组件', () => {
     const compat = applyLegacyHtmlCompat(`![示意](${PNG_1PX})`);
     expect(compat.counts['data-image']).toBe(1);
@@ -189,6 +223,26 @@ describe('applyLegacyHtmlCompat', () => {
     expect(compat.source).toBe(source);
   });
 
+  it('emoji / 代理对前后等长改写，偏移仍按 UTF-16 一致', () => {
+    const source = '😀前缀 <font style="x">表情🙂</font> 后文';
+    const compat = applyLegacyHtmlCompat(source);
+    expect(compat.source).toHaveLength(source.length);
+    // 每个 UTF-16 code unit 的位置不变（emoji 是两个 code unit）
+    for (let index = 0; index < source.length; index += 1) {
+      expect(compat.source.charCodeAt(index), `index ${index}`).not.toBe(0);
+    }
+    expect(compat.source.slice(0, 4)).toBe(source.slice(0, 4));
+    expect(compat.source.slice(-3)).toBe(source.slice(-3));
+    // 诊断 range 也必须落在原始源码的同一位置
+    const invalid = '😀 <panel title="未闭合">';
+    const result = compileLocal(applyLegacyHtmlCompat(invalid).source, reactiveCompileOptions('markdown'));
+    expect(result.ok).toBe(false);
+    const range = result.diagnostics[0]?.range;
+    expect(range).toBeTruthy();
+    expect(invalid.slice(range!.start, range!.end).length).toBeGreaterThanOrEqual(0);
+    expect(range!.end).toBeLessThanOrEqual(invalid.length);
+  });
+
   it('缩进代码块逐字保留（含 font / script / $）', () => {
     const source = [
       '    示例 <font color="red">x</font>',
@@ -218,14 +272,101 @@ describe('applyLegacyHtmlCompat', () => {
     expect(compat.source).not.toContain('axxxxc');
   });
 
+  it('未配对数学不碰 reference definition / 裸 URL / 图片 alt', () => {
+    const ref = `[ref]: https://e.com/$path
+
+正文`;
+    expect(applyLegacyHtmlCompat(ref).source).toBe(ref);
+    const url = '见 https://e.com/items?$filter=name 结尾';
+    expect(applyLegacyHtmlCompat(url).source).toBe(url);
+    const alt = '![价格 $5](https://e.com/a.png)';
+    expect(applyLegacyHtmlCompat(alt).source).toBe(alt);
+    // alt 与链接目标同时含 `$`：盖 alt 时不能把 `](` 一起盖掉，否则目标漏网。
+    const both = '![价格 $5](https://e.com/items?$filter=name)';
+    expect(applyLegacyHtmlCompat(both).source).toBe(both);
+  });
+
+  it('兼容改写是幂等的（预览适配 + worker 各跑一次也不会二次漂移）', () => {
+    const samples = [
+      '😀<font color="red">表情🙂</font> 后文',
+      '<select><option label="A">A</option><option value="b">B</option></select>',
+      '<multi-select bind="s" label="主题"><option value="a">A</option></multi-select>',
+      '<p>前</p><script>alert(1)</script><p>后</p>',
+      '![价格 $5](https://e.com/a.png)',
+      '```html\n<font>x</font>\n```',
+    ];
+    for (const source of samples) {
+      const once = applyLegacyHtmlCompat(source).source;
+      const twice = applyLegacyHtmlCompat(once).source;
+      expect(twice, source).toBe(once);
+      expect(once.length, source).toBe(source.length);
+    }
+  });
+
+  it('组件容器里的 <option> 保留；旧 <select><option> 仍解包（含 label 属性）', () => {
+    const component = applyLegacyHtmlCompat(
+      '<multi-select bind="s" label="主题"><option value="a">A</option></multi-select>'
+    );
+    expect(component.source).toContain('<option value="a">A</option>');
+
+    for (const legacy of [
+      '<select><option value="a">A</option></select>',
+      '<select><option label="A">A</option></select>',
+    ]) {
+      const compat = applyLegacyHtmlCompat(legacy);
+      expect(compat.source, legacy).not.toContain('<option');
+      expect(compat.source, legacy).not.toContain('</option>');
+    }
+  });
+
+  it('普通美元内容按字面渲染：价格 / 转义 / reference / 裸 URL / 图片 alt', () => {
+    // 单个 `$` 上游本来就当普通文本，不能为了“容错”改成全角 ＄。
+    const price = compatCompile('价格 $5');
+    expect(flatten(documentOf(price.result).nodes)).toBe('价格 $5');
+    expect(flatten(documentOf(price.result).nodes)).not.toContain('＄');
+    expect(price.compat.changed).toBe(false);
+
+    const escaped = compatCompile('价格 \\$5');
+    expect(flatten(documentOf(escaped.result).nodes)).toBe('价格 $5');
+    expect(escaped.compat.source).toBe('价格 \\$5');
+
+    const ref = compatCompile('[ref]: https://e.com/$path\n\n[见][ref]');
+    const refJson = JSON.stringify(documentOf(ref.result).nodes);
+    expect(refJson).toContain('"url":"https://e.com/$path"');
+    expect(refJson).not.toContain('＄');
+    expect(flatten(documentOf(ref.result).nodes)).toBe('见');
+
+    const bare = compatCompile('见 https://e.com/items?$filter=name 结尾');
+    const bareJson = JSON.stringify(documentOf(bare.result).nodes);
+    expect(bareJson).toContain('"url":"https://e.com/items?$filter=name"');
+    expect(bareJson).not.toContain('＄');
+
+    const alt = compatCompile('![价格 $5](https://e.com/a.png)');
+    const altJson = JSON.stringify(documentOf(alt.result).nodes);
+    expect(altJson).toContain('"alt":"价格 $5"');
+    expect(altJson).toContain('"url":"https://e.com/a.png"');
+    expect(altJson).not.toContain('＄');
+
+    // 有效公式仍然是公式；未闭合的显示数学保留可读文字、不产生数学节点。
+    const valid = compatCompile('公式 $a<b$ 结尾');
+    expect(JSON.stringify(documentOf(valid.result).nodes)).toContain('"type":"inlineMath"');
+    const unpaired = compatCompile('$$ 没配对');
+    expect(unpaired.result.ok).toBe(true);
+    expect(flatten(documentOf(unpaired.result).nodes)).toContain('没配对');
+    expect(JSON.stringify(documentOf(unpaired.result).nodes)).not.toContain('"type":"inlineMath"');
+  });
+
   it('未配对数学不会被当成标签处理，且不吞掉后半句', () => {
     const valid = '公式 $a<b$ 结尾';
     expect(applyLegacyHtmlCompat(valid).source).toBe(valid);
 
     const unpaired = '公式 $x 没配对，还有 **后半句**';
     const { compat, result } = compatCompile(unpaired);
-    expect(compat.counts['unpaired-math']).toBe(1);
+    // 单个 `$` 是普通文字：不中和、不计数、不改字符。
+    expect(compat.changed).toBe(false);
+    expect(compat.source).toBe(unpaired);
     expect(result.ok).toBe(true);
+    expect(flatten(documentOf(result).nodes)).toContain('$x 没配对');
     expect(flatten(documentOf(result).nodes)).toContain('后半句');
     const json = JSON.stringify(documentOf(result).nodes);
     expect(json).not.toContain('"type":"inlineMath"');

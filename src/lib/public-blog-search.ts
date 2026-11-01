@@ -20,6 +20,9 @@ export function searchTerms(text: string, query = false): string {
 
 const TEXT = new Set(['text', 'inlineCode', 'code', 'math', 'inlineMath']);
 const CONTAINERS = new Set(['root', 'heading', 'paragraph', 'emphasis', 'strong', 'delete', 'underline', 'mark', 'sup', 'sub', 'span', 'div', 'summary', 'blockquote', 'list', 'listItem', 'table', 'tableRow', 'tableCell', 'link', 'footnoteDefinition']);
+
+/** 没有读者可见正文的组件 / 宿主节点；其余组件的子节点继续取文字。 */
+const SKIPPED_COMPONENTS = new Set(['computed', 'const', 'validation', 'site-embed', 'if']);
 export async function publicBodyText(source: string, rawFormat: unknown): Promise<{ text: string; status: 'ready' | 'missing' }> {
   const format = parseContentFormat(rawFormat);
   if (!format) return { text: '', status: 'missing' };
@@ -30,8 +33,13 @@ export async function publicBodyText(source: string, rawFormat: unknown): Promis
     const result = compileLocal(compat.source, reactiveCompileOptions(format));
     if (!result.ok) return { text: '', status: 'missing' };
     const visit = (node: LocalNode): string => {
-      // fallback / htmlDocument / component / hostComponent / interpolation 均不取源码或状态。
+      // fallback / htmlDocument / hostComponent / interpolation 均不取源码或状态；
+      // 普通容器组件（panel / card / tabs …）的可见子正文必须继续递归。
       if (TEXT.has(node.type)) return node.value || '';
+      if (node.type === 'component') {
+        if (SKIPPED_COMPONENTS.has(node.name ?? '')) return ' ';
+        return (node.children || []).map(visit).join('');
+      }
       if (!CONTAINERS.has(node.type)) return ' ';
       const separator = ['paragraph','heading','list','listItem','tableRow','tableCell','blockquote','div'].includes(node.type) ? '\n' : '';
       return (node.children || []).map(visit).join('') + separator;

@@ -246,7 +246,17 @@ async function deadItems(menu: Locator): Promise<string[]> {
       if (!visible) return;
       const hit = document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2);
       if (!hit || !(it === hit || it.contains(hit))) {
-        dead.push(it.getAttribute('aria-label') ?? it.textContent ?? '?');
+        const chain: string[] = [];
+        for (let n: HTMLElement | null = it; n && chain.length < 8; n = n.parentElement) {
+          const cs = getComputedStyle(n);
+          chain.push(`${n.className || n.tagName}:z=${cs.zIndex},p=${cs.position},pe=${cs.pointerEvents},op=${cs.opacity},vis=${cs.visibility}`);
+        }
+        const hitChain: string[] = [];
+        for (let n = hit as HTMLElement | null; n && hitChain.length < 6; n = n.parentElement) {
+          const cs = getComputedStyle(n);
+          hitChain.push(`${n.className || n.tagName}:z=${cs.zIndex},p=${cs.position}`);
+        }
+        dead.push(`${it.getAttribute('aria-label') ?? it.textContent ?? '?'} <- ${hit ? (hit as HTMLElement).className : 'null'} [${hitChain.join(' > ')}] | ${chain.join(' > ')}`);
       }
     });
     return dead;

@@ -168,12 +168,47 @@ function blankRange(chars: string[], start: number, end: number): void {
 }
 
 /**
- * 把想要的替换串塞进原区间：短了用空格补齐，长了返回 null（调用方改为保守处理）。
- * 绝不让函数返回与区间不等长的结果 —— 那会破坏 source-map。
+ * 用一段文本替换 `[start, start+length)`。
+ *
+ * ⚠️ **不要用 `chars.splice(start, length, ...text.split(''))`**：data 位图的标签
+ * 最大可到 `MAX_DATA_IMAGE_CHARS`，补位后的替换串同量级；把几十万个字符展开成
+ * 函数参数会直接抛 `Maximum call stack size exceeded`，整批语料扫描因此没有报告。
+ * 等长（本模块的常态）时逐字符写回；长度不同时用数组重建，不用 spread。
+ *
+ * 【必须按 UTF-16 code unit 而不是 code point 重建】`chars` 是 `source.split('')`
+ * 的结果，下标就是 JS 字符串下标（source-map / 诊断 range 都用它）。`Array.from`
+ * 会把 emoji 收成一个元素，长度差分支一旦碰到代理对，后续所有偏移都会错一位。
  */
-function fitReplacement(length: number, desired: string): string | null {
-  if (desired.length > length) return null;
-  return desired + ' '.repeat(length - desired.length);
+function replaceRange(chars: string[], start: number, length: number, text: string): void {
+  if (text.length === length) {
+    for (let index = 0; index < text.length; index += 1) chars[start + index] = text[index];
+    return;
+  }
+  const next = chars.slice(0, start);
+  for (let index = 0; index < text.length; index += 1) next.push(text[index]);
+  for (let index = start + length; index < chars.length; index += 1) next.push(chars[index]);
+  chars.length = 0;
+  for (const char of next) chars.push(char);
+}
+
+/**
+ * 写入可见前缀，剩余区间用等长中和（零宽 + 保留换行）。
+ *
+ * ⚠️ **数据图不能走 `fitReplacement` 的空格补齐**：一张 400k 的 `data:` 图被
+ * 替换成 `[@图片/…]` 或 alt 后，剩下几十万个空格会拼成一段巨型空白；上游在
+ * 这一段上会卡死（实测 400k 空格 > 120s，整批扫描只能超时）。零宽不参与
+ * Markdown 的空白/缩进语义，长度不变，source-map 仍然对齐。
+ */
+function writeVisiblePrefix(
+  chars: string[],
+  start: number,
+  length: number,
+  text: string
+): boolean {
+  if (text.length > length) return false;
+  for (let index = 0; index < text.length; index += 1) chars[start + index] = text[index];
+  neutralizeRange(chars, start + text.length, start + length);
+  return true;
 }
 
 /** 从标签原文里读一个属性值（只用于我们自己生成的转换，不用于安全判定）。 */
@@ -369,10 +404,7 @@ function convertMediaBlocks(chars: string[], masked: string, counts: MutableCoun
       desired = '视频';
       count(counts, 'video-drop');
     }
-    const replacement = fitReplacement(match[0].length, desired);
-    if (replacement !== null) {
-      chars.splice(start, match[0].length, ...replacement.split(''));
-    } else {
+    if (!writeVisiblePrefix(chars, start, match[0].length, desired)) {
       neutralizeRange(chars, start, start + match[0].length);
     }
   }
@@ -452,8 +484,13 @@ function normalizeUnpairedMath(chars: string[], masked: string, counts: MutableC
     if (masked[index] === '$') {
       const start = index;
       while (index < masked.length && masked[index] === '$') index += 1;
-      for (let at = start; at < index; at += 1) chars[at] = '＄';
-      count(counts, 'unpaired-math');
+      // 单个 `$` 上游本来就按字面文本处理（`价格 $5` → 文本 `价格 $5`）。
+      // 只有成串的 `$$` 才是未闭合的**显示数学**起始符，会让整篇
+      // `local.math.unclosed`；只中和这一种，别把普通价格改成全角。
+      if (index - start >= 2) {
+        for (let at = start; at < index; at += 1) chars[at] = '＄';
+        count(counts, 'unpaired-math');
+      }
       index -= 1;
       continue;
     }
@@ -467,15 +504,12 @@ function normalizeUnpairedMath(chars: string[], masked: string, counts: MutableC
       continue;
     }
     if (masked[index] === '\\' && (masked[index + 1] === '(' || masked[index + 1] === '[')) {
-      chars[index] = '（';
-      chars[index + 1] = ' ';
-      count(counts, 'unpaired-math');
-      index += 1;
-      continue;
-    }
-    if (masked[index] === '\\' && (masked[index + 1] === ')' || masked[index + 1] === ']')) {
-      chars[index] = '）';
-      chars[index + 1] = ' ';
+      // 未闭合的 `\(` / `\[` 会让整篇编译失败。去掉反斜杠、把定界符留成
+      // 普通字符（等长：第二个字符换成零宽，不改变偏移），可见文字仍是
+      // `(` / `[`。真正的闭合符 `\)` / `\]` 上游本来就按普通文本处理，
+      // 不必改（改了会把 `结尾 \)` 的可见文字从 `)` 变成 `）`）。
+      chars[index] = masked[index + 1];
+      chars[index + 1] = NEUTRAL;
       count(counts, 'unpaired-math');
       index += 1;
     }
@@ -505,17 +539,15 @@ function convertMarkdownDataImages(
     if (!image) {
       // 非受限 data 图：不显示、不输出巨长源码。
       const alt = safeAltText(match[1] ?? null);
-      const replacement = fitReplacement(match[0].length, alt === '图片' ? '' : alt);
-      if (replacement !== null) chars.splice(start, match[0].length, ...replacement.split(''));
-      else neutralizeRange(chars, start, start + match[0].length);
+      if (!writeVisiblePrefix(chars, start, match[0].length, alt === '图片' ? '' : alt)) {
+        neutralizeRange(chars, start, start + match[0].length);
+      }
       count(counts, 'data-image-rejected');
       continue;
     }
     const ref = dataImageRef(image.url);
-    const replacement = fitReplacement(match[0].length, `[@图片/${ref}]`);
-    if (replacement !== null) {
+    if (writeVisiblePrefix(chars, start, match[0].length, `[@图片/${ref}]`)) {
       dataImages[ref] = { url: image.url, alt: safeAltText(match[1] ?? null) };
-      chars.splice(start, match[0].length, ...replacement.split(''));
       count(counts, 'data-image');
     } else {
       neutralizeRange(chars, start, start + match[0].length);
@@ -525,6 +557,14 @@ function convertMarkdownDataImages(
 }
 
 // ── 标签主扫描 ──────────────────────────────────────────────────────────────
+
+/**
+ * 这些上游组件容器把 `<option>` 当**结构化子组件**（模板本身自带）。
+ * 旧 HTML 的 `<option>` 只可能出现在 `<select>` 里；因此只有祖先命中这一组时，
+ * 才把没有 bind/label 的 `<option>` 保留为组件子结构。组件目录矩阵测试会逐个
+ * 模板编译，验证这个集合没有漏。
+ */
+const OPTION_CONTAINER_COMPONENTS = new Set(['multi-select', 'choices', 'quiz', 'select']);
 
 function transformTags(
   chars: string[],
@@ -589,7 +629,15 @@ function transformTags(
           continue;
         }
         // 没有对应的组件开标签：按旧 HTML 闭标签处理（见下方 ALLOWED / UNWRAP）。
-      } else if (COMPONENT_ATTR.test(raw)) {
+      } else if (
+        // `<option>` 只看祖先：它没有自己的 bind，旧 HTML 的
+        // `<select><option label="A">` 也带 `label`，按属性判会把历史正文
+        // 留成孤立的组件标签（随后编译失败）。多选 / choices / quiz 的模板子项
+        // 一定有对应组件容器祖先。
+        name === 'option'
+          ? componentStack.some((tag) => OPTION_CONTAINER_COMPONENTS.has(tag))
+          : COMPONENT_ATTR.test(raw)
+      ) {
         componentStack.push(name);
         index = end - 1;
         continue;
@@ -598,7 +646,7 @@ function transformTags(
 
     // `</br>` → `<br/>`：长度相同（5）。
     if (closing && name === 'br' && raw === '</br>') {
-      chars.splice(index, length, ...'<br/>'.split(''));
+      replaceRange(chars, index, length, '<br/>');
       count(counts, 'normalized-br');
       index = end - 1;
       continue;
@@ -611,15 +659,13 @@ function transformTags(
         if (image) {
           const ref = dataImageRef(image.url);
           const token = `[@图片/${ref}]`;
-          const replacement = fitReplacement(length, token);
-          if (replacement !== null) {
+          if (writeVisiblePrefix(chars, index, length, token)) {
             dataImages[ref] = {
               url: image.url,
               alt: safeAltText(readAttr(raw, 'alt')),
               ...(readAttr(raw, 'width') ? { width: readAttr(raw, 'width')! } : {}),
               ...(readAttr(raw, 'height') ? { height: readAttr(raw, 'height')! } : {}),
             };
-            chars.splice(index, length, ...replacement.split(''));
             count(counts, 'data-image');
           } else {
             neutralizeRange(chars, index, end);
@@ -628,10 +674,7 @@ function transformTags(
         } else {
           // 非受限 data 位图：不显示、也不把十几万字符源码吐到页面上。
           const alt = safeAltText(readAttr(raw, 'alt'));
-          const replacement = fitReplacement(length, alt);
-          if (replacement !== null) {
-            chars.splice(index, length, ...replacement.split(''));
-          } else {
+          if (!writeVisiblePrefix(chars, index, length, alt)) {
             neutralizeRange(chars, index, end);
           }
           count(counts, 'data-image-rejected');
@@ -653,10 +696,7 @@ function transformTags(
       const src = readAttr(raw, 'src');
       if (src !== null && src !== '' && !isAllowedReactiveUrl(src, 'image')) {
         const alt = safeAltText(readAttr(raw, 'alt'));
-        const replacement = fitReplacement(length, alt === '图片' ? '' : alt);
-        if (replacement !== null) {
-          chars.splice(index, length, ...replacement.split(''));
-        } else {
+        if (!writeVisiblePrefix(chars, index, length, alt === '图片' ? '' : alt)) {
           neutralizeRange(chars, index, end);
         }
         count(counts, 'dropped-image');
@@ -751,8 +791,17 @@ export function applyLegacyHtmlCompat(source: string): LegacyCompatResult {
     chars,
     masked
       .replace(/<[^>]*>/g, maskChars)
+      // 先盖图片 alt：![价格 $5](url) 的 `$5` 是可见文字，不是公式。
+      // **只盖方括号里面**：保留 `](` 结构，后面的链接目标规则才能继续盖
+      // `![图](https://e.com/$path)` 的 URL。整段 `![…]` 一起盖会让 `]` 消失，
+      // 带 `$` 的链接目标就会被漏掉。
+      .replace(/!\[([^\]\n]*)\]/g, (match, alt: string) => `![${maskChars(alt)}]`)
       // 链接目标里的 `$` 是 URL 的一部分，不是公式（只在数学扫描里盖掉）。
-      .replace(/\]\((?:[^()\s]|\([^)]*\))*\)/g, maskChars),
+      .replace(/\]\((?:[^()\s]|\([^)]*\))*\)/g, maskChars)
+      // reference definition：[ref]: https://…/$path
+      .replace(/^[ \t]{0,3}\[[^\]\n]+\]:[^\n]*/gm, maskChars)
+      // 正文裸 URL / 自动链接
+      .replace(/\b(?:https?|ftp):\/\/[^\s<>()]+/gi, maskChars),
     counts
   );
   convertMarkdownDataImages(chars, masked, counts, dataImages);

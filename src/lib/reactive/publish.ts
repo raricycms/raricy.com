@@ -14,8 +14,7 @@ import { LOCAL_SYNTAX_VERSION } from 'reactive-md';
 import type { ContentFormat, ContentWriteErrorCode } from '../content-format';
 import { isoWithOffset, nowForDb } from '../db-time';
 import { shouldRejectReactive } from './diagnostics';
-import { documentEvidence } from './detect-format';
-import { compileContent } from './compile-content';
+import { detectReactiveSyntax, documentEvidence } from './detect-format';
 import {
   reactiveContentVersion,
   toSnapshotRow,
@@ -54,7 +53,7 @@ export type BuildReactiveSnapshotResult =
     }
   | {
       ok: false;
-      reason: 'compile' | 'fallback';
+      reason: 'compile' | 'fallback' | 'format_mismatch';
       codes: string[];
     };
 
@@ -70,19 +69,33 @@ export async function buildReactiveSnapshotForWrite(
   // 延迟加载：避开 service ↔ compile 的模块环，见文件头。
   const { compileContent } = await import('./compile-content');
 
-  const { outcome } = await compileContent({
+  const compiled = await compileContent({
     source: input.content,
     format: input.format,
     mode: 'external',
     viewer: null,
   });
 
+  const { outcome } = compiled;
   if (!outcome.result.ok) {
     return {
       ok: false,
       reason: 'compile',
       codes: outcome.result.diagnostics.map((diagnostic) => diagnostic.code),
     };
+  }
+  // literalize 只用于**阅读**容错。写入时如果它救活了一篇本来编不过的
+  // Markdown，而原文在解析器里其实已有增强身份（invalid-enhanced），必须拒绝，
+  // 不能把字面化后的文档当成「普通 Markdown」落库。
+  if (compiled.literalized) {
+    const detected = detectReactiveSyntax(input.content);
+    if (detected.format === 'reactive') {
+      return {
+        ok: false,
+        reason: 'format_mismatch',
+        codes: detected.codes.length > 0 ? detected.codes : ['site.enhanced.invalid'],
+      };
+    }
   }
   if (shouldRejectReactive(outcome.result)) {
     return {

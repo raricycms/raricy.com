@@ -152,6 +152,41 @@ describe('ReactiveMD 0.7 正文迁移', () => {
     expect(await prisma.reactiveSourceMigration.count()).toBe(0);
   });
 
+  it('当前版本行的正文深处残留旧声明也会阻塞', async () => {
+    const { blogId } = await oldSources();
+    await prisma.blogContent.update({
+      where: { blogId },
+      data: {
+        syntaxVersion: 'local-draft-3',
+        content: `<panel title="x">正文</panel>
+
+<!-- reactive-md: local-draft-2 -->
+
+尾部`,
+      },
+    });
+    const plan = await planReactiveV07Migration();
+    expect(plan.blockers).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: blogId, codes: expect.arrayContaining(['site.migration.stale-declaration']) }),
+      ])
+    );
+  });
+
+  it('当前版本行正文不可编译也会阻塞（一次性标记不能掩盖）', async () => {
+    const { blogId } = await oldSources();
+    await prisma.blogContent.update({
+      where: { blogId },
+      data: { syntaxVersion: 'local-draft-3', content: '<panel title="未闭合">' },
+    });
+    const plan = await planReactiveV07Migration();
+    expect(plan.blockers).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: blogId, codes: expect.arrayContaining(['site.migration.current-invalid']) }),
+      ])
+    );
+  });
+
   it('后台迁移也覆盖归档作者的文章', async () => {
     const { user, blogId } = await oldSources();
     await prisma.user.update({ where: { id: user.id }, data: { archivedAt: nowForDb() } });

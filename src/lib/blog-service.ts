@@ -71,7 +71,6 @@ import {
   resolveContentWriteFormat,
 } from './content-format';
 import type { ContentFormat, ContentWriteErrorCode } from './content-format';
-import { detectReactiveSyntax } from './reactive/detect-format';
 import { buildReactiveSnapshotForWrite, ReactivePublishError } from './reactive/publish';
 import type { Prisma } from '@prisma/client';
 import type { PersonalBlogScope } from './blog-directory';
@@ -1313,10 +1312,7 @@ export async function createBlog(authorId: string, data: ValidatedBlogData): Pro
     format: write.format,
   });
   if (!snapshot.ok) {
-    // 未能编译：若解析器其实认出了增强语法，归为「格式不匹配」而不是笼统的
-    // 渲染失败，让前端 / API 调用方能按稳定错误码区分。
-    const detected = detectReactiveSyntax(data.content);
-    if (write.format === 'markdown' && detected.format === 'reactive') {
+    if (snapshot.reason === 'format_mismatch') {
       throw new ReactivePublishError(
         contentWriteFailureMessage('format_mismatch'),
         CONTENT_WRITE_ERROR_CODES.format_mismatch
@@ -1419,13 +1415,10 @@ export async function updateBlog(
       format: write.format,
     });
     if (!snapshot.ok) {
-      const detected = detectReactiveSyntax(data.content);
       return {
         hasChanges: false,
         changesDetail: [],
-        error: write.format === 'markdown' && detected.format === 'reactive'
-          ? 'format_mismatch'
-          : 'reactive_invalid',
+        error: snapshot.reason === 'format_mismatch' ? 'format_mismatch' : 'reactive_invalid',
       };
     }
     if (write.format === 'markdown' && snapshot.detectedFormat === 'reactive') {

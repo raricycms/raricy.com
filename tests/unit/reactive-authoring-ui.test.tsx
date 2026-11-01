@@ -207,6 +207,9 @@ vi.mock('@/lib/md-editor/reactive-authoring', () => {
     },
   ];
   return {
+    // 真实常量：MarkdownEditor 的补全 / 格式化上限直接读它；缺这个导出会让
+    // 工具条事件在 vitest 的 mock 代理里抛「No export is defined」并让断言假红。
+    AUTHOR_TOOL_LENGTH_LIMIT: 50_000,
     reactiveAuthoring: mocks.reactiveAuthoring,
     applyReactiveTemplate: mocks.applyReactiveTemplate,
     getReactiveCompletions: mocks.getReactiveCompletions,

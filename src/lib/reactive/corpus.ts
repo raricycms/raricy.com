@@ -26,10 +26,11 @@ import { AUDIO_REF_RE, MAX_AUDIO_REFS } from '../audio-refs';
 import { MAX_BLOG_REF_ITEMS, MAX_REF_EXPAND_CHARS, MAX_REF_FETCHES } from '../content-refs';
 import { parseContentFormat, type ContentFormat } from '../content-format';
 import { MAX_FAVORITE_REFS } from '../favorite-refs';
+import { performance } from 'node:perf_hooks';
 import { utf8ByteLength } from './cache';
 import { compileLocal, LOCAL_SYNTAX_VERSION } from 'reactive-md';
 import { shouldRejectReactive } from './diagnostics';
-import { documentEvidence, literalizeReactiveSyntax } from './detect-format';
+import { detectReactiveSyntax, documentEvidence, literalizeReactiveSyntax } from './detect-format';
 import { applyLegacyHtmlCompat, LEGACY_COMPAT_VERSION } from './legacy-compat';
 import { REACTIVE_COMPILER_VERSION, REACTIVE_MAX_SYNTAX_NODES, reactiveCompileOptions } from './host-components';
 
@@ -242,8 +243,8 @@ export interface CorpusDocumentScan {
   kind: CorpusDocumentKind;
   format: ContentFormat;
   formatSource: 'declared' | 'default';
-  bucket: 'provisional';
-  compile: 'not-run';
+  bucket: 'provisional' | 'error';
+  compile: 'not-run' | 'run';
   textDiff: 'not-run';
   sourceChars: number;
   sourceBytes: number;
@@ -255,6 +256,8 @@ export interface CorpusDocumentScan {
   images: CorpusImageScan;
   /** `--compile` 时才有；静态扫描下为 null。 */
   compileResult: CorpusCompileScan | null;
+  /** 该篇扫描/编译抛出的异常名（只写类型，不含 message / 正文）。 */
+  scanError: string | null;
 }
 
 export interface CorpusTotals {
@@ -270,6 +273,8 @@ export interface CorpusTotals {
   refs: CorpusRefCounts;
   images: CorpusImageScan;
   errors: number;
+  /** 逐篇扫描/编译抛异常的篇数（已逐篇隔离，不拖垮整批）。 */
+  scanFailures: number;
   /** CLI 的 --limit 截断。 */
   limited?: boolean;
   /** --compile 时的汇总（由 CLI 写入）。 */
@@ -307,6 +312,14 @@ export interface CorpusReportOptions {
   errors?: readonly CorpusInputError[];
   /** 开启真实编译（统一 compat + 生产预算）。 */
   compile?: boolean;
+  /** 逐篇进度（只含索引 / 总数 / ID / 类别 / 耗时，不含正文）。 */
+  onProgress?: (info: {
+    index: number;
+    total: number;
+    id: string;
+    kind: CorpusDocumentKind;
+    elapsedMs: number;
+  }) => void;
 }
 
 // ── 代码盖码（保留换行）──────────────────────────────────────────────────────
@@ -644,6 +657,22 @@ function scanImages(masked: string): CorpusImageScan {
 // ── 单篇与整份报告 ───────────────────────────────────────────────────────────
 
 function compileCorpusDocument(document: CorpusDocument): CorpusCompileScan {
+  try {
+    return compileCorpusDocumentUnsafe(document);
+  } catch (error) {
+    const name = error instanceof Error ? error.name || 'Error' : 'UnknownError';
+    return {
+      status: 'failed',
+      codes: [`site.compile.${name}`],
+      compatCounts: {},
+      detectedFormat: document.format,
+      literalized: false,
+      formatMismatch: false,
+    };
+  }
+}
+
+function compileCorpusDocumentUnsafe(document: CorpusDocument): CorpusCompileScan {
   const compat = applyLegacyHtmlCompat(document.content);
   const options = reactiveCompileOptions(document.format);
   let result = compileLocal(compat.source, options);
@@ -669,13 +698,23 @@ function compileCorpusDocument(document: CorpusDocument): CorpusCompileScan {
     };
   }
   const detectedFormat = documentEvidence(result.document).length > 0 ? 'reactive' : 'markdown';
+  // literalize 救活的 Markdown 不能按「字面化后的文档」判格式：原文可能已经
+  // 被解析器认成 invalid-enhanced（服务端写入会拒绝）。语料报告要单列这一类，
+  // 否则全量扫描里它们看起来只是“字面量降级”的普通 Markdown。
+  const invalidEnhancedMarkdown =
+    literalized && detectReactiveSyntax(document.content).format === 'reactive';
   return {
     status: shouldRejectReactive(result) ? 'fallback' : 'ok',
-    codes: [...new Set(result.diagnostics.map((d) => d.code))],
+    codes: [
+      ...new Set([
+        ...result.diagnostics.map((d) => d.code),
+        ...(invalidEnhancedMarkdown ? ['site.write.format-mismatch'] : []),
+      ]),
+    ],
     compatCounts: compat.counts,
     detectedFormat,
     literalized,
-    formatMismatch: document.format === 'markdown' && detectedFormat === 'reactive',
+    formatMismatch: invalidEnhancedMarkdown || (document.format === 'markdown' && detectedFormat === 'reactive'),
   };
 }
 
@@ -730,6 +769,7 @@ export function scanCorpusDocument(
     refs,
     images: scanImages(masked),
     compileResult: compile ? compileCorpusDocument(document) : null,
+    scanError: null,
   };
 }
 
@@ -750,7 +790,7 @@ function emptyImageScan(): CorpusImageScan {
   };
 }
 
-function buildTotals(
+export function buildCorpusTotals(
   documents: readonly CorpusDocumentScan[],
   errorCount: number
 ): CorpusTotals {
@@ -769,9 +809,11 @@ function buildTotals(
     refs,
     images,
     errors: errorCount,
+    scanFailures: 0,
   };
 
   for (const document of documents) {
+    if (document.scanError) totals.scanFailures += 1;
     if (document.kind === 'blog') totals.blogs += 1;
     else totals.clipboards += 1;
     if (document.structure.softLineBreaks > 0) totals.documentsWithSoftLineBreaks += 1;
@@ -806,6 +848,76 @@ function buildTotals(
  * 报告是**静态风险清单**：没有正文、没有标题、没有「C 类可迁移」结论。
  * `scannedAt` 由调用方传入站点时钟（本模块不取「现在」）。
  */
+export function failedCorpusScan(
+  document: CorpusDocument,
+  error: unknown,
+  compile: boolean,
+  code?: string
+): CorpusDocumentScan {
+  const name = error instanceof Error ? error.name || 'Error' : 'UnknownError';
+  return {
+    id: document.id,
+    kind: document.kind,
+    format: document.format,
+    formatSource: document.formatSource,
+    bucket: 'error',
+    compile: 'run',
+    textDiff: 'not-run',
+    sourceChars: document.content.length,
+    sourceBytes: utf8ByteLength(document.content),
+    structure: {
+      softLineBreaks: 0,
+      hardBreaks: 0,
+      fencedBlocks: 0,
+      inlineCodeSpans: 0,
+      tableRows: 0,
+      taskListItems: 0,
+      footnoteMarkers: 0,
+      rawBrTags: 0,
+    },
+    html: { openingTags: 0, withClass: 0, withStyle: 0, withEvent: 0, riskyTags: {}, riskyTagOverflow: 0 },
+    syntaxCollisions: { braceExpressions: 0, braceOpenings: 0, unknownLineStartTags: {}, unknownLineStartOverflow: 0 },
+    math: {
+      commands: {},
+      commandOverflow: 0,
+      environments: {},
+      environmentOverflow: 0,
+      macroDefinitions: 0,
+      legacyDelimiters: 0,
+      displayDollarMarkers: 0,
+      reviewNeeded: false,
+    },
+    refs: {
+      counts: emptyCounts(),
+      unique: emptyCounts(),
+      replacementSlots: 0,
+      replacementBudget: MAX_BLOG_REF_ITEMS,
+      replacementOverBudget: false,
+      fetchCandidates: 0,
+      fetchBudget: MAX_REF_FETCHES,
+      fetchOverBudget: false,
+      favoriteBudget: MAX_FAVORITE_REFS,
+      favoriteOverBudget: false,
+      audioBudget: MAX_AUDIO_REFS,
+      audioOverBudget: false,
+      expandBudget: MAX_REF_EXPAND_CHARS,
+      sourceOverExpandBudget: false,
+    },
+    images: emptyImageScan(),
+    compileResult: compile
+      ? {
+          status: 'failed',
+          codes: [code ?? `site.scan.${name}`],
+          compatCounts: {},
+          detectedFormat: document.format,
+          literalized: false,
+          formatMismatch: false,
+        }
+      : null,
+    scanError: code ?? name,
+  };
+}
+
 export function scanCorpusDocuments(
   documents: readonly CorpusDocument[],
   options: CorpusReportOptions
@@ -814,7 +926,24 @@ export function scanCorpusDocuments(
     throw new TypeError('scannedAt 必须是站点时钟的 ISO 字符串');
   }
   const compile = options.compile === true;
-  const scans = documents.map((document) => scanCorpusDocument(document, compile));
+  const scans = documents.map((document, index) => {
+    const started = performance.now();
+    let scan: CorpusDocumentScan;
+    try {
+      scan = scanCorpusDocument(document, compile);
+    } catch (error) {
+      // 逐篇隔离：一篇病态输入（极深嵌套 / 巨型 data 图）不能让整批没有报告。
+      scan = failedCorpusScan(document, error, compile);
+    }
+    options.onProgress?.({
+      index: index + 1,
+      total: documents.length,
+      id: document.id,
+      kind: document.kind,
+      elapsedMs: Math.round(performance.now() - started),
+    });
+    return scan;
+  });
   const errors = [...(options.errors ?? [])];
   return {
     schemaVersion: CORPUS_SCAN_SCHEMA_VERSION,
@@ -831,7 +960,7 @@ export function scanCorpusDocuments(
       : null,
     textDiff: 'not-run',
     scannedAt: options.scannedAt,
-    totals: buildTotals(scans, errors.length),
+    totals: buildCorpusTotals(scans, errors.length),
     documents: scans,
     errors,
   };
