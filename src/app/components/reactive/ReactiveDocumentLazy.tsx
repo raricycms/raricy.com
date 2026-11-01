@@ -1,29 +1,22 @@
 'use client';
 
-// ReactiveDocument 的**按需加载**外壳。
+// ReactiveDocument 的阅读入口。
 //
-// 目标入口（博客 / 剪贴板）默认都走统一管线；页面模块里若直接 import
-// `ReactiveDocument`，`reactive-md` + 两份 CSS 会进每一条路由的首屏客户端包
-// （约 250KB）。这里用 `next/dynamic` 保持客户端代码分割。
+// ⚠️ **这里刻意是静态 import，不是 React.lazy / next/dynamic**。
+// 实测（冷启动 + 新 next start + 关闭 JS）：
+//   · `React.lazy` + `Suspense fallback={null}` 服务端只输出空壳；
+//   · `next/dynamic({ ssr: true })` 在客户端组件里同样没有产出正文。
+// 结果是 `#userContentContainer` 存在、正文为空 —— 关 JS 的读者看到空白
+// （`tests/e2e/reactive-ssr-cold.spec.ts` 正是在冷启动首请求上抓这个）。
 //
-// ⚠️ **SSR 必须真的产出正文**：`React.lazy` + `Suspense fallback={null}` 在服务端
-// 只产出一层空壳（实测冷启动首请求 + 无 JS 时 `#userContentContainer` 完全为空），
-// 关 JS 的读者看到的是空白。`next/dynamic` 的 `ssr: true`（默认）会在服务端把
-// 模块解析完再渲染，首屏正文与客户端水合的是同一棵树；客户端仍然按 chunk 懒加载。
-//
-// 冷启动首请求 + 无 JS 的可见性由 `tests/e2e/reactive-ssr-cold.spec.ts` 单独守
-// （不能拿已预热页面的结果冒充）。
-import dynamic from 'next/dynamic';
+// 代价是 `reactive-md` + 两份 CSS 进入博客 / 剪贴板路由的客户端包（约 250KB）；
+// 换来的是真正的 SSR 首屏与无 JS 可读。若将来要重新做代码分割，必须先在
+// 真实构建上证明冷启动无 JS 的正文仍可见，再改这里。
 import type { ComponentProps } from 'react';
-import type ReactiveDocumentType from './ReactiveDocument';
-
-const ReactiveDocument = dynamic(() => import('./ReactiveDocument'), {
-  ssr: true,
-  loading: () => null,
-});
+import ReactiveDocument from './ReactiveDocument';
 
 export default function ReactiveDocumentLazy(
-  props: ComponentProps<typeof ReactiveDocumentType>
+  props: ComponentProps<typeof ReactiveDocument>
 ) {
   return <ReactiveDocument {...props} />;
 }
