@@ -557,3 +557,20 @@ P1 新增测试以实际合并文件为准，不在测试里复制一套实现�
 - 历史 HTML 媒体可播放性：旧白名单确实允许 video/audio；当前 compat 外部视频只给链接。
   接口需求写在 `%TEMP%/raricy-reactive-media-compat-needs-20261101.md`，由消费者修复路
   在 hostData / SiteEmbedView 落地后，本会话再改 compat（不能 silently 视为已兼容）。
+
+### 终审第二轮收口（媒体 / 键名误判，2026-11-01）
+
+- **媒体兼容落地**：`613e5f91` 让 compat 生成 `[[媒体:<10hex>]]` + `mediaSources`，
+  适配器展开 `site-embed kind="media"`；保留 `controls`、`<source>` / `<track>`、
+  poster / preload（默认 `none`）等安全属性，**永不 autoplay**，拒绝
+  data:/javascript:；host schema 加 `media`；`LEGACY_COMPAT_VERSION` 升 `/3`。
+  消费者侧渲染 / 适配见 `34ae7c2e`；子编译接入共享语法预算与有界缓存见 `efc8e540`。
+- **vimtutor 类键名误判修复**：`3ef70b10`。光秃秃的 `<tab>` / `<text>`（无属性、
+  无对应父容器）按历史文字解包，不再被当成组件；只有带属性的半截组件
+  （`<slider bind="a"`）或未闭合 `{{` 才判定 invalid-enhanced。匿名夹具覆盖
+  `Press <TAB>.` / `<tab>` / `<Help>` / `: '<,'>` / 代码块示例；API 保存回归。
+- **导出子图预取**：`58e3c4ff` 让内联 Markdown 子文档保留原 URL，由
+  `ReactiveSubDocument` 的可选 `imageResolver` 在渲染时换成预取 data URL；
+  预取失败回退原地址。`md-editor-export` 30 用例通过。
+- 相关复验：10 文件 / 198 用例 + typecheck exit 0；媒体 e2e 见
+  `tests/e2e/reactive-media.spec.ts`（最终 build 后跑）。
