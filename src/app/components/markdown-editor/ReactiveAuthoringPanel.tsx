@@ -122,9 +122,10 @@ export default function ReactiveAuthoringPanel({
   const stateText = fallback ? `${baseStateText}（本地检查）` : baseStateText;
 
   return (
-    <section className="md-authoring" aria-label="Reactive 作者工具">
+    <section className="md-authoring" aria-label="语法检查">
       <div className="md-authoring__summary">
-        <span className="md-authoring__title">Reactive 检查</span>
+        {/* 普通 Markdown 与增强语法是同一个作者入口，标题不再点名 Reactive。 */}
+        <span className="md-authoring__title">语法检查</span>
         <span
           className={`md-authoring__state${errors > 0 || failure ? ' is-error' : warnings > 0 || fallback ? ' is-warning' : ''}`}
           role="status"

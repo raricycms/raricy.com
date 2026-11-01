@@ -947,7 +947,18 @@ describe('prepareSubmit：无效增强语法绝不静默按 Markdown 保存', ()
     expect(snapshot.format).toBe('markdown');
   });
 
-  it('从 Components 插入过组件后即使正文没有标记也不降级', async () => {
+  it('新建 Markdown 插入组件后是临时升级；删光后按最终解析事实保存为 markdown', async () => {
+    mocks.analyzeResult = {
+      effective: 'markdown',
+      valid: true,
+      publishable: true,
+      evidence: [],
+      candidates: [],
+      codes: [],
+      diagnostics: [],
+      declaredVersion: null,
+      syntaxVersion: null,
+    };
     const ref = createRef<MarkdownEditorHandle>();
     const container = mount(
       createElement(EditorHarness, {
@@ -959,11 +970,20 @@ describe('prepareSubmit：无效增强语法绝不静默按 Markdown 保存', ()
     await click(container, '[aria-label="组件"]');
     await click(container, '.md-component-picker__item');
 
+    // 真实插入会改动正文 → 分析在飞，此时临时按增强文档预览 / 给工具。
+    const view = EditorView.findFromDOM(container.querySelector('.cm-content')!)!;
+    act(() => view.dispatch({ changes: { from: view.state.doc.length, insert: '\n<slider bind="a">' } }));
+    expect(ref.current!.getFormat()).toBe('reactive');
+
+    // 删光组件：预筛直接判定没有增强候选，临时升级必须撤掉。
+    act(() => view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: '只剩普通正文了' } }));
+    expect(ref.current!.getFormat()).toBe('markdown');
+
     let snapshot!: EditorSubmitSnapshot;
     await act(async () => {
       snapshot = await ref.current!.prepareSubmit();
     });
-    expect(snapshot.format).toBe('reactive');
+    expect(snapshot.format).toBe('markdown');
     expect(snapshot.blocked).toBeNull();
   });
 
