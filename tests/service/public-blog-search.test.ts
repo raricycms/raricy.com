@@ -26,6 +26,10 @@ describe('公开正文索引', () => {
     expect(await publicBodyText('<input bind="broken" type="nonsense" />','weird')).toEqual({text:'',status:'missing'});
     // 普通容器组件的可见正文要进搜索（只跳过 computed/const/validation/宿主组件）。
     expect((await publicBodyText('<panel title="面板">面板可见文字</panel>','reactive')).text).toContain('面板可见文字');
+    // 历史媒体 token 是内部协议，不以 `媒体:xxxx` 混进搜索正文。
+    const media = await publicBodyText('<video src="https://example.com/a.mp4"></video>前文正文','reactive');
+    expect(media.text).toContain('前文正文');
+    expect(media.text).not.toContain('媒体:');
   });
   it('编辑、改格式、公开/撤回、删除/恢复同步更新；失效旧行不可泄露', async () => {
     const u=await makeUser({role:'core'});

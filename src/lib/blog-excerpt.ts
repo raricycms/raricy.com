@@ -123,6 +123,8 @@ export function blogExcerpt(markdown: string, max = DEFAULT_EXCERPT_MAX): string
   // 引用 token：`[@8位]` / `[@音频/ID]` / `[@用户/名字]`。链接已经转过，剩下的
   // `[@…]` 一定是 token（正文里语法就这么写），整块丢掉。
   out = out.replace(/\[@[^\]\n]*\]/g, '');
+  // 历史媒体的内部 token 同理，不能让 `媒体:xxxx` 出现在摘要里。
+  out = out.replace(/\[\[媒体:[a-f0-9]{10}\]\]/g, '');
 
   // ── 行级标记 ──
   out = out.replace(/^ {0,3}#{1,6}[ \t]+/gm, ''); // ATX 标题
@@ -197,6 +199,8 @@ const REACTIVE_INLINE_CONTAINERS = new Set(['emphasis', 'strong', 'delete', 'und
 function cleanReactiveText(value: string): string {
   return value
     .replace(/\[@[^\]\n]*\]/g, ' ')
+    // compat 的历史媒体 token 是内部协议，摘要里不能露出 `媒体:xxxx` 字样。
+    .replace(/\[\[媒体:[a-f0-9]{10}\]\]/g, ' ')
     .replace(/\[\^[^\]\n]*\]/g, ' ')
     .replace(/\{\{[\s\S]*?\}\}/g, ' ')
     .replace(/<\/?[a-zA-Z][^<>]*>/g, ' ');

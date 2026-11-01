@@ -45,7 +45,10 @@ export async function publicBodyText(source: string, rawFormat: unknown): Promis
       return (node.children || []).map(visit).join('') + separator;
     };
     const text = result.document.nodes.map(visit).join('\n')
-      .replace(/\[@[^\]\n]+\]/g, ' ').replace(/\s+/g, ' ').trim();
+      .replace(/\[@[^\]\n]+\]/g, ' ')
+      // compat 的历史媒体 token 是内部协议，不进公开索引 / 片段。
+      .replace(/\[\[媒体:[a-f0-9]{10}\]\]/g, ' ')
+      .replace(/\s+/g, ' ').trim();
     return { text, status: 'ready' };
   } catch { return { text: '', status: 'missing' }; }
 }

@@ -160,6 +160,17 @@ describe('buildBlogExcerpt：按格式分派', () => {
     expect(out).not.toContain('1 / 0');
   });
 
+
+  it('历史 HTML 媒体的内部 token 不进摘要', () => {
+    const out = buildBlogExcerpt(
+      '<video src="https://example.com/a.mp4"></video>\n\n前文正文',
+      'reactive'
+    );
+    expect(out).toContain('前文正文');
+    expect(out).not.toContain('媒体:');
+    expect(out).not.toContain('[[媒体');
+  });
+
   it('编译失败返回空串（不把源码漏成摘要）', () => {
     expect(buildBlogExcerpt('<panel>未闭合', 'reactive')).toBe('');
     expect(buildBlogExcerpt('{{ 未闭合', 'reactive')).toBe('');
