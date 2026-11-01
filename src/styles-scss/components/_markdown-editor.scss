@@ -386,15 +386,40 @@
     column-gap: 4px;
   }
 
+  // 窄屏浮层统一相对**工具条**定位：挂在第二个按钮（组件）的 host 上时，
+  // 弹层从 x≈84 向右展开，320px 下会被编辑器右缘裁掉关闭 X / 搜索框右半。
+  // host 改为 static 后，下面所有菜单共用工具条的 containing block，
+  // left/right 直接收在工具栏可用宽度内。
+  .md-toolbar__popover-host {
+    position: static;
+  }
+
+  .md-toolbar__menu {
+    left: 8px;
+    right: 8px;
+    width: auto;
+    min-width: 0;
+  }
+
+  .md-toolbar__menu--right {
+    left: 8px;
+    right: 8px;
+  }
+
   // Insert 菜单：窄屏一列；整块限高滚动，别被 `.md-editor` 的 overflow:hidden
   // 静默裁掉底部几项（看得见却点不到）。
   .md-toolbar__menu--insert {
     grid-template-columns: 1fr;
-    width: min(320px, 100cqw);
+    width: auto;
     // 编辑区本体只有 50vh（剪贴板）/ 60vh（博客）：菜单再高就会伸出 body、
-    // 被 `.md-editor` 的 overflow:hidden 裁掉底部（看得见却点不到）。46vh 保证
-    // 整块落在 body 内，超出部分由菜单自己滚动。
-    max-height: 46vh;
+    // 被 `.md-editor` 的 overflow:clip 裁掉底部（看得见却点不到）。40vh 留给
+    // 工具条与页脚，超出部分由菜单自己滚动。
+    max-height: 40vh;
+  }
+
+  .md-toolbar__menu--components {
+    width: auto;
+    max-height: 40vh;
   }
 
   .md-toolbar__section--emoji {
