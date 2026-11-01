@@ -167,6 +167,24 @@ describe('applyLegacyHtmlCompat', () => {
     expect(compat!.source).toContain('[@图片/');
     expect(compat!.source).not.toContain('base64');
     expect(Object.keys(compat!.dataImages)).toHaveLength(1);
+    // 替换后的剩余区间必须是零宽而不是几十万个空格：巨型空白会让上游编译卡死。
+    const longestSpaceRun = Math.max(
+      0,
+      ...(compat!.source.match(/ +/g) ?? []).map((run) => run.length)
+    );
+    expect(longestSpaceRun).toBeLessThan(200);
+    expect(compile(compat!.source).ok).toBe(true);
+
+    // 被拒绝的大 data 图（魔数不对）同样不能留下巨型空格。
+    const rejected = `<p>前</p><img src="data:image/png;base64,${'A'.repeat(400_000)}" alt="大图"><p>后</p>`;
+    const rejectedCompat = applyLegacyHtmlCompat(rejected);
+    expect(rejectedCompat.counts['data-image-rejected']).toBe(1);
+    const rejectedSpaces = Math.max(
+      0,
+      ...(rejectedCompat.source.match(/ +/g) ?? []).map((run) => run.length)
+    );
+    expect(rejectedSpaces).toBeLessThan(200);
+    expect(compile(rejectedCompat.source).ok).toBe(true);
   });
 
   it('Markdown 原生 data 图片同样走宿主组件', () => {

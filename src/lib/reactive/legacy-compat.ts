@@ -192,12 +192,23 @@ function replaceRange(chars: string[], start: number, length: number, text: stri
 }
 
 /**
- * 把想要的替换串塞进原区间：短了用空格补齐，长了返回 null（调用方改为保守处理）。
- * 绝不让函数返回与区间不等长的结果 —— 那会破坏 source-map。
+ * 写入可见前缀，剩余区间用等长中和（零宽 + 保留换行）。
+ *
+ * ⚠️ **数据图不能走 `fitReplacement` 的空格补齐**：一张 400k 的 `data:` 图被
+ * 替换成 `[@图片/…]` 或 alt 后，剩下几十万个空格会拼成一段巨型空白；上游在
+ * 这一段上会卡死（实测 400k 空格 > 120s，整批扫描只能超时）。零宽不参与
+ * Markdown 的空白/缩进语义，长度不变，source-map 仍然对齐。
  */
-function fitReplacement(length: number, desired: string): string | null {
-  if (desired.length > length) return null;
-  return desired + ' '.repeat(length - desired.length);
+function writeVisiblePrefix(
+  chars: string[],
+  start: number,
+  length: number,
+  text: string
+): boolean {
+  if (text.length > length) return false;
+  for (let index = 0; index < text.length; index += 1) chars[start + index] = text[index];
+  neutralizeRange(chars, start + text.length, start + length);
+  return true;
 }
 
 /** 从标签原文里读一个属性值（只用于我们自己生成的转换，不用于安全判定）。 */
@@ -393,10 +404,7 @@ function convertMediaBlocks(chars: string[], masked: string, counts: MutableCoun
       desired = '视频';
       count(counts, 'video-drop');
     }
-    const replacement = fitReplacement(match[0].length, desired);
-    if (replacement !== null) {
-      replaceRange(chars, start, match[0].length, replacement);
-    } else {
+    if (!writeVisiblePrefix(chars, start, match[0].length, desired)) {
       neutralizeRange(chars, start, start + match[0].length);
     }
   }
@@ -531,17 +539,15 @@ function convertMarkdownDataImages(
     if (!image) {
       // 非受限 data 图：不显示、不输出巨长源码。
       const alt = safeAltText(match[1] ?? null);
-      const replacement = fitReplacement(match[0].length, alt === '图片' ? '' : alt);
-      if (replacement !== null) replaceRange(chars, start, match[0].length, replacement);
-      else neutralizeRange(chars, start, start + match[0].length);
+      if (!writeVisiblePrefix(chars, start, match[0].length, alt === '图片' ? '' : alt)) {
+        neutralizeRange(chars, start, start + match[0].length);
+      }
       count(counts, 'data-image-rejected');
       continue;
     }
     const ref = dataImageRef(image.url);
-    const replacement = fitReplacement(match[0].length, `[@图片/${ref}]`);
-    if (replacement !== null) {
+    if (writeVisiblePrefix(chars, start, match[0].length, `[@图片/${ref}]`)) {
       dataImages[ref] = { url: image.url, alt: safeAltText(match[1] ?? null) };
-      replaceRange(chars, start, match[0].length, replacement);
       count(counts, 'data-image');
     } else {
       neutralizeRange(chars, start, start + match[0].length);
@@ -653,15 +659,13 @@ function transformTags(
         if (image) {
           const ref = dataImageRef(image.url);
           const token = `[@图片/${ref}]`;
-          const replacement = fitReplacement(length, token);
-          if (replacement !== null) {
+          if (writeVisiblePrefix(chars, index, length, token)) {
             dataImages[ref] = {
               url: image.url,
               alt: safeAltText(readAttr(raw, 'alt')),
               ...(readAttr(raw, 'width') ? { width: readAttr(raw, 'width')! } : {}),
               ...(readAttr(raw, 'height') ? { height: readAttr(raw, 'height')! } : {}),
             };
-            replaceRange(chars, index, length, replacement);
             count(counts, 'data-image');
           } else {
             neutralizeRange(chars, index, end);
@@ -670,10 +674,7 @@ function transformTags(
         } else {
           // 非受限 data 位图：不显示、也不把十几万字符源码吐到页面上。
           const alt = safeAltText(readAttr(raw, 'alt'));
-          const replacement = fitReplacement(length, alt);
-          if (replacement !== null) {
-            replaceRange(chars, index, length, replacement);
-          } else {
+          if (!writeVisiblePrefix(chars, index, length, alt)) {
             neutralizeRange(chars, index, end);
           }
           count(counts, 'data-image-rejected');
@@ -695,10 +696,7 @@ function transformTags(
       const src = readAttr(raw, 'src');
       if (src !== null && src !== '' && !isAllowedReactiveUrl(src, 'image')) {
         const alt = safeAltText(readAttr(raw, 'alt'));
-        const replacement = fitReplacement(length, alt === '图片' ? '' : alt);
-        if (replacement !== null) {
-          replaceRange(chars, index, length, replacement);
-        } else {
+        if (!writeVisiblePrefix(chars, index, length, alt === '图片' ? '' : alt)) {
           neutralizeRange(chars, index, end);
         }
         count(counts, 'dropped-image');
