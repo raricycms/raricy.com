@@ -20,7 +20,7 @@
 // （低频动作，不该和内容插入挤在一起）。
 //
 // 【一份 DOM，桌面与手机同一套逻辑】组件里**不写 matchMedia**：宽屏显示带文字的
-// 入口，窄屏由样式表把文字标签藏起来、把历史组收进「更多」菜单。绝不做两套工具条
+// 入口，窄屏由样式表切成圆形图标钮、把历史组收进「更多」菜单。绝不做两套工具条
 // ——两份 DOM 会让菜单、选区、焦点各认到不同的一份。
 //
 // 【浮层互斥】同一时刻只开一个菜单（`openMenu` 单值）。点外面关闭且焦点留在用户
@@ -51,7 +51,6 @@ import {
   Columns2,
   Eye,
   FileDown,
-  Heading,
   ImagePlus,
   Image as ImageIcon,
   Indent,
@@ -66,6 +65,7 @@ import {
   MoreHorizontal,
   Outdent,
   Pencil,
+  Plus,
   Quote,
   Redo2,
   Sigma,
@@ -75,6 +75,7 @@ import {
   Table,
   Undo2,
   WandSparkles,
+  X,
 } from 'lucide-react';
 import type { EditorView } from '@codemirror/view';
 import { redoDepth, undoDepth } from '@codemirror/commands';
@@ -269,7 +270,7 @@ export default function Toolbar({
   useEffect(() => {
     if (!openMenu || openMenu === 'components') return;
     const first = menuRef.current?.querySelector<HTMLElement>(
-      'button:not([disabled]), [role="menuitem"]:not([disabled])'
+      '[role="menuitem"]:not([disabled])'
     );
     first?.focus();
   }, [openMenu]);
@@ -356,14 +357,12 @@ export default function Toolbar({
   );
 
   /**
-   * 主入口按钮：桌面 = 图标 + 完整文字，手机 = 只留**短文字**（图标与箭头由样式表
-   * 藏掉）。手机上保留可读的中文标签，而不是一排只有内行才认得的图标 ——
-   * `aria-label` 始终是完整名称，读屏不受视觉缩写影响。
+   * 主入口按钮：桌面为图标 + 文字，手机为圆形图标钮。
+   * 完整名称始终由 aria-label / title 提供，展开状态同时由淡底与 aria-expanded 表达。
    */
   const entry = (
     key: string,
     label: string,
-    short: string,
     Icon: typeof Bold,
     triggerRef: RefObject<HTMLButtonElement | null>,
     menu: Exclude<MenuKey, null>
@@ -383,9 +382,22 @@ export default function Toolbar({
     >
       <Icon size={16} strokeWidth={2} aria-hidden="true" />
       <span className="md-toolbar__entry-label">{label}</span>
-      <span className="md-toolbar__entry-short">{short}</span>
       <ChevronDown className="md-toolbar__entry-caret" size={12} strokeWidth={2} aria-hidden="true" />
     </button>
+  );
+
+  const menuHead = (label: string) => (
+    <div className="md-toolbar__menu-head">
+      <span className="md-toolbar__menu-title">{label}</span>
+      <button
+        type="button"
+        className="md-toolbar__menu-close"
+        aria-label={`关闭${label}菜单`}
+        onClick={() => closeMenu(true)}
+      >
+        <X size={18} strokeWidth={2} aria-hidden="true" />
+      </button>
+    </div>
   );
 
   const insertMenu = (
@@ -396,7 +408,8 @@ export default function Toolbar({
       aria-label="插入"
       onKeyDown={onMenuKeyDown}
     >
-      <div className="md-toolbar__section" role="group" aria-label="标题">
+      {menuHead('插入')}
+      <div className="md-toolbar__section md-toolbar__section--headings" role="group" aria-label="标题">
         <div className="md-toolbar__section-title">标题</div>
         <div className="md-toolbar__chips">
           {HEADINGS.map((heading) => (
@@ -404,12 +417,13 @@ export default function Toolbar({
               key={heading.level}
               type="button"
               role="menuitem"
+              aria-label={heading.label}
               className={`md-toolbar__chip${headingActive(heading.level) ? ' is-active' : ''}`}
               aria-pressed={headingActive(heading.level)}
               onMouseDown={(event) => event.preventDefault()}
               onClick={() => runAndClose(cmd.setHeading(heading.level))}
             >
-              {heading.label}
+              {heading.level === 0 ? heading.label : `H${heading.level}`}
             </button>
           ))}
         </div>
@@ -501,7 +515,7 @@ export default function Toolbar({
       {/* 1. Insert：所有 Markdown 写入动作 */}
       <div className="md-toolbar__group md-toolbar__group--insert">
         <div className="md-toolbar__popover-host">
-          {entry('insert', '插入', '插入', Heading, insertTriggerRef, 'insert')}
+          {entry('insert', '插入', Plus, insertTriggerRef, 'insert')}
           {openMenu === 'insert' && insertMenu}
         </div>
       </div>
@@ -509,7 +523,7 @@ export default function Toolbar({
       {/* 2. Components：ReactiveMD 原生组件（目录来自站点编译配置） */}
       <div className="md-toolbar__group md-toolbar__group--components">
         <div className="md-toolbar__popover-host">
-          {entry('components', '组件', '组件', Blocks, componentsTriggerRef, 'components')}
+          {entry('components', '组件', Blocks, componentsTriggerRef, 'components')}
           {openMenu === 'components' && (
             <ReactiveComponentPicker
               triggerRef={componentsTriggerRef}
@@ -534,7 +548,6 @@ export default function Toolbar({
         >
           <ImagePlus size={16} strokeWidth={2} aria-hidden="true" />
           <span className="md-toolbar__entry-label">上传图片</span>
-          <span className="md-toolbar__entry-short">图片</span>
         </button>
         <button
           type="button"
@@ -547,7 +560,6 @@ export default function Toolbar({
         >
           <Library size={16} strokeWidth={2} aria-hidden="true" />
           <span className="md-toolbar__entry-label">插入引用</span>
-          <span className="md-toolbar__entry-short">引用</span>
         </button>
       </div>
 
@@ -597,7 +609,6 @@ export default function Toolbar({
           >
             <MoreHorizontal size={16} strokeWidth={2} aria-hidden="true" />
             <span className="md-toolbar__entry-label">更多</span>
-            <span className="md-toolbar__entry-short">更多</span>
           </button>
           {openMenu === 'more' && (
             <div
@@ -607,6 +618,7 @@ export default function Toolbar({
               aria-label="更多"
               onKeyDown={onMenuKeyDown}
             >
+              {menuHead('更多')}
               <MenuButton
                 role="menuitem"
                 onRun={() => runAndClose(cmd.undoCommand)}

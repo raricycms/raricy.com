@@ -18,7 +18,6 @@
 .md-editor {
   display: flex;
   flex-direction: column;
-  border: 1px solid var(--color-border);
   border-radius: 20px;
   background: var(--color-background-page);
   // 圆角要真的裁掉里面那三层（工具条 / 编辑区 / 页脚）的直角。
@@ -47,10 +46,9 @@
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 2px;
-  padding: 6px 8px;
-  background: var(--color-background-subtle);
-  border-bottom: 1px solid var(--color-border);
+  gap: 4px;
+  padding: 8px;
+  background: var(--color-background-content);
   // 这条工具条是浮层宽度的**查询容器**：表情面板的宽度按它的内容盒收窄
   //（见 `.md-toolbar__menu--emoji` 的 `100cqw`）。窄屏上编辑区可能只有 ~190px
   // 内容宽，而面板挂在编辑区**外**会撑出去、被 `.md-editor` 的 `overflow: hidden`
@@ -63,7 +61,7 @@
 .md-toolbar__group {
   display: flex;
   align-items: center;
-  gap: 2px;
+  gap: 4px;
 }
 
 /// 四个主入口 + 历史 + 更多；分组本身不再参与“收起”。
@@ -74,21 +72,19 @@
 .md-toolbar__group--more {
   display: flex;
   align-items: center;
-  gap: 2px;
+  gap: 4px;
 }
 
-/// 主入口（带文字）：宽屏是 icon + 文字的小胶囊；窄屏保留短文字（见文末媒体查询）。
-///
-/// ⚠️ 选择器必须**带上 `.md-toolbar__btn`**：基线的 `width: 28px` 排在它后面，
-/// 同权重会被后写的盖掉 —— 症状是文字挤在 28px 的盒子里互相重叠（实测截图）。
+/// 主入口：桌面使用图标 + 文字胶囊，手机使用圆形图标钮。
+/// 带上基类以覆盖下方图标钮的固定宽度。
 .md-toolbar__btn.md-toolbar__btn--entry {
   width: auto;
-  gap: 5px;
-  padding: 0 8px;
-  font-size: .8rem;
+  gap: 6px;
+  padding: 0 12px;
+  font-size: .8125rem;
 
   &.is-open {
-    background: var(--color-background-content);
+    background-color: var(--color-brand-secondary);
     color: var(--color-brand-primary);
   }
 }
@@ -97,22 +93,19 @@
   white-space: nowrap;
 }
 
-/// 手机的短标签（插入 / 组件 / 图片 / 引用 / 更多）—— 宽屏不出现。
-.md-toolbar__entry-short {
-  display: none;
-  white-space: nowrap;
-}
-
 .md-toolbar__entry-caret {
   flex: none;
   opacity: .6;
+  transition: transform .25s ease;
+}
+
+.is-open .md-toolbar__entry-caret {
+  transform: rotate(180deg);
 }
 
 .md-toolbar__sep {
-  width: 1px;
-  height: 18px;
-  margin: 0 6px;
-  background: var(--color-border);
+  width: 8px;
+  flex: none;
 }
 
 /// 把右侧（导出）推到最右边
@@ -121,28 +114,26 @@
 }
 
 .md-toolbar__btn {
+  @include m.btn-secondary($pointer-hover-only: true);
+
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
+  flex: none;
+  width: 36px;
+  height: 36px;
   padding: 0;
-  border: none;
-  border-radius: 6px;
-  background: transparent;
-  color: var(--color-text-secondary);
-  cursor: pointer;
-  transition: color .2s ease, background-color .2s ease;
-
-  &:hover:not(:disabled) {
-    background: var(--color-background-content);
-    color: var(--color-brand-primary);
-  }
+  font: inherit;
 
   &:disabled {
     opacity: .4;
     cursor: not-allowed;
   }
+}
+
+.md-editor :is(button, input):focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus-brand);
 }
 
 // 浮层的定位上下文。按钮与菜单必须在同一个相对定位盒子里 —— 挂到工具条上
@@ -158,12 +149,38 @@
   left: 0;
   z-index: 30;
   min-width: 112px;
-  padding: 4px;
-  border: 1px solid var(--color-border);
-  border-radius: 10px;
-  background: var(--color-background-page);
+  padding: 8px;
+  border-radius: 20px;
+  background: var(--color-background-card);
   // 浮层一律用这条「抬起」阴影（base/_root.scss 的口径：浮层与卡片 hover 共用）
   box-shadow: var(--shadow-card-brand);
+}
+
+.md-toolbar__menu-head {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0 4px 4px 8px;
+}
+
+.md-toolbar__menu-title {
+  color: var(--color-text-primary);
+  font-size: .9375rem;
+  font-weight: 600;
+}
+
+.md-toolbar__menu-close {
+  @include m.btn-secondary($pointer-hover-only: true);
+
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 36px;
+  height: 36px;
+  padding: 0;
 }
 
 /// 靠右的那一个（导出）：从按钮**右缘**往左展开，否则会顶出编辑区右边界
@@ -173,24 +190,21 @@
 }
 
 .md-toolbar__menu-item {
+  @include m.btn-tab;
+
   display: flex;
   align-items: center;
   gap: 8px;
   width: 100%;
-  padding: 6px 10px;
-  border: none;
-  border-radius: 6px;
-  background: transparent;
+  min-height: 36px;
+  padding: 8px 10px;
   color: var(--color-text-primary);
   font: inherit;
-  font-size: .82rem;
+  font-size: .8125rem;
   text-align: left;
   white-space: nowrap;
-  cursor: pointer;
-
-  &:hover:not(:disabled),
-  &.is-active {
-    background: var(--color-background-content);
+  svg {
+    flex: none;
     color: var(--color-brand-primary);
   }
 
@@ -219,24 +233,26 @@
 .md-toolbar__menu--insert {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 10px 14px;
+  gap: 8px;
   width: min(440px, 100cqw);
   max-height: min(460px, 70vh);
-  padding: 10px;
+  padding: 12px;
   overflow-y: auto;
 }
 
 .md-toolbar__section {
   display: flex;
   flex-direction: column;
-  gap: 1px;
+  gap: 2px;
   min-width: 0;
+  padding: 8px;
+  border-radius: 16px;
+  background: var(--color-background-page);
 }
 
+.md-toolbar__section--headings,
 .md-toolbar__section--emoji {
   grid-column: 1 / -1;
-  padding-top: 4px;
-  border-top: 1px solid var(--color-border);
 }
 
 .md-toolbar__section-head {
@@ -247,40 +263,29 @@
 }
 
 .md-toolbar__section-title {
-  padding: 2px 8px;
+  padding: 4px 8px 6px;
   color: var(--color-text-secondary);
-  font-size: .7rem;
+  font-size: .75rem;
   font-weight: 600;
-  letter-spacing: .04em;
 }
 
 .md-toolbar__chips {
   display: flex;
   flex-wrap: wrap;
-  gap: 2px;
+  gap: 4px;
   padding: 0 2px;
 }
 
 .md-toolbar__chip {
-  padding: 3px 8px;
-  border: 1px solid var(--color-border);
-  border-radius: 6px;
-  background: transparent;
-  color: var(--color-text-primary);
+  @include m.btn-tab;
+
+  min-width: 36px;
+  min-height: 36px;
+  padding: 4px;
   font: inherit;
-  font-size: .75rem;
-  cursor: pointer;
-
-  &:hover {
-    border-color: var(--color-brand-primary);
-    color: var(--color-brand-primary);
-  }
-
-  &.is-active {
-    border-color: var(--color-brand-primary);
-    background: var(--color-brand-secondary);
-    color: var(--color-brand-primary);
-  }
+  font-size: .8125rem;
+  font-weight: 600;
+  white-space: nowrap;
 }
 
 .md-toolbar__emoji-toggle {
@@ -323,8 +328,8 @@
 
 // ── 窄屏工具条：四个主入口 + 更多，固定一行 ────────────────────────────────
 //
-// 手机上一排带文字的入口既挤不进一行、又点不准。这里只做三件事：
-//   1. 主入口收成 40px 图标钮（文字标签藏起来，aria-label / title 仍在）；
+// 手机保留五个圆形图标入口，完整名称由 aria-label / title 提供。
+//   1. 主入口为 44px 图标钮，不叠加文字、描边与下拉箭头；
 //   2. **历史组整个藏掉** —— 撤销 / 重做在「更多」菜单里有同一组命令（同一份
 //      逻辑，不是第二套工具条），首行因此只剩 插入 / 组件 / 上传 / 引用 / 更多；
 //   3. 菜单限宽限高、内部滚动，跟着编辑器可用宽度（100cqw）收。
@@ -349,41 +354,35 @@
     display: none;
   }
 
-  // 触摸面积：28px 是鼠标的尺寸，手指点不准。40px 在 WCAG 2.5.8 的 24px 下限
-  // 之上；首行五颗 = 200px + 间距，320px 上也放得下。
+  // 五个主入口保持独立的 44px 点击区域。
   .md-toolbar__btn {
-    width: 40px;
-    height: 40px;
+    width: 44px;
+    height: 44px;
   }
 
-  // 主入口：**保留可见的中文短标签**（普通作者不认图标）。图标与下拉箭头让出
-  // 宽度，按钮按文字自适应但至少 40px 触控面积；320px 上五个入口仍是一行。
   .md-toolbar__btn.md-toolbar__btn--entry {
-    width: auto;
-    min-width: 40px;
-    padding: 0 8px;
-    border: 1px solid var(--color-border);
-    background: var(--color-background-page);
-    font-size: .75rem;
+    width: 44px;
+    padding: 0;
   }
 
   .md-toolbar__btn--entry svg {
+    width: 20px;
+    height: 20px;
+  }
+
+  .md-toolbar__entry-label,
+  .md-toolbar__entry-caret {
     display: none;
   }
 
-  .md-toolbar__entry-label {
-    display: none;
-  }
-
-  .md-toolbar__entry-short {
-    display: inline;
-  }
-
-  // 换行后的行距：基线的 2px 是给同一行内的按钮留的，行与行之间那样挤
   .md-toolbar {
-    row-gap: 6px;
-    // 手机首行的五个入口之间多留 2px：短标签彼此不贴在一起，仍放得进 320px
-    column-gap: 4px;
+    flex-wrap: nowrap;
+    gap: 4px;
+    padding: 6px;
+  }
+
+  .md-toolbar__group--media {
+    gap: 4px;
   }
 
   // 窄屏浮层统一相对**工具条**定位：挂在第二个按钮（组件）的 host 上时，
@@ -395,15 +394,17 @@
   }
 
   .md-toolbar__menu {
-    left: 8px;
-    right: 8px;
+    left: 4px;
+    right: 4px;
     width: auto;
     min-width: 0;
   }
 
   .md-toolbar__menu--right {
-    left: 8px;
-    right: 8px;
+    left: 4px;
+    right: 4px;
+    max-height: 46vh;
+    overflow-y: auto;
   }
 
   // Insert 菜单：窄屏一列；整块限高滚动，别被 `.md-editor` 的 overflow:hidden
@@ -412,9 +413,10 @@
     grid-template-columns: 1fr;
     width: auto;
     // 编辑区本体只有 50vh（剪贴板）/ 60vh（博客）：菜单再高就会伸出 body、
-    // 被 `.md-editor` 的 overflow:clip 裁掉底部（看得见却点不到）。40vh 留给
-    // 工具条与页脚，超出部分由菜单自己滚动。
-    max-height: 40vh;
+    // 被 `.md-editor` 的 overflow:clip 裁掉底部。留出菜单与编辑区的底部间距，
+    // 超出部分由菜单自己滚动。
+    max-height: 46vh;
+    padding: 8px;
   }
 
   .md-toolbar__menu--components {
@@ -428,13 +430,46 @@
 
   .md-toolbar__menu-item,
   .md-toolbar__chip,
-  .md-toolbar__emoji-toggle {
-    min-height: 40px;
+  .md-toolbar__emoji-toggle,
+  .md-toolbar__menu-close {
+    min-height: 44px;
+  }
+
+  .md-toolbar__menu-close {
+    width: 44px;
+  }
+
+  .md-toolbar__chips {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .md-toolbar__menu-kbd {
+    display: none;
+  }
+
+  @container (min-width: 300px) {
+    // 按编辑器的实际宽度分栏；极窄表单保留单列，常见手机可同时看到两组命令。
+    .md-toolbar__menu--insert {
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    }
+
+    .md-toolbar__chips {
+      grid-template-columns: repeat(7, minmax(0, 1fr));
+    }
   }
 
   // 表情网格可能比编辑区还高（短视口 / 横屏）：自己滚。
   .md-toolbar__emoji-grid {
     max-height: 40vh;
+  }
+}
+
+@media (max-width: 360px) {
+  // 最窄编辑表单也容纳五个 44px 入口；分组只由留白区分。
+  .md-toolbar,
+  .md-toolbar__group--media {
+    gap: 0;
   }
 }
 
@@ -468,7 +503,7 @@
 }
 
 .md-editor[data-mode='split'] .md-editor__pane--preview {
-  border-left: 1px solid var(--color-border);
+  margin-left: 8px;
 }
 
 // CM6 自己会把 .cm-editor 设成内容高度，这里必须撑满面板，否则点面板下部的
@@ -483,8 +518,7 @@
   justify-content: space-between;
   gap: 8px;
   padding: 4px 8px;
-  background: var(--color-background-subtle);
-  border-bottom: 1px solid var(--color-border);
+  background: var(--color-background-content);
 }
 
 .md-editor__preview-label {
@@ -525,8 +559,7 @@
   justify-content: space-between;
   gap: 8px;
   padding: 6px 10px;
-  background: var(--color-background-subtle);
-  border-top: 1px solid var(--color-border);
+  background: var(--color-background-content);
 }
 
 .md-editor__count {
@@ -1153,10 +1186,10 @@
   .md-toolbar__menu--components {
     display: flex;
     flex-direction: column;
-    gap: 6px;
+    gap: 12px;
     width: min(380px, 100cqw);
     max-height: min(440px, 70vh);
-    padding: 8px;
+    padding: 12px;
     overflow: hidden;
   }
 
@@ -1171,11 +1204,13 @@
 
   .md-component-picker__title {
     color: var(--color-text-primary);
-    font-size: .82rem;
+    font-size: .9375rem;
     font-weight: 600;
   }
 
   .md-component-picker__close {
+    @include m.btn-secondary($pointer-hover-only: true);
+
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -1183,16 +1218,6 @@
     width: 28px;
     height: 28px;
     padding: 0;
-    border: none;
-    border-radius: 6px;
-    background: transparent;
-    color: var(--color-text-secondary);
-    cursor: pointer;
-
-    &:hover {
-      background: var(--color-background-content);
-      color: var(--color-brand-primary);
-    }
   }
 
   .md-component-picker__search {
@@ -1200,11 +1225,16 @@
     flex: none;
     align-items: center;
     gap: 6px;
-    padding: 5px 8px;
-    border: 1px solid var(--color-border);
-    border-radius: 8px;
-    background: var(--color-background-subtle);
+    min-height: 44px;
+    padding: 8px 12px;
+    border-radius: v.$radius-max;
+    background: var(--color-background-page);
     color: var(--color-text-secondary);
+    transition: box-shadow .2s ease;
+
+    &:focus-within {
+      box-shadow: var(--shadow-focus-brand);
+    }
   }
 
   .md-component-picker__search input {
@@ -1218,6 +1248,11 @@
     color: var(--color-text-primary);
     font: inherit;
     font-size: .8rem;
+
+    &:focus-visible {
+      // 焦点反馈由完整的搜索胶囊承担。
+      box-shadow: none;
+    }
   }
 
   .md-component-picker__scroll {
@@ -1227,40 +1262,36 @@
     overscroll-behavior: contain;
   }
 
-  .md-component-picker__group + .md-component-picker__group {
-    margin-top: 4px;
-    padding-top: 6px;
-    border-top: 1px solid var(--color-border);
+  .md-component-picker__group {
+    padding: 8px;
+    border-radius: 16px;
+    background: var(--color-background-page);
+
+    & + & {
+      margin-top: 8px;
+    }
   }
 
   .md-component-picker__group-title {
-    margin: 2px 6px 4px;
+    margin: 4px 8px 8px;
     color: var(--color-text-secondary);
-    font-size: .7rem;
+    font-size: .75rem;
     font-weight: 600;
-    letter-spacing: .04em;
   }
 
   .md-component-picker__item {
+    @include m.btn-tab;
+
     display: flex;
     align-items: center;
     gap: 8px;
     width: 100%;
-    min-height: 40px;
-    padding: 6px 8px;
-    border: none;
-    border-radius: 8px;
-    background: transparent;
+    min-height: 52px;
+    padding: 10px;
+    border-radius: 12px;
     color: var(--color-text-primary);
     font: inherit;
     text-align: left;
-    cursor: pointer;
-
-    &:hover,
-    &.is-active {
-      background: var(--color-background-content);
-      color: var(--color-brand-primary);
-    }
   }
 
   .md-component-picker__copy {
@@ -1276,15 +1307,15 @@
     align-items: center;
     gap: 6px;
     color: var(--color-text-primary);
-    font-size: .8rem;
+    font-size: .875rem;
     font-weight: 600;
   }
 
   .md-component-picker__badge {
-    padding: 0 4px;
-    border: 1px solid var(--color-border);
-    border-radius: 4px;
-    color: var(--color-text-secondary);
+    padding: 2px 6px;
+    border-radius: v.$radius-max;
+    background: var(--color-brand-secondary);
+    color: var(--color-brand-primary);
     font-size: .62rem;
     font-weight: 400;
     line-height: 1.5;
@@ -1294,7 +1325,7 @@
     display: block;
     overflow: hidden;
     color: var(--color-text-secondary);
-    font-size: .74rem;
+    font-size: .75rem;
     line-height: 1.45;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -1302,8 +1333,11 @@
 
   .md-component-picker__add {
     flex: none;
-    color: var(--color-text-secondary);
-    opacity: .5;
+    box-sizing: content-box;
+    padding: 6px;
+    border-radius: 50%;
+    background: var(--color-brand-secondary);
+    color: var(--color-brand-primary);
   }
 
   .md-component-picker__empty {

@@ -5,7 +5,7 @@ import { SEED_USERS } from './seed';
 // 编辑器工具条的窄屏形态 + Shift+Enter 的单行换行。
 //
 // 【为什么要 E2E】这两件事都**只在真浏览器里才成立**：
-//   · 窄屏把带文字的入口收成 40px 图标钮、把历史组藏进「更多」菜单，是
+//   · 窄屏把带文字的入口收成 44px 圆形图标钮、把历史组藏进「更多」菜单，是
 //     **样式表**做的（@media，见 `_markdown-editor.scss` 的窄屏段）。写错一个
 //     选择器、或者把那段排到 `.md-toolbar__group` 之前，症状是「手机上照旧一屏
 //     按钮」而 React 侧一点都不报错 —— 单测看不见，桌面那一遍也看不见。
@@ -36,7 +36,7 @@ const PNG_1X1 = Buffer.from(
   'base64'
 );
 
-/** 窄屏首行的五个主入口（历史组由样式表藏掉，撤销/重做在「更多」里）。 */
+/** 窄屏首行五个图标入口的可访问名（撤销/重做收进「更多」）。 */
 const CORE_LABELS = ['插入', '组件', '上传图片', '插入引用', '更多'];
 /** 窄屏被样式表藏起来的按钮（仍可从「更多」菜单触发同一条命令）。 */
 const HIDDEN_LABELS = ['撤销', '重做'];
@@ -295,10 +295,10 @@ test.describe('编辑器工具条：窄屏五个主入口 + 「更多」', () =>
 
       // ① 主入口在、历史组由样式表藏起来
       for (const name of CORE_LABELS) {
-        await expect(
-          toolbar.getByRole('button', { name, exact: true }),
-          `${width}px 下「${name}」应当还在首行`
-        ).toBeVisible();
+        const button = toolbar.getByRole('button', { name, exact: true });
+        await expect(button, `${width}px 下「${name}」应当还在首行`).toBeVisible();
+        await expect(button.locator('svg').first(), `${name} 缺少可见图标`).toBeVisible();
+        await expect(button.locator('.md-toolbar__entry-label')).toBeHidden();
       }
       for (const name of HIDDEN_LABELS) {
         await expect(
@@ -318,7 +318,7 @@ test.describe('编辑器工具条：窄屏五个主入口 + 「更多」', () =>
       expect(
         Math.min(...geo.heights),
         `${width}px 下按钮只有 ${Math.min(...geo.heights)}px 高`
-      ).toBeGreaterThanOrEqual(36);
+      ).toBeGreaterThanOrEqual(44);
     }
   });
 
@@ -339,8 +339,10 @@ test.describe('编辑器工具条：窄屏五个主入口 + 「更多」', () =>
     const total = await toolbar.locator('.md-toolbar__btn').count();
     const geo = await measureRow(toolbar);
     expect(geo.labels, '宽屏不该收起任何按钮').toHaveLength(total);
-    // 尺寸是鼠标那一档（带文字的主入口高度仍是 28）
-    expect(Math.max(...geo.heights), '宽屏按钮被放大了').toBeLessThanOrEqual(30);
+    // 桌面保留紧凑的图标 + 文字入口，触屏使用更大的点击区域。
+    expect(Math.max(...geo.heights), '宽屏按钮被放大了').toBeLessThanOrEqual(36);
+    await expect(toolbar.getByRole('button', { name: '插入', exact: true })
+      .locator('.md-toolbar__entry-label')).toBeVisible();
   });
 
   test('「更多」：撤销 / 导出 / 打印 / 格式化都在菜单里，Esc 关闭', async ({ page }) => {
@@ -367,12 +369,20 @@ test.describe('编辑器工具条：窄屏五个主入口 + 「更多」', () =>
 
     await page.keyboard.press('Escape');
     await expect(menu).toHaveCount(0);
+    await expect(toolbar.getByRole('button', { name: '更多', exact: true })).toBeFocused();
 
     // Insert 菜单：标题选项真的作用在正文上
     const mod = await modKey(page);
     await page.locator(`${BLOG_EDITOR} .cm-content`).click();
     await page.keyboard.press(`${mod}+a`);
     const insert = await openInsert(page, BLOG_EDITOR);
+    const headingLines = await insert.getByRole('menuitem', { name: '正文', exact: true })
+      .evaluate((button) => {
+        const range = document.createRange();
+        range.selectNodeContents(button);
+        return range.getClientRects().length;
+      });
+    expect(headingLines, '标题选项不应把「正文」挤成两行').toBe(1);
     await insert.getByRole('menuitem', { name: '标题 2', exact: true }).click();
     await expect(insert).toHaveCount(0);
 
@@ -570,16 +580,25 @@ test.describe('Shift+Enter：单行换行', () => {
     ).toBeGreaterThan(metrics.clientHeight + 300);
 
     await page.keyboard.press(`${await modKey(page)}+End`);
-    const before = await caretView(page, BLOG_EDITOR);
+    let before = await caretView(page, BLOG_EDITOR);
     expect(before.scrollTop, '光标在文末，视图却还停在顶端').toBeGreaterThan(0);
     expect(before.visible, '前置条件不成立：光标本该已经被滚进可见区').toBe(true);
+
+    // CM 会给文末光标预留可视余量；工具栏尺寸改变后，这份余量可能刚好容纳一行。
+    // 先把光标移到实际下沿，确保这次换行必须滚动，才能验证自动跟随。
+    await scroller.evaluate((el, caret) => {
+      el.scrollTop -= Math.max(0, caret.boxBottom - caret.caretBottom - 2);
+    }, before);
+    before = await caretView(page, BLOG_EDITOR);
+    expect(before.boxBottom - before.caretBottom, '光标没有贴近编辑区下沿').toBeLessThanOrEqual(3);
 
     const countBefore = await charCount(page);
     await page.keyboard.press('Shift+Enter');
     expect(await charCount(page), '这次 Shift+Enter 没有插进一个换行').toBe(countBefore + 1);
 
+    await expect.poll(async () => (await caretView(page, BLOG_EDITOR)).scrollTop,
+      { message: '视图没有跟着光标往下滚' }).toBeGreaterThan(before.scrollTop);
     const after = await caretView(page, BLOG_EDITOR);
     expect(after.visible, '按完 Shift+Enter，新光标掉到了编辑区可见范围之外').toBe(true);
-    expect(after.scrollTop, '视图没有跟着光标往下滚').toBeGreaterThan(before.scrollTop);
   });
 });
