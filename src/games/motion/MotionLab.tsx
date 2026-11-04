@@ -2,14 +2,11 @@
 
 import { useEffect, useMemo, useState, type CSSProperties } from 'react';
 import Link from 'next/link';
-import { sampleEasingPoints, easingRange } from './bezier';
+import { sampleEasing, sampleEasingPoints, easingRange } from './bezier';
 import {
   MOTION_CURVES,
   TAIL_CURVES,
   curveCss,
-  curvePoints,
-  curveProgress,
-  curveReadout,
   curveById,
   type MotionCurve,
 } from './curves';
@@ -22,7 +19,6 @@ import {
   type MotionVariant,
   type ScenarioKind,
 } from './scenarios';
-import { tailEndMs } from './tail';
 import TailDropdown from './TailDropdown';
 import { useReducedMotion } from './use-reduced-motion';
 
@@ -150,10 +146,11 @@ function CurveOverview({ picked, onPick }: { picked: string | null; onPick: (id:
 // ── 短尾曲线族 ───────────────────────────────────────────────────────────────
 
 /**
- * 「尾巴长度」的图：把五条曲线叠在同一张坐标里。
+ * 「尾巴长度」的图：把五条三次贝塞尔叠在同一张坐标里。
  *
- * 前段几乎完全重合 —— 它们本来就是同一条曲线；到各自收尾点后变成一条水平线，
- * 水平段越长，尾巴越短。用虚线区分四条短尾，图例里的色块是同一段虚线。
+ * 起点第一控制点相同，所以几条线起步时几乎贴在一起；尾端控制点越低，后半段减速越少、
+ * 曲线越早离开「贴顶缓爬」那段 —— 图上表现为灰线分叉后更快接近 1，尾巴更短。
+ * 用虚线区分四条短尾，图例里的色块是同一段虚线。
  */
 function TailFamilySection() {
   const baseline = curveById(INTERACTION_CURVE_ID);
@@ -164,12 +161,15 @@ function TailFamilySection() {
   return (
     <section className="mo-tail" aria-labelledby="mo-tail-title">
       <div className="mo-tail__intro">
-        <h2 className="mo-tail__title" id="mo-tail-title">尾巴长度：同一条曲线，四种收尾点</h2>
+        <h2 className="mo-tail__title" id="mo-tail-title">尾巴长度：四条尾端更短的三次贝塞尔</h2>
         <p className="mo-tail__lead">
-          交互反馈定的 540ms 是「时间槽」，但前段极快：前 230ms 就走完 95%，剩下 310ms
-          只是在挪最后几个百分点。下面这一族不换曲线 —— 主段与交互动画<strong>逐帧一致</strong>，
-          只把收尾点依次提前到 75% / 60% / 45% / 30%，用几十毫秒把剩下的行程走完就停住。
-          收尾点越早，压进收尾段的行程越多（30% 那档约 12%），那一下会明显更急。
+          交互动画 540 的拖尾来自第二控制点：y₂ = 1 让曲线在末端几乎水平，最后几个百分点
+          要慢慢爬。下面四条变体只移动这个点 —— 从 (0.3, 1) 沿对角线收到 (0.3→0.25 / 0.2 /
+          0.15 / 0.1，y₂ 1→0.925 / 0.85 / 0.775 / 0.7)：第一控制点没动，
+          <strong>起步速度与现版完全一样</strong>，前四分之一时间里行程几乎重合；越往后
+          第二控制点收得越多，中后段减速越少、尾巴越短，落点也越干脆。量化口径：最后 5%
+          的行程，现版要花约 310ms，四档依次压到约 250 / 160 / 110 / 85ms。四条都是正常的
+          三次贝塞尔，整条曲线连续可导，不是截尾或拼接。
         </p>
       </div>
 
@@ -187,17 +187,18 @@ function TailFamilySection() {
             <path
               key={curve.id}
               className={
-                curve.tail
-                  ? `mo-plot__path mo-plot__path--candidate mo-tail__line mo-tail__line--${index}`
-                  : 'mo-plot__path mo-plot__path--adopt'
+                index === 0
+                  ? 'mo-plot__path mo-plot__path--adopt'
+                  : `mo-plot__path mo-plot__path--candidate mo-tail__line mo-tail__line--${index}`
               }
-              d={toPath(curvePoints(curve), PLOT_SIZE)}
+              d={toPath(sampleEasingPoints(curve.points, 40), PLOT_SIZE)}
             />
           ))}
         </svg>
         <figcaption className="mo-overview__caption">
-          横轴是时间进度、纵轴是实际走了多少。几条线中段几乎贴在一起，到各自的收尾点后变成水平线 ——
-          水平段越长，那条曲线的尾巴越短、停得越早。
+          横轴是时间进度、纵轴是实际走了多少。几条线在起点与前半段几乎重合；末尾那段接近水平的
+          线就是「尾巴」—— 它越平、持续越久，动画最后「慢慢挪」的感觉越明显。四条变体把这段
+          换成更陡、更短的收尾，所以越往右尾巴越短。
         </figcaption>
       </figure>
 
@@ -206,11 +207,7 @@ function TailFamilySection() {
           <li key={curve.id} className="mo-tail__item">
             <svg className="mo-tail__swatch" viewBox="0 0 24 8" aria-hidden="true">
               <line
-                className={
-                  curve.tail
-                    ? `mo-tail__line mo-tail__line--${index}`
-                    : 'mo-tail__line mo-tail__line--base'
-                }
+                className={index === 0 ? 'mo-tail__line mo-tail__line--base' : `mo-tail__line mo-tail__line--${index}`}
                 x1="1"
                 y1="4"
                 x2="23"
@@ -221,9 +218,9 @@ function TailFamilySection() {
               <span className="mo-tail__name">
                 {curve.name}
                 <span className="mo-tail__badge">
-                  {curve.tail
-                    ? `${tailEndMs(curve.tail, INTERACTION_DURATION)}ms 停稳`
-                    : `${INTERACTION_DURATION}ms 走满全程`}
+                  {index === 0
+                    ? '现版 · p₂ (0.30, 1.00)'
+                    : `p₂ (${curve.points[2].toFixed(2)}, ${curve.points[3].toFixed(2)})`}
                 </span>
               </span>
               <span className="mo-tail__note">{curve.note}</span>
@@ -330,7 +327,7 @@ function CounterStage({
     const tick = (now: number) => {
       const progress = Math.min(1, (now - start) / duration);
       // 不裁剪：过冲曲线中途会超过 1000，那正是这一列要让人看见的东西。
-      setValue(Math.round(curveProgress(curve, progress) * 1000));
+      setValue(Math.round(sampleEasing(curve.points, progress) * 1000));
       if (progress < 1) frame = requestAnimationFrame(tick);
       else setValue(1000);
     };
@@ -364,7 +361,7 @@ function VariantStage({
   const scene = kind;
 
   // 展开那格的「重播」= 先收起再展开一次，由 ExpandStage 自己接管状态。
-  // 短尾三格复用同样的舞台结构，只是换了曲线（收尾点不同）。
+  // 短尾三格复用同样的舞台结构，只是换了曲线（尾端控制点不同）。
   if (scene === 'expand' || scene === 'expand-tail') {
     return <ExpandStage curve={curve} duration={variant.duration} run={run} />;
   }
@@ -453,16 +450,13 @@ function VariantCard({
   batch: number;
 }) {
   const curve = curveById(variant.curveId);
-  const spark = useMemo(() => toPath(curvePoints(curve, 32), SPARK_HEIGHT), [curve]);
+  const spark = useMemo(() => toPath(sampleEasingPoints(curve.points, 32), SPARK_HEIGHT), [curve]);
   // 两张「重播」共用同一个计数：本卡的单列重播 + 场景级「一起重播」。
   const [run, setRun] = useState(0);
   const replayToken = run + batch;
 
   // 读数只写曲线与时长：stagger 的间隔已经印在标签里，再写一遍是噪音。
-  // 短尾曲线额外标「在哪一刻停稳」—— 它和 540ms 的时长不是一回事。
-  const readout = curve.tail
-    ? `${curveReadout(curve)} · ${variant.duration}ms 槽 · ${tailEndMs(curve.tail, variant.duration)}ms 停稳`
-    : `${curveReadout(curve)} · ${variant.duration}ms`;
+  const readout = `${curveCss(curve)} · ${variant.duration}ms`;
   const sparkClass = [
     'mo-spark__line',
     curve.verdict === 'avoid' ? 'mo-spark__line--risky' : curve.verdict === 'candidate' ? 'mo-spark__line--plain' : null,
