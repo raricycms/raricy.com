@@ -71,10 +71,12 @@ test('文档按受众定位，重复指南与旧手工间路径跳转至规范�
   await expect(page).toHaveURL('/clipboard/guide');
   await expect(page.getByRole('link', { name: /返回/ }).first()).toHaveAttribute('href', '/clipboard');
   await page.goto('/game');
-  await expect(page.locator('.game-collection')).toHaveCount(2);
-  await expect(page.locator('a.game-collection[href="/game/collections/craft"]')).toBeVisible();
-  await page.goto('/game/collections/test/craft');
-  await expect(page).toHaveURL('/game/collections/craft');
+  await expect(page.locator('.game-collection')).toHaveCount(1);
+  await page.goto('/game/collections/test');
+  await expect(page.locator('a.game-collection[href="/game/collections/test/craft"]')).toBeVisible();
+  // 手工间曾独立陈列在顶层，旧地址跳到现在的父链路径。
+  await page.goto('/game/collections/craft');
+  await expect(page).toHaveURL('/game/collections/test/craft');
   await expect(page.locator('.game-card')).toHaveCount(3);
   await noOverflow(page);
 });

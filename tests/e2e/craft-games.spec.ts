@@ -40,10 +40,11 @@ async function expectNoOverflow(page: Page) {
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(page.viewportSize()!.width);
 }
 
-test('手工间合集：从独立入口进入，三件手工都能从卡片打开', async ({ page }) => {
+test('手工间合集：从实验室合集的子合集进入，三件手工都能从卡片打开', async ({ page }) => {
   await page.goto('/game');
-  await page.locator('.game-collection[href="/game/collections/craft"]').click();
-  await expect(page).toHaveURL('/game/collections/craft');
+  await page.locator('.game-collection[href="/game/collections/test"]').click();
+  await page.locator('.game-collection[href="/game/collections/test/craft"]').click();
+  await expect(page).toHaveURL('/game/collections/test/craft');
   await expect(page.locator('.game-breadcrumb')).toContainText('手工间');
   await expect(page.locator('.game-card')).toHaveCount(3);
   const hrefs = await page.locator('.game-card').evaluateAll((cards) => cards.map((card) => card.getAttribute('href')));
@@ -52,9 +53,9 @@ test('手工间合集：从独立入口进入，三件手工都能从卡片打�
   await expect(page.locator('.game-card[href="/game/papercut"]')).toContainText('剪纸窗花');
   await expect(page.locator('.game-card[href="/game/marbling"]')).toContainText('水面印花');
 
-  // 兼容原先位于测试合集下的收藏地址。
-  await page.goto('/game/collections/test/craft');
-  await expect(page).toHaveURL('/game/collections/craft');
+  // 兼容原先独立陈列时的收藏地址。
+  await page.goto('/game/collections/craft');
+  await expect(page).toHaveURL('/game/collections/test/craft');
 });
 
 test('小小织布机：拖一趟就是一行、换色只影响之后的行、撤销、刷新续织与导出', async ({ page }) => {

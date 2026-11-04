@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { registerFreshUser } from './helpers';
 
-test('玩具入口：四张首页卡按故事、玩具、博客、工具排列，首页为 ATÅMAS，手工间与实验室独立陈列', async ({ page }) => {
+test('玩具入口：四张首页卡按故事、玩具、博客、工具排列，首页为 ATÅMAS，手工间挂在实验室合集下', async ({ page }) => {
   await page.goto('/');
   expect(await page.locator('.home-grid .feature-card').evaluateAll((cards) => cards.map((card) => card.getAttribute('href'))))
     .toEqual(['/story', '/game', '/explore', '/tool']);
@@ -24,16 +24,16 @@ test('玩具入口：四张首页卡按故事、玩具、博客、工具排列�
   expect(hrefs).toEqual(['/game/atamas']);
   await expect(page.locator('.game-card__tags')).toHaveText(['益智单人']);
 
-  // 手工间与实验室各自有明确的入口。
+  // 顶层只陈列一个合集（实验室）；手工间挂在它下面，不在这里重复出现。
   const collectionHrefs = await page.locator('.game-collection').evaluateAll((cards) => cards.map((card) => card.getAttribute('href')));
-  expect(collectionHrefs).toEqual(['/game/collections/test','/game/collections/craft']);
+  expect(collectionHrefs).toEqual(['/game/collections/test']);
 
   await page.locator('.game-collection[href="/game/collections/test"]').click();
   await expect(page).toHaveURL('/game/collections/test');
   await expect(page.locator('.game-card')).toHaveCount(12);
   await expect(page.locator('.game-card[href="/game/hinge3"]')).toHaveCount(1);
   await expect(page.locator('.game-card[href="/game/hinge2"]')).toHaveCount(1);
-  await expect(page.locator('.game-collection')).toHaveCount(0);
+  await expect(page.locator('.game-collection[href="/game/collections/test/craft"]')).toHaveCount(1);
   await expect(page.locator('.game-card[href="/game/lumen"]')).toHaveCount(1);
   await expect(page.locator('.game-card[href="/game/lumen2"]')).toHaveCount(1);
   await expect(page.locator('.game-card[href="/game/twinshade"]')).toHaveCount(1);
