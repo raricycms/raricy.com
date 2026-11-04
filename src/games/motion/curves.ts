@@ -23,7 +23,7 @@ export const MOTION_CURVES: readonly MotionCurve[] = [
     id: 'interaction',
     name: '交互动画',
     points: [0.16, 1, 0.3, 1],
-    note: '交互产生的一切反馈统一用它，默认 600ms 走完全程。起步极快、尾巴拖长，所以「点了马上有反应」；反过来当收起用会显得「先冲一下」。',
+    note: '交互产生的一切反馈统一用它，默认 540ms 走完全程。起步极快、尾巴拖长，所以「点了马上有反应」；反过来当收起用会显得「先冲一下」。',
     verdict: 'adopt',
   },
   {
@@ -86,7 +86,7 @@ export const MOTION_CURVES: readonly MotionCurve[] = [
     id: 'swift-out',
     name: '快出缓停',
     points: [0.22, 1, 0.36, 1],
-    note: '比交互动画再快一档的「瞬间起步」。600ms 嫌慢、又不想换曲线时，用它把时长压到 320ms 观感接近。',
+    note: '比交互动画再快一档的「瞬间起步」。540ms 嫌慢、又不想换曲线时，用它把时长压到 320ms 观感接近。',
     verdict: 'candidate',
   },
   {

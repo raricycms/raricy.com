@@ -14,12 +14,13 @@ import type { BezierPoints } from './bezier';
  * （显示名「交互动画」）。站内原来按 150–250ms `ease` 走的按钮、悬停光晕、滑块位移，
  * 以及按 480ms 走的展开面板，都归到这一档。
  *
- * 默认时长 600ms：曲线本身前段极快（前 25% 已走完 60% 以上），所以数字上比原来的
+ * 默认时长 540ms：曲线本身前段极快（前 25% 已走完 60% 以上），所以数字上比原来的
  * 反馈档长得多，观感上「点了就有反应」那一下并不慢 —— 拉长的是尾巴。
  * 要改默认时长只改这一个数，下表里写 `INTERACTION_DURATION` 的变体跟着一起变。
+ * 原来试过 600ms，觉得收尾稍拖，现在取 540ms；展开那格仍摆 480 / 600 两列作对照。
  */
 export const INTERACTION_CURVE_ID = 'interaction';
-export const INTERACTION_DURATION = 600;
+export const INTERACTION_DURATION = 540;
 
 export type ScenarioKind =
   | 'expand'
@@ -43,7 +44,7 @@ export interface MotionVariant {
   stagger?: number;
   /**
    * 这一列是不是「统一取值」那一列（页面上加边框与角标标出来）。
-   * 显式写而不是按「曲线 + 时长」推：逐条入场那格有两列都是 600ms，其中「间隔 0ms」
+   * 显式写而不是按「曲线 + 时长」推：逐条入场那格有两列都是 540ms，其中「间隔 0ms」
    * 是**对照件**（用来说明没有间隔就没有层次），它不该被打上「统一取值」。
    */
   adopted?: boolean;
@@ -63,10 +64,11 @@ export const MOTION_SCENARIOS: readonly MotionScenario[] = [
     id: 'expand',
     title: '展开 / 收起面板',
     meta: 'grid-template-rows 0fr → 1fr · 按内容实际高度伸展，不猜 max-height',
-    hint: '站内所有展开面板（博客目录、下拉、设置项）都是这一格。现在统一走交互动画 600ms；第二列是同一条曲线压回 480ms，用来对比「尾巴拉长」到底改变了什么。其余两列是别的曲线，看的是「起步那一下有多急」。',
+    hint: '站内所有展开面板（博客目录、下拉、设置项）都是这一格。现在统一走交互动画 540ms；紧跟其后的两列把同一条曲线分别放回 480ms 与 600ms，用来对比「尾巴拉长」到底改变了什么。其余两列是别的曲线，看的是「起步那一下有多急」。',
     variants: [
       { key: 'interaction', label: '交互动画', curveId: INTERACTION_CURVE_ID, duration: INTERACTION_DURATION, adopted: true },
       { key: 'interaction-480', label: '交互动画 480', curveId: INTERACTION_CURVE_ID, duration: 480 },
+      { key: 'interaction-600', label: '交互动画 600', curveId: INTERACTION_CURVE_ID, duration: 600 },
       { key: 'swift', label: '快出缓停', curveId: 'swift-out', duration: 320 },
       { key: 'decelerate', label: '减速档', curveId: 'decelerate', duration: 360 },
     ],
@@ -87,7 +89,7 @@ export const MOTION_SCENARIOS: readonly MotionScenario[] = [
     id: 'stagger',
     title: '逐条入场（stagger）',
     meta: '5 项 · 相邻延迟 0 / 20 / 28 / 55ms',
-    hint: '站内现行是 28ms、最多 5 项。间隔为 0 时五条一起动、看不出层次；55ms 已经能数出条数，长列表会拖尾。第一列是统一后的取值：交互动画 600ms + 28ms 间隔。',
+    hint: '站内现行是 28ms、最多 5 项。间隔为 0 时五条一起动、看不出层次；55ms 已经能数出条数，长列表会拖尾。第一列是统一后的取值：交互动画 540ms + 28ms 间隔。',
     variants: [
       { key: 'interaction', label: '交互动画 · 间隔 28ms', curveId: INTERACTION_CURVE_ID, duration: INTERACTION_DURATION, adopted: true, stagger: 28 },
       { key: 'zero', label: '交互动画 · 间隔 0ms', curveId: INTERACTION_CURVE_ID, duration: INTERACTION_DURATION, stagger: 0 },
@@ -99,7 +101,7 @@ export const MOTION_SCENARIOS: readonly MotionScenario[] = [
     id: 'overlay',
     title: '弹层 / 下拉出现',
     meta: 'opacity + scale(0.96) · 从自身中心放大，不做从屏幕外飞入',
-    hint: '这一格是「统一之后最可能需要例外」的地方：600ms 的弹层挡着内容，会明显等人。第一列给统一取值，第二列同一条曲线压到 220ms —— 对着看差多少，再决定要不要为弹层单开一档。',
+    hint: '这一格是「统一之后最可能需要例外」的地方：540ms 的弹层挡着内容，会明显等人。第一列给统一取值，第二列同一条曲线压到 220ms —— 对着看差多少，再决定要不要为弹层单开一档。',
     variants: [
       { key: 'interaction', label: '交互动画', curveId: INTERACTION_CURVE_ID, duration: INTERACTION_DURATION, adopted: true },
       { key: 'interaction-short', label: '交互动画 220（压短）', curveId: INTERACTION_CURVE_ID, duration: 220 },
@@ -111,7 +113,7 @@ export const MOTION_SCENARIOS: readonly MotionScenario[] = [
     id: 'hover',
     title: '卡片悬停光晕',
     meta: 'box-shadow 透明度过渡 · 把鼠标移到四张卡上分别看',
-    hint: '悬停反馈没有「结束时刻」，所以曲线只影响前半段：越快越像「立刻亮」，越缓越像「慢慢渗」。第一列是统一的 600ms —— 悬停这一格最容易看出「尾巴拖长」到底要不要收短。',
+    hint: '悬停反馈没有「结束时刻」，所以曲线只影响前半段：越快越像「立刻亮」，越缓越像「慢慢渗」。第一列是统一的 540ms —— 悬停这一格最容易看出「尾巴拖长」到底要不要收短。',
     variants: [
       { key: 'interaction', label: '交互动画', curveId: INTERACTION_CURVE_ID, duration: INTERACTION_DURATION, adopted: true },
       { key: 'ease', label: 'ease 200（原取值）', curveId: 'ease', duration: 200 },
@@ -122,7 +124,7 @@ export const MOTION_SCENARIOS: readonly MotionScenario[] = [
     id: 'segment',
     title: '分段滑块的滑块位移',
     meta: 'transform: translateX · 点一下切换，看滑块走位',
-    hint: '滑块位移是「有明确起止的短位移」。第一列统一走交互动画 600ms；后两列是原来的短时长，用来判断滑块该不该跟着统一 —— 短位移用过冲或两头缓都会让人觉得「卡了半拍」。',
+    hint: '滑块位移是「有明确起止的短位移」。第一列统一走交互动画 540ms；后两列是原来的短时长，用来判断滑块该不该跟着统一 —— 短位移用过冲或两头缓都会让人觉得「卡了半拍」。',
     variants: [
       { key: 'interaction', label: '交互动画', curveId: INTERACTION_CURVE_ID, duration: INTERACTION_DURATION, adopted: true },
       { key: 'ease', label: 'ease 250（原取值）', curveId: 'ease', duration: 250 },

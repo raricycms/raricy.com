@@ -335,7 +335,7 @@ function VariantCard({ scenario, variant, reduce }: { scenario: MotionScenario; 
   const replayable = scenario.id !== 'hover' && scenario.id !== 'segment';
 
   // 统一的取值要一眼能找到 —— 每场景都有一列是它，靠序号猜不合适。
-  // 读数据里那个显式标记，别按「曲线 + 时长」推：逐条入场那格有两列都是 600ms。
+  // 读数据里那个显式标记，别按「曲线 + 时长」推：逐条入场那格有两列都是 540ms。
   const adopted = variant.adopted === true;
 
   return (
