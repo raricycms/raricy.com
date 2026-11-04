@@ -302,6 +302,15 @@
 .mo-tail__line--3 { stroke-dasharray: 1.5 1.8; }
 .mo-tail__line--4 { stroke-dasharray: 9 2 2 2; }
 
+// 每条线的结束时刻：圆点标在曲线末端，右侧留白就是省掉的那段缓冲。
+.mo-tail__end {
+  fill: var(--color-text-secondary);
+  stroke: var(--color-background-card);
+  stroke-width: 0.5;
+}
+
+.mo-tail__end--base { fill: var(--color-brand-primary); }
+
 .mo-tail__legend {
   display: grid;
   gap: v.$space-2;

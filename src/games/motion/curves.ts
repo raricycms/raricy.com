@@ -100,46 +100,59 @@ export const MOTION_CURVES: readonly MotionCurve[] = [
 
 // ── 短尾变体 ─────────────────────────────────────────────────────────────────
 //
-// 交互动画（0.16, 1, 0.3, 1）的长尾巴来自第二控制点：y₂ = 1 让曲线在末端几乎水平，
-// 最后几个百分点要慢慢爬。这一族只移动第二控制点 —— 从 (0.3, 1) 沿对角线收到
-// (0.1, 0.7)，分四档：
-//   · 第一控制点 (0.16, 1) 没动 → 起步速度与现版完全一样；
-//   · 第二控制点只小幅移动 → 前 25% 时间里行程几乎重合（x = 0.2 处差不到 1 个点），
-//     从三成时间往后才逐渐分开；
-//   · 收得越多，中后段减速越少、尾巴越短，落点也越干脆（末段速度更高）。
+// 交互动画 540 的长尾巴有两个毛病：整段动画一直拖到最后，而且最后 5% 的行程要花
+// 约 310ms。这一族把「收尾」直接砍短 —— 每档有自己的**真实时长**（480 / 420 / 360 /
+// 300ms），动画到点就真的结束；同时前段速度别变：
+//
+//   · 四条都是独立的三次贝塞尔，参数按「墙钟时间」拟合 —— 在各自前 200ms 里，
+//     滑块/面板的实时位置与现版的差都 ≤ 2.3%，50% 走到的时间几乎一样（55–56ms）；
+//   · 第一控制点略向右移（起步稍缓），抵消时长变短带来的加速；第二控制点右移更多，
+//     让最后那段减速不至于「提前进入、拖长尾巴」；
+//   · 最后 5% 行程的实际用时：现版 310ms → 256 / 201 / 146 / 88ms。
+//
 // 四条都是正常的三次贝塞尔，整条曲线连续可导，没有截尾、没有拼接、没有折线。
-const TAIL_SPECS: readonly { id: string; p2: readonly [number, number]; note: string }[] = [
+export interface TailCurve extends MotionCurve {
+  /** 这一档真实播完的时长（ms）。短尾的重点就是它比 540ms 短。 */
+  duration: number;
+}
+
+const TAIL_SPECS: readonly { id: string; duration: number; points: BezierPoints; note: string }[] = [
   {
-    id: 'tail-1',
-    p2: [0.25, 0.925],
-    note: '第二控制点收到 (0.25, 0.925)：最轻的一档。前段几乎看不出差别，最后 5% 行程从现版的约 310ms 缩到约 250ms。',
+    id: 'tail-480',
+    duration: 480,
+    points: [0.171, 1, 0.387, 1],
+    note: '480ms 结束（早 60ms）：前段轨迹与现版几乎重合，最后 5% 行程从约 310ms 压到约 256ms。',
   },
   {
-    id: 'tail-2',
-    p2: [0.2, 0.85],
-    note: '第二控制点收到 (0.2, 0.85)：中段开始能看出「少减速」，最后 5% 行程缩到约 160ms。',
+    id: 'tail-420',
+    duration: 420,
+    points: [0.185, 1, 0.502, 1],
+    note: '420ms 结束（早 120ms）：中段开始能看出「到得更早」，最后 5% 行程约 201ms。',
   },
   {
-    id: 'tail-3',
-    p2: [0.15, 0.775],
-    note: '第二控制点收到 (0.15, 0.775)：最后那段慢爬基本没有了，最后 5% 行程缩到约 110ms。',
+    id: 'tail-360',
+    duration: 360,
+    points: [0.202, 1, 0.661, 1],
+    note: '360ms 结束（早 180ms）：缓冲明显短了，最后 5% 行程约 146ms。',
   },
   {
-    id: 'tail-4',
-    p2: [0.1, 0.7],
-    note: '第二控制点收到 (0.1, 0.7)：收得最狠的一档，最后 5% 行程只花约 85ms —— 用来判断「尾巴收多短会显硬」。',
+    id: 'tail-300',
+    duration: 300,
+    points: [0.221, 1, 0.9, 1],
+    note: '300ms 结束（早 240ms）：收得最狠的一档，最后 5% 行程只花约 88ms —— 用来判断缓冲收到这么短会不会太急。',
   },
 ];
 
 const INTERACTION_CURVE = MOTION_CURVES.find((curve) => curve.id === 'interaction');
 if (!INTERACTION_CURVE) throw new Error('curves.ts 里缺少交互动画曲线');
 
-export const TAIL_CURVES: readonly MotionCurve[] = TAIL_SPECS.map(({ id, p2, note }, index): MotionCurve => ({
+export const TAIL_CURVES: readonly TailCurve[] = TAIL_SPECS.map(({ id, duration, points, note }): TailCurve => ({
   id,
-  name: `短尾 ${index + 1}/4`,
-  points: [INTERACTION_CURVE.points[0], INTERACTION_CURVE.points[1], p2[0], p2[1]],
+  name: `短尾 ${duration}ms`,
+  points,
   note,
   verdict: 'candidate',
+  duration,
 }));
 
 export const CURVE_BY_ID = new Map([...MOTION_CURVES, ...TAIL_CURVES].map((curve) => [curve.id, curve]));

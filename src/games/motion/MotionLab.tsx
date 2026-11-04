@@ -146,35 +146,49 @@ function CurveOverview({ picked, onPick }: { picked: string | null; onPick: (id:
 // ── 短尾曲线族 ───────────────────────────────────────────────────────────────
 
 /**
- * 「尾巴长度」的图：把五条三次贝塞尔叠在同一张坐标里。
+ * 把一条曲线画成「墙钟时间 → 行程」：横轴是 0–540ms 里的实际时刻，曲线只画到自己时长，
+ * 之后留白 —— 留白那一段就是这档**不再等**的时间。几档短尾因此前段重叠、末端错开。
+ */
+function wallClockPoints(curve: MotionCurve, duration: number, steps = 48): [number, number][] {
+  const points: [number, number][] = [];
+  for (let index = 0; index <= steps; index++) {
+    const u = index / steps;
+    points.push([(u * duration) / INTERACTION_DURATION, sampleEasing(curve.points, u)]);
+  }
+  return points;
+}
+
+/**
+ * 「尾巴长度」的图：五条曲线按**实际时间**叠在同一张坐标里。
  *
- * 起点第一控制点相同，所以几条线起步时几乎贴在一起；尾端控制点越低，后半段减速越少、
- * 曲线越早离开「贴顶缓爬」那段 —— 图上表现为灰线分叉后更快接近 1，尾巴更短。
- * 用虚线区分四条短尾，图例里的色块是同一段虚线。
+ * 妙的地方是四条短尾按「前段墙钟位置贴着现版」拟合，所以它们几乎完全重合；区别
+ * 只在线的末端 —— 现版画到 540ms，短尾分别在 480 / 420 / 360 / 300ms 收住。
+ * 用虚线区分四条短尾，图例里的色块是同一段虚线，圆点标出各自的结束时刻。
  */
 function TailFamilySection() {
   const baseline = curveById(INTERACTION_CURVE_ID);
-  const curves = [baseline, ...TAIL_CURVES];
+  const entries = [
+    { curve: baseline, duration: INTERACTION_DURATION },
+    ...TAIL_CURVES.map((curve) => ({ curve, duration: curve.duration })),
+  ];
   const gridLines = [0.25, 0.5, 0.75].map((ratio) => PLOT_PAD + ratio * (PLOT_SIZE - PLOT_PAD * 2));
   const diagonal = useMemo(() => toPath(sampleEasingPoints([0, 0, 1, 1], 4), PLOT_SIZE), []);
 
   return (
     <section className="mo-tail" aria-labelledby="mo-tail-title">
       <div className="mo-tail__intro">
-        <h2 className="mo-tail__title" id="mo-tail-title">尾巴长度：四条尾端更短的三次贝塞尔</h2>
+        <h2 className="mo-tail__title" id="mo-tail-title">尾巴长度：让动画真的更早结束</h2>
         <p className="mo-tail__lead">
-          交互动画 540 的拖尾来自第二控制点：y₂ = 1 让曲线在末端几乎水平，最后几个百分点
-          要慢慢爬。下面四条变体只移动这个点 —— 从 (0.3, 1) 沿对角线收到 (0.3→0.25 / 0.2 /
-          0.15 / 0.1，y₂ 1→0.925 / 0.85 / 0.775 / 0.7)：第一控制点没动，
-          <strong>起步速度与现版完全一样</strong>，前四分之一时间里行程几乎重合；越往后
-          第二控制点收得越多，中后段减速越少、尾巴越短，落点也越干脆。量化口径：最后 5%
-          的行程，现版要花约 310ms，四档依次压到约 250 / 160 / 110 / 85ms。四条都是正常的
-          三次贝塞尔，整条曲线连续可导，不是截尾或拼接。
+          交互动画 540 有两处拖：整段一直拖到最后，而且最后 5% 的行程要磨约 310ms。下面四档
+          把收尾直接砍短 —— 每档有自己的真实时长（<strong>480 / 420 / 360 / 300ms</strong>，
+          到点就真的结束），曲线参数则按「前段墙钟位置贴着现版」拟合：前 200ms 里实时位置
+          与现版差不超过约 2%，50% 在 55–56ms 走到（现版 55ms）。最后 5% 的行程因此从 310ms
+          依次降到约 256 / 201 / 146 / 88ms。四条都是正常的三次贝塞尔，整条曲线连续可导。
         </p>
       </div>
 
       <figure className="mo-tail__figure">
-        <svg className="mo-tail__plot" viewBox={`0 0 ${PLOT_SIZE} ${PLOT_SIZE}`} role="img" aria-label="交互动画与四种短尾版本的形状对比">
+        <svg className="mo-tail__plot" viewBox={`0 0 ${PLOT_SIZE} ${PLOT_SIZE}`} role="img" aria-label="交互动画与四档更早结束的曲线按实际时间的对比">
           <rect className="mo-plot__frame" x="0.4" y="0.4" width="99.2" height="99.2" rx="4" />
           {gridLines.map((position) => (
             <g key={position}>
@@ -183,27 +197,27 @@ function TailFamilySection() {
             </g>
           ))}
           <path className="mo-plot__diagonal" d={diagonal} />
-          {curves.map((curve, index) => (
-            <path
-              key={curve.id}
-              className={
-                index === 0
-                  ? 'mo-plot__path mo-plot__path--adopt'
-                  : `mo-plot__path mo-plot__path--candidate mo-tail__line mo-tail__line--${index}`
-              }
-              d={toPath(sampleEasingPoints(curve.points, 40), PLOT_SIZE)}
-            />
-          ))}
+          {entries.map(({ curve, duration }, index) => {
+            const points = wallClockPoints(curve, duration);
+            const end = points[points.length - 1];
+            const className = index === 0 ? 'mo-plot__path mo-plot__path--adopt' : `mo-plot__path mo-plot__path--candidate mo-tail__line mo-tail__line--${index}`;
+            return (
+              <g key={curve.id}>
+                <path className={className} d={toPath(points, PLOT_SIZE)} />
+                <circle className={`mo-tail__end ${index === 0 ? 'mo-tail__end--base' : `mo-tail__end--${index}`}`} cx={PLOT_PAD + end[0] * (PLOT_SIZE - PLOT_PAD * 2)} cy={PLOT_SIZE - PLOT_PAD - (end[1] - PLOT_RANGE.min) / (PLOT_RANGE.max - PLOT_RANGE.min) * (PLOT_SIZE - PLOT_PAD * 2)} r="1.6" />
+              </g>
+            );
+          })}
         </svg>
         <figcaption className="mo-overview__caption">
-          横轴是时间进度、纵轴是实际走了多少。几条线在起点与前半段几乎重合；末尾那段接近水平的
-          线就是「尾巴」—— 它越平、持续越久，动画最后「慢慢挪」的感觉越明显。四条变体把这段
-          换成更陡、更短的收尾，所以越往右尾巴越短。
+          横轴是实际时间（0–540ms）、纵轴是实际走了多少。几条线前段几乎完全重合（同一时刻
+          位置差约 2% 以内），区别只在末端：现版画到 540ms 才停，短尾依次在 480 / 420 / 360 /
+          300ms 收住 —— 圆点是各自的结束时刻，右侧留白就是省掉的那段缓冲。
         </figcaption>
       </figure>
 
       <ul className="mo-tail__legend">
-        {curves.map((curve, index) => (
+        {entries.map(({ curve, duration }, index) => (
           <li key={curve.id} className="mo-tail__item">
             <svg className="mo-tail__swatch" viewBox="0 0 24 8" aria-hidden="true">
               <line
@@ -218,9 +232,7 @@ function TailFamilySection() {
               <span className="mo-tail__name">
                 {curve.name}
                 <span className="mo-tail__badge">
-                  {index === 0
-                    ? '现版 · p₂ (0.30, 1.00)'
-                    : `p₂ (${curve.points[2].toFixed(2)}, ${curve.points[3].toFixed(2)})`}
+                  {duration < INTERACTION_DURATION ? `早 ${INTERACTION_DURATION - duration}ms 结束` : '现版 540ms'}
                 </span>
               </span>
               <span className="mo-tail__note">{curve.note}</span>
@@ -450,7 +462,14 @@ function VariantCard({
   batch: number;
 }) {
   const curve = curveById(variant.curveId);
-  const spark = useMemo(() => toPath(sampleEasingPoints(curve.points, 32), SPARK_HEIGHT), [curve]);
+  const spark = useMemo(() => {
+    // 尾巴长度那三格按**实际时间**画：曲线只画到自己时长，留出右侧空白 —— 一眼能看出
+    // 这档比现版早停多久。其余场景仍画归一化后的曲线形状（每列时长本来就不一样）。
+    const inTailGroup = TAIL_SCENARIO_IDS.has(scenario.id);
+    const scale = inTailGroup ? variant.duration / INTERACTION_DURATION : 1;
+    const points = sampleEasingPoints(curve.points, 32).map(([x, y]): [number, number] => [x * scale, y]);
+    return toPath(points, SPARK_HEIGHT);
+  }, [curve, scenario.id, variant.duration]);
   // 两张「重播」共用同一个计数：本卡的单列重播 + 场景级「一起重播」。
   const [run, setRun] = useState(0);
   const replayToken = run + batch;

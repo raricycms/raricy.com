@@ -50,14 +50,15 @@ test('动效试验台：十二个场景各摆多列，曲线与时长可对照�
   expect(await tailPanel.evaluate((el) => el.getBoundingClientRect().height)).toBeLessThan(2);
   await dropdown.locator('.mo-cat__toggle').first().click();
   await expect.poll(() => tailPanel.evaluate((el) => el.getBoundingClientRect().height)).toBeGreaterThan(40);
-  // 后四列都必须是正常的三次贝塞尔（不是 linear() 采样），读数里能直接看到控制点。
+  // 后四列都必须是正常的三次贝塞尔（不是 linear() 采样），而且时长真的比 540ms 短。
   const tailReadouts = await dropdown.locator('.mo-variant__readout').allTextContents();
   expect(tailReadouts).toHaveLength(5);
-  for (const readout of tailReadouts.slice(1)) {
-    expect(readout).toContain('cubic-bezier(0.16, 1, ');
-    expect(readout).toContain('540ms');
-  }
-  expect(tailReadouts[4]).toContain('cubic-bezier(0.16, 1, 0.1, 0.7)');
+  expect(tailReadouts[0]).toContain('cubic-bezier(0.16, 1, 0.3, 1) · 540ms');
+  expect(tailReadouts[1]).toContain('480ms');
+  expect(tailReadouts[2]).toContain('420ms');
+  expect(tailReadouts[3]).toContain('360ms');
+  expect(tailReadouts[4]).toContain('300ms');
+  for (const readout of tailReadouts.slice(1)) expect(readout).toContain('cubic-bezier(');
 
   // 展开面板：点开之后高度真的涨起来（0fr → 1fr 生效，而不是一个装饰性的 class）。
   const expand = page.locator('.mo-scenario').filter({ has: page.locator('#mo-expand') }).locator('.mo-variant').first();

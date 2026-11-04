@@ -24,6 +24,7 @@ import {
   curveCss,
   curveById,
   type CurveVerdict,
+  type TailCurve,
 } from '../../src/games/motion/curves';
 import {
   MOTION_SCENARIOS,
@@ -282,81 +283,92 @@ describe('交互动画（交互反馈的统一曲线与默认时长）', () => {
   });
 });
 
-// 短尾变体是这一轮新加的一族对照：它们必须是正常的三次贝塞尔，只把第二控制点的高度
-// 往下收。不能退化成「截尾 / 拼接 / 折线」—— 整条曲线必须连续可导，而且起点速度与
-// 现版相同（第一控制点没动），才算「前面速度差不多、后面尾巴更短」。
-describe('TAIL_CURVES（交互动画的短尾变体）', () => {
+// 短尾变体：动画真的更早结束。每条仍是单个三次贝塞尔，参数按「墙钟时间」拟合 ——
+// 前段实时位置贴着 540 现版，但自己的时长只有 480 / 420 / 360 / 300ms。
+describe('TAIL_CURVES（真·更早结束的短尾变体）', () => {
   const interaction = curveById(INTERACTION_CURVE_ID);
+  const baseDuration = INTERACTION_DURATION;
 
-  /** 进度第一次到达目标值时的时间进度（这几条曲线都单调，二分可靠）。 */
-  function timeToReach(bezier: BezierPoints, target: number) {
+  /** 某条曲线在自己的时长里，走到 target 进度时的墙钟毫秒数（这几条都单调，二分可靠）。 */
+  function wallTimeAtY(curve: TailCurve, target: number) {
     let low = 0;
     let high = 1;
     for (let index = 0; index < 60; index++) {
       const mid = (low + high) / 2;
-      if (sampleEasing(bezier, mid) < target) low = mid;
+      if (sampleEasing(curve.points, mid) < target) low = mid;
       else high = mid;
     }
-    return (low + high) / 2;
+    return ((low + high) / 2) * curve.duration;
   }
 
-  it('四条变体只移动第二控制点：前两个数与现版相同，p₂ 沿对角线依次收到 (0.1, 0.7)', () => {
+  it('四条变体的时长依次缩短，而且都真的短于现版', () => {
     expect(TAIL_CURVES).toHaveLength(4);
+    expect(TAIL_CURVES.map((curve) => curve.duration)).toEqual([480, 420, 360, 300]);
     for (const curve of TAIL_CURVES) {
-      expect([...curve.points.slice(0, 2)]).toEqual([...interaction.points.slice(0, 2)]);
-      expect(curve.points[2]).toBeGreaterThan(0);
-      expect(curve.points[2]).toBeLessThan(interaction.points[2]);
-      expect(curve.points[3]).toBeGreaterThan(0);
-      expect(curve.points[3]).toBeLessThan(1);
+      expect(curve.duration).toBeLessThan(baseDuration);
       expect(curveById(curve.id)).toBe(curve);
-    }
-    const p2s = TAIL_CURVES.map((curve) => [curve.points[2], curve.points[3]]);
-    expect(p2s).toEqual([[0.25, 0.925], [0.2, 0.85], [0.15, 0.775], [0.1, 0.7]]);
-    for (let index = 1; index < p2s.length; index++) {
-      expect(p2s[index][0]).toBeLessThan(p2s[index - 1][0]);
-      expect(p2s[index][1]).toBeLessThan(p2s[index - 1][1]);
     }
   });
 
-  it('curveCss 对每一条都给出可解析的 cubic-bezier 四元组', () => {
+  it('每条仍是可解析的 cubic-bezier，曲线单调不减、落在 [0, 1] 内', () => {
     for (const curve of TAIL_CURVES) {
       const match = /^cubic-bezier\((-?[\d.]+), (-?[\d.]+), (-?[\d.]+), (-?[\d.]+)\)$/.exec(curveCss(curve));
       expect(match).not.toBeNull();
       expect(match!.slice(1).map(Number)).toEqual([...curve.points]);
-    }
-  });
-
-  it('整条曲线单调不减、落在 [0, 1] 内（不越界不过冲，图与实际才对得上）', () => {
-    for (const curve of TAIL_CURVES) {
       const ys = sampleEasingPoints(curve.points, 200).map(([, y]) => y);
       expect(Math.min(...ys)).toBeGreaterThanOrEqual(0);
       expect(Math.max(...ys)).toBeLessThanOrEqual(1);
       for (let index = 1; index < ys.length; index++) {
         expect(ys[index]).toBeGreaterThanOrEqual(ys[index - 1] - 1e-9);
       }
+      expect(sampleEasing(curve.points, 1)).toBe(1);
     }
   });
 
-  it('起点速度与现版相同，前面四分之一的行程几乎重合', () => {
+  it('墙钟时间上前段贴着现版：前 210ms 位置差 ≤ 3 个百分点，半程时刻几乎一样', () => {
     for (const curve of TAIL_CURVES) {
-      // 第一控制点没动 → x→0 处的初始斜率 y₁ / x₁ 相同。
-      expect(curve.points[1] / curve.points[0]).toBeCloseTo(interaction.points[1] / interaction.points[0], 9);
-      // 前 20% 时间里行程差不超过 6 个百分点；x = 0.2 处（108ms）四条都贴着现版。
-      for (const x of [0.05, 0.1, 0.15, 0.2]) {
-        expect(Math.abs(sampleEasing(curve.points, x) - sampleEasing(interaction.points, x))).toBeLessThan(0.06);
+      for (const t of [30, 60, 90, 120, 150, 180, 210]) {
+        if (t > curve.duration) continue;
+        const got = sampleEasing(curve.points, t / curve.duration);
+        const want = sampleEasing(interaction.points, t / baseDuration);
+        expect(Math.abs(got - want), `${curve.id} @${t}ms`).toBeLessThan(0.03);
       }
-      expect(Math.abs(sampleEasing(curve.points, 0.2) - sampleEasing(interaction.points, 0.2))).toBeLessThan(0.02);
+      // 现版半程 55ms；四档 55–56ms。
+      const baseHalf = (() => {
+        let low = 0;
+        let high = 1;
+        for (let index = 0; index < 60; index++) {
+          const mid = (low + high) / 2;
+          if (sampleEasing(interaction.points, mid) < 0.5) low = mid;
+          else high = mid;
+        }
+        return ((low + high) / 2) * baseDuration;
+      })();
+      expect(Math.abs(wallTimeAtY(curve, 0.5) - baseHalf)).toBeLessThan(3);
     }
   });
 
-  it('尾巴一次比一次短：从 90% 到走完的时间严格递减', () => {
-    const tails = [interaction, ...TAIL_CURVES].map((curve) => 1 - timeToReach(curve.points, 0.9));
-    for (let index = 1; index < tails.length; index++) {
-      expect(tails[index], `${TAIL_CURVES[index - 1].name} 的尾巴没有比上一档更短`).toBeLessThan(tails[index - 1]);
+  it('动画真的更早结束，尾巴（最后 5% 行程）一次比一次短，口径与文案一致', () => {
+    const baseTail = baseDuration - (() => {
+      let low = 0;
+      let high = 1;
+      for (let index = 0; index < 60; index++) {
+        const mid = (low + high) / 2;
+        if (sampleEasing(interaction.points, mid) < 0.95) low = mid;
+        else high = mid;
+      }
+      return ((low + high) / 2) * baseDuration;
+    })();
+    expect(Math.round(baseTail)).toBe(310);
+
+    const tails = TAIL_CURVES.map((curve) => Math.round(curve.duration - wallTimeAtY(curve, 0.95)));
+    expect(tails).toEqual([256, 201, 146, 88]);
+    for (let index = 0; index < tails.length; index++) {
+      expect(tails[index], `${TAIL_CURVES[index].name} 的尾巴没比上一档短`).toBeLessThan(index === 0 ? baseTail : tails[index - 1]);
     }
   });
 
-  it('三个尾巴长度场景都摆出五列，第一列是现版交互动画', () => {
+  it('三个尾巴长度场景都摆出五列，时长用各曲线自己的', () => {
     expect(TAIL_SCENARIOS).toHaveLength(3);
     for (const scenario of TAIL_SCENARIOS) {
       expect(scenario.variants).toHaveLength(5);
@@ -365,6 +377,7 @@ describe('TAIL_CURVES（交互动画的短尾变体）', () => {
       expect(first.duration).toBe(INTERACTION_DURATION);
       expect(first.adopted).toBe(true);
       expect(scenario.variants.slice(1).map((variant) => variant.curveId)).toEqual(TAIL_CURVES.map((curve) => curve.id));
+      expect(scenario.variants.slice(1).map((variant) => variant.duration)).toEqual(TAIL_CURVES.map((curve) => curve.duration));
     }
   });
 });
