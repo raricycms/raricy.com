@@ -3,13 +3,16 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // markdown-editor/Toolbar.tsx —— 编辑器的工具条（四入口信息架构）
 //
-//   Insert ▾   Components ▾   上传图片   插入引用   │   撤销 / 重做       更多 ▾
+//   格式 ▾   Components ▾   上传图片   插入引用   │   撤销 / 重做       更多 ▾
 //
 // 【为什么是这四个入口】工具条此前把十几颗按钮平铺成两行（窄屏三行），手机上既
 // 点不准也看不出分组。现在：
-//   · **Insert** —— 所有「往正文里写 Markdown」的动作，按 文字 / 列表 / 内容 /
+//   · **格式** —— 所有「往正文里写 Markdown」的动作，按 文字 / 列表 / 内容 /
 //     表情 分组。标题、粗斜、列表缩进、引用块、代码、数学、表格、链接、外链图片
 //     都在这里；快捷键不变（命令层仍是 lib/md-editor/commands.ts）。
+//     图标用 Type（衬线 T）而不是 Plus：窄屏会藏掉文字标签、只剩图标，而「＋」
+//     与右侧「上传图片」(ImagePlus) 都是加号语义，菜单里又大半是格式动作，读者
+//     会把「＋」读成「加个东西」。T 指向文字 / 格式，与相邻图标不撞形。
 //   · **Components** —— ReactiveMD 原生组件的插入目录。目录来自**站点当前编译
 //     配置**（见 lib/md-editor/reactive-authoring.ts），不维护第二份清单，也不会
 //     列出站点没有宿主能力的死模板。插入组件本身就是「开始写增强语法」，不要求
@@ -65,7 +68,6 @@ import {
   MoreHorizontal,
   Outdent,
   Pencil,
-  Plus,
   Quote,
   Redo2,
   Sigma,
@@ -73,6 +75,7 @@ import {
   SquareCode,
   Strikethrough,
   Table,
+  Type,
   Undo2,
   WandSparkles,
   X,
@@ -405,10 +408,10 @@ export default function Toolbar({
       ref={menuRef}
       className="md-toolbar__menu md-toolbar__menu--insert"
       role="menu"
-      aria-label="插入"
+      aria-label="格式"
       onKeyDown={onMenuKeyDown}
     >
-      {menuHead('插入')}
+      {menuHead('格式')}
       <div className="md-toolbar__section md-toolbar__section--headings" role="group" aria-label="标题">
         <div className="md-toolbar__section-title">标题</div>
         <div className="md-toolbar__chips">
@@ -512,10 +515,12 @@ export default function Toolbar({
 
   return (
     <div className="md-toolbar" role="toolbar" aria-label="编辑器工具条" ref={toolbarRef}>
-      {/* 1. Insert：所有 Markdown 写入动作 */}
+      {/* 1. 格式：所有 Markdown 写入动作 */}
       <div className="md-toolbar__group md-toolbar__group--insert">
         <div className="md-toolbar__popover-host">
-          {entry('insert', '插入', Plus, insertTriggerRef, 'insert')}
+          {/* 内部 key 与 CSS 类仍沿用 `insert`（菜单定位 / 样式选择器按它挂），
+              只改面向用户的名称与图标。 */}
+          {entry('insert', '格式', Type, insertTriggerRef, 'insert')}
           {openMenu === 'insert' && insertMenu}
         </div>
       </div>

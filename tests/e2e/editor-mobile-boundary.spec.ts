@@ -2,7 +2,7 @@
 // editor-mobile-boundary.spec.ts —— 320 宽：四入口 / 字数 / 所有浮层都不被裁
 //
 // QA 截图：组件弹层从第二个按钮处向右展开，被编辑器右缘裁掉关闭 X 与搜索框
-// 右半；“插入”首字与底栏“0 字”也曾被外壳横向滚动裁掉。
+// 右半；“格式”首字与底栏“0 字”也曾被外壳横向滚动裁掉。
 // 这里不用截图猜：直接量编辑器裁剪框与每个浮层 / 关闭按钮 / 搜索框的 rect，
 // 做 elementFromPoint，并真实点击关闭 X。博客与云剪贴板各跑一遍。
 // ─────────────────────────────────────────────────────────────────────────────
@@ -96,7 +96,7 @@ for (const { name, url, id } of EDITORS) {
 
     // ── 基线：外壳没有被横向滚动，四入口与字数完整 ──────────────────────
     const base = await measureInsideEditor(editor, [
-      { key: '插入', selector: '.md-toolbar__btn--entry' },
+      { key: '格式', selector: '.md-toolbar__btn--entry' },
       { key: '字数', selector: '.md-editor__count' },
     ]);
     assertInside(base, '基线');
@@ -122,16 +122,16 @@ for (const { name, url, id } of EDITORS) {
     await editor.locator('.md-component-picker__close').click();
     await expect(components).toHaveCount(0);
 
-    // ── Insert 弹层：整块与可见条目在框内，点一条真实关闭 ────────────────
-    await editor.getByRole('button', { name: '插入', exact: true }).click();
+    // ── 格式弹层：整块与可见条目在框内，点一条真实关闭 ──────────────────
+    await editor.getByRole('button', { name: '格式', exact: true }).click();
     const insert = editor.locator('.md-toolbar__menu--insert');
     await expect(insert).toBeVisible();
     assertInside(
       await measureInsideEditor(editor, [
-        { key: 'Insert 弹层', selector: '.md-toolbar__menu--insert' },
-        { key: 'Insert 第一条', selector: '.md-toolbar__menu--insert .md-toolbar__menu-item' },
+        { key: '格式弹层', selector: '.md-toolbar__menu--insert' },
+        { key: '格式第一条', selector: '.md-toolbar__menu--insert .md-toolbar__menu-item' },
       ]),
-      'Insert 弹层'
+      '格式弹层'
     );
     await insert.locator('.md-toolbar__menu-item').first().click();
     await expect(insert).toHaveCount(0);

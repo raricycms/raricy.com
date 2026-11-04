@@ -142,14 +142,14 @@ async function typeCodeBlock(page: Page, editor: string) {
 }
 
 /**
- * 走「插入 → 某一项」执行一个 Markdown 动作（粗体、标题……）。
+ * 走「格式 → 某一项」执行一个 Markdown 动作（粗体、标题……）。
  *
- * 四入口 IA 之后，所有 Markdown 写入动作都收在 Insert 菜单里；桌面与手机同一条
+ * 四入口 IA 之后，所有 Markdown 写入动作都收在「格式」菜单里；桌面与手机同一条
  * 路径（菜单自己限宽限高、内部滚动），所以窄屏不再需要「先展开工具条」这一步。
  */
 async function runInsertAction(page: Page, editor: string, name: string) {
   const scope = page.locator(editor);
-  await scope.getByRole('button', { name: '插入', exact: true }).click();
+  await scope.getByRole('button', { name: '格式', exact: true }).click();
   const menu = scope.locator('.md-toolbar__menu--insert');
   await expect(menu).toBeVisible();
   await menu.getByRole('menuitem', { name, exact: true }).click();
@@ -175,7 +175,7 @@ test.describe('编辑器行为', () => {
     // 只有整篇渲染出来才看得见（只断字数的话，包不包标记都不影响长度之外的东西）
     const mod = await modKey(page);
     await page.keyboard.press(`${mod}+a`);
-    // 四入口 IA：所有 Markdown 动作都在 Insert 菜单里（桌面 / 手机同一条路径）
+    // 四入口 IA：所有 Markdown 动作都在「格式」菜单里（桌面 / 手机同一条路径）
     await runInsertAction(page, BLOG_EDITOR, '粗体');
     await setViewMode(page, BLOG_EDITOR, '预览');
 

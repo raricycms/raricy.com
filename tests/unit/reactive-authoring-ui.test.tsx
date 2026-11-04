@@ -157,7 +157,7 @@ vi.mock('reactive-md', () => ({
 }));
 
 vi.mock('reactive-md/authoring', () => ({
-  // Toolbar 打开 Insert 菜单时会读一次当前格式状态（标题 / 列表 / 引用高亮）。
+  // Toolbar 打开「格式」菜单时会读一次当前格式状态（标题 / 列表 / 引用高亮）。
   readFormatState: () => ({
     headingLevel: 0,
     bold: false,
@@ -410,7 +410,7 @@ describe('Toolbar：四入口不再随格式隐藏', () => {
   it('Markdown 正文里 Components 入口照旧在（插入组件就是开始写增强语法）', () => {
     const container = mount(createElement(Toolbar, toolbarProps({ reactive: false })));
     expect(container.querySelector('[aria-label="组件"]')).not.toBeNull();
-    expect(container.querySelector('[aria-label="插入"]')).not.toBeNull();
+    expect(container.querySelector('[aria-label="格式"]')).not.toBeNull();
     expect(container.querySelector('[aria-label="上传图片"]')).not.toBeNull();
     expect(container.querySelector('[aria-label="插入引用"]')).not.toBeNull();
     expect(container.querySelector('[aria-label="更多"]')).not.toBeNull();

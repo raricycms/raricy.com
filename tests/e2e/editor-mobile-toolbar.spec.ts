@@ -37,7 +37,7 @@ const PNG_1X1 = Buffer.from(
 );
 
 /** 窄屏首行五个图标入口的可访问名（撤销/重做收进「更多」）。 */
-const CORE_LABELS = ['插入', '组件', '上传图片', '插入引用', '更多'];
+const CORE_LABELS = ['格式', '组件', '上传图片', '插入引用', '更多'];
 /** 窄屏被样式表藏起来的按钮（仍可从「更多」菜单触发同一条命令）。 */
 const HIDDEN_LABELS = ['撤销', '重做'];
 
@@ -111,15 +111,15 @@ async function scrollToolbarClear(page: Page, editor: string) {
   await page.waitForTimeout(120);
 }
 
-/** 打开 Insert 菜单。 */
+/** 打开「格式」菜单。 */
 async function openInsert(page: Page, editor: string) {
-  await page.locator(editor).getByRole('button', { name: '插入', exact: true }).click();
+  await page.locator(editor).getByRole('button', { name: '格式', exact: true }).click();
   const menu = page.locator(`${editor} .md-toolbar__menu--insert`);
   await expect(menu).toBeVisible();
   return menu;
 }
 
-/** 在 Insert 菜单里打开表情网格，返回网格。 */
+/** 在「格式」菜单里打开表情网格，返回网格。 */
 async function openEmoji(page: Page, editor: string) {
   const menu = await openInsert(page, editor);
   await menu.getByRole('button', { name: '展开表情', exact: true }).click();
@@ -232,7 +232,7 @@ async function deadItems(menu: Locator): Promise<string[]> {
   return menu.evaluate((el) => {
     const dead: string[] = [];
     // 可视裁剪框 = 元素自身与**所有可滚动 / 裁剪祖先**的交集。
-    // 只拿 el（例如 emoji grid）的 box 不够：它还可能被外层 Insert 菜单的
+    // 只拿 el（例如 emoji grid）的 box 不够：它还可能被外层「格式」菜单的
     // `overflow-y: auto` 裁掉，滚出外层视口的按钮不该算「点不到」。
     let clip = el.getBoundingClientRect();
     for (let node: Element | null = el; node; node = node.parentElement) {
@@ -341,7 +341,7 @@ test.describe('编辑器工具条：窄屏五个主入口 + 「更多」', () =>
     expect(geo.labels, '宽屏不该收起任何按钮').toHaveLength(total);
     // 桌面保留紧凑的图标 + 文字入口，触屏使用更大的点击区域。
     expect(Math.max(...geo.heights), '宽屏按钮被放大了').toBeLessThanOrEqual(36);
-    await expect(toolbar.getByRole('button', { name: '插入', exact: true })
+    await expect(toolbar.getByRole('button', { name: '格式', exact: true })
       .locator('.md-toolbar__entry-label')).toBeVisible();
   });
 
@@ -371,7 +371,7 @@ test.describe('编辑器工具条：窄屏五个主入口 + 「更多」', () =>
     await expect(menu).toHaveCount(0);
     await expect(toolbar.getByRole('button', { name: '更多', exact: true })).toBeFocused();
 
-    // Insert 菜单：标题选项真的作用在正文上
+    // 格式菜单：标题选项真的作用在正文上
     const mod = await modKey(page);
     await page.locator(`${BLOG_EDITOR} .cm-content`).click();
     await page.keyboard.press(`${mod}+a`);
@@ -396,7 +396,7 @@ test.describe('编辑器工具条：核心入口（博客 / 云剪贴板）', ()
     { name: '博客', url: '/blog/upload', editor: BLOG_EDITOR },
     { name: '云剪贴板', url: '/clipboard/upload', editor: CLIP_EDITOR },
   ] as const) {
-    test(`${name}（窄屏）：插入 / 组件 / 上传图片 / 插入引用都真的可达`, async ({ page }) => {
+    test(`${name}（窄屏）：格式 / 组件 / 上传图片 / 插入引用都真的可达`, async ({ page }) => {
       await loginViaApi(page, SEED_USERS.core.username);
       await page.setViewportSize({ width: 390, height: 844 });
       await page.goto(url);
@@ -404,7 +404,7 @@ test.describe('编辑器工具条：核心入口（博客 / 云剪贴板）', ()
       await expect(toolbar).toBeVisible();
       await scrollToolbarClear(page, editor);
 
-      // ① 表情现在收在 Insert 里：菜单 → 展开表情 → 挑一个 → 落进正文
+      // ① 表情现在收在「格式」里：菜单 → 展开表情 → 挑一个 → 落进正文
       const emojiGrid = await openEmoji(page, editor);
       await assertWithinEditor(page, editor, page.locator(`${editor} .md-toolbar__menu--insert`));
       expect(await deadItems(emojiGrid), '有表情点不到（被祖先裁掉或被盖住）').toEqual([]);
@@ -465,10 +465,10 @@ test.describe('编辑器工具条：核心入口（博客 / 云剪贴板）', ()
         ).toBe(true);
       }
 
-      // ② Insert 菜单整个落在编辑器裁剪框里，每一项都命中
+      // ② 「格式」菜单整个落在编辑器裁剪框里，每一项都命中
       const insert = await openInsert(page, editor);
       await assertWithinEditor(page, editor, insert);
-      expect(await deadItems(insert), '320px 下 Insert 菜单里有点不到的项').toEqual([]);
+      expect(await deadItems(insert), '320px 下「格式」菜单里有点不到的项').toEqual([]);
       await page.keyboard.press('Escape');
       await expect(insert).toHaveCount(0);
 
