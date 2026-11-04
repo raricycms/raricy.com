@@ -44,12 +44,12 @@ test.describe('保存的私聊消息', () => {
     await page.goto(`/chat?channel=${encodeURIComponent(channelId)}`);
     const row = msgRow(page, marker);
     await expect(row).toBeVisible();
-    await row.click({ button: 'right' });
+    await row.locator('.chat-msg__content').click({ button: 'right' });
     const menu = page.locator('.chat-menu');
     await expect(menu).toBeVisible();
     await menu.getByRole('menuitem', { name: '保存', exact: true }).click();
     // 菜单项是「已保存」状态的唯一展示处：再开一次确认它真的翻过去了
-    await row.click({ button: 'right' });
+    await row.locator('.chat-msg__content').click({ button: 'right' });
     await expect(menu.getByRole('menuitem', { name: '已保存', exact: true })).toBeVisible();
     await page.keyboard.press('Escape');
     await expect(menu).toHaveCount(0);

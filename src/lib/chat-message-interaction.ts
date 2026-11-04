@@ -58,6 +58,26 @@ export function isPressExcludedTarget(target: EventTarget | null): boolean {
   return !!el?.closest?.('a, button, input, textarea, select, label');
 }
 
+/**
+ * 指针是否落在**消息可见内容**上（气泡 / 图片 / 博客卡 / 引用 / 表头 / 头像）。
+ *
+ * 【为什么不能只看「是不是在 .chat-msg 里」】消息行是 flex 列容器的子项，默认被
+ * 拉成 78% 宽 —— 短消息右边那一大片空白**也是**行的一部分，右键 / 长按落在那里
+ * 会命中行根或 .chat-msg__body，看起来就是「点空白也弹回复面板」。同理 body 的宽度
+ * 可能被表头行撑得比气泡宽，气泡右侧那段空白也属于 body。所以只认真正画出来的
+ * 那些块；其余空白不接管（右键交还浏览器原生菜单）。
+ */
+export function isMessageSurfaceTarget(target: EventTarget | null, isPat = false): boolean {
+  const el = target as HTMLElement | null;
+  if (!el?.closest) return false;
+  if (isPat) return !!el.closest('.chat-pat__text');
+  return !!el.closest(
+    '.chat-msg__content, .chat-msg__image, .chat-msg__image-missing, ' +
+      '.chat-msg__blog, .chat-msg__blog-missing, .chat-msg__reply, ' +
+      '.chat-msg__meta, .chat-msg__avatar'
+  );
+}
+
 interface CaretPoint {
   node: Node;
   offset: number;

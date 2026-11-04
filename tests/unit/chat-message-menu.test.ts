@@ -121,7 +121,8 @@ describe('消息操作入口（右键 / 长按）与详情', () => {
 
   it('右键：落点坐标原样交给菜单，并吃掉浏览器原生菜单', async () => {
     const { row, onOpenMenu } = await mountMessage(dto());
-    const ev = fire(row, new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 120, clientY: 80 }));
+    const content = row.querySelector('.chat-msg__content')!;
+    const ev = fire(content, new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 120, clientY: 80 }));
     expect(onOpenMenu).toHaveBeenCalledTimes(1);
     expect(onOpenMenu.mock.calls[0][1]).toMatchObject({ x: 120, y: 80, fromKeyboard: false });
     expect(ev.defaultPrevented, '不 preventDefault 的话原生菜单会盖在自定义菜单上').toBe(true);
@@ -142,23 +143,25 @@ describe('消息操作入口（右键 / 长按）与详情', () => {
 
   it('触屏长按 → 打开操作菜单，且不产生浏览器选区', async () => {
     const { row, onOpenMenu, onOpenDetail } = await mountMessage(dto());
-    fire(row, pointerEvent('pointerdown', { clientX: 30, clientY: 40, pointerType: 'touch' }));
+    const content = row.querySelector('.chat-msg__content')!;
+    fire(content, pointerEvent('pointerdown', { clientX: 30, clientY: 40, pointerType: 'touch' }));
     expect(row.classList.contains('chat-msg--pressed'), '按下时要有按压反馈').toBe(true);
     act(() => vi.advanceTimersByTime(600));
     expect(onOpenMenu).toHaveBeenCalledTimes(1);
     expect(onOpenMenu.mock.calls[0][1]).toMatchObject({ x: 30, y: 40, fromKeyboard: false });
     expect(row.classList.contains('chat-msg--pressed'), '长按已转为菜单，反馈要撤掉').toBe(false);
-    fire(row, pointerEvent('pointerup', { clientX: 30, clientY: 40, pointerType: 'touch' }));
+    fire(content, pointerEvent('pointerup', { clientX: 30, clientY: 40, pointerType: 'touch' }));
     // 长按松手后浏览器可能补一个 click：必须吞掉，不能同屏再弹详情。
-    fire(row.querySelector('.chat-msg__content')!, new MouseEvent('click', { bubbles: true }));
+    fire(content, new MouseEvent('click', { bubbles: true }));
     expect(onOpenDetail).not.toHaveBeenCalled();
     expect(window.getSelection()!.toString()).toBe('');
   });
 
   it('触屏滑动超过容差 → 取消按压反馈与长按计时', async () => {
     const { row, onOpenMenu } = await mountMessage(dto());
-    fire(row, pointerEvent('pointerdown', { clientX: 30, clientY: 40, pointerType: 'touch' }));
-    fire(row, pointerEvent('pointermove', { clientX: 30, clientY: 90, pointerType: 'touch' }));
+    const content = row.querySelector('.chat-msg__content')!;
+    fire(content, pointerEvent('pointerdown', { clientX: 30, clientY: 40, pointerType: 'touch' }));
+    fire(content, pointerEvent('pointermove', { clientX: 30, clientY: 90, pointerType: 'touch' }));
     expect(row.classList.contains('chat-msg--pressed')).toBe(false);
     act(() => vi.advanceTimersByTime(1000));
     expect(onOpenMenu).not.toHaveBeenCalled();
@@ -166,9 +169,26 @@ describe('消息操作入口（右键 / 长按）与详情', () => {
 
   it('触屏 contextmenu 一律吃掉：长按面板由我们接管', async () => {
     const { row, onOpenMenu } = await mountMessage(dto());
-    const ev = fire(row, pointerEvent('contextmenu', { clientX: 30, clientY: 40, pointerType: 'touch' }));
+    const content = row.querySelector('.chat-msg__content')!;
+    const ev = fire(content, pointerEvent('contextmenu', { clientX: 30, clientY: 40, pointerType: 'touch' }));
     expect(ev.defaultPrevented).toBe(true);
     expect(onOpenMenu).not.toHaveBeenCalled();
+  });
+
+  it('行内空白（消息行被拉宽出来的那片）不响应按下与右键', async () => {
+    const { row, onOpenMenu } = await mountMessage(dto());
+    // 直接落在行根上 = 短消息右侧的空白区域
+    fire(row, pointerEvent('pointerdown', { clientX: 500, clientY: 40, pointerType: 'touch' }));
+    expect(row.classList.contains('chat-msg--pressed'), '空白处不该有按下反馈').toBe(false);
+    act(() => vi.advanceTimersByTime(600));
+    expect(onOpenMenu).not.toHaveBeenCalled();
+
+    const ev = fire(
+      row,
+      new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 500, clientY: 40 })
+    );
+    expect(onOpenMenu).not.toHaveBeenCalled();
+    expect(ev.defaultPrevented, '空白处应把原生菜单让给浏览器').toBe(false);
   });
 
   it('没有可做的动作（别人的已删消息）→ 触屏 contextmenu 仍放行', async () => {
@@ -210,7 +230,7 @@ describe('消息操作入口（右键 / 长按）与详情', () => {
     const { row, onOpenMenu } = await mountMessage(
       dto({ pat: { target_id: 'u2', target_name: '小红' } })
     );
-    fire(row, pointerEvent('pointerdown', { clientX: 20, clientY: 20, pointerType: 'touch' }));
+    fire(row.querySelector('.chat-pat__text')!, pointerEvent('pointerdown', { clientX: 20, clientY: 20, pointerType: 'touch' }));
     act(() => vi.advanceTimersByTime(600));
     expect(onOpenMenu).toHaveBeenCalledTimes(1);
     expect(row.querySelector('.chat-msg__more')).toBeNull();

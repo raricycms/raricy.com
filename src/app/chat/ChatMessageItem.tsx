@@ -27,6 +27,7 @@ import {
   LONG_PRESS_MS,
   hasTextSelection,
   isInteractiveClickTarget,
+  isMessageSurfaceTarget,
   isPointInsideRange,
   isPointInsideSelection,
   isPressExcludedTarget,
@@ -261,6 +262,8 @@ function useMessageInteractions({
       if (e.button !== 0) return;
       // 链接 / 按钮 / 输入框有自己的点击语义，不从这里起长按。
       if (isPressExcludedTarget(e.target)) return;
+      // 行内空白不接管：行被拉成 78% 宽，短消息右侧那片空白不是「消息」。
+      if (!isMessageSurfaceTarget(e.target, !!msg.pat)) return;
       clearSuppressTimer();
       suppressClickRef.current = false;
       cancelPress();
@@ -341,6 +344,9 @@ function useMessageInteractions({
       if (!canMenu) return;
       // 键盘菜单键 / Shift+F10 没有指针坐标（clientX/Y 都是 0）→ 贴着消息左上角开
       const byPointer = e.clientX !== 0 || e.clientY !== 0;
+      // 指针落在行内空白（短消息右侧那一大片）时什么都不做：不弹我们的菜单、
+      // 也不 preventDefault，把浏览器原生菜单照常让出去。
+      if (byPointer && !isMessageSurfaceTarget(e.target, !!msg.pat)) return;
       const pointerType =
         (e.nativeEvent as PointerEvent).pointerType ||
         (byPointer ? pointerTypeRef.current : '');

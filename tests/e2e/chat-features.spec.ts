@@ -131,7 +131,7 @@ test.describe('讨论功能：链接 / 跳转 / 搜索 / 日期分隔', () => {
     // 桌面右键快捷入口唤出操作菜单，再点「回复」（见 ChatMessageMenu）
     const origRow = msgRow(page, orig);
     await expect(origRow).toBeVisible();
-    await origRow.click({ button: 'right' });
+    await origRow.locator('.chat-msg__content').click({ button: 'right' });
     await page
       .locator('.chat-menu')
       .getByRole('menuitem', { name: '回复', exact: true })
@@ -355,7 +355,7 @@ test.describe('连续消息合并', () => {
     expect(Math.abs(theirs.meta!.left - theirs.quote!.right)).toBeGreaterThan(40);
 
     // 同一条 grouped 消息上，右键菜单也得好用：弹得出来，点「回复」能进回复态
-    await seenByPeer.click({ button: 'right' });
+    await seenByPeer.locator('.chat-msg__content').click({ button: 'right' });
     const menu = page.locator('.chat-menu');
     await expect(menu).toBeVisible();
     await menu.getByRole('menuitem', { name: '回复', exact: true }).click();
@@ -396,7 +396,7 @@ test.describe('消息操作菜单（右键 / 长按）', () => {
     expect(hovered.overlay, '悬停气泡应给气泡叠色').not.toBe(idle.overlay);
     expect(hovered.rowBg, '悬停不该铺整行底色').toBe(idle.rowBg);
 
-    await row.click({ button: 'right' });
+    await row.locator('.chat-msg__content').click({ button: 'right' });
     const menu = page.locator('.chat-menu');
     await expect(menu).toBeVisible();
     // 菜单打开后消息本身不加持久外观：整行仍没有底色（不再有「正在操作」淡蓝底）。
@@ -437,6 +437,37 @@ test.describe('消息操作菜单（右键 / 长按）', () => {
     await expect(menu).toHaveCount(0);
 
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  });
+
+  test('桌面：右键行内空白处不弹菜单，正文上右键才弹', async ({ page, isMobile }) => {
+    test.skip(isMobile, '鼠标分支只在桌面验证');
+    const marker = `e2e-blank-${uniqueTag()}`;
+    // 消息作者与查看者分开：非本人消息靠左排，短消息右侧才会露出行被拉宽出来的空白。
+    await registerFreshUser(page, { core: true });
+    await postLobby(page, marker);
+    await registerFreshUser(page, { core: true });
+    await page.goto(`/chat?channel=${LOBBY}`);
+
+    const row = msgRow(page, marker);
+    await expect(row).toBeVisible();
+    const rowBox = (await row.boundingBox())!;
+    const bubbleBox = (await row.locator('.chat-msg__content').boundingBox())!;
+    expect(
+      rowBox.x + rowBox.width,
+      '消息行应被拉宽出一条空白，否则这条用例测不到空白区域'
+    ).toBeGreaterThan(bubbleBox.x + bubbleBox.width + 40);
+
+    await page.mouse.click(rowBox.x + rowBox.width - 8, bubbleBox.y + bubbleBox.height / 2, {
+      button: 'right',
+    });
+    await expect(page.locator('.chat-menu'), '空白处不该弹消息菜单').toHaveCount(0);
+
+    await row.locator('.chat-msg__content').click({ button: 'right' });
+    const menu = page.locator('.chat-menu');
+    await expect(menu).toBeVisible();
+    await expect(menu.getByRole('menuitem')).toHaveText(['回复', '复制', '取消']);
+    await page.keyboard.press('Escape');
+    await expect(menu).toHaveCount(0);
   });
 
   test('触屏：轻点正文打开消息详情（可原生选字），Esc 关闭', async ({ page, isMobile }) => {
@@ -481,7 +512,8 @@ test.describe('消息操作菜单（右键 / 长按）', () => {
     const point = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
 
     // 真实触屏长按在 Playwright 里没有直接 API，用 pointer 事件序列驱动同一条接线。
-    await row.evaluate((el, p) => {
+    // 事件落点必须是正文（不是行根）：行内空白不接管按下 / 长按。
+    await row.locator('.chat-msg__content').evaluate((el, p) => {
       el.dispatchEvent(
         new PointerEvent('pointerdown', {
           bubbles: true,
@@ -502,7 +534,7 @@ test.describe('消息操作菜单（右键 / 长按）', () => {
     await expect(row).not.toHaveClass(/chat-msg--pressed/);
     expect(await page.evaluate(() => window.getSelection()!.toString()), '长按不选字').toBe('');
 
-    await row.evaluate((el, p) => {
+    await row.locator('.chat-msg__content').evaluate((el, p) => {
       el.dispatchEvent(
         new PointerEvent('pointerup', {
           bubbles: true,
@@ -515,7 +547,7 @@ test.describe('消息操作菜单（右键 / 长按）', () => {
         })
       );
       // 浏览器在长按松手后可能补一个 click；它必须被吞掉。
-      el.querySelector('.chat-msg__content')!.dispatchEvent(
+      el.dispatchEvent(
         new MouseEvent('click', { bubbles: true, cancelable: true, clientX: p.x, clientY: p.y })
       );
     }, point);
@@ -571,7 +603,7 @@ test.describe('消息操作菜单（右键 / 长按）', () => {
 
     const row = page.locator(`.chat-msg[data-message-id="${messageId}"]`);
     await expect(row.locator('.chat-msg__content')).toContainText(marker);
-    await row.click({ button: 'right' });
+    await row.locator('.chat-msg__content').click({ button: 'right' });
 
     const menu = page.locator('.chat-menu');
     await expect(menu).toBeVisible();
