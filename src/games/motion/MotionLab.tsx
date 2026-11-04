@@ -2,9 +2,28 @@
 
 import { useEffect, useMemo, useState, type CSSProperties } from 'react';
 import Link from 'next/link';
-import { sampleEasing, sampleEasingPoints, easingRange, type BezierPoints } from './bezier';
-import { MOTION_CURVES, curveCss, curveById, type MotionCurve } from './curves';
-import { MOTION_SCENARIOS, INTERACTION_CURVE_ID, INTERACTION_DURATION, type MotionScenario, type MotionVariant, type ScenarioKind } from './scenarios';
+import { sampleEasingPoints, easingRange } from './bezier';
+import {
+  MOTION_CURVES,
+  TAIL_CURVES,
+  curveCss,
+  curvePoints,
+  curveProgress,
+  curveReadout,
+  curveById,
+  type MotionCurve,
+} from './curves';
+import {
+  MOTION_SCENARIOS,
+  TAIL_SCENARIOS,
+  INTERACTION_CURVE_ID,
+  INTERACTION_DURATION,
+  type MotionScenario,
+  type MotionVariant,
+  type ScenarioKind,
+} from './scenarios';
+import { tailEndMs } from './tail';
+import TailDropdown from './TailDropdown';
 import { useReducedMotion } from './use-reduced-motion';
 
 // 动效试验台：同一个场景摆几列，除「哪条曲线、走多久」以外完全一样。
@@ -128,14 +147,104 @@ function CurveOverview({ picked, onPick }: { picked: string | null; onPick: (id:
   );
 }
 
+// ── 短尾曲线族 ───────────────────────────────────────────────────────────────
+
+/**
+ * 「尾巴长度」的图：把五条曲线叠在同一张坐标里。
+ *
+ * 前段几乎完全重合 —— 它们本来就是同一条曲线；到各自收尾点后变成一条水平线，
+ * 水平段越长，尾巴越短。用虚线区分四条短尾，图例里的色块是同一段虚线。
+ */
+function TailFamilySection() {
+  const baseline = curveById(INTERACTION_CURVE_ID);
+  const curves = [baseline, ...TAIL_CURVES];
+  const gridLines = [0.25, 0.5, 0.75].map((ratio) => PLOT_PAD + ratio * (PLOT_SIZE - PLOT_PAD * 2));
+  const diagonal = useMemo(() => toPath(sampleEasingPoints([0, 0, 1, 1], 4), PLOT_SIZE), []);
+
+  return (
+    <section className="mo-tail" aria-labelledby="mo-tail-title">
+      <div className="mo-tail__intro">
+        <h2 className="mo-tail__title" id="mo-tail-title">尾巴长度：同一条曲线，四种收尾点</h2>
+        <p className="mo-tail__lead">
+          交互反馈定的 540ms 是「时间槽」，但前段极快：前 230ms 就走完 95%，剩下 310ms
+          只是在挪最后几个百分点。下面这一族不换曲线 —— 主段与交互动画<strong>逐帧一致</strong>，
+          只把收尾点依次提前到 75% / 60% / 45% / 30%，用几十毫秒把剩下的行程走完就停住。
+          收尾点越早，压进收尾段的行程越多（30% 那档约 12%），那一下会明显更急。
+        </p>
+      </div>
+
+      <figure className="mo-tail__figure">
+        <svg className="mo-tail__plot" viewBox={`0 0 ${PLOT_SIZE} ${PLOT_SIZE}`} role="img" aria-label="交互动画与四种短尾版本的形状对比">
+          <rect className="mo-plot__frame" x="0.4" y="0.4" width="99.2" height="99.2" rx="4" />
+          {gridLines.map((position) => (
+            <g key={position}>
+              <line className="mo-plot__grid" x1={position} y1={PLOT_PAD} x2={position} y2={PLOT_SIZE - PLOT_PAD} />
+              <line className="mo-plot__grid" x1={PLOT_PAD} y1={position} x2={PLOT_SIZE - PLOT_PAD} y2={position} />
+            </g>
+          ))}
+          <path className="mo-plot__diagonal" d={diagonal} />
+          {curves.map((curve, index) => (
+            <path
+              key={curve.id}
+              className={
+                curve.tail
+                  ? `mo-plot__path mo-plot__path--candidate mo-tail__line mo-tail__line--${index}`
+                  : 'mo-plot__path mo-plot__path--adopt'
+              }
+              d={toPath(curvePoints(curve), PLOT_SIZE)}
+            />
+          ))}
+        </svg>
+        <figcaption className="mo-overview__caption">
+          横轴是时间进度、纵轴是实际走了多少。几条线中段几乎贴在一起，到各自的收尾点后变成水平线 ——
+          水平段越长，那条曲线的尾巴越短、停得越早。
+        </figcaption>
+      </figure>
+
+      <ul className="mo-tail__legend">
+        {curves.map((curve, index) => (
+          <li key={curve.id} className="mo-tail__item">
+            <svg className="mo-tail__swatch" viewBox="0 0 24 8" aria-hidden="true">
+              <line
+                className={
+                  curve.tail
+                    ? `mo-tail__line mo-tail__line--${index}`
+                    : 'mo-tail__line mo-tail__line--base'
+                }
+                x1="1"
+                y1="4"
+                x2="23"
+                y2="4"
+              />
+            </svg>
+            <span className="mo-tail__body">
+              <span className="mo-tail__name">
+                {curve.name}
+                <span className="mo-tail__badge">
+                  {curve.tail
+                    ? `${tailEndMs(curve.tail, INTERACTION_DURATION)}ms 停稳`
+                    : `${INTERACTION_DURATION}ms 走满全程`}
+                </span>
+              </span>
+              <span className="mo-tail__note">{curve.note}</span>
+            </span>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
 // ── 各场景的舞台 ─────────────────────────────────────────────────────────────
 
 /**
  * 展开面板：0fr → 1fr，按内容真实高度伸展。
  *
  * 「重播」在这里不能靠换 key 重挂载 —— 重挂载得到的是「关着」的初始态，看到的是收起
- * 而不是展开。所以它走状态机：先收起，等收起那一段走完再展开，于是每次都真的能看见
- * 「展开」这一下。收起时长取站点收起档 220ms + 一点余量。
+ * 而不是展开。所以它走状态机：先收起，等收起那一段真的走完再展开，于是每次都从
+ * 「全收起」出发、能看见「展开」这一下。收起方向用的是同一个 transition（同一时长），
+ * 所以等待时间必须跟着 duration 走 —— 只等一个固定短值会在半收状态就反向，几列的
+ * 起点就不一致了，比较也就不公平。
  */
 function ExpandStage({ curve, duration, run }: { curve: MotionCurve; duration: number; run: number }) {
   const [open, setOpen] = useState(false);
@@ -143,9 +252,9 @@ function ExpandStage({ curve, duration, run }: { curve: MotionCurve; duration: n
   useEffect(() => {
     if (run === 0) return;
     setOpen(false);
-    const timer = setTimeout(() => setOpen(true), 260);
+    const timer = setTimeout(() => setOpen(true), duration + 60);
     return () => clearTimeout(timer);
-  }, [run]);
+  }, [run, duration]);
 
   return (
     <>
@@ -164,10 +273,16 @@ function ExpandStage({ curve, duration, run }: { curve: MotionCurve; duration: n
   );
 }
 
-/** 分段滑块：点选项切换，只有滑块那一条 transform 在动。 */
-function SegmentStage({ curve, duration }: { curve: MotionCurve; duration: number }) {
+/** 分段滑块：点选项切换，只有滑块那一条 transform 在动。`run` 变化时前进一格，供「一起重播」用。 */
+function SegmentStage({ curve, duration, run }: { curve: MotionCurve; duration: number; run: number }) {
   const [index, setIndex] = useState(0);
   const thumbStyle = { ...motionStyle(curve, duration), '--mo-i': index } as CSSProperties;
+
+  useEffect(() => {
+    if (run === 0) return;
+    setIndex((value) => (value + 1) % 4);
+  }, [run]);
+
   return (
     <div className="mo-slider">
       <span className="mo-slider__thumb" style={thumbStyle} aria-hidden="true" />
@@ -191,12 +306,12 @@ function SegmentStage({ curve, duration }: { curve: MotionCurve; duration: numbe
  * `run` 进依赖数组 —— 重播时先把值清回 0 再跑一遍。
  */
 function CounterStage({
-  points,
+  curve,
   duration,
   reduce,
   run,
 }: {
-  points: BezierPoints;
+  curve: MotionCurve;
   duration: number;
   reduce: boolean;
   run: number;
@@ -215,13 +330,13 @@ function CounterStage({
     const tick = (now: number) => {
       const progress = Math.min(1, (now - start) / duration);
       // 不裁剪：过冲曲线中途会超过 1000，那正是这一列要让人看见的东西。
-      setValue(Math.round(sampleEasing(points, progress) * 1000));
+      setValue(Math.round(curveProgress(curve, progress) * 1000));
       if (progress < 1) frame = requestAnimationFrame(tick);
       else setValue(1000);
     };
     frame = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(frame);
-  }, [points, duration, reduce, run]);
+  }, [curve, duration, reduce, run]);
 
   return (
     <div className="mo-counter">
@@ -249,10 +364,18 @@ function VariantStage({
   const scene = kind;
 
   // 展开那格的「重播」= 先收起再展开一次，由 ExpandStage 自己接管状态。
-  if (scene === 'expand') return <ExpandStage curve={curve} duration={variant.duration} run={run} />;
-  if (scene === 'segment') return <SegmentStage curve={curve} duration={variant.duration} />;
+  // 短尾三格复用同样的舞台结构，只是换了曲线（收尾点不同）。
+  if (scene === 'expand' || scene === 'expand-tail') {
+    return <ExpandStage curve={curve} duration={variant.duration} run={run} />;
+  }
+  if (scene === 'segment' || scene === 'segment-tail') {
+    return <SegmentStage curve={curve} duration={variant.duration} run={run} />;
+  }
+  if (scene === 'dropdown') {
+    return <TailDropdown curve={curve} duration={variant.duration} run={run} />;
+  }
   if (scene === 'counter') {
-    return <CounterStage points={curve.points} duration={variant.duration} reduce={reduce} run={run} />;
+    return <CounterStage curve={curve} duration={variant.duration} reduce={reduce} run={run} />;
   }
 
   if (scene === 'entrance') {
@@ -318,21 +441,35 @@ function VariantStage({
 
 // ── 变体卡 ───────────────────────────────────────────────────────────────────
 
-function VariantCard({ scenario, variant, reduce }: { scenario: MotionScenario; variant: MotionVariant; reduce: boolean }) {
+function VariantCard({
+  scenario,
+  variant,
+  reduce,
+  batch,
+}: {
+  scenario: MotionScenario;
+  variant: MotionVariant;
+  reduce: boolean;
+  batch: number;
+}) {
   const curve = curveById(variant.curveId);
-  const spark = useMemo(() => toPath(sampleEasingPoints(curve.points, 32), SPARK_HEIGHT), [curve]);
-  // 换一次 key 就重挂载一次 —— CSS 动画因此从头再来。
+  const spark = useMemo(() => toPath(curvePoints(curve, 32), SPARK_HEIGHT), [curve]);
+  // 两张「重播」共用同一个计数：本卡的单列重播 + 场景级「一起重播」。
   const [run, setRun] = useState(0);
+  const replayToken = run + batch;
 
   // 读数只写曲线与时长：stagger 的间隔已经印在标签里，再写一遍是噪音。
-  const readout = `cubic-bezier(${curve.points.join(', ')}) · ${variant.duration}ms`;
+  // 短尾曲线额外标「在哪一刻停稳」—— 它和 540ms 的时长不是一回事。
+  const readout = curve.tail
+    ? `${curveReadout(curve)} · ${variant.duration}ms 槽 · ${tailEndMs(curve.tail, variant.duration)}ms 停稳`
+    : `${curveReadout(curve)} · ${variant.duration}ms`;
   const sparkClass = [
     'mo-spark__line',
     curve.verdict === 'avoid' ? 'mo-spark__line--risky' : curve.verdict === 'candidate' ? 'mo-spark__line--plain' : null,
   ].filter(Boolean).join(' ');
 
-  // 悬停与滑块不能靠重播看：一个要真鼠标、一个要自己点选项。
-  const replayable = scenario.id !== 'hover' && scenario.id !== 'segment';
+  // 悬停与滑块不能靠重播看：一个要真鼠标、一个要自己点选项；下拉面板有自动展开的状态机。
+  const replayable = scenario.id !== 'hover' && scenario.id !== 'segment' && scenario.id !== 'segment-tail';
 
   // 统一的取值要一眼能找到 —— 每场景都有一列是它，靠序号猜不合适。
   // 读数据里那个显式标记，别按「曲线 + 时长」推：逐条入场那格有两列都是 540ms。
@@ -351,8 +488,8 @@ function VariantCard({ scenario, variant, reduce }: { scenario: MotionScenario; 
         <rect className="mo-spark__frame" x="0.4" y="0.4" width="99.2" height="35.2" rx="2" />
         <path className={sparkClass} d={spark} vectorEffect="non-scaling-stroke" />
       </svg>
-      <div className="mo-variant__stage">
-        <VariantStage kind={scenario.id} variant={variant} curve={curve} reduce={reduce} run={run} />
+      <div className={`mo-variant__stage mo-variant__stage--${scenario.id}`}>
+        <VariantStage kind={scenario.id} variant={variant} curve={curve} reduce={reduce} run={replayToken} />
       </div>
       {replayable && (
         <div className="mo-variant__controls">
@@ -367,17 +504,26 @@ function VariantCard({ scenario, variant, reduce }: { scenario: MotionScenario; 
 
 // ── 场景 ─────────────────────────────────────────────────────────────────────
 
+/** 尾巴长度那一组才配「一起重播」—— 它们本来就是让人同时看五列差别的。 */
+const TAIL_SCENARIO_IDS = new Set(TAIL_SCENARIOS.map((scenario) => scenario.id));
+
 function ScenarioBlock({ scenario, reduce }: { scenario: MotionScenario; reduce: boolean }) {
+  const [batch, setBatch] = useState(0);
   return (
     <section className="mo-scenario" aria-labelledby={`mo-${scenario.id}`}>
       <div className="mo-scenario__head">
         <h2 className="mo-scenario__title" id={`mo-${scenario.id}`}>{scenario.title}</h2>
         <span className="mo-scenario__meta">{scenario.meta}</span>
+        {TAIL_SCENARIO_IDS.has(scenario.id) && (
+          <button type="button" className="btn btn-sm btn-secondary mo-scenario__replay" onClick={() => setBatch((value) => value + 1)}>
+            一起重播
+          </button>
+        )}
       </div>
       <p className="mo-scenario__hint">{scenario.hint}</p>
       <div className="mo-variants">
         {scenario.variants.map((variant) => (
-          <VariantCard key={variant.key} scenario={scenario} variant={variant} reduce={reduce} />
+          <VariantCard key={variant.key} scenario={scenario} variant={variant} reduce={reduce} batch={batch} />
         ))}
       </div>
     </section>
@@ -397,6 +543,11 @@ export default function MotionLab() {
       <header className="mo-lab__header">
         <Link className="game-back" href="/game/collections/test">返回测试合集</Link>
         <h1>动效试验台</h1>
+        <p className="mo-lab__notice" role="note">
+          <strong>本页仅作展示，不作定稿。</strong>
+          这里的曲线、时长与组件都是比较用的样张；标着「已采用 / 统一取值」的条目也只是试验台里的结论标记，
+          不代表全站已经定稿 —— 真正落地的取值以 <code>curves.ts</code> 与规范文档为准。
+        </p>
         <p className="mo-lab__lead">
           同一个场景、同一段动画，每列只换速度曲线和时长。已定：交互产生的反馈动画统一走
           「交互动画」（<span className="numeric">{curveCss(curveById(INTERACTION_CURVE_ID))}</span>，
@@ -417,7 +568,12 @@ export default function MotionLab() {
 
       <CurveOverview picked={picked} onPick={setPicked} />
 
+      <TailFamilySection />
+
       <div key={epoch}>
+        {TAIL_SCENARIOS.map((scenario) => (
+          <ScenarioBlock key={scenario.id} scenario={scenario} reduce={reduce} />
+        ))}
         {MOTION_SCENARIOS.map((scenario) => (
           <ScenarioBlock key={scenario.id} scenario={scenario} reduce={reduce} />
         ))}

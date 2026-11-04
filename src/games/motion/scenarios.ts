@@ -1,9 +1,9 @@
-import type { BezierPoints } from './bezier';
+import { TAIL_CURVES } from './curves';
 
 // 试验台上每个场景都摆几条「同一种动画、不同速度曲线」的变体，让人对着比较。
 //
 // 每条变体只描述两件事：**用哪条曲线**、**走多久**。场景自己的结构（展开、入场、
-// 逐条入场……）由组件决定，所以这里是个纯数据模块 —— 零 import（除了曲线类型），
+// 逐条入场……）由组件决定，所以这里是个纯数据模块 —— 除曲线清单外不 import 组件，
 // 后面把它搬进规范文档时也不用动。
 //
 // `stagger` 只有逐条入场类场景读，其它场景忽略；写成可选而不是必填，是为了让
@@ -31,7 +31,10 @@ export type ScenarioKind =
   | 'segment'
   | 'counter'
   | 'progress'
-  | 'fade';
+  | 'fade'
+  | 'dropdown'
+  | 'expand-tail'
+  | 'segment-tail';
 
 export interface MotionVariant {
   /** 场景内唯一，用作 React key。 */
@@ -167,5 +170,44 @@ export const MOTION_SCENARIOS: readonly MotionScenario[] = [
       { key: 'out', label: 'ease-out 120', curveId: 'ease-out', duration: 120 },
       { key: 'interaction-240', label: '交互动画 240', curveId: INTERACTION_CURVE_ID, duration: 240 },
     ],
+  },
+];
+
+// ── 尾巴长度对照 ─────────────────────────────────────────────────────────────
+//
+// 单独一组：针对「交互动画 540 的尾巴太长」摆一排短尾版本，用三个真实组件去感受。
+// 每列都是同一条曲线截尾 —— 前段完全一致（所以同一时刻看着几乎重合），只有收尾点
+// 不同。时长仍写 540ms：它表示「时间槽」没变，变化的是行程在哪一刻走完。
+const TAIL_VARIANTS: readonly MotionVariant[] = [
+  { key: INTERACTION_CURVE_ID, label: '交互动画 540（现版）', curveId: INTERACTION_CURVE_ID, duration: INTERACTION_DURATION, adopted: true },
+  ...TAIL_CURVES.map((curve) => ({
+    key: curve.id,
+    label: curve.name,
+    curveId: curve.id,
+    duration: INTERACTION_DURATION,
+  })),
+];
+
+export const TAIL_SCENARIOS: readonly MotionScenario[] = [
+  {
+    id: 'dropdown',
+    title: '下拉面板 · 尾巴长度',
+    meta: 'grid-template-rows 0fr → 1fr + 外壳宽度增长 · 复刻博客目录的「全部栏目」下拉',
+    hint: '这一格把博客目录筛选条里的「全部栏目」下拉搬了过来（宽度增长、面板按内容高度伸展、选项随后淡入都在）。第一列是现版交互动画 540；后四列的前段与它逐帧相同，只是收尾点提前 —— 并排看时它们大多数时刻几乎重合，区别只在「哪一刻停稳」。点开每一列，或点右上角「一起重播」让五列同时再演一遍。',
+    variants: TAIL_VARIANTS,
+  },
+  {
+    id: 'expand-tail',
+    title: '展开面板 · 尾巴长度',
+    meta: 'grid-template-rows 0fr → 1fr · 按内容实际高度伸展',
+    hint: '同样一条交互动画、同样 540ms 的时间槽，只换收尾点。注意面板「完全贴底」的那一刻：现版要拖到最后，短尾 30% 在 216ms 左右就停住了。按「一起重播」五列会同时收起再展开，差别更容易看出来。',
+    variants: TAIL_VARIANTS,
+  },
+  {
+    id: 'segment-tail',
+    title: '分段滑块 · 尾巴长度',
+    meta: 'transform: translateX · 点一下切换，看滑块走位',
+    hint: '滑块位移只有一次短距离移动，尾巴长的时候最容易看出「已经到了还在挪」。点选项切换，看四档收尾点分别在哪一刻停稳；也可以按「一起重播」让五列滑块同时前进一格 —— 同一时刻谁先停住，一眼就能对比。尾巴收得太短会不会显得硬，也在这一格判断。',
+    variants: TAIL_VARIANTS,
   },
 ];

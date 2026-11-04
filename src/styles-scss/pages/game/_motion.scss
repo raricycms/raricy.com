@@ -43,6 +43,26 @@
   }
 }
 
+.mo-lab__notice {
+  margin: v.$space-3 0 0;
+  padding: v.$space-3 v.$space-4;
+  border-left: 3px solid var(--color-brand-primary);
+  border-radius: v.$radius-large;
+  background: var(--color-background-content);
+  font-size: 0.875rem;
+  line-height: 1.8;
+  color: var(--color-text-secondary);
+
+  strong {
+    color: var(--color-text-primary);
+  }
+
+  code {
+    font-family: var(--font-mono);
+    font-size: 0.8125rem;
+  }
+}
+
 .mo-lab__lead {
   margin: 0;
   max-width: 68ch;
@@ -218,6 +238,125 @@
   color: var(--color-text-secondary);
 }
 
+// ── 短尾曲线族 ───────────────────────────────────────────────────────────────
+// 一排「同一条曲线、只管收尾点」的对照。图上四条灰线的水平段就是各自的停住区间，
+// 用虚线区分它们，图例的色块用的是同一段虚线 —— 不额外引入颜色。
+.mo-tail {
+  display: grid;
+  grid-template-columns: minmax(0, 300px) minmax(0, 1fr);
+  gap: v.$space-4 v.$space-6;
+  align-items: start;
+  padding: v.$space-6;
+  margin-bottom: v.$space-6;
+  border-radius: v.$radius-card;
+  background: var(--color-background-card);
+
+  @include bp.down(bp.$bp-lg) {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.mo-tail__intro {
+  grid-column: 1 / -1;
+}
+
+.mo-tail__title {
+  margin: 0 0 v.$space-2;
+  font-size: 1.25rem;
+}
+
+.mo-tail__lead {
+  margin: 0;
+  max-width: 80ch;
+  font-size: 0.875rem;
+  line-height: 1.8;
+  color: var(--color-text-secondary);
+
+  strong {
+    color: var(--color-text-primary);
+  }
+}
+
+.mo-tail__figure {
+  margin: 0;
+}
+
+.mo-tail__plot {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+
+.mo-tail__line {
+  fill: none;
+  stroke: var(--color-text-secondary);
+  stroke-width: 1.6;
+  stroke-linecap: round;
+}
+
+// 四条短尾图线：靠虚线样式区分，与图例色块一一对应；基准那条实线用品牌色。
+.mo-tail__line--base { stroke: var(--color-brand-primary); }
+.mo-tail__line--1 { stroke-dasharray: 8 3; }
+.mo-tail__line--2 { stroke-dasharray: 3.5 2.5; }
+.mo-tail__line--3 { stroke-dasharray: 1.5 1.8; }
+.mo-tail__line--4 { stroke-dasharray: 9 2 2 2; }
+
+.mo-tail__legend {
+  display: grid;
+  gap: v.$space-2;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.mo-tail__item {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  gap: v.$space-2;
+  align-items: start;
+}
+
+.mo-tail__swatch {
+  display: block;
+  width: 28px;
+  height: 8px;
+  margin-top: 6px;
+  overflow: visible;
+}
+
+.mo-tail__body {
+  display: block;
+  min-width: 0;
+}
+
+.mo-tail__name {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: v.$space-2;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.mo-tail__badge {
+  padding: 1px v.$space-2;
+  border-radius: v.$radius-max;
+  background: var(--color-background-subtle);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 400;
+  color: var(--color-text-secondary);
+}
+
+.mo-tail__note {
+  display: block;
+  margin-top: 2px;
+  font-size: 0.8125rem;
+  line-height: 1.7;
+  color: var(--color-text-secondary);
+}
+
 // ── 场景 ─────────────────────────────────────────────────────────────────────
 .mo-scenario {
   padding: v.$space-6;
@@ -247,6 +386,12 @@
   font-family: var(--font-mono);
   font-size: 0.75rem;
   color: var(--color-text-secondary);
+}
+
+// 「一起重播」贴着标题行右侧：它只影响这一格里的几列。
+.mo-scenario__replay {
+  margin-left: auto;
+  align-self: center;
 }
 
 .mo-scenario__hint {
@@ -349,6 +494,13 @@
   overflow: hidden;
   border-radius: v.$radius-large;
   background: var(--color-background-card);
+}
+
+// 下拉面板展开后比默认舞台高：内容顶到上沿，舞台也给足下沿 ——
+// 否则居中之后展开的面板会被 overflow: hidden 裁掉半截。
+.mo-variant__stage--dropdown {
+  justify-content: flex-start;
+  min-height: 214px;
 }
 
 // 重播按钮一律贴着卡片底部：各场景的舞台高度天然不同（展开那一格里还有一个
@@ -514,6 +666,139 @@
   }
 }
 
+// ── 下拉面板（博客目录「全部栏目」的复刻件）─────────────────────────────────
+// 结构照搬：外壳先长宽、面板 grid-template-rows 0fr → 1fr 按内容高度伸展、
+// 选项随后淡入。节奏全部从 --mo-duration / --mo-easing 读，所以同一套结构
+// 换上任何一条曲线都能直接比较。
+.mo-cat {
+  position: relative;
+  width: 164px;
+  height: 36px;
+  transition: width var(--mo-duration, #{v.$motion-expand-duration}) var(--mo-easing, #{v.$motion-expand-easing});
+
+  &.is-open {
+    width: 100%;
+  }
+}
+
+.mo-cat__shell {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 100%;
+  overflow: hidden;
+  border-radius: v.$radius-field;
+  background: var(--color-background-page);
+  transition: box-shadow 0.25s ease, background-color 0.25s ease;
+}
+
+.mo-cat.is-open .mo-cat__shell {
+  background: var(--color-background-card);
+  box-shadow: var(--shadow-card-brand);
+}
+
+.mo-cat__toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  height: 36px;
+  gap: v.$space-2;
+  padding: 0 14px;
+  border: none;
+  background: transparent;
+  color: var(--color-text-primary);
+  font-size: 0.875rem;
+  cursor: pointer;
+
+  span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  svg {
+    width: 16px;
+    height: 16px;
+    flex: none;
+    transition: transform var(--mo-duration, #{v.$motion-expand-duration}) var(--mo-easing, #{v.$motion-expand-easing});
+  }
+
+  &:focus-visible {
+    box-shadow: var(--shadow-focus-brand);
+  }
+}
+
+.mo-cat.is-open .mo-cat__toggle svg {
+  transform: rotate(180deg);
+}
+
+.mo-cat__panel {
+  display: grid;
+  grid-template-rows: 0fr;
+  visibility: hidden;
+  transition: grid-template-rows var(--mo-duration, #{v.$motion-expand-duration}) var(--mo-easing, #{v.$motion-expand-easing}),
+    visibility 0s var(--mo-duration, #{v.$motion-expand-duration});
+}
+
+.mo-cat.is-open .mo-cat__panel {
+  grid-template-rows: 1fr;
+  visibility: visible;
+  transition: grid-template-rows var(--mo-duration, #{v.$motion-expand-duration}) var(--mo-easing, #{v.$motion-expand-easing}),
+    visibility 0s;
+}
+
+.mo-cat__clip {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.mo-cat__options {
+  padding: v.$space-1 v.$space-2 v.$space-2;
+  opacity: 0;
+  transform: translateY(-8px);
+  transition: opacity 0.18s ease, transform var(--mo-duration, #{v.$motion-expand-duration}) var(--mo-easing, #{v.$motion-expand-easing});
+}
+
+.mo-cat.is-open .mo-cat__options {
+  opacity: 1;
+  transform: translateY(0);
+  transition: opacity 0.18s ease 55ms,
+    transform var(--mo-duration, #{v.$motion-expand-duration}) var(--mo-easing, #{v.$motion-expand-easing}) 55ms;
+}
+
+.mo-cat__option {
+  display: block;
+  width: 100%;
+  padding: 7px 10px;
+  border: none;
+  border-radius: v.$radius-large;
+  background: transparent;
+  color: var(--color-text-secondary);
+  font-size: 0.8125rem;
+  text-align: left;
+  cursor: pointer;
+
+  span {
+    display: block;
+    width: max-content;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  &:hover:not(.is-active) {
+    background: var(--color-background-subtle);
+  }
+
+  &.is-active {
+    background: var(--color-background-subtle);
+    color: var(--color-text-primary);
+    font-weight: 600;
+  }
+}
+
 // 数字递增：由 JS 按同一条曲线算中间值。字体走 utilities/_numeric.scss 的 `.numeric`。
 .mo-counter {
   text-align: center;
@@ -607,7 +892,11 @@
   .mo-expand,
   .mo-slider__thumb,
   .mo-hover,
-  .mo-plot__path {
+  .mo-plot__path,
+  .mo-cat,
+  .mo-cat__panel,
+  .mo-cat__options,
+  .mo-cat__toggle svg {
     transition: none;
   }
 

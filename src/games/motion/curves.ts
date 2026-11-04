@@ -1,4 +1,5 @@
-import type { BezierPoints } from './bezier';
+import { sampleEasing, sampleEasingPoints, type BezierPoints } from './bezier';
+import { tailCss, tailProgress, tailStops, type TailCut } from './tail';
 
 // 备选速度曲线清单 —— 这份表就是后面全站加动效时挑曲线的唯一来源。
 //
@@ -8,6 +9,10 @@ import type { BezierPoints } from './bezier';
 //
 // 曲线一律写成 CSS 的 `cubic-bezier()` 四元组，页面上那张图与「逐帧递增」区块都用同一个
 // 元组现算（见 `bezier.ts`），所以图上看到的形状就是 CSS 真正会走的形状。
+//
+// 唯一例外是 `TAIL_CURVES`（短尾变体）：它们不是另一条贝塞尔，而是把「交互动画」这条
+// 曲线在时间轴上截尾，再采样成 `linear()`。取样函数同样只有一份（`curveProgress` /
+// `curvePoints`），图、读数与 CSS 仍然对得上。
 export type CurveVerdict = 'adopt' | 'candidate' | 'avoid';
 
 export interface MotionCurve {
@@ -16,6 +21,8 @@ export interface MotionCurve {
   points: BezierPoints;
   note: string;
   verdict: CurveVerdict;
+  /** 短尾变体：主段与 `points` 逐帧一致，到 `cut` 处收尾。普通曲线不填。 */
+  tail?: TailCut;
 }
 
 export const MOTION_CURVES: readonly MotionCurve[] = [
@@ -98,9 +105,74 @@ export const MOTION_CURVES: readonly MotionCurve[] = [
   },
 ];
 
-export const CURVE_BY_ID = new Map(MOTION_CURVES.map((curve) => [curve.id, curve]));
+// ── 短尾变体 ─────────────────────────────────────────────────────────────────
+//
+// 针对「交互动画 540」单独摆的一族对照：主段与它完全一样，只把收尾点提前、用几十
+// 毫秒把剩下的行程走完。数字是「从整段时长的百分之几开始收尾」+「收尾本身占多长」。
+//
+// 为什么不用新的 cubic-bezier：贝塞尔终点固定在 x = 1，没法表达「提前走完然后停住」。
+// 硬调控制点只会把中段一起改掉，「同一时刻长得很像、只是尾巴不同」这个前提就没了。
+const TAIL_SPECS: readonly { id: string; cut: number; settle: number; note: string }[] = [
+  {
+    id: 'tail-75',
+    cut: 0.75,
+    settle: 0.06,
+    note: '收尾点提前到 75%（约 405ms 起收，437ms 停）：几乎看不出差别，只把最后那一小段挪快。',
+  },
+  {
+    id: 'tail-60',
+    cut: 0.6,
+    settle: 0.07,
+    note: '60% 处开始收尾（324ms 起 38ms 走完，362ms 停）：尾巴比现版短一截，起步与中段完全一样。',
+  },
+  {
+    id: 'tail-45',
+    cut: 0.45,
+    settle: 0.08,
+    note: '45% 处开始收尾（243ms 起 43ms 走完，286ms 停）：「到得更干脆」已经看得出来，中段仍与现版重合。',
+  },
+  {
+    id: 'tail-30',
+    cut: 0.3,
+    settle: 0.1,
+    note: '30% 处开始收尾（162ms 起 54ms 走完，216ms 停）：收得最急的一档，用来试「尾巴真的不要了」会不会太硬。',
+  },
+];
+
+const INTERACTION_CURVE = MOTION_CURVES.find((curve) => curve.id === 'interaction');
+if (!INTERACTION_CURVE) throw new Error('curves.ts 里缺少交互动画曲线');
+
+export const TAIL_CURVES: readonly MotionCurve[] = TAIL_SPECS.map(({ id, cut, settle, note }) => ({
+  id,
+  name: `短尾 ${Math.round(cut * 100)}%`,
+  points: INTERACTION_CURVE.points,
+  note,
+  verdict: 'candidate',
+  tail: { cut, settle },
+}));
+
+export const CURVE_BY_ID = new Map([...MOTION_CURVES, ...TAIL_CURVES].map((curve) => [curve.id, curve]));
 
 export function curveCss(curve: MotionCurve): string {
+  if (curve.tail) return tailCss(curve.points, curve.tail);
+  return `cubic-bezier(${curve.points.join(', ')})`;
+}
+
+/** 曲线在时间进度 `x` 处的实际输出 —— 图、数字递增与 CSS 三处共用。 */
+export function curveProgress(curve: MotionCurve, x: number): number {
+  if (curve.tail) return tailProgress(curve.points, curve.tail, x);
+  return sampleEasing(curve.points, x);
+}
+
+/** 采样成 `[x, y]` 点集。短尾曲线直接给 CSS `linear()` 用的停靠点，图与过渡完全同源。 */
+export function curvePoints(curve: MotionCurve, steps = 48): [number, number][] {
+  if (curve.tail) return tailStops(curve.points, curve.tail);
+  return sampleEasingPoints(curve.points, steps);
+}
+
+/** 页面读数：普通曲线给四元组，短尾曲线给收尾点（完整 linear() 串太长，不往界面上塞）。 */
+export function curveReadout(curve: MotionCurve): string {
+  if (curve.tail) return `linear() · 收尾点 ${Math.round(curve.tail.cut * 100)}%`;
   return `cubic-bezier(${curve.points.join(', ')})`;
 }
 

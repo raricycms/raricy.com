@@ -20,15 +20,21 @@ import {
 } from '../../src/games/motion/bezier';
 import {
   MOTION_CURVES,
+  TAIL_CURVES,
   curveCss,
   curveById,
+  curvePoints,
+  curveProgress,
+  curveReadout,
   type CurveVerdict,
 } from '../../src/games/motion/curves';
 import {
   MOTION_SCENARIOS,
+  TAIL_SCENARIOS,
   INTERACTION_CURVE_ID,
   INTERACTION_DURATION,
 } from '../../src/games/motion/scenarios';
+import { tailCss, tailEndMs } from '../../src/games/motion/tail';
 
 const LINEAR: BezierPoints = [0, 0, 1, 1];
 /** CSS 默认 `ease`。 */
@@ -220,8 +226,8 @@ describe('交互动画（交互反馈的统一曲线与默认时长）', () => {
     expect([...curve.points]).toEqual([0.16, 1, 0.3, 1]);
   });
 
-  it('默认时长是 600ms', () => {
-    expect(INTERACTION_DURATION).toBe(600);
+  it('默认时长是 540ms', () => {
+    expect(INTERACTION_DURATION).toBe(540);
   });
 
   it('每个交互反馈场景恰有一列被标成「统一取值」，且用它自己的默认时长', () => {
@@ -230,7 +236,7 @@ describe('交互动画（交互反馈的统一曲线与默认时长）', () => {
     //   · fade —— 整页切换由 docs/plan/page-transition-plan.md 单独管（只动 opacity、
     //            120–160ms），时长与统一值无关，所以它不挂「统一取值」。
     const outOfScope = new Set(['progress', 'fade']);
-    for (const scenario of MOTION_SCENARIOS) {
+    for (const scenario of [...MOTION_SCENARIOS, ...TAIL_SCENARIOS]) {
       const adopted = scenario.variants.filter((variant) => variant.adopted === true);
       if (outOfScope.has(scenario.id)) {
         expect(adopted, `${scenario.id} 不该挂「统一取值」`).toHaveLength(0);
@@ -258,7 +264,7 @@ describe('交互动画（交互反馈的统一曲线与默认时长）', () => {
   });
 
   it('展示标签里的 ms 数与 duration 一致（改时长忘了改文案会自相矛盾）', () => {
-    for (const scenario of MOTION_SCENARIOS) {
+    for (const scenario of [...MOTION_SCENARIOS, ...TAIL_SCENARIOS]) {
       for (const variant of scenario.variants) {
         // 「间隔 Nms」写的是 stagger，别把它当成时长核。
         const staggerShown = /间隔\s*(\d+)ms/.exec(variant.label);
@@ -273,8 +279,94 @@ describe('交互动画（交互反馈的统一曲线与默认时长）', () => {
 
   it('曲线清单里不再出现旧名「展开档」', () => {
     for (const curve of MOTION_CURVES) expect(curve.name).not.toContain('展开档');
-    for (const scenario of MOTION_SCENARIOS) {
+    for (const curve of TAIL_CURVES) expect(curve.name).not.toContain('展开档');
+    for (const scenario of [...MOTION_SCENARIOS, ...TAIL_SCENARIOS]) {
       for (const variant of scenario.variants) expect(variant.label).not.toContain('展开档');
+    }
+  });
+});
+
+// 短尾变体是这一轮新加的一族对照：它们不换贝塞尔，只把交互动画在时间轴上截尾，
+// 再采样成 CSS linear()。不能退化成「另一条只是看起来快一点的曲线」—— 前段必须与
+// 交互动画逐帧一致，否则「同一时刻长得像、只有尾巴不同」这个比较前提就没了。
+describe('TAIL_CURVES（交互动画的短尾变体）', () => {
+  it('四条变体，全部沿用交互动画的四元组，并且能被 curveById 取回', () => {
+    expect(TAIL_CURVES).toHaveLength(4);
+    const interaction = curveById(INTERACTION_CURVE_ID);
+    for (const curve of TAIL_CURVES) {
+      expect([...curve.points]).toEqual([...interaction.points]);
+      expect(curve.tail).toBeDefined();
+      expect(curveById(curve.id)).toBe(curve);
+    }
+  });
+
+  it('停稳时刻与说明里的毫秒一致，且收尾点越早停得越早', () => {
+    const ends = TAIL_CURVES.map((curve) => tailEndMs(curve.tail!, INTERACTION_DURATION));
+    expect(ends).toEqual([437, 362, 286, 216]);
+    for (let index = 1; index < ends.length; index++) {
+      expect(ends[index]).toBeLessThan(ends[index - 1]);
+    }
+  });
+
+  it('主段与交互动画逐帧一致，收尾窗口之后停在 1', () => {
+    const base = curveById(INTERACTION_CURVE_ID);
+    for (const curve of TAIL_CURVES) {
+      const { cut, settle } = curve.tail!;
+      for (const [x, y] of curvePoints(curve)) {
+        if (x <= cut) expect(y, `${curve.id} @${x}`).toBe(sampleEasing(base.points, x));
+      }
+      expect(curveProgress(curve, cut)).toBe(sampleEasing(base.points, cut));
+      expect(curveProgress(curve, cut + settle + 0.01)).toBe(1);
+      expect(curveProgress(curve, 1)).toBe(1);
+    }
+  });
+
+  it('停靠点严格递增、首尾是 (0,0) 与 (1,1)，y 单调不减', () => {
+    for (const curve of TAIL_CURVES) {
+      const stops = curvePoints(curve);
+      expect(stops[0]).toEqual([0, 0]);
+      expect(stops[stops.length - 1]).toEqual([1, 1]);
+      for (let index = 1; index < stops.length; index++) {
+        expect(stops[index][0], `${curve.id} 第 ${index} 个停靠点`).toBeGreaterThan(stops[index - 1][0]);
+        expect(stops[index][1]).toBeGreaterThanOrEqual(stops[index - 1][1]);
+      }
+    }
+  });
+
+  it('curveCss 给出合法的 linear()：百分比非降且落在 [0, 100]', () => {
+    for (const curve of TAIL_CURVES) {
+      const css = curveCss(curve);
+      expect(css).toBe(tailCss(curve.points, curve.tail!));
+      expect(css.startsWith('linear(')).toBe(true);
+      expect(css.endsWith(')')).toBe(true);
+      const positions = [...css.matchAll(/([\d.]+)%/g)].map((match) => Number(match[1]));
+      expect(positions.length).toBeGreaterThan(10);
+      expect(positions[positions.length - 1]).toBe(100);
+      for (let index = 0; index < positions.length; index++) {
+        expect(positions[index]).toBeGreaterThanOrEqual(0);
+        expect(positions[index]).toBeLessThanOrEqual(100);
+        if (index > 0) expect(positions[index]).toBeGreaterThanOrEqual(positions[index - 1]);
+      }
+    }
+  });
+
+  it('读数标出收尾点，不把整条 linear() 塞进界面', () => {
+    for (const curve of TAIL_CURVES) {
+      const readout = curveReadout(curve);
+      expect(readout).toContain('收尾点');
+      expect(readout.length).toBeLessThan(40);
+    }
+  });
+
+  it('三个尾巴长度场景都摆出五列，第一列是现版交互动画', () => {
+    expect(TAIL_SCENARIOS).toHaveLength(3);
+    for (const scenario of TAIL_SCENARIOS) {
+      expect(scenario.variants).toHaveLength(5);
+      const [first] = scenario.variants;
+      expect(first.curveId).toBe(INTERACTION_CURVE_ID);
+      expect(first.duration).toBe(INTERACTION_DURATION);
+      expect(first.adopted).toBe(true);
+      expect(scenario.variants.slice(1).map((variant) => variant.curveId)).toEqual(TAIL_CURVES.map((curve) => curve.id));
     }
   });
 });
