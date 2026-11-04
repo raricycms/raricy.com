@@ -124,7 +124,7 @@ describe('消息操作入口（右键 / 长按）与详情', () => {
     const { row, onOpenMenu } = await mountMessage(dto());
     const ev = fire(row, new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 120, clientY: 80 }));
     expect(onOpenMenu).toHaveBeenCalledTimes(1);
-    expect(onOpenMenu.mock.calls[0][1]).toMatchObject({ x: 120, y: 80 });
+    expect(onOpenMenu.mock.calls[0][1]).toMatchObject({ x: 120, y: 80, fromKeyboard: false });
     expect(ev.defaultPrevented, '不 preventDefault 的话原生菜单会盖在自定义菜单上').toBe(true);
   });
 
@@ -132,7 +132,7 @@ describe('消息操作入口（右键 / 长按）与详情', () => {
     const { row, onOpenMenu } = await mountMessage(dto());
     fire(row, new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
     expect(onOpenMenu).toHaveBeenCalledTimes(1);
-    expect(onOpenMenu.mock.calls[0][1]).toMatchObject({ x: 12, y: 12 });
+    expect(onOpenMenu.mock.calls[0][1]).toMatchObject({ x: 12, y: 12, fromKeyboard: true });
   });
 
   it('消息上没有常驻的更多按钮（入口只有右键 / 长按）', async () => {
@@ -147,7 +147,7 @@ describe('消息操作入口（右键 / 长按）与详情', () => {
     expect(row.classList.contains('chat-msg--pressed'), '按下时要有按压反馈').toBe(true);
     act(() => vi.advanceTimersByTime(600));
     expect(onOpenMenu).toHaveBeenCalledTimes(1);
-    expect(onOpenMenu.mock.calls[0][1]).toMatchObject({ x: 30, y: 40 });
+    expect(onOpenMenu.mock.calls[0][1]).toMatchObject({ x: 30, y: 40, fromKeyboard: false });
     expect(row.classList.contains('chat-msg--pressed'), '长按已转为菜单，反馈要撤掉').toBe(false);
     fire(row, pointerEvent('pointerup', { clientX: 30, clientY: 40, pointerType: 'touch' }));
     // 长按松手后浏览器可能补一个 click：必须吞掉，不能同屏再弹详情。
@@ -340,7 +340,19 @@ describe('菜单项：按消息语境组合', () => {
     }
   });
 
-  it('Esc 关闭后焦点回到消息的更多按钮', async () => {
+  it('指针打开（右键 / 长按）不抢焦点：第一项不该有蓝色 focus 框', async () => {
+    await mountMenu({ anchor: { x: 40, y: 40, fromKeyboard: false } });
+    const first = document.querySelector<HTMLButtonElement>('.chat-menu [role="menuitem"]')!;
+    expect(document.activeElement).not.toBe(first);
+  });
+
+  it('键盘打开（菜单键 / Shift+F10）才把焦点放到第一项', async () => {
+    await mountMenu({ anchor: { x: 12, y: 12, fromKeyboard: true } });
+    const first = document.querySelector<HTMLButtonElement>('.chat-menu [role="menuitem"]')!;
+    expect(document.activeElement).toBe(first);
+  });
+
+  it('Esc 关闭后焦点回到传入的触发控件', async () => {
     const trigger = document.createElement('button');
     document.body.appendChild(trigger);
     const { onClose } = await mountMenu({ anchor: { x: 40, y: 40, trigger } });

@@ -402,6 +402,15 @@ test.describe('消息操作菜单（右键 / 长按）', () => {
     await expect(row).toHaveClass(/chat-msg--menu-open/);
     // 大区里自己发的消息：没有「保存」（保存箱只收私聊），有回复 / 复制 / 删除
     await expect(menu.getByRole('menuitem')).toHaveText(['回复', '复制', '删除', '取消']);
+    // 指针（右键）打开时不该把焦点抢到第一项：否则浏览器会给它画蓝色 focus 框。
+    const pointerFocus = await menu.getByRole('menuitem').first().evaluate((el) => ({
+      active: document.activeElement === el,
+      focusVisible: el.matches(':focus-visible'),
+      outlineStyle: getComputedStyle(el).outlineStyle,
+    }));
+    expect(pointerFocus.active, '右键打开时不应聚焦第一项').toBe(false);
+    expect(pointerFocus.focusVisible, '右键打开时第一项不该命中 :focus-visible').toBe(false);
+    expect(pointerFocus.outlineStyle, '右键打开时第一项不该有 focus 描边').toBe('none');
     // 菜单是 fixed 定位的 portal，完整落在视口内。
     const box = (await menu.boundingBox())!;
     const vp = page.viewportSize()!;
@@ -417,6 +426,16 @@ test.describe('消息操作菜单（右键 / 长按）', () => {
     await page.keyboard.press('Escape');
     await expect(menu).toHaveCount(0);
     await expect(row).not.toHaveClass(/chat-msg--menu-open/);
+
+    // 键盘菜单键（无指针坐标）打开时才聚焦第一项，方向键随即可用。
+    await row.evaluate((el) =>
+      el.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }))
+    );
+    await expect(menu).toBeVisible();
+    await expect(menu.getByRole('menuitem').first()).toBeFocused();
+    await page.keyboard.press('Escape');
+    await expect(menu).toHaveCount(0);
+
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   });
 

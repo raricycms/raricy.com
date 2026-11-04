@@ -287,7 +287,7 @@ function useMessageInteractions({
         current.longPress = true;
         suppressClickRef.current = true;
         setPressed(false);
-        onOpenMenu(msg, { x: current.startX, y: current.startY });
+        onOpenMenu(msg, { x: current.startX, y: current.startY, fromKeyboard: false });
       }, LONG_PRESS_MS);
     },
     [canMenu, clearSuppressTimer, cancelPress, msg, onOpenMenu]
@@ -363,6 +363,8 @@ function useMessageInteractions({
       onOpenMenu(msg, {
         x: byPointer ? e.clientX : rect.left + 12,
         y: byPointer ? e.clientY : rect.top + 12,
+        // 键盘菜单键（没有指针坐标）打开时才把焦点交给第一项。
+        fromKeyboard: !byPointer,
       });
     },
     [canMenu, msg, onOpenMenu]

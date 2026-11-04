@@ -25,6 +25,16 @@ import type { ChatMessageDTO } from '@/lib/chat-shared';
 export interface MessageMenuAnchor {
   x: number;
   y: number;
+  /**
+   * 这次是键盘打开的吗（菜单键 / Shift+F10）。
+   *
+   * 【为什么要区分】菜单打开后会把焦点放到第一项（ARIA menu 的可达性要求），而
+   * 浏览器会把「脚本在指针操作后设置的焦点」也判成 `:focus-visible` —— 于是鼠标
+   * 右键刚打开菜单，第一项「回复」就顶着一圈蓝色 outline，看着像我们已经替用户
+   * 选中了它。指针打开（右键 / 长按）不抢焦点；键盘打开才抢。`undefined` 按键盘
+   * 处理（测试与旧调用点的默认值）。
+   */
+  fromKeyboard?: boolean;
   /** 可选的触发控件：关闭后把焦点还给它。消息上没有常驻入口，通常不传。 */
   trigger?: HTMLButtonElement;
 }
@@ -90,8 +100,12 @@ export default function ChatMessageMenu({
   }, [anchor]);
 
   useEffect(() => {
-    if (pos) ref.current?.querySelector<HTMLButtonElement>('[role="menuitem"]')?.focus({ preventScroll: true });
-  }, [pos]);
+    if (!pos) return;
+    // 指针打开不抢焦点：否则浏览器会给第一项画 :focus-visible 蓝框（看起来像
+    // 右键点出了选中态）。键盘打开才把焦点移到第一项，方向键随即可用。
+    if (anchor.fromKeyboard === false) return;
+    ref.current?.querySelector<HTMLButtonElement>('[role="menuitem"]')?.focus({ preventScroll: true });
+  }, [pos, anchor.fromKeyboard]);
 
   useEffect(() => {
     const menu = ref.current;
