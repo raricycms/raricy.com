@@ -791,15 +791,8 @@
   padding-right: 8px;
 }
 
-// 菜单打开时整条消息淡底高亮（「正在操作哪一条」）。悬停 / 键盘聚焦不铺整行底色 ——
-// 那个反馈落在气泡本身上（见下方「按下反馈」的桌面分支）。
-.chat-msg--menu-open,
-.chat-pat--menu-open {
-  background-color: var(--color-brand-secondary);
-}
-.chat-msg--highlight.chat-msg--menu-open {
-  animation: none;
-}
+// 菜单打开时**不**给整条消息铺底色：那是之前的做法，右键 / 长按后一整块淡蓝留在
+// 那里，看着像消息被选中了。现在只有菜单自身可见，消息外观不变。
 // 触屏没有 hover：分组消息的头像常显，否则没法打开头像菜单。
 @media (hover: none) {
   .chat-msg--grouped .chat-msg__avatar {

@@ -414,8 +414,6 @@ export interface ChatMessageItemProps {
   currentUsername: string;
   /** 被锚点/搜索跳转命中 → 短暂高亮（见 ChatApp 的 jumpToMessage） */
   highlighted?: boolean;
-  /** 这条消息的操作菜单正在打开，持续高亮。 */
-  menuOpen?: boolean;
   /**
    * 同一人连续发言的后继（距这一串的第一条 ≤ CHAT_GROUP_WINDOW_MS）
    * → 省略时间 / 用户名 / 头像。判据见 markGroupedMessages，别在调用点另算一套。
@@ -443,7 +441,6 @@ function ChatMessageItemInner({
   currentUserId,
   currentUsername,
   highlighted = false,
-  menuOpen = false,
   grouped = false,
   receipt = null,
   canSave = false,
@@ -474,7 +471,7 @@ function ChatMessageItemInner({
     const pattedMe = msg.pat.target_id === currentUserId;
     return (
       <div
-        className={`chat-pat${pattedMe ? ' chat-pat--me' : ''}${canMenu ? ' chat-pat--actionable' : ''}${menuOpen ? ' chat-pat--menu-open' : ''}${pressed ? ' chat-pat--pressed' : ''}`}
+        className={`chat-pat${pattedMe ? ' chat-pat--me' : ''}${canMenu ? ' chat-pat--actionable' : ''}${pressed ? ' chat-pat--pressed' : ''}`}
         {...handlers}
       >
         <span className="chat-pat__text">
@@ -606,7 +603,7 @@ function ChatMessageItemInner({
 
   return (
     <div
-      className={`chat-msg${isMine ? ' chat-msg--mine' : ''}${grouped ? ' chat-msg--grouped' : ''}${highlighted ? ' chat-msg--highlight' : ''}${canMenu ? ' chat-msg--actionable' : ''}${menuOpen ? ' chat-msg--menu-open' : ''}${pressed ? ' chat-msg--pressed' : ''}`}
+      className={`chat-msg${isMine ? ' chat-msg--mine' : ''}${grouped ? ' chat-msg--grouped' : ''}${highlighted ? ' chat-msg--highlight' : ''}${canMenu ? ' chat-msg--actionable' : ''}${pressed ? ' chat-msg--pressed' : ''}`}
       data-message-id={msg.id}
       {...handlers}
     >

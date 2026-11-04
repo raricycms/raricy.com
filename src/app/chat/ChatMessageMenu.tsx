@@ -7,7 +7,8 @@
 // 菜单项按权限出现：回复（未删除、非拍一拍）/ 复制（有正文）/
 // 保存（私聊、未删除、非拍一拍）/ 删除（本人或管理员）。
 //
-// 打开期间由 ChatMessageItem 给对应消息挂 `chat-msg--menu-open`（持续淡底高亮）。
+// 打开菜单不给消息本身加任何持久外观（不铺底色、不改气泡）：菜单浮层自己就是
+// 「正在操作哪条」的指示，关掉后消息应恢复原样。
 //
 // 【定位】portal + position: fixed + useLayoutEffect 量尺寸摆位 —— 与 AvatarMenu /
 // ChatChannelMenu 同一套（消息列表 .chat-list 是 overflow:auto，就地 absolute 会被

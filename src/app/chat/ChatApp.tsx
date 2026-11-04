@@ -1832,7 +1832,6 @@ export default function ChatApp({
                 unreadAnchor={unreadAnchorRef.current}
                 newCount={newCount}
                 highlightId={highlightId}
-                menuMessageId={messageMenu?.msg.id ?? null}
                 lastMineId={lastMineId}
                 peerLastRead={peerLastRead}
                 currentUserId={currentUserId}

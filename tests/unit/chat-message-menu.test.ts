@@ -90,7 +90,7 @@ afterEach(async () => {
 /** 挂一条消息，返回根节点与几个 spy。 */
 async function mountMessage(
   msg: ChatMessageDTO,
-  opts: { canDelete?: boolean; canSave?: boolean; isMine?: boolean; menuOpen?: boolean; onImageClick?: () => void } = {}
+  opts: { canDelete?: boolean; canSave?: boolean; isMine?: boolean; onImageClick?: () => void } = {}
 ) {
   const onOpenMenu = vi.fn();
   const onOpenDetail = vi.fn();
@@ -103,7 +103,6 @@ async function mountMessage(
       currentUserId: 'u1',
       currentUsername: '小明',
       canSave: opts.canSave ?? false,
-      menuOpen: opts.menuOpen ?? false,
       onOpenMenu,
       onOpenDetail,
       onAvatarClick: () => {},
@@ -205,11 +204,6 @@ describe('消息操作入口（右键 / 长按）与详情', () => {
     fire(content, pointerEvent('pointerup', { clientX: 90, clientY: 40, pointerType: 'mouse' }));
     fire(content, new MouseEvent('click', { bubbles: true, clientX: 90, clientY: 40 }));
     expect(onOpenDetail).not.toHaveBeenCalled();
-  });
-
-  it('菜单打开时对应消息保持操作态', async () => {
-    const { row } = await mountMessage(dto(), { menuOpen: true });
-    expect(row.classList.contains('chat-msg--menu-open')).toBe(true);
   });
 
   it('拍一拍同样可以长按打开操作菜单', async () => {

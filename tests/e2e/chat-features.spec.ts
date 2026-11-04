@@ -399,7 +399,8 @@ test.describe('消息操作菜单（右键 / 长按）', () => {
     await row.click({ button: 'right' });
     const menu = page.locator('.chat-menu');
     await expect(menu).toBeVisible();
-    await expect(row).toHaveClass(/chat-msg--menu-open/);
+    // 菜单打开后消息本身不加持久外观：整行仍没有底色（不再有「正在操作」淡蓝底）。
+    expect((await bubbleStyles()).rowBg, '菜单打开不该给整条消息铺底色').toBe(idle.rowBg);
     // 大区里自己发的消息：没有「保存」（保存箱只收私聊），有回复 / 复制 / 删除
     await expect(menu.getByRole('menuitem')).toHaveText(['回复', '复制', '删除', '取消']);
     // 指针（右键）打开时不该把焦点抢到第一项：否则浏览器会给它画蓝色 focus 框。
@@ -425,7 +426,6 @@ test.describe('消息操作菜单（右键 / 长按）', () => {
 
     await page.keyboard.press('Escape');
     await expect(menu).toHaveCount(0);
-    await expect(row).not.toHaveClass(/chat-msg--menu-open/);
 
     // 键盘菜单键（无指针坐标）打开时才聚焦第一项，方向键随即可用。
     await row.evaluate((el) =>
