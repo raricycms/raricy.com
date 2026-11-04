@@ -446,6 +446,44 @@ test('320 转账余额摘要：标签与单位不断字，长余额不撑破卡�
   expect(doc.doc).toBeLessThanOrEqual(doc.view);
 });
 
+test('转账：桌面双栏（右栏在表单右侧）、窄屏单列（右栏落在表单下方）', async ({ page }) => {
+  await loginViaApi(page, SEED_USERS.core.username);
+
+  // 1440：表单仍是 560 的左列，右栏与它同一顶线并贴在右侧 —— 右半边不再空着。
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto('/fish/transfer');
+  const card = page.locator('.fish-transfer__layout .market-card').first();
+  await expect(card).toBeVisible();
+  await expect(page.locator('.fish-transfer__aside')).toBeVisible();
+
+  const wide = { card: await card.boundingBox(), aside: await page.locator('.fish-transfer__aside').boundingBox() };
+  expect(wide.card && wide.aside, '量不到双栏盒子').toBeTruthy();
+  expect(wide.aside!.x, '右栏没有落在表单右侧').toBeGreaterThanOrEqual(wide.card!.x + wide.card!.width - 0.5);
+  expect(Math.abs(wide.aside!.y - wide.card!.y), '右栏与表单没有对齐顶线').toBeLessThanOrEqual(1);
+  // 右栏必须真的吃掉剩余宽度，而不是又缩成一张窄卡。
+  expect(wide.aside!.width, '右栏仍然很窄').toBeGreaterThan(300);
+  const wideOverflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+  expect(wideOverflow, '双栏把页面撑出横向滚动').toBeLessThanOrEqual(0);
+
+  // 992：同一容器阶梯的起点，右栏只剩 ~344px，仍须在右侧且不溢出。
+  await page.setViewportSize({ width: 992, height: 900 });
+  await page.reload();
+  await expect(page.locator('.fish-transfer__aside')).toBeVisible();
+  const narrow = { card: await card.boundingBox(), aside: await page.locator('.fish-transfer__aside').boundingBox() };
+  expect(narrow.card && narrow.aside).toBeTruthy();
+  expect(narrow.aside!.x, '992 档右栏没有落在表单右侧').toBeGreaterThanOrEqual(narrow.card!.x + narrow.card!.width - 0.5);
+  const narrowOverflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+  expect(narrowOverflow, '992 档把页面撑出横向滚动').toBeLessThanOrEqual(0);
+
+  // 390：折成单列，右栏整体落到表单下方（顺序不变：先转账，后信息）。
+  await page.setViewportSize({ width: 390, height: 800 });
+  await page.reload();
+  await expect(page.locator('.fish-transfer__aside')).toBeVisible();
+  const stacked = { card: await card.boundingBox(), aside: await page.locator('.fish-transfer__aside').boundingBox() };
+  expect(stacked.card && stacked.aside).toBeTruthy();
+  expect(stacked.aside!.y, '窄屏右栏没有落到表单下方').toBeGreaterThanOrEqual(stacked.card!.y + stacked.card!.height - 0.5);
+});
+
 test('320 / 390 页头：单个短操作与标题同行，放不下才换行', async ({ page }) => {
   await loginViaApi(page, SEED_USERS.core.username);
 
@@ -601,10 +639,10 @@ test('1440–320 普通功能页整页不横向溢出', async ({ page }) => {
     '/contact': '.contact-card',
   };
 
-  // 本轮重排的两页覆盖全部五档宽度。
+  // 本轮重排的页面（账户 / 签到 / 转账双栏）覆盖全部五档宽度。
   for (const width of [1440, 1024, 768, 390, 320]) {
     await page.setViewportSize({ width, height: 800 });
-    for (const url of ['/fish', '/checkin']) {
+    for (const url of ['/fish', '/checkin', '/fish/transfer']) {
       await page.goto(url, { waitUntil: 'domcontentloaded' });
       await expect(page.locator('.page-header').first()).toBeVisible();
       await expect(page.locator(ready[url]).first()).toBeVisible();

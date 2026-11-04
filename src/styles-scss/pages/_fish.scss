@@ -17,13 +17,142 @@
   padding-bottom: $space-8;
 }
 
-// 转账：页面外壳走全站阶梯，只有那张表单收窄 —— 一行「收款人 / 金额 / 确认」
-// 铺满 1140 会让字段长得像两列不相关的输入。左对齐，与抬头同一条左边缘。
+// 转账：桌面双栏（左 = 表单，右 = 最近转账 + 说明），窄屏单列。
+//
+// 【为什么不再让表单贴左占半屏】表单铺满 1140 会让字段长得像两列不相关的输入，
+// 所以它仍收在 560；但只放一张 560 的卡时，容器右半边整块空着 —— 那是「全宽抬头 +
+// 半宽主体」的失配，不是表单太窄。右栏放本页真正缺的信息（最近转账、不可撤回与限频），
+// 两栏才把容器用满。
+//
+// 【阶梯】≥992px（容器从 960 起步的那一档）：560 表单 + 24 间距 + 剩余列。
+//   992 档剩余 344px、1200 档剩余 524px —— 右栏内容必须能在 344 收窄，
+//   所以每块都带 min-width: 0，行内文字允许省略。
+// 【作用域】全部收在 .fish-transfer / .fish-transfer__* 内：.market-card 被
+//   /fish/pay、/fish/api 共用，改外面那层会静默改到另外两页（frontend-styles §8.2）。
 .fish-transfer {
   .market-card {
     max-width: 560px;
-    margin-left: 0;
-    margin-right: 0;
+    margin: 0;
+  }
+}
+
+.fish-transfer__layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: $space-4;
+  align-items: start;
+
+  @media (min-width: 992px) {
+    grid-template-columns: minmax(0, 560px) minmax(0, 1fr);
+    gap: $space-6;
+  }
+}
+
+// 右栏：窄屏跟在表单之后（顺序即 DOM 顺序），宽屏吸顶，不被表单高度拉伸。
+.fish-transfer__aside {
+  display: flex;
+  flex-direction: column;
+  gap: $space-4;
+  min-width: 0;
+
+  @media (min-width: 992px) {
+    position: sticky;
+    top: calc(var(--navbar-height) + 12px);
+  }
+}
+
+.fish-transfer__card {
+  min-width: 0;
+  padding: $space-6;
+  background: var(--color-background-card);
+  border-radius: 30px;
+
+  @media (max-width: 768px) {
+    padding: $space-4;
+    border-radius: 20px;
+  }
+}
+
+.fish-transfer__card-title {
+  margin: 0 0 $space-3;
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--color-text-primary);
+}
+
+.fish-transfer__empty {
+  margin: 0;
+  font-size: 0.9rem;
+  line-height: 1.6;
+  color: var(--color-text-secondary);
+}
+
+// 最近转账：一行一笔，金额靠右；描述与时间上下两行并允许省略（992 档右栏只有 ~344px）。
+.fish-transfer__tx-list {
+  display: flex;
+  flex-direction: column;
+  gap: $space-3;
+}
+
+.fish-transfer__tx {
+  display: flex;
+  align-items: center;
+  gap: $space-3;
+  min-width: 0;
+}
+
+.fish-transfer__tx-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.fish-transfer__tx-desc {
+  font-size: 0.9rem;
+  color: var(--color-text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fish-transfer__tx-time {
+  font-size: 0.75rem;
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+}
+
+.fish-transfer__tx-amount {
+  flex: none;
+  font-size: 0.95rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+
+  &--in {
+    color: var(--color-success-primary);
+  }
+
+  &--out {
+    color: var(--color-warning-primary);
+  }
+}
+
+// 说明卡：条目式短句。只有「不可撤回」用警示色 —— 它是这一卡里唯一会让人亏钱的规则。
+.fish-transfer__rules {
+  margin: 0;
+  padding-left: 1.1em;
+  display: flex;
+  flex-direction: column;
+  gap: $space-2;
+  font-size: 0.85rem;
+  line-height: 1.6;
+  color: var(--color-text-secondary);
+
+  strong {
+    font-weight: 600;
+    color: var(--color-warning-primary);
   }
 }
 
