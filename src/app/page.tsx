@@ -27,6 +27,7 @@ export default async function HomePage() {
             <p className="hero-eyebrow">RARICY.COM</p>
             <h1 className="hero-title" id="hero-title">聪明山</h1>
             <p className="hero-tagline">我们总将找到答案</p>
+            <p className="hero-description">这里是 Raricy.com 的主页面，<br />你可以由此进入站内的大部分页面。</p>
             <a className="hero-explore" href="#features">开始探索</a>
           </div>
         </div>
