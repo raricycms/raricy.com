@@ -1,177 +1,91 @@
-# 已知长期红 / 必然失败的命令
+# 测试与构建排障
 
-> **这一页是台账，不是待办。** 它存在的唯一目的：让「意料之外的红」有一个**不用重新调研**
-> 的判据来源。碰到红先查这里，对上了就引用对应那一行；对不上才值得花时间查。
->
-> 最后校准：**2026-10-27**（`main` @ `58549116`，本机全量 `npx vitest run` 实测
-> 266 文件 / 5,286 用例 / **169 s**）。每条都写明**怎么认出来**，别只看标题。
+保留文件名以兼容既有引用。本文提供排查线索，不是允许跳过失败的名单。
+工作流以 `../CLAUDE.md` 的「验证纪律」为准；不要为了排障先运行一遍所有检查。
 
 ## 怎么用这一页
 
-1. 跑出红 → 在下面找到同样的**文件 + 错误文案**。
-2. 对上了 → 在回复里引用这一行（"这条是 `docs/known-red.md` 第 2 节记的既有红，原因是 …"），
-   **不要**再去读源码、不要再单独跑一遍确认。
-3. 对不上 → 那才可能是你刚弄坏的，值得查。
-
-⚠️ **通用前提：先确认没有第二个进程**。`tests/.tmp/template.db` 是各测试文件共享的模板库，
-两个 vitest 同时跑会互相毁掉对方（实测过 686 个 `The table main.users does not exist`）。
-所以下面所有「既有红」的判据都附带一句：**你必须是在独占仓库的情况下跑出来的**。
-另外本仓库常被两个 agent 共用同一工作区（Codex 也会在这里跑），
-`git log` / `git stash list` 里出现你没做过的东西就是信号。
-
----
+1. 保存完整日志和退出码，定位失败文件、错误文案及当时的命令。
+2. 匹配下面的症状后，核对当前配置、生成物、进程或 diff，确认根因；相同文案不保证同因。
+3. 修复已确认的问题后，重跑受影响检查。只有源码、配置或环境变化才重试原失败命令。
+4. 只有对照验证或其他直接证据才能把失败归因于既有代码、环境或他人的 WIP。
+   暂时无法确认时报告“原因未确认”，不要写成“已知失败”而跳过。
 
 ## 1. 已经删掉的命令：`npm run lint`
 
-**状态**：脚本已于 2026-10-27 删除。**不会再红，因为它不存在。**
+`package.json` 当前没有 lint 脚本，不把它作为验证门禁。需要类型检查用 `npm run typecheck`。
+若任务是引入 lint，则单独安装依赖和配置；不要因旧指引而调用不存在的命令。
 
-- **它曾经 100% 失败**：`next lint` 在 Next 15.5 已被弃用；更根本的是
-  `node_modules/eslint` 与 `node_modules/eslint-config-next` **从未进过 lockfile**
-  （`package-lock.json` 里 eslint 条目数 = 0），仓库里也没有任何 `.eslintrc*` /
-  `eslint.config.*`。所以它必然会弹交互式菜单：
+## 2. Prisma client 缺失或陈旧
 
-  ```
-  ? How would you like to configure ESLint? ❯ Strict / Base / Cancel
-  ```
+- 症状：`@prisma/client` 没有导出模型、`PrismaClient` 缺少模型，或 schema 默认值与测试写入结果不同。
+- 核对：是否刚运行 `npm ci` 或修改 schema；`postinstall` 当前只准备静态资源，不生成 client。
+- 处理：确认没有其他进程占用生成物后，执行 `npx prisma generate`，再重跑原失败检查。
+- 生成后仍失败，继续核对 schema、导入与数据库，不把所有模型相关错误都归为生成物陈旧。
 
-  然后是 `⨯ `next lint` is deprecated and will be removed in Next.js 16`，exit 1。
-- **历史代价**：10 次调用 / 9 个会话，**全部失败**，每次都是"弹菜单 → 卡住 / 取消 → 再试一次"。
-- **判据**：如果你在别的分支 / 旧提交上看到 `next lint` 输出，那就是这个已删的脚本。
-  **不要把它当门禁修** —— 要 lint 就得先把 `eslint` + `eslint-config-next` 装进
-  `devDependencies` 并落一份配置，那是一次独立改动。
-- 替代：类型检查走 `npm run typecheck`（见 `CLAUDE.md`「验证纪律」）。
+## 3. `.next/types` 陈旧导致的类型错误
 
-## 2. 需要 `prisma generate` 才能过的红
+- 症状：`npx tsc --noEmit` 报 `.next/types` 中的路由文件缺失或引用已删除页面。
+- 只查源码类型用 `npm run typecheck`，不为此先构建。
+- 需要完整构建用 `npm run build`；`scripts/build.mjs` 已自动清理 `.next/types`。
+- 若脚本报告清理失败，检查具体文件与进程占用；不要直接删整个 `.next`，也不要循环重跑 build。
 
-**状态**：不是测试坏，是**生成物陈旧**。**不是既有红，是可以自己修好的。**
+## 4. Prisma 生成报 `EPERM ... rename`
 
-- **怎么认**：满屏 `Module '"@prisma/client"' has no exported member 'xxx'`，
-  或 `PrismaClient` 上找不到模型。
-- **原因**：`npm ci` 会把 `node_modules/.prisma/client` 一起清掉，而 `postinstall`
-  **不跑** `prisma generate`。
-- **修法**：`npx prisma generate`，**不用改任何代码、不用重跑别的**。
-- 另一条同源：改了 `schema.prisma` 的 `@default` 之后也必须重新 generate ——
-  默认值是烘进 client 的。症状会**指向断言而不是根因**（2026-09 实测：
-  把 `Blog.visibility` 默认值从 `'private'` 改成 `'internal'` 后，15 条用例报
-  `expected 'private' to be 'internal'`，看着像"迁移没生效"，实际是 client 陈旧）。
-
-## 3. `.next/types` 陈旧导致的幻影类型错误
-
-**状态**：**不是既有红，是构建产物陈旧**。已从根上修掉（`npm run build` 现在会先删它）。
-
-- **怎么认**：`npx tsc --noEmit` 报 `Cannot find module '.../page.js'` /
-  `File '.../.next/types/app/xxx/layout.ts' not found`，而那个路由**在源码里存在**
-  （或者早已删掉）。实测踩过 4 条指向**已删除的 `photowall` 路由**的幻影错误。
-- **原因**：根 `tsconfig.json` 的 `include` 里有 `.next/types/**/*.ts`，而它是构建产物、
-  不随源码删改即时更新。
-- **现在的做法**：
-  - 只想确认自己改的代码对不对 → `npm run typecheck`（读 `tsconfig.typecheck.json`，
-    **不碰 `.next/types`**）。
-  - 要完整构建 → `npm run build`（`scripts/build.mjs` 会先删 `.next/types`）。
-- **别再**：手动 `rm -rf .next` 再 build（整个 `.next` 常被别的进程占着，Windows 上会以
-  `Directory not empty` 半途失败，而失败信息看着像权限问题）。
-
-## 4. `EPERM: operation not permitted, rename '…node_modules\.prisma\client…'`
-
-**状态**：**不是测试坏，是进程抢占。** 实测出现 9 次。
-
-- **怎么认**：构建或 `prisma generate` 报 `EPERM ... rename`，指向 `.prisma/client`。
-- **原因**：Prisma 在重新生成时会 rename 客户端目录，而**还有 `next start` / `next dev`
-  在跑**（它攥着里面的文件）。
-- **最常见的触发方式**：`Get-Process node | Stop-Process -Force` / `taskkill /F /IM node.exe`
-  把一堆进程强杀在半途。实测这样干过 **76 次 / 29 个会话**。
-- **修法**：精确杀端口占用者，别群杀——
-
-  ```powershell
-  Get-NetTCPConnection -LocalPort 3000 | Select-Object -ExpandProperty OwningProcess |
-    ForEach-Object { Stop-Process -Id $_ }
-  ```
+- 检查目标路径、访问权限及是否有 dev / start / generate 进程占用 Prisma client。
+- 不群杀 node，不仅凭端口号就停止进程。先确认命令行、用途和归属；只停止本任务启动
+  或明确获授权停止的 PID。他人的服务应协调等待，或使用独立工作区。
+- 解除已确认的占用后重新 generate，并重跑受影响检查。
 
 ## 5. `webServer was not able to start`（e2e）
 
-**状态**：**不是测试坏，是端口/进程/构建产物问题。** 实测出现 8 次。
+先读 webServer 日志，再检查：
 
-- **怎么认**：Playwright 一条用例都没跑就报这个，后面跟 `port 3100 is already used` 或
-  启动超时。
-- **三个原因，按概率**：
-  1. 上一轮的 `next start` 没退干净（尤其群杀之后留下僵尸）。
-     查：`Get-NetTCPConnection -LocalPort 3100,3102,3103`。
-  2. `.next` 里没有构建产物，或产物是旧的 —— `npm run e2e` **不会**帮你 build。
-     要 build 就先 `npm run build`，或直接用 `npm run e2e:ci`。
-  3. 并发跑了两个 playwright（`tests/.tmp/e2e-*` 与端口都会撞）。
-- **修法**：先 `Get-NetTCPConnection` 找占用者精确杀掉，再 `npm run build`，再跑。
+- 端口是否被占用，是否已有另一个 Playwright / 测试服务在运行。
+- `.next` 和 realtime 构建产物是否存在、是否对应当前源码。`npm run e2e` 不自动 build；
+  需要新构建时先 `npm run build`，或使用 `npm run e2e:ci -- <spec>`。
+- 测试库、种子、环境变量及启动命令是否正确。
 
-## 6. `Test timed out in 5000ms`
+只处理确认的原因；不要无条件“杀进程 + build”。页面探针只连接已有服务，
+不负责启动或初始化测试环境，Playwright 运行完成也不代表 webServer 会继续保留。
 
-**状态**：**默认超时太短**，不是死锁。已把 `testTimeout` / `hookTimeout` 调到 30 s。
+## 6. 测试超时
 
-- **怎么认**：报 `Test timed out in 5000ms`，但那条用例单独跑是过的。
-- **原因**：默认 5 s 对**建库 + 种子**类用例不够。实测有一条配额用例要 **2357 ms**，
-  在 `maxWorkers: 4` 下被别的文件抢 CPU 就翻过 5 s。
-- **现状**：`vitest.config.ts` 已设 `testTimeout: 30_000` / `hookTimeout: 30_000`。
-  同一批文件加 `--testTimeout=30000` 后 94/94 全绿。
-- **如果你还看到 5000ms**：说明你在跑一个**没读到本仓 `vitest.config.ts`** 的调用
-  （例如带了自己的 `--config`，或从别的目录跑）。
+`vitest.config.ts` 当前将 `testTimeout` / `hookTimeout` 设为 30 秒。
+若报 5000ms，核对所加载的 config、用例局部 timeout 和调用参数；不能直接断言没有加载配置。
+单独跑通过、全量失败可能与资源争用或共享状态有关，也可能暴露实际缺陷。
+只有定位原因后才调整超时，不以加大 timeout 代替检查挂起、死锁或缺少清理。
 
 ## 7. `The table main.users does not exist` / `no such table:`
 
-**状态**：**并发污染**，不是既有红。实测最大的假红来源（257 次 + 46 个表族）。
+- 跨多个文件缺表时，检查测试库 URL、schema / 迁移、模板库和其他 vitest 进程。
+- `tests/global-setup.ts` 已采用哈希复用与临时文件原子发布，旧的并发复现不能证明当前错误同因。
+- 同一工作区仍不并发跑多套测试，避免共享目录与资源争用；单个 Vitest 内部的文件并行由配置管理。
+- 清理或重建前确认目标仅为本任务的可丢弃测试数据，不碰他人活动库或真实数据。
 
-- **怎么认**：成片地、跨很多文件地报缺表；同一个文件单独跑就全绿。
-- **原因**：`tests/global-setup.ts` 建模板库 `tests/.tmp/template.db`，各文件
-  `ensureSchema()` 去 `copyFile` 它。**两个 vitest 同时跑时**，后启动的会重建模板，
-  先启动的正好拷到半成品。
-- **已修**（2026-10-27）：模板改成「schema 哈希没变就跳过重建 + 构建到临时名再原子
-  `rename`」，`copyTemplate()` 还会重试。同一个实验从 **686 个 DB 错误 / 14 文件红**
-  降到 **0 错误 / 172 全绿**。
-- **但纪律不变**：**别并发跑两套测试**。看到这一条先确认没有第二个 vitest，
-  也不要去改代码。
+## 8. 他人未完成的 WIP
 
-## 8. 他人未完成的 WIP 会让全量出现一片红
+`git status` 中有未提交文件，只能说明工作区不干净，不能证明失败由这些文件造成。
 
-**状态**：**不是你的红，也不是既有红**，是工作区里有别人（或另一个 agent）没写完的改动。
+- 先核对 diff 与失败路径；不修复、恢复、stash 或摘掉他人的改动来“试一下”。
+- 需要对照时用独立 worktree：在基线与包含自己改动的版本上验证同一失败场景。
+  记录验证的提交、补丁和结果，避免实际只测了未包含自己代码的 HEAD。
+- 明确验证出差异后再报告归因；无法完成对照时说明限制，不将猜测记成既有失败。
 
-- **判据**：`git status` 里有你**没改过**的文件是 modified。本仓常见：另一个 agent
-  在改 `src/lib/reactive/`、或往 `tests/e2e/` 加探针 spec。
-- **2026-10-27 实测一例**：`src/lib/reactive/host-components.ts` 里有人加了
-  `AUTHOR_HTML_OPTIONS`（`enableExtendedHtml: true`）并 spread 进
-  `reactiveCompileOptions()`。它让 **7 个测试文件 / 21 条用例**转红，错误全是
-  「编译产物是空的」（`expected [] to have a length of 1`、`expected '' to be '标题 …'`、
-  `expected { ok: true } to deeply equal { ok: false }`）。把那两行临时摘掉后
-  **106/106 全绿** —— 证明与其它改动无关。
-- **怎么处理**：**别去修他的代码，也别把它当成既有红记死**。要么等它完成，
-  要么在干净的 `git worktree` 上验证自己的改动。回复里说清"这 21 条红来自工作区里
-  未提交的 `<路径>`，不是我的改动"，比逐个调研省一个数量级的时间。
+## 9. 文档引用或目录守卫失败
 
-## 9. `docs-xref` / `docs-catalog` 报某个 `.md` 不存在或没登记
+- `docs-xref`：核对路径、章节标题及引用格式；来源可能是本次修改，也可能是其他工作区变化。
+- `docs-catalog`：新增 / 改名 / 删除 `docs/` 下文档时，同步 `src/lib/docs-catalog.ts`，
+  条目 title 与文档 H1 一致；只改正文不必增加条目。
+- 用当前 diff 确认归属后修复，再运行相关守卫，不凭错误名称直接认定是本次引入。
 
-**状态**：**这是你引入的**，不是既有红。守卫工作正常。
+## 10. 既有失败的判定
 
-- **`docs-xref`**：`CLAUDE.md` 或别的文档里用反引号引用了 `docs/<名字>.md`，但文件不存在。
-  报错形如：``这些文档引用了不存在的文件：CLAUDE.md:267 → docs/&lt;名字&gt;.md``。
-- **`docs-catalog`**：`docs/` 下多了一份 `.md` 却没登记进 `src/lib/docs-catalog.ts`
-  （漏登记 = 它在站上不出现且**不报错**，所以守卫是双向对账的）。
-  **新增/改名/删除文档必须同步那张表**，且表里的 `title` 要与文档 H1 一致。
-- **修法**：引用了就建文件（或去掉引用）；加了文件就登记。
-
-## 10. 真正没有既有红（2026-10-27 校准结论）
-
-把第 8 节那批 WIP 影响排除、且独占仓库跑的情况下，**全量 266 文件 / 5,286 用例全绿**。
-也就是说：
-
-- **没有「反正它就是红的」这种文件**。`css-tsx-classes.test.ts` 曾经是唯一一条慢性红
-  （`.tsx` 里用了没定义的类名），已于 2026-10-27 补齐白名单修好。
-- 所以**别再写「那 1 条是既有失败」然后跳过**。历史上有 9 次这样的表述
-  （例："全量 vitest：4849 passed / 1 failed。那 1 条是既有失败"），其中至少一次
-  就是本可以顺手修好的。
-- 如果你跑出红而这一页对不上，**那就是真红**。查它。
-
----
+历史上某次全绿或失败都不代表当前状态。没有仅凭文件名就可跳过的失败名单。
+报告检查命令、退出码、已确认原因和未覆盖范围；旧日志引用须注明对应提交与环境。
+不为获取“当前全量耗时”而额外跑全量，数字如需保留应放在带日期的测量记录中。
 
 ## 维护这一页
 
-- **改动了让某条失效的东西**（例如真的把 eslint 装回来了、或修好了某批用例），
-  就**同时改这里**。一份过期的台账比没有更糟：它会让人跳过真正的新红。
-- 新增一条的判据：它必须**至少出现过两次**，且第二次有人**重新调研了一遍**。
-  只出现一次的是偶发，不是台账材料。
-- 引用 `CLAUDE.md` 的「验证纪律」一节（那一节讲**怎么跑**，这一页讲**怎么读红**）。
+保留能指导下一步排查的症状、核对方法和处理方式；脚本修复后同步更新当前入口。
+新增条目优先收录重复出现且有明确证据的问题，单次事故与未经验证的归因不写成永久规则。

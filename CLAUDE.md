@@ -1,784 +1,124 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code when working with code in this repository.
+本文件是 Claude Code、Codex 等 agent 共用的仓库指引。`AGENTS.md` 保持指向本文件的软链接，
+不要复制成两份内容。Windows 若只读到一行 `CLAUDE.md`，改读本文件；链接修复见 `README.md`。
 
 ## 项目概述
 
-raricy.com（聪明山）—— 个人博客 / 故事 / 工具集 / 剪贴板 / 图床 / 投票。
+- raricy.com（聪明山）：Next.js 15 App Router + React 19 + TypeScript，Prisma 6 + SQLite。
+- 开发库为 `instance/database/dev.db`，生产库路径以部署环境配置为准；不要混用。
+- 主站业务与鱼干账目保持单进程自洽；同仓 `services/realtime/` 是独立实时进程，
+  由 `npm run dev` / `npm start` 与主站共同启停。服务边界见 `docs/realtime.md`。
+- JWT 会话使用 `session_version` 失效机制；SQL 迁移走手写脚本，不用 `prisma migrate`。
+- 不恢复已删除的 Flask 实现。注释应解释当前规则与理由，不引用已删除实现来解释业务决策。
+  仍在数据库中的历史格式约束见 `docs/legacy-constraints.md`。
 
-- **Next.js 15** App Router + React 19 + TypeScript
-- **Prisma 6** 直连 SQLite —— 开发库 `instance/database/dev.db`（`.env`），生产库 `db.db`
-  （`.env.production.example`）。**两个不同的文件**，文档里笼统说「db.db」是旧笔误
-- **JWT** 会话 + `session_version` 失效机制（改密 / 强制下线时递增，旧会话立即失效）
-- **单进程自洽** —— 唯一的部署单元就是这个 Next 应用。鱼干账户曾在站外一个 FastAPI
-  微服务里，已于 2026-09 搬进站内（历史注记见 `docs/architecture.md` §6.3.1）；
-  库表里还剩两处物理痕迹，见 `docs/legacy-constraints.md` §1.1
-- **迁移走手写 SQL**（**不要用 `prisma migrate`**）—— 详见下面「数据库迁移」
-- **仓库指引只有一份** —— `AGENTS.md` 是指向本文件的软链接（Codex 等只认 `AGENTS.md`
-  的工具读同一份）；**别把它改成复制品**。⚠️ Windows 的 `core.symlinks` 默认 `false`，
-  检出时链接会被静默展开成 9 字节文本（内容就是 `CLAUDE.md`）而 `git status` 仍干净 ——
-  修复命令与症状见 `README.md`「快速开始」，`tests/unit/agent-instructions.test.ts` 守着。
+## 工作方式与提交
 
-上一版是 Flask 单体（2026-07 被替换），源码已在 git 历史中删除（要考古从 `7d7be1c^` 检出），
-**工作区里已无 Python**。**不要修改或恢复任何 Flask 代码**。
-
-**代码注释不向已删除的实现看齐。** 「对齐 Flask `@authenticated_required`」这类写法是**悬空引用**
-——那些文件早不在工作区，读者查不到，等于没写。一律改成自足表述：说清规则本身，或说清
-「这么写是**刻意的** / 改了会**坏什么**」。同理，**别把我们自己定的设计说成被旧框架逼的** ——
-业务规则、算法、字段形状、幂等键都是我们自己的决定，与当年用什么框架无关。
-
-唯一例外是**数据的物理形态**：werkzeug 密码哈希格式、SQLAlchemy 写出的时间戳形态这类，
-它们确实是旧实现的产物且现在还躺在库里，照实写。清单见 `docs/legacy-constraints.md`。
+- 开始先看 `git status --porcelain`、`git log --oneline -3`、`git stash list`，区分本次工作与他人改动。
+- 同一工作区可能有其他 agent：不覆盖、恢复、stash 或修复他人的未完成改动。
+  需要对照 HEAD 归因时，在独立 worktree 验证，并确保自己的改动也包含在验证对象中。
+- 按用户请求完成一个连贯任务后，完成适用验证并提交；不要求每个小步骤立即 commit。
+  一个功能及其测试、文档可以在同一提交中；无关任务才拆分。只 `git add <具体路径>`，不 `git add -A`。
+- 默认不 push，等用户明确要求。commit 与 PR 不加 Claude / Anthropic 或其他 agent 署名。
+- 先用 `rg` 定位，再读取相关段落。已经读过且未变化的内容无需重读；不要为小改动通读架构文档。
+- 临时日志、截图、备份放系统临时目录。测试框架自己的数据库和缓存仍使用其配置目录。
+- 不群杀 node 进程；确认进程用途与归属后，只停止本任务启动或明确获授权停止的 PID。
+  同一工作区不并发跑多套测试、多个 build，或在其他进程占用 Prisma client 时重新 generate。
 
 ## 常用命令
 
-常用命令见 `README.md`「工具脚本」（那是精选，**不是全表**）；完整列表以 `package.json`
-的 `scripts` 为准。这里只列**不显然**的几条：
+完整命令以 `package.json` 的 scripts 为准，使用说明见 `README.md`。
 
-- `npm ci`，不要 `npm install` —— 前者严格按 lockfile 安装，后者可能在 semver 范围内改写
-  lockfile 把依赖漂到更新的小版本。**真正会炸的是手动 `npm install next@latest`**：跨大版本
-  装到 Next 16 后启动即崩（`TypeError: Cannot read properties of undefined (reading 'map')`，
-  报错还指向 ignore-listed frames，完全看不出根因 —— 线上实际发生过）。
-  `package.json` 的 `^15.1.4` 本身到不了 16.x；`npm run diagnose` 段 0 会校验已装版本与声明同大版本。
-- `npm run e2e` **不**自动 build，跑的是 `.next` 里的现有产物。改了 `src/` 没重新 build
-  的话，测的是旧代码 —— 症状是刚加的日志一行都不打，容易误判成代码没生效。用 `npm run e2e:ci` 或先 build。
-- `npx tsc --noEmit` **会读 `.next/types/`**（tsconfig 的 include 里有它）。所以它与上一条
-  同源：`.next` 过期时，tsc 会对**早就删掉的路由**报 `Cannot find module '.../page.js'`。
-  实测过 4 条指向已删除的 `photowall` 路由的幻影错误，跑一次 `npm run build` 后自行消失。
-  看到「模块不存在」先 `npm run build`，别去翻源码找那个路由。
-  ⚠️ **同一个陈旧状态也会让 `npm run build` 自己挂在类型检查那步**（2026-09 实测：
-  `Failed to compile. Type error: File '.../.next/types/app/admin/appeals/layout.ts' not found`
-  ——报的是个**存在**的路由，所以更迷惑）。这时「跑一次 build」这个解药正好失效：解药就
-  是它本身。**删 `.next/types` 再 build**（别删整个 `.next`：它常被别的进程占着，
-  `rm -rf` 会以 `Directory not empty` 半途失败，而失败信息看着像权限问题）。
-  另注：`npm ci` 会连生成的 Prisma client 一起清掉（`postinstall` 不跑 `prisma generate`），
-  装完依赖若满屏 `Prisma has no exported member`，补一次 `npx prisma generate`。
-  ⚠️ **改了 `schema.prisma` 的 `@default` 之后也必须重新 generate** —— 默认值是烘进
-  client 的（`create` 时会显式带上），而测试库那边 `db push` 已经按新 schema 建好了。
-  两边一不一致，**症状指向断言而不是根因**：2026-09 把 `Blog.visibility` 的默认值从
-  `'private'` 改成 `'internal'` 后，15 条用例报 `expected 'private' to be 'internal'`，
-  看着像「迁移没生效」，实际是 client 陈旧。
-- `npm run cli` —— 运维台。**不带参数在 TTY 下进菜单向导**（引导式，不用背命令）；
-  `npm run cli -- <cmd>` 是命令式，给脚本/CI。见 `docs/cli.md`。
-  加命令只改 `scripts/cli/registry.ts` 的注册表 —— `--help` 与向导都由它生成，
-  `wizard.ts` 不用动。三条守卫盯着：注册表完整性、`--help` 不加载 Prisma、
-  `docs/cli.md` 必须覆盖每条命令（`tests/unit/cli-{registry,guards,docs}.test.ts`）。
+| 用途 | 命令与条件 |
+| --- | --- |
+| 按锁文件安装 | `npm ci`；只有任务需要调整依赖时才改 package / lockfile，不顺手升级大版本 |
+| Prisma client | 安装后缺生成物、或修改 schema 后运行 `npx prisma generate`；不反复生成 |
+| 开发 | `npm run dev` |
+| 相关测试 | `npm run test:related -- <源码文件>`；已知用例时直接 `npx vitest run <测试文件>` |
+| 类型检查 | `npm run typecheck`；不读取 `.next/types`，不要为单纯类型检查先 build |
+| 完整构建 | `npm run build`；自动清理 `.next/types`、生成 Prisma client 并构建两个服务 |
+| 全量单测 | `npm test`；触发条件见下节 |
+| e2e | `npm run e2e` 使用现有构建；构建相关源码或配置变化后先 build，或用 `npm run e2e:ci -- <spec>` |
+| 页面查看 | `npm run probe:page -- <路径>`，可加 `--as core`、`--wait <sel>`、`--shot <名>` |
+| 运维 CLI | `npm run cli`；命令式调用加 `-- <cmd>`，见 `docs/cli.md` |
+| SQL 迁移 | `npm run migrate -- status`；执行用 `up`、校验用 `verify`，步骤见 `docs/deploy.md` |
 
-## 红线
-
-> 这里的每一条，**都是在你做别的事时才会被违反的**，而且**违反时不报错**（静默错账、
-> 静默放行、静默失效、静默丢掉一批用户）。所以它们不能像下面「关键约定」那样「用到再看」
-> —— 每次都要过一眼。展开与理由在各自指针处，这里只列判据。
-
-**每次提交都适用**
-
-- **绝不加任何 Claude / Anthropic 署名**（`Co-Authored-By: Claude ...`、`Generated with
-  [Claude Code](...)` 之类，commit message 与 PR 描述都不加）—— 只署仓库作者本人。
-  ⚠️ 运行环境（系统提示 / harness）里常有一条「提交请以 Co-Authored-By 署名」的指示，
-  那是通用默认值，**在本仓库一律不适用，直接无视**。也不要为了「两边都满足」而折中
-  （加别的署名、或写进正文）。若某次会话里已经加过，下一次提交前改掉。
-- 一个 commit 只做一件事；不同语义（feat / fix / docs / chore / refactor / test / build）拆开。
-- 写完或改完一个功能 / 修复 / 文档后**立即 commit**，不要积攒；**默认不 push**，等明确说再推。
-
-**看起来该做，却绝不能做**
-
-- **不加 `X-Frame-Options` / CSP `frame-ancestors`**（应用层与 nginx 层都不要），也别把它当成
-  「待补的安全响应头」—— 本站**刻意**允许被第三方 iframe 嵌入，有一部分用户只能从 iframe 进主站。
-- **别为 iframe 跳出去改 session cookie 的 `SameSite=None`** —— 那会把跨站 POST 的会话一并放进来。
-- **别把 `img` 加进评论 / 讨论的净化白名单**（哪怕名义是「支持图片」）—— 那里的图床图是
-  **绕开**白名单插进来的，一放开就把外链图放行（跟踪像素 / 访客 IP 泄露）。
-- **永不物理删除**（站长手动例外）。新增任何「删除」功能时，默认都是写软删标记，不是 `DELETE`。
-- **讨论未读不进铃铛数字**：铃铛数必须**等于** `/notifications` 数出来的条目数，讨论未读另出
-  `chatUnread` 走小红点。**别「统一未读语义」把它并回 `count`** —— 那会让铃铛写 5、点进去只有 2 条。
-- **非核心账号没有鱼干赚取渠道**（「鱼干 = core+ 体系的报酬」这条口径的地基）。
-  **新增任何发鱼路径前，先确认这一条仍然成立** —— 给全站空投等于「注册就有鱼干」。
-  练手盘（`/fish/trade`）**仍然成立**：它是签到之外的**第二条 core+ 渠道**，档位与
-  签到、投喂同档，没有把口子开到非核心账号上。它的 mint 是**账外的**（赚了凭空加进
-  用户余额、亏了少发给他，没有「系统账户」那一行 —— 见 `docs/architecture.md` §6.3），
-  所以**不受「预算有界」约束** —— 有界性来自档位，不来自额度。
-- **练手盘的成交价必须在下单那一刻现取**（`fetchQuote`），**绝不读展示缓存**。
-  缓存价 = 看盘的人可以在价格跳动后、缓存刷新前下单，那是无风险、可重复、无上限的套利。
-  行情源挂了就拒单（503），不降级。展示缓存（15 秒轮询那份）**只用于渲染**。
-  **K 线同样是展示**：`GET /api/fish/trade/candles`、图上的蜡烛、以及页面自己把
-  展示价「并进最后一根」的那点算术，一律不得作为成交价 —— 它们只是另一份渲染数据。
-  （e2e 里有一条把两者刻意拆开再下一单。）
-  展开见 `docs/architecture.md` §6.13。
-- **K 线的 `openTime` 是第三把钟**：交易所给的真实 UTC 毫秒，与 `Date.now()` 同一把尺子，
-  但**不是**库内那套「UTC+8 墙上时间贴 Z」——两者绝不能相减。按本站钟面显示走
-  「加 `SITE_TZ_OFFSET_MS` 再 `getUTC*`」。db-time-guard 抓不到这条（它只匹配
-  `.getTime()` 相减），所以只靠注释与单测守。
-- **练手盘与玩具区只走 https**（闸在 `src/middleware.ts` **一处**；协议是传输层属性，不是档位，
-  别跟着各处的档位判定各抄一遍）。覆盖 `/fish/trade*` + 四个 `/api/fish/trade/*`，以及
-  `/game*` + 四个 `/api/game/*/launch`；路径清单只住 `src/lib/https-guard.ts`（两区共用一张
-  表，`/game/quandi/play` 那份 iframe 文档也在页面前缀里）。两条最容易踩的：
-  - **回环豁免（`localhost` / `127.x`）不是「宽松」，是本地与全部 e2e 的活路**。Next
-    会自己按 socket 把 `X-Forwarded-Proto` 填成 `http`，所以「明文 + localhost」是
-    本地开发的常态 —— 删了豁免，两区在本机与整个 e2e 里**整体 403**（`/game` 那一堆
-    页面连同 e2e 里点开的游戏都会），而这只在真跑起来时才看得见（单测用不到真服务器，全绿）。
-  - **私网 / 拿不到 Host 时宁可回 403，也不拼跳转地址**：308 会被浏览器**永久**缓存，
-    跳到上游地址（`127.0.0.1:3000`）之后只能清缓存，而服务端一切正常、不报错。
-  判据与理由的唯一说明处是 `src/lib/https-guard.ts` 文件头；展开见 §6.4。matcher 与
-  路径清单**没有编译期关系**（matcher 必须是构建期字面量），`tests/unit/https-guard.test.ts`
-  拿文件系统双向对账 —— 新增 `/api/game/<x>/launch` 而没进表，那个接口就在明文下照发票据。
-- **表情包语法的正则里一个 `\s*` 都不能有**，字符集必须是白名单 —— 宽一点就是
-  **向任意同名用户凭空发通知**（`extractMentions` 跑在原始正文上）。
-- **OAuth 三条限频不在 `RULES` 里**（内联在 `oauth/*/route.ts`）—— 做全站限频审计时最容易漏。
-- **档位阶梯：页面与接口必须同档（每层都自己判），但入口不跟着藏。** 顶栏「讨论」与首页讨论卡
-  对所有人渲染是**站长明确要的**，别当「自相矛盾」顺手藏回去；签到是正例（三处判定位见 §8）。
-  **⚠️ 这条只管「档位」—— 专注模式是例外，它用不了的东西整段不渲染。** 判据是
-  「他还能不能自己把这一块打开」：档位不够是「你现在不配用」（core 点签到撞 403 是就地
-  403，不是功能下线），所以入口照给；专注模式是**本人一键可关的账号偏好**（设置页就在
-  那里），留一条点了 403 的灰链只是噪音，也没有「以为功能下线」的误导风险。
-  现行落点：练手盘的账户入口（`/fish` 的练手盘链接，
-  仅在「屏蔽鱼干练手盘」时）、讨论侧栏的大区行（仅在「屏蔽讨论大区」时），以及首页
-  玩具卡与顶栏玩具入口（仅在「屏蔽玩具区」时），都由调用方条件渲染 —— **连 `<p>` 一起**
-  （`p + p` 的行距命中的是「有没有那个 `<p>`」，留个空壳会凭空多出一段空白）。别改回
-  「置灰保留」，也别给 `<Link>` 挂个类名了事（灰了却点得动比不灰更糟）。
-- **`/fish/pay` 的 DOM 类名被两个 e2e 用例钉死** —— 改样式 / 改类名 / 重做收银台之前先看用例。
-- **第三方素材不入库**（表情包留在 `instance/stickers/`，git 历史删不干净）—— 只有当授权
-  **明确允许再分发**时才可入库（判例：`chess/` 那套棋子因 BSD-3 明文授予才进来过；2026-09
-  那版棋类玩具区下线时已一并移除，2026-10 玩具区以 `/game` 重新上线也没把它搬回来）。
-  这条**只管第三方**：我们自己画的素材该入库（头像框就住在 `public/static/frames/`，
-  见「关键约定」的「头像框」一节）—— 判据是「授权与来源」，不是「是不是图片」。
-
-**改代码时**
-
-- **时间戳一律 `nowForDb()` / `getUTC*`**；**禁止**无参 `new Date()`、`new Date(Date.now(...))`、
-  与 `Date.now()` 相减、`toLocale*`、本地 getter。混用两把钟的后果**全是静默的**
-  （禁言多显示 8 小时、当日发文计数跨日错位）。`tests/unit/db-time-guard.test.ts` 静态强制。
-- **含数据变换的迁移（如 ×10 整数化）只允许执行一次**，由跟踪表保证，**绝不手工重跑**。
-- **顶栏推送两条纪律**：`hasSubscriber` 必须在任何 `await` **之前**同步早退；
-  **算值必须放在吞异常的 `try` 内**（调用点写的是 `void pushX(id)`）。写错 → 异常逃逸 →
-  `blog-service.toggleLike` 回滚 `notificationSent` → **下次点赞重发一条通知**。
-- **`admin-user-service` / `user-service` 不能 import `chat-service`**（成环）：拒绝方向推精确值，
-  放开方向推 `{refresh:true}`。
-- **兜底快照 `GET /api/notifications/count` 不能删** —— SSE 有「连着但收不到」的半死状态，
-  只有轮询能纠正，且它在本地开发时完全看不出来。
-- **HTTP 绝不能在 SQLite 事务内** —— 写锁会被占满整个超时，并发写直接 `database is locked`。
-  任何「写库 + 调外部 HTTP」的新功能都照此办理。**现行唯一样板是鱼干收款回调的 outbox**
-  （`fish-webhook-service.ts`：投递行与流水同事务写入、投递在事务外）——
-  账户微服务当年那条最大的 HTTP 路径已搬进站内，**别以为这条红线随之作废**：
-  商户回调仍然是跨进程的，市场行情源（`market-price.ts`）也仍然是。
-- **专注模式 = 总开关 + 逐项屏蔽**（2026-10 起可自定义）。判定一律走
-  `src/lib/focus-mode.ts` 的 `isFocusLobbyBlocked` / `isFocusGamesBlocked` /
-  `isFocusFishTradeBlocked` 与 `focus-service.ts` 的 `resolveFocusHiddenCategoryIds`，
-  **绝不手写 `user.focusMode && user.focusBlockX`**（漏总开关或漏子项都静默错）。
-  `users.focus_hide_categories` 的 **NULL（未自定义 → 用站长 `categories.focus_hidden`
-  默认集合）与 `'[]'`（明确一个都不屏蔽）不可合并** —— 合并会让存量用户升级后突然看到
-  全部水区。`categories.focus_hidden` 只是**默认集合**，不是真相。
-  设置页在 `/settings#focus-mode`（`FocusPanel.tsx`）；对外接口见 `docs/bot/account-bot.md` §4。
-- **权限变更分两类**：禁言 / 重置密码 / 强制下线递增 `sessionVersion`（会话已废）→
-  `kickUser` + `kickTopbarUser` **成对**出现；改角色 / 专注模式**不递增 sessionVersion**。
-  专注模式里只有**大区可见性**变化（总开关或 `focusBlockLobby`）才额外踢讨论 SSE
-  （重连按新值决定收不收大区广播）并推顶栏红点；改玩具 / 练手盘 / 博客栏目不踢流。
-  顶栏流一律不踢（会话没废，铃铛照常收推送）。
-- **改 `RULES` 的数值要同步对外文档** —— `docs/bot/` 三份与 `docs/guide/` 的投票 / 图床指南
-  刻意复述了配额（站外读者要自包含），不同步就是下一次 drift。
+`probe:page` 连接已有测试服务，不负责启动或种子初始化；先确认目标端口、测试库与登录种子就绪。
+它用于查看页面，不代替行为断言。`npm run lint` 当前不存在，不把它当门禁。
+修改 CLI 命令时维护 `scripts/cli/registry.ts` 与 `docs/cli.md`，无需另改菜单注册。
 
 ## 验证纪律
 
-> 这一节是**实测出来的**，不是风格偏好：157 个会话 / 424.8 h 里 pwsh 总耗时 13.0 h
-> （vitest 210 min、build 86、tsc 50），全量 vitest 单次中位数 132 s、最长 550 s。
-> 每一段对应一次**重复踩过的坑**，括号里是实测数字 —— 别当建议看，当判据用。
+验证按变更风险选择，不由提交次数决定。只读调研不跑测试；记录实际运行结果与未覆盖范围。
 
-### 改一个功能的最小验证闭环
+| 改动 | 默认验证 |
+| --- | --- |
+| 文档、指引、文档目录登记 | 跑对应文档守卫（如 docs-xref、docs-catalog、agent-instructions）；不默认 typecheck / build / 全量 |
+| 简单样式、文案 | 相关静态守卫及必要页面检查；布局改动检查受影响视口，不默认全量 |
+| TS / TSX 逻辑或类型 | 先相关测试，再一次 `npm run typecheck`；交互改动补受影响的页面或 e2e 验证 |
+| 鉴权、账目、迁移、共享渲染、跨模块逻辑、依赖或测试基建 | 相关测试 + typecheck，再全量单测；按风险补 build / 相关 e2e |
+| 构建、启动或部署配置 | 验证受影响的构建 / 启动路径；按影响范围选择单测与 e2e |
 
-1. 改完先跑**相关文件**：`npx vitest run <受影响文件>`。
-   不知道影响谁就用 `npm run test:related -- <文件>`（`vitest related --run`）。
-2. 再跑 `npm run typecheck`（**不读 `.next/types`**，见「常用命令」第 2 条）。
-3. **全量 vitest（`npm test`）只在提交前跑一次**，且必须输出到文件（见下一条）。
-4. 全量出现红色时，**先看是不是并发或超时**（下面两条），别急着改代码。
-
-**为什么不是每次都全量**：当前全量是 266 个文件 / 5,286 个用例 / **943 s**。
-改一个样式类名要等 16 分钟，而它证明的事情 `vitest related` 与 `typecheck` 已经证明过了。
-实测有 132 次全量级尝试，其中**只有 15 次真的跑完了全套**。
-
-### 测试输出绝不许截断
-
-- **禁止** `… | Select-Object -First/-Last N`、`| Out-Null`、`| tail`。
-  实测 **78% 的全量运行、91% 的单文件运行**被这样截断；**57 次全量既被截断又没摘要**，
-  合计 **44.2 min 的输出等于没跑**，只能重跑一遍。这是最纯粹的浪费。
-- 正确写法（先落盘，再在**文件**上搜）：
+- 全量一般在任务完成时跑一次。修改后重跑受影响检查；只有新修改或失败表明需全量时再跑。
+- 相关测试通过不能证明全量一定通过，typecheck 也不能代替行为验证。范围不清时扩大验证范围。
+- e2e 将相关 specs 合并为一次调用，减少重复启动；按受影响视口选 project，移动端与响应式改动需覆盖 mobile。
+  不默认跑全部 e2e，也不为“看一眼”新建探针 spec；需持久回归时再写正式用例。
+- 输出完整保存到系统临时目录，用唯一文件名避免其他 agent 覆盖。先捕获退出码，再筛选日志摘要：
 
   ```powershell
-  npx vitest run *> "$env:TEMP\vt.log"
-  Select-String -Path "$env:TEMP\vt.log" -Pattern "Test Files|Tests  |FAIL "
+  $testLog = Join-Path $env:TEMP ("raricy-vitest-" + [guid]::NewGuid().ToString('N') + ".log")
+  npx vitest run <测试文件> *> $testLog
+  $testExit = $LASTEXITCODE
+  Select-String -Path $testLog -Pattern "Test Files|Tests  |FAIL "
+  # 退出码在 $testExit；完整诊断保留在 $testLog，失败时继续读取相关错误段落。
   ```
 
-- 只想知道「过没过」，就只看退出码：`$LASTEXITCODE`。
-
-### 不要在同一仓库里并发跑两套测试
-
-`tests/global-setup.ts` 要给各测试文件准备模板库 `tests/.tmp/template.db`，
-而各文件的 `ensureSchema()` 是 `copyFile` 它。**两个 vitest 进程同时跑时**，
-后启动的那个会重建模板，先启动的那个正好拷到半成品 → 满屏
-`The table main.users does not exist`。
-
-- 实测确定性复现：A 跑到 12 s 时启动 B，A 得到 **686 个 DB 错误、14 个文件红**，
-  而 B 自己全绿；**A 一个用例都没改**。
-- 现在已改成「schema 哈希没变就跳过重建 + 构建到临时名再原子 rename」，
-  同一次实验变成 **0 个 DB 错误 / 172 全绿**。但**纪律仍然成立**：
-  并发还会抢 `.next/`（两个 `next build` 互相删产物）与 `tests/.tmp/`。
-- 症状是「同一个用例刚才还绿，什么都没改就红了」→ **先确认有没有第二个进程**
-  （`Get-CimInstance Win32_Process -Filter "Name='node.exe'"` 看命令行），
-  也看看是不是**另一个 agent** 在同一个工作区里干活（`git log`、`git stash list`
-  有没有你没做过的东西）。**别去改代码。**
-
-### 进程管理
-
-- **禁止** `Get-Process node | Stop-Process -Force` / `taskkill /F /IM node.exe`。
-  实测用过 **76 次 / 29 个会话**，直接造成 9 次
-  `EPERM: operation not permitted, rename '…\node_modules\.prisma\client…'`
-  （Prisma 重新生成撞上还在跑的 `next start`）与 8 次 `webServer was not able to start`。
-- 要清端口就精确杀：`Get-NetTCPConnection -LocalPort 3000 | Select-Object -ExpandProperty OwningProcess`
-  拿到 pid 再 `Stop-Process -Id <pid>`；或按命令行匹配到具体那条。
-
-### e2e
-
-- 默认**一次只跑一个 spec** 且 `--project=desktop`：`npx playwright test tests/e2e/xxx.spec.ts --project=desktop`。
-  每次调用有 **12–16 s 的 webServer 冷启动**（e2e 中位数 15 s），跑 89 次探针 spec
-  的成本远大于被测的那点行为。
-- **一次性探针 spec 放 `tests/.tmp/`**（已 gitignore、已被 vitest `exclude`），配自己的
-  `--config`；**绝不往 `tests/e2e/` 里写 `zz-*.spec.ts` / `tmp*.spec.ts`**。
-  实测历史上有 **23 个**这种文件写进了 `tests/e2e/`、被跑了 **62 次**。
-- 想「打开一个页面看看」用 `npm run probe:page -- <路径>`（加 `--as core` 登录、
-  `--wait` 等选择器、`--shot` 截图到 %TEMP%）。**别再手写内联 `chromium.launch()`
-  heredoc** —— 历史上有 **126 段**。
-- 同一个 spec 别反复重跑：实测 **51 组「同一会话同一 spec 跑 ≥3 次」= 222 次冗余执行**，
-  最坏一个把 `blog-directory.spec.ts` 跑了 **29 遍**。红了就去看日志，别赌它下一次会绿。
-- `npm run e2e` **不** build。改过 `src/` 必须先 build（`npm run build`），
-  否则测的是 `.next` 里的旧产物 —— 症状是刚加的日志一行都不打。
-
-### 文档与源码按需读，别整篇重读
-
-- `docs/frontend-styles.md` 被整篇读了 **310 次**、`docs/architecture.md` 97 次、
-  `README.md` 34 次。按节读：样式查 §3 / §4 / §7.2 / §8.4；架构按 §6.x 定位。
-- `page.tsx` 被整篇重读 **171 次**、`route.ts` 71 次、`playwright.config.ts` 31 次。
-  先用 grep 定位行号，再带 offset/limit 读那一段。
-- 本文件（37.5 KB）本身在 123 个会话里被重复注入 **172 次**。
-  **别在回答里复述它** —— 引用行号或小节名即可。
-
-### 命令别重复跑
-
-- 实测 25 组「同一会话同一命令 ≥3 次」= 73 次冗余；`tsc` ≥5 次的会话 13 个
-  （最坏 51 次），`build` ≥3 次的有 24 个。连续失败两次就**停下来想**，
-  第三次重跑同一个命令不会得到不同结果。
-- 临时文件（日志、截图、探针、备份）一律写 `%TEMP%`，**绝不落仓库根**。
-
-### 已知长期红 / 必然失败的命令
-
-- 别把「意料之外的红」当成「既有失败」一句话带过 —— 也**别逐个重新调研**。
-  先对 `docs/known-red.md`，对上了就引用那一行；对不上才值得查。
-- **`npm run lint` 已删除**（它是 `next lint` 的死脚本：eslint 依赖从未进过 lockfile、
-  仓库里也没有任何 eslint 配置，一跑就弹交互式菜单并由 `next lint` 弃用警告收场，
-  实测 10 次调用 **100% 失败**）。别再把它加回来当门禁 —— 真要 lint 就先把
-  `eslint` + `eslint-config-next` 装进 devDependencies 并落一份配置。
+- 不将测试输出直接管道截断或丢弃；可以从已保存的完整日志中提取摘要。
+- 失败先看日志。`docs/known-red.md` 是排障线索，必须核对当前前提；相同错误文案不等于相同根因。
+  修复后重跑受影响检查；没有代码、配置或环境变化时不盲目重复失败命令。
+- 怀疑并发或他人 WIP 时先查进程及 diff；不得只凭存在未提交文件就断言失败与本次改动无关。
 
 ## 关键约定
 
-各节的**展开不在这里** —— 按下面的指针去读。碰对应子系统之前先读过去。
+以下是跨任务需要知道的边界；具体实现按下一节索引查询。
 
-### 数据与时间
+- 数据默认软删除，物理删除仅限站长明确要求；不对含数据变换的迁移手工重复执行。
+- 库内时间使用 `src/lib/db-time.ts`：取当前值用 `nowForDb()`，读写与展示保持其时区语义。
+  真实 UTC 行情时间与客户端计时不套数据库时钟，不能混用相减；范围见 `tests/unit/db-time-guard.test.ts`。
+- 不在 SQLite 事务内等待外部 HTTP；鱼干写账走 `postEntry`，不绕开服务层直接改余额。
+- 本站刻意允许第三方 iframe：不添加 `X-Frame-Options` / CSP `frame-ancestors`，不因此改 cookie 为 `SameSite=None`。
+- 评论 / 讨论不把 `img` 加进净化白名单；对外资源读口维持权限与可见性白名单，匿名身份不泄露到通知或审计。
+- 第三方素材只有授权允许再分发才入库；自行创作的素材可入库，运行时数据与私密部署信息不入库。
+- 产品文案只写功能名称、操作提示和状态等必要信息，不主动添加装饰性副标题。
 
-`src/lib/db-time.ts` 头部（「UTC+8 墙上时间贴 Z 标签」的来龙去脉、反推证据、混钟后果）。
-密码哈希与历史 werkzeug **双向互通**（用户无需重设密码）见 `docs/architecture.md` §1/§6.1。
+## 按任务读取
 
-### 认证与角色
+业务注意事项收纳在 `docs/agent-domain-rules.md`。先搜索对应功能、路径或符号，只读相关条目，
+包括该功能涉及的跨模块边界；不要将整份手册作为每次任务的前置步骤。
 
-公开注册必须提供有效一次性邀请码，直接创建 core 并登录；历史 user 可补码认证。
-取消成员资格不撤销账号安全、余额/流水、转出与既有仓位平仓能力，不能新开仓或租商品。
-
-`docs/architecture.md` §8（角色阶梯、四个 guard、`/admin/*` 的分档）与 §6.1（会话 cookie、
-登出只有 `POST /api/auth/logout`）。申诉闸门见 `src/lib/admin-appeal-service.ts` 头部。
-
-### CSRF / 中间件
-
-`docs/architecture.md` §6.4（三源并集、只校验写方法；外加练手盘与玩具区的协议闸 ——
-它排在 GET 早退**之前**，所以别以为「中间件只管写请求」）+ `docs/deploy.md` §6/§13（nginx 的
-`Host` 与 `X-Forwarded-Host` 都没透传就会全站 POST 403）。鱼干市场的双门见
-`src/app/api/fish/market/_auth.ts` 与 `docs/bot/fish-bot.md`。
-
-### iframe 嵌入
-
-`src/app/components/FrameBuster.tsx` 头部（同站/跨站判定、两段跳出与那个 500ms 的含义、
-为什么两段都失效时不再找「更狠的跳法」、为什么故意不记忆）。
-
-### 数据库迁移
-
-`docs/deploy.md`「修改 schema 后」节 + `prisma/migrations/3_fish_integer_units/migration.sql`
-头部。不用 `prisma migrate`（`schema.prisma` 头禁了），走 `npm run migrate`
-（`status` / `up` / `mark <name>` / `verify`）；跟踪表 `_raricy_migrations` 自维护，
-新迁移用 `CREATE TABLE IF NOT EXISTS` 保持幂等。
-
-`up` 只执行手写 SQL，不编译或改写正文。ReactiveMD 直接从源码按需编译，复用内存
-缓存，不读写数据库快照。旧源码修订升级与公开索引修复由独立命令执行，不能再次绑回
-SQL 入口。`status` / `verify` 仍只读。
-
-### 鱼干写路径
-
-`docs/architecture.md` §6.3 是主副本（**§6.3.1 是「这里曾经跨进程」的历史注记** ——
-账户微服务已于 2026-09 搬进站内，别再照「远端 / 补偿 / 账本」的旧形状写新代码）。
-各文件头分别讲自己那一段：**`fish-service.ts` 的 `postEntry`（唯一记账内核）**、
-`fish-idempotency.ts`（**哪些操作才登记幂等**的判据）、`fish-market-service.ts`
-（转账的客户端幂等键与共享单号）、`fish-compensate.ts`（群发补偿为何要登记）、
-`fish-units.ts`（单位换算与 `Blog.fishCount` 例外）、`service-accounts.ts`（配额白名单）。
-注册建号两个入口共用 `user-service.ts` 的 `createUserAccount` 内核。
-
-**记账不变式**：每人 `users.driedFish` == 他所有 `fish_transactions.amount` 之和。
-测试侧由 `tests/helpers/fish-ledger.ts` 的 `expectLedgerConsistent()` 钉住 ——
-**新增任何鱼干写路径时，在它的用例末尾调一次**。别自己写 `update` + `create` 绕过
-`postEntry`。
-
-### 鱼干练手盘
-
-`docs/architecture.md` §6.13 是主副本；各文件头讲自己那一段：`src/lib/market-service.ts`
-（**一个事务、没有补偿**、开仓的幂等靠 `open_key` 唯一约束而非独立幂等记录、
-平仓为何不需要幂等键、最小投入为何是 1 条）、
-`src/lib/market-math.ts`（**结算公式的唯一实现** —— 服务端真结算与页面「预计到手 / 涨跌 /
-手续费」是同一个 `settleClose`，零依赖所以两边都能 import）、
-`src/lib/market-leverage.ts`（**杠杆与方向的词表，零依赖** —— 上下界 1–100、快捷档、
-警告带阈值、`parseLeverage` / `parseDirection` / `needsLiquidator`。页面要 import 它渲染
-选择器，而 `market-service` 拖着 prisma 进不了客户端包）、
-`src/lib/market-price.ts`（**成交价现取 vs 展示缓存**这条安全边界、为什么用币安 `.vision`
-域、基址可配的两个理由）、
-`src/lib/market-candles.ts`（K 线词汇表：周期白名单 / 根数上限 / 线上形状 / 缓存键 ——
-**零依赖**，服务端与客户端共用一份）、
-`src/lib/market-chart.ts`（K 线图的纯计算：窗口 / 聚合 / 刻度 / 映射 / 实时并线）、
-`src/lib/market-liquidator.ts`（**强平引擎 —— 本站第一个「自己动手动钱」的后台循环**、
-为什么结算是爆仓价而不是现价、为什么不写流水、为什么不 import market-service）、
-`src/lib/market-stats.ts`（统计的**纯聚合**：终态白名单 / 拆解表分桶 / 持仓浮动盈亏。
-白名单由调用方传进来 —— 一 import `MARKET_SYMBOLS` 就会把 prisma 拖进单元用例）、
-`src/lib/market-stats-service.ts`（统计的读路径）。
-
-**统计页（`/fish/trade/stats`）**：不需要新表 / 迁移 / 接口 —— `market_positions`
-一行 = 一个批次、结清时就地改 `status` 且绝不物理删除，统计全部由既有列推出来。
-四条最容易踩的：
-
-- **盈亏的唯一来源是 `payout_units − stake_units`**。别改成从 `fish_transactions`
-  求和（那不是「另一种口径」，是错的）：强平不写流水、实发为 0 的正常平仓也不写流水，
-  迁移前的平仓流水在远端 —— 按账本求和会让盈亏偏乐观、笔数与胜率偏小，却一切正常。
-- **判「已结清」用白名单 `{closed, liquidated}`，不是 `status !== 'open'`**：加第四个
-  终态时后者会静默把它算进胜率，而那一行 `payout_units` 若为 null，会长得跟一次真
-  爆仓一模一样。
-- **拆解表的桶 = 白名单顺序在前、多出来的 key 追加在后**：改过 `MARKET_SYMBOLS` 之后
-  残留的旧仓（`market-liquidator.ts` 头部明写存在）否则会只进总数、不进拆解表。
-- **持仓浮动盈亏必须走 `settleClose`**（与卖出弹窗同口径，含平仓手续费），缺价显示
-  「—」，且**只要有一行缺价，合计也显示「—」**。
-
-**「最近结清」（`/fish/trade` 下方那块）**：`listSettledPositions` 逐笔列 `closed` /
-`liquidated` 的仓位（白名单 `SETTLED_STATUSES`），补的是「结清后仓位无声消失、流水页
-又没有条目」那个缺口。同样是**只读 `market_positions`、绝不从账本求和**；
-`payout_units` 为 null 的异常行照 null 显示（页面「—」），**别 `?? 0`**。
-
-- **入口只能进 `/fish` 卡片的 `.fish-card__info`** —— 上面那条行动条被
-  `tests/e2e/fish-layout.spec.ts` 钉死为「恰好 3 颗」，`.fish-card__link-label` 钉死为 2 个。
-- **加一个标的要改四处**：`MARKET_SYMBOLS`（`market-price.ts`，单一真相源）+
-  `prisma/schema.prisma` 的 `symbol` 注释 + 页面文案（`fish/page.tsx`、`fish/market/page.tsx`、
-  `fish/trade/page.tsx` 的副标题）+ **`tests/e2e/mock-market-price.ts` 的 `prices` / `changes`
-  两张表**（漏了它 ticker 直接 400，而症状看着像产品坏了）。行情流、轮询、报价与
-  自选列表都跟着 `MARKET_SYMBOLS` 走，不用动。
-- **改 `MARKET_FEE_RATE` / `MIN_STAKE_FISH` 要同步页面文案**（与 `RULES` 的纪律同源）。
-- **K 线的缓存键必须带 interval**：`${symbol}:${interval}:${limit}`。漏了它，切到 4h 会
-  原样读回 1h 那一格，**不报任何错**（改版前正是如此，因为那时周期硬编码在 URL 里）。
-  周期一律过 `parseInterval` 白名单，**非法周期返回 400 而不是退回默认档** ——
-  退回会让「点的是 4h、画出来是 1h」活下来。
-- 行情有两个后台循环：**轮询**（`market-poll-drainer.ts`，15 秒一次，本站第二个）与
-  **行情流**（`market-stream.ts`，常驻 WebSocket，第三个；`MARKET_STREAM_SILENCE_MS=0`
-  可关）。**两个都要**在 `tests/setup.ts` 与 playwright 的 webServer env 里置 0 ——
-  e2e 跑的是 `next start`，那道 `NODE_ENV === 'test'` 的保险在那儿盖不住。
-  行情流即使开着也**只喂展示**：成交仍然 `fetchQuote()` 现取。
-- **第三个练手盘循环是强平引擎，它与上两个不是一类东西**（`market-liquidator.ts`，
-  `MARKET_LIQUIDATE_MS`，默认 15 秒）。上两个只写展示缓存；**它会在用户没按任何按钮时
-  结清仓位**。四条后果，每条都不报错：
-  - **e2e 里刻意不置 0，而是置成 1 小时** —— 置 0 = 关掉强平 = **杠杆开仓也一起关掉**，
-    leverage 那几条用例就买不进杠杆仓了。置大数让循环起来（闸门打开）但这一跑不 tick。
-  - **它不 import `market-service`**（那边 import 它取闸门判据，反向成环会炸在模块求值上）。
-    要复用的算术全在零依赖的 `market-math`；它算实发时费率传 0 是**在问权益、不问到手**。
-  - **结算价写的是那行存着的爆仓价，不是触发时的现价** —— 于是「什么时候发现」不影响
-    「结算成多少」，引擎晚一轮不会改变任何人拿到的数。
-  - **它的告警判据是「实发是否为 0」，不是「权益是否为 0」** —— 浮点下爆仓价处的权益
-    会留 ~1.8e-12 的尘埃（3×/5×/10× 都有），拿权益判会**每次强平都响**。
-- **展示缓存（含 K 线、以及行情流那一份）挂在 `globalThis` 上，别改回模块级变量** ——
-  Next 把 `instrumentation.ts` 编进**独立的 compilation**，`market-price.ts` 于是在
-  同一份产物里有两份模块实例（轮询器一份、两个页面与四个接口一份）。模块级变量 = 「轮询器刷
-  自己那份、页面上冻住另一份」，**不报任何错**。展开见 `src/lib/market-price.ts` 头部。
-  K 线那一格的键是 `${symbol}:${interval}:${limit}`（见上面那条）。
-- **杠杆与方向有七条静默错**（杠杆 1–100 的**整数自由输入**、方向 `long`/`short`；
-  `LEVERAGE_PRESETS` 只是页面的快捷档，**不是合法集**）：
-  - **手动平仓与强制平仓必须给出同一个数**（都是 0）—— 两条路走同一个 `max(0, …)`，
-    见 `market-math.ts` 头部那个「★ 那个 max(0, …) 就是爆仓 ★」。手动平能亏穿 → 账本
-    撕裂；强平能多留一点给用户 → 理性策略变成「别平，等它爆我」。
-  - **平仓的重放判据是 `status !== 'open'`，不是 `status === 'closed'`**（爆仓也是结清）。
-    写成后者「结果碰巧还是对的」（条件写会挡住，回读到既有结果），所以**不会报错**，
-    只是多打一次行情源、多烧一次限频，而且语义已经错了。
-  - **杠杆与方向都不进开仓幂等键**（`openKey` 仍只吃 user/symbol/units）：同一个键带不同
-    leverage / direction 重试时回报的是当初那一笔（真实倍数与真实方向，都从库里读）。
-    塞进键 = 同一笔重试变成**第二笔**、重复扣款。
-  - **强平不判禁言**（同 `sell`）：禁言是「不能说话」，不该顺带变成「不能止损」。
-    新增这条写路径时最容易顺手补一个 `!isMuted`。
-  - **`settleClose` 的 `leverage` 与 `direction` 都是必填项**，别给默认值：忘了传的调用点
-    会把 10 倍仓按 1 倍结算、把**空头按多头结算**（盈亏整体反向），而屏幕上那个数看起来
-    完全合理。两处都从**仓位行**读，不从调用方传。
-  - ⚠️ **「1 倍永不爆仓」只对多头成立**：1× 空头在 2 × 开仓价归零，是一个可达的价。
-    于是 `liquidationPrice` 的 `0` 哨兵收窄成「1× 多头」，判「要不要强平引擎」必须用
-    `needsLiquidator(leverage, direction)`，**不是 `leverage > 1`**；强平引擎的扫描筛选也
-    从 `leverage > 1` 改成 `liquidation_price > 0`。**闸门与扫描必须同真同假** —— 闸门放行
-    而扫描捞不到的仓位 = 一份没人清算的免费期权（引擎关着也能卖 1× 空头），全程不报错。
-    同理页面「要不要显示爆仓价」的判据是 `liquidationPrice > 0`，写成 `leverage > 1` 会把
-    1× 空头那条真实的线藏起来。
-  - ⚠️ **空头的穿线方向是反的**：判据多头 `现价 ≤ 爆仓价`、空头 `现价 ≥ 爆仓价`；
-    收益着色要乘方向（`changePercent` 是**行情**涨跌、不含方向，空头它为正时是在亏）。
-    写反的话，一个刚开的健康空头会被下一轮**立刻强平**，而日志只有一行正常强平。
-
-### 软删除
-
-`docs/architecture.md` §8（七张表的字段清单、软删即抹掉原文与附件）；
-「已删除且无回复的评论从楼中楼隐藏」在 `docs/bot/comment-bot.md` §6.1。
-
-### 顶栏两个指示器（铃铛数字 + 讨论红点）
-
-`src/lib/topbar-bus.ts` 头部（投递语义、单进程前提、调用方纪律）。
-客户端侧在 `public/static/js/core/base.js`：`applyTopbar` 的 merge 语义与两档兜底轮询
-（流连着 60s、没连上 20s —— **改间隔等于改 SSE 失效时的最坏表现**）。已知缺口（由兜底
-收敛）：`softDeleteMessage` 减少未读时不推、`/notifications` 列表页本身不实时。
-
-### 讨论与通知的关系
-
-`src/lib/chat-service.ts` 头部（讨论未读口径、红点三道闸门、依赖方向）。
-`/admin/*` 的分档见 `docs/architecture.md` §8；角色的权限分档（**涉及 admin / owner 的
-任何方向仅站长**）见 `src/lib/admin-user-service.ts` 的 `setRole`；@ 提及的逐条闸门见
-`chat-service.notifyChannelMentions`。
-
-**@ 通知「读了就清、在看就不发」**：读到某个会话（进频道 / 停在里面看新消息）会把**该会话**的
-@ 通知一并标已读；**正在看这个会话时那条通知根本不产生**（红点与未读徽标照常亮）。判据在
-`src/lib/chat-presence.ts`（客户端报到 + 讨论流连接 + TTL，判不出就照常发）。这不是「讨论未读
-混进铃铛」—— 铃铛有数 = 有 @ 且他还没看那个会话。
+| 任务 | 入口 |
+| --- | --- |
+| 权限、会话、CSRF、专注模式 | 子系统手册的跨模块边界、认证与角色、CSRF / 中间件；`docs/architecture.md` §8 |
+| 数据库、时间、迁移 | `src/lib/db-time.ts`；`docs/deploy.md` 的修改 schema 说明 |
+| 鱼干、练手盘、行情与结算 | 子系统手册的鱼干写路径、鱼干练手盘；相关 service 文件头 |
+| 讨论、顶栏、通知、SSE | 子系统手册的推送边界与讨论小节；`src/lib/chat-service.ts`、`src/lib/topbar-bus.ts` |
+| 实时游戏服务 | `docs/realtime.md`；`services/realtime/` |
+| 内容渲染、表情、音频、用户名片 | 子系统手册的 Markdown / 内容渲染与对应引用类型小节；`src/lib/reactive/` |
+| 博客对外可见性、匿名评论、收藏夹 | 子系统手册对应小节，重点检查所有对外出口 |
+| 头像框、商城与头像渲染 | 子系统手册的头像框小节及对应守卫台账 |
+| 样式、组件、布局 | `docs/frontend-styles.md` 中对应组件 / 场景小节；必要时查子系统手册的布局约束 |
+| 格式转换器 | 子系统手册的格式转换器小节；保持文件字节不出浏览器 |
+| 运维、排障 | `docs/cli.md`、`docs/deploy.md`、`docs/known-red.md` 中相关章节 |
 
 ### 限频
 
-`docs/architecture.md` §6.5 + `src/lib/rate-limit.ts` 的 `RULES`（多数配额的唯一权威）。
-对外复述清单见 `docs/README.md` 的「bot/」节。单进程语义，多实例需换 Redis。
+数值以 `src/lib/rate-limit.ts` 的 `RULES` 为准；OAuth 还有限频内联在路由中。
+修改配额时同步复述该数值的 `docs/bot/` 与 `docs/guide/` 文档，范围见 `docs/README.md`。
 
-### 文件落盘
+## 文档维护
 
-`docs/architecture.md` §6.6（六个存储域 + env 覆盖 + 读取入口 + 内容判定那条）+
-`src/lib/image-sniff.ts` 头部（**零依赖**：magic bytes / SVG 文本头 / HEIC·AVIF·MOV 的
-ftyp 品牌 / 声明归一化 / `planImageUpload` —— 服务端与浏览器共用同一份）+
-`src/lib/image-upload.ts` 头部（`sanitizeFilename` 的白名单防线、配额常量的来由）。
-
-音频床那一路另有一层坑，见 `src/lib/audio-upload.ts` 头部：**MIME 别名归一化**
-（`.m4a` 的声明值三种平台三个样，还可能是空串；归一化只用来补浏览器没给的那格，
-权威始终是字节，且落库的必须是**认过的规范形**），以及**为什么刻意不转码**。
-`src/lib/audio-refs.ts` 头部是 `[@音频/<ID>]` 的全部口径。
-⚠️ `/api/audio/[id]/raw` 的 **Range 是硬需求不是优化**：Safari 会先发
-`Range: bytes=0-1` 探测，拿不到 `206` 直接不播；而仓库里那两处流是无界 SSE、
-刻意没有 `Content-Length`，形状正好相反，**不可复用**。见 §6.15。
-
-### Markdown / 内容渲染
-
-`docs/architecture.md` §6.7（四条管线的分工、五道防线）+ `docs/guide/内容引用语法指南.md`
-（`[@8位/9位/10位]` 与「博客一条管道、评论讨论另一条」的差别）。故事是**服务端**渲染
-（`story-service.ts`，按可信输入处理）——见 `docs/guide/story-module.md`。
-
-**ReactiveMD 渲染器（2026-10）**：主副本是 `docs/architecture.md` §6.23，文件头在
-`src/lib/reactive/`（`read-render.ts` 决策、`diagnostics.ts` 回退、`ref-adapter.ts`
-引用、`compile.ts` 缓存）。三条不能破：reactive 源码**永不**交给旧 Markdown 解析器
-（认不出或编译失败 → `unavailable`；可读正文由本次请求编译）；`<site-embed>` 标签与
-`${kind}:${ref}` 的 hostData **原子成对**（缺数据只保留字面量，绝不发半套）；`external`
-模式**零业务请求**（剪贴板、投票与收藏夹均保留字面量）。灰度只住 `renderer-select.ts` +
-`REACTIVE_MD_MODE` / `REACTIVE_MD_PERCENT`，别在页面里另判 cohort。
-
-### 表情包
-
-`src/lib/sticker-refs.ts` 头部（正则纪律与分隔符选择）+ `sticker-service.ts` 头部
-（扫盘缓存三层）+ `docs/architecture.md` §6.6（raw 路由按字节复核、拒绝 SVG）。
-其机制（`sendWith(token, { keepDraft: true })`，以及为什么正文必须从参数来而不是读 state）
-在 `src/app/chat/ChatApp.tsx` 的 `sendWith` 上方。
-
-**两个来源共用一条管道**，行为口径见 `docs/guide/表情包使用指南.md`：
-
-- 站长放的图片表情（`instance/stickers/`）—— 讨论点一下**直接发送**；
-- **内置黄脸**（`emoji-faces.ts` 的编译期清单 → `public/static/emoji/`，
-  `scripts/copy-emoji-assets.mjs` 从 npm 包拷）—— **和文字一样大**（叠一个
-  `rich-emoji-ref` 类压到 1.2em，见 `_markdown-body.scss`）；**整条正文只有它一张**时
-  是例外，叠 `rich-emoji-solo` 退回表情包那一档（4em，判据在 `sticker-refs.ts` 的
-  `markSoloEmojiFaces`）。且点一下**插进输入框**，讨论区也不例外。评论端两类都插。
-
-三条容易踩的：
-
-- **黄脸 img 必须保留 `rich-sticker-ref` 类**（只叠不加换）——降级链是按那个类名过滤的
-  （`RichContentBody.tsx`），换掉它缺图时会显示裂图而不是原文 token。
-- **`markSoloEmojiFaces` 必须跑在所有 `embed*` 之后**（`rich-text.ts` 的 `render()` 末行）
-  —— 它判的是「**最终** DOM 里是不是只有这一张」，往后加新 `embed*` 时插到它下面，
-  新元素就漏出判断：表现只是尺寸偶尔不对，不报错、不写日志。
-  「一样大」本身只在 `_markdown-body.scss` 定义一处（靠 `:not(.rich-emoji-solo)` 让落回
-  表情包那条规则），所以**别把 4em 抄进黄脸那一档** —— 抄一遍就会静默漂成两档。
-- **别照拷 npm 包里那份 LICENSE**：`@twemoji/svg` 只写了打包者自己的 MIT，
-  素材实际是 **CC BY 4.0**（出处 `jdecked/twemoji` 的 `LICENSE-GRAPHICS`）。复制脚本
-  自己生成正确的 `LICENSE.txt`，署名落在源码注释里（Twemoji 官方接受这种形式）。
-- **这里的 SVG 不违反那条「拒绝 SVG」的闸门**：那条防的是 `instance/stickers/` 这个
-  无上游校验的运行时目录；黄脸是构建期从锁版本 npm 包生成、且只以 `<img src>` 引用。
-  复制脚本里有安全哨兵（脚本 / 事件属性 / 外链 → 构建失败）盯着，理由写在它文件头。
-
-### 用户名片
-
-`[@用户/<用户名>]` —— 讨论区与评论区里的一枚行内名片（带头像框的头像 + 用户名，
-点进 `/u/<id>`）。`src/lib/user-refs.ts` 头部是全部口径，`docs/architecture.md` §6.7
-是管线位置。四条最容易踩的：
-
-- **`用户` 是保留合集名**：名片 token 与 `[@合集/表情]` 形状同构，所以表情那条正则带
-  一条 `(?!用户/)` 让开它，`sticker-service.ts` 的扫盘也跳过同名目录。**两端必须一起
-  改** —— 只改一端会得到「面板里挑得出、一渲染却变成别人的名片」。
-- **带名片 token 的正文不进渲染缓存**（`rich-text.ts` 的 `USER_REF_PROBE` 判断）。
-  缓存以正文为键而名片数据会变，走缓存会把「数据到了之后」那份吃掉，症状是
-  **名片永远不出现**，不报错。
-- **头像必须手搭 DOM 且与 `<Avatar>` 同构**（`avatar` 盒子 + `avatar__img` +
-  `avatar__frame`）—— 正文管线是字符串进字符串出，塞不进组件。少了 `avatar__frame`
-  这一处**永远没有头像框**；头像落点台账为此开出第二档（`avatar-sites-guard.test.ts`
-  的 `AVATAR_DOM_SITES`，判据是「有没有那个 img」而不是「有没有用组件」）。
-- **它不算 @ 提及**：不发通知、红点不动。token 里**一个空格都不能有**（同表情那条纪律
-  —— `extractMentions` 跑在原始正文上，有空白就能凭空给同名人发通知）。
-
-取数口是 `GET /api/users/<id 或用户名>`：**按 id 匿名可达，按名字要 core+**
-（名字可枚举，id 不可）。句柄是 id 还是名字由**实际命中了哪一列**决定，
-别改成拿 UUID 正则去认 —— id 不保证是 UUID。
-
-### 音频床
-
-`docs/architecture.md` §6.15 是主副本；各文件头讲自己那一段：`audio-upload.ts`
-（嗅探与别名归一化）、`audio-service.ts`（**独立配额聚合**）、`audio-refs.ts`
-（`[@音频/<ID>]`，**零 import** —— 要被 chat-shared 拉进客户端包）。
-
-**`音频` 是保留合集名，与 `用户` 完全同构的问题** —— 表情那条正则的形状也是
-`[@A/B]`。**两端必须一起改**：`sticker-refs.ts` 的 `RESERVED_CARD_COLLECTIONS`
-让开它，`sticker-service.ts` 的扫盘跳过同名目录。只改一端 = 「面板里挑得出、
-一渲染却变成播放器」。加第三个保留名时照这个走。
-
-**两条管线的接入方式不同，别互相照抄**：评论 / 讨论在**净化后**建 DOM（那边白名单里
-没有 audio，与没有 img 同理）；博客在**源文**上拼标签串（那边白名单本来就允许 audio），
-但**必须配 `maskMarkdownCode`** —— 源文阶段没有 DOM、跳过不了 `CODE`/`PRE`，
-漏了就会在代码块里嵌出一个真播放器。这是博客侧最可能的静默错误。
-
-**展开发开上限是 3，不是图片的 50**：单文件 10MB × 配额 50MB ⇒ 一个 core 用户最多
-5 个满额文件；图片每个引用是一次小文件读，音频是 MB 级传输。上限仍是正文长度的
-确定性函数，所以不破坏渲染缓存。
-
-### 画报与鱼干收款码
-
-`docs/architecture.md` §6.8（管线与四条约束）+ `src/lib/poster.ts` 头部（二维码必须矢量、
-纠错 H、静默区 ≥4 模块 —— `tests/unit/poster.test.ts` 会真解码）。收银台与收款页共用
-`src/app/fish/PayForm.tsx` 的 `variant` 分支，别另抄一个。
-
-### 前端样式
-
-**产品文案只写必要信息**：不要主动添加抒情、装饰性或凑气氛的副标题与“小话”，
-例如“一些思考，一点日常。慢慢写，也慢慢读。”。功能名称、操作提示与状态说明照常保留。
-
-**`docs/frontend-styles.md` 是唯一权威**（含按钮三档、输入框圆角判据、容器阶梯、
-胶囊滑块的适用范围）。改任何样式前先读它。三条最容易踩的：
-
-- **按钮只有三档**（`abstracts/_mixins.scss` 的 `btn-primary` / `btn-secondary` /
-  `btn-tab`），别另抄一份；任何一档都不做垂直位移。
-- **输入框圆角当且仅当「一行文字」时是胶囊**，多行走 20px。聚焦一律用
-  `--shadow-focus-brand`，**绝不用 `border`**（会让字段随焦点变高、下方内容位移）。
-- **写 `var(--x)` 前确认它存在**。变量不存在时不报错，整条声明静默失效 ——
-  已经踩过 `--color-brand-primary-rgb`、`--color-bg-primary`、`--r-pill`、
-  拼错的 `--color-background-card-unrend` 等六处。
-- **正文里的通用 `.类 img` 会漏进每一个内联元素**（`.chat-msg__md img` /
-  `.comment-content__md img`，见 `components/_markdown-body.scss`）。新增内联引用
-  （表情 / 黄脸 / 名片）时**逐条清零** `margin` / `border` / `border-radius` /
-  `background` / `cursor` —— 漏一条就静默坏一处：2026-09 名片的框贴图带上不透明底色，
-  **连头像一起盖住**。
-
-### 文章对外可见性
-
-`docs/architecture.md` §6.11 / §6.12 + `src/lib/blog-service.ts` 头部（**六条不变量**）。
-三档 `private` / `link` / `public`，**只对非 core 的查看者生效** —— core+ 在博客域
-是全读的，所以这一列对任何站内入口都是零行为变化，管理员也**不需要豁免**（那是结构性
-豁免，服务层里没有也不该有 `if (isAdmin)`）。
-
-- **第一档叫 `internal`（站内），不叫 `private`** —— 改过名（迁移 17）。`private` 在本仓库
-  已经是「只有本人」的意思（剪贴板的 `publicity`、收藏夹 `public_id` 恒 NULL），而这一档
-  **所有 core+ 成员都能看**。撞名的代价正好落在「什么会对外可见」上，所以改掉了。
-  ⚠️ **旧拼写仍被守卫拦着，而且理由更硬**：改名后没有一行再是 `'private'`，于是
-  `visibility !== 'private'` 对**每一行都成立** —— 从「加第四档会漏」升级成「全部当成对外可见」。
-- **判「对外可见」永远用白名单**（`EXTERNAL_VISIBILITIES` / `EXTERNAL_VISIBLE_BLOG_WHERE`），
-  **绝不写 `{ not: 'internal' }` 或 `visibility !== 'internal'`** —— 加第四档时那两种写法会
-  **静默把新档一起放出去**，而放出去不可逆（有静态守卫盯：`tests/unit/blog-visibility-guard.test.ts`）。
-- **不带查看者的读口必须走具名出口**（`getExternallyVisibleBlog` / `listIndexableBlogs` /
-  `listPublicBlogs`），别各自手写 where —— 名字就是静态台账认得它的凭证。
-- **「对外可读」与「可列举 / 可索引」是两件事**：`link` 读得到，但不进 sitemap、不许索引。
-- **对外视图按资源类型展开引用**（`contentRefs='external'`）：图床与音频维持 raw
-  路由的公开规则；**所有剪贴板、投票、收藏夹均保留字面量**。剪贴板仅站内共享，
-  external 不读取正文、标题或版本，也不随 RSC 下发。引用数据按当前请求的权限准备。
-- **sitemap 与 `/explore` 必须列同一个集合**（都用 `INDEXABLE_BLOG_WHERE`）。这不是洁癖：
-  多一层过滤就会出现「搜索引擎收录了一篇，读者在公开列表上翻不到」，而那条差异
-  **不会有任何报错**。同理 `exclude_from_all` 与专注模式的栏目屏蔽**不作用于对外列表** ——
-  它们是站内陈列规则与账号级偏好（`focus_hide_categories` 为用户自选，未自定义时用站长
-  标记的 `focus_hidden` 作默认集合；有静态守卫盯：`tests/unit/explore-visibility-guard.test.ts`）。
-- **改档位必须记账**（`blog_visibility_logs`，迁移 19）：`updateBlog` / `setBlogVisibility`
-  都在**同一个事务**里写日志。分开写会得到「档位改了但没账」，而那只能靠人工比对发现。
-  `updateBlog` 的 `actorId` 是**必传**的 —— 新增加可见性写路径时别忘了。（`public` 不可逆，
-  这是它唯一的账。）
-- ⚠️ **别往 `/api/spider/*` 加可见性过滤**：它是 **core+ 网关下的只读命名空间**，机器人能调
-  是因为机器人手里就是一个 core+ 账号 —— 它没有绕过任何东西，`internal` 本来就该被 core+ 读到。
-  而且 `/api/spider/favorites/:id` 同时是**我们自家前端**的数据源（`[@六位]` 卡片）。
-- **不给 `listBlogs` 加可见性过滤**（它是**站内**列表，调用方都是 core+）。对外列表
-  **已经另起了入口**（`listPublicBlogs`）—— 已有一条钉现状的用例，谁加了过滤会当场红。
-- **对外正文仅经公开索引检索**（`public-blog-search.ts`）：不往匿名查询添加原始正文
-  LIKE。FTS 候选、计数、分页与片段都受当前 public 白名单约束。原文/格式/可见性/软删除
-  改动先由 SQL 触发器撤旧索引，服务写入后重建；历史数据由 `npm run migrate -- up`
-  在必要时自动回填，`npm run search:rebuild` 只作强制修复。
-  索引不完整时明确降级为元数据查询，绝不索引引用资源、隐藏数据或失败的 Reactive 源码。
-- 词汇（三档的名字 / 白名单 / 解析 / **文案表**）住在 `src/lib/blog-visibility.ts`，
-  那是个**零依赖**模块：发文表单与文章卡片都是客户端组件，而 `blog-service` 拖着 prisma
-  进不了客户端包。文案表都是 `Record<BlogVisibility, string>`，加第四档时 tsc 会因缺键报错。
-- **访客的「博客」入口按档位分流**（core+ → `/blog`，其余 → `/explore`）。这**不违反**
-  下面的「入口不跟着藏」—— 那条反对的是「因档位不够就把入口藏掉」；这里入口照旧对所有人
-  渲染。**别把它「统一」回 `/blog`**，那等于让访客点进一张登录页。
-- **JSON-LD 一律过 `src/lib/json-ld.ts` 的 `jsonLdScript()`**，别手写 `dangerouslySetInnerHTML`
-  —— 本站**没有 CSP**，一个含 `</script>` 的文章**标题**就是对外可索引页面上的一发 XSS。
-  机器读的时间戳一律过 `db-time.ts` 的 `isoWithOffset()`，不是裸 `toISOString()`。
-- 分享卡片走 sharp 复用 `poster.ts`，**别改用 `next/og` 的 Satori**（它不读系统字体栈，
-  中文要自带字体二进制 = 第二条字体管线）。改版式几何前先跑 `tests/unit/og-card.test.ts`。
-
-### 匿名评论（只做评论区，讨论区不做）
-
-`docs/architecture.md` §6.16 是主副本；`src/lib/anon-identity.ts` 头部是名字表与发号
-（27×26=702，第 703 个是 `You Win #703` —— 前缀表 = 空串 + A–Z，末位 `Zealous Zach`
-正好是字面的 ZZ；**别删掉 Z 那一项**，删了总数掉到 676、边界提前且不再字面成立）。
-
-**四条「破了就破诺」的纪律**（每条都是静默的 —— 页面照常渲染，只是匿名不再是匿名）：
-
-- **真身份只许从 `serializeCommentBase` 一处抹**（站内树与 spider 对外接口的共同出口）：
-  `author.id → null`、`username → 化名`、`is_admin → false`、`frame_url → null`、
-  头像按**化名**哈希（`anon~<md5>`；种子里的 `~` 落在 `resolveAvatar` 的文件名字符集之外，
-  所以那张图必然是现算的 identicon，站长放个同名 png 也盖不掉）。
-- **通知的 `actorId` 必须传 null**（匿名时），身份改由 `detail` 里的化名交代 ——
-  传了真身，收件人在 `/notifications` 看到真名 + `/u/<id>` 链接，评论树那边白抹。
-- **`AdminActionLog.hide_target`**：删/恢复匿名评论照旧公示、照旧可申诉，但
-  `listPublicLogs` / `getLogDetail` 抹掉 `target_user`（`/audit` 是 core+ 都能看的）。
-  运维 CLI 不看这个标志 —— 「管理员能从日志里查到原作者」靠 `targetUserId` 仍是真身。
-  ⚠️ **它连申诉人一起管**：`createAppeal` 只许当事人本人申诉，所以隐藏日志的申诉人
-  就是那个匿名作者 —— `getLogDetail` 必须把 `appellant` 一并抹掉。只抹 `target` 而
-  放着申诉人，等于匿名作者一申诉就把自己交出去（真名会印在 core+ 都能开的 `/audit/<id>` 上）。
-- **匿名评论不进个人主页**（`getPublicProfile` 的 `recentComments` 与评论计数 ——
-  主页墙本身已没有评论列表，但 `/api/users/:id` 仍走这个读口）：那个读口 core+ 都能用，
-  列在那里一比对就对上号了。新增主页积木时同理：**统计块不许加评论数**。
-
-另外三条：
-
-- **归属一律用服务端算的 `CommentNode.is_mine`**，别拿 `currentUserId === author.id` ——
-  匿名评论的 `author.id` 是 null，那样比会让作者**删不掉自己的评论**（按钮不出现，不报错）。
-- **判据冻在 `blog_comments.anon_seq` 上**，权威是 `blog_anon_identities` 那一行。
-  别改成读时现算（删评论或作者注销都会让化名**无声改名**）。
-- **开关 `Blog.allowAnonymousComments` 的闸门在 `createComment`**（前端只是不渲染勾选项）；
-  `PUT /api/blogs/:id` 对**缺键**是「这一列不动」—— 否则旧客户端一次普通保存就会把
-  作者关掉的匿名**悄悄打开**。同理 `ValidatedBlogData.allowAnonymousComments` 可选 ≠ 必填。
-
-### 收藏夹
-
-`docs/architecture.md` §6.10 + `src/lib/favorite-service.ts` 头部（**六条不变量**，
-尤其是「private 的 `public_id` 恒为 NULL —— 没有句柄而不是藏起来」、
-「判对外可见永远用 `isPublic` 而非 `publicId != null`」、「不继承站长的越权读」）。
-`[@六位]` 的纯逻辑在 `src/lib/favorite-refs.ts` 头部（为什么卡片是成品 HTML 而不是
-占位 + `data-*`，为什么替换按区间切片）。对外见 `docs/bot/favorite-bot.md`（含限频数值，
-改 `RULES` 要同步）与 `docs/guide/收藏夹使用指南.md`。
-
-**改收藏夹按钮的样式前先看 `tests/e2e/favorite-layout.spec.ts`**（它按真视口断几何，
-并登记在 `playwright.config.ts` 的 `RESPONSIVE_SPECS` 里，desktop 与 mobile 都要过）：
-星标**未收藏时不许亮**（颜色只由 `.favorite-btn.favorited` 的 `color` 给，别再给
-`.icon-star-fill` 写死 `background-color`）；所有视口保持**返回圆钮 / 互动胶囊 / 管理胶囊
-同一行、外壳等高 48px**。互动胶囊内按钮高 40px，只留图标与同行数字，无文字标签；
-管理向右展开，窄屏只滚动操作区，不撑宽整页。选择器里**名称独占一行、两颗创建按钮并排**。
-尺寸与理由见 `docs/frontend-styles.md` §7.2。
-
-### 头像框
-
-`docs/architecture.md` §6.14 是主副本；`src/lib/frame-service.ts` 头部是五条不变量
-（F1–F5），`src/lib/frame-refs.ts` 头部是词汇与到期判定。玩家向见
-`docs/guide/头像框使用指南.md`，**画师向**（站外受托画素材的人）见
-`docs/guide/头像框出图规范.md` —— 那份是**自包含**的，可以整份转发，改几何 / 尺寸口径时
-两处要一起改；发放命令见 `docs/cli.md`。
-
-三句话：
-
-- **框的定义住代码白名单**（`frame-refs.ts` 的 `FRAME_KEYS`），素材住
-  `public/static/frames/<key>.png` —— **随代码入库**（它是我们自己画的，源码就是
-  `scripts/make-frame-demos.mjs`；不是 `instance/` 那种运行时数据）。
-  **改了那个脚本就必须重跑并把素材一起提交**，否则站点继续显示旧图、**不报错** ——
-  `tests/unit/frame-assets.test.ts` 与脚本写的 `manifest.json` 就是为这件事设的。
-  **加一款框不需要迁移** —— `user_frames.frame_key`
-  是文本不是外键。**退役一款框把它标 `retired`，别从 `FRAME_KEYS` 里删** ——
-  删了用户就摘不掉它了。
-- **`users` 上那两个装备列的唯一写入者是 `frame-service`**（F1）。改持有行的
-  `expires_at` 时必须**同一事务**刷新装备列的副本（F2）—— 违反它，用户续期后
-  **框永远不出现**，看起来像浏览器缓存。别的文件要动这两列时**往 `frame-service`
-  里加一个 `…Tx(tx, …)` 内核**（商城走的正是 `grantFrameTx`），别在外面自己写。
-- **到期只有一处判**（`frameUrlFor`），渲染层拿现成的 `frameUrl` 字符串、
-  一次都不比较时间。渲染层直接读 `equipped_frame_key` 会被
-  `tests/unit/frame-guard.test.ts` 静态判红；手写 `/api/avatar/` 模板串会被
-  `tests/unit/avatar-sites-guard.test.ts` 判红（全站头像只有 `<Avatar>` 一条路）。
-
-另外三条容易踩的：
-
-- **头像一律走 `src/app/components/Avatar.tsx`**，落点台账在
-  `tests/unit/avatar-sites-guard.test.ts` —— **新增渲染头像的页面要往那张表里添一行**，
-  否则那一处既不在台账里、也不违反「唯一 URL 口径」，于是静默地永远没有框。
-- **鱼干商城（`/fish/shop`）的租框路径：续期必须从「当前到期」起算**
-  （`frame-shop-service.rentFrame`）。`grantFrameTx` 的口径是「只延长不缩短」，
-  传 `now + N 天` 的话，一个还剩 20 天的人买 3 天会走进 noop —— **鱼干照扣、
-  到期一动没动、不报任何错**。价格、单位与在架清单只住 `frame-refs.ts` 的
-  `FrameDef.rent`（**单位只有天 / 月两种**，上下限与量词在 `RENT_UNITS`；
-  展示与校验读同一个数），**别在服务层另写一份价格**，也**别让调用方传单位**
-  —— 单位由框自己定，传就成了「传了月、框是按天的」那种静默错配。
-  另：那条接口**只认会话**，别顺手给它开 `requireMarketActor` 的凭据门
-  —— 一开，租金就成了对外契约。
-- **`frame list --keys` 是运维唯一能发现「登记了框但忘了传素材」的地方** ——
-  那时全站静默不显示框，页面没有任何报错。它同时报租金（`—` = 不零售）。
-
-### 格式转换器（`/tool/convert`）
-
-展开见 `docs/architecture.md` §6.17；文件写路径说明在 `src/lib/file-converter/` 各文件头。
-
-**地基：文件字节绝不出站。** 八个能力区（图片 / 音频 / 视频 / 文档 PDF / 表格 / 文本字幕 /
-电子书 / 压缩包）全在浏览器本地转换 —— 没有服务端路由、没有库表、没有限频、没有审计。
-**新增任何「上传到服务端再转」的路径前先停下来**：那会一次性推翻这条，并且是**不可逆**的
-（用户按「不上传」在用它）。服务端方向（LibreOffice / Calibre）在登记表里只写
-`status:'planned'`。
-
-- **重引擎一律在 runner 体内 `await import(...)`**（ffmpeg / pdfjs / xlsx / mammoth / docx /
-  pptxgenjs / tesseract / utif / heic2any / node-unrar-js / 7z-wasm / iconv-lite / fflate…）
-  —— 静态 import 会把几十 MB 卷进**每个页面**的主包。
-- **契约层 `types.ts` 零 import、零运行时代码** —— 它要被 node 单测直接 import。
-  共享的运行时常量住 `formats.ts`；词汇（格式表 / 限额）也只有那一份，
-  **页面提示与校验读同一个数**。
-- **`LIMITS` 是硬上限，改它要同步页面文案**（与 `RULES` 的纪律同源）。
-- **`planned` 的边不许有 `run`，`live` 的不许缺 `run`** —— `registryProblems()` 静态拦。
-  **菜单里看不到 = 那件事现在做不到**，别用「给个能点的入口、点了报错」代替。
-- **`notices[]` 是必填的诚实说明**（有损重编码 / 透明压平 / 元数据不保留 / 动画丢失 /
-  公式只求值 / 文字层被栅格化…）。写不出「这次丢了什么」= 这条边没写完（roadmap §15）。
-- **引擎资产不入库**（`public/static/converter/`，约 65MB）—— `postinstall` 与 `build`
-  经 `scripts/copy-converter-assets.mjs` 生成；少了它音视频 / PDF / OCR **报「引擎加载失败」**。
-- **串输出必须展开再回读**：抽帧类边传的是模式（`frame-%04d.png`）而 exec 按字面名回读，
-  不展开就永远拿到空 Map —— 症状是「退出码 0、结果区空着」，不报错。
-  `ffmpeg.ts` 的 `expandSeqPattern` 干这件事，单测钉住**宽度是硬判据**。
-- **取消 / 超时要杀掉整个 ffmpeg 核心**（0.12 没有软中断），下次要重新加载 ——
-  别把它当便宜操作。
-- **e2e 输出一律按字节魔数断言**（不是「有下载按钮就算过」）：转换出一条空文件 / 错格式，
-  按钮照样能点。样本自举（内嵌 1×1 PNG + 现算 WAV），**不往仓库放二进制样本**。
-
-## 文档
-
-- **`docs/README.md`** —— 全部文档的索引（分三层：`docs/guide/` 给玩家与创作者、
-  `docs/bot/` 给站外机器人开发者、根下给开发运维）。**改文档前先读它开头的
-  「互指怎么写」** —— 路径写在反引号里、`../` 指根、段号锚点的规矩都在那儿。
-- **`README.md`** —— 快速开始 / 命令一览 / 部署要点。
-- **站内 `/docs` 是全部文档的入口**（页脚链到它）：索引页 + 每份一页正文，读的是
-  同一批 `.md`，六个功能内指南使用原地址，`/docs/guide/...` 的重复地址永久跳转至规范页。**新增 / 改名 / 删除一份文档
-  必须同步登记表 `src/lib/docs-catalog.ts`** —— 漏登记 = 它在站上不出现且不报错；
-  守卫 `tests/unit/docs-catalog.test.ts` 双向对账，并盯着「表里的 title 与文档 H1
-  一致」。正文里的相对链接照 GitHub 的习惯写即可（指向文档的改写写成站内地址、
-  指向源码的改写成仓库地址，见该文件的 `rewriteDocHref`）——**别为站内另写一套路径**。
-- 迁移清单以 `npm run migrate -- status` 为准 —— 别在文档里维护副本，会落后。
-  `0_init` 是从原 db.db 反向生成的基线；`3_fish_integer_units` 含数据变换，**只可执行一次**。
+- 改文档链接或结构前读 `docs/README.md` 的「互指怎么写」；普通错字修正无需通读索引。
+- 新增 / 改名 / 删除 `docs/` 下文档时，同步 `src/lib/docs-catalog.ts` 和文档索引，标题与 H1 一致。
+- 根指引保持简短。新业务细节优先更新对应文档或源码说明，在此仅保留必要入口。
+  已由脚本自动处理的步骤不再要求手工执行；历史耗时和单次事故不作为当前工作流判据。

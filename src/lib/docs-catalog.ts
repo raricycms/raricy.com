@@ -292,8 +292,14 @@ export const DOC_ENTRIES: readonly DocEntry[] = [
   {
     group: 'dev',
     slug: 'known-red',
-    title: '已知长期红 / 必然失败的命令',
-    summary: '哪些红是既有的、哪些是自己弄坏的：判据、原因与修法。碰到红先查这里，别重新调研。',
+    title: '测试与构建排障',
+    summary: '常见错误的排查前提、原因与修法；结合当前日志确认，不凭历史记录跳过失败。',
+  },
+  {
+    group: 'dev',
+    slug: 'agent-domain-rules',
+    title: '子系统修改约定',
+    summary: '按任务查询权限、账目、渲染、通知和各业务模块的修改边界与实现入口。',
   },
   {
     group: 'dev',
