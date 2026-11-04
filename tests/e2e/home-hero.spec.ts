@@ -40,7 +40,7 @@ function expectOffset(page: Page, near: boolean, axis: 'e' | 'f' = 'e') {
   return expect.poll(() => layerOffset(page, near, axis), { timeout: 10_000, intervals: [100] });
 }
 
-test('首页山景：窄屏不溢出，文字和探索入口完整可见', async ({ page }, testInfo) => {
+test('首页山景：窄屏不溢出，文字和探索入口完整可见', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });
   for (const width of [320, 390, 768, 1440]) {
     await page.setViewportSize({ width, height: 900 });
@@ -49,61 +49,54 @@ test('首页山景：窄屏不溢出，文字和探索入口完整可见', async
     const title = page.locator('#hero-title');
     await expect(title).toHaveText('聪明山');
     await expect(page.locator('.hero-tagline')).toHaveText('我们总将找到答案');
-    const box = await title.boundingBox();
-    expect(box!.x).toBeGreaterThanOrEqual(16);
-    expect(box!.x + box!.width).toBeLessThanOrEqual(width - 16);
+    const box = (await title.boundingBox())!;
+    // 标题必须完整落在视口内、不被裁切；具体檐沟与对齐属于视觉设计。
+    expect(box.x).toBeGreaterThanOrEqual(0);
+    expect(box.x + box.width).toBeLessThanOrEqual(width);
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(width);
     await expect(page.getByRole('link', { name: '开始探索' })).toBeVisible();
+    // 日月显隐是主题状态在首页的既有观察方式（浅色太阳、深色月亮）。
     await expect(page.locator('.hero-scene__sun')).toHaveCSS('opacity', '1');
     await expect(page.locator('.hero-scene__moon')).toHaveCSS('opacity', '0');
-    await page.locator('.hero-section').screenshot({ path: testInfo.outputPath(`hero-${width}-light.png`) });
   }
   await page.evaluate(() => document.documentElement.dataset.theme = 'dark');
-  await expect(page.locator('#hero-title')).toHaveCSS('color', 'rgb(241, 245, 249)');
   await expect(page.locator('.hero-scene__sun')).toHaveCSS('opacity', '0');
   await expect(page.locator('.hero-scene__moon')).toHaveCSS('opacity', '1');
-  await page.locator('.hero-section').screenshot({ path: testInfo.outputPath('hero-desktop-dark.png') });
   await page.getByRole('link', { name: '开始探索' }).click();
   // base.js 接管锚点并平滑滚动，不改 URL；验证实际落点而不是 hash。
   await expect(page.locator('.card-story')).toBeInViewport();
   await expect.poll(async () => page.locator('#features').evaluate((el) => el.getBoundingClientRect().top)).toBeLessThan(100);
 });
 
-test('切换主题：日月沿弧线持续逆时针旋转并变色，减少动态效果时直接切换', async ({ page, isMobile }) => {
+test('切换主题：日月持续逆时针旋转，减少动态效果时直接切换', async ({ page, isMobile }) => {
   if (isMobile) await mockTiltPermission(page, 'granted');
   await page.emulateMedia({ reducedMotion: 'no-preference' });
   await page.goto('/');
   await expect(page.locator('.hero-section')).toHaveAttribute('data-scene-ready', 'true');
   const sun = page.locator('.hero-scene__sun');
   const moon = page.locator('.hero-scene__moon');
+  // 轨道角度是主题状态：每次切换继续逆时针转半圈，切回时不沿原轨迹倒放。
+  const orbitAngle = () => page.locator('.hero-section').evaluate(
+    (el) => parseFloat(getComputedStyle(el).getPropertyValue('--hero-orbit-angle')),
+  );
+  // 日月显隐是主题状态在首页的既有观察方式（浅色太阳、深色月亮）。
   await expect(sun).toHaveCSS('opacity', '1');
   await expect(moon).toHaveCSS('opacity', '0');
-  await expect(sun.locator('circle').first()).toHaveCSS('fill', 'rgb(251, 120, 124)');
+  const initialAngle = await orbitAngle();
   if (isMobile) await page.getByRole('button', { name: '切换导航', exact: true }).click();
   await page.getByRole('button', { name: '切换明暗主题', exact: true }).click();
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
-  // 两颗天体相差半圈；矩阵 b 的符号能区分逆时针续转与原路倒放。
-  await expect.poll(async () => page.locator('.hero-scene').evaluate((el) => {
-    const sunMatrix = new DOMMatrix(getComputedStyle(el.querySelector('.hero-scene__sun')!).transform);
-    const moonMatrix = new DOMMatrix(getComputedStyle(el.querySelector('.hero-scene__moon')!).transform);
-    return sunMatrix.b < -0.2 && moonMatrix.b > 0.2;
-  }), { intervals: [30, 50, 100] }).toBe(true);
-  await expect.poll(async () => sun.evaluate((el) => new DOMMatrix(getComputedStyle(el).transform).a)).toBeCloseTo(-1, 5);
-  await expect.poll(async () => moon.evaluate((el) => new DOMMatrix(getComputedStyle(el).transform).a)).toBeCloseTo(1, 5);
+  await expect.poll(orbitAngle).toBeCloseTo(initialAngle - 180, 5);
   await expect(moon).toHaveCSS('opacity', '1');
-  await expect(moon.locator('circle').first()).toHaveCSS('fill', 'rgb(251, 191, 36)');
-  await expect(sun.locator('circle').first()).not.toHaveCSS('fill', 'rgb(251, 120, 124)');
   await page.getByRole('button', { name: '切换明暗主题', exact: true }).click();
-  await expect.poll(async () => page.locator('.hero-scene').evaluate((el) => {
-    const sunMatrix = new DOMMatrix(getComputedStyle(el.querySelector('.hero-scene__sun')!).transform);
-    const moonMatrix = new DOMMatrix(getComputedStyle(el.querySelector('.hero-scene__moon')!).transform);
-    return sunMatrix.b > 0.2 && moonMatrix.b < -0.2;
-  }), { intervals: [30, 50, 100] }).toBe(true);
-  await expect.poll(async () => sun.evaluate((el) => new DOMMatrix(getComputedStyle(el).transform).a)).toBeCloseTo(1, 5);
-  await expect(sun.locator('circle').first()).toHaveCSS('fill', 'rgb(251, 120, 124)');
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+  await expect.poll(orbitAngle).toBeCloseTo(initialAngle - 360, 5);
+  await expect(sun).toHaveCSS('opacity', '1');
   await expect(moon).toHaveCSS('opacity', '0');
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.getByRole('button', { name: '切换明暗主题', exact: true }).click();
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+  // 尊重减少动态效果偏好：日月不做过渡，直接落在终态。
   await expect(sun).toHaveCSS('transition-duration', '0s');
   await expect(moon).toHaveCSS('transition-duration', '0s');
   await expect(moon).toHaveCSS('opacity', '1');
@@ -282,7 +275,7 @@ test.describe('手机倾斜视差', () => {
   }
 });
 
-test('视差：向下滚动景物上移，近景比远景移动更多，回顶复位', async ({ page }, testInfo) => {
+test('视差：向下滚动景物上移，近景比远景移动更多，回顶复位', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'no-preference' });
   await page.goto('/');
   await expect(page.locator('.hero-section')).toHaveAttribute('data-scene-ready', 'true');
@@ -298,7 +291,6 @@ test('视差：向下滚动景物上移，近景比远景移动更多，回顶�
   const farY = await far.evaluate((el) => new DOMMatrix(getComputedStyle(el).transform).f);
   expect(farY).toBeLessThan(0);
   expect(nearY).toBeLessThan(farY * 5);
-  await page.screenshot({ path: testInfo.outputPath('hero-scroll.png') });
   await page.evaluate(() => window.scrollTo(0, 0));
   await expect.poll(async () => near.evaluate((el) => Math.abs(new DOMMatrix(getComputedStyle(el).transform).f))).toBeLessThan(0.1);
 });

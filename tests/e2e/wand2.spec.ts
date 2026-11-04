@@ -22,7 +22,7 @@ test('Wand 2 入口和认证独立于第一版', async ({ page }) => {
   expect((await page.request.post('/api/game/wand2/launch')).status()).toBe(401);
 });
 
-test('Wand 2 向下走实际绘制四帧步态，停步后恢复待机', async ({ page }, info) => {
+test('Wand 2 向下走实际绘制四帧步态，停步后恢复待机', async ({ page }) => {
   await page.addInitScript(() => {
     const frames: number[][] = [];
     (window as Window & { __wandDownFrames?: number[][] }).__wandDownFrames = frames;
@@ -42,13 +42,12 @@ test('Wand 2 向下走实际绘制四帧步态，停步后恢复待机', async (
   const frames = () => page.evaluate(() => (window as Window & { __wandDownFrames?: number[][] }).__wandDownFrames ?? []);
   await expect.poll(async () => (await frames()).length).toBe(4);
   expect((await frames()).sort((a, b) => a[2] - b[2])).toEqual([0, 1, 2, 3].map(col => [1024, 256, col * 256, 0, 256, 256]));
-  await page.locator('canvas').screenshot({ path: info.outputPath('wand2-walk-down.png') });
   await page.keyboard.up('ArrowDown');
   await expect.poll(() => state.snapshot?.players.find(p => p.id === state.id)?.moving).toBe(false);
   await page.getByRole('button', { name: '离开草地' }).click();
 });
 
-test('Wand 2：美术、双客户端同步、真实战斗奖励、同账号排行与移动端操作', async ({ page, context, isMobile }, info) => {
+test('Wand 2：美术、双客户端同步、真实战斗奖励、同账号排行与移动端操作', async ({ page, context, isMobile }) => {
   test.setTimeout(90000);
   const errors: string[] = []; page.on('pageerror', e => errors.push(e.message));
   await registerFreshUser(page); const first = observe(page);
@@ -98,11 +97,6 @@ test('Wand 2：美术、双客户端同步、真实战斗奖励、同账号排�
   await expect.poll(() => second.snapshot?.leaderboard[0]?.catnip ?? 0).toBeGreaterThan(0);
   expect(first.snapshot!.players.find(p => p.id === first.id)!.catnip).toBe(first.snapshot!.players.find(p => p.id === second.id)!.catnip);
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(page.viewportSize()!.width);
-  await page.evaluate(() => { window.scrollTo(0, 0); document.documentElement.dataset.theme = 'dark'; });
-  await expect(page.locator('.wand2-panel')).toHaveCSS('background-color', 'rgb(24, 26, 29)');
-  await expect(page.locator('.wand2-header h1')).toHaveCSS('color', 'rgb(241, 245, 249)');
-  await expect(page.locator('.wand2-guide p').first()).toHaveCSS('color', 'rgb(148, 163, 184)');
-  await page.screenshot({ path: info.outputPath('wand2-play.png'), fullPage: true });
   await observer.getByRole('button', { name: '离开草地' }).click(); await expect.poll(() => first.snapshot?.players.length).toBe(1); await observer.close();
   await page.getByRole('button', { name: '离开草地' }).click(); await expect(page.locator('.wand2-status')).toHaveText('未连接');
   expect(errors).toEqual([]);

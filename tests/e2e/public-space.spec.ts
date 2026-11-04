@@ -55,17 +55,6 @@ test('公共空间：多人头像、占位、换位、观众席、多标签与�
     await expect(page.locator('.public-space-cell--mine')).toHaveCount(1);
     await page.locator('.public-space-cell--mine').click();
     await expect(page.locator('.public-space-cell--mine')).toHaveCount(0);
-    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(page.viewportSize()!.width);
-    const box = (await page.locator('.public-space-cell').first().boundingBox())!;
-    expect(Math.abs(box.width - box.height)).toBeLessThan(2);
-    await page.evaluate(() => window.scrollTo(0, 0));
-    await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0);
-    await page.mouse.move(0, 0);
-    await page.screenshot({ path: testInfo.outputPath('public-space-light.png'), fullPage: true });
-    await page.evaluate(() => document.documentElement.dataset.theme = 'dark');
-    await expect(page.locator('.public-space-panel')).toHaveCSS('background-color', 'rgb(24, 26, 29)');
-    await expect(page.locator('.public-space-spectators .public-space-name')).toHaveCSS('color', 'rgb(241, 245, 249)');
-    await page.screenshot({ path: testInfo.outputPath('public-space-dark.png'), fullPage: true });
     // 模拟链路静默：不发送关闭帧，双向丢包；服务端应在超时后释放座位。
     dropTraffic = true;
     await expect(page.locator('.public-space-status')).toContainText('1 人在线', { timeout: 25_000 });

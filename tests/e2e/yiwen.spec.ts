@@ -62,7 +62,7 @@ test('铭牌在新存档就能打开，且错误拓印不会通过', async ({ pa
   await expect(page.locator('.yw-plate')).toHaveAttribute('data-opened', 'true');
 });
 
-test('窄屏与主题可读、拒绝存储仍可操作、键盘运行及容量反馈', async ({ page }, testInfo) => {
+test('窄屏、拒绝存储仍可操作、键盘运行及容量反馈', async ({ page }) => {
   await page.addInitScript(() => {
     Storage.prototype.getItem = () => { throw new Error('blocked'); };
     Storage.prototype.setItem = () => { throw new Error('blocked'); };
@@ -79,18 +79,8 @@ test('窄屏与主题可读、拒绝存储仍可操作、键盘运行及容量�
   await frame(page, true);
   await add(page, '带框的甲');
   await page.getByRole('button', { name: '运行句子' }).click();
-  await page.emulateMedia({ reducedMotion: 'reduce' });
-  for (const theme of ['light', 'dark']) {
-    await page.evaluate((value) => { document.documentElement.dataset.theme = value; }, theme);
-    for (const width of [320, 390, 768, 1280]) {
-      await page.setViewportSize({ width, height: 900 });
-      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
-    }
-    await expect(page.locator('.yw-workbench')).toHaveCSS('background-color', theme === 'dark' ? 'rgb(24, 26, 29)' : 'rgb(255, 255, 255)');
-    await page.evaluate(() => window.scrollTo(0, 0));
-    await page.screenshot({ path: testInfo.outputPath(`yiwen-desktop-${theme}.png`), fullPage: true });
-    await page.setViewportSize({ width: 390, height: 844 });
-    await page.evaluate(() => window.scrollTo(0, 0));
-    await page.screenshot({ path: testInfo.outputPath(`yiwen-mobile-${theme}.png`), fullPage: true });
+  for (const width of [320, 390, 768, 1280]) {
+    await page.setViewportSize({ width, height: 900 });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
   }
 });

@@ -75,7 +75,7 @@ Next 15 App Router + React 19 的结构对切页动画是"半适合"：
 
 - 祖先一旦有 `transform` / `filter`，fixed 后代就会改以该祖先为包含块，位置当场跑掉；
 - Playwright 里一批几何用例在 `goto` 后**立刻**量盒子，整页 transform 会让它们变成
-  时序相关（`tests/e2e/page-gutter.spec.ts`、`tests/e2e/favorite-layout.spec.ts` 等）；
+  时序相关（`tests/e2e/page-gutter.spec.ts` 等）；
 - `opacity` 不移动任何盒子，是唯一安全的整页动画属性。它只在这 160ms 内临时创建
   stacking context，见 §4.4。
 

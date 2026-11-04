@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test';
 import { loginViaApi } from './helpers';
 import { SEED_USERS } from './seed';
 
-test('主题颜色共用时间线，覆盖卡片、字段、滑槽及蒙版；快速切回从当前颜色续接', async ({ page }) => {
+test('快速切回主题时从当前颜色续接，减少动态效果偏好下不建换色动画', async ({ page }) => {
   await loginViaApi(page, SEED_USERS.directory.username);
   await page.emulateMedia({ reducedMotion: 'no-preference' });
   await page.goto('/blog?scope=mine');
@@ -10,27 +10,23 @@ test('主题颜色共用时间线，覆盖卡片、字段、滑槽及蒙版；�
   await expect.poll(() => page.evaluate(() => typeof (window as unknown as { switchTheme?: unknown }).switchTheme)).toBe('function');
   const result = await page.evaluate(() => {
     const change = (window as unknown as { switchTheme: (theme: string) => void }).switchTheme;
-    const selectors = ['.site-navbar', '.blog-filters', '.blog-item', '.search-input', '.segmented'];
-    const elements = selectors.map((selector) => document.querySelector(selector)!);
+    const element = document.querySelector('.site-navbar')!;
     change('dark');
-    const all = document.getAnimations().filter((animation) => animation.id === 'theme-colors');
-    const backgrounds = elements.map((element) => all.find((animation) => (animation.effect as KeyframeEffect).target === element && (animation.effect as KeyframeEffect).getKeyframes().some((frame) => frame.backgroundColor))!);
-    const timings = backgrounds.map((animation) => ({ start: animation.startTime, duration: animation.effect!.getTiming().duration, easing: animation.effect!.getTiming().easing }));
-    all.forEach((animation) => { animation.pause(); animation.currentTime = 150; });
-    const current = getComputedStyle(elements[0]).backgroundColor;
+    const animations = document.getAnimations().filter((animation) => animation.id === 'theme-colors');
+    // 动画到 150ms 时再切回浅色：新动画必须从「此刻的颜色」续接，而不是从浅色重来。
+    animations.forEach((animation) => { animation.pause(); animation.currentTime = 150; });
+    const current = getComputedStyle(element).backgroundColor;
     change('light');
-    const restarted = elements[0].getAnimations().find((animation) => animation.id === 'theme-colors')!;
+    const restarted = element.getAnimations().find((animation) => animation.id === 'theme-colors')!;
     const from = (restarted.effect as KeyframeEffect).getKeyframes()[0].backgroundColor;
-    return { timings, current, from, pseudo: all.some((animation) => (animation.effect as KeyframeEffect).pseudoElement === '::before') };
+    return { current, from };
   });
-  expect(result.timings).toHaveLength(5);
-  expect(new Set(result.timings.map((timing) => timing.start)).size).toBe(1);
-  for (const timing of result.timings) expect(timing).toMatchObject({ duration: 480, easing: 'cubic-bezier(0.16, 1, 0.3, 1)' });
   expect(result.current).toBe(result.from);
-  expect(result.pseudo).toBe(true);
+
+  // 减少动态效果偏好：主题照样切换，但不再建换色动画。
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.evaluate(() => (window as unknown as { switchTheme: (theme: string) => void }).switchTheme('dark'));
-  await expect(page.locator('.blog-filters')).toHaveCSS('background-color', 'rgb(24, 26, 29)');
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
   expect(await page.evaluate(() => document.getAnimations().filter((animation) => animation.id === 'theme-colors').length)).toBe(0);
 });
 

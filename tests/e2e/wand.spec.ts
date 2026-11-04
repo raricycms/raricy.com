@@ -29,7 +29,7 @@ test('测试合集有 Wand，匿名玩家需登录，未知合集返回 404', as
   expect((await page.goto('/game/collections/unknown'))!.status()).toBe(404);
 });
 
-test('Wand：真实票据、多玩家移动同步、移动端方向按钮与断开清理', async ({ page, context, isMobile }, testInfo) => {
+test('Wand：真实票据、多玩家移动同步、移动端方向按钮与断开清理', async ({ page, context, isMobile }) => {
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));
   await registerFreshUser(page);
@@ -60,10 +60,6 @@ test('Wand：真实票据、多玩家移动同步、移动端方向按钮与断�
   } else await page.keyboard.up('ArrowRight');
   expect(first.binarySent).toBe(true);
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(page.viewportSize()!.width);
-  await page.evaluate(() => { window.scrollTo(0, 0); document.documentElement.dataset.theme = 'dark'; });
-  await expect(page.locator('.wand-panel')).toHaveCSS('background-color', 'rgb(24, 26, 29)');
-  await expect(page.locator('.wand-panel h1')).toHaveCSS('color', 'rgb(241, 245, 249)');
-  await page.screenshot({ path: testInfo.outputPath('wand-dark.png'), fullPage: true });
   await observer.getByRole('button', { name: '断开连接', exact: true }).click();
   await expect.poll(() => first.snapshot?.players.some((player) => player.id === second.id)).toBe(false);
   await observer.close();

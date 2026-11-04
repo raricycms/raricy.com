@@ -1,16 +1,16 @@
-// 收藏夹：**布局**端到端（真浏览器 + 真视口）
+// 收藏夹：**操作行为**端到端（真浏览器）
 //
-// 【为什么这几条必须走 e2e，单测与截图都证明不了】
-// 这三条全是「真渲染出来才发现不对」的问题，而且共同点是**静态看代码看不出错**：
-//   · 星标未收藏时就亮着 —— 是 currentColor 被一行 `background-color` 覆盖掉了，
-//     CSS 里两处都「对」，只有并排看到三颗按钮才看得出「已收藏」没有辨识度。
-//   · 选择器里「创建公开」被挤到第二行 —— 是中文按 500px 宽的弹窗正好差几个像素，
-//     算不出来，得让浏览器排版。
-//   · 窄屏三颗按钮不在同一行 —— 同理，全靠字体度量。
-// 所以判据一律取**渲染后的几何**（boundingBox / getComputedStyle），不取类名或属性。
+// 【本文件原来的定位与现在的取舍】
+// 它曾按「布局」验收：星标配色、三颗按钮同一行、胶囊 48px、弹窗两颗创建按钮并排且等宽。
+// 按 2026-11-04 前端样式测试清理计划（frontend-style-tests-review §10 / §11 P3-B），
+// 这些固定外观与几何值不再由 e2e 钉住 —— 布局改动改由受影响页面与视口的人工检查确认。
+// 保留下来的只有操作结果与无障碍语义：
+//   · 点赞计数随状态出现 / 消失（为 0 时不显示数字）；
+//   · 收藏选择器里「私密 / 站内共享」两个创建入口与页脚管理入口；
+//   · 管理菜单展开 / 收起、删除取消回到菜单并归还焦点，窄屏收起时互动区退出交互。
 //
-// 【本文件在 RESPONSIVE_SPECS 里】它按视口分支断言，必须两个 project 都跑：
-// desktop 那一遍验的是「三颗同行、弹窗两按钮并排」，mobile 那一遍才是窄屏的正面用例。
+// 【本文件在 RESPONSIVE_SPECS 里】窄屏管理菜单的 inert / 焦点行为要按视口分支断言：
+// desktop 那一遍验宽屏，mobile 那一遍才是窄屏的正面用例。
 //
 // 【必须用一次性用户】同 favorite.spec.ts：建收藏夹是按用户计限频的（20/时），
 // 两个 project 共用同一个限频桶，用种子号会在第二轮的首条操作上吃 429。
@@ -30,334 +30,77 @@ async function createBlog(
   return (await res.json()).blog_id as string;
 }
 
-/**
- * 三个盒子是否落在同一行。
- *
- * 不用「top 相等」：`.read-controls__row` 是 `align-items: center`，三颗高度差
- * 零点几像素时 top 就对不齐，而它们明明在同一行。改用**纵向区间相交**——
- * 换行时第二行的区间与第一行完全不相交，判定不会有歧义。
- */
-async function rowInfo(row: import('@playwright/test').Locator) {
-  return row.evaluate((el) => {
-    // ★ 只能取**直接子**按钮 ★ FavoriteButton 返回的是 fragment：真实那颗按钮与
-    // 选择器弹窗（内含 .btn-close + 两颗创建按钮）**都**挂在 .read-controls__row 下。
-    // 用 querySelectorAll('button') 会把弹窗里那三颗也算进来 —— 弹窗关着时它们
-    // display:none、宽度为 0，于是「同一行」判定必然失败（第一版就栽在这，
-    // 报「宽度 122.8 / 122.8 / 91.2 / 0 / 0 / 0」）。
-    const btns = [...el.querySelectorAll(':scope > button')];
-    const rects = btns.map((b) => b.getBoundingClientRect());
-    const first = rects[0];
-    return {
-      count: btns.length,
-      sameRow: rects.every((r) => r.top < first.bottom - 2 && first.top < r.bottom - 2),
-      widths: rects.map((r) => +r.width.toFixed(1)),
-      // 标签是否折行：行高 ~1.2em，超过 1.6 倍就是折了
-      wrapped: btns
-        .filter((b) => {
-          const span = b.querySelector('span:not([class])');
-          if (!span) return false;
-          return (
-            span.getBoundingClientRect().height >
-            parseFloat(getComputedStyle(span).fontSize) * 1.6
-          );
-        })
-        .map((b) => (b.textContent || '').trim()),
-    };
-  });
-}
-
-test('详情页：点赞 / 投喂 / 收藏 三颗在同一行，且标签不折行', async ({ page }) => {
+test('详情页：点赞计数随状态出现与消失，为 0 时不显示数字', async ({ page }) => {
   await registerFreshUser(page, { core: true });
-  const blogId = await createBlog(page, `布局用例 ${uniqueTag()}`);
+  const blogId = await createBlog(page, `点赞计数 ${uniqueTag()}`);
   await page.goto(`/blog/${blogId}`);
 
-  const row0 = page.locator('#read-controls .read-controls__row').first();
-  await expect(row0.getByRole('button')).toHaveCount(3);
-
-  const info = await rowInfo(row0);
-  expect(info.sameRow, `三颗按钮没落在同一行（宽度 ${info.widths.join(' / ')}）`).toBe(true);
-  expect(info.wrapped, `按钮标签折行了：${info.wrapped.join('、')}`).toEqual([]);
-
-  expect(info.count).toBe(3);
-});
-
-/** 三颗按钮的渲染几何 + 内容构成（窄屏那条用例用）。 */
-async function readActions(page: import('@playwright/test').Page) {
-  return page
-    .locator('#read-controls .read-controls__row')
-    .first()
-    .evaluate((el) => {
-      const btns = [...el.querySelectorAll(':scope > button')] as HTMLElement[];
-      return btns.map((b) => {
-        const r = b.getBoundingClientRect();
-        // 文字标签是**没有类名**的那个 span（计数徽标也 span，但带类名）
-        const label = b.querySelector('span:not([class])') as HTMLElement | null;
-        const badge = b.querySelector('.like-count-badge, .fish-count-badge');
-        return {
-          h: +r.height.toFixed(2),
-          w: +r.width.toFixed(1),
-          labelShown: label ? label.getBoundingClientRect().height > 0 : false,
-          count: (badge?.textContent || '').trim(),
-        };
-      });
-    });
-}
-
-test('详情页：各视口只留图标与计数，三颗尺寸跨断点一致', async ({ page, isMobile }) => {
-  await registerFreshUser(page, { core: true });
-  const blogId = await createBlog(page, `窄屏操作区 ${uniqueTag()}`);
-
-  // 先定视口再导航，让两档分别完成首次排版后再量几何。
-  async function at(width: number) {
-    await page.setViewportSize({ width, height: 900 });
-    await page.goto(`/blog/${blogId}`);
-    const row = page.locator('#read-controls .read-controls__row').first();
-    await expect(row.getByRole('button')).toHaveCount(3);
-    return readActions(page);
-  }
-
-  const desk = await at(800);
-  const mob = await at(390);
-
-  // 所有视口都只保留图标与数字。
-  expect(desk.map((b) => b.labelShown)).toEqual([false, false, false]);
-  // 窄屏：标签全隐藏，只剩图标 + 计数（收藏那颗本来就没有计数）
-  expect(mob.map((b) => b.labelShown), '窄屏应当只留图标与计数').toEqual([false, false, false]);
-  expect(desk.map(b => b.count), '新文章没有点赞或投喂，不应显示零').toEqual(['', '', '']);
-  expect(mob[0].count, '点赞为零时不显示数字').toBe('');
-  expect(mob[1].count, '投喂为零时不显示数字').toBe('');
-  expect(mob[2].count, '收藏本来就没有计数').toBe('');
-
-  // 胶囊内三颗统一为 40px 高，不随断点缩放。
-  mob.forEach((b, i) => {
-    expect(
-      Math.abs(b.h - desk[i].h),
-      `第 ${i + 1} 颗的高度跨断点变了：桌面 ${desk[i].h}px → 窄屏 ${b.h}px`
-    ).toBeLessThan(1);
-  });
-
-  expect(mob.map(b => b.w)).toEqual(desk.map(b => b.w));
-
-  // 计数从 0 到 1 再回到 0，数字随实际状态出现和消失。
   const like = page.locator('#like-btn');
-  const touchColors = await like.evaluate(el => {
-    const norm = (value: string) => {
-      const sample = document.createElement('span');
-      sample.style.color = value;
-      el.appendChild(sample);
-      const color = getComputedStyle(sample).color;
-      sample.remove();
-      return color;
-    };
-    return { pale: norm('var(--color-warning-secondary)'), muted: norm('var(--color-text-secondary)') };
-  });
-  if (isMobile) await like.tap();
-  else await like.click();
-  await expect(page.locator('#like-count')).toHaveText('1');
-  if (isMobile) await expect(like).toHaveCSS('background-color', touchColors.pale);
-  if (isMobile) await like.tap();
-  else await like.click();
+  await expect(like).toBeVisible();
+  // 新文章没有点赞 → 不显示「0」
   await expect(page.locator('#like-count')).toHaveCount(0);
-  if (isMobile) {
-    await expect(like).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
-    await expect(like).toHaveCSS('color', touchColors.muted);
-  }
+
+  await like.click();
+  await expect(page.locator('#like-count')).toHaveText('1');
+  await expect(like).toHaveAttribute('aria-pressed', 'true');
+
+  await like.click();
+  await expect(page.locator('#like-count')).toHaveCount(0);
+  await expect(like).toHaveAttribute('aria-pressed', 'false');
 });
 
-test('详情页：星标收藏或悬停浅底，已收藏悬停与按下同为实底', async ({ page }) => {
+test('操作区：管理菜单展开 / 收起、删除取消回到菜单，焦点归还触发器', async ({ page }) => {
   await registerFreshUser(page, { core: true });
-  const blogId = await createBlog(page, `星标用例 ${uniqueTag()}`);
-  await page.goto(`/blog/${blogId}`);
+  const blogId = await createBlog(page, `管理菜单 ${uniqueTag()}`);
 
-  // 把 CSS 变量交给浏览器自己归一成 rgb()，避免手写 hex → rgb 的换算
-  const colors = await page.evaluate(() => {
-    const cs = getComputedStyle(document.documentElement);
-    const norm = (v: string) => {
-      const d = document.createElement('div');
-      d.style.color = v.trim();
-      document.body.appendChild(d);
-      const c = getComputedStyle(d).color;
-      d.remove();
-      return c;
-    };
-    return {
-      star: norm(cs.getPropertyValue('--color-star-primary')),
-      starSoft: norm(cs.getPropertyValue('--color-star-secondary')),
-      muted: norm(cs.getPropertyValue('--color-text-secondary')),
-    };
-  });
-  const iconBg = () =>
-    page
-      .locator('#favorite-btn .icon-star-fill')
-      .evaluate((el) => getComputedStyle(el).backgroundColor);
-
-  const btn = page.locator('#favorite-btn');
-  const supportsHover = await page.evaluate(() => matchMedia('(hover: hover) and (pointer: fine)').matches);
-  await expect(btn).toHaveAttribute('aria-label', '收藏');
-  // ★ 需求：未收藏时星标**不亮**（跟着文字走 currentColor，与心形/小鱼同机制）
-  expect(await iconBg(), '未收藏时星标就已经亮着了').toBe(colors.muted);
-
-  await btn.hover();
-  await expect.poll(iconBg).toBe(supportsHover ? colors.star : colors.muted);
-  await expect(btn).toHaveCSS('background-color', supportsHover ? colors.starSoft : 'rgba(0, 0, 0, 0)');
-
-  // 建一个私密收藏夹并顺手收藏本文
-  await page.mouse.down();
-  await expect(btn).toHaveCSS('background-color', colors.star);
-  await expect.poll(iconBg).toBe('rgb(255, 255, 255)');
-  await page.mouse.up();
-  const modal = page.locator('#favoritePickerModal.is-open');
-  await expect(modal).toBeVisible();
-  await modal.locator('.favorite-picker__input').fill(`星标夹 ${uniqueTag()}`);
-  await modal.getByRole('button', { name: '创建私密收藏夹' }).click();
-  await expect(btn).toHaveAttribute('aria-pressed', 'true', { timeout: 15_000 });
-  await modal.getByRole('button', { name: 'Close', exact: true }).click();
-  await expect(modal).toBeHidden();
-
-  // 收藏后的停手态与未收藏时的悬停态一致。
-  await page.mouse.move(0, 0);
-  // ★ 必须轮询，不能读一次 ★ `.favorite-btn` 带颜色过渡，
-  // 类名一挂上动画就开始了 —— 立刻 getComputedStyle 拿到的是**过渡中间值**
-  // （实测 rgb(105,119,134)，从灰到黄刚起步），断言会莫名其妙地红。
-  await expect
-    .poll(iconBg, { message: '已收藏了，星标却没变黄', timeout: 5_000 })
-    .toBe(colors.star);
-  await expect(btn).toHaveCSS('background-color', colors.starSoft);
-
-  await btn.hover();
-  await expect(btn).toHaveCSS('background-color', supportsHover ? colors.star : colors.starSoft);
-  await expect.poll(iconBg).toBe(supportsHover ? 'rgb(255, 255, 255)' : colors.star);
-
-  // 已收藏且悬停时按住：保持与悬停相同的主色实底与白星。
-  await page.mouse.down();
-  await expect(btn).toHaveCSS('background-color', colors.star);
-  await expect
-    .poll(iconBg)
-    .toBe('rgb(255, 255, 255)');
-  await page.mouse.up();
-});
-
-test('操作区：动态居中，手机端管理展开只留图标并收起互动胶囊', async ({ page }, testInfo) => {
-  await registerFreshUser(page, { core: true });
-  const blogId = await createBlog(page, `胶囊几何 ${uniqueTag()}`);
-  for (const width of [320, 390, 1000]) {
+  for (const width of [390, 1000]) {
     await page.setViewportSize({ width, height: 900 });
     await page.goto(`/blog/${blogId}`);
     const controls = page.locator('#read-controls');
     const toggle = controls.locator('#admin-manage-btn');
-    await toggle.scrollIntoViewIfNeeded();
-    const group = controls.locator('.manage-control');
     const interaction = controls.locator('.read-controls__interaction');
-    const bar = controls.locator('.read-controls__bar');
-    const centered = async () => {
-      const outer = (await controls.boundingBox())!;
-      const inner = (await bar.boundingBox())!;
-      return Math.abs(inner.x + inner.width / 2 - outer.x - outer.width / 2);
-    };
-    const closed = (await group.boundingBox())!;
-    expect(closed.width).toBe(48);
-    const boxes = await Promise.all([
-      controls.locator('.read-controls__bar > .read-btn').boundingBox(),
-      controls.locator('.read-controls__row').boundingBox(), group.boundingBox(),
-    ]);
-    expect(boxes.every(b => b && b.height === 48 && Math.abs(b.y - closed.y) < 1)).toBe(true);
-    await expect.poll(centered).toBeLessThan(1);
-    if (width >= 390) await controls.screenshot({ path: testInfo.outputPath(`controls-idle-${width}.png`) });
+    await toggle.scrollIntoViewIfNeeded();
+
+    await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    await expect(interaction).not.toHaveAttribute('inert');
+
     await toggle.click();
-    await expect.poll(async () => (await group.boundingBox())!.width).toBeGreaterThan(200);
-    await expect.poll(centered).toBeLessThan(1);
-    const after = (await toggle.boundingBox())!;
-    expect(after.y).toBeCloseTo(closed.y, 0);
-    const labels = controls.locator('.manage-menu__item > span:not(.icon)');
-    if (width <= 768) {
-      await expect.poll(async () => (await interaction.boundingBox())!.width).toBe(0);
-      await expect(interaction).toHaveAttribute('inert', '');
-      for (const label of await labels.all()) await expect(label).toBeHidden();
-    } else {
-      await expect(interaction).not.toHaveAttribute('inert');
-      await expect(controls.locator('#like-btn')).toBeVisible();
-      for (const label of await labels.all()) await expect(label).toBeVisible();
-    }
-    // 截图取展开后的空闲态，避免指针停在菜单项上或入场动画尚未结束。
-    await page.mouse.move(0, 0);
-    await group.evaluate(async el => {
-      // 移开指针可能取消 hover 过渡，等替换后的动画一起收敛。
-      do {
-        await Promise.allSettled(el.getAnimations({ subtree: true }).map(animation => animation.finished));
-      } while (el.getAnimations({ subtree: true }).some(animation => animation.playState === 'running'));
-    });
-    if (width >= 390) await controls.screenshot({ path: testInfo.outputPath(`controls-open-${width}.png`) });
-    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
-    // 窄屏的最后一项必须能滚动到并打开，不能只是留在被裁掉的 DOM 里。
+    await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    await expect(controls.locator('#blog-manage-menu')).toBeVisible();
+    // 窄屏展开管理时互动胶囊整体退出交互（inert），避免管理面板与互动按钮叠着可点。
+    if (width <= 768) await expect(interaction).toHaveAttribute('inert', '');
+
+    // 窄屏的最后一项必须能滚动到并打开，不能只是留在被裁掉的 DOM 里 ——
+    // Playwright 点击会自动把目标滚进视口，点不开就是真的点不到。
     await controls.getByRole('button', { name: '删除', exact: true }).click();
     await expect(page.locator('#deleteConfirmModal.is-open')).toBeVisible();
     await page.locator('#deleteConfirmModal').getByRole('button', { name: '取消', exact: true }).click();
     await expect(toggle).toBeFocused();
     await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+
+    // 焦点移出管理菜单 → 菜单收起，互动胶囊恢复可用。
     await controls.getByRole('button', { name: '返回上页', exact: true }).focus();
     await expect(toggle).toHaveAttribute('aria-expanded', 'false');
-    await expect.poll(async () => (await group.boundingBox())!.width).toBe(48);
     await expect(interaction).not.toHaveAttribute('inert');
     await expect(controls.locator('#like-btn')).toBeVisible();
-    await expect.poll(async () => (await interaction.boundingBox())!.width).toBeGreaterThan(100);
-    await expect.poll(centered).toBeLessThan(1);
   }
 });
 
-test('收藏选择器：名称独占一行，两颗创建按钮并排且等宽、标签不折行', async ({ page }) => {
+test('收藏选择器：私密 / 站内共享两个创建入口，页脚可进入管理页', async ({ page }) => {
   await registerFreshUser(page, { core: true });
-  const blogId = await createBlog(page, `选择器用例 ${uniqueTag()}`);
+  const blogId = await createBlog(page, `选择器入口 ${uniqueTag()}`);
   await page.goto(`/blog/${blogId}`);
 
   await page.locator('#favorite-btn').click();
   const modal = page.locator('#favoritePickerModal.is-open');
   await expect(modal).toBeVisible();
 
-  const geom = await modal.evaluate((el) => {
-    const input = el.querySelector('.favorite-picker__input') as HTMLElement;
-    const actions = el.querySelector('.favorite-picker__new-actions') as HTMLElement;
-    const btns = [...actions.querySelectorAll('button')] as HTMLElement[];
-    const ir = input.getBoundingClientRect();
-    const brs = btns.map((b) => b.getBoundingClientRect());
-    return {
-      inputAboveBtns: brs[0].top >= ir.bottom - 1,
-      inputSharesRowWithBtns: brs[0].top < ir.bottom - 1 && ir.top < brs[0].bottom - 1,
-      btnCount: btns.length,
-      btnsSameRow: Math.abs(brs[0].top - brs[1].top) < 2,
-      btnWidths: brs.map((r) => +r.width.toFixed(1)),
-      wrapped: btns
-        .filter(
-          (b) =>
-            b.getBoundingClientRect().height >
-            // 单行按钮的高度上限：行高 1.2em + 上下内边距 + 边框余量
-            parseFloat(getComputedStyle(b).fontSize) * 1.6 +
-              parseFloat(getComputedStyle(b).paddingTop) * 2
-        )
-        .map((b) => (b.textContent || '').trim()),
-    };
-  });
-
-  expect(geom.btnCount, '创建入口应当恰好两颗（私密 / 公开）').toBe(2);
-  // ★ 用户报的问题：名称与「创建私密」占一行、「创建公开」被挤到第二行
-  expect(geom.inputSharesRowWithBtns, '名称不该和创建按钮挤在同一行').toBe(false);
-  expect(geom.inputAboveBtns, '名称应当在创建按钮的上方').toBe(true);
-  expect(geom.wrapped, `创建按钮的标签折行了：${geom.wrapped.join('、')}`).toEqual([]);
-
-  // 极窄屏（<360px）刻意退回上下堆叠，所以「并排」这条从 360px 起才成立
-  const narrow = (page.viewportSize()?.width ?? 0) < 360;
-  if (!narrow) {
-    // 注意：`narrow` 为真时下面两条不该断言，但**上面两条永远成立** ——
-    // 「名称独占一行」与「标签不折行」在堆叠态下照样必须满足。
-    expect(geom.btnsSameRow, '两颗创建按钮没并排').toBe(true);
-    expect(
-      Math.abs(geom.btnWidths[0] - geom.btnWidths[1]),
-      `两颗应当等宽，实际 ${geom.btnWidths.join(' / ')}`
-    ).toBeLessThan(2);
-  }
+  // 私密 / 站内共享两种性质在**创建之前**就要可见（性质一经创建不可修改），
+  // 因此两个入口必须都能点到 —— 这里只验入口存在，不固定它们的排版。
+  await expect(modal.getByRole('button', { name: '创建私密收藏夹' })).toBeVisible();
+  await expect(modal.getByRole('button', { name: '创建站内共享收藏夹' })).toBeVisible();
 
   // 页脚有通往管理页的入口（否则 /favorite 只能靠手敲 URL）。
-  // 断可见性而不只是 href：放在 .modal-footer 里但不给样式的话它照样在 DOM 里，
-  // 只是没人看得见 —— 那和没有入口是一回事。
   const manage = modal.locator('.favorite-picker__manage');
   await expect(manage).toBeVisible();
   await expect(manage).toHaveAttribute('href', '/favorite');

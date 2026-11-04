@@ -729,8 +729,8 @@ Promise** —— 拿它当「等到了字体」，MathJax 的公式会用回退�
 通知（本子系统完全不碰 `notification-service` / `topbar-bus`）；没有修改 `isPublic`
 的接口（改性质只能靠「复制」，且复制是**快照**）。
 
-**UI 上两个「不算 bug 的临界值」**（细节见 `docs/frontend-styles.md` §7.2，几何由
-`tests/e2e/favorite-layout.spec.ts` 在真视口下断言）：
+**UI 上两个「不算 bug 的临界值」**（细节见 `docs/frontend-styles.md` §7.2；
+视觉表现由受影响页面与视口的人工检查确认）：
 
 - 星标**未收藏时不亮**（跟 `currentColor`），只在 hover 与已收藏时变黄 —— 与点赞/投喂同一套
   状态色手法。别再给 `.icon-star-fill` 写死 `background-color`。

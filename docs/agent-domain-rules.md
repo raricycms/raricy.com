@@ -514,8 +514,9 @@ ftyp 品牌 / 声明归一化 / `planImageUpload` —— 服务端与浏览器�
 占位 + `data-*`，为什么替换按区间切片）。对外见 `docs/bot/favorite-bot.md`（含限频数值，
 改 `RULES` 要同步）与 `docs/guide/收藏夹使用指南.md`。
 
-**改收藏夹按钮的样式前先看 `tests/e2e/favorite-layout.spec.ts`**（它按真视口断几何，
-并登记在 `playwright.config.ts` 的 `RESPONSIVE_SPECS` 里，desktop 与 mobile 都要过）：
+**改收藏夹按钮的样式前先在受影响页面与视口做实页检查**（`favorite-layout.spec.ts` 已按
+2026-11-04 前端样式测试清理计划移除几何断言，只保留操作与无障碍行为；该文件仍登记在
+`playwright.config.ts` 的 `RESPONSIVE_SPECS` 里，desktop 与 mobile 都要过）：
 星标**未收藏时不许亮**（颜色只由 `.favorite-btn.favorited` 的 `color` 给，别再给
 `.icon-star-fill` 写死 `background-color`）；所有视口保持**返回圆钮 / 互动胶囊 / 管理胶囊
 同一行、外壳等高 48px**。互动胶囊内按钮高 40px，只留图标与同行数字，无文字标签；

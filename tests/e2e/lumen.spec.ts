@@ -67,13 +67,11 @@ test('每一关都能通过实际点击完成，通关星图与最终完成状�
   await expect(page.getByRole('heading', { name: '全部实验完成！' })).toBeVisible();
 });
 
-test('窄屏、深色、减少动态效果，关卡与帮助弹窗可操作', async ({ page }, testInfo) => {
+test('窄屏与减少动态效果下，关卡与帮助弹窗可操作', async ({ page }) => {
   await open(page);
   await select(page, '22');
-  await page.evaluate(() => document.documentElement.dataset.theme = 'dark');
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await expect(page.locator('.lm-ray-flow').first()).toHaveCSS('animation-name', 'none');
-  await expect.poll(() => page.locator('.lm-workbench').evaluate((e) => getComputedStyle(e).backgroundColor)).toBe('rgb(24, 26, 29)');
   for (const width of [320, 390, 768, 1280]) {
     await page.setViewportSize({ width, height: 900 });
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
@@ -81,14 +79,8 @@ test('窄屏、深色、减少动态效果，关卡与帮助弹窗可操作', as
     await page.getByRole('button', { name: '指出下一步' }).click();
     await page.locator('.lm-optic--hint').click();
   }
-  await page.screenshot({ path: testInfo.outputPath('lumen-desktop-dark.png'), fullPage: true });
+  // 弹窗的焦点返回在手机视口验证，覆盖原有移动端检查。
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.screenshot({ path: testInfo.outputPath('lumen-mobile-dark.png'), fullPage: true });
-  await page.evaluate(() => document.documentElement.dataset.theme = 'light');
-  await expect.poll(() => page.locator('body').evaluate((e) => getComputedStyle(e).backgroundColor)).toBe('rgb(248, 250, 252)');
-  await expect.poll(() => page.locator('.lm-bench-heading h2').evaluate((e) => getComputedStyle(e).color)).toBe('rgb(15, 23, 42)');
-  await page.evaluate(() => window.scrollTo(0, 0));
-  await page.screenshot({ path: testInfo.outputPath('lumen-mobile-light.png'), fullPage: true });
   await page.getByRole('button', { name: '玩法说明' }).click();
   await expect(page.getByRole('dialog')).toBeVisible();
   await page.getByRole('button', { name: '明白了，继续实验' }).click();

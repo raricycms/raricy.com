@@ -94,7 +94,7 @@ test.describe('用户名片：渲染', () => {
     // 那几条（margin 0.4em / 1px 描边 / 圆角 8px / **不透明底色**）会原样漏进名片，
     // 而名片里两张图各自的规则只声明了尺寸，压不住。其中底色最凶：框贴图的画布中心
     // 是透明的，那层底色**把头像一个不漏地盖住**，只留一个灰方块。
-    // 三样东西都只有真浏览器 + 真样式表算得出来（同 favorite-layout.spec.ts 的口径）。
+    // 三样东西都只有真浏览器 + 真样式表算得出来。
     const geo = await msgRow(page, marker)
       .locator('.rich-user-ref__avatar')
       .evaluate((box) => {
