@@ -379,17 +379,21 @@ test.describe('消息操作菜单（右键 / 长按）', () => {
     // 入口只有右键：页面上不该再有常驻的「更多」按钮。
     await expect(page.locator('.chat-msg__more')).toHaveCount(0);
 
-    // 悬停反馈落在气泡上（伪元素叠色），整条消息的底色不变。
-    const styles = () =>
+    // 悬停反馈只落在气泡本身：鼠标扫过头像 / 表头不亮，整条消息的底色也不变。
+    const bubbleStyles = () =>
       row.locator('.chat-msg__content').evaluate((el) => ({
         overlay: getComputedStyle(el, '::after').backgroundColor,
         rowBg: getComputedStyle(el.closest('.chat-msg')!).backgroundColor,
       }));
     await page.mouse.move(0, 0);
-    const idle = await styles();
-    await row.hover();
-    const hovered = await styles();
-    expect(hovered.overlay, '悬停应给气泡叠色').not.toBe(idle.overlay);
+    const idle = await bubbleStyles();
+    await row.locator('.chat-msg__avatar').hover();
+    expect((await bubbleStyles()).overlay, '悬停头像不该点亮气泡').toBe(idle.overlay);
+    await row.locator('.chat-msg__meta').hover();
+    expect((await bubbleStyles()).overlay, '悬停表头不该点亮气泡').toBe(idle.overlay);
+    await row.locator('.chat-msg__content').hover();
+    const hovered = await bubbleStyles();
+    expect(hovered.overlay, '悬停气泡应给气泡叠色').not.toBe(idle.overlay);
     expect(hovered.rowBg, '悬停不该铺整行底色').toBe(idle.rowBg);
 
     await row.click({ button: 'right' });

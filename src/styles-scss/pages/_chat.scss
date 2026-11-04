@@ -1106,11 +1106,12 @@
   background-color: var(--color-brand-secondary);
 }
 
-// 桌面悬停 / 键盘聚焦：与触屏按下同一套叠色，只落在气泡上 —— 不铺整条消息的底色，
+// 桌面悬停 / 键盘聚焦：与触屏按下同一套叠色，且只在**指针真的落在气泡上**时出现 ——
+// 鼠标扫过头像、表头、引用块或行间空白都不该亮。不铺整条消息的底色，
 // 也不把 grouped 隐藏的头像淡入。
 @media (hover: hover) and (pointer: fine) {
-  .chat-msg:hover .chat-msg__content::after,
-  .chat-msg:focus-within .chat-msg__content::after {
+  .chat-msg__content:hover::after,
+  .chat-msg__content:focus-within::after {
     @include chat-bubble-tint;
   }
 }
