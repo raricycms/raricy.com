@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 // ─────────────────────────────────────────────────────────────────────────────
-// chat-message-menu.test.ts —— 更多按钮 / 桌面右键、触屏原生选字、菜单项与键盘焦点。
+// chat-message-menu.test.ts —— 更多按钮 / 桌面右键 / 触屏长按、单击详情、菜单项与键盘焦点。
 //
 // 【环境】照 chat-message-dom.test.ts：不用 @testing-library（本仓没有这个依赖），
 // createRoot + act 直接驱动；jsdom 不排版，几何由 e2e 负责。
@@ -82,6 +82,7 @@ afterEach(async () => {
     for (const root of roots.splice(0)) root.unmount();
   });
   for (const c of containers.splice(0)) c.remove();
+  window.getSelection()?.removeAllRanges();
   document.body.innerHTML = '';
   vi.useRealTimers();
 });
@@ -92,6 +93,7 @@ async function mountMessage(
   opts: { canDelete?: boolean; canSave?: boolean; isMine?: boolean; menuOpen?: boolean; onImageClick?: () => void } = {}
 ) {
   const onOpenMenu = vi.fn();
+  const onOpenDetail = vi.fn();
   const onImageClick = opts.onImageClick ?? vi.fn();
   const container = await mount(
     createElement(ChatMessageItem, {
@@ -103,13 +105,14 @@ async function mountMessage(
       canSave: opts.canSave ?? false,
       menuOpen: opts.menuOpen ?? false,
       onOpenMenu,
+      onOpenDetail,
       onAvatarClick: () => {},
       onJumpToReply: () => {},
       onImageClick,
     })
   );
   const row = container.querySelector<HTMLElement>('.chat-msg, .chat-pat')!;
-  return { row, onOpenMenu, onImageClick };
+  return { row, onOpenMenu, onOpenDetail, onImageClick };
 }
 
 describe('消息操作入口与原生触屏行为', () => {
@@ -143,27 +146,70 @@ describe('消息操作入口与原生触屏行为', () => {
     expect(more.getAttribute('aria-label')).toBe('消息操作');
   });
 
-  it('触屏长按与随后的原生菜单不打开消息操作，也不清掉文字选区', async () => {
-    const { row, onOpenMenu } = await mountMessage(dto());
-    const range = document.createRange();
-    range.selectNodeContents(row.querySelector('.chat-msg__content')!);
-    window.getSelection()!.addRange(range);
-    const selected = window.getSelection()!.toString();
+  it('触屏长按 → 打开操作菜单，且不产生浏览器选区', async () => {
+    const { row, onOpenMenu, onOpenDetail } = await mountMessage(dto());
     fire(row, pointerEvent('pointerdown', { clientX: 30, clientY: 40, pointerType: 'touch' }));
-    act(() => vi.advanceTimersByTime(1000));
-    // 部分浏览器的 contextmenu 没有 pointerType，用前一次 pointerdown 作兜底。
-    const ev = fire(row, new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 30, clientY: 40 }));
-    expect(onOpenMenu).not.toHaveBeenCalled();
-    expect(ev.defaultPrevented).toBe(false);
-    expect(window.getSelection()!.toString()).toBe(selected);
-    expect(selected).toContain('一条消息');
+    expect(row.classList.contains('chat-msg--pressed'), '按下时要有按压反馈').toBe(true);
+    act(() => vi.advanceTimersByTime(600));
+    expect(onOpenMenu).toHaveBeenCalledTimes(1);
+    expect(onOpenMenu.mock.calls[0][1]).toMatchObject({ x: 30, y: 40 });
+    expect(row.classList.contains('chat-msg--pressed'), '长按已转为菜单，反馈要撤掉').toBe(false);
+    fire(row, pointerEvent('pointerup', { clientX: 30, clientY: 40, pointerType: 'touch' }));
+    // 长按松手后浏览器可能补一个 click：必须吞掉，不能同屏再弹详情。
+    fire(row.querySelector('.chat-msg__content')!, new MouseEvent('click', { bubbles: true }));
+    expect(onOpenDetail).not.toHaveBeenCalled();
+    expect(window.getSelection()!.toString()).toBe('');
   });
 
-  it('原生 contextmenu 自带触屏类型时直接放行', async () => {
+  it('触屏滑动超过容差 → 取消按压反馈与长按计时', async () => {
+    const { row, onOpenMenu } = await mountMessage(dto());
+    fire(row, pointerEvent('pointerdown', { clientX: 30, clientY: 40, pointerType: 'touch' }));
+    fire(row, pointerEvent('pointermove', { clientX: 30, clientY: 90, pointerType: 'touch' }));
+    expect(row.classList.contains('chat-msg--pressed')).toBe(false);
+    act(() => vi.advanceTimersByTime(1000));
+    expect(onOpenMenu).not.toHaveBeenCalled();
+  });
+
+  it('触屏 contextmenu 一律吃掉：长按面板由我们接管', async () => {
     const { row, onOpenMenu } = await mountMessage(dto());
     const ev = fire(row, pointerEvent('contextmenu', { clientX: 30, clientY: 40, pointerType: 'touch' }));
+    expect(ev.defaultPrevented).toBe(true);
     expect(onOpenMenu).not.toHaveBeenCalled();
+  });
+
+  it('没有可做的动作（别人的已删消息）→ 触屏 contextmenu 仍放行', async () => {
+    const { row } = await mountMessage(dto({ is_deleted: true, content: '[消息已删除]' }), {
+      canDelete: false,
+      isMine: false,
+    });
+    const ev = fire(row, pointerEvent('contextmenu', { clientX: 10, clientY: 10, pointerType: 'touch' }));
     expect(ev.defaultPrevented).toBe(false);
+  });
+
+  it('单击正文 → 打开消息详情，不打开菜单', async () => {
+    const { row, onOpenMenu, onOpenDetail } = await mountMessage(dto());
+    fire(row.querySelector('.chat-msg__content')!, new MouseEvent('click', { bubbles: true }));
+    expect(onOpenDetail).toHaveBeenCalledTimes(1);
+    expect(onOpenMenu).not.toHaveBeenCalled();
+  });
+
+  it('有文字选区时单击不开详情（拖选结束的收尾 click）', async () => {
+    const { row, onOpenDetail } = await mountMessage(dto());
+    const content = row.querySelector('.chat-msg__content')!;
+    const range = document.createRange();
+    range.selectNodeContents(content);
+    window.getSelection()!.addRange(range);
+    fire(content, new MouseEvent('click', { bubbles: true }));
+    expect(onOpenDetail).not.toHaveBeenCalled();
+  });
+
+  it('鼠标按下后拖动再松手（拖选）→ 不开详情', async () => {
+    const { row, onOpenDetail } = await mountMessage(dto());
+    const content = row.querySelector('.chat-msg__content')!;
+    fire(content, pointerEvent('pointerdown', { clientX: 30, clientY: 40, pointerType: 'mouse' }));
+    fire(content, pointerEvent('pointerup', { clientX: 90, clientY: 40, pointerType: 'mouse' }));
+    fire(content, new MouseEvent('click', { bubbles: true, clientX: 90, clientY: 40 }));
+    expect(onOpenDetail).not.toHaveBeenCalled();
   });
 
   it('菜单打开时按钮报告展开态，对应消息保持操作态', async () => {
@@ -189,17 +235,16 @@ describe('消息操作入口与原生触屏行为', () => {
     expect(row.querySelector('.chat-msg__more')).toBeNull();
   });
 
-  it('普通点击正文不打开菜单，图片点击照常放大', async () => {
+  it('图片点击照常放大且不打开详情 / 菜单', async () => {
     const onImageClick = vi.fn();
-    const { row, onOpenMenu } = await mountMessage(
+    const { row, onOpenMenu, onOpenDetail } = await mountMessage(
       dto({ image: { id: 'i1', url: '/api/images/i1', mime_type: 'image/png' } }),
       { onImageClick }
     );
     const img = row.querySelector<HTMLElement>('.chat-msg__image')!;
-
-    fire(row.querySelector('.chat-msg__content')!, new MouseEvent('click', { bubbles: true }));
     fire(img, new MouseEvent('click', { bubbles: true, cancelable: true }));
     expect(onImageClick).toHaveBeenCalledTimes(1);
+    expect(onOpenDetail).not.toHaveBeenCalled();
     expect(onOpenMenu).not.toHaveBeenCalled();
   });
 });
@@ -209,6 +254,7 @@ describe('菜单项：按消息语境组合', () => {
     const onClose = vi.fn();
     const onToggleSave = vi.fn();
     const onReply = vi.fn();
+    const onCopy = vi.fn();
     const onDelete = vi.fn();
     await mount(
       createElement(ChatMessageMenu, {
@@ -217,9 +263,11 @@ describe('菜单项：按消息语境组合', () => {
         saved: false,
         canSave: false,
         canReply: true,
+        canCopy: true,
         canDelete: true,
         onToggleSave,
         onReply,
+        onCopy,
         onDelete,
         onClose,
         ...overrides,
@@ -227,38 +275,52 @@ describe('菜单项：按消息语境组合', () => {
     );
     const items = () =>
       [...document.querySelectorAll('.chat-menu [role="menuitem"]')].map((n) => n.textContent);
-    return { onClose, onToggleSave, onReply, onDelete, items };
+    return { onClose, onToggleSave, onReply, onCopy, onDelete, items };
   }
 
-  it('私聊自己发的消息：保存 / 回复 / 删除 + 取消', async () => {
+  it('私聊自己发的消息：回复 / 复制 / 保存 / 删除 + 取消', async () => {
     const { items } = await mountMenu({ canSave: true });
-    expect(items()).toEqual(['保存', '回复', '删除', '取消']);
+    expect(items()).toEqual(['回复', '复制', '保存', '删除', '取消']);
     expect(document.querySelectorAll('.chat-menu__sep')).toHaveLength(1);
   });
 
-  it('已保存过 → 第一项变成「已保存」', async () => {
+  it('已保存过 → 保存项变成「已保存」', async () => {
     const { items } = await mountMenu({ canSave: true, saved: true });
-    expect(items()).toEqual(['已保存', '回复', '删除', '取消']);
+    expect(items()).toEqual(['回复', '复制', '已保存', '删除', '取消']);
   });
 
-  it('大区里别人的消息：没有保存、没有删除', async () => {
+  it('大区里别人的消息：没有保存、没有删除，复制仍在', async () => {
     const { items } = await mountMenu({ canSave: false, canDelete: false });
-    expect(items()).toEqual(['回复', '取消']);
+    expect(items()).toEqual(['回复', '复制', '取消']);
   });
 
-  it('拍一拍：只有删除（不能保存也不能回复）', async () => {
-    const { items } = await mountMenu({ canSave: false, canReply: false });
+  it('拍一拍：只有删除（不能保存、不能回复、不能复制正文）', async () => {
+    const { items } = await mountMenu({ canSave: false, canReply: false, canCopy: false });
     expect(items()).toEqual(['删除', '取消']);
   });
 
   it('点菜单项先收起菜单再执行动作', async () => {
     const { onClose, onToggleSave } = await mountMenu({ canSave: true });
-    const save = [...document.querySelectorAll<HTMLElement>('.chat-menu [role="menuitem"]')][0];
+    const save = [...document.querySelectorAll<HTMLElement>('.chat-menu [role="menuitem"]')].find(
+      (n) => n.textContent === '保存'
+    )!;
     act(() => {
       save.click();
     });
     expect(onClose).toHaveBeenCalledTimes(1);
     expect(onToggleSave).toHaveBeenCalledTimes(1);
+  });
+
+  it('点「复制」先收起菜单再交给复制回调', async () => {
+    const { onClose, onCopy } = await mountMenu();
+    const copy = [...document.querySelectorAll<HTMLElement>('.chat-menu [role="menuitem"]')].find(
+      (n) => n.textContent === '复制'
+    )!;
+    act(() => {
+      copy.click();
+    });
+    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(onCopy).toHaveBeenCalledTimes(1);
   });
 
   it('取消只收菜单，不做动作', async () => {
@@ -275,7 +337,7 @@ describe('菜单项：按消息语境组合', () => {
     await mountMenu({ canSave: true });
     const items = [...document.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')];
     expect(document.activeElement).toBe(items[0]);
-    for (const [key, index] of [['ArrowUp', 3], ['ArrowDown', 0], ['End', 3], ['Home', 0], ['ArrowDown', 1]] as const) {
+    for (const [key, index] of [['ArrowUp', 4], ['ArrowDown', 0], ['End', 4], ['Home', 0], ['ArrowDown', 1]] as const) {
       fire(document.activeElement!, new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
       expect(document.activeElement).toBe(items[index]);
     }

@@ -66,8 +66,10 @@ export interface ChatMessageListProps {
   /** 「已折叠 N 条 · 展开更早」——放回一页由 ChatApp 定（REVEAL_STEP 住那边）。 */
   onRevealOlder: () => void;
   onLoadOlder: () => void;
-  /** 更多按钮 / 桌面右键 → 打开操作菜单（保存 / 回复 / 删除）。 */
+  /** 更多按钮 / 桌面右键 / 触屏长按 → 打开操作菜单（回复 / 复制 / 保存 / 删除）。 */
   onOpenMenu: (m: ChatMessageDTO, anchor: MessageMenuAnchor) => void;
+  /** 单击正文 → 打开消息详情浮层（移动端与桌面共用）。 */
+  onOpenDetail: (m: ChatMessageDTO) => void;
   onAvatarClick: (m: ChatMessageDTO, el: HTMLButtonElement) => void;
   /** 点回复摘要 → 跳到被引用的原消息。 */
   onJumpToReply: (messageId: number) => void;
@@ -95,6 +97,7 @@ function ChatMessageListInner({
   onRevealOlder,
   onLoadOlder,
   onOpenMenu,
+  onOpenDetail,
   onAvatarClick,
   onJumpToReply,
   onImageClick,
@@ -145,6 +148,7 @@ function ChatMessageListInner({
               receipt={m.id === lastMineId && isDirect ? (peerLastRead >= m.id ? 'read' : 'unread') : null}
               canSave={isDirect && !m.is_deleted && !m.pat}
               onOpenMenu={onOpenMenu}
+              onOpenDetail={onOpenDetail}
               onAvatarClick={onAvatarClick}
               onJumpToReply={onJumpToReply}
               onImageClick={onImageClick}

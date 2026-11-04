@@ -30,6 +30,7 @@ import NewChatModal from './NewChatModal';
 import QuoteBlogModal from '../components/QuoteBlogModal';
 import AvatarMenu, { type AvatarMenuAnchor } from './AvatarMenu';
 import ChatMessageMenu, { type MessageMenuAnchor } from './ChatMessageMenu';
+import ChatMessageDetail from './ChatMessageDetail';
 import ImageLightbox from '../components/ImageLightbox';
 import { isMentioned, markGroupedMessages } from './ChatMessageItem';
 import ChatMessageList from './ChatMessageList';
@@ -50,6 +51,36 @@ declare global {
 
 function toast(message: string, type: string) {
   if (typeof window !== 'undefined' && window.showToast) window.showToast(message, type);
+}
+
+/**
+ * 复制正文原文。`navigator.clipboard` 在非安全上下文（http 内网 / iframe 限制）里
+ * 不可用，落到 textarea + execCommand 的老路 —— 与云剪贴板详情的复制按钮同一口径。
+ */
+async function copyPlainText(text: string): Promise<boolean> {
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+  } catch {
+    /* 落到 fallback */
+  }
+  try {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.left = '-999999px';
+    ta.style.top = '-999999px';
+    document.body.appendChild(ta);
+    ta.focus();
+    ta.select();
+    const ok = document.execCommand('copy');
+    document.body.removeChild(ta);
+    return ok;
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -240,13 +271,15 @@ export default function ChatApp({
     { author: ChatMessageDTO['author']; anchor: AvatarMenuAnchor } | null
   >(null);
   /**
-   * 消息操作菜单（保存 / 回复 / 删除）：更多按钮或桌面右键唤出。
+   * 消息操作菜单（回复 / 复制 / 保存 / 删除）：更多按钮、桌面右键或触屏长按唤出。
    * 只存「哪条消息 + 菜单锚点」，可用动作在渲染时按当前消息与频道现算 —— 保存态
    * 会随 savedIds 变，存快照会在菜单开着时拿到旧值。
    */
   const [messageMenu, setMessageMenu] = useState<
     { msg: ChatMessageDTO; anchor: MessageMenuAnchor } | null
   >(null);
+  /** 消息详情浮层（单击正文打开）：存整条消息，关闭即清空。 */
+  const [messageDetail, setMessageDetail] = useState<ChatMessageDTO | null>(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(initialSidebarCollapsed);
   const [drawerOpen, setDrawerOpen] = useState(false);
   /** 首次频道列表加载完成（区分「加载中」与「专注模式空态」） */
@@ -1358,6 +1391,22 @@ export default function ChatApp({
     setMessageMenu({ msg: m, anchor });
   }, []);
 
+  /** 单击正文 → 消息详情浮层（移动端与桌面共用；详情里可原生选字 / 复制）。 */
+  const openMessageDetail = useCallback((m: ChatMessageDTO) => {
+    setMessageMenu(null);
+    setMessageDetail(m);
+  }, []);
+
+  const closeMessageDetail = useCallback(() => setMessageDetail(null), []);
+
+  /** 操作菜单「复制」：复制正文原文，不复制渲染后的富文本。 */
+  const handleCopyMessage = useCallback((m: ChatMessageDTO) => {
+    if (!m.content) return;
+    void copyPlainText(m.content).then((ok) => {
+      toast(ok ? '已复制' : '复制失败，请手动复制', ok ? 'success' : 'error');
+    });
+  }, []);
+
   /** 点消息里的图片 → 原位放大（覆盖层），不再新开窗口 */
   const openLightbox = useCallback((url: string) => setLightbox({ url }), []);
   const closeLightbox = useCallback(() => setLightbox(null), []);
@@ -1796,6 +1845,7 @@ export default function ChatApp({
                 onRevealOlder={revealOlder}
                 onLoadOlder={loadOlder}
                 onOpenMenu={openMessageMenu}
+                onOpenDetail={openMessageDetail}
                 onAvatarClick={openAvatarMenu}
                 onJumpToReply={jumpToMessage}
                 onImageClick={openLightbox}
@@ -1948,8 +1998,8 @@ export default function ChatApp({
         />
       )}
 
-      {/* 消息操作菜单：更多按钮 / 桌面右键唤出。「保存」只有私聊（且未删、非拍一拍）才有 ——
-          大区消息不进保存箱，服务端也会拒。 */}
+      {/* 消息操作菜单：更多按钮 / 桌面右键 / 触屏长按唤出。「保存」只有私聊（且未删、
+          非拍一拍）才有 —— 大区消息不进保存箱，服务端也会拒。 */}
       {messageMenu && (
         <ChatMessageMenu
           msg={messageMenu.msg}
@@ -1959,6 +2009,7 @@ export default function ChatApp({
             activeChannel?.kind === 'direct' && !messageMenu.msg.is_deleted && !messageMenu.msg.pat
           }
           canReply={!messageMenu.msg.is_deleted && !messageMenu.msg.pat}
+          canCopy={!messageMenu.msg.is_deleted && !messageMenu.msg.pat && !!messageMenu.msg.content}
           canDelete={messageMenu.msg.author.id === currentUserId || isAdmin}
           onToggleSave={(m) => {
             setMessageMenu(null);
@@ -1968,6 +2019,7 @@ export default function ChatApp({
             setMessageMenu(null);
             handleReply(m);
           }}
+          onCopy={handleCopyMessage}
           onDelete={(m) => {
             setMessageMenu(null);
             void handleDelete(m);
@@ -1975,6 +2027,8 @@ export default function ChatApp({
           onClose={() => setMessageMenu(null)}
         />
       )}
+
+      {messageDetail && <ChatMessageDetail msg={messageDetail} onClose={closeMessageDetail} />}
     </div>
   );
 }

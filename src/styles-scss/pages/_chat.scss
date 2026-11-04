@@ -1145,6 +1145,51 @@
   font-size: 0.8rem;
 }
 
+// ── 按下反馈（触屏）──────────────────────────────────────────────────────────
+// 手指按住消息时给一层「正在按」的淡色，图片叠一层淡遮罩；滑动 / 长按触发 /
+// 松手都会立刻摘掉（类名由 ChatMessageItem 的指针接线切换）。
+//
+// 气泡那层用伪元素而不是改 background-color：data-bubble 的三款气泡各有底色，
+// 统一抹成一种颜色会当场毁掉用户挑的款式。伪元素只看「这一块被按住了」。
+.chat-msg__content {
+  position: relative;
+}
+.chat-msg--pressed .chat-msg__content::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: color-mix(in srgb, var(--color-text-primary) 6%, transparent);
+  pointer-events: none;
+}
+.chat-msg__image,
+.chat-msg__md img {
+  transition: filter 0.15s ease;
+}
+.chat-msg--pressed .chat-msg__image,
+.chat-msg--pressed .chat-msg__md img {
+  filter: brightness(0.9);
+}
+.chat-pat--pressed {
+  background-color: var(--color-brand-secondary);
+}
+
+// 触屏的长按归消息操作面板，列表正文不再走浏览器选字 —— 选字与复制统一搬到
+// 单击正文打开的「消息详情」浮层里（那里在 .chat-msg 之外，不受这条约束）。
+// 只在粗指针下关：桌面鼠标仍可直接拖选，这是需求里明确保留的。
+@media (pointer: coarse) {
+  .chat-msg,
+  .chat-pat {
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+  }
+  .chat-msg__image,
+  .chat-msg__md img {
+    -webkit-user-drag: none;
+  }
+}
+
 // 图片原位放大（覆盖层）：点消息里的图不新开窗口，盖一层黑底放大看，
 // 点黑底 / Esc / 右上角 × 关闭。观感对齐博客正文与云剪贴板的图片放大。
 //
@@ -1496,6 +1541,36 @@
 .chat-new-modal {
   max-width: 420px;
   width: calc(100vw - 40px);
+}
+
+// ── 消息详情浮层 ─────────────────────────────────────────────────────────────
+// 触屏在列表里关掉了原生选字（长按要留给操作面板），选字 / 复制改在这里做。
+// 外壳沿用站内弹窗（.modal-overlay / .modal-dialog / .modal-content）。
+.chat-detail {
+  width: calc(100vw - 40px);
+  max-width: 560px;
+}
+.chat-detail__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 10px;
+  font-size: 0.78rem;
+  color: var(--color-text-secondary);
+}
+.chat-detail__author {
+  color: var(--color-text-primary);
+  font-weight: 600;
+}
+.chat-detail__body {
+  color: var(--color-text-primary);
+  font-size: 0.92rem;
+  line-height: 1.6;
+  word-break: break-word;
+  // 详情页的存在意义就是可选中；显式声明，别被外层任何 user-select 规则继承带偏。
+  -webkit-user-select: text;
+  user-select: text;
 }
 
 // 弹窗关闭：次要图标钮（圆形点击区，§5.1）。这个类同时被图床选择 / 选人 /

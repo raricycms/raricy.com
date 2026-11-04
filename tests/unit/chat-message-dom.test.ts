@@ -70,6 +70,7 @@ async function render(msg: ChatMessageDTO, opts: { grouped?: boolean; isMine?: b
         currentUsername: '小明',
         grouped: opts.grouped ?? false,
         onOpenMenu: () => {},
+        onOpenDetail: () => {},
         onAvatarClick: () => {},
         onJumpToReply: () => {},
         onImageClick: () => {},

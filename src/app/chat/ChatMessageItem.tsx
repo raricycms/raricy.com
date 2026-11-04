@@ -10,16 +10,27 @@
 // 【正文渲染】走 ChatMarkdown（Markdown → 净化 HTML）；回复摘要 / 侧栏预览等
 // 只露一行的位置仍按纯文本处理，不进 Markdown 管线。
 //
-// 消息操作由独立的「更多」按钮打开：桌面悬停 / 聚焦时显示，触屏常显。
-// 按钮不进表头行，避免挤占名字与回执。桌面右键仍是快捷入口；触屏长按留给原生选字。
+// 消息交互由三处入口共同覆盖：气泡旁的「⋯」按钮（桌面悬停 / 键盘聚焦显示、触屏常显）、
+// 桌面右键、触屏长按。单击正文（移动端轻点 / 桌面左键）打开消息详情浮层 ——
+// 移动端的原生选字因此搬到详情里，列表上的长按留给操作面板。
+// 具体判据与事件接线见下面的 useMessageInteractions 与 chat-message-interaction.ts。
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { memo, useCallback, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import Avatar from '@/app/components/Avatar';
 import ChatBubble from '@/app/components/ChatBubble';
 import { ArrowRight, BookOpenText, Ellipsis } from 'lucide-react';
 import { CHAT_DELETED_TEXT, type ChatMessageDTO } from '@/lib/chat-shared';
+import {
+  LONG_PRESS_MS,
+  hasTextSelection,
+  isInteractiveClickTarget,
+  isPointInsideRange,
+  isPointInsideSelection,
+  isPressExcludedTarget,
+  movedBeyondTolerance,
+} from '@/lib/chat-message-interaction';
 import { nowForDb } from '@/lib/db-time';
 import ChatMarkdown from './ChatMarkdown';
 import type { MessageMenuAnchor } from './ChatMessageMenu';
@@ -142,22 +153,210 @@ export function isMentioned(content: string, username: string): boolean {
   return false;
 }
 
-// ── 桌面右键快捷入口 ────────────────────────────────────────────────────────
-// Android 长按也会派发 contextmenu；记录指针类型作兜底，不能把原生选字再次接管。
-function useMessageMenuTrigger(
-  msg: ChatMessageDTO,
-  canMenu: boolean,
-  onOpenMenu: (m: ChatMessageDTO, anchor: MessageMenuAnchor) => void
-) {
+// ── 指针交互（按下反馈 / 长按菜单 / 右键菜单 / 单击详情）──────────────────────
+//
+// 两端共用一套接线，判据在零依赖的 chat-message-interaction.ts：
+//   · 触屏：按下给反馈；滑动取消反馈与长按；长按开菜单；长按后的收尾 click 吞掉。
+//   · 鼠标：不接管按下反馈；右键开菜单（选区内的右键放行浏览器菜单）；
+//     左键单击正文开详情，拖选结束（有选区 / 有位移）不开详情。
+//   · 键盘：contextmenu 事件没有指针坐标，直接贴着消息左上角开菜单。
+//
+// 【为什么抑制标记要在 click 里消费、再用定时器兜底】触屏长按松手后浏览器仍可能补发
+// 一个 click（不同浏览器时序不同）。若不在 click 里吞掉它，菜单刚开就会同屏弹出详情。
+// 但某些手势根本不会发 click，抑制标记不能永久留着（否则下一次正常单击被吞），
+// 所以另有一个短定时器把它复位。
+function useMessageInteractions({
+  msg,
+  canMenu,
+  canDetail,
+  onOpenMenu,
+  onOpenDetail,
+}: {
+  msg: ChatMessageDTO;
+  canMenu: boolean;
+  canDetail: boolean;
+  onOpenMenu: (m: ChatMessageDTO, anchor: MessageMenuAnchor) => void;
+  onOpenDetail: (m: ChatMessageDTO) => void;
+}) {
+  const [pressed, setPressed] = useState(false);
   const pointerTypeRef = useRef('');
+  const pressRef = useRef<{
+    startX: number;
+    startY: number;
+    timer: ReturnType<typeof setTimeout> | null;
+    longPress: boolean;
+  } | null>(null);
+  /** 长按已经开过菜单：松手后的 click 必须吞掉。 */
+  const suppressClickRef = useRef(false);
+  const suppressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** 鼠标按下点：用来区分「单击」与「拖选 / 拖动」。 */
+  const mouseStartRef = useRef<{ x: number; y: number } | null>(null);
+  /**
+   * 右键按下瞬间的选区快照。
+   *
+   * 【为什么要快照】部分浏览器（以及无头环境的合成鼠标）在右键 mousedown 时就会
+   * 把选区收起，等 contextmenu 派发时 `getSelection()` 已经空了 —— 直接读实时选区
+   * 会判成「不在选区内」，于是刚选好的字右键却弹出我们的菜单。按下时先克隆一份，
+   * contextmenu 时拿它判断落点。
+   */
+  const selectionSnapshotRef = useRef<Range | null>(null);
+
+  const clearSuppressTimer = useCallback(() => {
+    if (suppressTimerRef.current) {
+      clearTimeout(suppressTimerRef.current);
+      suppressTimerRef.current = null;
+    }
+  }, []);
+
+  /** 取消按下态与长按计时（滑动 / 指针取消 / 卸载）。 */
+  const cancelPress = useCallback(() => {
+    const press = pressRef.current;
+    if (press?.timer) clearTimeout(press.timer);
+    pressRef.current = null;
+    setPressed(false);
+  }, []);
+
+  useEffect(
+    () => () => {
+      const press = pressRef.current;
+      if (press?.timer) clearTimeout(press.timer);
+      pressRef.current = null;
+      clearSuppressTimer();
+    },
+    [clearSuppressTimer]
+  );
+
+  /** 滑动滚动时取消反馈与长按：列表内部滚动不冒泡，用捕获阶段收。 */
+  useEffect(() => {
+    if (!pressed) return;
+    const onScrollOrResize = () => cancelPress();
+    window.addEventListener('scroll', onScrollOrResize, true);
+    window.addEventListener('resize', onScrollOrResize);
+    return () => {
+      window.removeEventListener('scroll', onScrollOrResize, true);
+      window.removeEventListener('resize', onScrollOrResize);
+    };
+  }, [pressed, cancelPress]);
+
+  const onPointerDown = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      pointerTypeRef.current = e.pointerType;
+      const touchLike = e.pointerType === 'touch' || e.pointerType === 'pen';
+      if (!touchLike) {
+        // 鼠标只记录起点：拖选结束后的 click 靠它识别，不接管按下反馈。
+        if (e.pointerType === 'mouse' && e.button === 0) {
+          mouseStartRef.current = { x: e.clientX, y: e.clientY };
+          selectionSnapshotRef.current = null;
+        } else if (e.pointerType === 'mouse' && e.button === 2) {
+          // 只覆盖、不清空：拖选结束时已经存过一份；右键按下时实时选区若已被收起，
+          // 仍应沿用那份快照。
+          const selection = document.getSelection();
+          if (hasTextSelection(selection) && selection) {
+            selectionSnapshotRef.current = selection.getRangeAt(0).cloneRange();
+          }
+        }
+        return;
+      }
+      if (e.button !== 0) return;
+      // 链接 / 按钮 / 输入框有自己的点击语义，不从这里起长按。
+      if (isPressExcludedTarget(e.target)) return;
+      clearSuppressTimer();
+      suppressClickRef.current = false;
+      cancelPress();
+      try {
+        // 捕获指针：手指移出消息范围后仍能收到 up / cancel，按下态不会粘住。
+        // 合成事件或老浏览器没有活动指针时会抛，忽略即可（不影响真实触屏）。
+        e.currentTarget.setPointerCapture(e.pointerId);
+      } catch {
+        /* 忽略 */
+      }
+      const state = {
+        startX: e.clientX,
+        startY: e.clientY,
+        timer: null as ReturnType<typeof setTimeout> | null,
+        longPress: false,
+      };
+      pressRef.current = state;
+      setPressed(true);
+      if (!canMenu) return; // 没有可开的菜单，但按下反馈照给
+      state.timer = setTimeout(() => {
+        const current = pressRef.current;
+        if (!current) return;
+        current.timer = null;
+        current.longPress = true;
+        suppressClickRef.current = true;
+        setPressed(false);
+        onOpenMenu(msg, { x: current.startX, y: current.startY });
+      }, LONG_PRESS_MS);
+    },
+    [canMenu, clearSuppressTimer, cancelPress, msg, onOpenMenu]
+  );
+
+  /** 滑动 / 拖动超过容差 → 这不是长按，是滚动或拖选：立刻取消反馈与计时。 */
+  const onPointerMove = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      const press = pressRef.current;
+      if (!press || press.longPress) return;
+      if (movedBeyondTolerance(e.clientX - press.startX, e.clientY - press.startY)) {
+        cancelPress();
+      }
+    },
+    [cancelPress]
+  );
+
+  const onPointerUp = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      // 鼠标拖选结束时把选区存一份：下一手右键即便在 mousedown 就把实时选区收起来，
+      // 也还有它的几何范围可判「右键点是不是落在已选文字上」。
+      if (e.pointerType === 'mouse' && e.button === 0) {
+        const selection = document.getSelection();
+        if (hasTextSelection(selection) && selection) {
+          selectionSnapshotRef.current = selection.getRangeAt(0).cloneRange();
+        }
+      }
+      const press = pressRef.current;
+      if (!press) return;
+      if (press.timer) clearTimeout(press.timer);
+      const wasLongPress = press.longPress;
+      pressRef.current = null;
+      setPressed(false);
+      if (!wasLongPress) return;
+      // 长按已开菜单：松手后的收尾 click 必须吞掉，否则会顺带打开详情。
+      suppressClickRef.current = true;
+      clearSuppressTimer();
+      suppressTimerRef.current = setTimeout(() => {
+        suppressClickRef.current = false;
+        suppressTimerRef.current = null;
+      }, 800);
+    },
+    [clearSuppressTimer]
+  );
+
+  /** 手指被浏览器接管去滚动时派发 pointercancel —— 与滑动同一条路。 */
+  const onPointerCancel = useCallback(() => cancelPress(), [cancelPress]);
 
   const onContextMenu = useCallback(
     (e: React.MouseEvent<HTMLDivElement>) => {
       if (!canMenu) return;
       // 键盘菜单键 / Shift+F10 没有指针坐标（clientX/Y 都是 0）→ 贴着消息左上角开
       const byPointer = e.clientX !== 0 || e.clientY !== 0;
-      const pointerType = (e.nativeEvent as PointerEvent).pointerType || (byPointer ? pointerTypeRef.current : '');
-      if (pointerType === 'touch' || pointerType === 'pen') return;
+      const pointerType =
+        (e.nativeEvent as PointerEvent).pointerType ||
+        (byPointer ? pointerTypeRef.current : '');
+      if (pointerType === 'touch' || pointerType === 'pen') {
+        // 长按操作面板由我们接管；不屏蔽的话系统选字菜单会盖住它。
+        e.preventDefault();
+        return;
+      }
+      // 在已选文字内右键：把浏览器原生菜单（复制 / 搜索）让回去。
+      // 先看右键按下时的选区快照，再退回实时选区 —— 前者能兜住「mousedown 已收起选区」
+      // 的浏览器；两者都判不出来就按普通右键处理。
+      if (byPointer) {
+        const snapshot = selectionSnapshotRef.current;
+        selectionSnapshotRef.current = null;
+        if (snapshot && isPointInsideRange(document, e.clientX, e.clientY, snapshot)) return;
+        if (isPointInsideSelection(document, e.clientX, e.clientY)) return;
+      }
       e.preventDefault();
       const rect = e.currentTarget.getBoundingClientRect();
       onOpenMenu(msg, {
@@ -168,10 +367,40 @@ function useMessageMenuTrigger(
     },
     [canMenu, msg, onOpenMenu]
   );
-  const onPointerDownCapture = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
-    pointerTypeRef.current = e.pointerType;
-  }, []);
-  return { onContextMenu, onPointerDownCapture };
+
+  /** 左键 / 单击正文 → 详情。拖选收尾、长按收尾、图片与链接都走不到这里。 */
+  const onClick = useCallback(
+    (e: React.MouseEvent<HTMLDivElement>) => {
+      if (suppressClickRef.current) {
+        suppressClickRef.current = false;
+        return;
+      }
+      const target = e.target as HTMLElement | null;
+      if (!target?.closest('.chat-msg__content')) return;
+      if (isInteractiveClickTarget(target)) return;
+      if (target.closest('img')) return; // 图片单击是预览，不是详情
+      if (!canDetail) return;
+      // 拖选结束的收尾 click：有选区就不打开详情。
+      if (hasTextSelection(document.getSelection())) return;
+      const start = mouseStartRef.current;
+      mouseStartRef.current = null;
+      if (start && movedBeyondTolerance(e.clientX - start.x, e.clientY - start.y)) return;
+      onOpenDetail(msg);
+    },
+    [canDetail, msg, onOpenDetail]
+  );
+
+  return {
+    pressed,
+    handlers: {
+      onPointerDown,
+      onPointerMove,
+      onPointerUp,
+      onPointerCancel,
+      onContextMenu,
+      onClick,
+    },
+  };
 }
 
 export interface ChatMessageItemProps {
@@ -194,8 +423,10 @@ export interface ChatMessageItemProps {
   receipt?: 'read' | 'unread' | null;
   /** 只有私聊里未删除的消息可保存（大区消息不进保存箱；拍一拍也不进）。 */
   canSave?: boolean;
-  /** 点击更多 / 桌面右键唤出操作菜单，菜单自己负责摆位。 */
+  /** 点击更多 / 桌面右键 / 触屏长按唤出操作菜单，菜单自己负责摆位。 */
   onOpenMenu: (m: ChatMessageDTO, anchor: MessageMenuAnchor) => void;
+  /** 单击正文（移动端轻点 / 桌面左键）打开消息详情浮层。 */
+  onOpenDetail: (m: ChatMessageDTO) => void;
   onAvatarClick: (m: ChatMessageDTO, el: HTMLButtonElement) => void;
   /** 点击回复摘要 → 跳到被引用的原消息 */
   onJumpToReply: (messageId: number) => void;
@@ -215,6 +446,7 @@ function ChatMessageItemInner({
   receipt = null,
   canSave = false,
   onOpenMenu,
+  onOpenDetail,
   onAvatarClick,
   onJumpToReply,
   onImageClick,
@@ -223,7 +455,15 @@ function ChatMessageItemInner({
 
   // 菜单里有没有可做的动作：没有就放行浏览器原生右键菜单（至少还能复制文字）
   const canMenu = canSave || canDelete || (!msg.is_deleted && !msg.pat);
-  const menuTrigger = useMessageMenuTrigger(msg, canMenu, onOpenMenu);
+  // 详情只对「有正文的未删除消息」开放：拍一拍没有正文，删除占位没有可读内容。
+  const canDetail = !msg.is_deleted && !msg.pat && msg.content.trim() !== '';
+  const { pressed, handlers } = useMessageInteractions({
+    msg,
+    canMenu,
+    canDetail,
+    onOpenMenu,
+    onOpenDetail,
+  });
   const moreButton = canMenu ? (
     <button
       type="button"
@@ -243,12 +483,15 @@ function ChatMessageItemInner({
   ) : null;
 
   // 拍一拍：无头像无气泡的居中系统行（微信/QQ 式）；本人被拍时用品牌色强调。
-  // 已删除的拍一拍保持居中，只把文案换成删除占位。
-  // 它的「删除」也通过独立按钮与桌面右键菜单打开。
+  // 已删除的拍一拍保持居中，只把文案换成删除占位（不能打开详情）。
+  // 它的「删除」也通过独立按钮、桌面右键 / 触屏长按菜单打开。
   if (msg.pat) {
     const pattedMe = msg.pat.target_id === currentUserId;
     return (
-      <div className={`chat-pat${pattedMe ? ' chat-pat--me' : ''}${canMenu ? ' chat-pat--actionable' : ''}${menuOpen ? ' chat-pat--menu-open' : ''}`} {...menuTrigger}>
+      <div
+        className={`chat-pat${pattedMe ? ' chat-pat--me' : ''}${canMenu ? ' chat-pat--actionable' : ''}${menuOpen ? ' chat-pat--menu-open' : ''}${pressed ? ' chat-pat--pressed' : ''}`}
+        {...handlers}
+      >
         <span className="chat-pat__text">
           {msg.is_deleted
             ? CHAT_DELETED_TEXT
@@ -380,9 +623,9 @@ function ChatMessageItemInner({
 
   return (
     <div
-      className={`chat-msg${isMine ? ' chat-msg--mine' : ''}${grouped ? ' chat-msg--grouped' : ''}${highlighted ? ' chat-msg--highlight' : ''}${canMenu ? ' chat-msg--actionable' : ''}${menuOpen ? ' chat-msg--menu-open' : ''}`}
+      className={`chat-msg${isMine ? ' chat-msg--mine' : ''}${grouped ? ' chat-msg--grouped' : ''}${highlighted ? ' chat-msg--highlight' : ''}${canMenu ? ' chat-msg--actionable' : ''}${menuOpen ? ' chat-msg--menu-open' : ''}${pressed ? ' chat-msg--pressed' : ''}`}
       data-message-id={msg.id}
-      {...menuTrigger}
+      {...handlers}
     >
       {/* 头像不再是直链：点开选项框（拍一拍 / 访问个人主页 / @ta / 取消） */}
       <Avatar

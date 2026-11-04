@@ -1,9 +1,13 @@
 'use client';
 
 // ─────────────────────────────────────────────────────────────────────────────
-// ChatMessageMenu.tsx — 单条消息的操作菜单（保存 / 回复 / 删除）。
+// ChatMessageMenu.tsx — 单条消息的操作菜单（回复 / 复制 / 保存 / 删除）。
 //
-// 点击消息旁的更多按钮打开，桌面右键作为快捷入口。触屏长按保留浏览器原生行为。
+// 三个入口打开同一份菜单：气泡旁的更多按钮（桌面悬停 / 键盘聚焦时显示，触屏常显）、
+// 桌面右键、触屏长按。菜单项按权限出现：回复（未删除、非拍一拍）/ 复制（有正文）/
+// 保存（私聊、未删除、非拍一拍）/ 删除（本人或管理员）。
+//
+// 打开期间由 ChatMessageItem 给对应消息挂 `chat-msg--menu-open`（持续淡底高亮）。
 //
 // 【定位】portal + position: fixed + useLayoutEffect 量尺寸摆位 —— 与 AvatarMenu /
 // ChatChannelMenu 同一套（消息列表 .chat-list 是 overflow:auto，就地 absolute 会被
@@ -36,9 +40,11 @@ export default function ChatMessageMenu({
   saved,
   canSave,
   canReply,
+  canCopy,
   canDelete,
   onToggleSave,
   onReply,
+  onCopy,
   onDelete,
   onClose,
 }: {
@@ -50,9 +56,12 @@ export default function ChatMessageMenu({
   /** 只有私聊、未删除、非拍一拍的消息能进保存箱（大区消息不进） */
   canSave: boolean;
   canReply: boolean;
+  /** 有正文且未删除 / 非拍一拍：复制走正文原文（不是渲染后的富文本）。 */
+  canCopy: boolean;
   canDelete: boolean;
   onToggleSave: (m: ChatMessageDTO) => void;
   onReply: (m: ChatMessageDTO) => void;
+  onCopy: (m: ChatMessageDTO) => void;
   onDelete: (m: ChatMessageDTO) => void;
   onClose: () => void;
 }) {
@@ -150,6 +159,16 @@ export default function ChatMessageMenu({
       // 首帧还不知道自身尺寸 → 先藏起来，量完再显
       style={{ top: pos?.top, left: pos?.left, visibility: pos ? 'visible' : 'hidden' }}
     >
+      {canReply && (
+        <button type="button" role="menuitem" className="chat-menu__item" onClick={run(onReply)}>
+          回复
+        </button>
+      )}
+      {canCopy && (
+        <button type="button" role="menuitem" className="chat-menu__item" onClick={run(onCopy)}>
+          复制
+        </button>
+      )}
       {canSave && (
         <button
           type="button"
@@ -159,11 +178,6 @@ export default function ChatMessageMenu({
           title={saved ? '从保存箱里移除（消息本身不会被删除）' : '保存到保存箱（只有自己看得到）'}
         >
           {saved ? '已保存' : '保存'}
-        </button>
-      )}
-      {canReply && (
-        <button type="button" role="menuitem" className="chat-menu__item" onClick={run(onReply)}>
-          回复
         </button>
       )}
       {canDelete && (
@@ -176,7 +190,9 @@ export default function ChatMessageMenu({
           删除
         </button>
       )}
-      {(canSave || canReply || canDelete) && <div className="chat-menu__sep" role="separator" />}
+      {(canSave || canReply || canCopy || canDelete) && (
+        <div className="chat-menu__sep" role="separator" />
+      )}
       <button
         type="button"
         role="menuitem"
