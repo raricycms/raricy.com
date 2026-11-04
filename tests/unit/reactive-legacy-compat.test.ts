@@ -389,6 +389,40 @@ describe('applyLegacyHtmlCompat', () => {
     expect(json).not.toContain('"type":"inlineMath"');
   });
 
+  it('★ 插值里的 `<` 是比较运算符，不吞掉后面的组件开标签（容器闭合标签不被中和）★', () => {
+    // 回归：`{{ … < 0 … }}` 里裸的 `<` 被当标签开头扫到下一个 `>`（正好是
+    // `<panel …>` 的 `>`），把 panel 开标签整段跳过；组件栈少一层后，真正的
+    // `</panel>` 成了无主闭标签被中和，上游报「<panel> is missing </panel>」。
+    const source = [
+      '取值：{{ probe > 0 ? 1 : probe < 0 ? -1 : 0 }}。',
+      '',
+      '<panel title="检查一个系数">',
+      '<slider bind="probe" label="观察位置 x" initial="1" min="-3" max="3" step="0.05">',
+      '<slider bind="n" label="谐波编号 n" initial="3" min="1" max="10">',
+      "第 {{ n }} 个正弦系数为 **{{ formatNumber(n, 6, 'zh-CN') }}**。",
+      '</panel>',
+    ].join('\n');
+
+    const { compat, result } = compatCompile(source);
+    expect(result.ok).toBe(true);
+    expect(result.diagnostics.filter((d) => d.code.startsWith('local.tag.'))).toEqual([]);
+    // 闭合标签原样保留，没有被零宽字符中和。
+    expect(compat.source.endsWith('</panel>')).toBe(true);
+    expect(compat.source).not.toContain('\u200B');
+    // 容器结构真的还在，插值里的比较字符仍按文字处理。
+    const json = JSON.stringify(documentOf(result).nodes);
+    expect(json).toContain('"type":"component"');
+    expect(flatten(documentOf(result).nodes)).toContain('<');
+    // 表达式里的 `<` 不能把后面的 `>` 当成标签结尾而改写原文。
+    expect(compat.source.length).toBe(source.length);
+  });
+
+  it('插值字符串里的标签形状文字不会被当成历史 HTML 改写', () => {
+    const source = '示例：{{ flag ? "<font>x</font>" : "<b>y</b>" }}';
+    const { compat } = compatCompile(source);
+    expect(compat.source).toBe(source);
+  });
+
   it('旧 HTML 音视频：站内音频仍走引用 token，外链走 media host', () => {
     const audio = applyLegacyHtmlCompat(
       '<audio controls src="/api/audio/abcdefghij/raw"></audio>'

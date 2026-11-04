@@ -49,8 +49,11 @@ import type {
  * /4：媒体块替换时连**块内换行**一起中和，避免 token 后的软换行变成多余 `<br>`
  *     （播放器下方约 170px 空洞）。输出 AST 变了，旧快照必须 stale。
  * /5：保留 radio-group 的 option 子组件，避免合法 RMD 示例被误拆并阻塞迁移。
+ * /6：插值 `{{ … }}` 内部按表达式整体保护。表达式里的 `<` 是比较运算符，不是
+ *     标签开头；不保护会把它当标签扫到后面某个 `>`，连带吞掉中间组件开标签，
+ *     组件栈错位后把本该闭合容器的 `</panel>` 中和掉（上游报「缺少 </panel>」）。
  */
-export const LEGACY_COMPAT_VERSION = 'reactive-legacy-compat/5';
+export const LEGACY_COMPAT_VERSION = 'reactive-legacy-compat/6';
 
 export interface LegacyDataImageAsset {
   url: string;
@@ -373,6 +376,61 @@ function maskIndentedCode(source: string): string {
   return lines.join('\n');
 }
 
+/** 插值内部只盖这四个字符：`<` `>` 是标签边界，`$` `\` 是公式定界符的原料。 */
+const INTERPOLATION_PROTECTED_CHARS = new Set(['<', '>', '$', '\\']);
+
+/**
+ * 插值 `{{ … }}` 内部整体保护。
+ *
+ * 表达式里的 `<` / `>` 是比较运算符，不是标签边界；字符串里也可能出现这两个
+ * 字符。不盖掉这段，`{{ probe > 0 ? 1 : probe < 0 ? -1 : 0 }}` 里裸的 `<` 会被
+ * 当成标签开头，一路扫到后面某个 `>`（往往正好是下一个组件的开标签 `>`），
+ * `index = end - 1` 就把中间的组件开标签整段跳过：组件栈里少了这个容器，
+ * 后面它真正的 `</panel>` 便成了「无主闭标签」，被中和成零宽字符交给上游，
+ * 上游于是报 `<panel> is missing </panel>` —— 编辑区里明明写着闭合标签。
+ *
+ * 与上游插值扫描同口径：`"` / `'` 字符串内的 `}}` 不算结束，`\` 转义下一个字符；
+ * 未闭合的 `{{` 把表达式内容一直保护到文末（上游会给出自己的插值诊断，这里只
+ * 保证不串到标签扫描）。只改扫描副本，`chars` 与原文保持等长。
+ *
+ * 只盖会被标签 / 数学扫描误读的四个字符：`<` `>` 是标签边界，`$` `\` 是公式
+ * 定界符的原料。`{{` / `}}` 与其余字符保留 —— 格式检测要靠 `{{` 定位「未闭合
+ * 插值」诊断，语法预算也要数它（`detect-format.ts`、`syntax-budget.ts`）。
+ */
+function maskInterpolations(source: string): string {
+  const chars = source.split('');
+  let cursor = 0;
+  for (;;) {
+    const start = source.indexOf('{{', cursor);
+    if (start < 0) break;
+    let quote: string | null = null;
+    let end = -1;
+    for (let index = start + 2; index + 1 < source.length; index += 1) {
+      const char = source[index];
+      if (quote) {
+        if (char === '\\') index += 1;
+        else if (char === quote) quote = null;
+        continue;
+      }
+      if (char === '"' || char === "'") {
+        quote = char;
+        continue;
+      }
+      if (char === '}' && source[index + 1] === '}') {
+        end = index;
+        break;
+      }
+    }
+    const stop = end < 0 ? source.length : end;
+    for (let index = start + 2; index < stop; index += 1) {
+      if (INTERPOLATION_PROTECTED_CHARS.has(source[index])) chars[index] = 'x';
+    }
+    if (end < 0) break;
+    cursor = end + 2;
+  }
+  return chars.join('');
+}
+
 /** 转义美元（`\$5`）不是数学定界符：先盖掉，别让单 `$` 配对把它当起点。 */
 function maskEscapedDollars(source: string): string {
   const chars = source.split('');
@@ -475,6 +533,9 @@ function maskHtmlCodeElements(source: string): string {
 
 export function maskProtectedContent(source: string): string {
   let out = maskIndentedCode(maskMarkdownCode(source));
+  // 插值先于数学：表达式里的 `$` 不是公式定界符，盖掉后才不会被单 `$` 配对
+  // 误当成公式起点，把后面一整段正文一起保护掉。
+  out = maskInterpolations(out);
   out = maskEscapedDollars(out);
   // 数学区域：与 markdown-math.ts 的四组定界符同口径。顺序配对，线性。
   out = maskDelimitedPairs(out, '$$', '$$');
