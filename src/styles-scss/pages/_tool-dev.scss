@@ -12,8 +12,6 @@
 //     这里不另写按钮表面。
 //   · 字段表面一律走 --color-background-page + 聚焦 --shadow-focus-brand；单行胶囊、
 //     多行 20px（$radius-field）。
-//   · `tests/unit/css-tsx-classes.test.ts` 会静态对账：.tsx 里出现的类名必须在编译后
-//     CSS 里有定义。新增类名必须同时在这里（或家族分片里）加规则。
 // ─────────────────────────────────────────────────────────────────────────────
 @use '../abstracts/variables' as v;
 @use '../abstracts/mixins' as m;

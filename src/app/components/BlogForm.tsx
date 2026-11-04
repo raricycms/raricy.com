@@ -497,8 +497,8 @@ export default function BlogForm({ categories, blog = null, banInfo = null }: Bl
           />
         </div>
 
-        {/* 可见性：与栏目同构的一个 ExpandSelect（不另造单选组 —— 少一套样式与
-            一条类名守卫）。三档的短语来自 ./blog-visibility 的 VISIBILITY_LABEL，
+        {/* 可见性：与栏目同构的一个 ExpandSelect（不另造单选组 —— 少一套样式）。
+            三档的短语来自 ./blog-visibility 的 VISIBILITY_LABEL，
             一句话说明只在这里；**不在前端写死档名**：加第四档时前端会跟着长出来，
             不会静默少一个选项。 */}
         <div className="form-group">

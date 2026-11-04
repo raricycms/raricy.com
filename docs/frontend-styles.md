@@ -734,9 +734,8 @@ ReactiveMD 正文由上游 `reactive-md/screen.css` 提供基础版式，站点�
 
 Bootstrap 风格类由本地样式提供，不代表加载了 Bootstrap。
 JS 或 JSX 使用的类必须有样式或明确的行为消费者；
-刻意无样式的类由 `tests/unit/css-tsx-classes.test.ts` 的台账维护，
-不在本文重复列名单。已应用数据库迁移中的注释属于历史上下文，
-不为调整本文章节编号而改写迁移文件。
+不再为「每个类名必须有样式」维护全仓扫描器和例外台账，类名拼写错误由实际页面检查发现。
+已应用数据库迁移中的注释属于历史上下文，不为调整本文章节编号而改写迁移文件。
 
 ### 8.3 可访问性与体验验收
 
@@ -763,15 +762,15 @@ JS 或 JSX 使用的类必须有样式或明确的行为消费者；
 npm test -- tests/unit/docs-catalog.test.ts tests/unit/docs-xref.test.ts tests/unit/docs-render.test.ts tests/unit/guide-docs.test.ts
 ```
 
-样式实现按改动范围选择 CSS 类名守卫、组件测试和现有布局 e2e；
-样式检查需要编译后的选择器，不能用扫 SCSS 字面量代替。
-`scripts/compiled-css.mjs` 为守卫即时编译；
+样式实现不新增或运行样式守卫，也不用单测、源码扫描或外观 e2e 固定具体视觉实现；
+颜色、圆角、间距、排版与响应式表现通过受影响页面和视口的实页检查确认，
+交付时注明「待用户视觉审核」。组件测试只验证行为、无障碍与公开参数契约，不绑定默认外观。
 `npm run css:probe` 只服务离线探针，不属于正常构建流程。
 
 几何与交互变化必须通过实际页面验证。
-已有 `tests/e2e/blog-directory.spec.ts`、
-`tests/e2e/favorite-layout.spec.ts`、`tests/e2e/page-gutter.spec.ts`
-及主题相关用例分别覆盖目录、读者操作、页边距与主题。
+`tests/e2e/blog-directory.spec.ts`、`tests/e2e/favorite-layout.spec.ts`、
+`tests/e2e/page-gutter.spec.ts` 及主题相关用例中的行为断言继续保留；
+纯外观断言按需清理，不以新增外观 e2e 或截图快照替代。
 e2e 读取现有构建产物；修改源码后先构建，或使用 `npm run e2e:ci`，
 避免把旧产物的结果当成本次验证。
 

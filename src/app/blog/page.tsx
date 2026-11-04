@@ -297,10 +297,7 @@ async function BlogListSection({
                       private 刻意**不标**：它是默认档，标记它等于满屏噪音，反而把
                       link/public 那两个淹没掉。
 
-                      ⚠️ 两个分支刻意写死字面量类名，**不要**改成拼模板串 ——
-                      tests/unit/css-tsx-classes.test.ts 只认字面量（模板串里 `${…}`
-                      整段会被剥掉，剩下的 `blog-visibility-tag--` 会被判成「写了但
-                      没有定义」）。代价是加第四档时这里不会自动长出来，由
+                      代价是加第四档时这里不会自动长出来，由
                       tests/unit/blog-visibility-tag.test.ts 钉住三档一个都不能少。
                       文案取自 VISIBILITY_BADGE（零依赖模块），不在 JSX 里写死。 */}
                   {b.visibility === 'link' && (

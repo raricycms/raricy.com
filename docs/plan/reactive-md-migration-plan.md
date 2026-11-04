@@ -718,7 +718,7 @@ X-Content-Renderer: legacy | reactive | reactive-fallback | reactive-static
 
 - 单元：`blog-renderer`、`blog-content-dom`、`blog-markdown`、`blog-ref-render`、
   `blog-excerpt`、`content-ref-*`、`favorite-refs`、`md-editor-export`、
-  `md-editor-preview-votes`、`md-editor-upload`、`css-tsx-classes`；
+  `md-editor-preview-votes`、`md-editor-upload`；
 - e2e：`blog-visibility`、`blog`、`blog-timestamps`、`clipboard-layout`、
   `clipboard-math`、`comment-layout`、`content-ref`、`editor-hardening`、
   `editor-resources`、`vote-embed`。

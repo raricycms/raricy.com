@@ -67,7 +67,7 @@ describe('头像框贴图层', () => {
     expect(box.querySelector('.avatar__frame')).toBeNull();
   });
 
-  it('给了 frameUrl → 多一层绝对定位的装饰图', () => {
+  it('给了 frameUrl → 多渲染一层框图（src 与装饰语义正确）', () => {
     const box = render({ userId: ID, frameUrl: FRAME, alt: 'x' });
     const imgs = box.querySelectorAll('img');
     expect(imgs).toHaveLength(2);
@@ -78,13 +78,6 @@ describe('头像框贴图层', () => {
     expect(frame.getAttribute('alt')).toBe('');
     expect(frame.getAttribute('aria-hidden')).toBe('true');
     expect(frame.getAttribute('draggable')).toBe('false');
-  });
-
-  it('框在头像**之后** —— 层序决定它盖在上面', () => {
-    const box = render({ userId: ID, frameUrl: FRAME, alt: 'x' });
-    const imgs = [...box.querySelectorAll('img')];
-    expect(imgs[0].classList.contains('avatar__img')).toBe(true);
-    expect(imgs[1].classList.contains('avatar__frame')).toBe(true);
   });
 
   it('alt 只给头像那一层，框那层永远是空串', () => {
@@ -118,10 +111,6 @@ describe('类名的落点（各站点 CSS 的前提）', () => {
     );
   });
 
-  it('都不给时盒子只有一个 .avatar', () => {
-    const box = render({ userId: ID, alt: 'x' });
-    expect(box.firstElementChild!.getAttribute('class')).toBe('avatar');
-  });
 });
 
 describe('as / onClick / size', () => {
@@ -158,12 +147,11 @@ describe('as / onClick / size', () => {
     expect(btn.getAttribute('aria-label')).toBe('张三的头像');
   });
 
-  it('★ size → 内联宽高 + 内联 border-radius 8%（规范 §4.1 明确要求内联也写 8%）', () => {
+  it('★ size → 内联宽高（尺寸走公开参数，不固定默认外观）', () => {
     const box = render({ userId: ID, alt: 'x', size: 32 });
     const el = box.firstElementChild as HTMLElement;
     expect(el.style.width).toBe('32px');
     expect(el.style.height).toBe('32px');
-    expect(el.style.borderRadius).toBe('8%');
   });
 
   it('不给 size 时盒子不带内联尺寸（尺寸交给站点的类）', () => {

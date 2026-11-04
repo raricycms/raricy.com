@@ -1,15 +1,12 @@
-// 站内列表卡片上的可见性标记（`/blog` 的 .blog-visibility-tag）。
+// 站内列表卡片上的可见性标记（`/blog` 的可见性胶囊）。
 //
-// 【为什么值得一条静态守卫】src/app/blog/page.tsx 里那两个分支是**写死的字面量**：
-// tests/unit/css-tsx-classes.test.ts 只认字面量类名（模板串里 `${…}` 整段会被剥掉，
-// 剩下的 `blog-visibility-tag--` 会被判成「写了但没有定义」），所以拼不出动态类名。
+// 【为什么值得一条源码文本检查】src/app/blog/page.tsx 里按档位写死的分支：
+// 加第四档时这里**不会自动长出来**，而后果是静默的：作者看到一篇没有标记的
+// 文章，会以为它没对外 —— 而它可能已经公开了。这条检查把那个静默缺口变成一条
+// 会红的断言。
 //
-// 写死意味着加第四档时这里**不会自动长出来**，而后果是静默的：作者看到一篇没有标记的
-// 文章，会以为它没对外 —— 而它可能已经公开了。这条守卫把那个静默缺口变成一条会红的
-// 断言，与 blog-visibility-guard / explore-visibility-guard 是同一手法。
-//
-// ⚠️ 它扫的是**源码文本**，不是渲染结果。「静态守卫是绊线，不是证明器」——
-// 真正的行为保证在 e2e 里（真实渲染出的卡片上有没有那个胶囊）。
+// ⚠️ 它扫的是**源码文本**，不是渲染结果。真正的行为保证在 e2e 里（真实渲染出的
+// 卡片上有没有那个胶囊）。
 
 import { describe, it, expect } from 'vitest';
 import fs from 'node:fs';
@@ -25,7 +22,7 @@ const hasBranch = (v: string) => new RegExp(`b\\.visibility\\s*===\\s*'${v}'`).t
 describe('站内列表的可见性标记', () => {
   it('扫的是真文件，不是空字符串（防路径写错导致的假绿）', () => {
     expect(src.length).toBeGreaterThan(1000);
-    expect(src).toContain('blog-visibility-tag');
+    expect(src).toContain('VISIBILITY_BADGE');
   });
 
   it('**不标** internal —— 它是默认档，标它等于满屏噪音', () => {
@@ -38,19 +35,8 @@ describe('站内列表的可见性标记', () => {
     expect(
       missing,
       '这些档位在 src/app/blog/page.tsx 里没有标记分支 —— 作者会把它们看成「没对外」，' +
-        '而其中可能有已经公开的。补一个分支（类名必须是**字面量**，见该处注释）。'
+        '而其中可能有已经公开的。补一个分支。'
     ).toEqual([]);
-  });
-
-  it('用到的类名恰好是定义过的那两个变体，没有第三个', () => {
-    const all = [...src.matchAll(/blog-visibility-tag(?:--[a-z]+)?/g)].map((m) => m[0]);
-    // 裸基类名是容器类，两个变体是 --link / --public；注释里出现过 `blog-visibility-tag--`
-    // 这种截断写法，它只会匹配到裸基类名，不算数。
-    const variants = new Set(all.filter((c) => c !== 'blog-visibility-tag'));
-    expect([...variants].sort()).toEqual([
-      'blog-visibility-tag--link',
-      'blog-visibility-tag--public',
-    ]);
   });
 
   it('文案取自 VISIBILITY_BADGE，**不在 JSX 里写死**档名', () => {

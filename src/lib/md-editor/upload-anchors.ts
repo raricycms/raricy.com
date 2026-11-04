@@ -302,8 +302,7 @@ class UploadChipWidget extends WidgetType {
 
   toDOM(): HTMLElement {
     const wrap = document.createElement('span');
-    // 类名住在 SCSS 的 md-editor 段（css-tsx-classes 守卫查的是 .tsx/.ts 里的
-    // 类名字面量，widget 是拼出来的 DOM，同样在扫描范围里）。
+    // 类名住在 SCSS 的 md-editor 段（widget 是 document.createElement 拼的 DOM）。
     wrap.className = 'md-upload-chip';
     const pending = this.batch.slots.filter((s) => s.status === 'pending').length;
     const failed = this.batch.slots.filter((s) => s.status === 'failed');

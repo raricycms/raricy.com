@@ -5,9 +5,7 @@
 // 规则：
 //   · 按钮 / 字段表面只用全站三档与字段令牌（.btn* / .form-control / .form-select），
 //     这里不重写按钮外观；
-//   · 颜色全部走 `var(--color-*)` 令牌，聚焦一律 `--shadow-focus-brand`；
-//   · `tests/unit/css-tsx-classes.test.ts` 会静态对账：.tsx 里出现的类名必须在编译后
-//     CSS 里有定义 —— 这里出现的每一条都真的被这一族组件用到。
+//   · 颜色全部走 `var(--color-*)` 令牌，聚焦一律 `--shadow-focus-brand`。
 // ─────────────────────────────────────────────────────────────────────────────
 @use '../abstracts/variables' as v;
 

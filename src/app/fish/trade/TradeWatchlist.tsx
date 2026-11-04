@@ -77,8 +77,7 @@ export default function TradeWatchlist({
 
   return (
     /* trade-card--quote 是**给 e2e 的钩子**（fish-trade.spec.ts 用它断言「行情卡在不在」），
-       不带样式 —— 外观全由 .trade-card 给。登记在 tests/unit/css-tsx-classes.test.ts
-       的 CONSUMED 里，别顺手删。 */
+       不带样式 —— 外观全由 .trade-card 给。 */
     <div className="trade-card trade-card--quote trade-watch">
       <h2 className="trade-card__title">自选</h2>
       {down ? (

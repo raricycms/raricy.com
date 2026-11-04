@@ -134,8 +134,7 @@
   用同一份画法，导出不会变成另一种质感）。
 - **减少动态效果：**见上；e2e 全程以 `reducedMotion: 'reduce'` 跑，交互不得依赖动画时序。
 - **测试：**纯模型由 `tests/unit/craft-{loom,papercut,marbling}.test.ts` 覆盖；
-  完整操作链路（含刷新续作与 PNG 导出）在 `tests/e2e/craft-games.spec.ts`；
-  「用到的类名必须有样式」由 `tests/unit/css-tsx-classes.test.ts` 静态对账。
+  完整操作链路（含刷新续作与 PNG 导出）在 `tests/e2e/craft-games.spec.ts`。
 
 ## 9. 后续方向
 

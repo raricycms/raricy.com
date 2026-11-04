@@ -542,8 +542,9 @@ npm run test -- tests/unit/docs-catalog.test.ts tests/unit/docs-xref.test.ts
 git diff --check
 ```
 
-后续功能实施时运行新单测、相关样式守卫、链接检查和构建，再跑使用新产物的相关
-E2E。`npm run e2e` 本身不构建，修改源码后不能拿旧 `.next` 的测试结果验收。
+后续功能实施时按行为与风险运行适用验证：相关单测、链接检查，必要时构建并运行受影响的
+E2E 行为用例；不预设每次新增单测，也不把样式守卫列为验收步骤。
+`npm run e2e` 本身不构建，修改源码后不能拿旧 `.next` 的测试结果验收。
 如果类型检查出现已删除路由的幻影错误，按 `../CLAUDE.md` 的构建说明处理；
 必要时仅清理确认位于本仓的 `.next/types` 后重建，不顺手清空整个 `.next`。
 

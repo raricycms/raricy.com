@@ -400,7 +400,7 @@
    这里要的是 fill / stroke，所以另写一支同源的规则，别把色值再抄第三遍。 */
 .trade-chart__candle {
   /* 这条声明不是装饰：下面 --up/--down 两支是 `fill`，基类一条声明都没有时 Sass
-     不会为它产出规则，类名静默失效（css-tsx-classes 守卫会红）。同 .trade-confirm__pnl。 */
+     不会为它产出规则，类名静默失效。同 .trade-confirm__pnl。 */
   stroke: none;
 }
 
@@ -1158,7 +1158,7 @@
    压得住任何挂在 dd 身上的单类选择器（0-1-0）—— 挂错地方就是静默不变色。 */
 .trade-confirm__pnl {
   /* 这条 font-weight 不是装饰 —— 光靠 @include 的话本块**一条声明都没有**，
-     Sass 不会为 .trade-confirm__pnl 产出规则，类名静默失效（css-tsx-classes 守卫会红） */
+     Sass 不会为 .trade-confirm__pnl 产出规则，类名静默失效 */
   font-weight: 700;
 
   @include m.trade-up-down;
@@ -1400,7 +1400,7 @@
 
 /* 盈亏靠颜色分涨跌（与持仓行同一对语义色），margin-left: auto 把它推到行尾。
    基类至少要有一条声明 —— 光靠 @include trade-up-down 的话本块一条都没有，
-   Sass 不会为 .trade-settled__pnl 产出规则（css-tsx-classes 守卫会红）。 */
+   Sass 不会为 .trade-settled__pnl 产出规则。 */
 .trade-settled__pnl {
   margin-left: auto;
   font-size: 0.95rem;

@@ -2,13 +2,11 @@
 //
 // public/static/js/core/base.js —— 文件选择器的运行时增强。
 //
-// 【回归测试】收藏夹的「选择文件」按钮一直顶着浏览器默认样式，两个原因各占一半：
-//   1. `.filepick` 一族的 CSS 在 SCSS 拆分时丢了（那条另有 tests/unit/css-js-classes.test.ts 守）
-//   2. enhanceFileInputs 只在 initSiteChrome 里跑一次，而 Next 的 <Link> 跳转
-//      **不重新加载文档** —— 工具页与「我的收藏夹」的入口都在工具箱，所以从常规入口
-//      进去时那颗 input 是 init 之后才挂上的，包装根本没生成。实测：整页刷新时
-//      hasFilepick = true，客户端跳转 = false。
-// 本文件钉住的是第 2 条（第 1 条由上面那个测试守）。
+// 【回归测试】收藏夹的「选择文件」按钮曾顶着浏览器默认样式：enhanceFileInputs 只在
+// initSiteChrome 里跑一次，而 Next 的 <Link> 跳转**不重新加载文档** —— 工具页与
+// 「我的收藏夹」的入口都在工具箱，所以从常规入口进去时那颗 input 是 init 之后才挂上的，
+// 包装根本没生成。实测：整页刷新时 hasFilepick = true，客户端跳转 = false。
+// 本文件钉住的就是这条。
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import fs from 'node:fs';

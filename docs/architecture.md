@@ -775,8 +775,7 @@ Promise** —— 拿它当「等到了字体」，MathJax 的公式会用回退�
 - `tests/unit/explore-visibility-guard.test.ts` —— 钉「对外列表与 sitemap 必须列同一个
   集合」：两个出口的函数体里都必须出现 `INDEXABLE_BLOG_WHERE` 这个名字（见 §6.12）。
 - `tests/unit/blog-visibility-tag.test.ts` —— 钉站内列表卡片上「除 internal 外每一档都有
-  标记」。那两个分支写死了字面量类名（`css-tsx-classes` 只认字面量），所以加第四档时
-  不会自动长出来，而作者会把没标记的文章看成「没对外」。
+  标记」。加第四档时这里不会自动长出来，而作者会把没标记的文章看成「没对外」。
 - `tests/route/blog-auth.test.ts` 末尾那组 —— OG 图对 internal / 已软删 / 不存在
   **三者 404 且响应体逐字相同**（差一个字就是存在性探针）；以及 `PATCH /api/blogs/:id`
   的可见性改动**只有作者本人**能动（管理员也不行）。
@@ -1679,8 +1678,7 @@ partial，只在各自的根类下写规则。
 （方向中途翻转时累加会算错）；e2e 全程以 `reducedMotion: 'reduce'` 跑，交互不得依赖
 动画时序。对称与上色也必须说得通 —— 剪纸展开走立体折叠得来的**镜像**对称
 （`层数 = 2^折数`，二面体群 D_n），水面印花把颜色值烘进每一处而**不存调色板序号**
-（否则换配色会让已滴进水里的颜料变色）。`tests/unit/css-tsx-classes.test.ts` 静态对账
-「用到的类名必须有样式」，三款游戏的类名都受它约束。
+（否则换配色会让已滴进水里的颜料变色）。
 
 `src/games/atamas/` 包含客户端引擎、Canvas 绘制、24 种语言与界面，
 `src/app/game/atamas/page.tsx` 是路由包装。游戏匿名可玩，不调用账号接口、

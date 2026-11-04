@@ -297,7 +297,7 @@
 
 每一步先跑相关测试，再做类型检查；最终提交前全量 Vitest 只跑一次并保存完整日志。
 UI 完成后先构建，再跑每日一言 e2e；桌面与 mobile 均须覆盖本功能的几何和交互断言，
-极窄屏及未覆盖的状态补实页检查。新增 CSS 类名和分页复用遵循既有守卫。
+极窄屏及未覆盖的状态补实页检查。新增 CSS 类名和分页复用沿用既有页面做法。
 
 正式发布沿用手写迁移流程，先备份、确认停写窗口并执行迁移 / 校验，再让新版本开始服务。
 累计表、代码与回填应作为一次切换，避免旧版本仍允许按日写入、却没有同步累计表。
@@ -328,6 +328,8 @@ UI 完成后先构建，再跑每日一言 e2e；桌面与 mobile 均须覆盖�
 - 相关测试（服务 / 路由 / 经典目录 / 迁移 / 样式与分页守卫）：
   `npx vitest run tests/service/daily-quote-service.test.ts tests/route/daily-quote-api.test.ts tests/unit/daily-quote-classics.test.ts tests/unit/daily-quote-resonance-migration.test.ts tests/unit/css-tsx-classes.test.ts tests/unit/site-pager-guard.test.ts`
   → **6 个文件、35 项全部通过**，退出码 0。
+  （这是当次运行的历史记录。`css-tsx-classes` 类名守卫已随前端样式守卫清理退役，
+  现行测试不再包含它；保留命令行只为如实记录当次验证。）
 - 迁移 `37_daily_quote_resonance_once` 用**真实含跨日重复的 SQLite 内存夹具**执行（不是 db push 建的库）：
   回填每人每句一行并取最早时间、明细一行不删一列不改、重复执行不新增行、
   联合主键与外键生效（见 `tests/unit/daily-quote-resonance-migration.test.ts`）。

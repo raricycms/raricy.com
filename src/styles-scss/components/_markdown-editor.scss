@@ -7,12 +7,6 @@
 // src/app/components/markdown-editor/cm-theme.ts 里，且一律用站点 CSS 变量 ——
 // CM6 的主题是脚本注入的样式表，跟在本文件后面加载，同权重下会赢。两处都写颜色
 // 就会出现「改了这儿不生效」，所以分工定死：**本文件管盒子，cm-theme.ts 管字**。
-//
-// 【类名台账】css-tsx-classes 守卫扫 .ts/.tsx 里的类名字面量：
-//   md-editor*      ← MarkdownEditor.tsx（含 __modes 那组）
-//   md-toolbar*     ← markdown-editor/Toolbar.tsx
-//   md-upload-chip* ← lib/md-editor/upload-anchors.ts 里拼出来的 widget DOM
-// 三处都要在本文件里有对应规则（widget 是 document.createElement 拼的，守卫照样扫）。
 
 // ── 外壳 ────────────────────────────────────────────────────────────────────
 .md-editor {
