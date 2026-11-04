@@ -2027,7 +2027,25 @@ export default function ChatApp({
         />
       )}
 
-      {messageDetail && <ChatMessageDetail msg={messageDetail} onClose={closeMessageDetail} />}
+      {/* 消息详情：单击正文打开。动作与右键 / 长按菜单共用同一套权限判定；
+          「保存 / 复制」留在面板里继续用，「回复 / 删除」先关面板再执行。 */}
+      {messageDetail && (
+        <ChatMessageDetail
+          msg={messageDetail}
+          saved={savedIds.has(messageDetail.id)}
+          canSave={
+            activeChannel?.kind === 'direct' && !messageDetail.is_deleted && !messageDetail.pat
+          }
+          canReply={!messageDetail.is_deleted && !messageDetail.pat}
+          canCopy={!messageDetail.is_deleted && !messageDetail.pat && !!messageDetail.content}
+          canDelete={messageDetail.author.id === currentUserId || isAdmin}
+          onToggleSave={(m) => void handleToggleSave(m)}
+          onReply={handleReply}
+          onCopy={handleCopyMessage}
+          onDelete={(m) => void handleDelete(m)}
+          onClose={closeMessageDetail}
+        />
+      )}
     </div>
   );
 }

@@ -1479,26 +1479,132 @@
 }
 
 // ── 消息详情浮层 ─────────────────────────────────────────────────────────────
-// 触屏在列表里关掉了原生选字（长按要留给操作面板），选字 / 复制改在这里做。
-// 外壳沿用站内弹窗（.modal-overlay / .modal-dialog / .modal-content）。
+// 触屏在列表里关掉了原生选字（长按要留给操作面板），选字 / 复制改在这里做；
+// 桌面单击正文也落到这里。外壳沿用站内弹窗（.modal-overlay / .modal-dialog /
+// .modal-content），面板自己只管版式与入场动画。
+//
+// 【入场】对齐个人主页 .bento-modal（pages/_profile.scss）：遮罩 180ms ease 淡入、
+// 面板轻抬 8px + 0.98 缩放，节奏引用 §6.2 的「入场」档；减少动态效果下两者
+// 都直接到终态（见文件末尾的 reduced-motion 区块）。
+.chat-detail-overlay {
+  animation: chat-detail-fade 180ms ease;
+}
 .chat-detail {
   width: calc(100vw - 40px);
   max-width: 560px;
+  animation: chat-detail-rise v.$motion-expand-duration v.$motion-expand-easing;
+
+  // 打开时焦点落在对话框本身（见组件注释），容器不该画 outline；
+  // 键盘焦点仍在内部按钮上，各自的 :focus-visible 照常可见。
+  &:focus {
+    outline: none;
+  }
 }
-.chat-detail__meta {
+@keyframes chat-detail-fade {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes chat-detail-rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+}
+
+// 卡片本身：三段式（标题栏 / 可滚正文 / 操作栏）。滚动只发生在正文段 ——
+// 标题与操作栏始终可达，符合 §5.7「标题和关闭操作保持可达」。
+.chat-detail__card {
   display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
+  flex-direction: column;
+  max-height: min(80vh, 640px);
+  // .modal-content 的 10px 内距让位给分段内距，否则三段留白挤在一起。
+  padding: 0;
+  overflow: hidden;
+}
+
+.chat-detail__bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 16px 0 20px;
+}
+.chat-detail__title {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--color-text-primary);
+}
+
+.chat-detail__identity {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 20px 12px;
+}
+.chat-detail__avatar {
+  flex: none;
+  width: 42px;
+  height: 42px;
+  overflow: hidden;
+  border-radius: 8%;
+  background: var(--color-background-content);
+}
+.chat-detail__avatar img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.chat-detail__who {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.chat-detail__name-row {
+  display: flex;
+  align-items: center;
   gap: 8px;
-  margin-bottom: 10px;
+  min-width: 0;
+}
+.chat-detail__name {
+  overflow: hidden;
+  color: var(--color-text-primary);
+  font-weight: 700;
+  text-decoration: none;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+
+  &:hover {
+    color: var(--color-brand-primary);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--color-brand-primary);
+    outline-offset: 2px;
+  }
+}
+.chat-detail__badge {
+  flex: none;
+  padding: 1px 8px;
+  border-radius: v.$radius-max;
+  background: var(--color-brand-secondary);
+  color: var(--color-brand-primary);
+  font-size: 0.7rem;
+  font-weight: 600;
+}
+.chat-detail__time {
   font-size: 0.78rem;
   color: var(--color-text-secondary);
 }
-.chat-detail__author {
-  color: var(--color-text-primary);
-  font-weight: 600;
-}
+
 .chat-detail__body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0 20px 16px;
   color: var(--color-text-primary);
   font-size: 0.92rem;
   line-height: 1.6;
@@ -1506,6 +1612,112 @@
   // 详情页的存在意义就是可选中；显式声明，别被外层任何 user-select 规则继承带偏。
   -webkit-user-select: text;
   user-select: text;
+}
+
+// 引用块：与消息列表里的回复摘要同一档（内容底色 + 10px 圆角）。
+.chat-detail__quote {
+  margin-bottom: 12px;
+  padding: 8px 12px;
+  border-radius: v.$radius-large;
+  background: var(--color-background-content);
+  color: var(--color-text-secondary);
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+.chat-detail__quote-name {
+  color: var(--color-text-primary);
+  font-weight: 600;
+}
+.chat-detail__quote-thumb {
+  display: block;
+  max-width: 160px;
+  max-height: 120px;
+  margin-top: 6px;
+  border-radius: v.$radius-small;
+  object-fit: contain;
+}
+
+// 详细信息：只读的条目表，走内容底色（与卡片色分层），标签 / 值左右对齐。
+.chat-detail__facts {
+  display: grid;
+  gap: 6px;
+  margin: 16px 0 0;
+  padding: 10px 12px;
+  border-radius: v.$radius-large;
+  background: var(--color-background-content);
+  font-size: 0.8rem;
+}
+.chat-detail__fact {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 0;
+}
+.chat-detail__fact dt {
+  color: var(--color-text-secondary);
+}
+.chat-detail__fact dd {
+  margin: 0;
+  color: var(--color-text-primary);
+  text-align: right;
+}
+
+// 操作栏：回复是这一面的主要行动（btn-primary），其余走次级档；删除单独靠右。
+.chat-detail__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  padding: 10px 16px 14px;
+  background: var(--color-background-card);
+}
+.chat-detail__actions-gap {
+  flex: 1 1 auto;
+}
+.chat-detail__btn {
+  @include m.btn-secondary;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  font-family: inherit;
+  font-size: 0.85rem;
+  line-height: 1;
+  white-space: nowrap;
+
+  svg {
+    width: 16px;
+    height: 16px;
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--color-brand-primary);
+    outline-offset: 2px;
+  }
+}
+.chat-detail__btn--primary {
+  @include m.btn-primary;
+  padding: 8px 16px;
+}
+// 保存态：与「已激活」状态按钮同一递进（品牌淡底 + 品牌色），不另造一套。
+.chat-detail__btn.is-active {
+  background-color: var(--color-brand-secondary);
+  color: var(--color-brand-primary);
+}
+// 破坏性操作沿用同一档的递进，只换配色（§5.1）。
+.chat-detail__btn--danger {
+  color: var(--color-warning-primary);
+
+  &:hover:not(:disabled) {
+    background-color: var(--color-warning-secondary);
+    color: var(--color-warning-primary);
+  }
+
+  &:active:not(:disabled) {
+    background-color: var(--color-warning-primary);
+    color: #fff;
+  }
 }
 
 // 弹窗关闭：次要图标钮（圆形点击区，§5.1）。这个类同时被图床选择 / 选人 /
@@ -2060,6 +2272,11 @@
     height: 40px;
   }
 
+  // 详情操作栏同样按可点尺寸给（§3.5）。
+  .chat-detail__btn {
+    min-height: 44px;
+  }
+
   .chat-pager__btn {
     min-height: 40px;
   }
@@ -2084,6 +2301,11 @@
   }
   ::view-transition-old(chat-list),
   ::view-transition-new(chat-list) {
+    animation: none;
+  }
+  // 消息详情的遮罩淡入 / 面板轻抬直接到终态。
+  .chat-detail-overlay,
+  .chat-detail {
     animation: none;
   }
 }
