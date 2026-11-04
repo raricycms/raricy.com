@@ -10,8 +10,9 @@
 // 【正文渲染】走 ChatMarkdown（Markdown → 净化 HTML）；回复摘要 / 侧栏预览等
 // 只露一行的位置仍按纯文本处理，不进 Markdown 管线。
 //
-// 消息交互由三处入口共同覆盖：气泡旁的「⋯」按钮（桌面悬停 / 键盘聚焦显示、触屏常显）、
-// 桌面右键、触屏长按。单击正文（移动端轻点 / 桌面左键）打开消息详情浮层 ——
+// 消息操作只有两条入口：桌面右键、触屏长按。没有常驻「⋯」按钮 —— 桌面悬停 /
+// 键盘聚焦时给气泡轻微变色作可操作提示，移动端按下时同一套叠色。
+// 单击正文（移动端轻点 / 桌面左键）打开消息详情浮层 ——
 // 移动端的原生选字因此搬到详情里，列表上的长按留给操作面板。
 // 具体判据与事件接线见下面的 useMessageInteractions 与 chat-message-interaction.ts。
 // ─────────────────────────────────────────────────────────────────────────────
@@ -20,7 +21,7 @@ import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import Avatar from '@/app/components/Avatar';
 import ChatBubble from '@/app/components/ChatBubble';
-import { ArrowRight, BookOpenText, Ellipsis } from 'lucide-react';
+import { ArrowRight, BookOpenText } from 'lucide-react';
 import { CHAT_DELETED_TEXT, type ChatMessageDTO } from '@/lib/chat-shared';
 import {
   LONG_PRESS_MS,
@@ -362,7 +363,6 @@ function useMessageInteractions({
       onOpenMenu(msg, {
         x: byPointer ? e.clientX : rect.left + 12,
         y: byPointer ? e.clientY : rect.top + 12,
-        trigger: e.currentTarget.querySelector<HTMLButtonElement>('.chat-msg__more') ?? undefined,
       });
     },
     [canMenu, msg, onOpenMenu]
@@ -412,7 +412,7 @@ export interface ChatMessageItemProps {
   currentUsername: string;
   /** 被锚点/搜索跳转命中 → 短暂高亮（见 ChatApp 的 jumpToMessage） */
   highlighted?: boolean;
-  /** 这条消息的操作菜单正在打开，持续高亮并保留按钮。 */
+  /** 这条消息的操作菜单正在打开，持续高亮。 */
   menuOpen?: boolean;
   /**
    * 同一人连续发言的后继（距这一串的第一条 ≤ CHAT_GROUP_WINDOW_MS）
@@ -423,7 +423,7 @@ export interface ChatMessageItemProps {
   receipt?: 'read' | 'unread' | null;
   /** 只有私聊里未删除的消息可保存（大区消息不进保存箱；拍一拍也不进）。 */
   canSave?: boolean;
-  /** 点击更多 / 桌面右键 / 触屏长按唤出操作菜单，菜单自己负责摆位。 */
+  /** 桌面右键 / 触屏长按唤出操作菜单，菜单自己负责摆位。 */
   onOpenMenu: (m: ChatMessageDTO, anchor: MessageMenuAnchor) => void;
   /** 单击正文（移动端轻点 / 桌面左键）打开消息详情浮层。 */
   onOpenDetail: (m: ChatMessageDTO) => void;
@@ -464,27 +464,10 @@ function ChatMessageItemInner({
     onOpenMenu,
     onOpenDetail,
   });
-  const moreButton = canMenu ? (
-    <button
-      type="button"
-      className="chat-msg__more"
-      aria-label="消息操作"
-      aria-haspopup="menu"
-      aria-expanded={menuOpen}
-      title="消息操作"
-      onClick={(e) => {
-        const trigger = e.currentTarget;
-        const rect = trigger.getBoundingClientRect();
-        onOpenMenu(msg, { x: rect.left, y: rect.bottom, trigger });
-      }}
-    >
-      <Ellipsis aria-hidden="true" />
-    </button>
-  ) : null;
 
   // 拍一拍：无头像无气泡的居中系统行（微信/QQ 式）；本人被拍时用品牌色强调。
   // 已删除的拍一拍保持居中，只把文案换成删除占位（不能打开详情）。
-  // 它的「删除」也通过独立按钮、桌面右键 / 触屏长按菜单打开。
+  // 它的「删除」通过桌面右键 / 触屏长按菜单打开。
   if (msg.pat) {
     const pattedMe = msg.pat.target_id === currentUserId;
     return (
@@ -497,7 +480,6 @@ function ChatMessageItemInner({
             ? CHAT_DELETED_TEXT
             : `${msg.author.username} 拍了拍 ${msg.pat.target_name}`}
         </span>
-        {moreButton}
       </div>
     );
   }
@@ -586,7 +568,6 @@ function ChatMessageItemInner({
 
   // 表头行：作者名 / 时间 / 已读回执。
   // grouped（同人连续发言的后继）上，整行由 _chat.scss 接管成绝对定位的浮层。
-  // 更多按钮独立于这一行，不挤占名字或回执。
   const metaRow = (
     <div className="chat-msg__meta">
       <Link className="chat-msg__name" href={`/u/${msg.author.id}`}>
@@ -648,7 +629,6 @@ function ChatMessageItemInner({
         {replyBlock}
         {ownBlocks}
       </div>
-      {moreButton}
     </div>
   );
 }

@@ -271,7 +271,7 @@ export default function ChatApp({
     { author: ChatMessageDTO['author']; anchor: AvatarMenuAnchor } | null
   >(null);
   /**
-   * 消息操作菜单（回复 / 复制 / 保存 / 删除）：更多按钮、桌面右键或触屏长按唤出。
+   * 消息操作菜单（回复 / 复制 / 保存 / 删除）：桌面右键或触屏长按唤出。
    * 只存「哪条消息 + 菜单锚点」，可用动作在渲染时按当前消息与频道现算 —— 保存态
    * 会随 savedIds 变，存快照会在菜单开着时拿到旧值。
    */
@@ -1384,7 +1384,7 @@ export default function ChatApp({
   );
 
   /**
-   * 更多按钮 / 桌面右键 → 打开操作菜单（保存 / 回复 / 删除）。
+   * 桌面右键 / 触屏长按 → 打开操作菜单（回复 / 复制 / 保存 / 删除）。
    * 回调必须是稳定引用：ChatMessageItem 包了 memo，换引用等于整列表白 memo。
    */
   const openMessageMenu = useCallback((m: ChatMessageDTO, anchor: MessageMenuAnchor) => {
@@ -1998,7 +1998,7 @@ export default function ChatApp({
         />
       )}
 
-      {/* 消息操作菜单：更多按钮 / 桌面右键 / 触屏长按唤出。「保存」只有私聊（且未删、
+      {/* 消息操作菜单：桌面右键 / 触屏长按唤出。「保存」只有私聊（且未删、
           非拍一拍）才有 —— 大区消息不进保存箱，服务端也会拒。 */}
       {messageMenu && (
         <ChatMessageMenu

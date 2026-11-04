@@ -66,7 +66,7 @@ export interface ChatMessageListProps {
   /** 「已折叠 N 条 · 展开更早」——放回一页由 ChatApp 定（REVEAL_STEP 住那边）。 */
   onRevealOlder: () => void;
   onLoadOlder: () => void;
-  /** 更多按钮 / 桌面右键 / 触屏长按 → 打开操作菜单（回复 / 复制 / 保存 / 删除）。 */
+  /** 桌面右键 / 触屏长按 → 打开操作菜单（回复 / 复制 / 保存 / 删除）。 */
   onOpenMenu: (m: ChatMessageDTO, anchor: MessageMenuAnchor) => void;
   /** 单击正文 → 打开消息详情浮层（移动端与桌面共用）。 */
   onOpenDetail: (m: ChatMessageDTO) => void;

@@ -3,15 +3,15 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // ChatMessageMenu.tsx — 单条消息的操作菜单（回复 / 复制 / 保存 / 删除）。
 //
-// 三个入口打开同一份菜单：气泡旁的更多按钮（桌面悬停 / 键盘聚焦时显示，触屏常显）、
-// 桌面右键、触屏长按。菜单项按权限出现：回复（未删除、非拍一拍）/ 复制（有正文）/
+// 两个入口打开同一份菜单：桌面右键、触屏长按（消息上没有常驻按钮）。
+// 菜单项按权限出现：回复（未删除、非拍一拍）/ 复制（有正文）/
 // 保存（私聊、未删除、非拍一拍）/ 删除（本人或管理员）。
 //
 // 打开期间由 ChatMessageItem 给对应消息挂 `chat-msg--menu-open`（持续淡底高亮）。
 //
 // 【定位】portal + position: fixed + useLayoutEffect 量尺寸摆位 —— 与 AvatarMenu /
 // ChatChannelMenu 同一套（消息列表 .chat-list 是 overflow:auto，就地 absolute 会被
-// 裁掉）。更多按钮下沿与右键落点都转换成视口坐标，两个方向夹入视口，放不下就翻到另一侧。
+// 裁掉）。右键 / 长按落点都转换成视口坐标，两个方向夹入视口，放不下就翻到另一侧。
 //
 // 【皮肤】三个讨论菜单共用 `.chat-menu` 这一套（原来叫 .chat-avatar-menu，加第三个
 // 使用者时改了名 —— 它本来就不是头像专属的）。
@@ -21,11 +21,11 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { ChatMessageDTO } from '@/lib/chat-shared';
 
-/** 更多按钮下沿或右键落点的视口坐标。 */
+/** 右键 / 长按落点的视口坐标。 */
 export interface MessageMenuAnchor {
   x: number;
   y: number;
-  /** 关闭后恢复焦点的按钮；右键也关联同一条消息的更多按钮。 */
+  /** 可选的触发控件：关闭后把焦点还给它。消息上没有常驻入口，通常不传。 */
   trigger?: HTMLButtonElement;
 }
 

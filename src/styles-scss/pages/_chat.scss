@@ -714,7 +714,8 @@
 
 // 消息气泡
 //
-// 更多按钮独立占位，显示时不改变布局；触屏长按保留原生选字与链接 / 图片菜单。
+// 操作入口只有桌面右键与触屏长按，没有常驻按钮：桌面悬停 / 键盘聚焦时让气泡
+// 本身轻微变色（与触屏按下同一套叠色，见下方「按下反馈」），整条消息不铺底色。
 .chat-msg {
   display: flex;
   gap: 10px;
@@ -739,13 +740,12 @@
   margin-top: -11px;
 }
 // 头像用 opacity 隐藏而不是 visibility: hidden —— 后者会让头像彻底不可点，
-// 而头像是「拍一拍 / @ta / 访问主页」的入口。opacity: 0 保留占位与点击区域，
-// 悬停时淡入（Slack/Discord 的连续消息就是这个交互）。
+// 而头像是「拍一拍 / @ta / 访问主页」的入口。opacity: 0 保留占位与点击区域。
+// 仅在键盘聚焦时淡入（鼠标悬停**不**显示：悬停反馈只落在气泡上）；触屏常显。
 .chat-msg--grouped .chat-msg__avatar {
   opacity: 0;
   transition: opacity 0.15s ease;
 }
-.chat-msg--grouped:hover .chat-msg__avatar,
 .chat-msg--grouped .chat-msg__avatar:focus-visible {
   opacity: 1;
 }
@@ -761,8 +761,6 @@
 // 表头行（名字 / 时间 / 已读回执）在后继消息上整行**退出文档流**，
 // 挂到气泡外侧的空位上 —— 这是「两条气泡贴得住」的前提（见上面 -11px 的来路）。
 // 名字与时间在后继上 display:none，所以浮层里实际只剩私聊的「已读 / 未读」回执。
-//
-// 更多按钮独立于这一行；这层浮层只承载回执。
 //
 // 【为什么挂外侧而不是压在气泡上】气泡是 fit-content 宽度，浮层压上去会盖住正文，
 // 短消息上尤其明显。
@@ -793,85 +791,16 @@
   padding-right: 8px;
 }
 
-// 回执仍贴气泡边；只有带回执的后继消息额外给它留宽，避免与更多按钮重叠。
-.chat-msg--mine.chat-msg--grouped:has(.chat-msg__receipt) > .chat-msg__more {
-  margin-right: calc(1.44rem + 8px);
-}
-
-.chat-msg__more {
-  @include m.btn-secondary($pointer-hover-only: true);
-  flex: none;
-  align-self: flex-start;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 30px;
-  height: 30px;
-  padding: 0;
-  opacity: 1;
-  transition: opacity 0.15s ease, color 0.25s ease, background-color 0.25s ease;
-
-  svg {
-    width: 18px;
-    height: 18px;
-  }
-
-  &:focus-visible {
-    outline: none;
-    box-shadow: var(--shadow-focus-brand);
-  }
-
-  &[aria-expanded='true'] {
-    background-color: var(--color-brand-secondary);
-    color: var(--color-brand-primary);
-  }
-}
-.chat-msg:not(.chat-msg--grouped) > .chat-msg__more {
-  margin-top: 20px;
-}
-
-.chat-msg--actionable:focus-within,
+// 菜单打开时整条消息淡底高亮（「正在操作哪一条」）。悬停 / 键盘聚焦不铺整行底色 ——
+// 那个反馈落在气泡本身上（见下方「按下反馈」的桌面分支）。
 .chat-msg--menu-open,
-.chat-pat--actionable:focus-within,
 .chat-pat--menu-open {
   background-color: var(--color-brand-secondary);
 }
 .chat-msg--highlight.chat-msg--menu-open {
   animation: none;
 }
-
-// 只在确有鼠标悬停能力时隐藏；opacity 保留 Tab 入口，聚焦后立即显示。
-@media (hover: hover) and (pointer: fine) {
-  .chat-msg__more {
-    opacity: 0;
-    pointer-events: none;
-  }
-
-  .chat-msg--actionable:hover,
-  .chat-pat--actionable:hover {
-    background-color: var(--color-brand-secondary);
-  }
-
-  .chat-msg:hover > .chat-msg__more,
-  .chat-msg:focus-within > .chat-msg__more,
-  .chat-msg--menu-open > .chat-msg__more,
-  .chat-pat:hover > .chat-msg__more,
-  .chat-pat:focus-within > .chat-msg__more,
-  .chat-pat--menu-open > .chat-msg__more {
-    opacity: 1;
-    pointer-events: auto;
-  }
-}
-
-@media (any-pointer: coarse) {
-  .chat-msg__more {
-    width: 44px;
-    height: 44px;
-    opacity: 1;
-    pointer-events: auto;
-  }
-}
-// 触屏没有 hover：分组消息的头像常显，否则没法打开头像菜单
+// 触屏没有 hover：分组消息的头像常显，否则没法打开头像菜单。
 @media (hover: none) {
   .chat-msg--grouped .chat-msg__avatar {
     opacity: 1;
@@ -1151,16 +1080,19 @@
 //
 // 气泡那层用伪元素而不是改 background-color：data-bubble 的三款气泡各有底色，
 // 统一抹成一种颜色会当场毁掉用户挑的款式。伪元素只看「这一块被按住了」。
-.chat-msg__content {
-  position: relative;
-}
-.chat-msg--pressed .chat-msg__content::after {
+@mixin chat-bubble-tint {
   content: '';
   position: absolute;
   inset: 0;
   border-radius: inherit;
   background: color-mix(in srgb, var(--color-text-primary) 6%, transparent);
   pointer-events: none;
+}
+.chat-msg__content {
+  position: relative;
+}
+.chat-msg--pressed .chat-msg__content::after {
+  @include chat-bubble-tint;
 }
 .chat-msg__image,
 .chat-msg__md img {
@@ -1172,6 +1104,15 @@
 }
 .chat-pat--pressed {
   background-color: var(--color-brand-secondary);
+}
+
+// 桌面悬停 / 键盘聚焦：与触屏按下同一套叠色，只落在气泡上 —— 不铺整条消息的底色，
+// 也不把 grouped 隐藏的头像淡入。
+@media (hover: hover) and (pointer: fine) {
+  .chat-msg:hover .chat-msg__content::after,
+  .chat-msg:focus-within .chat-msg__content::after {
+    @include chat-bubble-tint;
+  }
 }
 
 // 触屏的长按归消息操作面板，列表正文不再走浏览器选字 —— 选字与复制统一搬到
@@ -1398,7 +1339,7 @@
 }
 
 // 拍一拍：微信/QQ 式的居中系统行（无头像、无气泡、灰字）。
-// 它的「删除」也有更多按钮，触屏常显。
+// 它的「删除」通过桌面右键 / 触屏长按菜单打开。
 .chat-pat {
   align-self: center;
   max-width: 90%;
@@ -2134,8 +2075,7 @@
 // 折叠伸缩、标题淡出与列表交叉淡入直接到终态；功能与焦点不依赖动画结束。
 @media (prefers-reduced-motion: reduce) {
   .chat-msg,
-  .chat-pat,
-  .chat-msg__more {
+  .chat-pat {
     transition: none;
   }
   .chat-sidebar,

@@ -115,7 +115,7 @@ async function mountMessage(
   return { row, onOpenMenu, onOpenDetail, onImageClick };
 }
 
-describe('消息操作入口与原生触屏行为', () => {
+describe('消息操作入口（右键 / 长按）与详情', () => {
   beforeEach(() => {
     vi.useFakeTimers();
   });
@@ -135,15 +135,10 @@ describe('消息操作入口与原生触屏行为', () => {
     expect(onOpenMenu.mock.calls[0][1]).toMatchObject({ x: 12, y: 12 });
   });
 
-  it('更多按钮用自身下沿定位，不依赖点击事件的指针坐标', async () => {
-    const { row, onOpenMenu } = await mountMessage(dto());
-    const more = row.querySelector<HTMLButtonElement>('.chat-msg__more')!;
-    vi.spyOn(more, 'getBoundingClientRect').mockReturnValue({ left: 120, bottom: 80 } as DOMRect);
-    fire(more, new MouseEvent('click', { bubbles: true }));
-    expect(onOpenMenu).toHaveBeenCalledTimes(1);
-    expect(onOpenMenu.mock.calls[0][1]).toEqual({ x: 120, y: 80, trigger: more });
-    expect(more.getAttribute('aria-haspopup')).toBe('menu');
-    expect(more.getAttribute('aria-label')).toBe('消息操作');
+  it('消息上没有常驻的更多按钮（入口只有右键 / 长按）', async () => {
+    const { row } = await mountMessage(dto());
+    expect(row.querySelector('.chat-msg__more')).toBeNull();
+    expect(row.querySelector('[aria-label="消息操作"]')).toBeNull();
   });
 
   it('触屏长按 → 打开操作菜单，且不产生浏览器选区', async () => {
@@ -212,16 +207,19 @@ describe('消息操作入口与原生触屏行为', () => {
     expect(onOpenDetail).not.toHaveBeenCalled();
   });
 
-  it('菜单打开时按钮报告展开态，对应消息保持操作态', async () => {
+  it('菜单打开时对应消息保持操作态', async () => {
     const { row } = await mountMessage(dto(), { menuOpen: true });
     expect(row.classList.contains('chat-msg--menu-open')).toBe(true);
-    expect(row.querySelector('.chat-msg__more')?.getAttribute('aria-expanded')).toBe('true');
   });
 
-  it('拍一拍的删除同样有更多按钮', async () => {
-    const { row, onOpenMenu } = await mountMessage(dto({ pat: { target_id: 'u2', target_name: '小红' } }));
-    fire(row.querySelector('.chat-msg__more')!, new MouseEvent('click', { bubbles: true }));
+  it('拍一拍同样可以长按打开操作菜单', async () => {
+    const { row, onOpenMenu } = await mountMessage(
+      dto({ pat: { target_id: 'u2', target_name: '小红' } })
+    );
+    fire(row, pointerEvent('pointerdown', { clientX: 20, clientY: 20, pointerType: 'touch' }));
+    act(() => vi.advanceTimersByTime(600));
     expect(onOpenMenu).toHaveBeenCalledTimes(1);
+    expect(row.querySelector('.chat-msg__more')).toBeNull();
   });
 
   it('没有可做的动作（别人的已删消息）→ 不拦原生右键菜单', async () => {
@@ -232,7 +230,6 @@ describe('消息操作入口与原生触屏行为', () => {
     const ev = fire(row, new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 10, clientY: 10 }));
     expect(onOpenMenu).not.toHaveBeenCalled();
     expect(ev.defaultPrevented).toBe(false);
-    expect(row.querySelector('.chat-msg__more')).toBeNull();
   });
 
   it('图片点击照常放大且不打开详情 / 菜单', async () => {

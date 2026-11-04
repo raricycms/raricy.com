@@ -285,12 +285,12 @@ test.describe('连续消息合并', () => {
     // 头像靠 opacity 隐去（**仍可点** —— 它是拍一拍 / @ta / 主页的入口），所以断言
     // 只能落在 opacity 上，不能用 toBeHidden。触屏没有 hover，样式表会把分组消息的
     // 头像常显（否则打不开头像菜单），移动端不适用这条断言。
+    // 桌面悬停**不**把头像淡入：悬停反馈只落在气泡上。
     if (!isMobile) {
       await expect(secondRow.locator('.chat-msg__avatar')).toHaveCSS('opacity', '0');
+      await secondRow.hover();
+      await expect(secondRow.locator('.chat-msg__avatar')).toHaveCSS('opacity', '0');
     }
-    const moreBox = (await secondRow.locator('.chat-msg__more').boundingBox())!;
-    const receiptBox = (await secondRow.locator('.chat-msg__receipt').boundingBox())!;
-    expect(moreBox.x + moreBox.width, '更多按钮不能盖住回执').toBeLessThanOrEqual(receiptBox.x);
   });
 
   /**
@@ -301,8 +301,8 @@ test.describe('连续消息合并', () => {
    * max(引用块, 自己的块) —— 修法是让浮层住进只装自己那几块的 .chat-msg__own-blocks。
    * 结构那半边在 tests/unit/chat-message-dom.test.ts；这里量真渲染出来的几何。
    *
-   * 【为什么量的是表头行本身】保存 / 回复 / 删除由独立的更多按钮打开菜单
-   * （ChatMessageMenu），浮层里只剩回执；但「浮层贴谁」这条契约没变 —— 挂错层时
+   * 【为什么量的是表头行本身】保存 / 回复 / 删除由右键 / 长按菜单（ChatMessageMenu）
+   * 打开，浮层里只剩回执；但「浮层贴谁」这条契约没变 —— 挂错层时
    * 表头行的 box 边会跟着引用块走。空行也照样有 box（padding 撑出来的宽度）。
    *
    * 【为什么要真浏览器】jsdom 不排版，getBoundingClientRect 恒为 0：把定位父节点改回
@@ -363,10 +363,11 @@ test.describe('连续消息合并', () => {
   });
 });
 
-test.describe('消息操作菜单（更多按钮 / 桌面右键）', () => {
-  // 真视口验证：桌面悬停 / 聚焦显示、触屏常显且 44px、消息高亮、菜单边界与焦点恢复。
+test.describe('消息操作菜单（右键 / 长按）', () => {
+  // 真视口验证：没有常驻按钮、悬停只让气泡变色、右键开菜单、消息高亮、菜单边界。
 
-  test('更多按钮可发现且不挤动布局，打开后高亮消息，Esc 返回按钮', async ({ page, isMobile }, testInfo) => {
+  test('桌面：悬停只让气泡变色，右键打开菜单并高亮消息，Esc 关闭', async ({ page, isMobile }, testInfo) => {
+    test.skip(isMobile, '桌面鼠标分支');
     const marker = `e2e-menu-${uniqueTag()}`;
     await registerFreshUser(page, { core: true });
     await postLobby(page, marker);
@@ -375,30 +376,26 @@ test.describe('消息操作菜单（更多按钮 / 桌面右键）', () => {
     const row = msgRow(page, marker);
     await expect(row).toBeVisible();
 
-    const more = row.getByRole('button', { name: '消息操作', exact: true });
-    const before = (await row.boundingBox())!;
-    if (isMobile) {
-      await expect(more).toHaveCSS('opacity', '1');
-      const hit = (await more.boundingBox())!;
-      expect(hit.width).toBeGreaterThanOrEqual(44);
-      expect(hit.height).toBeGreaterThanOrEqual(44);
-      await more.tap();
-    } else {
-      await page.mouse.move(0, 0);
-      await expect(more).toHaveCSS('opacity', '0');
-      await row.hover();
-      await expect(more).toHaveCSS('opacity', '1');
-      expect((await row.boundingBox())!.width).toBeCloseTo(before.width, 0);
-      await page.mouse.move(0, 0);
-      await more.focus();
-      await expect(more).toHaveCSS('opacity', '1');
-      await more.press('Enter');
-    }
+    // 入口只有右键：页面上不该再有常驻的「更多」按钮。
+    await expect(page.locator('.chat-msg__more')).toHaveCount(0);
 
+    // 悬停反馈落在气泡上（伪元素叠色），整条消息的底色不变。
+    const styles = () =>
+      row.locator('.chat-msg__content').evaluate((el) => ({
+        overlay: getComputedStyle(el, '::after').backgroundColor,
+        rowBg: getComputedStyle(el.closest('.chat-msg')!).backgroundColor,
+      }));
+    await page.mouse.move(0, 0);
+    const idle = await styles();
+    await row.hover();
+    const hovered = await styles();
+    expect(hovered.overlay, '悬停应给气泡叠色').not.toBe(idle.overlay);
+    expect(hovered.rowBg, '悬停不该铺整行底色').toBe(idle.rowBg);
+
+    await row.click({ button: 'right' });
     const menu = page.locator('.chat-menu');
     await expect(menu).toBeVisible();
     await expect(row).toHaveClass(/chat-msg--menu-open/);
-    await expect(more).toHaveAttribute('aria-expanded', 'true');
     // 大区里自己发的消息：没有「保存」（保存箱只收私聊），有回复 / 复制 / 删除
     await expect(menu.getByRole('menuitem')).toHaveText(['回复', '复制', '删除', '取消']);
     // 菜单是 fixed 定位的 portal，完整落在视口内。
@@ -416,8 +413,6 @@ test.describe('消息操作菜单（更多按钮 / 桌面右键）', () => {
     await page.keyboard.press('Escape');
     await expect(menu).toHaveCount(0);
     await expect(row).not.toHaveClass(/chat-msg--menu-open/);
-    await expect(more).toHaveAttribute('aria-expanded', 'false');
-    await expect(more).toBeFocused();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   });
 
@@ -480,7 +475,7 @@ test.describe('消息操作菜单（更多按钮 / 桌面右键）', () => {
     await page.waitForTimeout(650);
     const menu = page.locator('.chat-menu');
     await expect(menu).toBeVisible();
-    await expect(menu.getByRole('menuitem', { name: '复制', exact: true })).toBeVisible();
+    await expect(menu.getByRole('menuitem')).toHaveText(['回复', '复制', '删除', '取消']);
     await expect(row).not.toHaveClass(/chat-msg--pressed/);
     expect(await page.evaluate(() => window.getSelection()!.toString()), '长按不选字').toBe('');
 
@@ -545,7 +540,7 @@ test.describe('消息操作菜单（更多按钮 / 桌面右键）', () => {
   });
 
   test('桌面右键自己的消息 → 删除', async ({ page, isMobile }) => {
-    test.skip(isMobile, '触屏通过更多按钮操作');
+    test.skip(isMobile, '触屏通过长按操作');
     const marker = `e2e-del-${uniqueTag()}`;
     await loginViaApi(page, SEED_USERS.core.username);
     const messageId = await postLobby(page, marker);
