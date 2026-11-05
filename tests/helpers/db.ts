@@ -236,7 +236,7 @@ export async function makeUser(opts: Partial<{
       isBanned: opts.isBanned ?? false,
       banUntil: opts.banUntil ?? null,
       banReason: opts.banReason ?? null,
-      driedFish: fishToUnits(opts.driedFish ?? 0), // 存储单位 = 0.1 鱼干（fish-units.ts）
+      driedFish: fishToUnits(opts.driedFish ?? 0), // 存储单位 = 0.0001 鱼干（fish-units.ts）
       focusMode: opts.focusMode ?? false,
       // 专注模式子项：默认全开 = 与改版前的行为一致。
       ...(opts.focusHideCategories !== undefined

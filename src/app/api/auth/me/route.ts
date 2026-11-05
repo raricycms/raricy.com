@@ -13,7 +13,7 @@ export async function GET() {
       username: user.username,
       role: user.role,
       avatarPath: user.avatarPath,
-      // DB 存储单位是 0.1 鱼干（fish-units.ts），对外一律换算回鱼干
+      // DB 存储单位是 0.0001 鱼干（fish-units.ts，1 鱼干 = 10000 单位），对外一律换算回鱼干
       driedFish: unitsToFish(user.driedFish),
     },
   });

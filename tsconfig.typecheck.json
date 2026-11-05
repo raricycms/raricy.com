@@ -30,5 +30,10 @@
     "scripts/**/*.mjs",
     "services/**/*.ts"
   ],
-  "exclude": ["node_modules", ".next", "services/realtime/dist"]
+  "exclude": [
+    "node_modules",
+    ".next",
+    "services/realtime/dist",
+    "tests/.tmp"
+  ]
 }

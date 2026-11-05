@@ -105,7 +105,7 @@ describe('getLikers', () => {
 describe('getFeeders', () => {
   async function feed(blogId: string, userId: string, amount: number) {
     return prisma.blogFeed.create({
-      // amount 入参为鱼干；存储单位 = 0.1 鱼干（fish-units.ts）
+      // amount 入参为鱼干；存储单位 = 0.0001 鱼干（fish-units.ts）
       data: { blogId, userId, amount: fishToUnits(amount), createdAt: nowForDb(), updatedAt: nowForDb() },
     });
   }

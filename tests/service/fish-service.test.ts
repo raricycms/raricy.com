@@ -32,7 +32,7 @@ beforeEach(async () => {
 
 /** 直接落一条流水。read 路径用例需要**可控的** createdAt —— addFish 一律写
  *  nowForDb()，测不了跨日 / 排序边界，故这里绕开它自己 create。
- *  amount 参数为鱼干（业务单位）；入库自动 ×10（存储单位 = 0.1 鱼干，fish-units.ts）。 */
+ *  amount 参数为鱼干（业务单位）；入库按 fishToUnits 换算（存储单位 = 0.0001 鱼干，fish-units.ts）。 */
 async function makeTx(opts: {
   userId: string;
   amount: number;
@@ -196,7 +196,7 @@ describe('addFish（加钱 + 写流水）', () => {
     expect(await prisma.fishTransaction.count()).toBe(0);
   });
 
-  it('小数金额被接受（存储是 0.1 鱼干整数单位；历史投喂分成的小数仍需保留）', async () => {
+  it('小数金额被接受（存储是 0.0001 鱼干整数单位；历史投喂分成的小数仍需保留）', async () => {
     const u = await makeUser({ driedFish: 0 });
     await prisma.$transaction((tx) =>
       addFish(tx, { userId: u.id, amount: 0.8, type: 'feed_receive' })
@@ -211,7 +211,7 @@ describe('addFish（加钱 + 写流水）', () => {
         addFish(tx, { userId: u.id, amount: 0.1, type: 'feed_receive' })
       );
     }
-    // 存储单位（0.1 鱼干=1）下三笔各 +1，余额 = 3 单位 = 精确 0.3 鱼干。
+    // 存储单位（0.0001 鱼干 = 1）下三笔各写 fishToUnits(0.1)，余额按整数累加、再换回鱼干。
     // 旧 Float 时代这里是 toBeCloseTo —— 整数化（fish-units.ts）后允许精确断言。
     expect(await getBalance(u.id)).toBe(0.3);
   });
@@ -732,7 +732,7 @@ describe('getTodayCheckinFish', () => {
     await prisma.$executeRawUnsafe(
       `INSERT INTO fish_transactions (user_id, amount, type, created_at) VALUES (?, ?, ?, ?)`,
       userId,
-      fishToUnits(amount), // 整数化后老数据的口径也是 0.1 鱼干存储单位（fish-units.ts）
+      fishToUnits(amount), // 整数化后老数据的口径也是 0.0001 鱼干存储单位（fish-units.ts）
       type,
       new Date(isoTs).getTime() // 规整后的存储形态：INTEGER 毫秒
     );
@@ -854,7 +854,7 @@ describe('回归：流水 createdAt 与今日签到', () => {
   it('getTodayCheckinFish 也能读到迁移来的老数据', async () => {
     const u = await makeUser();
     const today = new Date(Date.now() + 8 * 3600 * 1000).toISOString().slice(0, 10);
-    // 模拟 normalize-datetimes 产出的老行：INTEGER 毫秒；金额为存储单位（×10）
+    // 模拟 normalize-datetimes 产出的老行：INTEGER 毫秒；金额为存储单位（0.0001 鱼干）
     await prisma.$executeRawUnsafe(
       `INSERT INTO fish_transactions (user_id, amount, type, description, created_at)
        VALUES (?, ?, 'checkin', '老数据', ?)`,

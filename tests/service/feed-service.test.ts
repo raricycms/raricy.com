@@ -78,7 +78,7 @@ async function snapshot(feederId: string, authorId: string, blogId: string) {
     prisma.fishTransaction.count({ where: { type: { in: FEED_TYPES } } }),
   ]);
   return {
-    // driedFish / blogFeed.amount 是 0.1 鱼干存储单位（fish-units.ts）→ 换回鱼干再比对
+    // driedFish / blogFeed.amount 是 0.0001 鱼干存储单位（fish-units.ts）→ 换回鱼干再比对
     feederBalance: feeder ? unitsToFish(feeder.driedFish) : null,
     authorBalance: author ? unitsToFish(author.driedFish) : null,
     fishCount: blog?.fishCount ?? null,
@@ -403,7 +403,7 @@ describe('作者全额收入与金额守恒', () => {
     const [spend, income] = all;
     expect(spend).toMatchObject({
       userId: feeder.id,
-      amount: fishToUnits(-3), // 存储单位 = 0.1 鱼干
+      amount: fishToUnits(-3), // 存储单位 = 0.0001 鱼干
       type: 'feed',
       referenceType: 'blog',
       referenceId: blog.id,
@@ -436,7 +436,7 @@ describe('作者全额收入与金额守恒', () => {
 
     const feederTxs = await prisma.fishTransaction.findMany({ where: { userId: feeder.id } });
     const authorTxs = await prisma.fishTransaction.findMany({ where: { userId: author.id } });
-    // 流水金额是 0.1 鱼干存储单位 —— 换回鱼干后再与余额守恒比对
+    // 流水金额是 0.0001 鱼干存储单位 —— 换回鱼干后再与余额守恒比对
     const sum = (rows: { amount: number }[]) =>
       rows.reduce((s, r) => s + unitsToFish(r.amount), 0);
 

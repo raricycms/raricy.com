@@ -106,7 +106,7 @@ describe('transferFish —— 成功路径', () => {
     expect(out).toHaveLength(1);
     expect(inn).toHaveLength(1);
 
-    expect(out[0].amount, '支出为负（存储单位 = 0.1 鱼干）').toBe(-fishToUnits(12.5));
+    expect(out[0].amount, '支出为负（存储单位 = 0.0001 鱼干）').toBe(-fishToUnits(12.5));
     expect(out[0].type).toBe(TRANSFER_OUT_TYPE);
     expect(out[0].relatedUserId).toBe(recipient.id);
     expect(out[0].description).toContain(recipient.username);

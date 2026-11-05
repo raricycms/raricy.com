@@ -16,7 +16,7 @@
 //   一个事务就能保证原子性，不需要补偿，也不可能出现「两个存储对不上」。
 //   历史注记与当年那套 outbox 的失败模式见 §6.3。
 //
-// 【单位】入参 units 是**存储单位**（0.1 鱼干）的有符号整数，由调用方用
+// 【单位】入参 units 是**存储单位**（0.0001 鱼干）的有符号整数，由调用方用
 //   `fishToUnits()` 从业务鱼干换算而来。见 fish-units.ts。
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -300,7 +300,7 @@ export class InsufficientFishError extends Error {
 export interface PostEntryInput {
   userId: string;
   /**
-   * **存储单位**（0.1 鱼干）的有符号整数。正 = 入账，负 = 出账。
+   * **存储单位**（0.0001 鱼干）的有符号整数。正 = 入账，负 = 出账。
    * 0 / 非整数 / 非有限数一律抛 —— 静默吞掉一笔 0 会让流水与实际余额对不上。
    */
   units: number;
@@ -329,7 +329,7 @@ export interface PostEntryInput {
 export async function postEntry(tx: TxClient, input: PostEntryInput): Promise<{ txId: number }> {
   const { units } = input;
   if (!Number.isInteger(units) || units === 0) {
-    throw new Error(`units 必须是「非零整数」（存储单位 0.1 鱼干）: ${units}`);
+    throw new Error(`units 必须是「非零整数」（存储单位 0.0001 鱼干）: ${units}`);
   }
 
   if (units < 0) {

@@ -53,6 +53,37 @@ const E2E_DB = (() => {
 const LOCK = path.resolve(__dirname, '../.tmp/e2e.lock');
 const PROJECT_ROOT = path.resolve(__dirname, '../..');
 
+/**
+ * 回收**被中断的** e2e 库。
+ *
+ * global-teardown 只删本轮那一个（别的 e2e-*.db 可能属于正在跑的另一轮），所以被
+ * SIGKILL / Ctrl-C 打断的那些会永久留下 —— 实测攒到 327 个 / 537MB，其中 105 个超过一天。
+ * 一轮 e2e 只有几分钟，所以「超过一天还没被删」不可能是活跃运行：按年龄收，
+ * 且跳过本轮自己那个路径。正在并发跑的另一轮也不会被误伤（它的文件是新的）。
+ */
+const E2E_DB_STALE_MS = 24 * 60 * 60 * 1000;
+function sweepStaleE2eDbs() {
+  const tmpDir = path.join(PROJECT_ROOT, 'tests', '.tmp');
+  let names: string[];
+  try {
+    names = fs.readdirSync(tmpDir);
+  } catch {
+    return; // 目录还没建：第一轮，没什么可收的
+  }
+  const cutoff = Date.now() - E2E_DB_STALE_MS;
+  for (const name of names) {
+    if (!/^e2e-.*\.db(-wal|-shm|-journal)?$/.test(name)) continue;
+    const full = path.join(tmpDir, name);
+    if (full === E2E_DB || full.startsWith(`${E2E_DB}-`)) continue;
+    try {
+      if (fs.statSync(full).mtimeMs >= cutoff) continue;
+      fs.rmSync(full, { force: true });
+    } catch {
+      // 删不掉就算了 —— tests/.tmp 已 gitignore，最多占点磁盘
+    }
+  }
+}
+
 /** 硬校验：只允许在 tests/.tmp 下建库（对齐 tests/helpers/db.ts 的同款保险）。 */
 function assertTestDb(dbPath: string) {
   if (!dbPath.includes(`${path.sep}tests${path.sep}.tmp${path.sep}`)) {
@@ -193,6 +224,7 @@ function acquireLock() {
 
 export default async function globalSetup() {
   assertTestDb(E2E_DB);
+  sweepStaleE2eDbs();
   // Worker 会重载 playwright.config.ts 并重算 E2E_DB；给 CLI 联动用例传递
   // 本轮实际建表、与 webServer 共用的路径，不能读取 worker 重算的空库。
   process.env.E2E_SEEDED_DB = E2E_DB;

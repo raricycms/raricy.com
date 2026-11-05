@@ -11,8 +11,6 @@
 
 import path from 'node:path';
 import fs from 'node:fs';
-import { beforeEach } from 'vitest';
-import { __resetPriceCache } from '@/lib/market-price';
 const TMP_DIR = path.resolve(import.meta.dirname, '.tmp');
 fs.mkdirSync(TMP_DIR, { recursive: true });
 
@@ -65,10 +63,12 @@ process.env.MARKET_LIQUIDATE_MS = '0';
 // 行情的**展示缓存**（不是成交价）挂在 globalThis 上，见 src/lib/market-price.ts 的
 // 文件头 —— 这么挂是为了让 instrumentation 图与请求图共用同一份。代价是它**跨测试
 // 文件也不再天然隔离**：前一个文件留下的热身缓存会让后一个文件里「只打了一次行情源」
-// 这类断言静默失真（用例照旧绿，只是不再验真的东西）。所以每个用例前清一次。
-beforeEach(() => {
-  __resetPriceCache();
-});
+// 这类断言静默失真。
+//
+// 但重置**不放在这里**：setup 顶部 import 真身的 market-price 会在任何测试文件的
+// `vi.mock` 之前把它钉进模块图（下面那条强平闸门的教训是同一个机制），而且真正读这份
+// 缓存的只有 market-price.test.ts 与 market-stream.test.ts —— 两者各自在 beforeEach
+// 里 `__resetPriceCache()`。其余 market 用例把模块替换成替身，不受缓存影响。
 
 // ⚠️ 【这里**不能**替测试打开强平闸门】—— 2026-09 实测踩过一次，别再试第二次。
 //

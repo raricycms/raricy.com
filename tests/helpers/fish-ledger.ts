@@ -36,7 +36,7 @@ import { makeUser } from './db';
 export interface LedgerMismatch {
   userId: string;
   username: string;
-  /** users.driedFish —— **存储单位**（0.1 鱼干）。报错信息里换算成鱼干给人看。 */
+  /** users.driedFish —— **存储单位**（0.0001 鱼干）。报错信息里换算成鱼干给人看。 */
   balance: number;
   /** SUM(fish_transactions.amount)，没有流水时为 0。同为存储单位。 */
   ledgerSum: number;
