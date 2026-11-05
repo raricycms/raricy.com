@@ -514,40 +514,26 @@ core+；讨论大区过滤专注、禁言与静音者，私聊只列未静音的
 ⚠️ 那个 `useEffect` 的依赖必须是 `[html]` —— 组件在 `html` 为空时 `return null`，
 div 会卸载重挂，`deps=[]` 的监听器永远附不上。
 
-**编辑器（博客 / 剪贴板）的 Markdown 预览走的就是上表那台渲染器**，不是另写一份近似实现 ——
-「预览长什么样」和「发布后长什么样」因此不需要人去对齐，它们本来就是同一个
-`MarkdownRenderer`。两处刻意的差别：
+**编辑器（博客 / 剪贴板）的预览走 `ReactivePreview`**（客户端编译，只发 GET、不发写请求），
+不再是 `MarkdownRenderer`。`MarkdownRenderer` 现在只服务**事故回退**：`REACTIVE_MD_MODE=off`
+下把 Markdown 文档交回旧引擎渲染（`blog/[id]` 与剪贴板详情各自按决策结果使用）。它的引用
+档位仍是两种：
 
-- `contentRefs="expand"`：五类引用（图床 / 音频 / 剪贴板 / 投票 / 收藏夹）在预览里
-  就展开成成品。这条档位会真去打三条 core+ 读口（剪贴板正文 / 投票 / 收藏夹卡片；
-  图床与音频只是拼 raw 地址，不发请求），缓存与失效见 `content-ref-resolver.ts` ——
-  所以它只给登录后的编辑器用，对外页面走 `'external'`（一个请求都不发）。
-- `interactive={false}`：投票小组件**结构照画**（用户要看得出这里有个投票），但选项
-  `disabled`、且**不挂投票处理器**。预览里点任何一个投票都不会发出业务写请求。
-  ⚠️ 新增任何「渲染时顺便做点什么」的引用类型，都要在这条只读档上一起断掉。
+- `contentRefs="expand"`：五类引用（图床 / 音频 / 剪贴板 / 投票 / 收藏夹）展开成成品。
+  这条档位会真去打三条 core+ 读口（剪贴板正文 / 投票 / 收藏夹卡片；图床与音频只是拼 raw
+  地址，不发请求），缓存与并发见 `content-ref-resolver.ts`。
+- `contentRefs="external"`：对外视图，剪贴板 / 投票 / 收藏夹保留原文，**一个请求都不发**。
 
 预览**不展开**表情包与用户名片：那两者只挂在评论 / 讨论那条管线上（见上表），
 博客正文里它们就是普通文字。这是刻意的，不要为了「统一」把它们接进来 ——
 一旦接进来，发一篇日记就顺带获得了两项评论区的功能。
 
-⚠️ `format='reactive'` 的文档预览**不再走这台渲染器**：预览面板改为客户端编译
-ReactiveMD（`ReactivePreview`，只发 GET、不发写请求），见 §6.23。把 reactive 源码
-交给本文这条管线不会抛错，只会把 `{{ }}` 与组件标签当普通文本显示出来。
+⚠️ 那台渲染器的正文 DOM 后处理不区分「正文页」与「只读」两种档位：投票小组件始终可交互。
+`format='reactive'` 的文档不经过它（阅读走 §6.23 的统一管线；把 reactive 源码交给它不会抛错，
+只会把 `{{ }}` 与组件标签当普通文本显示出来）。
 
-**投票数据在预览里只取一次，且与正文同一份快照**：预览是**防抖重渲染**的，而投票
-小组件自己会去拉 `GET /api/votes/<id>` —— 每停一下手就把整块 DOM 换成新的，等于每停
-一下就重打一轮，还会先闪一下「加载投票…」。所以预览把**这一轮引用解析自己取到的那份**
-喂给小组件（`ContentRefProcessor.preprocessRound` 交出来的 `entries`，与正文里展开
-引用用的是同一批结果），`voteData` 返回 undefined 时才由小组件自己取。⚠️ **不能改成
-回头去问会话缓存**（`resolver.peek`）：处理器是「先 await 取数、再替换」两段式的，
-中间这一段里任何一次 `invalidate()`（点「刷新引用」、另一次预览渲染起来）都会让缓存
-变成空的 —— 正文里的引用**静默退成字面量**，越慢的接口越容易撞上。⚠️ **这条数据口只
-给带会话级 `resolver` 的调用方（编辑器预览）**：正文页（`blog/[id]`、剪贴板详情）不传，
-小组件照旧自己拉一条（票数取渲染那一刻的值），行为与换代前逐字一致。重画的代际是
-**渲染序号**而非调用方的 `refreshToken` —— 后者会让后处理对着上一份 DOM 再跑一次，
-那一瞬间缓存刚被作废、取数还在飞，于是反而多打一条。行为由
-`tests/unit/md-editor-preview-votes.test.ts` 与 `tests/unit/content-ref-processor.test.ts`
-钉住（按请求条数、以及「响应落地前缓存被作废」那条时序）。
+投票小组件**自己取数**（`renderVoteEmbed` 拉 `GET /api/votes/<id>`），DOM 后处理只负责把
+`.vote-embed` 占位换成小组件，并用 `data-rendered` 戳保证重复调用不重复取数。
 
 ⚠️ **正文容器上那个 `dangerouslySetInnerHTML` 的 `{__html}` 对象必须 memo 住**
 （`MarkdownRenderer.tsx` 的 `innerHtml`）。React 19 是按**对象身份** diff 它的
@@ -578,10 +564,10 @@ ReactiveMD（`ReactivePreview`，只发 GET、不发写请求），见 §6.23。
 （那边失败也缓存）—— 两处都对：那边是每次按键都重渲染的预览，不能每敲一个字就重试；
 这边是用户主动打开、只会手动刷新的列表。点当前已选中那颗标签是空操作。
 
-**导出 HTML / 打印**（`markdown-editor/export.ts`）取的是**此刻的源码**，走的就是
-上面那台渲染器：离屏容器里现渲一份（`ContentRefProcessor` → `renderBlogMarkdown` →
-`enhanceBlogContent(interactive:false)` → 摘掉复制按钮 → 补绝对地址），**不读预览那棵
-防抖 DOM** —— 读它就会导出「敲最后一个字之前」的正文，而页面上没有任何提示。
+**导出 HTML / 打印**（`markdown-editor/export.ts`）取的是**此刻的源码**，与阅读走同一条
+ReactiveMD 管线：离屏容器里用 `compileLocal` + `LocalDocumentView` 现渲一份
+（`adaptReactivePreview` → `reactiveCompileOptions`），再摘掉复制按钮、补绝对地址，
+**不读预览那棵防抖 DOM** —— 读它就会导出「敲最后一个字之前」的正文，而页面上没有任何提示。
 导出件里站内相对地址补成站点绝对地址、`#锚点` 留在文件自己身上（**故意不写 `<base>`**，
 它会把锚点也带回原站）；样式与媒体**仍要联网**、仍按站内读口判权（见
 `docs/plan/editor-plan.md` §7.1.1）。地址解析按**这一页**的地址走（`new URL(value, 页面地址)`）：

@@ -149,16 +149,11 @@ function buildVotableOption(doc: Document, o: VoteOptionData): HTMLButtonElement
 /**
  * 按数据渲染整个小组件（纯 DOM 构造，不发请求 —— 便于单测）。
  * voteId 必须已过 isValidVoteId：它要拼进 href。
- *
- * `interactive=false`（编辑器只读预览）：结构**完全一样**，但可投票分支的
- * 选项按钮一律 disabled、提交按钮保持禁用 —— 预览不发业务写请求
- * （attachVoteHandlers 由调用方跳过）。别为预览另抄一份静态版组件。
  */
 export function buildVoteWidget(
   el: HTMLElement,
   voteId: string,
-  data: VoteEmbedData,
-  interactive = true
+  data: VoteEmbedData
 ): void {
   const doc = el.ownerDocument;
   const votable = canVote(data);
@@ -187,10 +182,7 @@ export function buildVoteWidget(
 
   for (const o of data.options) {
     if (votable) {
-      const opt = buildVotableOption(doc, o);
-      // 只读预览：选项看得见、点不动（禁用的按钮一眼就不是可操作控件）。
-      if (!interactive) opt.disabled = true;
-      widget.appendChild(opt);
+      widget.appendChild(buildVotableOption(doc, o));
     } else {
       widget.appendChild(buildResultRow(doc, o, data.user_voted === o.id));
     }
@@ -268,46 +260,24 @@ function attachVoteHandlers(el: HTMLElement, voteId: string, data: VoteEmbedData
 /**
  * 博客正文里的投票嵌入入口：校验 id → 拉数据 → 渲染小组件（失败则兜底链接）。
  * id 来自用户 Markdown，**必须先过 isValidVoteId**（见文件头）。
- *
- * `options.interactive=false`（编辑器只读预览）：渲染同一份小组件结构，但
- * **不绑选中 / 提交处理器** —— 预览不得发出 `POST …/vote` 这类业务写请求。
  */
 export async function renderVoteEmbed(
   el: HTMLElement,
-  voteId: string | null | undefined,
-  options?: {
-    interactive?: boolean;
-    /**
-     * 现成的小组件数据。**`undefined` = 没给**（自己去拉），`null` = **给了但没取到**
-     * （直接落兜底链接）。两者不是一回事，别用 `??` 合并。
-     * 编辑器只读预览走这条路：数据来自 ContentRefResolver 已经为存在性探测取过的
-     * 那一份 `GET /api/votes/<id>`，于是每次防抖重渲染不再多发一条请求、
-     * 也不再闪一次「加载投票…」。正文页不传，行为与以前逐字一致。
-     */
-    data?: VoteEmbedData | null;
-  }
+  voteId: string | null | undefined
 ): Promise<void> {
-  const interactive = options?.interactive ?? true;
   if (!isValidVoteId(voteId)) {
     el.textContent = '[投票链接无效]';
     return;
   }
 
-  let data: VoteEmbedData | null;
-  if (options?.data !== undefined) {
-    // 有现成数据就**不写「加载投票…」**：那段文字是给异步等待看的，
-    // 而这条路一步都不用等（数据在手上），写了反而在每次重渲染时闪一下。
-    data = options.data;
-  } else {
-    el.textContent = '加载投票…';
-    data = null;
-    try {
-      const res = await fetch(`/api/votes/${voteId}`, { credentials: 'same-origin' });
-      const json = (await res.json()) as { code?: number; data?: VoteEmbedData };
-      if (json.code === 200 && json.data) data = json.data;
-    } catch {
-      // 网络/解析失败都走兜底链接
-    }
+  let data: VoteEmbedData | null = null;
+  el.textContent = '加载投票…';
+  try {
+    const res = await fetch(`/api/votes/${voteId}`, { credentials: 'same-origin' });
+    const json = (await res.json()) as { code?: number; data?: VoteEmbedData };
+    if (json.code === 200 && json.data) data = json.data;
+  } catch {
+    // 网络/解析失败都走兜底链接
   }
 
   if (!data) {
@@ -316,8 +286,8 @@ export async function renderVoteEmbed(
   }
 
   try {
-    buildVoteWidget(el, voteId, data, interactive);
-    if (interactive) attachVoteHandlers(el, voteId, data);
+    buildVoteWidget(el, voteId, data);
+    attachVoteHandlers(el, voteId, data);
   } catch {
     // 字段形态由我们自己的 API 保证，这里只是兜底：真的缺字段时宁可退成链接，
     // 也别让异常冒出去 —— 调用方是 `void renderVoteEmbed(...)`，抛了就是一条

@@ -40,43 +40,20 @@ import type {
   ResolvedRef,
 } from '@/lib/content-ref-resolver';
 
-/** 一轮预处理取到的结果，键是 `${type}:${id}`（见 preprocessRound）。 */
-export type RefRoundEntries = ReadonlyMap<string, ResolvedRef | undefined>;
-
-export interface RefRoundResult {
-  /** 展开后的 Markdown 源文 —— 与 `preprocess` 的返回值逐字相同。 */
-  text: string;
-  /** 本轮**这一趟真的取到的**那些（`undefined` = 这一类取不到，保留字面量）。 */
-  entries: RefRoundEntries;
-}
-
 export class ContentRefProcessor {
   constructor(private resolver: ContentRefResolver) {}
 
   /**
    * 整篇预处理：扫描 → 解析（经 resolver）→ 按区间切片替换。
    * 返回的仍是 Markdown 源文（展开内容已内联），交给 marked 继续走。
+   *
+   * ★ 替换只认本函数第一段 `await` 的返回值，不回头问 resolver 的缓存 ★
+   * resolver 的缓存是**全局的、可被任何人作废的**：同一时刻另一处渲染可能正在
+   * 往里写/淘汰。处理器是「先 `await` 所有 resolve，再拿结果替换」两段式的 ——
+   * 第二段若去读缓存，读到的可能不是本轮那一份：正文里那些引用会**静默退成
+   * 字面量** `[@8位]`（成功取到的内容被丢掉），页面上没有任何提示。
    */
   async preprocess(markdownContent: string): Promise<string> {
-    return (await this.preprocessRound(markdownContent)).text;
-  }
-
-  /**
-   * 与 `preprocess` 同一条管线，另外把**本轮**取到的结果一起交出来。
-   *
-   * ★ 为什么必须由本轮自己交出来，而不是让调用方回头去问 resolver ★
-   * resolver 的缓存是**全局的、可被任何人作废的**：同一时刻另一处（「刷新引用」、
-   * 另一次预览渲染）调一次 `invalidate()`，缓存就被清空/换成了新的一代。
-   * 而处理器是「先 `await` 所有 resolve，再回头读缓存」两段式的 —— 中间这一小段
-   * 里被作废的话，第二段读到的就是**空的**：正文里那些引用会**静默退成字面量**
-   * `[@8位]`（成功取到的内容被丢掉），而且越慢的接口越容易撞上，页面上没有任何提示。
-   * 所以第一段 `await` 的**返回值**才是这一轮的真值，替换只认它。
-   *
-   * 【调用方拿到 entries 干什么】预览 / 导出里那些**同一批引用派生出来的**东西
-   * （首当其冲是投票小组件的数据）必须来自这同一份快照，否则就会出现「正文用本轮
-   * 取到的，小组件用后来那一代、或者干脆自己再拉一条」—— 同一屏上两个不一致的来源。
-   */
-  async preprocessRound(markdownContent: string): Promise<RefRoundResult> {
     // 分流扫的是**盖过码**的副本（`maskMarkdownCode`，与音频 / 收藏夹那两趟同口径）：
     // 代码块与行内代码里的引用一律不展开 —— 那是《内容引用语法指南》对读者的承诺
     // （「代码里的引用一律不展开」），也是「想展示语法本身」的唯一写法。
@@ -104,13 +81,9 @@ export class ContentRefProcessor {
     // ⚠️ **展开预算同样管这条早退**：只贴录音、而正文本身已超预算时，播放器也不能加。
     if (refSlots.length === 0) {
       const audioSlots = collectAudioRefs(markdownContent, maskedContent);
-      return {
-        text:
-          audioSlots.length > 0
-            ? replaceAudioRefs(markdownContent, audioSlots, MAX_REF_EXPAND_CHARS)
-            : markdownContent,
-        entries: new Map(),
-      };
+      return audioSlots.length > 0
+        ? replaceAudioRefs(markdownContent, audioSlots, MAX_REF_EXPAND_CHARS)
+        : markdownContent;
     }
 
     // 分流 + 挑取数候选。
@@ -253,6 +226,6 @@ export class ContentRefProcessor {
       processed = replaceAudioRefs(processed, audioSlots, MAX_REF_EXPAND_CHARS);
     }
 
-    return { text: processed, entries };
+    return processed;
   }
 }

@@ -1,9 +1,10 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // content-ref-resolver.test.ts —— 引用取数层的缓存 / 去重 / 降级语义
 //
-// 【为什么值得单测】这层是编辑器预览「不重取、不串模式、失败可重试」的全部依据，
+// 【为什么值得单测】这层是「不重取、不串模式、失败可重试」的全部依据，
 // 而错法全是静默的：并发重复请求只是「慢一点」、失败永久驻留只是「这次没加载出来」、
 // external 模式多发一条请求只是「401 一下」—— 页面全都照常渲染。
+// 缓存是否命中一律用 fetch 次数断言，不读内部成员。
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -54,14 +55,14 @@ describe('并发去重与缓存命中', () => {
     expect(a?.content).toBe('正文');
   });
 
-  it('已落账的条目不再请求（编辑器预览跨重渲染复用的依据）', async () => {
+  it('已落账的条目不再请求（同一 resolver 复用跨渲染的依据）', async () => {
     const calls = stubFetch(() => ({ clip: { content: '正文' } }));
     const r = new ContentRefResolver('expand');
 
-    await r.resolve('clipboard', CLIP_ID);
-    await r.resolve('clipboard', CLIP_ID);
-    expect(r.peek('clipboard', CLIP_ID)?.content).toBe('正文');
+    const first = await r.resolve('clipboard', CLIP_ID);
+    const second = await r.resolve('clipboard', CLIP_ID);
 
+    expect(second).toBe(first);
     expect(calls).toHaveLength(1);
   });
 
@@ -80,7 +81,7 @@ describe('并发去重与缓存命中', () => {
   });
 });
 
-describe('失败与刷新', () => {
+describe('失败与降级', () => {
   it('取数失败降级成文案并落缓存（不在每次渲染时重试）', async () => {
     const calls = stubFetch(() => 'NOT_OK');
     const r = new ContentRefResolver('expand');
@@ -91,92 +92,6 @@ describe('失败与刷新', () => {
     expect(first?.content).toBe(clipboardFailureText(CLIP_ID));
     expect(second?.content).toBe(clipboardFailureText(CLIP_ID));
     expect(calls).toHaveLength(1);
-  });
-
-  it('★ invalidate() 后重新请求 —— 403 不会被上一份缓存掩盖 ★', async () => {
-    let gate: unknown = 'NOT_OK';
-    const calls = stubFetch(() => gate);
-    const r = new ContentRefResolver('expand');
-
-    const denied = await r.resolve('clipboard', CLIP_ID);
-    expect(denied?.content).toBe(clipboardFailureText(CLIP_ID));
-
-    // 服务端随后放开了：不刷新就永远停在失败文案；刷新必须真去重取。
-    gate = { clip: { content: '后来能读了' } };
-    expect((await r.resolve('clipboard', CLIP_ID))?.content).toBe(clipboardFailureText(CLIP_ID));
-    r.invalidate();
-    expect((await r.resolve('clipboard', CLIP_ID))?.content).toBe('后来能读了');
-    expect(calls).toHaveLength(2);
-  });
-
-  it('★ 刷新时在飞的旧请求被作废：新代真重取，旧响应不回填缓存 ★', async () => {
-    // 场景：用户点了「刷新预览」，但刷新前那条请求还没落地。服务端状态在这中间
-    // 变了（比如引用方把剪贴板从私有改成公开）—— 旧响应若写回缓存，刷新就白点了。
-    const calls: string[] = [];
-    // 两条都悬在半空，由用例控制落地顺序 —— 只有这样才能在「旧落地、新未落地」
-    // 那个瞬间观察缓存，否则新代结果已经盖过旧代，断言看不出区别。
-    const land: (() => void)[] = [];
-    const respond = (content: string) => ({
-      ok: true,
-      status: 200,
-      json: async () => ({ clip: { content } }),
-    });
-    vi.stubGlobal(
-      'fetch',
-      vi.fn((input: RequestInfo | URL) => {
-        calls.push(String(input));
-        return new Promise((resolve) => {
-          land.push(() => resolve(respond(calls.length === 1 ? '旧正文' : '新正文')));
-        });
-      })
-    );
-
-    const r = new ContentRefResolver('expand');
-    const first = r.resolve('clipboard', CLIP_ID); // 代 0，在飞
-
-    r.invalidate(); // 刷新预览
-
-    const second = r.resolve('clipboard', CLIP_ID);
-    expect(calls, '刷新必须真去重取，不能复用刷新前那条在飞请求').toHaveLength(2);
-
-    // 旧请求先落地 —— 不得写回缓存（否则把稍后取到的新结果又盖回旧的）
-    land[0]();
-    await first;
-    expect(r.peek('clipboard', CLIP_ID), '旧代响应不得落进缓存').toBeUndefined();
-
-    // 新请求落地后才落账
-    land[1]();
-    expect((await second)?.content).toBe('新正文');
-    expect(r.peek('clipboard', CLIP_ID)?.content).toBe('新正文');
-
-    // 新代落账后照常命中缓存
-    await r.resolve('clipboard', CLIP_ID);
-    expect(calls).toHaveLength(2);
-  });
-
-  it('刷新后同键的并发读取仍只发一次（旧的在飞请求不得摘掉新请求）', async () => {
-    const calls: string[] = [];
-    vi.stubGlobal(
-      'fetch',
-      vi.fn((input: RequestInfo | URL) => {
-        calls.push(String(input));
-        if (calls.length === 1) return new Promise(() => {}); // 永不落地
-        return Promise.resolve({ ok: true, status: 200, json: async () => ({ clip: { content: 'x' } }) });
-      })
-    );
-
-    const r = new ContentRefResolver('expand');
-    void r.resolve('clipboard', CLIP_ID);
-    r.invalidate();
-
-    const [a, b] = await Promise.all([
-      r.resolve('clipboard', CLIP_ID),
-      r.resolve('clipboard', CLIP_ID),
-    ]);
-
-    // 一条旧的 + 一条新的；若新代两条没共用 in-flight 就是三条
-    expect(calls).toHaveLength(2);
-    expect(a).toBe(b);
   });
 
   it('投票探测失败带 error 标记（渲染层据此换兜底链接）', async () => {
@@ -202,12 +117,6 @@ describe('external 模式：一个请求都不发', () => {
     expect((await r.resolve('image', IMAGE_ID))?.url).toBe(`/api/images/${IMAGE_ID}/raw`);
 
     expect(calls, '对外视图一个请求都不发').toEqual([]);
-  });
-
-  it('外部视图的剪贴板不落缓存', async () => {
-    const r = new ContentRefResolver('external');
-    await r.resolve('clipboard', CLIP_ID);
-    expect(r.peek('clipboard', CLIP_ID)).toBeUndefined();
   });
 });
 
@@ -239,8 +148,10 @@ describe('剪贴板格式：reactive 绝不内联', () => {
     const r = new ContentRefResolver('expand');
 
     await r.resolve('clipboard', CLIP_ID);
-    expect(r.peek('clipboard', CLIP_ID)?.format).toBe('reactive');
-    expect(r.peek('clipboard', CLIP_ID)?.content).toBe('[查看剪贴板](/clipboard/AbCd1234)');
+    const hit = await r.resolve('clipboard', CLIP_ID);
+
+    expect(hit?.format).toBe('reactive');
+    expect(hit?.content).toBe('[查看剪贴板](/clipboard/AbCd1234)');
   });
 });
 
@@ -277,7 +188,7 @@ describe('图床与收藏夹', () => {
 
 describe('容量上限', () => {
   it(`超过 ${'RESOLVER_CACHE_CAP'} 条时逐出最旧（重取一次而已，不报错）`, async () => {
-    stubFetch(() => ({ clip: { content: 'x' } }));
+    const calls = stubFetch(() => ({ clip: { content: 'x' } }));
     const r = new ContentRefResolver('expand');
 
     // 填满后再多来一条 → 最早那条被逐出
@@ -286,10 +197,11 @@ describe('容量上限', () => {
     for (let i = 0; i < RESOLVER_CACHE_CAP; i += 1) {
       await r.resolve('clipboard', `Bb${String(i).padStart(6, '0')}`);
     }
-    expect(r.peek('clipboard', firstId)).toBeUndefined();
+    expect(calls).toHaveLength(RESOLVER_CACHE_CAP + 1);
 
-    // 被逐出不等于消失：再 resolve 一次重新拉回来
+    // 被逐出不等于消失：再 resolve 一次重新拉回来（多发一条请求，不报错）
     const again = await r.resolve('clipboard', firstId);
     expect(again?.content).toBe('x');
+    expect(calls).toHaveLength(RESOLVER_CACHE_CAP + 2);
   });
 });

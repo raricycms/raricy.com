@@ -1,14 +1,16 @@
 'use client';
 
-// 博客正文客户端渲染：组合四个共享模块，自身只管 React 生命周期与挂载。
+// 博客正文客户端渲染（**事故回退路径**）：组合四个共享模块，自身只管 React 生命周期
+// 与挂载。正常阅读走 ReactiveMD（`reactive/read-render.ts`），只有
+// `REACTIVE_MD_MODE=off` 下的 Markdown 文档才交给这里。
 //   · 内容引用预处理（[@id]）：content-ref-processor.ts（整篇扫描 / 替换顺序 /
 //     代码屏蔽 / 预算），取数走 content-ref-resolver.ts（两种模式 / 缓存）。
 //     6 位收藏夹只在这条管线上：评论与讨论走 rich-text.ts，那边刻意不认 6 位，
 //     与 9 位投票「只识别不展开」同向。
 //   · 整篇渲染：blog-renderer.ts（protectMath → marked + hljs → restoreMath →
-//     DOMPurify）。**没有第二套 Markdown → HTML 路径**，编辑器预览也走它。
+//     DOMPurify）。**没有第二套 Markdown → HTML 路径**。
 //   · DOM 后处理：blog-content-dom.ts（复制按钮 / 外链加固 / 图片放大 /
-//     投票小组件 / MathJax），正文交互与只读预览由 `interactive` 一个参数分叉。
+//     投票小组件 / MathJax）。
 //   · 代码高亮亮/暗双主题随 data-theme 切换：useHljsThemeStyles.ts。
 //
 // 【两种引用模式，不是「展开 / 不展开」】`contentRefs='expand'` 是站内成员视图，
@@ -16,19 +18,15 @@
 // external 仅展开图床与音频；剪贴板、投票与收藏夹保留原文，不携带资源数据。
 // 见 prop 上的说明与 docs/architecture.md §7.3。
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ContentRefProcessor, type RefRoundEntries } from '@/lib/content-ref-processor';
+import { ContentRefProcessor } from '@/lib/content-ref-processor';
 import { ContentRefResolver, type ContentRefMode } from '@/lib/content-ref-resolver';
 import { renderBlogMarkdown } from '@/lib/blog-renderer';
 import { enhanceBlogContent } from '@/lib/blog-content-dom';
-import type { VoteEmbedData } from '@/lib/blog-markdown';
 import { useHljsThemeStyles } from '@/app/components/useHljsThemeStyles';
 
 export default function MarkdownRenderer({
   content,
   contentRefs,
-  interactive = true,
-  resolver: sharedResolver,
-  refreshToken,
   containerId = 'userContentContainer',
 }: {
   content: string;
@@ -60,51 +58,10 @@ export default function MarkdownRenderer({
    * 出现第三种「引用不可用」的观感；也不往不可信字符串里插入任何新文本，没有新的转义面。
    */
   contentRefs: ContentRefMode;
-  /**
-   * 正文交互开关，默认 true（正文页行为）。编辑器完整预览传 **false**：
-   * 投票小组件渲染同一份结构但不绑提交处理器（预览不发业务写请求），
-   * 所有链接一律新窗口打开（就地跳转会丢掉未发布的草稿）。差异只从这一个
-   * 参数出去，见 blog-content-dom.ts 文件头。
-   */
-  interactive?: boolean;
-  /**
-   * 会话级引用缓存（编辑器预览跨重渲染复用，销毁随编辑器）。**不传 = 每次渲染
-   * 新建一个**（正文页现状：一篇正文内的重复引用只取一次，换内容重新取）。
-   * 传了的话，调用方负责它的生命周期与「刷新预览」（配合 `refreshToken`）。
-   */
-  resolver?: ContentRefResolver;
-  /**
-   * 「刷新预览」信号：值变化时先 `resolver.invalidate()` 再重新渲染 ——
-   * 401 / 403 不会被上一份成功缓存掩盖（缓存先清，本次拒绝一定重新取数）。
-   * 只在传了 `resolver` 时有意义；不传 resolver 时每次渲染本来就是全新缓存。
-   */
-  refreshToken?: number;
 }) {
   /** 渲染结果 + 抽出的公式数量（决定要不要跑 MathJax，见 markdown-math.ts）。 */
   const [doc, setDoc] = useState<{ html: string; mathCount: number } | null>(null);
-  /**
-   * 渲染序号 —— 投票位的**重画代际**（见下面后处理 effect）。
-   *
-   * 【为什么不直接用调用方的 refreshToken】refreshToken 一变、而这一份新的 render
-   * 还没落地时，后处理会**对着上一份 DOM** 再跑一次（旧元素 + 新代际 → 去重戳
-   * `data-rendered` 对不上 → 重画）。那一瞬间会话缓存刚被 `invalidate()` 清干净、
-   * 新的取数还在飞，于是 `voteData` 返回 undefined，小组件只能自己去拉一条 ——
-   * 每次点「刷新引用」多打一条请求，投票位还闪一次「加载投票…」，屏幕上却一切正常。
-   * 用**渲染序号**（与 doc 同一次 commit 落地）就没有这个中间态。
-   */
-  const [renderSeq, setRenderSeq] = useState(0);
-  /**
-   * **这一轮**的引用结果（与 doc 同一次 commit 落地）—— 投票小组件的数据就从这里取。
-   *
-   * 【为什么不用会话缓存里的那一份】`ContentRefResolver` 的缓存是全局的、随时可能被
-   * 别人作废（「刷新引用」、另一次渲染）。后处理跑起来时它可能已经被清成另一代：
-   * 那时再问缓存就会得到 undefined，小组件只能自己去拉一条 —— 于是同一屏上「正文里的
-   * 引用是本轮取到的、投票位是另一条请求」。处理器把本轮的真值交出来（preprocessRound），
-   * 这里接着，两边就一定是同一份快照。
-   */
-  const [roundEntries, setRoundEntries] = useState<RefRoundEntries | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const lastRefreshRef = useRef<number | undefined>(undefined);
 
   /**
    * ★ 传给 `dangerouslySetInnerHTML` 的那个对象必须 memo 住 ★
@@ -115,10 +72,9 @@ export default function MarkdownRenderer({
    * 于是**任何一次重渲染都会把容器的 innerHTML 整块重写一遍**。
    *
    * 而正文的后续处理（MathJax 排版、投票小组件、图片放大与复制按钮的绑定）是在
-   * commit 之后那次效果里做的，效果只认 doc / interactive / 数据口 这些依赖：
-   * 重写 DOM 这件事它看不见，于是**不会重跑**。症状（2026-10 实测）：
-   * 「写一段公式 → 切到预览」公式原样留成 `$$…$$` 文本（预览面板在编辑态是
-   * display:none，切换视图就是一次父级重渲染）；投票位同样会空掉。全程不报错。
+   * commit 之后那次效果里做的，效果只认 doc 这些依赖：重写 DOM 这件事它看不见，
+   * 于是**不会重跑**。症状（2026-10 实测）：重渲染后公式原样留成 `$$…$$` 文本，
+   * 投票位同样会空掉。全程不报错。
    *
    * 按 `doc` 对象 memo：**doc 变了才重写**，与上面那个效果的重跑严格同步；
    * 其它重渲染（父组件切视图、字数统计变化）一概不碰已经处理好的 DOM。
@@ -133,60 +89,19 @@ export default function MarkdownRenderer({
     (async () => {
       // 两种模式都要过预处理器 —— 差别在处理器**展开到哪一档**，不在「过不过它」。
       // 别在这里写 `contentRefs === 'expand' && …`：那样对外视图连音频都不会展开。
-      const resolver = sharedResolver ?? new ContentRefResolver(contentRefs);
-      // 刷新信号变化 → 先清会话缓存（在第一个 await 之前，保证本次渲染一定重取）。
-      if (sharedResolver && refreshToken !== lastRefreshRef.current) {
-        sharedResolver.invalidate();
-      }
-      lastRefreshRef.current = refreshToken;
-      const { text, entries } = await new ContentRefProcessor(resolver).preprocessRound(
-        content ?? ''
-      );
-      if (!cancelled) {
-        setDoc(renderBlogMarkdown(text));
-        setRoundEntries(entries);
-        // 与 doc 同一批 —— React 会把几次 setState 合成一次 commit，
-        // 于是后处理永远看不到「新代际 + 旧 DOM」这个中间态。
-        setRenderSeq((n) => n + 1);
-      }
+      const resolver = new ContentRefResolver(contentRefs);
+      const text = await new ContentRefProcessor(resolver).preprocess(content ?? '');
+      if (!cancelled) setDoc(renderBlogMarkdown(text));
     })();
     return () => { cancelled = true; };
-  }, [content, contentRefs, sharedResolver, refreshToken]);
-
-  /**
-   * 投票小组件的数据口：**本轮** entries 里那一格（见 roundEntries 的说明）。
-   * 返回 undefined 仍是「这一格本轮没取到，组件自己拉」——那是保底，不是常态。
-   *
-   * ★ 只给**带会话级 resolver 的调用方**（编辑器只读预览）★ 这是一条**边界**，
-   * 不是优化开关：正文页（`blog/[id]`、剪贴板的详情页）不传 resolver，那一路的
-   * 行为**保持逐字不变** —— 小组件自己去拉一次，票数取渲染那一刻的值
-   * （口径见 content-ref-resolver.ts 里 vote 那一段）。
-   * 而编辑器预览每停一下手就整块重渲染一次，若小组件每次都自己拉：
-   * 每停一下多一条请求、每次都先闪「加载投票…」，还可能在「刷新引用」的中间态上
-   * 与正文里的引用**不是同一份快照**（见 roundEntries 的说明）。
-   */
-  const roundVoteData = useMemo(
-    () =>
-      sharedResolver
-        ? (id: string) => {
-            const hit = roundEntries?.get(`vote:${id}`);
-            return hit ? ((hit.data as VoteEmbedData | undefined) ?? null) : undefined;
-          }
-        : undefined,
-    [sharedResolver, roundEntries]
-  );
+  }, [content, contentRefs]);
 
   // 渲染后处理：代码复制按钮、图片放大、外链加固、投票嵌入、MathJax
   useEffect(() => {
     const root = containerRef.current;
     if (!root || !doc) return;
-    enhanceBlogContent(root, {
-      interactive,
-      mathCount: doc.mathCount,
-      voteData: roundVoteData,
-      voteGeneration: renderSeq,
-    });
-  }, [doc, interactive, roundVoteData, renderSeq]);
+    enhanceBlogContent(root, { mathCount: doc.mathCount });
+  }, [doc]);
 
   return (
     <div className="blog-content-container-container">

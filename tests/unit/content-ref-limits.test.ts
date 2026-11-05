@@ -222,8 +222,7 @@ describe(`真实并发上限（${MAX_REF_CONCURRENCY}）`, () => {
     expect(stub.maxActive(), `峰值并发 ${stub.maxActive()} 超过上限`).toBe(MAX_REF_CONCURRENCY);
   });
 
-  it('★ 共享 resolver 的多轮渲染同时在飞：并发仍封在 4 ★', async () => {
-    const stub = deferredFetch();
+  it('★ 共享 resolver 的多轮渲染同时在飞：并发仍封在 4 ★', async () => {    const stub = deferredFetch();
     const r = new ContentRefResolver('expand');
     const p = new ContentRefProcessor(r);
     const round = (prefix: string, n: number) =>
@@ -237,27 +236,6 @@ describe(`真实并发上限（${MAX_REF_CONCURRENCY}）`, () => {
     await both;
 
     expect(stub.maxActive()).toBe(MAX_REF_CONCURRENCY);
-  });
-
-  it('★ 刷新后：排队的旧请求不再发出，且全部正常 settle（不挂死）★', async () => {
-    const stub = deferredFetch();
-    const r = new ContentRefResolver('expand');
-    const ids = Array.from({ length: 10 }, (_, i) => clipId(i));
-
-    const all = Promise.all(ids.map((id) => r.resolve('clipboard', id)));
-    await Promise.resolve();
-    expect(stub.calls, '4 条在飞、6 条排队').toHaveLength(MAX_REF_CONCURRENCY);
-
-    r.invalidate(); // ←「刷新引用」：这 6 条排队请求拿的是刷新前的状态
-
-    // 兑现那 4 条在飞的 → 闸门放行排队的 6 条，它们开工时发现代际过期
-    while (stub.pendingCount() > 0) await stub.drainOne();
-
-    const results = await all; // 全部 settle，绝不挂死
-    expect(results).toHaveLength(10);
-    expect(stub.calls, '过期的排队请求被发出去了').toHaveLength(MAX_REF_CONCURRENCY);
-    // 排队的 6 条按「取不到」兑现（undefined = 保留字面量）；在飞的 4 条拿到真结果
-    expect(results.filter((x) => x === undefined)).toHaveLength(6);
   });
 
   it('图床与对外视图不占并发名额（它们不发请求）', async () => {

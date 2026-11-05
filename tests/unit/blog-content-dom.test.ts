@@ -1,10 +1,9 @@
 // @vitest-environment jsdom
 // ─────────────────────────────────────────────────────────────────────────────
-// blog-content-dom.test.ts —— 正文挂载后的 DOM 后处理，重点是 `interactive` 分叉
+// blog-content-dom.test.ts —— 正文挂载后的 DOM 后处理
 //
-// 【为什么钉这条分叉】编辑器预览「看得到投票箱却投不了票」「点了链接不丢草稿」
-// 全靠这一个参数。写错全是静默的：预览里真能投票 = 多一条业务写请求；
-// 同站链接没强制 _blank = 用户一点就丢掉整篇未发布草稿，没有任何报错。
+// 钉住的是正文页真实需要的行为：外链加固（站外补 target/rel、javascript: 剥掉）、
+// 复制按钮反馈、投票小组件可交互、重复调用不重复取数。
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -73,17 +72,6 @@ describe('外链加固', () => {
 
     expect(root.querySelector('a')?.getAttribute('href')).toBeNull();
   });
-
-  it('★ 只读预览：同站链接也一律新窗口（就地跳转会丢掉编辑页草稿）★', () => {
-    const root = mount('<a href="/blog/abc">内</a><a href="mailto:a@b.c">邮</a>');
-
-    enhanceBlogContent(root, { interactive: false });
-
-    const [internal, mail] = Array.from(root.querySelectorAll('a'));
-    expect(internal.getAttribute('target')).toBe('_blank');
-    expect(internal.getAttribute('rel')).toContain('noopener');
-    expect(mail.getAttribute('target')).toBe('_blank');
-  });
 });
 
 describe('复制按钮', () => {
@@ -100,8 +88,8 @@ describe('复制按钮', () => {
   });
 });
 
-describe('投票嵌入的 interactive 分叉', () => {
-  it('正文页（默认）：选项可点，选中后提交按钮解锁', async () => {
+describe('投票嵌入', () => {
+  it('选项可点，选中后提交按钮解锁', async () => {
     stubVoteFetch();
     const root = mount(`<div class="vote-embed" data-vote-id="${VOTE_ID}"></div>`);
 
@@ -117,24 +105,17 @@ describe('投票嵌入的 interactive 分叉', () => {
     expect(submit.disabled, '选中一项后提交应解锁').toBe(false);
   });
 
-  it('★ 只读预览：同一份结构，但选项禁用、点击不解锁提交 ★', async () => {
+  it('★ id 里带 HTML 也不会被当成结构注入 ★', async () => {
     const calls = stubVoteFetch();
-    const root = mount(`<div class="vote-embed" data-vote-id="${VOTE_ID}"></div>`);
+    const root = mount(
+      `<div class="vote-embed" data-vote-id='x"><img src=x onerror="window.__pwn=1">'></div>`
+    );
 
-    enhanceBlogContent(root, { interactive: false });
+    enhanceBlogContent(root);
     await flush();
 
-    // 结构共享：标题 / 选项 / 提交按钮都在，与正文页看到的是同一份小组件
-    expect(root.querySelector('.vote-embed-title')?.textContent).toBe('晚饭吃什么');
-    const option = root.querySelector<HTMLButtonElement>('.vote-embed-option')!;
-    const submit = root.querySelector<HTMLButtonElement>('.vote-embed-submit')!;
-    expect(option.disabled).toBe(true);
-    expect(submit.disabled).toBe(true);
-
-    option.click();
-    expect(submit.disabled, '预览里点了也不能解锁 —— 预览不得发起投票').toBe(true);
-    // 只有取数那一次 GET；绝不含业务写请求
-    expect(calls.every((u) => u === `/api/votes/${VOTE_ID}`)).toBe(true);
+    expect(root.querySelector('img'), '注入的标签不能出现在正文里').toBeNull();
+    expect(calls.every((u) => u.startsWith('/api/votes/'))).toBe(true);
   });
 
   it('重复调用安全：投票位用 data-rendered 去重，不重复拉数据', async () => {

@@ -206,16 +206,16 @@ describe('投票小组件结构', () => {
     expect(el.querySelector('.vote-embed-option-label')!.textContent).toBe('<svg onload=alert(1)>');
   });
 
-  it('只读预览（interactive=false）：结构相同，但选项按钮全部禁用', () => {
+  it('已锁定：选项照画成结果行，不出现提交按钮，仍给详情链接', () => {
     const el = document.createElement('div');
-    buildVoteWidget(el, 'abc12345', VOTE_DATA, false);
+    buildVoteWidget(el, 'abc12345', { ...VOTE_DATA, is_locked: true });
 
-    // 与默认形态同一份结构（标题 / 选项 / 提交 / 详情链接都在）
     expect(el.querySelector('.vote-embed-title')!.textContent).toBe('午饭吃什么');
-    const options = el.querySelectorAll<HTMLButtonElement>('.vote-embed-option');
-    expect(options).toHaveLength(2);
-    options.forEach((o) => expect(o.disabled).toBe(true));
-    expect(el.querySelector<HTMLButtonElement>('.vote-embed-submit')!.disabled).toBe(true);
+    // 锁定态只画结果行（div），没有可点按钮、也没有提交按钮
+    expect(el.querySelectorAll('.vote-embed-option').length).toBe(2);
+    expect(el.querySelectorAll('button.vote-embed-option').length).toBe(0);
+    expect(el.querySelector('.vote-embed-submit')).toBeNull();
+    expect(el.querySelector('.vote-embed-badge')!.textContent).toBe('已锁定');
     expect(el.querySelector('.vote-embed-link')).not.toBeNull();
   });
 });

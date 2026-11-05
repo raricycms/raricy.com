@@ -5,14 +5,6 @@
 // 代码块「复制」按钮、外链加固、图片点击放大、投票嵌入小组件、MathJax 排版。
 // 输入是已挂载、已净化（DOMPurify）的容器元素。
 //
-// 【interactive：正文交互与只读预览的唯一分叉】
-//   · true（默认，正文页）—— 投票小组件绑定选中 / 提交处理器，同站链接就地跳转。
-//   · false（编辑器完整预览）—— 共享**同一份**投票展示结构但不绑提交处理器
-//     （选项按钮 disabled，见 blog-markdown.ts），且**所有**链接一律新窗口打开：
-//     预览嵌在编辑页里，同站链接就地跳转会当场丢掉未发布的草稿。
-//   除此之外两种模式逐字节一致 —— 复制按钮、图片放大、MathJax 都照常。
-//   别为了预览再抄一份「静态版」后处理：分叉只许从 `interactive` 这一个参数出去。
-//
 // 【生命周期】后处理把处理器直接绑在容器内的节点上，不返回清理函数 ——
 // 调用方重渲染时整块子树被 React 丢弃，监听器随节点一起回收。唯一的例外是
 // 图片放大遮罩：它挂在 document.body 上、点一下自己移除，与正文页现状一致。
@@ -20,7 +12,7 @@
 // 单测：tests/unit/blog-content-dom.test.ts（jsdom）。
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { renderVoteEmbed, type VoteEmbedData } from '@/lib/blog-markdown';
+import { renderVoteEmbed } from '@/lib/blog-markdown';
 
 // ── MathJax：模块化 mathjax-full（CHTML 输出），page-lifetime 单例─────────────
 import { mathjax } from 'mathjax-full/js/mathjax.js';
@@ -87,29 +79,8 @@ function typesetMath(root: HTMLElement): void {
 }
 
 export interface BlogContentDomOptions {
-  /** 见文件头「interactive」。默认 true（正文页行为）。 */
-  interactive?: boolean;
   /** 公式条数（renderBlogMarkdown 的返回值），>0 才跑 MathJax。 */
   mathCount?: number;
-  /**
-   * 只读预览的投票数据（id → 小组件数据）。**只在 `interactive === false` 时传。**
-   *
-   * 为什么需要它：预览每次防抖后都把整块 DOM 换掉，而 `renderVoteEmbed` 每渲染一次
-   * 就要拉一次 `GET /api/votes/<id>` —— 于是「写正文时每停一下就发一轮请求」，
-   * 投票位置还会闪一次「加载投票…」。这些请求与本次渲染的内容无关，纯属重复。
-   * 数据由 ContentRefResolver 提供：它**本来就为存在性探测**取过同一条报文
-   * （见 content-ref-resolver.ts 的 vote 分支），编辑器只是接手那份结果。
-   * 「刷新预览」清空会话缓存后再取一次，所以刷新拿到的是新票数。
-   *
-   * 返回 `undefined` = 这一格没有现成数据，退回自己拉（静默降级，不改变行为）。
-   */
-  voteData?: (id: string) => VoteEmbedData | null | undefined;
-  /**
-   * 预览「刷新引用」的代际。**值变了才允许把已经画过的投票位重画一遍。**
-   * 光靠 `data-rendered` 去重不够：刷新后正文没变、HTML 字符串逐字相同，React 不会
-   * 重建 DOM，小组件于是永远停在旧票数上（用户视角是「刷新按了没用」）。
-   */
-  voteGeneration?: string | number;
 }
 
 /**
@@ -117,8 +88,6 @@ export interface BlogContentDomOptions {
  * `data-rendered` 去重；复制 / 图片的 onclick 是赋值不是叠加）。
  */
 export function enhanceBlogContent(root: HTMLElement, options: BlogContentDomOptions = {}): void {
-  const interactive = options.interactive ?? true;
-
   // 复制按钮
   root.querySelectorAll<HTMLButtonElement>('.copy-btn').forEach((btn) => {
     btn.onclick = () => {
@@ -144,10 +113,6 @@ export function enhanceBlogContent(root: HTMLElement, options: BlogContentDomOpt
       if (isHttp && url.origin !== window.location.origin) {
         a.setAttribute('rel', 'noopener noreferrer nofollow');
         a.setAttribute('target', '_blank');
-      } else if (!interactive) {
-        // 只读预览：同站链接也一律新窗口 —— 就地跳转会丢掉编辑器里未发布的草稿。
-        a.setAttribute('rel', 'noopener noreferrer');
-        a.setAttribute('target', '_blank');
       }
     } catch { a.removeAttribute('href'); }
   });
@@ -169,20 +134,11 @@ export function enhanceBlogContent(root: HTMLElement, options: BlogContentDomOpt
   // 投票嵌入：拉数据 → 渲染完整小组件（标题 / 可投票 / 结果视图 / 详情页入口）。
   // 构造与交互都在 src/lib/blog-markdown.ts —— 那里是安全边界（id 校验 + 只用 DOM API
   // 写入），并有 jsdom 单测钉住结构。data-vote-id 来自用户 Markdown，校验也在那边做。
-  // 只读预览（interactive=false）共享同一份构造，但不绑提交处理器。
-  // 去重戳按「代际」记：默认代是 '1'，与从前那个 `dataset.rendered = '1'` 等价。
-  // 预览刷新时传进来的代际变了，戳对不上，于是会重画一遍（见选项说明）。
-  const stamp = String(options.voteGeneration ?? '1');
+  // 去重戳 `data-rendered` 让重复调用安全：同一份 DOM 上再跑一次不会重拉数据。
   root.querySelectorAll<HTMLElement>('.vote-embed[data-vote-id]').forEach((el) => {
-    if (el.dataset.rendered === stamp) return;
-    el.dataset.rendered = stamp;
-    const id = el.getAttribute('data-vote-id');
-    const provided = options.voteData && id ? options.voteData(id) : undefined;
-    // `provided === undefined` 才是「没给」；`null` 是「给了但没取到」——
-    // 后者要走 renderVoteEmbed 的兜底链接，不能退回自己去拉一次。
-    const opts: { interactive: boolean; data?: VoteEmbedData | null } = { interactive };
-    if (provided !== undefined) opts.data = provided;
-    void renderVoteEmbed(el, id, opts);
+    if (el.dataset.rendered === '1') return;
+    el.dataset.rendered = '1';
+    void renderVoteEmbed(el, el.getAttribute('data-vote-id'));
   });
 
   // MathJax 数学公式。判据是抽取阶段的公式计数，而不是在渲染后的 HTML 上
