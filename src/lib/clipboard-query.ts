@@ -30,7 +30,10 @@ export interface ClipDetail {
    * 猜错等于把另一种语言的源码交给 Markdown 解析器。读取方必须保留字面量 / 走链接。
    */
   format: ContentFormat | null;
-  /** 仅 format='reactive' 时有意义；只用于升级审计，不是渲染开关。 */
+  /**
+   * 正文语法版本。**参与解释兼容**：阅读时按写入时的版本解释同一份源码
+   * （`reactive/compile.ts` 的 `sourceForCurrentCompiler`），不参与渲染器选择。
+   */
   syntaxVersion: string | null;
   /** Shared by API, member embeds and public embeds. */
   version: string;
