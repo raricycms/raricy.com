@@ -1,5 +1,5 @@
 import { isCoreUser, isOwner } from '../auth';
-import { getClip } from '../clipboard-service';
+import { getClip } from '../clipboard-query';
 import { getVoteDetail } from '../vote-service';
 import { getPublicFavorite } from '../favorite-service';
 import { MAX_CARD_ITEMS } from '../favorite-refs';

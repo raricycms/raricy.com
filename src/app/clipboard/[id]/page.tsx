@@ -1,7 +1,7 @@
 import { requireCoreUser } from '@/lib/guard';
 import { forbidden, notFound } from 'next/navigation';
 import { getCurrentUser, isOwner } from '@/lib/auth';
-import { getClip } from '@/lib/clipboard-service';
+import { getClip } from '@/lib/clipboard-query';
 import { resolveReadRender } from '@/lib/reactive/read-render';
 import { ClipIdCopyButton, ClipActions, ClipContent } from './ClipDetailClient';
 import FooterCopyOverride from '@/app/components/FooterCopyOverride';

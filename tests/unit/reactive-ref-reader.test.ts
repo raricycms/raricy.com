@@ -1,7 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({ clip: vi.fn(), publicClips: vi.fn(), vote: vi.fn(), favorite: vi.fn() }));
-vi.mock('@/lib/clipboard-service', () => ({ getClip: mocks.clip, resolvePublicClipRefs: mocks.publicClips }));
+vi.mock('@/lib/clipboard-service', () => ({ resolvePublicClipRefs: mocks.publicClips }));
+// 引用读取走只读查询模块（与写用例分开，见 clipboard-query.ts 文件头）。
+vi.mock('@/lib/clipboard-query', () => ({ getClip: mocks.clip }));
 vi.mock('@/lib/vote-service', () => ({ getVoteDetail: mocks.vote }));
 vi.mock('@/lib/favorite-service', () => ({ getPublicFavorite: mocks.favorite }));
 vi.mock('@/lib/auth', () => ({

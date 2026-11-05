@@ -43,13 +43,13 @@ import {
 import {
   createClip,
   updateClip,
-  getClip,
   deleteClip,
   listUserClips,
   CLIP_TITLE_MAX,
   CLIP_CONTENT_MAX,
   CLIP_PER_USER_MAX,
 } from '@/lib/clipboard-service';
+import { getClip } from '@/lib/clipboard-query';
 import { PUT as clipPut, DELETE as clipDelete } from '@/app/api/clipboard/[id]/route';
 import { POST as clipPost } from '@/app/api/clipboard/route';
 import { POST as votesPost } from '@/app/api/votes/route';

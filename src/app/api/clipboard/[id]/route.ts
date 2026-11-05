@@ -6,8 +6,8 @@
 
 import { getCurrentUser, isOwner, isCoreUser } from '@/lib/auth';
 import { apiOk, apiErr } from '@/lib/format';
+import { getClip } from '@/lib/clipboard-query';
 import {
-  getClip,
   updateClip,
   deleteClip,
   resolveClipContentFormat,

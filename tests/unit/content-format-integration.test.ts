@@ -24,11 +24,11 @@ import {
 } from '@/lib/blog-service';
 import {
   createClip,
-  getClip,
   resolveClipContentFormat,
   resolvePublicClipRefs,
   updateClip,
 } from '@/lib/clipboard-service';
+import { getClip } from '@/lib/clipboard-query';
 import { getSpiderBlog } from '@/lib/spider-service';
 import { nowForDb } from '@/lib/db-time';
 

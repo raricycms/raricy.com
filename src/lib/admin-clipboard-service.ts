@@ -1,7 +1,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // admin-clipboard-service.ts — 云剪贴板的管理端检索与恢复（**含已软删 / 已隐藏**）
 //
-// 【为什么要单独一套】clipboard-service 的 getClip / listUserClips 都带
+// 【为什么要单独一套】clipboard-query 的 getClip / listUserClips 都带
 // `ignore: false`，也就是说它**恰好看不见要恢复的那些行**。管理端需要另一套读取。
 //
 // 【列表绝不取正文】ClipText.content 上限 5 万字（CLIP_CONTENT_MAX），一页 20 行

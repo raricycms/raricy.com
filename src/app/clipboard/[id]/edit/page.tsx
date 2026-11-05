@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import { forbidden, notFound } from 'next/navigation';
 import { requireCoreUser } from '@/lib/guard';
 import { getCurrentUser, isCoreUser, isOwner } from '@/lib/auth';
-import { getClip } from '@/lib/clipboard-service';
+import { getClip } from '@/lib/clipboard-query';
 import UploadForm from '../../upload/UploadForm';
 
 export const dynamic = 'force-dynamic';
