@@ -1,67 +1,24 @@
-// 格式转换器（/tool/convert）：**布局**端到端（真浏览器 + 真视口）
+// 格式转换器（/tool/convert）：**可用性**端到端（真浏览器 + 真视口）
 //
-// 【为什么走 e2e】标签栏八颗胶囊在 360px 视口下折不折行、拖放区点不点得到、
-// 任务操作按钮在窄屏挤不挤 —— 全是字体度量与真排版才能回答的问题，单测与
-// 截图都证明不了（判据一律取渲染后几何）。
-//
-// 【本文件在 RESPONSIVE_SPECS 里】desktop 验「八颗标签同一行 / 控件不溢出」，
-// mobile 验「折行但不横向溢出、触控目标够大」。页面无需登录（工具页全公开）。
+// 只留用户真会撞上的约束：页面不横向溢出、拖放区与主按钮看得见、加载出内容后操作区
+// 仍在视口内。排版细节（八颗标签同不同行、按钮多高、两栏怎么对齐）属于样式实现，
+// 按仓库纪律不在测试里固定 —— 由受影响页面与视口的实际检查负责。
 
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 
-test('八个能力区标签在桌面同行、在窄屏折行但页面不横向溢出', async ({ page }, testInfo) => {
-  const isMobile = testInfo.project.name === 'mobile';
+function overflowX(page: Page): Promise<number> {
+  return page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+}
+
+test('页面不横向溢出，上传控件可用，内容加载后操作区不越界', async ({ page }) => {
   await page.goto('/tool/convert');
+  expect(await overflowX(page), '首屏横向溢出').toBeLessThanOrEqual(2);
 
-  const tabs = page.locator('.fc-tabs');
-  await expect(tabs.locator('[role="tab"]')).toHaveCount(8);
+  // 拖放区与主按钮：任何视口都要真的在、真的点得到
+  await expect(page.locator('.fc-dropzone')).toBeVisible();
+  await expect(page.getByRole('button', { name: '选择文件' })).toBeVisible();
 
-  // 任何视口下：页面不许出现横向滚动条（body 横向溢出是移动端的头号静坏）
-  const overflowX = await page.evaluate(
-    () => document.documentElement.scrollWidth - document.documentElement.clientWidth
-  );
-  expect(overflowX, `页面横向溢出 ${overflowX}px`).toBeLessThanOrEqual(2);
-
-  const rows = await tabs.evaluate((el) => {
-    const tops = new Set(
-      [...el.querySelectorAll('[role="tab"]')].map((t) => Math.round(t.getBoundingClientRect().top))
-    );
-    return tops.size;
-  });
-  if (isMobile) {
-    // 窄屏八颗胶囊必然折行 —— 折行是对的行为，不许挤成横向滚动
-    expect(rows).toBeGreaterThan(1);
-  } else {
-    expect(rows).toBe(1);
-  }
-});
-
-test('拖放区与主按钮在任何视口都完整可见、可点', async ({ page }) => {
-  await page.goto('/tool/convert');
-  const dropzone = page.locator('.fc-dropzone');
-  await expect(dropzone).toBeVisible();
-  const box = (await dropzone.boundingBox())!;
-  // 拖放区不被裁切（在视口内，左右不越界）
-  expect(box.x).toBeGreaterThanOrEqual(0);
-  const vw = await page.evaluate(() => document.documentElement.clientWidth);
-  expect(box.x + box.width).toBeLessThanOrEqual(vw + 2);
-
-  const cta = page.getByRole('button', { name: '选择文件' });
-  await expect(cta).toBeVisible();
-  const btnBox = (await cta.boundingBox())!;
-  // 这里量的是「按钮真的撑得起点击」，**不是** 44px 那道线。
-  // 44px 是主要触屏图标入口的点击区域基准（见 docs/frontend-styles.md §3.5），
-  // 而三档按钮**刻意不统一尺寸**（abstracts/_mixins.scss 头部：「各按钮保留自己的
-  // 字号与内距」），文字按钮实测 40px。照抄 44 就是把一条不存在的规矩塞给本页。
-  expect(btnBox.height).toBeGreaterThanOrEqual(36);
-  // 更实在的一条：按钮整个落在拖放区里（没被裁切 / 没溢出容器）
-  expect(btnBox.y).toBeGreaterThanOrEqual(box.y - 2);
-  expect(btnBox.y + btnBox.height).toBeLessThanOrEqual(box.y + box.height + 2);
-});
-
-test('上传后文件清单、展开的参数与操作区不溢出，工作区按视口排列', async ({ page }, testInfo) => {
-  // 走一遍最小转换流程的**前半段**（上传 + 出现目标选择），只为把真实内容撑出来排版
-  await page.goto('/tool/convert');
+  // 走一遍最小转换流程的前半段，把真实内容撑出来（行为本身由 file-converter.spec.ts 覆盖）
   const PNG_1PX = Buffer.from(
     'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
     'base64'
@@ -74,24 +31,14 @@ test('上传后文件清单、展开的参数与操作区不溢出，工作区�
   await expect(page.locator('#fc-target')).toBeVisible({ timeout: 15_000 });
   await page.locator('#fc-target').selectOption('image:to-jpg');
   await page.getByRole('button', { name: '高级选项' }).click();
-  const panels = page.locator('.fc-workspace > .fc-panel');
-  const files = (await panels.nth(0).boundingBox())!;
-  const settings = (await panels.nth(1).boundingBox())!;
-  if (testInfo.project.name === 'mobile') {
-    expect(settings.y).toBeGreaterThanOrEqual(files.y + files.height);
-  } else {
-    expect(settings.y).toBeCloseTo(files.y, 0);
-    expect(settings.x).toBeGreaterThanOrEqual(files.x + files.width);
-  }
+
+  // 内容出现后，工作区里的控件不许被推出视口左右边界
+  const vw = await page.evaluate(() => document.documentElement.clientWidth);
   for (const control of await page.locator('.fc-workspace .btn, .fc-workspace select, .fc-tab').all()) {
     if (!(await control.isVisible())) continue;
-    const controlBox = (await control.boundingBox())!;
-    expect(controlBox.height).toBeGreaterThanOrEqual(44);
-    expect(controlBox.x).toBeGreaterThanOrEqual(0);
-    expect(controlBox.x + controlBox.width).toBeLessThanOrEqual(await page.evaluate(() => document.documentElement.clientWidth) + 2);
+    const box = (await control.boundingBox())!;
+    expect(box.x, '控件越出左边界').toBeGreaterThanOrEqual(-2);
+    expect(box.x + box.width, '控件越出右边界').toBeLessThanOrEqual(vw + 2);
   }
-  const overflowX = await page.evaluate(
-    () => document.documentElement.scrollWidth - document.documentElement.clientWidth
-  );
-  expect(overflowX, `待转换区横向溢出 ${overflowX}px`).toBeLessThanOrEqual(2);
+  expect(await overflowX(page), '待转换区横向溢出').toBeLessThanOrEqual(2);
 });

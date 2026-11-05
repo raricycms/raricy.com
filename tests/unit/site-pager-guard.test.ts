@@ -89,13 +89,10 @@ describe('站内分页的唯一实现', () => {
     ).toEqual([]);
   });
 
-  it('SitePager 走 pageWindow 给窗口，不平铺全部页码', () => {
+  it('SitePager 用 pageWindow 给窗口，不把窗口算术内联回组件', () => {
+    // 窗口算术本身由 page-window.test.ts 按输出验证；这里只钉「组件用的是哪个实现」，
+    // 不规定组件内部怎么写（负向断言"不许 Array.from"会误伤合法骨架）。
     const src = stripComments(read('src/app/components/SitePager.tsx'));
     expect(src).toContain('pageWindow');
-    // 直接按总页数铺格子是这条守卫前缀下最容易写回来的那种「分页」——
-    // 它的症状只有页数多时才可见，所以单独钉一句。
-    expect(src, 'SitePager 不许 Array.from({ length: pages }) 平铺全部页码').not.toMatch(
-      /Array\.from\(\s*\{\s*length:/
-    );
   });
 });

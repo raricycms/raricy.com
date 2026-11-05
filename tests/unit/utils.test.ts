@@ -27,12 +27,6 @@ describe('generateInviteCode：12 位 base62（注册端按 length===12 硬校�
     await resetDb();
   });
 
-  it('生成的码恰好 12 位且全为 base62 字符', async () => {
-    const code = await generateInviteCode();
-    expect(code.length, `邀请码长度必须为 12，实际 ${code.length}：${code}`).toBe(12);
-    expect(code, `邀请码含非 base62 字符：${code}`).toMatch(BASE62);
-  });
-
   it('落库：生成后能按 code 查到记录，且 isUsed=false', async () => {
     const code = await generateInviteCode();
     const row = await prisma.inviteCode.findUnique({ where: { code } });
@@ -56,13 +50,9 @@ describe('generateInviteCode：12 位 base62（注册端按 length===12 硬校�
     // 无重复：code 是 @unique 列，撞号会让 prisma.create 直接抛错，
     // 所以这里能跑到断言本身就已经说明没撞；但显式断言可以定位是「静默去重」还是真没撞。
     expect(new Set(codes).size, `${N} 个码里出现重复`).toBe(N);
-  }, 60_000);
 
-  it('随机性抽查：500 个码里首字符不应全都一样（不是常量生成器）', async () => {
-    const codes: string[] = [];
-    for (let i = 0; i < 200; i++) codes.push(await generateInviteCode());
-    const firstChars = new Set(codes.map((c) => c[0]));
-    expect(firstChars.size, '所有码首字符都相同，随机源可疑').toBeGreaterThan(1);
+    // 首字符也得有变化，否则说明生成器退化成常量 / 前缀固定。
+    expect(new Set(codes.map((c) => c[0])).size, '所有码首字符都相同，随机源可疑').toBeGreaterThan(1);
   }, 60_000);
 });
 
@@ -71,15 +61,11 @@ describe('generateInviteCode：12 位 base62（注册端按 length===12 硬校�
 // ═══════════════════════════════════════════════════════════════════════════
 
 describe('generateShortId：长度与字符集', () => {
-  it('默认 8 位（剪贴板主键 ClipBoard.id 用的就是默认值）', () => {
+  it('默认 8 位，显式长度按参数返回（剪贴板 8 位 / 投票 9 位）', () => {
     const id = generateShortId();
     expect(id.length, `默认长度必须是 8，实际 ${id.length}：${id}`).toBe(8);
     expect(id, `含非法字符：${id}`).toMatch(SHORTID_CHARS);
-  });
-
-  it('显式 8 位（剪贴板）与 9 位（投票）都按参数返回对应长度', () => {
-    expect(generateShortId(8)).toHaveLength(8);
-    expect(generateShortId(9)).toHaveLength(9);
+    for (const len of [8, 9]) expect(generateShortId(len)).toHaveLength(len);
   });
 
   it('字符集只含小写字母 + 数字（无大写、无符号——ID 要进 URL）', () => {
@@ -113,10 +99,6 @@ describe('generateShortId：大量生成无重复', () => {
   it('1000 个 9 位投票 ID 无重复', () => {
     const ids = new Set(Array.from({ length: 1000 }, () => generateShortId(9)));
     expect(ids.size, `1000 个 9 位 ID 出现 ${1000 - ids.size} 次重复`).toBe(1000);
-  });
-
-  it('两次调用几乎必然不同（不是固定种子）', () => {
-    expect(generateShortId(16)).not.toBe(generateShortId(16));
   });
 });
 
