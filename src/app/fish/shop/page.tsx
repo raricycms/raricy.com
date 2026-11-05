@@ -5,7 +5,7 @@ import { getBalance } from '@/lib/fish-service';
 import { listShopItems } from '@/lib/frame-shop-service';
 import { listBubbleShopItems } from '@/lib/bubble-shop-service';
 import PageHeader from '@/app/components/PageHeader';
-import ShopPanel from '../market/ShopPanel';
+import ShopPanel from './ShopPanel';
 export const dynamic='force-dynamic';
 export const metadata={title:'鱼干商城',robots:{index:false,follow:false}};
 export default async function ShopPage({searchParams}:{searchParams:Promise<{category?:string}>}){

@@ -32,7 +32,6 @@ export default async function ClipDetailPage({ params }: { params: Promise<{ id:
     id: clip.id,
     source: contentSource,
     format: clip.format,
-    override: clip.rendererOverride,
     viewer: user ? { id: user.id, role: user.role, archivedAt: user.archivedAt } : null,
     mode: 'expand',
     syntaxVersion: clip.syntaxVersion,

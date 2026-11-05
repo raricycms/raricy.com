@@ -140,8 +140,8 @@ export default async function BlogDetailPage({ params }: { params: Promise<{ id:
       ])
     : [{ fed: 0 }, null, false];
 
-  // 渲染路径决策（格式 / override / 灰度 / 回退）全部交给 read-render：
-  // 页面不自己判 cohort，也绝不把 reactive 源码交给 MarkdownRenderer。
+  // 渲染路径决策全部交给 read-render（它内部用唯一的 selectContentRenderer）：
+  // 页面不自己判管线，也绝不把 reactive 源码交给 MarkdownRenderer。
   // 访客（非 core）走 external —— 剪贴板、投票与收藏均保留字面量。
   const contentSource = blog.content?.content ?? '';
   const readRender = await resolveReadRender({
@@ -149,7 +149,6 @@ export default async function BlogDetailPage({ params }: { params: Promise<{ id:
     id: blog.id,
     source: contentSource,
     format: blog.content?.format,
-    override: blog.rendererOverride,
     viewer: member
       ? { id: member.id, role: member.role, archivedAt: member.archivedAt }
       : null,

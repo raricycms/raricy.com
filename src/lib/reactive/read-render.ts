@@ -10,7 +10,6 @@ export interface ReadRenderInput {
   id: string;
   source: string;
   format: unknown;
-  override?: unknown;
   viewer: { id: string; role?: string; archivedAt?: Date | null } | null;
   mode: 'expand' | 'external';
   clientIp?: string;
