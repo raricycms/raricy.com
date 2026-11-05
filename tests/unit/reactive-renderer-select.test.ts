@@ -17,20 +17,17 @@ describe('format write gate', () => {
 });
 
 describe('reactive renderer selection（统一后）', () => {
-  it('默认启用：未设置环境变量也是统一管线', () => {
-    expect(parseReactiveFlags({})).toEqual({ mode: 'on', percent: 100 });
-    expect(parseReactiveFlags({ REACTIVE_MD_MODE: 'on' })).toEqual({ mode: 'on', percent: 100 });
-    // shadow 不再做影子编译，等同启用；只有显式 off 是回退。
-    expect(parseReactiveFlags({ REACTIVE_MD_MODE: 'shadow' }).mode).toBe('shadow');
-    expect(parseReactiveFlags({ REACTIVE_MD_MODE: 'off' }).mode).toBe('off');
-    // percent 仅保留环境变量兼容，不再参与选择。
-    expect(parseReactiveFlags({ REACTIVE_MD_PERCENT: '0' }).percent).toBe(0);
+  it('只有显式 off 是回退：未设置、on、历史 shadow 都按启用', () => {
+    expect(parseReactiveFlags({})).toEqual({ mode: 'on' });
+    expect(parseReactiveFlags({ REACTIVE_MD_MODE: 'on' })).toEqual({ mode: 'on' });
+    expect(parseReactiveFlags({ REACTIVE_MD_MODE: 'shadow' })).toEqual({ mode: 'on' });
+    expect(parseReactiveFlags({ REACTIVE_MD_MODE: 'off' })).toEqual({ mode: 'off' });
+    // 历史灰度变量已退出决策，留着也不改变任何状态。
+    expect(parseReactiveFlags({ REACTIVE_MD_PERCENT: '0' })).toEqual({ mode: 'on' });
   });
 
-  it('默认：Markdown 与 Reactive 都走 reactive，不再看 percent', () => {
+  it('默认：Markdown 与 Reactive 都走 reactive', () => {
     expect(selectContentRenderer({ ...base, flags: enabled })).toEqual({ renderer: 'reactive', reason: 'format' });
-    expect(selectContentRenderer({ ...base, flags: { mode: 'on', percent: 0 } }))
-      .toEqual({ renderer: 'reactive', reason: 'format' });
   });
 
   it('事故回退：Markdown → legacy；Reactive → static；未知格式仍 unavailable', () => {

@@ -21,13 +21,11 @@ import { ContentRefResolver, type ContentRefMode } from '@/lib/content-ref-resol
 import { renderBlogMarkdown } from '@/lib/blog-renderer';
 import { enhanceBlogContent } from '@/lib/blog-content-dom';
 import type { VoteEmbedData } from '@/lib/blog-markdown';
-import type { ExternalClipData } from '@/lib/reactive/ref-types';
 import { useHljsThemeStyles } from '@/app/components/useHljsThemeStyles';
 
 export default function MarkdownRenderer({
   content,
   contentRefs,
-  externalClips,
   interactive = true,
   resolver: sharedResolver,
   refreshToken,
@@ -62,8 +60,6 @@ export default function MarkdownRenderer({
    * 出现第三种「引用不可用」的观感；也不往不可信字符串里插入任何新文本，没有新的转义面。
    */
   contentRefs: ContentRefMode;
-  /** @deprecated 兼容旧调用形状；external 始终忽略片段数据。 */
-  externalClips?: Record<string, string | ExternalClipData>;
   /**
    * 正文交互开关，默认 true（正文页行为）。编辑器完整预览传 **false**：
    * 投票小组件渲染同一份结构但不绑提交处理器（预览不发业务写请求），
@@ -137,7 +133,7 @@ export default function MarkdownRenderer({
     (async () => {
       // 两种模式都要过预处理器 —— 差别在处理器**展开到哪一档**，不在「过不过它」。
       // 别在这里写 `contentRefs === 'expand' && …`：那样对外视图连音频都不会展开。
-      const resolver = sharedResolver ?? new ContentRefResolver(contentRefs, externalClips);
+      const resolver = sharedResolver ?? new ContentRefResolver(contentRefs);
       // 刷新信号变化 → 先清会话缓存（在第一个 await 之前，保证本次渲染一定重取）。
       if (sharedResolver && refreshToken !== lastRefreshRef.current) {
         sharedResolver.invalidate();
@@ -155,7 +151,7 @@ export default function MarkdownRenderer({
       }
     })();
     return () => { cancelled = true; };
-  }, [content, contentRefs, externalClips, sharedResolver, refreshToken]);
+  }, [content, contentRefs, sharedResolver, refreshToken]);
 
   /**
    * 投票小组件的数据口：**本轮** entries 里那一格（见 roundEntries 的说明）。

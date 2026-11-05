@@ -53,7 +53,7 @@ describe('替换预算（整篇 MAX_BLOG_REF_ITEMS）', () => {
 
   it('取不到的引用不吃名额（缺失剪贴板在前，图床照样展开满额）', async () => {
     stubFetch();
-    const r = new ContentRefResolver('external', {}); // 剪贴板不在下发表里
+    const r = new ContentRefResolver('external'); // 剪贴板在对外视图里一律保留字面量
     const tokens = [`[@${CLIP_ID}]`, ...Array.from({ length: MAX_BLOG_REF_ITEMS }, () => `[@${IMAGE_ID}]`)].join('\n');
 
     const out = await new ContentRefProcessor(r).preprocess(tokens);

@@ -22,7 +22,7 @@ export interface RendererChoice {
 }
 
 /**
- * 决策只依赖这三项。逐篇 override、灰度百分比和版本号都不参与选择，
+ * 决策只依赖这三项。逐篇 override、灰度百分比和语法版本都不参与选择，
  * 因此不进这个入参 —— 放在这里会让人以为它们仍然有效。
  */
 export interface RendererSelectionInput {

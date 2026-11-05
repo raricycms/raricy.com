@@ -3,15 +3,15 @@ vi.mock('@/lib/reactive/compile-content', () => ({ compileContent: vi.fn() }));
 import { compileContent } from '@/lib/reactive/compile-content';
 import { resolveReadRender, type ReadRenderInput } from '@/lib/reactive/read-render';
 const compileMock = vi.mocked(compileContent);
-const input: ReadRenderInput = { kind: 'blog', id: 'one', source: '正文', format: 'markdown', viewer: null, mode: 'external' };
+const input: ReadRenderInput = { source: '正文', format: 'markdown', viewer: null, mode: 'external' };
 function compiled(ok = true) {
   return { outcome: { result: ok ? { ok: true, document: { nodes: [] }, diagnostics: [] } : { ok: false, diagnostics: [{ code: 'local.structure.children' }] }, hostData: {}, compileMs: 3, cacheHit: false } } as never;
 }
 afterEach(() => { vi.resetAllMocks(); delete process.env.REACTIVE_MD_MODE; });
 describe('按需渲染源码', () => {
-  it.each(['blog', 'clipboard'] as const)('%s 无快照也返回可交互正文', async kind => {
+  it('无快照也返回可交互正文', async () => {
     compileMock.mockResolvedValue(compiled());
-    const result = await resolveReadRender({ ...input, kind });
+    const result = await resolveReadRender(input);
     expect(result.choice.renderer).toBe('reactive');
     expect(result.bundle?.result.ok).toBe(true);
   });
@@ -41,7 +41,7 @@ describe('按需渲染源码', () => {
   it('坏文章不影响其它文章', async () => {
     compileMock.mockResolvedValueOnce(compiled(false)).mockResolvedValueOnce(compiled());
     expect((await resolveReadRender({ ...input, format: 'reactive' })).failure).toBe('compile');
-    expect((await resolveReadRender({ ...input, id: 'two' })).choice.renderer).toBe('reactive');
+    expect((await resolveReadRender({ ...input, source: '另一篇' })).choice.renderer).toBe('reactive');
   });
   it('编译抛错只返回当前文档不可用', async () => {
     compileMock.mockRejectedValue(new Error('compile failed'));

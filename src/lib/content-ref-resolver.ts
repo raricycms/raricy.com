@@ -46,7 +46,6 @@ import {
 } from '@/lib/content-refs';
 import { parseContentFormat } from '@/lib/content-format';
 import type { ContentFormat } from '@/lib/content-format';
-import type { ExternalClipData } from '@/lib/reactive/ref-types';
 import {
   MAX_CARD_ITEMS,
   buildFavoriteCardHtml,
@@ -124,13 +123,9 @@ export class ContentRefResolver {
   private schedule = createConcurrencyLimiter(MAX_REF_CONCURRENCY);
 
   /**
-   * @param mode          见文件头「两种模式」。实例级固定，不随调用变。
-   * @param externalClips 兼容旧调用形状；对外视图始终忽略它。
+   * @param mode 见文件头「两种模式」。实例级固定，不随调用变。
    */
-  constructor(
-    private mode: ContentRefMode,
-    private externalClips: Record<string, string | ExternalClipData> = {}
-  ) {}
+  constructor(private mode: ContentRefMode) {}
 
   /**
    * 取一条引用的解析结果。`undefined` = 「不替换、保留字面量」
@@ -228,7 +223,6 @@ export class ContentRefResolver {
     }
 
     if (type === 'clipboard') {
-      // 即使旧缓存或调用方传来片段数据，对外视图也不消费它。
       if (this.mode === 'external') return undefined;
       try {
         const res = await fetch(`/api/clipboard/${id}`, { credentials: 'same-origin' });

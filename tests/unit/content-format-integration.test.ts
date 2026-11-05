@@ -25,7 +25,6 @@ import {
 import {
   createClip,
   resolveClipContentFormat,
-  resolvePublicClipRefs,
   updateClip,
 } from '@/lib/clipboard-service';
 import { getClip } from '@/lib/clipboard-query';
@@ -49,7 +48,7 @@ async function makeReactiveBlog(authorId: string): Promise<string> {
 }
 
 async function makeReactiveClip(authorId: string): Promise<string> {
-  // 必须是合法的 8 位剪贴板 id —— resolvePublicClipRefs 只认这个长度。
+  // 必须是合法的 8 位剪贴板 id —— 引用分流按 id 长度判定。
   const id = 'react001';
   await prisma.clipBoard.create({
     data: {
@@ -159,7 +158,7 @@ describe('博客格式：validateBlogData / 落库 / 读出口', () => {
     });
     const snapshot = await prisma.reactiveSnapshot.findFirst({ where: { kind: 'blog', contentId: id } });
     expect(snapshot).toBeNull();
-    const rendered = await resolveReadRender({ kind: 'blog', id, source: content, format: 'reactive', viewer: u, mode: 'expand' });
+    const rendered = await resolveReadRender({ source: content, format: 'reactive', viewer: u, mode: 'expand' });
     if (!rendered.bundle?.result.ok) throw new Error('live compilation failed');
     const document = rendered.bundle.result.document;
     expect(JSON.stringify(document)).toContain('红色正文');
@@ -351,8 +350,8 @@ describe('博客格式：validateBlogData / 落库 / 读出口', () => {
   });
 });
 
-// ── 3. 剪贴板：落库、读出口、对外解析 ────────────────────────────────────────
-describe('剪贴板格式：createClip / updateClip / getClip / resolvePublicClipRefs', () => {
+// ── 3. 剪贴板：落库、读出口 ─────────────────────────────────────────────────
+describe('剪贴板格式：createClip / updateClip / getClip', () => {
   it('新建默认 markdown；显式 reactive 只保存源码；无法编译时整笔拒绝', async () => {
     const u = await makeUser();
     const ok = await createClip(u.id, { title: 't', content: 'c' });
@@ -463,15 +462,17 @@ describe('剪贴板格式：createClip / updateClip / getClip / resolvePublicCli
     if (got.ok) expect(got.clip.format, '未知值不能猜成 markdown').toBeNull();
   });
 
-  it('所有格式的站内剪贴板均不产生对外载荷', async () => {
+  it('所有格式的站内剪贴板均只有成员视图读得到正文', async () => {
     const u = await makeUser();
     const md = await createClip(u.id, { title: 'md 标题', content: 'md 正文' });
     expect(md.ok).toBe(true);
     if (!md.ok) return;
     const reactiveId = await makeReactiveClip(u.id);
-    expect(await resolvePublicClipRefs(`[@${md.id}] 与 [@${reactiveId}]`)).toEqual({});
     const member = await getClip(md.id, u.id);
     expect(member.ok && member.clip.content).toBe('md 正文');
+    // reactive 剪贴板读出来仍是源码 + 自己的格式，由阅读路径决定怎么渲染。
+    const reactive = await getClip(reactiveId, u.id);
+    expect(reactive.ok && reactive.clip.format).toBe('reactive');
   });
 });
 

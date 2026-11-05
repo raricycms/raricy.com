@@ -179,7 +179,7 @@ describe('adaptReactiveReferences（expand）', () => {
 // ═══ 三、external 模式：一个请求都不发 ════════════════════════════════════════
 
 describe('adaptReactiveReferences（external）', () => {
-  it('绝不调用 resolve；投票 / 收藏夹保留字面量；剪贴板只认下发的公开数据', async () => {
+  it('绝不调用 resolve；剪贴板 / 投票 / 收藏夹一律保留字面量，只展开音频', async () => {
     let resolveCalls = 0;
     const reader: ReferenceReader = async () => {
       resolveCalls += 1;
@@ -196,9 +196,6 @@ describe('adaptReactiveReferences（external）', () => {
     const result = await adaptReactiveReferences(source, {
       mode: 'external',
       resolve: reader,
-      externalClips: {
-        [CLIP_ID]: { content: '公开正文', format: 'markdown', version: 'v1', title: '公开板' },
-      },
     });
 
     expect(resolveCalls).toBe(0);
@@ -207,10 +204,8 @@ describe('adaptReactiveReferences（external）', () => {
     // 投票 / 收藏夹：读口要 core+，对外视图保持字面量
     expect(result.adaptedSource).toContain(`[@${VOTE_ID}]`);
     expect(result.adaptedSource).toContain(`[@${FAV_ID}]`);
-    // 不在下发表里的剪贴板也保持字面量 —— 不发标签就不会出现占位
+    // 剪贴板也不展开 —— 不发标签就不会出现占位
     expect(result.adaptedSource).toContain('[@AbCd5678]');
-    // 下发的正文只用于提供标题 / 版本，绝不内联
-    expect(result.adaptedSource).not.toContain('公开正文');
     expect(result.hostData[`clipboard:${CLIP_ID}`]).toBeUndefined();
     expect(result.hostData[`vote:${VOTE_ID}`]).toBeUndefined();
   });

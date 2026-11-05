@@ -91,12 +91,6 @@ export interface SiteEmbedData extends ResolvedReference {
 
 export type SiteHostData = Readonly<Record<string, SiteEmbedData>>;
 export type ReferenceReader = (slot: ReferenceSlot) => Promise<ResolvedReference | undefined>;
-export interface ExternalClipData {
-  content: string;
-  format: ContentFormat;
-  version?: string;
-  title?: string;
-}
 
 /** 兼容层提取的受限 data 位图（仅 hostData 使用）。 */
 export interface DataImageSource {

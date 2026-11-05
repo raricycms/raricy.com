@@ -13,9 +13,8 @@
 //
 // 【不是渲染器，也不是取数层】本模块不 import prisma、不发 HTTP、不碰 React。
 // `resolve` 是调用方按当前权限上下文注入的 `ReferenceReader`（站内 expand 视图
-// 就是 `ContentRefResolver` 那一套）；对外视图则一个请求都不发，只用服务端随
-// external 不读剪贴板、投票与收藏夹；旧 externalClips 参数也忽略。
-// 得到不同但都正确的适配结果。
+// 就是 `ContentRefResolver` 那一套）；对外视图则一个请求都不发，也不读剪贴板、
+// 投票与收藏夹，只展开图床与音频 —— 两档因此得到不同但都正确的适配结果。
 //
 // ── 六条「错了也不报错」的纪律 ────────────────────────────────────────────────
 //
@@ -89,7 +88,6 @@ import {
 import { BoundedLruCache } from './bounded-cache';
 import type {
   DataImageSource,
-  ExternalClipData,
   ReferenceKind,
   ReferenceMode,
   ReferenceReader,
@@ -151,10 +149,6 @@ export interface ReactiveAdaptOptions {
   mediaSources?: SiteMediaSources;
   /** `expand` 模式下的取数函数。`external` 模式**绝不调用**它。 */
   resolve?: ReferenceReader;
-  /**
-   * @deprecated 兼容旧调用形状；external 不消费任何剪贴板载荷。
-   */
-  externalClips?: Record<string, ExternalClipData>;
 }
 
 /**
@@ -368,7 +362,6 @@ function planReplacement(
   slot: ReferenceSlot,
   mode: ReferenceMode,
   resolvedByKey: ReadonlyMap<string, ResolvedReference | undefined>,
-  externalClips: Record<string, ExternalClipData>,
   dataImages: Readonly<Record<string, DataImageSource>>,
   mediaSources: SiteMediaSources,
   parentFormat: ContentFormat | undefined
@@ -714,7 +707,6 @@ export async function adaptReactiveReferences(
 
   const candidates = collectCandidates(slots, mode);
   const resolvedByKey = await resolveCandidates(candidates, options.resolve);
-  const externalClips = options.externalClips ?? {};
 
   // 伪造标签的转义与预算无关 —— 那是安全改写，哪怕是超长正文也必须做。
   const edits: SourceEdit[] = collectForgedEmbedEdits(source, masked);
@@ -740,7 +732,6 @@ export async function adaptReactiveReferences(
       slot,
       mode,
       resolvedByKey,
-      externalClips,
       options.dataImages ?? {},
       options.mediaSources ?? {},
       options.parentFormat

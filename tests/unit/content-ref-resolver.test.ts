@@ -192,13 +192,11 @@ describe('失败与刷新', () => {
 });
 
 describe('external 模式：一个请求都不发', () => {
-  it('旧载荷不改变成员资源边界，图床仍可用', async () => {
+  it('成员资源一律保留字面量，图床仍可用', async () => {
     const calls = stubFetch();
-    const r = new ContentRefResolver('external', { [CLIP_ID]: '公开剪贴板正文' });
+    const r = new ContentRefResolver('external');
 
     expect(await r.resolve('clipboard', CLIP_ID)).toBeUndefined();
-    // 不在表里的（私有 / 已软删 / 不存在）→ undefined = 保留字面量
-    expect(await r.resolve('clipboard', 'ZZyy9876')).toBeUndefined();
     expect(await r.resolve('vote', VOTE_ID)).toBeUndefined();
     expect(await r.resolve('favorite', FAV_ID)).toBeUndefined();
     expect((await r.resolve('image', IMAGE_ID))?.url).toBe(`/api/images/${IMAGE_ID}/raw`);
@@ -206,32 +204,14 @@ describe('external 模式：一个请求都不发', () => {
     expect(calls, '对外视图一个请求都不发').toEqual([]);
   });
 
-  it('不在表里的剪贴板不落缓存（payload 是固定快照，重查字典即可）', async () => {
-    const r = new ContentRefResolver('external', {});
+  it('外部视图的剪贴板不落缓存', async () => {
+    const r = new ContentRefResolver('external');
     await r.resolve('clipboard', CLIP_ID);
     expect(r.peek('clipboard', CLIP_ID)).toBeUndefined();
   });
 });
 
 describe('剪贴板格式：reactive 绝不内联', () => {
-  it('external 结构化数据：所有格式及旧形状均忽略', async () => {
-    const calls = stubFetch();
-    const r = new ContentRefResolver('external', {
-      [CLIP_ID]: { content: '# reactive 源码', format: 'reactive', title: '标题' },
-      MdMd1234: { content: '普通 markdown 正文', format: 'markdown' },
-      // 库里认不出的值：类型上不该出现，运行时必须 fail-closed。
-      Bad0Bad0: { content: '未知格式源码', format: 'weird' as never },
-      // 旧形状：按 markdown 内联（兼容既有调用方）。
-      Legacy01: '旧字符串正文',
-    });
-
-    for (const id of [CLIP_ID, 'MdMd1234', 'Bad0Bad0', 'Legacy01']) {
-      expect(await r.resolve('clipboard', id)).toBeUndefined();
-    }
-
-    expect(calls, '对外视图一个请求都不发').toEqual([]);
-  });
-
   it('expand 响应：带 reactive / 未知格式 → 链接；缺 format 的旧响应仍按 markdown 内联', async () => {
     let body: unknown = { clip: { content: '# 源码', format: 'reactive' } };
     const calls = stubFetch(() => body);

@@ -28,8 +28,6 @@ export default async function ClipDetailPage({ params }: { params: Promise<{ id:
   // 编译 / 决策在服务端完成，客户端只拿可序列化的 document / hostData。
   const contentSource = clip.content ?? '';
   const readRender = await resolveReadRender({
-    kind: 'clipboard',
-    id: clip.id,
     source: contentSource,
     format: clip.format,
     viewer: user ? { id: user.id, role: user.role, archivedAt: user.archivedAt } : null,

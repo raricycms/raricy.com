@@ -1,7 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const mocks = vi.hoisted(() => ({ clip: vi.fn(), publicClips: vi.fn(), vote: vi.fn(), favorite: vi.fn() }));
-vi.mock('@/lib/clipboard-service', () => ({ resolvePublicClipRefs: mocks.publicClips }));
+const mocks = vi.hoisted(() => ({ clip: vi.fn(), vote: vi.fn(), favorite: vi.fn() }));
 // 引用读取走只读查询模块（与写用例分开，见 clipboard-query.ts 文件头）。
 vi.mock('@/lib/clipboard-query', () => ({ getClip: mocks.clip }));
 vi.mock('@/lib/vote-service', () => ({ getVoteDetail: mocks.vote }));
@@ -18,14 +17,11 @@ const slot = (kind: ReferenceKind, ref: string) => ({ kind, ref, token: `[@${ref
 beforeEach(() => vi.clearAllMocks());
 
 describe('request-scoped reference permissions', () => {
-  it('prepares external payloads using public data without probing member resources', async () => {
-    mocks.publicClips.mockResolvedValue({ AbCd1234: { content: '{{private-looking syntax}}', format: 'reactive', version: 'v1' } });
+  it('prepares external payloads without probing member resources', async () => {
     const source = '[@AbCd1234] [@AbCdEf123] [@123456]';
     const result = await prepareReactiveDocument(source, { mode: 'external', format: 'reactive', viewer: null });
     expect(result.hostData).toEqual({});
     expect(result.adaptedSource).toBe(source);
-    expect(mocks.publicClips).not.toHaveBeenCalled();
-    expect(result.adaptedSource).not.toContain('private-looking');
     expect(result.adaptedSource).toContain('[@AbCdEf123]');
     expect(result.sourceHash).toMatch(/^[a-f0-9]{64}$/);
     expect(mocks.clip).not.toHaveBeenCalled();

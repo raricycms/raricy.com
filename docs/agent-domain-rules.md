@@ -314,8 +314,9 @@ ftyp 品牌 / 声明归一化 / `planImageUpload` —— 服务端与浏览器�
 引用、`compile.ts` 缓存）。三条不能破：reactive 源码**永不**交给旧 Markdown 解析器
 （认不出或编译失败 → `unavailable`；可读正文由本次请求编译）；`<site-embed>` 标签与
 `${kind}:${ref}` 的 hostData **原子成对**（缺数据只保留字面量，绝不发半套）；`external`
-模式**零业务请求**（剪贴板、投票与收藏夹均保留字面量）。灰度只住 `renderer-select.ts` +
-`REACTIVE_MD_MODE` / `REACTIVE_MD_PERCENT`，别在页面里另判 cohort。
+模式**零业务请求**（剪贴板、投票与收藏夹均保留字面量）。阅读路径的渲染选择只住
+`reactive/read-render.ts`（规则本体在 `renderer-select.ts`），唯一开关是
+`REACTIVE_MD_MODE=off`；别在页面里另判模式。
 
 ### 表情包
 

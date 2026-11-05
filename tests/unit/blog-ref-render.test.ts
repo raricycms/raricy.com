@@ -36,7 +36,6 @@ const AUDIO_TOKEN = `[@音频/${AUDIO_ID}]`;
 
 interface RenderOpts {
   contentRefs: 'expand' | 'external';
-  externalClips?: Record<string, string>;
 }
 
 /** 渲染一次，等 effect 里的异步渲染（含 fetch 桩）落地，返回正文容器。 */
@@ -49,7 +48,6 @@ async function render(content: string, opts: RenderOpts): Promise<HTMLElement> {
       createElement(MarkdownRenderer, {
         content,
         contentRefs: opts.contentRefs,
-        externalClips: opts.externalClips,
       })
     );
   });
@@ -171,14 +169,12 @@ describe('代码块 / 行内代码里的引用', () => {
     expect(html.match(/\[@AbCd1234\]/g) ?? []).toHaveLength(1);
   });
 
-  it('对外视图的围栏引用也不展开（服务端也不会把它放进 externalClips）', async () => {
+  it('对外视图的围栏引用也不展开', async () => {
     const html = await bodyHtml(['```', `[@${CLIP_ID}]`, '```'].join('\n'), {
       contentRefs: 'external',
-      externalClips: { [CLIP_ID]: '服务端本不该给这一条' },
     });
 
     expect(html).toContain(`[@${CLIP_ID}]`);
-    expect(html).not.toContain('服务端本不该给这一条');
   });
 });
 
@@ -198,19 +194,9 @@ describe('图床引用', () => {
 // ═══ 三、剪贴板：对外视图只出服务端判过的公开档 ═══════════════════════════════
 
 describe('剪贴板引用', () => {
-  it('即使收到旧 externalClips 载荷也保留字面量', async () => {
-    const html = await bodyHtml(`见 [@${CLIP_ID}]`, {
-      contentRefs: 'external',
-      externalClips: { [CLIP_ID]: '这是一段公开的剪贴板正文' },
-    });
-
-    expect(html).not.toContain('这是一段公开的剪贴板正文');
-    expect(html).toContain(`[@${CLIP_ID}]`);
-  });
-
   it('★ 不在表里（私有 / 已软删 / 不存在）→ 保留字面量，不提示、不区分 ★', async () => {
     const calls = stubFetch();
-    const html = await bodyHtml(`见 [@${CLIP_ID}]`, { contentRefs: 'external', externalClips: {} });
+    const html = await bodyHtml(`见 [@${CLIP_ID}]`, { contentRefs: 'external' });
 
     expect(html).toContain(`[@${CLIP_ID}]`);
     expect(calls, '拿不到就保留字面量，绝不回退成请求 core+ 接口').toEqual([]);

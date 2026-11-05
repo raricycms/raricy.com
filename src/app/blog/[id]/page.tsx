@@ -145,8 +145,6 @@ export default async function BlogDetailPage({ params }: { params: Promise<{ id:
   // 访客（非 core）走 external —— 剪贴板、投票与收藏均保留字面量。
   const contentSource = blog.content?.content ?? '';
   const readRender = await resolveReadRender({
-    kind: 'blog',
-    id: blog.id,
     source: contentSource,
     format: blog.content?.format,
     viewer: member

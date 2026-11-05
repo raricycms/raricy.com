@@ -6,8 +6,6 @@ import { compileContent } from './compile-content';
 import type { ReactiveCompileOutcome } from './compile';
 
 export interface ReadRenderInput {
-  kind: 'blog' | 'clipboard';
-  id: string;
   source: string;
   format: unknown;
   viewer: { id: string; role?: string; archivedAt?: Date | null } | null;

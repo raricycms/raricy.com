@@ -15,7 +15,6 @@ import {
   resolveContentWriteFormat,
 } from './content-format';
 import type { ContentFormat, ContentWriteErrorCode } from './content-format';
-import type { ExternalClipData } from './reactive/ref-types';
 import { validateContentForPublish } from './reactive/publish';
 
 // 校验上限
@@ -289,13 +288,6 @@ export async function deleteClip(
   });
 
   return { ok: true };
-}
-
-/** @deprecated 剪贴板仅供成员读取。旧调用方也不得获得任何对外引用数据。 */
-export async function resolvePublicClipRefs(
-  _markdown: string
-): Promise<Record<string, ExternalClipData>> {
-  return {};
 }
 
 export interface ClipListItem {

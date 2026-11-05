@@ -26,11 +26,10 @@ describe('仅源码保存与按需渲染', () => {
     expect((await updateBlog(blogId, { ...data, content: edited }, user.id)).error).toBeUndefined();
     expect((await updateClip(clip.id, user.id, { title: '源码片段', content: edited, publicity: true, format: 'reactive' })).ok).toBe(true);
     resetReactiveCompileCacheForTests();
-    for (const [kind, id] of [['blog', blogId], ['clipboard', clip.id]] as const) {
-      const result = await resolveReadRender({ kind, id, source: edited, format: 'reactive', viewer: user, mode: 'expand' });
-      expect(result.bundle?.result.ok).toBe(true);
-      if (result.bundle?.result.ok) expect(result.bundle.result.document.bindings.pace).toBeDefined();
-    }
+    // 博客与剪贴板两条写入路径都只落源码；阅读时按当前源码编译出同一份文档。
+    const result = await resolveReadRender({ source: edited, format: 'reactive', viewer: user, mode: 'expand' });
+    expect(result.bundle?.result.ok).toBe(true);
+    if (result.bundle?.result.ok) expect(result.bundle.result.document.bindings.pace).toBeDefined();
     expect(await prisma.reactiveSnapshot.count()).toBe(0);
   });
 
@@ -39,7 +38,7 @@ describe('仅源码保存与按需渲染', () => {
     const id = await createBlog(user.id, { title: '旧文', description: '', content: '初始', visibility: 'internal', categoryId: null });
     const old = '<!-- reactive-md: local-draft-2 -->\n\n' + source;
     await prisma.blogContent.update({ where: { blogId: id }, data: { content: old, format: 'reactive', syntaxVersion: 'local-draft-2' } });
-    const rendered = await resolveReadRender({ kind: 'blog', id, source: old, format: 'reactive', syntaxVersion: 'local-draft-2', viewer: user, mode: 'expand' });
+    const rendered = await resolveReadRender({ source: old, format: 'reactive', syntaxVersion: 'local-draft-2', viewer: user, mode: 'expand' });
     expect(rendered.bundle?.result.ok).toBe(true);
     expect(await prisma.blogContent.findUniqueOrThrow({ where: { blogId: id } })).toMatchObject({ content: old, syntaxVersion: 'local-draft-2' });
     expect(await prisma.reactiveSnapshot.count()).toBe(0);

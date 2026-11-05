@@ -117,9 +117,9 @@ export const MAX_REF_CONCURRENCY = 4;
 /**
  * 引用展开后的**总字符预算**。
  *
- * 【一个数管两处】客户端那条管线（content-ref-processor.ts）用它封顶「整篇 Markdown
- * 展开后有多长」；服务端对外视图的映射（clipboard-service.ts 的 resolvePublicClipRefs）
- * 用它封顶「一次下发的公开正文合计有多长」。
+ * 【管三处】客户端管线（content-ref-processor.ts）、ReactiveMD 适配器
+ * （reactive/ref-adapter.ts）和编辑器导出（markdown-editor/export.ts）都用它封顶
+ * 「整篇 Markdown 展开后有多长」。
  *
  * 【语义】按出现顺序**整块**接受替换：接受后总量不超过本值就换，超了就**原样保留
  * token** —— 绝不截断内容、更不切整篇字符串（把半截 Markdown / HTML 交给 marked 或
