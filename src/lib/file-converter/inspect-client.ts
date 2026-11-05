@@ -38,7 +38,7 @@ async function readCdTargeted(file: File): Promise<ArchiveMemberInfo[] | null> {
   }
 }
 
-/** 复核输出字节与声明格式一致（plan §6.4「不能把生成了一段字节当成可用文件」）。 */
+/** 复核输出字节与声明格式一致（format-converter-implementation §6.4「不能把生成了一段字节当成可用文件」）。 */
 export async function verifyOutputBytes(blob: Blob, expectExt: string): Promise<boolean> {
   const head = new Uint8Array(await blob.slice(0, HEAD_BYTES).arrayBuffer());
   const sniff = sniffBytes(head);

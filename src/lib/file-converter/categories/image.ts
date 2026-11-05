@@ -10,7 +10,7 @@
 //     截取第 N 帧、图片序列合成 GIF / 动画 WebP。
 //
 // 【纪律】
-//   · 动画闸（plan §3.1）：静态边 match 要求 animated !== true，动图边要求 === true；
+//   · 动画闸（format-converter-implementation §3.1）：静态边 match 要求 animated !== true，动图边要求 === true；
 //     runner 内再断一次（execute 不复查 match）。**例外：多尺寸 ICO** —— inspect 把
 //     「多张图」标成 animated，而 ICO 多尺寸是分辨率集合不是动画（见移交报告的
 //     contractRequests），静态边对 ico 放行。

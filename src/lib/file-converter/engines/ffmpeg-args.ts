@@ -138,7 +138,7 @@ export const TEXT_SUBTITLE_CODECS: readonly string[] = ['subrip', 'ass', 'ssa', 
 // ─── 音频边 argv ───────────────────────────────────────────────────────────────
 //
 // 公共形状：-i 输入 → -vn（丢弃封面 / 视频轨）→ -map_metadata -1（不复制标签与封面，
-// plan §3.3「元数据不保留」）→ 编码参数 → -y 输出。
+// format-converter-implementation §3.3「元数据不保留」）→ 编码参数 → -y 输出。
 
 export function buildAudioToMp3(io: IoNames & { bitrate: string }): string[] {
   return [...HEAD, '-i', io.inputName, '-vn', '-map_metadata', '-1', '-c:a', 'libmp3lame', '-b:a', `${io.bitrate}k`, '-y', io.outputName];

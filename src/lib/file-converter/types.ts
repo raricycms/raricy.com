@@ -33,7 +33,7 @@ export type ConvertMethod =
   | 'extract' // 信息提取 / 重建
   | 'repack'; // 解包后重打包
 
-/** 任务状态机（plan §6.3）。 */
+/** 任务状态机（format-converter-implementation §6.3）。 */
 export type TaskStatus =
   | 'validating'
   | 'queued'
@@ -44,7 +44,7 @@ export type TaskStatus =
   | 'failed'
   | 'cancelled';
 
-/** 错误分类（plan §9.1）。页面按 kind 决定用户文案与「可否重试」。 */
+/** 错误分类（format-converter-implementation §9.1）。页面按 kind 决定用户文案与「可否重试」。 */
 export type ErrorKind =
   | 'unsupported' // 格式 / 类别不支持
   | 'oversize' // 超大小 / 像素 / 时长 / 页数等限额
@@ -73,7 +73,7 @@ export interface OutputFile {
   note?: string;
 }
 
-/** 转换产物。两类引擎（各 category 的 runner）都输出同一结构（plan §6.3）。 */
+/** 转换产物。两类引擎（各 category 的 runner）都输出同一结构（format-converter-implementation §6.3）。 */
 export interface ConvertResultData {
   outputs: OutputFile[];
   /** 实际输出 MIME（与字节一致，已校验）。 */
@@ -127,7 +127,7 @@ export interface ParamSpec {
 // ─── 内容识别 ────────────────────────────────────────────────────────────────
 
 /**
- * 嗅探出的真实文件种类。**以字节为准**（plan §9.1「以内容为准识别」）。
+ * 嗅探出的真实文件种类。**以字节为准**（format-converter-implementation §9.1「以内容为准识别」）。
  * `unknown` = 认不出 —— 调用方按「不支持」拒绝，不按扩展名猜。
  */
 export type FileKind =
@@ -206,7 +206,7 @@ export interface ArchiveMemberInfo {
 
 /**
  * inspect 的结果：识别 + 轻量元信息。**不重解码**：
- * 图片读头拿尺寸 / 动画标记；媒体的时长 / 声道要等任务执行时探测（plan §5.2）。
+ * 图片读头拿尺寸 / 动画标记；媒体的时长 / 声道要等任务执行时探测（format-converter-implementation §5.2）。
  */
 export interface InspectInfo {
   sniff: SniffResult;
@@ -240,7 +240,7 @@ export interface StreamInfo {
 
 // ─── 能力探测报告 ────────────────────────────────────────────────────────────
 
-/** 运行时能力（plan §3.1 / §3.2「按设备能力提供」）。页面加载时探测一次。 */
+/** 运行时能力（format-converter-implementation §3.1 / §3.2「按设备能力提供」）。页面加载时探测一次。 */
 export interface CapabilityReport {
   /** Canvas 能真正编码 WebP / AVIF（试编码 + 字节核对，不是问 canPlayType）。 */
   webpEncode: boolean;
@@ -309,7 +309,7 @@ export interface EdgeDef {
    * 能力不满足时该边不进菜单（roadmap：未验收的方向不出现在可执行菜单）。
    */
   requires?: string[];
-  /** 预估输出字节数（null = 估不出）。用于输出预算的提前拒绝（plan §7.1）。 */
+  /** 预估输出字节数（null = 估不出）。用于输出预算的提前拒绝（format-converter-implementation §7.1）。 */
   estimateOutput?: (info: InspectInfo, params: Record<string, unknown>) => number | null;
   /** 执行体。`status: 'planned'` 的边**没有**实现（仅登记），故可选；
    *  live / gated 的边缺 run 会被 registryProblems 与执行器双重拦下。 */
@@ -345,7 +345,7 @@ export interface CategoryDef {
 
 export interface ConvertTask {
   id: string;
-  /** 执行代次：重试 +1。异步回调必须校验 id + gen，旧代次结果不得覆盖（plan §6.3）。 */
+  /** 执行代次：重试 +1。异步回调必须校验 id + gen，旧代次结果不得覆盖（format-converter-implementation §6.3）。 */
   gen: number;
   category: CategoryKey;
   edgeId: string;
@@ -354,7 +354,7 @@ export interface ConvertTask {
   /** 所有输入的合计字节。 */
   fileSize: number;
   files: File[];
-  /** 参数快照：开始转换那一刻冻结（plan §5.2）。 */
+  /** 参数快照：开始转换那一刻冻结（format-converter-implementation §5.2）。 */
   params: Record<string, unknown>;
   inspect: InspectInfo | null;
   status: TaskStatus;

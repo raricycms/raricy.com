@@ -115,7 +115,7 @@ export default function ResourcePanel({ onClose, onInsert }: ResourcePanelProps)
       const next: LoadState = { status: 'failed' };
       setState(next);
       // 失败**不进缓存**：下一次切回来重试一次，而不是把一次网络抖动钉成永久失败。
-      //（上限与重试次数的口径见 plan §5.1 —— 这里只有手动触发，不会每次按键重试。）
+      //（上限与重试次数的口径见 format-converter-implementation §5.1 —— 这里只有手动触发，不会每次按键重试。）
       cacheRef.current.delete(target);
     }
   }, []);

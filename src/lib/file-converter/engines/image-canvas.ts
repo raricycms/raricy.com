@@ -8,7 +8,7 @@
 //   · 本文件只在浏览器里跑，node 单测**不要** import 它（纯字节部分在
 //     image-codecs.ts）。
 //   · 重依赖（heic2any）一律函数体内动态 import。
-//   · Canvas 请求不支持的编码类型时会**静默回退 PNG**（plan §3.1 点名的坑）——
+//   · Canvas 请求不支持的编码类型时会**静默回退 PNG**（format-converter-implementation §3.1 点名的坑）——
 //     encodeCanvas 必须核对返回 Blob 的 type，回退即抛 capability，不交付错格式。
 //   · SVG 走 Blob URL + <img> 光栅化：**图片上下文里的 SVG 不执行脚本、不加载
 //     外部资源**（HTML 规范对 <img> 的安全约束），这是本站受控光栅化的安全前提。

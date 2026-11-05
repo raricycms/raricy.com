@@ -1276,14 +1276,15 @@ model FavoriteItem {
 /// 用户持有的头像框（**所有权账**）。
 ///
 /// 【两层，别混】持有（本表）与装备（users 上那两个冗余列）是两层：
-///   · 持有 = 「我有没有资格戴」—— 发放是站长的事（`npm run cli -- frame grant`），
-///     第二版会加上鱼干购买
+///   · 持有 = 「我有没有资格戴」—— 站长发放（`npm run cli -- frame grant`），
+///     或用户用鱼干租（租框走 src/lib/frame-shop-service.ts，见 architecture §6.14）
 ///   · 装备 = 「我现在戴哪个」—— 用户自己的事（/settings 的面板）
 /// 一个用户可以同时持有多个框、只戴一个；也可以持有一个却不戴。
 ///
 /// 【框的**定义**不在这里】key / 显示名 / 排序住在代码白名单
 ///   src/lib/frame-refs.ts 的 FRAME_KEYS（照 src/lib/market-price.ts 的 MARKET_SYMBOLS
-///   先例：不建定义表、不做后台 CRUD）。素材字节在 instance/frames/<key>.png。
+///   先例：不建定义表、不做后台 CRUD）。素材字节在 public/static/frames/<key>.png，
+///   随代码入库（自己画的 PNG，源码 scripts/make-frame-demos.mjs）。
 ///   所以本表的 frame_key 是**文本而非外键**，且**加了新框不需要迁移**。
 ///
 /// 【expires_at 是「到期」不是「撤销」】过期后行照旧 alive（deleted 仍为 false）——

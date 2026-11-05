@@ -7,7 +7,7 @@
 // 本组件不认识任何具体格式 —— 目标列表来自能力登记表（registry.ts）按
 // 「识别结果 × 运行时能力」过滤后的边，转换本身由各类别模块的 runner 执行。
 //
-// 纪律（plan §5 / §9）：
+// 纪律（format-converter-implementation §5 / §9）：
 //   · 文件名一律纯文本渲染（React 默认转义，不碰 dangerouslySetInnerHTML）；
 //   · 参数在「开始转换」那一刻冻结进任务快照；
 //   · 每个结果独立下载按钮，批量不触发连续自动下载；
@@ -264,7 +264,7 @@ export default function ConverterApp() {
     };
   }, []);
 
-  // 卸载时回收所有 Blob URL（plan §7.2）
+  // 卸载时回收所有 Blob URL（format-converter-implementation §7.2）
   useEffect(() => {
     const registry = urlRegistry.current;
     return () => {

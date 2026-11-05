@@ -1,7 +1,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // file-converter/queue.ts —— 共用任务调度器（零依赖、纯逻辑）
 //
-// 【它做什么】plan §6.3 / §7：图片与音频（以及所有能力区）共用一个**串行**执行
+// 【它做什么】format-converter-implementation §6.3 / §7：图片与音频（以及所有能力区）共用一个**串行**执行
 // 调度器；取消 / 重试走任务代次（gen）；输出预算不足时队列进入明确的暂停状态。
 //
 // 【为什么独立于引擎】调度策略（串行、代次、预算暂停）与「怎么转换」完全无关，
@@ -82,7 +82,7 @@ export class ConvertQueue {
     return this.tasks.reduce((s, t) => s + (t.status === 'succeeded' ? t.heldOutputBytes : 0), 0);
   }
 
-  /** 任务总数与输入总额闸（plan §7.1）。返回 null 表示可入队。 */
+  /** 任务总数与输入总额闸（format-converter-implementation §7.1）。返回 null 表示可入队。 */
   admitError(files: File[]): string | null {
     const alive = this.tasks.filter((t) => t.status !== 'failed' && t.status !== 'cancelled');
     if (alive.length >= LIMITS.queue.maxTasks) {
@@ -159,7 +159,7 @@ export class ConvertQueue {
         try {
           const result = await this.executor(task, api);
           if (!this.isCurrent(task.id, gen)) continue; // 已取消 / 已被重试取代
-          // 输出预算复核（plan §7.1：实际超额则丢弃结果，不长期持有）
+          // 输出预算复核（format-converter-implementation §7.1：实际超额则丢弃结果，不长期持有）
           if (result.outputSize > LIMITS.queue.maxOutputEach) {
             task.status = 'failed';
             task.error = {
@@ -234,7 +234,7 @@ export class ConvertQueue {
   }
 
   /**
-   * 释放结果（plan §7.2：用户主动移除或离开页面时释放）。
+   * 释放结果（format-converter-implementation §7.2：用户主动移除或离开页面时释放）。
    * ⚠️ 这里只清引用与预算 —— 预览 / 下载用的 Blob URL 由页面层的 URL 登记表
    * 跟踪并 revoke（队列不感知 URL，别在这里 revoke）。
    */
@@ -261,7 +261,7 @@ export class ConvertQueue {
     void this.pump();
   }
 
-  /** 取消整批（plan §5.2：转换期间可取消当前任务或整批）。 */
+  /** 取消整批（format-converter-implementation §5.2：转换期间可取消当前任务或整批）。 */
   cancelAll() {
     for (const t of this.tasks) {
       if (t.status === 'queued') t.status = 'cancelled';

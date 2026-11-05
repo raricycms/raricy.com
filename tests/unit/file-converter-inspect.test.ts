@@ -1,6 +1,6 @@
 // file-converter/inspect.ts —— 内容识别（嗅探）。
 //
-// 【这组用例钉的是什么】plan §3.2「以字节内容为准」：kind 必须由魔数 / 结构给出，
+// 【这组用例钉的是什么】format-converter-implementation §3.2「以字节内容为准」：kind 必须由魔数 / 结构给出，
 // 与文件名无关。这里喂的全是**构造字节**，不读任何真实样本文件 ——
 // 样本文件进仓库只会让测试脆弱（体积、授权、二进制 diff）。
 // ZIP 系容器（docx/xlsx/pptx/epub）用 fflate 现构，钉的是中央目录的读法，
@@ -116,7 +116,7 @@ describe('sniffBytes：文本启发式', () => {
   });
 });
 
-describe('imageHeaderInfo：尺寸与动画标记（plan §3.1 的动画闸）', () => {
+describe('imageHeaderInfo：尺寸与动画标记（format-converter-implementation §3.1 的动画闸）', () => {
   const pngHeader = (w: number, h: number, extra: Uint8Array = u8()) => {
     const wh = u8((w >>> 24) & 255, (w >>> 16) & 255, (w >>> 8) & 255, w & 255, (h >>> 24) & 255, (h >>> 16) & 255, (h >>> 8) & 255, h & 255);
     // IHDR 数据必须凑满 13 字节（宽高 8 + 位深/色彩等 5）并带 4 字节 CRC ——

@@ -3,7 +3,7 @@
 //
 // 【纪律】本文件**零 import**，node 单测与客户端共用。这里只放：
 //   · 格式词汇（label / MIME / 扩展名）
-//   · plan §7 的资源限额起始值（页面提示与校验读同一份）
+//   · format-converter-implementation §7 的资源限额起始值（页面提示与校验读同一份）
 //   · 限额相关的纯函数
 // 引擎参数构造、嗅探逻辑在各自模块，别往这里塞。
 // ─────────────────────────────────────────────────────────────────────────────
@@ -56,7 +56,7 @@ export const FORMATS = {
 
 export type FormatKey = keyof typeof FORMATS;
 
-// ─── 资源限额（plan §7.1 起始值；其它能力区按同一思路扩展）────────────────────
+// ─── 资源限额（format-converter-implementation §7.1 起始值；其它能力区按同一思路扩展）────────────────────
 //
 // 这些值是 M0 的初始实验条件，**不是已测得的安全上限**。页面提示与校验读同一份值。
 // 下调是安全的；上调要补测量记录。
@@ -109,7 +109,7 @@ export const LIMITS = {
     maxDepth: 10,
     maxRatio: 100,
   },
-  // 队列 / 预算（plan §7.1）
+  // 队列 / 预算（format-converter-implementation §7.1）
   queue: {
     maxTasks: 10,
     maxHeldInputs: 100 * 1024 * 1024,
@@ -141,7 +141,7 @@ export function formatBytes(n: number): string {
   return `${v >= 100 ? Math.round(v) : v.toFixed(1)} ${units[u]}`;
 }
 
-/** MP3 码率档位（plan §3.3）。 */
+/** MP3 码率档位（format-converter-implementation §3.3）。 */
 export const MP3_BITRATES = [128, 192, 256, 320] as const;
 
 /**
@@ -160,10 +160,10 @@ export const METHOD_LABELS: Record<ConvertMethod, string> = {
   repack: '解包后重新打包',
 };
 
-/** 图片质量范围（plan §3.3：50–100 整数滑块，默认 90）。 */
+/** 图片质量范围（format-converter-implementation §3.3：50–100 整数滑块，默认 90）。 */
 export const IMAGE_QUALITY = { min: 50, max: 100, defaultValue: 90 } as const;
 
-/** 音频采样率白名单（plan §7.1：白名单内且最高 48 kHz）。 */
+/** 音频采样率白名单（format-converter-implementation §7.1：白名单内且最高 48 kHz）。 */
 export const AUDIO_SAMPLE_RATES = [8000, 16000, 22050, 24000, 32000, 44100, 48000] as const;
 
 /** 文本编码词汇（roadmap §9.1）。decode 端靠浏览器 TextDecoder，encode 端靠 iconv-lite。 */
