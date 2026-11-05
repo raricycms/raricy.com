@@ -17,8 +17,6 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { describe, expect, it, vi } from 'vitest';
-import fs from 'node:fs';
-import path from 'node:path';
 
 const { heic2anyMock } = vi.hoisted(() => ({
   heic2anyMock: vi.fn(
@@ -27,7 +25,15 @@ const { heic2anyMock } = vi.hoisted(() => ({
 }));
 vi.mock('heic2any', () => ({ default: heic2anyMock }));
 
+// 下面要 import 图片上传器的模块（为了调它导出的 buildImagePayload），那个模块会
+// import next/navigation。这里只测一个纯函数，把路由 hook 换成哑实现即可 —— 不为
+// 一个 payload 打包函数去满足 App Router 的运行时前提。
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({ refresh: () => {} }),
+}));
+
 import { isUploadableImage, prepareImageFile } from '@/lib/image-client';
+import { buildImagePayload } from '@/app/components/ImageUploader';
 
 const PNG_SIG: Uint8Array<ArrayBuffer> = new Uint8Array([
   0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0,
@@ -159,14 +165,25 @@ describe('prepareImageFile（按字节纠正）', () => {
 });
 
 describe('接线：图床页是唯一放行 SVG 的入口', () => {
-  // 这条是**静态接线断言**：allowSvg 是参数，删掉实参测试照样全绿，而图床页会静默
-  // 变成「SVG 传不上去」—— 页面没报错，用户只看到一句「仅支持 PNG / JPEG…」。
-  it('ImageUploader 调 prepareImageFile 时带 allowSvg: true', () => {
-    const src = fs.readFileSync(
-      path.resolve(import.meta.dirname, '../../src/app/components/ImageUploader.tsx'),
-      'utf8'
-    );
-    expect(src).toMatch(/prepareImageFile\(file,\s*\{\s*allowSvg:\s*true\s*\}\)/);
+  // 旧版这里读 ImageUploader.tsx 源码、用正则钉 `prepareImageFile(file, { allowSvg: true })`。
+  // 那是把写法当契约：调用搬进 buildPayload 后行为不变测试就会红，反过来把 allowSvg 传给
+  // 另一个入口它也发现不了。现在直接调图床页真正交给 hook 的那个打包函数，断它的行为。
+  it('图床页的 buildPayload 放行 SVG，并照样带上 compress 字段', async () => {
+    const out = await buildImagePayload(file(SVG, 'a.svg', 'image/svg+xml'), () => true);
+    expect(out.ok).toBe(true);
+    if (!out.ok) return;
+    expect(out.file.type).toBe('image/svg+xml');
+    expect(out.fields).toEqual({ compress: '1' });
+  });
+
+  it('compress 在提交那一刻读（非受控复选框），不是渲染时的快照', async () => {
+    let checked = false;
+    const compress = () => checked;
+    const first = await buildImagePayload(file(PNG_SIG, 'a.png', 'image/png'), compress);
+    checked = true;
+    const second = await buildImagePayload(file(PNG_SIG, 'b.png', 'image/png'), compress);
+    expect(first.ok && first.fields).toEqual({ compress: '0' });
+    expect(second.ok && second.fields).toEqual({ compress: '1' });
   });
 });
 

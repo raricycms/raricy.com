@@ -91,7 +91,8 @@ export interface AdminAudioPage {
  * 全站未软删音频分页列表（最新在前）。
  * search 命中「文件名 contains」或「上传者用户名 contains」。
  *
- * 与图床那边同一条已知偏差：LIKE 的 `%` / `_` 未转义（见 image-service.ts 的说明）。
+ * 已知偏差（图床 listAllImages 同款）：search 走 Prisma `contains`，LIKE 的 `%` / `_`
+ * 未转义 —— 带这两个字符的搜索词会被当通配符，运维按全名搜可能多出无关行。
  */
 export async function listAllAudio(
   page = 1,
@@ -202,11 +203,12 @@ export async function softDeleteAudio(id: string): Promise<void> {
 /**
  * 硬删除：物理删除磁盘文件 + 删除数据库行（**站长专属**）。
  *
- * ⚠️ 与图床的一处结构性差别：ImageHosting 有 `chatMessages` 反向关系，
- * 所以那边硬删会被外键拦住（FK RESTRICT，只能走站长那条路）。
- * **音频没有任何外键指向它**，硬删因此是真的能删干净 —— 现状没问题，
- * 但**哪天给音频加了附件列（比如 ChatMessage.audioId），这条推理会反转**，
- * 那时必须回头确认这里不会静默删掉别人的引用。
+ * ⚠️ 与图床同一条既定策略：`chat_messages.image_id`、blog 引用、评论附件都**不加物理外键**
+ * （4_chat / 7_chat_blog_quote / 11_comment_attachments 三个迁移都明写「业务层解析」），
+ * 所以硬删是真的能删干净 —— 图床那边也一样。留下的悬挂引用由读路径兜底：解析不到时给
+ * `image_missing` / 「[图片已删除]」占位（见 chat-service、comment-service）。
+ * 音频目前没有任何列引用它；哪天加了（比如 ChatMessage.audioId），读取侧照这个模式给占位，
+ * **不要**反过来加 FK 把删除挡住。
  */
 export async function hardDeleteAudio(id: string): Promise<void> {
   const row = await prisma.audioHosting.findUnique({

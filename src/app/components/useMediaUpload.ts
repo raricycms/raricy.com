@@ -4,86 +4,84 @@
 // useMediaUpload.ts — 图床 / 音频上传器共用的上传主链路
 //
 // 收拢的是两边**逐字相同**的那段：大小校验 → FormData → 假进度 → fetch →
-// `code === 200` → 100% 停 500ms → 隐藏并回调 onUploaded()。
+// `code === 200` → 100% 停 500ms → 隐藏并刷新。
 //
-// 差异继续留在各自组件里，通过配置对象传进来（不做布尔开关）：
-//   · 图床：prepare 里跑 prepareImageFile（HEIC 转 JPEG、放行 SVG）、多一个 compress 字段；
-//   · 音频：不转码，只换 endpoint / accept / 文案。
+// 配置只有三项，每项都是两侧真实会变的：endpoint（唯一不可推导的差异）；maxBytes
+// （超限提示的 MB 数由它推导，别处不再写字面量）；buildPayload（可选，图床在此做
+// HEIC 转码 / SVG 放行 / 转换后再卡上限 / compress 字段，音频不做转码、整项不传）。
+// 成功后的刷新是两侧原本相同的默认行为，不是配置项。
 //
-// 三条被这里固化的既有约定，改动前先看调用方：
-//   · 上传**没有**真实进度：0% → 100% 只是一段视觉反馈，停 500ms 再隐藏；
-//   · 成败只看 `result.code === 200`（/api/images 的批量通道不经过本 hook）；
-//   · 只处理用户选/拖的**第一份**文件。
+// 三条被固化的既有约定：没有真实进度（0% → 100% 只是视觉反馈，停 500ms 再隐藏）；
+// 成败只看 `code === 200`（/api/images 的多文件通道只给站外 bot 用，不经过本 hook）；
+// 只处理用户选/拖的**第一份**文件。
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { showToast } from './toast';
 
-/** 上传前就地处理文件的结果（与 prepareImageFile 的返回形状一致）。 */
-export type PreparedFile = { ok: true; file: File } | { ok: false; message: string };
+/**
+ * buildPayload 的返回：成功给真正要发的 File（可能已被转码/改名）和额外表单字段；
+ * 失败给一句能直接进 toast 的话 —— 措辞留给调用方，只有它知道是格式不支持还是超限。
+ */
+export type UploadPayload =
+  | { ok: true; file: File; fields?: Record<string, string> }
+  | { ok: false; message: string };
 
 export interface MediaUploadConfig {
   /** POST 目标，例如 '/api/images'。 */
   endpoint: string;
-  /** 单文件上限（字节）。 */
+  /** 单文件上限（字节）；超限提示里的 MB 数由它推导。 */
   maxBytes: number;
   /**
-   * 可选的就地预处理（图床的 HEIC → JPEG / SVG 放行）。返回 ok:false 即中止上传，
-   * toast 里的文案由 prepare 自己给 —— 只有它知道是「格式不支持」还是「转换后仍超限」。
+   * 可选：提交前把 File 换成真正要发的 File，并附上额外表单字段。图床侧在此做
+   * HEIC → JPEG、放行 SVG、转换后再卡上限并带上 compress；音频侧整项不传。
    */
-  prepare?: (file: File) => Promise<PreparedFile>;
-  /**
-   * 额外表单字段。**必须是函数**：compress 复选框是非受控的，值要在提交那一刻读，
-   * 渲染时读会读到上一次的值。
-   */
-  extraFields?: () => Record<string, string>;
-  /** 成功动画走完（500ms）后调用；两个调用方都用它触发 router.refresh()。 */
-  onUploaded: () => void;
+  buildPayload?: (file: File) => Promise<UploadPayload>;
 }
 
-export interface UploadProgressState {
-  visible: boolean;
-  width: string;
-  text: string;
-}
+/** 进度只有三个阶段；宽度与文案由 UploadProgress 按阶段映射，不各存一份。 */
+export type UploadPhase = 'idle' | 'uploading' | 'done';
 
 export interface MediaUploadState {
   drag: boolean;
   setDrag: (drag: boolean) => void;
-  progress: UploadProgressState;
+  phase: UploadPhase;
   uploadFile: (file: File) => Promise<void>;
 }
 
-const INITIAL_PROGRESS: UploadProgressState = { visible: false, width: '0%', text: '上传中...' };
+/** maxBytes → 面向用户的 MB 文案；toast 与各调用方的 hint 都从这里取，别写字面量。 */
+export function maxBytesLabel(maxBytes: number): string {
+  return `${Math.round(maxBytes / (1024 * 1024))} MB`;
+}
 
 export function useMediaUpload(config: MediaUploadConfig): MediaUploadState {
+  const router = useRouter();
   const [drag, setDrag] = useState(false);
-  const [progress, setProgress] = useState<UploadProgressState>(INITIAL_PROGRESS);
+  const [phase, setPhase] = useState<UploadPhase>('idle');
 
   async function uploadFile(file: File) {
-    // 两个入口都是 10 MB 上限，文案与之一致；改上限时同步这句。
     if (file.size > config.maxBytes) {
-      showToast('文件过大，单文件上限 10 MB', 'error');
+      showToast(`文件过大，单文件上限 ${maxBytesLabel(config.maxBytes)}`, 'error');
       return;
     }
 
-    let payload = file;
-    if (config.prepare) {
-      const prepared = await config.prepare(file);
-      if (!prepared.ok) {
-        showToast(prepared.message, 'error');
+    let payload: UploadPayload = { ok: true, file };
+    if (config.buildPayload) {
+      payload = await config.buildPayload(file);
+      if (!payload.ok) {
+        showToast(payload.message, 'error');
         return;
       }
-      payload = prepared.file;
     }
 
     const formData = new FormData();
-    formData.append('file', payload);
-    for (const [key, value] of Object.entries(config.extraFields?.() ?? {})) {
+    formData.append('file', payload.file);
+    for (const [key, value] of Object.entries(payload.fields ?? {})) {
       formData.append(key, value);
     }
 
-    setProgress({ visible: true, width: '0%', text: '上传中...' });
+    setPhase('uploading');
 
     try {
       const resp = await fetch(config.endpoint, {
@@ -94,20 +92,21 @@ export function useMediaUpload(config: MediaUploadConfig): MediaUploadState {
       const result = await resp.json();
 
       if (result.code === 200) {
-        setProgress((cur) => ({ ...cur, width: '100%', text: '上传成功' }));
+        setPhase('done');
+        // 成功动画（100% 停 500ms）走完再刷新，与改动前一致。
         setTimeout(() => {
-          setProgress((cur) => ({ ...cur, visible: false }));
-          config.onUploaded();
+          setPhase('idle');
+          router.refresh();
         }, 500);
       } else {
-        setProgress((cur) => ({ ...cur, visible: false }));
+        setPhase('idle');
         showToast(result.message || '上传失败', 'error');
       }
     } catch {
-      setProgress((cur) => ({ ...cur, visible: false }));
+      setPhase('idle');
       showToast('网络错误，请重试', 'error');
     }
   }
 
-  return { drag, setDrag, progress, uploadFile };
+  return { drag, setDrag, phase, uploadFile };
 }

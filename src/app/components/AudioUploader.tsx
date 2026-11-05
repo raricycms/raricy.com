@@ -5,20 +5,23 @@ import { useRouter } from 'next/navigation';
 import MediaDropZone from '@/app/components/MediaDropZone';
 import UploadProgress from '@/app/components/UploadProgress';
 import { showToast } from '@/app/components/toast';
-import { useMediaUpload } from '@/app/components/useMediaUpload';
+import { maxBytesLabel, useMediaUpload } from '@/app/components/useMediaUpload';
 
 // 与服务端 ALLOWED_AUDIO_MIMETYPES 对应（那里还有 audio/x-m4a 等别名，
 // 但 accept 写规范形就够 —— 浏览器按扩展名/类型自己会匹配）
 const ACCEPT = 'audio/mpeg,audio/mp4,audio/ogg,.mp3,.m4a,.ogg,.opus';
+/**
+ * 单文件上限 —— 必须与 src/lib/audio-upload.ts 的 `MAX_AUDIO_SIZE` 相等。那边依赖
+ * node:fs / node:crypto，客户端组件不能 import，所以这里是一份**镜像常量**（图床侧同样是
+ * image-client.ts 的 `MAX_IMAGE_BYTES` 对着服务端 `MAX_IMAGE_SIZE`）。改任一侧都要同步。
+ */
 const MAX_BYTES = 10 * 1024 * 1024;
 
 export default function AudioUploader() {
-  const router = useRouter();
-  // 音频没有 prepare / extraFields：不做转码，也没有压缩开关。
-  const { drag, setDrag, progress, uploadFile } = useMediaUpload({
+  // 音频不传 buildPayload：不做转码，也没有 compress 这类额外字段。
+  const { drag, setDrag, phase, uploadFile } = useMediaUpload({
     endpoint: '/api/audio',
     maxBytes: MAX_BYTES,
-    onUploaded: () => router.refresh(),
   });
 
   return (
@@ -33,7 +36,7 @@ export default function AudioUploader() {
         onDragChange={setDrag}
         onFiles={uploadFile}
         title="拖拽音频到此处，或点击上传"
-        hint="支持 MP3 / M4A / OGG，单文件上限 10 MB"
+        hint={`支持 MP3 / M4A / OGG，单文件上限 ${maxBytesLabel(MAX_BYTES)}`}
         icon={
           <svg
             className="image-hosting-upload__icon"
@@ -56,9 +59,7 @@ export default function AudioUploader() {
         id="audio-upload-progress"
         fillId="audio-progress-fill"
         textId="audio-progress-text"
-        visible={progress.visible}
-        width={progress.width}
-        text={progress.text}
+        phase={phase}
       />
     </>
   );

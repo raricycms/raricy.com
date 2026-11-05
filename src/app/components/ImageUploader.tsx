@@ -6,42 +6,43 @@ import { IMAGE_ACCEPT, MAX_IMAGE_BYTES, prepareImageFile } from '@/lib/image-cli
 import MediaDropZone from '@/app/components/MediaDropZone';
 import UploadProgress from '@/app/components/UploadProgress';
 import { showToast } from '@/app/components/toast';
-import { useMediaUpload, type PreparedFile } from '@/app/components/useMediaUpload';
+import { maxBytesLabel, useMediaUpload, type UploadPayload } from '@/app/components/useMediaUpload';
 
 const ACCEPT = `${IMAGE_ACCEPT},image/svg+xml`;
 const MAX_BYTES = MAX_IMAGE_BYTES;
 
+/**
+ * 图床侧的全部差异打包在这里，公共 hook 因此不认识图片语义：图床页是**唯一**允许 SVG
+ * 的入口（raw 路由对 SVG 强制附件下载，安全）；HEIC 就地转 JPEG（服务端没有 HEVC 解码器），
+ * 转换后未必更小，仍要再卡一次上限；compress 复选框非受控，值必须在提交那一刻读，所以
+ * 按 getter 传进来。
+ *
+ * prepareImageFile 会把「读不到 / 转不了」resolve 成 { ok:false }；再包一层 catch 是因为
+ * 它还调了浏览器 API，真抛出来没人接时表现就是「点了上传，界面毫无反应」。
+ */
+export async function buildImagePayload(
+  file: File,
+  compress: () => boolean
+): Promise<UploadPayload> {
+  let prepared: Awaited<ReturnType<typeof prepareImageFile>>;
+  try {
+    prepared = await prepareImageFile(file, { allowSvg: true });
+  } catch {
+    return { ok: false, message: '图片读取失败，请重试' };
+  }
+  if (!prepared.ok) return prepared;
+  if (prepared.file.size > MAX_BYTES) {
+    return { ok: false, message: `图片转换后仍超过 ${maxBytesLabel(MAX_BYTES)}，请先压缩或缩小尺寸` };
+  }
+  return { ok: true, file: prepared.file, fields: { compress: compress() ? '1' : '0' } };
+}
+
 export default function ImageUploader() {
-  const router = useRouter();
   const compressRef = useRef<HTMLInputElement>(null);
-  const { drag, setDrag, progress, uploadFile } = useMediaUpload({
+  const { drag, setDrag, phase, uploadFile } = useMediaUpload({
     endpoint: '/api/images',
     maxBytes: MAX_BYTES,
-    // 图床页是**唯一**允许 SVG 的上传入口（raw 路由对 SVG 强制附件下载，安全）；
-    // HEIC 在这里被就地转成 JPEG —— 服务端没有 HEVC 解码器。
-    //
-    // prepareImageFile 自己会把「读不到 / 转不了」resolve 成 { ok:false }，这里再包一层
-    // 是因为它内部还调了浏览器 API（FileReader / File 构造）——真抛出来时若没人接，
-    // 表现就是「点了上传，界面毫无反应」。catch 后归到同一种 ok:false，由 hook 统一提示。
-    prepare: async (file): Promise<PreparedFile> => {
-      let prepared: Awaited<ReturnType<typeof prepareImageFile>>;
-      try {
-        prepared = await prepareImageFile(file, { allowSvg: true });
-      } catch {
-        return { ok: false, message: '图片读取失败，请重试' };
-      }
-      if (!prepared.ok) return prepared;
-      // 转换后未必更小（HEIC → JPEG 在极端情况下反而变大），仍要卡 10 MB 上限。
-      // 这一步只有图床有 —— 音频不做转码，所以校验留在 prepare 里。
-      if (prepared.file.size > MAX_BYTES) {
-        return { ok: false, message: '图片转换后仍超过 10 MB，请先压缩或缩小尺寸' };
-      }
-      return prepared;
-    },
-    // 复选框非受控：值必须在提交那一刻读（见 useMediaUpload 的 extraFields 说明）。
-    extraFields: () => ({ compress: compressRef.current?.checked ? '1' : '0' }),
-    // 成功动画（100% 停 500ms）走完再刷新，与改动前一致。
-    onUploaded: () => router.refresh(),
+    buildPayload: (file) => buildImagePayload(file, () => compressRef.current?.checked ?? false),
   });
 
   return (
@@ -55,7 +56,7 @@ export default function ImageUploader() {
         onDragChange={setDrag}
         onFiles={uploadFile}
         title="拖拽图片到此处，或点击上传"
-        hint="支持 PNG / JPEG / GIF / WebP / SVG，单文件上限 10 MB；iPhone 的 HEIC 会自动转成 JPEG"
+        hint={`支持 PNG / JPEG / GIF / WebP / SVG，单文件上限 ${maxBytesLabel(MAX_BYTES)}；iPhone 的 HEIC 会自动转成 JPEG`}
         icon={
           <svg className="image-hosting-upload__icon" viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" strokeWidth="1.5">
             <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
@@ -75,9 +76,7 @@ export default function ImageUploader() {
         id="upload-progress"
         fillId="progress-fill"
         textId="progress-text"
-        visible={progress.visible}
-        width={progress.width}
-        text={progress.text}
+        phase={phase}
       />
     </>
   );
