@@ -36,6 +36,7 @@ import {
   type LocalDocument,
 } from 'reactive-md';
 import { reactiveCompileOptions } from '@/lib/reactive/host-components';
+import { checkSyntaxBudget } from '@/lib/reactive/syntax-budget';
 import {
   adaptReactivePreview,
   createClientReferenceReader,
@@ -108,8 +109,16 @@ export default function ReactivePreview({
         new Worker(new URL('../../../lib/reactive/compile.worker.ts', import.meta.url), {
           type: 'module',
         }) as unknown as LocalCompileWorker,
-      fallbackCompile: (src) =>
-        compileLocal(applyLegacyHtmlCompat(src).source, reactiveCompileOptions(format)),
+      fallbackCompile: (src) => {
+        // ★ 主线程回退也必须先过语法预算闸门 ★ worker 起来之前、或者 worker 崩了
+        // 之后，这条路是**同步**跑在 UI 线程上的：未闭合的 `<` / `{{` 会让
+        // compileLocal 超线性地跑几十秒（实测 25 万个 `<` 约 30s，见 syntax-budget.ts），
+        // 整页卡死且没有任何提示。阅读、导出、格式观测三条路径都有这道闸门，
+        // 这里漏了就是唯一没设防的编译入口。
+        const budget = checkSyntaxBudget(src);
+        if (budget) return { ok: false, diagnostics: [budget.diagnostic] };
+        return compileLocal(applyLegacyHtmlCompat(src).source, reactiveCompileOptions(format));
+      },
       onResult: (outcome: LocalCompileOutcome) => {
         if (!outcome.result.ok) {
           // 坏文档不渲染：保留上一版成功结果，只把诊断摆出来。
