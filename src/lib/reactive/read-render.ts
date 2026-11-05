@@ -1,6 +1,6 @@
 // 阅读页只按当前请求编译源码；编译结果由有界内存缓存复用，不读写数据库快照。
 import { parseContentFormat } from '../content-format';
-import type { RendererChoice } from '../renderer-select';
+import { selectContentRenderer, type RendererChoice } from '../renderer-select';
 import { parseReactiveFlags } from './flags';
 import { compileContent } from './compile-content';
 import type { ReactiveCompileOutcome } from './compile';
@@ -37,27 +37,27 @@ export interface ReadRenderResult {
 export async function resolveReadRender(input: ReadRenderInput): Promise<ReadRenderResult> {
   const flags = parseReactiveFlags(process.env);
   const format = parseContentFormat(input.format);
+  const pick = (compilationFailed = false) =>
+    selectContentRenderer({ format: input.format, flags, compilationFailed });
+
   let bundle: ReactiveCompileOutcome | undefined;
-  let choice: RendererChoice;
+  let choice: RendererChoice = pick();
   let failure: ReadRenderResult['failure'];
-  if (!format) {
-    choice = { renderer: 'unavailable', reason: 'invalid-format' };
-    failure = 'invalid-format';
-  } else if (flags.mode === 'off' && format === 'markdown') {
-    choice = { renderer: 'legacy', reason: 'flag' };
-  } else {
+  if (choice.renderer === 'unavailable') {
+    failure = choice.reason === 'invalid-format' ? 'invalid-format' : 'compile';
+  } else if (choice.renderer !== 'legacy' && format) {
+    // reactive / reactive-static 都需要先按当前查看者权限编译；
+    // 失败只影响这篇正文，并统一降为 unavailable（不交给旧解析器、不给静态输出）。
     try {
       bundle = (await compileContent({
         source: input.source, format, mode: input.mode,
         viewer: input.viewer, clientIp: input.clientIp, syntaxVersion: input.syntaxVersion,
       })).outcome;
     } catch {
-      // 只影响这篇正文；不把增强源码交给旧 Markdown 解析器。
+      // 编译抛错与编译失败走同一条降级。
     }
-    if (bundle?.result.ok) {
-      choice = { renderer: flags.mode === 'off' ? 'reactive-static' : 'reactive', reason: 'format' };
-    } else {
-      choice = { renderer: 'unavailable', reason: 'fallback' };
+    if (!bundle?.result.ok) {
+      choice = pick(true);
       failure = 'compile';
     }
   }

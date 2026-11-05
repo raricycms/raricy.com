@@ -3,7 +3,7 @@ import { parseReactiveFlags } from '@/lib/reactive/flags';
 import { selectContentRenderer } from '@/lib/renderer-select';
 import { parseContentFormat, resolveContentWriteFormat } from '@/lib/content-format';
 
-const base = { id: 'article-a', kind: 'blog' as const, format: 'markdown' };
+const base = { format: 'markdown' };
 const enabled = parseReactiveFlags({});
 const emergency = parseReactiveFlags({ REACTIVE_MD_MODE: 'off' });
 
@@ -27,10 +27,8 @@ describe('reactive renderer selection（统一后）', () => {
     expect(parseReactiveFlags({ REACTIVE_MD_PERCENT: '0' }).percent).toBe(0);
   });
 
-  it('默认：Markdown 与 Reactive 都走 reactive，不再看 percent / override', () => {
+  it('默认：Markdown 与 Reactive 都走 reactive，不再看 percent', () => {
     expect(selectContentRenderer({ ...base, flags: enabled })).toEqual({ renderer: 'reactive', reason: 'format' });
-    expect(selectContentRenderer({ ...base, format: 'reactive', flags: enabled, override: 'legacy' }))
-      .toEqual({ renderer: 'reactive', reason: 'format' });
     expect(selectContentRenderer({ ...base, flags: { mode: 'on', percent: 0 } }))
       .toEqual({ renderer: 'reactive', reason: 'format' });
   });
@@ -43,8 +41,10 @@ describe('reactive renderer selection（统一后）', () => {
       .toEqual({ renderer: 'unavailable', reason: 'invalid-format' });
   });
 
-  it('编译失败 → unavailable（不按格式猜，也不交给旧解析器）', () => {
+  it('编译失败 → unavailable（不按格式猜，也不交给旧解析器，off 下也一样）', () => {
     expect(selectContentRenderer({ ...base, flags: enabled, compilationFailed: true }))
+      .toEqual({ renderer: 'unavailable', reason: 'fallback' });
+    expect(selectContentRenderer({ ...base, flags: emergency, compilationFailed: true }))
       .toEqual({ renderer: 'unavailable', reason: 'fallback' });
   });
 });
