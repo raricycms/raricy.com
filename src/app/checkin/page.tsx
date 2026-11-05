@@ -1,6 +1,6 @@
-import { redirect, forbidden } from 'next/navigation';
-import { getCurrentUser, isCoreUser, isCurrentlyBanned } from '@/lib/auth';
-import { loginUrlWithNext } from '@/lib/safe-url';
+import { forbidden } from 'next/navigation';
+import { isCurrentlyBanned } from '@/lib/auth';
+import { requireCoreUser } from '@/lib/guard';
 import { getTodayStatus, getCountLeaderboard } from '@/lib/checkin-service';
 import CheckinCard, { CheckinLeaderboards } from '@/app/components/CheckinCard';
 import Link from 'next/link';
@@ -14,16 +14,12 @@ import PageHeader from '@/app/components/PageHeader';
 // 鱼干也没有出口（发文章、投喂、投票都要 core+），只会把「补偿/空投」的口子留在站内。
 // 非核心用户在 UI 里仍看得到签到入口（与讨论、博客一致，见 Navbar），点进来是 403。
 //
-// 【为什么不用 guard.ts 的 requireCoreUser】那个门的 next 取自 referer（见 guard.ts
-// 的说明），而签到是从顶栏那个图标进来的：直连 / 书签 / 无 referer 时它会退化成
-// `next=/`，登录完被扔回首页而不是签到页。这里与 /fish/* 各页同款 —— 路径是已知的，
-// 直接写死进 next。access-control.spec 把这条钉死了（`next=%2Fcheckin`）。
+// 回跳地址显式传 `/checkin`（不让守卫从 referer 推）：签到从顶栏图标进来，直连 /
+// 书签时没有 referer。`access-control.spec` 钉住了 `next=%2Fcheckin`。
 export const dynamic = 'force-dynamic';
 
 export default async function CheckinPage() {
-  const user = await getCurrentUser();
-  if (!user) redirect(loginUrlWithNext('/checkin'));
-  if (!isCoreUser(user)) forbidden();
+  const user = await requireCoreUser('/checkin');
   if (isCurrentlyBanned(user)) forbidden();
 
   const [status, countLb] = await Promise.all([getTodayStatus(user.id), getCountLeaderboard()]);

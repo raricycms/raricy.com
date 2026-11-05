@@ -18,7 +18,7 @@ export function apiErr(code: number, message: string, extra: object = {}) {
   return Response.json({ code, message, ...extra }, { status: code, headers: { 'Cache-Control': 'no-store' } });
 }
 
-/** 分类完整路径，对齐 Category.get_full_path()。 */
+/** 分类完整路径：`父分类 > 子分类`；没有父分类时就是自身名称。 */
 export function categoryFullPath(
   cat: Pick<Category, 'name' | 'parentId'> & { parent?: { name: string } | null }
 ): string {
@@ -26,14 +26,14 @@ export function categoryFullPath(
   return `${cat.parent.name} > ${cat.name}`;
 }
 
-/** 博客列表用日期（对齐 Blog.to_dict 的 '%Y-%m-%d'）。 */
+/** 列表展示用日期：库里墙上时间的 `YYYY-MM-DD` 部分。 */
 export function ymd(d: Date | null | undefined): string | null {
   if (!d) return null;
   return d.toISOString().slice(0, 10);
 }
 
 /**
- * 'YYYY-MM-DD HH:MM:SS'（旧版 .strftime('%Y-%m-%d %H:%M:%S') 的输出形态）。
+ * 库里墙上时间的 `YYYY-MM-DD HH:MM:SS` 文本形态。
  *
  * 用 toISOString 切片而非 toLocaleString：库里存的已经是 UTC+8 墙上时间
  * （见 db-time.ts），toISOString 按 UTC 解读正好把那个墙上时间原样吐回来。

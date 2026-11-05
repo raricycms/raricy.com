@@ -431,9 +431,11 @@ GET/HEAD/OPTIONS 视为安全方法，不校验（协议闸不受这条影响，
 
 ### 6.7 Markdown / 内容渲染
 
-⚠️ **博客详情与剪贴板详情的正文渲染按篇分叉**：`format` / `renderer_override` /
-`REACTIVE_MD_MODE` 决定走本节这套旧管线，还是 §6.23 的 ReactiveMD 管线。评论、讨论、
-故事**不变**；默认 `off` 时全部仍走本节。下表是旧管线（legacy 分支）的分工。
+**2026-11 起，博客详情与剪贴板详情的正文默认走 §6.23 的 ReactiveMD 统一管线**：
+`format` 只表示源码语言（markdown / reactive），两种语言都由同一个引擎解释；
+`renderer_override` 列保留在库里，但已不参与任何选择。`REACTIVE_MD_MODE=off` 是
+事故回退：Markdown 暂交回本节这套旧管线，Reactive 改用本次编译的静态输出。
+评论、讨论、故事不走 §6.23，始终用下表这套既有管线。下表是旧管线（legacy 分支）的分工。
 
 | 场景 | 渲染方式 | 管线 |
 |------|---------|------|
@@ -819,7 +821,8 @@ disallow（断掉「internal 文章 → 307 → next 参数里带 UUID」那条�
    **不是**在那条路由里加可见性过滤（那会把「站外聚合器能读什么」和「文章是否对外」
    这两件事混在一起）。
 
-**`format` 与 `renderer_override` 不改变可见性。** 这两列只决定「用哪个渲染器解释正文」，
+**正文语言不改变可见性。** `format`（以及已不参与选择、仅为旧消费者保留的
+`renderer_override` 列）只决定「用哪个引擎解释正文」，
 档位仍只由 `visibility` 判；对外视图（非 core）进 ReactiveMD 管线时仍按 `external`
 模式取数（见 §6.23 / §7.3）。一篇 `public` 的 reactive 文章对访客照常可读，一篇
 `internal` 的 reactive 文章对访客照常是登录页。不要把「换了渲染器」误当成「放宽了
@@ -842,7 +845,8 @@ disallow（断掉「internal 文章 → 307 → next 参数里带 UUID」那条�
 作默认集合）**一律不作用于这里** —— 对外列表的资格只有一条 `visibility = public`。
 混合它们会直接破坏上面那条同源。
 
-**`format` / `renderer_override` 同样不参与这个集合**：对外列表的资格仍然只有
+**正文语言同样不参与这个集合**（`format` 只决定渲染引擎，`renderer_override` 已不参与
+选择）：对外列表的资格仍然只有
 `visibility = public`，换了正文语言不改变「可发现」。卡片摘要按 `buildBlogExcerpt`
 的格式分派（reactive 走编译后的 AST，仍是纯文本），只影响卡片文字，不影响收录。
 
@@ -896,8 +900,9 @@ URL 请来抓」。（`robots.ts` 的**路径级**规则不需要动 —— `/ex
 交互组件内部状态、条件分支、实现源码、引用 token 与引用资源均不收录。编译失败只收元数据，
 正文缺失状态被记录并在检索时提示。正文/格式/可见性/软删除变化由触发器先撤旧索引，
 写服务完成后重建；索引写入事务重验原文以拒绝并发旧版本。
-历史回填由 `npm run migrate -- up` 在必要时自动执行（正文升级 / 快照签名刷新 / 覆盖缺失）；
-`npm run search:rebuild` 是强制修复入口，基准用 `npm run search:benchmark`（仅系统临时合成库）。
+`npm run migrate -- up` 只应用手写 SQL —— 它不升级正文、不写编译快照，也不重建这份索引
+（发布顺序见 `docs/deploy.md`）；`npm run search:rebuild` 是强制修复入口，基准用
+`npm run search:benchmark`（仅系统临时合成库）。
 未回填或索引故障时明确降级为标题/简介/作者检索；没有长期结果缓存。
 
 **它不能静态化**：根 layout 读 cookie 取登录态（顶栏要按档位渲染），整棵树因此都是动态的。
@@ -2164,7 +2169,8 @@ Quoted-printable / 哈希 / AES）`legacy: true`，仍指向 `/tool/<slug>` —�
 ```
 
 ⚠️ **渲染路径不是可见性判定。** `read-render` 只决定「用哪个渲染器解释正文」，必须在
-`getBlogDetail` 已经判过档位之后调用；反过来，`format` / `renderer_override` 也不改变
+`getBlogDetail` 已经判过档位之后调用；反过来，`format`（以及已失效的 `renderer_override`
+列）也不改变
 谁能读到这篇文章（§6.11）。
 
 ⚠️ **原始 markdown 是作为 RSC prop 随首屏 payload 下发的** —— 「正文交给客户端渲染」
@@ -2197,7 +2203,7 @@ Quoted-printable / 哈希 / AES）`legacy: true`，仍指向 `/tool/<slug>` —�
 
 剪贴板仅供成员读取。成员视图中剪贴板保持链接卡片，不将其他格式源码拼入父文档。
 external 模式不读取剪贴板、投票或收藏夹，所有此类 token 保留原文。适配器版本 2
-同时进入编译缓存和持久快照签名，使此前含剪贴板元数据的快照失效。
+进入编译缓存键，此前缓存里含剪贴板元数据的产物随之失效（阅读路径不写持久快照）。
 
 ⚠️ `generateMetadata()` 与页面是**两个独立的渲染步**，页面那道可见性判定管不到它 ——
 它必须自己判一次，判不过就返回中性标题、绝不回显（`tests/e2e/access-control.spec.ts`

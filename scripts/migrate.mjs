@@ -280,7 +280,7 @@ async function cmdStatus(prisma) {
     }
   }
   if (pending === 0) console.log(`  ${green('（无）')}`);
-  console.log(`\n提示：status 只读；\`up\` 在 SQL 之后还会执行 Reactive 数据阶段（旧语法升级 / 快照回填 / 索引重建）。`);
+  console.log(`\n提示：status 只读；\`up\` 只应用手写 SQL，不升级正文、不写编译快照、不重建公开索引（源码升级用 reactive:migrate-v07，索引修复用 search:rebuild）。`);
 }
 
 async function cmdMark(prisma, name) {

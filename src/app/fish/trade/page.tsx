@@ -36,10 +36,10 @@ import TradePanel, { type QuoteView, type PositionProp } from './TradePanel';
 // 增减（见 docs/architecture.md §6.3）。
 // 没有突破「非核心账号没有鱼干赚取渠道」这条口径 —— 只是把 core+ 的路多开了一条。
 //
-// 【为什么不用 guard.ts 的 requireCoreUser】那个门的 next 取自 referer，而练手盘是
-// 从 /fish 面板点进来的：直连 / 书签 / 无 referer 时它会退化成 `next=/`，登录完被
-// 扔回首页而不是这里。路径是已知的，直接写死进 next —— 与签到、/fish/* 各页同款。
-// access-control.spec 把这条钉死了。
+// 【为什么自己进门而不用 requireCoreUser】非核心账号在这里不 403，而是渲染
+// 「历史持仓」让它查询和平仓（见下面的分支），所以档位要自己判。回跳地址显式写死
+// `/fish/trade`：练手盘从 /fish 面板点进来，直连 / 书签时没有可用的 referer。
+// `access-control.spec` 钉住了这条 next。
 export const dynamic = 'force-dynamic';
 
 export default async function FishTradePage() {

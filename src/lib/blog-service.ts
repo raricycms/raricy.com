@@ -1387,8 +1387,8 @@ export async function updateBlog(
       visibility: true,
       allowAnonymousComments: true,
       category: { select: { name: true } },
-      // 正文格式要在**写之前**读：省略 format 的旧调用方必须保留原值，
-      // 而 reactive 存量行的任何写入当前都要拒绝（见 resolveBlogContentFormat）。
+      // 正文格式要在**写之前**读：省略 format 的旧调用方必须保留原值
+      // （`resolveBlogContentFormat` 的闸门保证原值只能是合法格式）。
       content: { select: { content: true, format: true, syntaxVersion: true } },
     },
   });
@@ -1522,9 +1522,8 @@ export async function updateBlog(
     prisma.blogContent.upsert({
       where: { blogId },
       // 补缺失的空正文行时保留发布时间，不把数据修复伪装成文章更新。
-      // format 显式写回：省略 format 的旧调用方走的是「保留原值」语义（闸门已保证
-      // 原值只能是 markdown）。syntaxVersion 只在 reactive 时有意义，当前写入关闭，
-      // 这里清空脏值而不是让它跟 markdown 正文并存。
+      // format 显式写回：省略 format 的旧调用方走的是「保留原值」语义。syntaxVersion
+      // 只在 reactive 行有意义；markdown 行写 null，免得脏值跟着正文长期并存。
       create: {
         blogId,
         content: data.content,
