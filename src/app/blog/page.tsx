@@ -297,8 +297,9 @@ async function BlogListSection({
                       private 刻意**不标**：它是默认档，标记它等于满屏噪音，反而把
                       link/public 那两个淹没掉。
 
-                      代价是加第四档时这里不会自动长出来，由
-                      tests/unit/blog-visibility-tag.test.ts 钉住三档一个都不能少。
+                      代价是加第四档时这里不会自动长出来 —— VISIBILITY_BADGE 的完整性
+                      由 tests/unit/blog-visibility-tag.test.ts 的一条枚举用例盯着，
+                      新增档位却忘了渲染只能靠页面检查发现。
                       文案取自 VISIBILITY_BADGE（零依赖模块），不在 JSX 里写死。 */}
                   {b.visibility === 'link' && (
                     <span className="blog-visibility-tag blog-visibility-tag--link">

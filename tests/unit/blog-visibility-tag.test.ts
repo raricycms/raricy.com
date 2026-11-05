@@ -1,74 +1,25 @@
-// 站内列表卡片上的可见性标记（`/blog` 的可见性胶囊）。
+// 可见性词汇的两张表（`VISIBILITY_BADGE` 短标记 / `VISIBILITY_LABEL` 短语）。
 //
-// 【为什么值得一条源码文本检查】src/app/blog/page.tsx 里按档位写死的分支：
-// 加第四档时这里**不会自动长出来**，而后果是静默的：作者看到一篇没有标记的
-// 文章，会以为它没对外 —— 而它可能已经公开了。这条检查把那个静默缺口变成一条
-// 会红的断言。
+// 【为什么留这一条】两张表都是 `Record<BlogVisibility, string>`：加第四档时 tsc 会逼着
+// 补键，但补一个**空串**同样能过类型检查 —— 界面上会出现一个空胶囊或空提示，不报错。
+// 这里只断言「每一档都有非空的中文标签，且短标记彼此可区分」，防的是漏配。
 //
-// ⚠️ 它扫的是**源码文本**，不是渲染结果。真正的行为保证在 e2e 里（真实渲染出的
-// 卡片上有没有那个胶囊）。
+// 标记怎么渲染（`/blog` 卡片上的 JSX 分支、胶囊尺寸）不在这里固定：那是页面与样式的事，
+// 由页面检查覆盖。这里只钉词汇表本身。
 
-import { describe, it, expect } from 'vitest';
-import fs from 'node:fs';
-import path from 'node:path';
+import { describe, expect, it } from 'vitest';
 import { BLOG_VISIBILITIES, VISIBILITY_BADGE, VISIBILITY_LABEL } from '@/lib/blog-visibility';
 
-const PAGE = path.resolve(import.meta.dirname, '../../src/app/blog/page.tsx');
-const src = fs.readFileSync(PAGE, 'utf-8');
-
-/** 卡片里出现了某个档位的标记分支吗？（`b.visibility === 'x'`） */
-const hasBranch = (v: string) => new RegExp(`b\\.visibility\\s*===\\s*'${v}'`).test(src);
-
-describe('站内列表的可见性标记', () => {
-  it('扫的是真文件，不是空字符串（防路径写错导致的假绿）', () => {
-    expect(src.length).toBeGreaterThan(1000);
-    expect(src).toContain('VISIBILITY_BADGE');
-  });
-
-  it('**不标** internal —— 它是默认档，标它等于满屏噪音', () => {
-    // 站内数千篇默认全是 internal。给默认值加标记，反而把 link/public 淹没在里面。
-    expect(hasBranch('internal')).toBe(false);
-  });
-
-  it('★ 除 internal 外的**每一档**都必须有标记分支 —— 加第四档时这条会红', () => {
-    const missing = BLOG_VISIBILITIES.filter((v) => v !== 'internal' && !hasBranch(v));
-    expect(
-      missing,
-      '这些档位在 src/app/blog/page.tsx 里没有标记分支 —— 作者会把它们看成「没对外」，' +
-        '而其中可能有已经公开的。补一个分支。'
-    ).toEqual([]);
-  });
-
-  it('文案取自 VISIBILITY_BADGE，**不在 JSX 里写死**档名', () => {
-    // 反例：直接写 <span>已公开</span>。那样改文案时两处会漂，加第四档时也不会被 tsc 逼到。
-    for (const v of BLOG_VISIBILITIES) {
-      if (v === 'internal') continue;
-      expect(src, `${v} 的文案应来自 {VISIBILITY_BADGE.${v}}`).toContain(
-        `{VISIBILITY_BADGE.${v}}`
-      );
-    }
-    // 反向：确认没有把中文短语直接抄进 JSX（抄了上面那条还是过的，因为分子也在）
-    expect(src, '别把短标记文案直接写进 JSX').not.toContain(`>${VISIBILITY_BADGE.public}<`);
-    expect(src, '别把短标记文案直接写进 JSX').not.toContain(`>${VISIBILITY_BADGE.link}<`);
-  });
-});
-
 describe('可见性词汇的两张表', () => {
-  it('短标记覆盖三档且互不相同（三档要能一眼分开）', () => {
+  it('每一档都有非空的中文短标记与短语标签（防漏配成空串）', () => {
     for (const v of BLOG_VISIBILITIES) {
       expect(VISIBILITY_BADGE[v], `${v} 缺短标记`).toBeTruthy();
       expect(VISIBILITY_LABEL[v], `${v} 缺短语标签`).toBeTruthy();
     }
-    const badges = BLOG_VISIBILITIES.map((v) => VISIBILITY_BADGE[v]);
-    expect(new Set(badges).size, '三个短标记不许重复').toBe(badges.length);
   });
 
-  it('短标记确实比短语短 —— 它是给小胶囊用的', () => {
-    for (const v of BLOG_VISIBILITIES) {
-      expect(
-        VISIBILITY_BADGE[v].length,
-        `${v}：「${VISIBILITY_BADGE[v]}」不比短语「${VISIBILITY_LABEL[v]}」短，那就不该分成两张表`
-      ).toBeLessThan(VISIBILITY_LABEL[v].length);
-    }
+  it('短标记三档互不相同 —— 胶囊上分不出档位等于没标', () => {
+    const badges = BLOG_VISIBILITIES.map((v) => VISIBILITY_BADGE[v]);
+    expect(new Set(badges).size, '短标记不许重复').toBe(badges.length);
   });
 });

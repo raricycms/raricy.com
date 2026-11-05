@@ -7,8 +7,9 @@ import type { MetadataRoute } from 'next';
 // 所以 layout 的 metadata 里**不要再手写 manifest 字段**，那会得到两条 link。
 //
 // 图标只有 PNG 一套，住 public/static/img/pwa/，由 scripts/make-pwa-icons.mjs 从
-// 站点既有几何 favicon 派生（不是另画的品牌）。改了那个脚本就要重跑并提交素材，
-// tests/unit/pwa-metadata.test.ts 会对着脚本写的 pwa/manifest.json 核对。
+// 站点既有几何 favicon 派生（不是另画的品牌）。改了那个脚本就要重跑并提交素材 ——
+// 素材一致性没有自动化守卫，只有 tests/unit/pwa-metadata.test.ts 对清单必需字段、
+// 图标档位与尺寸的断言。
 //
 // start_url / scope / id 使用根路径（'/'），换域名后仍在当前 origin 下打开。
 //    id 固定成 '/' 是为了让「同一个应用」
