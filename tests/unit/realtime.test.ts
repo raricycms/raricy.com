@@ -95,6 +95,23 @@ describe('实时服务边界', () => {
     expect(await rejected(`${runtime.ws}/realtime/probe?ticket=valid-ticket`, ORIGIN)).toBe(404);
   });
 
+  it('★ 票据里带的 frameUrl 原样交给游戏（public-space 的头像框靠它显示）★', async () => {
+    const connected = vi.fn<RealtimeGame['connect']>((peer) => {
+      expect(peer.identity).toMatchObject({ userId: 'player-1', frameUrl: '/api/frames/cat.png' });
+      return { receive: () => {}, close: () => {} };
+    });
+    const runtime = await start([game({
+      authenticate: async ({ ticket }) => ticket === 'valid-ticket'
+        ? { userId: 'player-1', username: 'Player', sessionVersion: 0, frameUrl: '/api/frames/cat.png' }
+        : null,
+      connect: connected,
+    })]);
+    const socket = await connect(`${runtime.ws}/realtime/probe`);
+    await authorize(socket);
+
+    expect(connected).toHaveBeenCalledTimes(1);
+  });
+
   it('认证后才建立游戏，文本与二进制帧保持原样，断连清理一次', async () => {
     const closed = vi.fn();
     const connected = vi.fn<RealtimeGame['connect']>((peer) => {

@@ -53,6 +53,7 @@ const GROUP_ORDER: GroupId[] = [
   'clips',
   'votes',
   'images',
+  'frame',
   'invites',
   'fish',
   'audit',

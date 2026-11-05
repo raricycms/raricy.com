@@ -370,9 +370,13 @@ export default async function AdminLogsPage({
                           </span>
                         </td>
                         <td data-label="">
-                          <Link className="admin-log-table__detail-link" href={`/audit/${log.id}`}>
-                            详情
-                          </Link>
+                          {/* 详情页只读 visibility='public' 的行（见 audit-service.getLogDetail），
+                              内部行给链接必然 404，所以不给。 */}
+                          {log.visibility === 'public' ? (
+                            <Link className="admin-log-table__detail-link" href={`/audit/${log.id}`}>
+                              详情
+                            </Link>
+                          ) : null}
                         </td>
                       </tr>
                     );

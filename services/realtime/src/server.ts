@@ -112,7 +112,9 @@ export function createRealtimeServer(options: ServerOptions) {
         phase = 'connected';
         const peer: RealtimePeer = {
           id: randomUUID(),
-          identity: Object.freeze({ userId: identity.userId, username: identity.username, sessionVersion: identity.sessionVersion }),
+          // 整份冻结地传下去：票据服务按游戏决定身份里带哪些字段（public-space 多一个
+          // frameUrl），这里逐字段挑就会静默漏掉新增的那一个。
+          identity: Object.freeze({ ...identity }),
           send(data) {
             if (socket.readyState !== WebSocket.OPEN || phase !== 'connected') return false;
             if (socket.bufferedAmount > MAX_BUFFERED_BYTES) { socket.close(1013, 'slow_consumer'); return false; }

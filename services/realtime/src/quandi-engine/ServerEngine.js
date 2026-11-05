@@ -1211,6 +1211,11 @@ class ServerEngine {
             if (p.speedActive !== prev.speedActive) dp.speedActive = p.speedActive;
             if (p.speedRemaining !== prev.speedRemaining) dp.speedRemaining = p.speedRemaining;
             if (p.lockTime !== prev.lockTime) dp.lockTime = p.lockTime;
+            // 夺旗模式的回家倒计时：客户端 UIManager 只读增量里的这一个字段，
+            // 漏发就等于「服务端按 15s 判死、玩家屏幕上没有任何提示」。
+            if (p.homeTimeRemaining !== prev.homeTimeRemaining) {
+                dp.homeTimeRemaining = p.homeTimeRemaining;
+            }
             if (p.trailMaxLength !== prev.trailMaxLength) dp.trailMaxLength = p.trailMaxLength;
             if (p.name !== prev.name) dp.name = p.name;
             if (p.lastProcessedInputSeq !== prev.lastProcessedInputSeq) {

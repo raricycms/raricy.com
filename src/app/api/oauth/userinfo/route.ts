@@ -1,6 +1,6 @@
-import { apiErr } from '@/lib/format';
 import { prisma } from '@/lib/db';
 import { rateLimit } from '@/lib/rate-limit';
+import { isCurrentlyBanned } from '@/lib/auth';
 import { hasScope, oauthErr, validateAccessToken } from '@/lib/oauth';
 import { siteOrigin } from '@/lib/site-url';
 import { avatarUrl } from '@/lib/avatar-refs';
@@ -29,12 +29,19 @@ export async function GET(req: Request) {
 
   if (!hasScope(v.scopes, 'profile')) return oauthErr('insufficient_scope', '需要 profile scope');
 
-  // 二次校验：被封号用户的 token 自动失效（吊销旁路最多延迟一次）
+  // 二次校验：禁言中的用户 token 自动失效（吊销旁路最多延迟一次）。
+  // 必须用 isCurrentlyBanned 而不是裸 isBanned —— 禁言到期没有定时任务清标志，
+  // 只读 isBanned 会让到期用户的 token 从此永久 401。
   const user = await prisma.user.findUnique({
     where: { id: v.userId },
-    select: { id: true, username: true, avatarPath: true, isBanned: true },
+    select: {
+      id: true, username: true, avatarPath: true,
+      isBanned: true, banUntil: true,
+    },
   });
-  if (!user || user.isBanned) return oauthErr('invalid_token', '用户已不可用');
+  if (!user || isCurrentlyBanned(user)) {
+    return oauthErr('invalid_token', '用户已不可用');
+  }
 
   // fire-and-forget: 记录最后使用时间
   void import('@/lib/oauth').then((m) => m.touchAccessTokenUsage(raw));
