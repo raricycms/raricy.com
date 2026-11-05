@@ -22,17 +22,17 @@
 | 文档 | 状态与剩余范围 |
 |------|----------------|
 | `docs/plan/reactive-md-simplification-plan.md` | 按用户收缩范围完成本地实现及验收（2026-11-02，未发布）：源码渲染、移除持久快照、SQL-only 迁移；原提案的更大范围候选不在本轮 |
-| `docs/plan/reactive-md-unification-plan.md` | 统一渲染和四入口编辑器的历史实施记录；持久快照与部署门禁已由源码渲染方案替代，兼容与编辑器成果保留 |
-| `docs/plan/editor-plan.md` | M0–M2 与导出已交付；M3 就地装饰、M4 表格辅助 / 大纲未做，原待办见 §7.2；统一渲染与工具栏后续目标转入 ReactiveMD 全量应用计划 |
+| `docs/plan/reactive-md-unification-plan.md` | 统一渲染和四入口编辑器的历史实施记录；目标已达成，持久快照与部署门禁已由源码渲染方案替代，兼容与编辑器成果保留；剩余事项登记在 `docs/plan/reactive-md-migration-plan.md` §12 |
+| `docs/plan/editor-plan.md` | M0–M2 与导出已交付；M3 就地装饰、M4 表格辅助 / 大纲未做，原待办见 §7.2；统一渲染与四入口工具栏已随 ReactiveMD 方案完成 |
 | `docs/plan/format-converter-roadmap.md` | 八个能力区已有首轮本地功能；剩余验收、功能缺口与长期候选见 §16 |
-| `docs/plan/reactive-md-migration-plan.md` | `reactive-md@0.6.1` 早期接入与实施记录；旧剩余范围见 §12.6，后续执行目标以 ReactiveMD 全量应用计划为准 |
+| `docs/plan/reactive-md-migration-plan.md` | ReactiveMD 早期接入（0.5.3–0.6.1）与实施记录；现行渲染规则见简化方案，剩余事项与待决策项登记在 §12 |
 
 ### 已交付的设计与实施记录
 
 | 文档 | 状态与后续事项 |
 |------|----------------|
 | `docs/plan/daily-quote-refactor-plan.md` | P1–P4 本地实现及验收完成（2026-10-30）；269文件 / 5,332用例与桌面 / 手机流程已验证，P5 迁移发布未执行；交付记录见 §12 |
-| `docs/plan/daily-quote-repair-plan.md` | 修复已实施（2026-10-29）；生产数据只读核对、迁移与发布边界见 §4.3/§8，验证记录见 §9 |
+| `docs/plan/daily-quote-repair-plan.md` | 修复已实施（2026-10-29）；当前入口、参与门槛与往期规则见 §1/§3，存量重复统计待办见 §4.3，发布边界见 §8，验证记录见 §9 |
 | `docs/plan/craft-games-design.md` | 三款游戏已重做（2026-10-26）；§9 的扩展是可选方向，尚未排期 |
 
 长期候选与「需要确认范围」的项目不等于已排期或必须实现。产品范围之外的能力、

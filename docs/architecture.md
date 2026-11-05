@@ -762,8 +762,9 @@ Promise** —— 拿它当「等到了字体」，MathJax 的公式会用回退�
   「一旦开始返回用户内容就必须挪走」，而 OG 图恰恰返回用户内容。
 - `tests/unit/explore-visibility-guard.test.ts` —— 钉「对外列表与 sitemap 必须列同一个
   集合」：两个出口的函数体里都必须出现 `INDEXABLE_BLOG_WHERE` 这个名字（见 §6.12）。
-- `tests/unit/blog-visibility-tag.test.ts` —— 钉站内列表卡片上「除 internal 外每一档都有
-  标记」。加第四档时这里不会自动长出来，而作者会把没标记的文章看成「没对外」。
+- `tests/unit/blog-visibility-tag.test.ts` —— 只钉词汇表本身：`VISIBILITY_BADGE` 每一档
+  都有非空的短标记与短语标签。站内列表卡片**渲不渲染**那个标记没有自动化守卫（曾用
+  源码扫描固定 JSX 分支，已按验证纪律清退），加第四档时要靠页面检查。
 - `tests/route/blog-auth.test.ts` 末尾那组 —— OG 图对 internal / 已软删 / 不存在
   **三者 404 且响应体逐字相同**（差一个字就是存在性探针）；以及 `PATCH /api/blogs/:id`
   的可见性改动**只有作者本人**能动（管理员也不行）。

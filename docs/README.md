@@ -96,15 +96,15 @@ GitHub 上仍是原来的反引号，两边不冲突。
 | `plan/story-review-tooling.md` | 故事初审与编辑工作台：只读导入、AI 全文覆盖、人工复审、作品建档与增量更新 |
 | `plan/story-editorial-design.md` | 故事编辑、美术与出版：作者确认、定稿、图文设计、出版包、迁移与撤回 |
 | `plan/daily-quote-refactor-plan.md` | 每日一言重构计划：社区一次选登、core+ 与博客门槛、版本重审、免费共鸣与收藏日期（本地实现及验收完成，待发布） |
-| `plan/daily-quote-repair-plan.md` | 每日一言修复方案：往期回看、累计一次共鸣、旧记录保留与界面整理（已实施，2026-10-29） |
+| `plan/daily-quote-repair-plan.md` | 每日一言修复方案：往期回看、累计一次共鸣、旧记录保留与界面整理（已实施，2026-10-29；当前入口与规则以 `architecture.md` §6.22 为准） |
 | `plan/craft-games-design.md` | 手工间设计：织布机、剪纸、水面印花的玩法、连贯沉浸的判据与落地记录；后续扩展未排期 |
 | `plan/yiwen-chapter-two.md` | 异文第二章「对读」关卡方案：镜映新符、七张实验卡、双面铭牌与规则原型验证；游戏内未实施 |
 | `plan/editor-plan.md` | 编辑器换代方案：M0–M2 与导出已实施；M3 就地装饰、M4 表格辅助 / 大纲未做；剩余验收见 §7.2 |
 | `plan/format-converter-roadmap.md` | 格式转换器长期规划：八个能力区已有首轮功能；剩余验收、功能缺口与长期候选见 §16；路线图不作为支持清单 |
 | `plan/maintenance-plan.md` | 样式容器 / 类名整理、翻译入口取舍与站长可见性完整轨迹视图 |
 | `plan/page-transition-plan.md` | 切页动画 P0–P2 方案：全站淡入、页面内过渡、路由交叉溶解实验；含风险、验收与单文件 P0 demo |
-| `plan/reactive-md-unification-plan.md` | ReactiveMD 后续总计划：修复并合并 PR #20、补齐 Markdown 兼容、博客与云剪贴板全量切换、四入口编辑器及发布回滚 |
-| `plan/reactive-md-migration-plan.md` | ReactiveMD 接入博客区方案：分阶段替换博客 / 剪贴板渲染器；含数据层、语料报告、引用组件、SSR、编辑器与回滚 |
+| `plan/reactive-md-unification-plan.md` | ReactiveMD 统一渲染与四入口编辑器的实施记录：PR #20、Markdown 兼容、博客与云剪贴板全量切换；目标已达成，持久快照要求已由简化方案撤销 |
+| `plan/reactive-md-migration-plan.md` | ReactiveMD 早期接入（0.5.3–0.6.1）与实施记录：数据层、引用组件、SSR、编辑器与回滚；现行规则见简化方案，剩余事项见 §12 |
 
 ## bot/ —— 站外机器人开发者
 

@@ -401,13 +401,13 @@ export const DOC_ENTRIES: readonly DocEntry[] = [
     group: 'dev',
     slug: 'plan/reactive-md-unification-plan',
     title: 'ReactiveMD 全量应用与编辑器重整计划',
-    summary: '修复合并 PR #20、兼容 Markdown、博客与云剪贴板全量切换及四入口编辑器。',
+    summary: '统一渲染与四入口编辑器的实施记录；目标已达成，快照方案已撤销。',
   },
   {
     group: 'dev',
     slug: 'plan/reactive-md-migration-plan',
     title: 'ReactiveMD 接入博客区方案（渲染器换代）',
-    summary: '早期接入方案与实施记录；后续目标转入 ReactiveMD 全量应用与编辑器重整计划。',
+    summary: '早期接入与实施记录；现行规则见简化方案，剩余事项见 §12。',
   },
   {
     group: 'dev',
