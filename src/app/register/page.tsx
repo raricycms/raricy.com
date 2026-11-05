@@ -5,11 +5,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { safeNextPath } from '@/lib/safe-url';
 import TurnstileWidget from '@/app/components/TurnstileWidget';
-
-function showToast(msg: string, type: string) {
-  const w = window as unknown as { showToast?: (m: string, t: string) => void };
-  if (w.showToast) w.showToast(msg, type);
-}
+import { showToast } from '@/app/components/toast';
 
 // 注册页 — 样式结构：auth-page > .container > register-container > register-header
 export default function RegisterPage() {

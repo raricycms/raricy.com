@@ -4,13 +4,9 @@ import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Clipboard } from 'lucide-react';
+import { showToast } from '@/app/components/toast';
 
 // 云剪贴板菜单
-function showToast(msg: string, type: string) {
-  const w = window as unknown as { showToast?: (m: string, t: string) => void };
-  if (w.showToast) w.showToast(msg, type);
-}
-
 interface ClipItem {
   id: string;
   title: string;

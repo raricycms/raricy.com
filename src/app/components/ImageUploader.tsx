@@ -3,136 +3,82 @@
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { IMAGE_ACCEPT, MAX_IMAGE_BYTES, prepareImageFile } from '@/lib/image-client';
+import MediaDropZone from '@/app/components/MediaDropZone';
+import UploadProgress from '@/app/components/UploadProgress';
+import { showToast } from '@/app/components/toast';
+import { useMediaUpload, type PreparedFile } from '@/app/components/useMediaUpload';
 
 const ACCEPT = `${IMAGE_ACCEPT},image/svg+xml`;
 const MAX_BYTES = MAX_IMAGE_BYTES;
 
-function showToast(msg: string, type: string) {
-  const w = window as unknown as { showToast?: (m: string, t: string) => void };
-  if (w.showToast) w.showToast(msg, type);
-}
-
 export default function ImageUploader() {
   const router = useRouter();
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const compressRef = useRef<HTMLInputElement>(null);
-  const [drag, setDrag] = useState(false);
-  const [progressVisible, setProgressVisible] = useState(false);
-  const [progressWidth, setProgressWidth] = useState('0%');
-  const [progressText, setProgressText] = useState('上传中...');
-
-  async function uploadFile(file: File) {
-    if (file.size > MAX_BYTES) {
-      showToast('文件过大，单文件上限 10 MB', 'error');
-      return;
-    }
-
+  const { drag, setDrag, progress, uploadFile } = useMediaUpload({
+    endpoint: '/api/images',
+    maxBytes: MAX_BYTES,
     // 图床页是**唯一**允许 SVG 的上传入口（raw 路由对 SVG 强制附件下载，安全）；
     // HEIC 在这里被就地转成 JPEG —— 服务端没有 HEVC 解码器。
     //
     // prepareImageFile 自己会把「读不到 / 转不了」resolve 成 { ok:false }，这里再包一层
     // 是因为它内部还调了浏览器 API（FileReader / File 构造）——真抛出来时若没人接，
-    // 表现就是「点了上传，界面毫无反应」。
-    let prepared: Awaited<ReturnType<typeof prepareImageFile>>;
-    try {
-      prepared = await prepareImageFile(file, { allowSvg: true });
-    } catch {
-      showToast('图片读取失败，请重试', 'error');
-      return;
-    }
-    if (!prepared.ok) {
-      showToast(prepared.message, 'error');
-      return;
-    }
-    if (prepared.file.size > MAX_BYTES) {
-      showToast('图片转换后仍超过 10 MB，请先压缩或缩小尺寸', 'error');
-      return;
-    }
-
-    const compress = compressRef.current?.checked ? '1' : '0';
-    const formData = new FormData();
-    formData.append('file', prepared.file);
-    formData.append('compress', compress);
-
-    setProgressVisible(true);
-    setProgressWidth('0%');
-    setProgressText('上传中...');
-
-    try {
-      const resp = await fetch('/api/images', {
-        method: 'POST',
-        credentials: 'same-origin',
-        body: formData,
-      });
-      const result = await resp.json();
-
-      if (result.code === 200) {
-        setProgressWidth('100%');
-        setProgressText('上传成功');
-        setTimeout(() => {
-          setProgressVisible(false);
-          router.refresh();
-        }, 500);
-      } else {
-        setProgressVisible(false);
-        showToast(result.message || '上传失败', 'error');
+    // 表现就是「点了上传，界面毫无反应」。catch 后归到同一种 ok:false，由 hook 统一提示。
+    prepare: async (file): Promise<PreparedFile> => {
+      let prepared: Awaited<ReturnType<typeof prepareImageFile>>;
+      try {
+        prepared = await prepareImageFile(file, { allowSvg: true });
+      } catch {
+        return { ok: false, message: '图片读取失败，请重试' };
       }
-    } catch {
-      setProgressVisible(false);
-      showToast('网络错误，请重试', 'error');
-    }
-  }
+      if (!prepared.ok) return prepared;
+      // 转换后未必更小（HEIC → JPEG 在极端情况下反而变大），仍要卡 10 MB 上限。
+      // 这一步只有图床有 —— 音频不做转码，所以校验留在 prepare 里。
+      if (prepared.file.size > MAX_BYTES) {
+        return { ok: false, message: '图片转换后仍超过 10 MB，请先压缩或缩小尺寸' };
+      }
+      return prepared;
+    },
+    // 复选框非受控：值必须在提交那一刻读（见 useMediaUpload 的 extraFields 说明）。
+    extraFields: () => ({ compress: compressRef.current?.checked ? '1' : '0' }),
+    // 成功动画（100% 停 500ms）走完再刷新，与改动前一致。
+    onUploaded: () => router.refresh(),
+  });
 
   return (
     <>
       {/* Upload zone */}
-      <div
-        className={`image-hosting-upload${drag ? ' image-hosting-upload--drag' : ''}`}
+      <MediaDropZone
         id="upload-zone"
-        onClick={() => fileInputRef.current?.click()}
-        onDragOver={(e) => {
-          e.preventDefault();
-          setDrag(true);
-        }}
-        onDragLeave={() => setDrag(false)}
-        onDrop={(e) => {
-          e.preventDefault();
-          setDrag(false);
-          const files = e.dataTransfer.files;
-          if (files.length > 0) uploadFile(files[0]);
-        }}
+        fileInputId="file-input"
+        accept={ACCEPT}
+        drag={drag}
+        onDragChange={setDrag}
+        onFiles={uploadFile}
+        title="拖拽图片到此处，或点击上传"
+        hint="支持 PNG / JPEG / GIF / WebP / SVG，单文件上限 10 MB；iPhone 的 HEIC 会自动转成 JPEG"
+        icon={
+          <svg className="image-hosting-upload__icon" viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" strokeWidth="1.5">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+            <polyline points="17 8 12 3 7 8" />
+            <line x1="12" y1="3" x2="12" y2="15" />
+          </svg>
+        }
       >
-        <svg className="image-hosting-upload__icon" viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" strokeWidth="1.5">
-          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-          <polyline points="17 8 12 3 7 8" />
-          <line x1="12" y1="3" x2="12" y2="15" />
-        </svg>
-        <p className="image-hosting-upload__text">拖拽图片到此处，或点击上传</p>
-        <p className="image-hosting-upload__hint">
-          支持 PNG / JPEG / GIF / WebP / SVG，单文件上限 10 MB；iPhone 的 HEIC 会自动转成 JPEG
-        </p>
+        {/* 图床专属：压缩开关（音频不做转码，没有这一项） */}
         <label className="image-hosting-upload__compress" onClick={(e) => e.stopPropagation()}>
           <input type="checkbox" id="compress-toggle" ref={compressRef} defaultChecked /> 压缩图片（减小文件体积，轻微损失画质）
         </label>
-        <input
-          type="file"
-          id="file-input"
-          accept={ACCEPT}
-          hidden
-          ref={fileInputRef}
-          onChange={(e) => {
-            if (e.target.files && e.target.files.length > 0) uploadFile(e.target.files[0]);
-          }}
-        />
-      </div>
+      </MediaDropZone>
 
       {/* Upload progress */}
-      <div className="image-hosting-progress" id="upload-progress" style={{ display: progressVisible ? 'block' : 'none' }}>
-        <div className="image-hosting-progress__bar">
-          <div className="image-hosting-progress__fill" id="progress-fill" style={{ width: progressWidth }}></div>
-        </div>
-        <span className="numeric" id="progress-text">{progressText}</span>
-      </div>
+      <UploadProgress
+        id="upload-progress"
+        fillId="progress-fill"
+        textId="progress-text"
+        visible={progress.visible}
+        width={progress.width}
+        text={progress.text}
+      />
     </>
   );
 }

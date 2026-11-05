@@ -1,128 +1,65 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import MediaDropZone from '@/app/components/MediaDropZone';
+import UploadProgress from '@/app/components/UploadProgress';
+import { showToast } from '@/app/components/toast';
+import { useMediaUpload } from '@/app/components/useMediaUpload';
 
 // 与服务端 ALLOWED_AUDIO_MIMETYPES 对应（那里还有 audio/x-m4a 等别名，
 // 但 accept 写规范形就够 —— 浏览器按扩展名/类型自己会匹配）
 const ACCEPT = 'audio/mpeg,audio/mp4,audio/ogg,.mp3,.m4a,.ogg,.opus';
 const MAX_BYTES = 10 * 1024 * 1024;
 
-function showToast(msg: string, type: string) {
-  const w = window as unknown as { showToast?: (m: string, t: string) => void };
-  if (w.showToast) w.showToast(msg, type);
-}
-
 export default function AudioUploader() {
   const router = useRouter();
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const [drag, setDrag] = useState(false);
-  const [progressVisible, setProgressVisible] = useState(false);
-  const [progressWidth, setProgressWidth] = useState('0%');
-  const [progressText, setProgressText] = useState('上传中...');
-
-  async function uploadFile(file: File) {
-    if (file.size > MAX_BYTES) {
-      showToast('文件过大，单文件上限 10 MB', 'error');
-      return;
-    }
-
-    const formData = new FormData();
-    formData.append('file', file);
-
-    setProgressVisible(true);
-    setProgressWidth('0%');
-    setProgressText('上传中...');
-
-    try {
-      const resp = await fetch('/api/audio', {
-        method: 'POST',
-        credentials: 'same-origin',
-        body: formData,
-      });
-      const result = await resp.json();
-
-      if (result.code === 200) {
-        setProgressWidth('100%');
-        setProgressText('上传成功');
-        setTimeout(() => {
-          setProgressVisible(false);
-          router.refresh();
-        }, 500);
-      } else {
-        setProgressVisible(false);
-        showToast(result.message || '上传失败', 'error');
-      }
-    } catch {
-      setProgressVisible(false);
-      showToast('网络错误，请重试', 'error');
-    }
-  }
+  // 音频没有 prepare / extraFields：不做转码，也没有压缩开关。
+  const { drag, setDrag, progress, uploadFile } = useMediaUpload({
+    endpoint: '/api/audio',
+    maxBytes: MAX_BYTES,
+    onUploaded: () => router.refresh(),
+  });
 
   return (
     <>
       {/* Upload zone —— 与图床共用 image-hosting-upload* 那套外壳样式，
           差别只在文案与**没有压缩复选框**（音频不做转码，见 audio-upload.ts） */}
-      <div
-        className={`image-hosting-upload${drag ? ' image-hosting-upload--drag' : ''}`}
+      <MediaDropZone
         id="audio-upload-zone"
-        onClick={() => fileInputRef.current?.click()}
-        onDragOver={(e) => {
-          e.preventDefault();
-          setDrag(true);
-        }}
-        onDragLeave={() => setDrag(false)}
-        onDrop={(e) => {
-          e.preventDefault();
-          setDrag(false);
-          const files = e.dataTransfer.files;
-          if (files.length > 0) uploadFile(files[0]);
-        }}
-      >
-        <svg
-          className="image-hosting-upload__icon"
-          viewBox="0 0 24 24"
-          width="48"
-          height="48"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.5"
-        >
-          <path d="M9 18V5l12-2v13" />
-          <circle cx="6" cy="18" r="3" />
-          <circle cx="18" cy="16" r="3" />
-        </svg>
-        <p className="image-hosting-upload__text">拖拽音频到此处，或点击上传</p>
-        <p className="image-hosting-upload__hint">
-          支持 MP3 / M4A / OGG，单文件上限 10 MB
-        </p>
-        <input
-          type="file"
-          id="audio-file-input"
-          accept={ACCEPT}
-          hidden
-          ref={fileInputRef}
-          onChange={(e) => {
-            if (e.target.files && e.target.files.length > 0) uploadFile(e.target.files[0]);
-          }}
-        />
-      </div>
+        fileInputId="audio-file-input"
+        accept={ACCEPT}
+        drag={drag}
+        onDragChange={setDrag}
+        onFiles={uploadFile}
+        title="拖拽音频到此处，或点击上传"
+        hint="支持 MP3 / M4A / OGG，单文件上限 10 MB"
+        icon={
+          <svg
+            className="image-hosting-upload__icon"
+            viewBox="0 0 24 24"
+            width="48"
+            height="48"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.5"
+          >
+            <path d="M9 18V5l12-2v13" />
+            <circle cx="6" cy="18" r="3" />
+            <circle cx="18" cy="16" r="3" />
+          </svg>
+        }
+      />
 
       {/* Upload progress */}
-      <div
-        className="image-hosting-progress"
+      <UploadProgress
         id="audio-upload-progress"
-        style={{ display: progressVisible ? 'block' : 'none' }}
-      >
-        <div className="image-hosting-progress__bar">
-          <div
-            className="image-hosting-progress__fill"
-            id="audio-progress-fill"
-            style={{ width: progressWidth }}
-          ></div>
-        </div>
-        <span className="numeric" id="audio-progress-text">{progressText}</span>
-      </div>
+        fillId="audio-progress-fill"
+        textId="audio-progress-text"
+        visible={progress.visible}
+        width={progress.width}
+        text={progress.text}
+      />
     </>
   );
 }

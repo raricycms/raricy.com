@@ -2,11 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-
-function showToast(msg: string, type: string) {
-  const w = window as unknown as { showToast?: (m: string, t: string) => void };
-  if (w.showToast) w.showToast(msg, type);
-}
+import { showToast } from '@/app/components/toast';
 
 export interface AdminImageRow {
   id: string;
