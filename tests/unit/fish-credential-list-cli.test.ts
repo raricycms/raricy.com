@@ -69,7 +69,7 @@ describe('fish credential-list 的「有效期」用库内时钟判断', () => {
     });
 
     const out = await run({ username: 'fishbot' });
-    const text = out.lines.join('\n');
+    const text = (out.lines ?? []).join('\n');
 
     // 修复前：这张「刚过期」的会显示「有效」→ 下面第一条断言变红
     expect(text, '墙钟已过期 1h 的凭据必须是已过期').toContain('已过期');
