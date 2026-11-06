@@ -460,14 +460,20 @@ describe('K 线：getCandles', () => {
     expect(await getCandles('BTCUSDT')).toEqual([]);
   });
 
-  it('缓存过期后上游挂了 → 退回上次成功那份，而不是空白', async () => {
-    stubFetch([kline(1000, 1, 2, 0.5, 1.5)]);
+  it('缓存过期后上游挂了 → 退回上次成功那份（同桶内，TTL 是唯一失效条件）', async () => {
+    // ⚠️ 旧写法用 openTime=1000（远早于当前桶）→ TTL 与 behindCurrentBucket **同时**
+    // 判缓存不可用，删掉 TTL 那条也照样绿（R3-319）。这里把末根放在**当前桶**里：
+    // 60 秒后桶没跨，只剩 TTL 能让缓存失效 —— 删 TTL / 把保鲜期改成永远，本用例必红。
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-09-28T12:34:56Z'));
+    const IV = 3_600_000;
+    const nowBucket = bucketStart(IV);
+    stubFetch([kline(nowBucket, 1, 2, 0.5, 1.5)]);
     await getCandles('BTCUSDT', '1h', 1);
 
-    vi.useFakeTimers();
-    vi.advanceTimersByTime(61_000); // 越过 CANDLE_CACHE_MS
+    vi.advanceTimersByTime(61_000); // 越过 CANDLE_CACHE_MS，但仍在同一个 1h 桶内
     vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('挂了'); }));
-    expect(await getCandles('BTCUSDT', '1h', 1)).toEqual([[1000, 1, 2, 0.5, 1.5, 1]]);
+    expect(await getCandles('BTCUSDT', '1h', 1)).toEqual([[nowBucket, 1, 2, 0.5, 1.5, 1]]);
     vi.useRealTimers();
   });
 

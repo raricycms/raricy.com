@@ -29,6 +29,7 @@
 
 import { expect } from 'vitest';
 import { prisma } from '@/lib/db';
+import { runAsBackendOps } from '@/lib/audit-context';
 import { postEntry } from '@/lib/fish-service';
 import { fishToUnits, unitsToFish } from '@/lib/fish-units';
 import { makeUser } from './db';
@@ -88,13 +89,21 @@ export async function makeFishUser(
 
 /** 全库核对一次，返回所有撕裂点。不断言，供调用方自己决定怎么用。 */
 export async function auditLedger(): Promise<LedgerReport> {
-  const users = await prisma.user.findMany({
-    select: { id: true, username: true, driedFish: true },
-  });
-  // 一次 groupBy 拿全部用户的流水合计（不是每人一次查询 —— 那在几百用户时就很慢）。
-  const sums = await prisma.fishTransaction.groupBy({
-    by: ['userId'],
-    _sum: { amount: true },
+  // ⚠️ 必须走后台上下文：`withArchiveScope` 给 User 的**所有读**默认附加
+  // `archivedAt: null`，而归档用户的流水仍留在表里 —— 直接 findMany 会让「归档用户
+  // 的余额对不上」永远查不到，且 userCount 与 txCount 口径不一致（R3-730）。
+  // 在 runAsBackendOps 里做整段枚举，保证「全库」名副其实。
+  const { users, sums, txCount } = await runAsBackendOps(async () => {
+    const users = await prisma.user.findMany({
+      select: { id: true, username: true, driedFish: true },
+    });
+    // 一次 groupBy 拿全部用户的流水合计（不是每人一次查询 —— 那在几百用户时就很慢）。
+    const sums = await prisma.fishTransaction.groupBy({
+      by: ['userId'],
+      _sum: { amount: true },
+    });
+    const txCount = await prisma.fishTransaction.count();
+    return { users, sums, txCount };
   });
   const sumByUser = new Map<string, number>();
   for (const s of sums) sumByUser.set(s.userId, s._sum.amount ?? 0);
@@ -123,7 +132,6 @@ export async function auditLedger(): Promise<LedgerReport> {
     }
   }
 
-  const txCount = await prisma.fishTransaction.count();
   return { mismatches, negatives, userCount: users.length, txCount };
 }
 

@@ -99,6 +99,22 @@ interface ScanSpec {
   re: RegExp;
 }
 
+/** 在给定文件列表上扫描，返回 `相对你给的 roots 的路径:行号`。 */
+function scanFiles(files: string[], whitelist: string[], re: RegExp): string[] {
+  const normalizedWhitelist = whitelist.map((w) => w.replace(/\\/g, '/'));
+  const bad: string[] = [];
+  for (const file of files) {
+    const rel = path.relative(ROOT, file).replace(/\\/g, '/');
+    if (normalizedWhitelist.includes(rel)) continue;
+    const code = stripComments(fs.readFileSync(file, 'utf8'));
+    for (const m of code.matchAll(re)) {
+      const line = code.slice(0, m.index ?? 0).split('\n').length;
+      bad.push(`${rel}:${line}`);
+    }
+  }
+  return bad;
+}
+
 /** 在指定范围内扫描违规写法，返回 `相对路径:行号` 列表。 */
 function scan(spec: ScanSpec): string[] {
   const targets = [
@@ -107,18 +123,7 @@ function scan(spec: ScanSpec): string[] {
       .flatMap((d) => collectFiles(path.join(ROOT, d))),
     ...(spec.files ?? []).map((f) => path.join(ROOT, f)).filter((f) => fs.existsSync(f)),
   ];
-  const whitelist = (spec.whitelist ?? []).map((w) => w.replace(/\\/g, '/'));
-  const bad: string[] = [];
-  for (const file of targets) {
-    const rel = path.relative(ROOT, file).replace(/\\/g, '/');
-    if (whitelist.includes(rel)) continue;
-    const code = stripComments(fs.readFileSync(file, 'utf8'));
-    for (const m of code.matchAll(spec.re)) {
-      const line = code.slice(0, m.index ?? 0).split('\n').length;
-      bad.push(`${rel}:${line}`);
-    }
-  }
-  return bad;
+  return scanFiles(targets, spec.whitelist ?? [], spec.re);
 }
 
 const serverSpec = (re: RegExp, whitelist: string[] = WHITELIST): ScanSpec => ({
@@ -158,6 +163,63 @@ describe('db-time 静态守卫：库内时间戳只准用同一把钟', () => {
     ];
     for (const [no, re, sample] of samples) {
       expect(sample.match(re), `规则 ${no} 未命中样例：${sample}`).not.toBeNull();
+    }
+  });
+
+  it('★ 黄金样本：把违规写法写进真实文件 → scan 逐条报红、注释不误报（C14 教训）', () => {
+    // 上一节只证明「正则能 match 样例字符串」；这里证明**守卫的整条管线**（读文件 →
+    // 去注释 → 行号 → 白名单 → 报红）真的会红。守卫自己空转是 C14 那类事故的根因。
+    const dir = path.join(ROOT, 'tests', '.tmp', 'db-time-guard-sample');
+    fs.mkdirSync(dir, { recursive: true });
+    const badFile = path.join(dir, 'bad.ts');
+    const cleanFile = path.join(dir, 'clean.ts');
+    fs.writeFileSync(
+      badFile,
+      [
+        'const a = new Date();',
+        'const b = new Date(Date.now() - 1000);',
+        'const c = (ts.getTime() - Date.now()) / 1000;',
+        'const d = ts.toLocaleString();',
+        'const e = ts.getHours();',
+        '// 注释里的 new Date() 不算：',
+        '// const f = new Date();',
+      ].join('\n')
+    );
+    fs.writeFileSync(
+      cleanFile,
+      [
+        'const a = new Date(0);', // 带参构造，合法
+        'const t = ts.getTime();', // getTime 与时区无关，合法
+        'const h = ts.getUTCHours();', // 展示层要用 getUTC*
+        '// 注释里的 new Date() 不算',
+        // ⚠️ 扫描是词法的：字符串字面量里写 `new Date()` 会真的报红（真实守卫同样如此），
+        // 所以干净样本里不要出现这串字符。
+        'const text = "文档里用文字描述取当前时刻的禁令";',
+      ].join('\n')
+    );
+
+    const rel = (file: string) => path.relative(ROOT, file).replace(/\\/g, '/');
+    try {
+      expect(scanFiles([badFile], [], RE_ARGLESS_NEW_DATE)).toEqual([`${rel(badFile)}:1`]);
+      expect(scanFiles([badFile], [], RE_NEW_DATE_NOW)).toEqual([`${rel(badFile)}:2`]);
+      expect(scanFiles([badFile], [], RE_MIXED_SUBTRACTION)).toEqual([`${rel(badFile)}:3`]);
+      expect(scanFiles([badFile], [], RE_TO_LOCALE)).toEqual([`${rel(badFile)}:4`]);
+      expect(scanFiles([badFile], [], RE_LOCAL_GETTER)).toEqual([`${rel(badFile)}:5`]);
+
+      // 干净样本对五条规则都必须是 0 命中（否则守卫会假红，最终被人关掉）
+      for (const re of [
+        RE_ARGLESS_NEW_DATE,
+        RE_NEW_DATE_NOW,
+        RE_MIXED_SUBTRACTION,
+        RE_TO_LOCALE,
+        RE_LOCAL_GETTER,
+      ]) {
+        expect(scanFiles([cleanFile], [], re)).toEqual([]);
+      }
+      // 白名单生效（唯一豁免机制也在这条管线上）
+      expect(scanFiles([badFile], [rel(badFile)], RE_ARGLESS_NEW_DATE)).toEqual([]);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
     }
   });
 

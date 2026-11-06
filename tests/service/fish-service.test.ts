@@ -416,7 +416,7 @@ describe('★ 并发超扣防护（最关键）', () => {
       Array.from({ length: 4 }, () => makeBlog({ authorId: author.id }))
     );
 
-    await Promise.all(blogs.map((b) => feedBlog(b.id, feeder.id, 5).catch(() => null)));
+    const results = await Promise.all(blogs.map((b) => feedBlog(b.id, feeder.id, 5).catch(() => null)));
 
     const spendCount = await prisma.fishTransaction.count({
       where: { userId: feeder.id, type: 'feed' },
@@ -424,12 +424,17 @@ describe('★ 并发超扣防护（最关键）', () => {
     const incomeRows = await prisma.fishTransaction.findMany({
       where: { userId: author.id, type: 'feed_receive' },
     });
+    // 先钉住「确实发生了两笔」：若三笔全失败，spendCount=0、incomeRows=0、作者余额=0，
+    // 下面「一一对应」与「余额=流水和」会在**空集**上同时成立 —— 用例空转（R3-320）。
+    expect(results.filter((r) => r?.ok).length, '10 鱼干只够 2 笔 ×5').toBe(2);
+    expect(spendCount, '成功两笔就必须有两条支出流水').toBe(2);
     expect(incomeRows, '每笔成功支出对应且仅对应一笔作者收入').toHaveLength(spendCount);
     const authorBal = await getBalance(author.id);
-    expect(authorBal, '作者余额 = 收入流水之和').toBeCloseTo(
+    expect(authorBal, '作者余额 = 收入流水之和（且不为 0）').toBeCloseTo(
       incomeRows.reduce((s, r) => s + unitsToFish(r.amount), 0),
       6
     );
+    expect(authorBal, '两笔 ×5 全归作者时余额不能是 0').toBeGreaterThan(0);
   });
 });
 
@@ -629,11 +634,21 @@ describe('getTransactionsSince（对账游标）', () => {
     expect(await getTransactionsSince(u.id, 0, 100, 'feed_all'), '没有投喂流水').toHaveLength(0);
   });
 
-  it('limit 被封顶在 100（防止一次拉爆）', async () => {
+  it('limit 被封顶在 100（插 120 条 → 只回最早的 100 条）', async () => {
     const u = await makeUser();
-    for (let i = 0; i < 5; i++) await makeTx({ userId: u.id, amount: i + 1, type: 'checkin' });
+    const created: number[] = [];
+    for (let i = 0; i < 120; i++) {
+      const row = await makeTx({ userId: u.id, amount: i + 1, type: 'checkin' });
+      created.push(row.id);
+    }
 
-    expect(await getTransactionsSince(u.id, 0, 999)).toHaveLength(5); // 只有 5 条，但走的是 ≤100 的 take
+    const out = await getTransactionsSince(u.id, 0, 999);
+    // 旧用例只插 5 行再断「返回 5 条」—— 删掉 take 上界也照样绿（R3-320）。
+    expect(out, 'take 必须被夹在 100：返回 120 条就是封顶失效').toHaveLength(100);
+    expect(out.map((r) => r.id), '升序取最早 100 条，不能返回更晚的').toEqual(
+      created.slice(0, 100)
+    );
+    expect(out.map((r) => r.id)).not.toContain(created[100]);
   });
 });
 
@@ -682,7 +697,12 @@ describe('getBalanceLeaderboard', () => {
   it('⚠️ 并列 + limit 截断时，谁上榜由 SQLite 决定 —— 无第二排序键，结果不稳定', async () => {
     for (const n of ['a', 'b', 'c']) await makeUser({ username: n, driedFish: 10 });
     const first = (await getBalanceLeaderboard(2)).map((e) => e.username);
-    expect(first, '仍应返回 2 条').toHaveLength(2);
+    // 只断「返回 2 条」抓不住 limit 失效：limit 被忽略会返回 3 条，仍会过 length>=? 不会 ——
+    // 但若实现改成「先取全部再切」之外的路径，长度仍是唯一可判据。补：必须是 2 个**不同**
+    // 的人、且都来自并列组（R3-320）。
+    expect(first, 'limit=2 必须只返回 2 条').toHaveLength(2);
+    expect(new Set(first).size, '不能重复同一用户').toBe(2);
+    for (const name of first) expect(['a', 'b', 'c']).toContain(name);
     // 记录现状：orderBy 只有 driedFish desc，并列时的取舍无确定性保证。
     // 【修复后删掉本块，改为回归用例】
   });

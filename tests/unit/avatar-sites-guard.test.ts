@@ -68,8 +68,8 @@ const AVATAR_SITES = [
   'src/app/blog/BlogPersonalSidebar.tsx', // 博客目录个人侧栏与窄屏悬浮入口
   'src/games/public-space/PublicSpaceDemo.tsx', // 公共空间网格与观众席（36px）
   'src/app/components/CommentSection.tsx', // 博客评论作者（24px）
-  'src/app/components/FeedButton.tsx', // 点赞者 / 投喂者弹窗名单（内联 32px）
   'src/app/chat/ChatMessageItem.tsx', // 讨论消息作者（34px，<button>）
+  'src/app/chat/ChatMessageDetail.tsx', // 消息详情作者（42px，_chat.scss:1546）
   'src/app/chat/ChatSidebar.tsx', // 频道列表（34px）
   'src/app/chat/ChatApp.tsx', // 私聊标题栏（32px）
   'src/app/chat/NewChatModal.tsx', // 发起私聊搜索结果（32px）
@@ -111,7 +111,7 @@ const AVATAR_DOM_SITES = [
  * 转义用「前一个字符是不是反斜杠」近似判断 —— 对 TS 源码足够，
  * 且它出错的方向是「少数几个字符被当成字符串」，不会把代码吃成注释。
  */
-export function stripComments(src: string): string {
+function stripComments(src: string): string {
   let out = '';
   let i = 0;
   type Mode = 'code' | 'line' | 'block' | 'sq' | 'dq' | 'tpl';

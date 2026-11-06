@@ -5,9 +5,11 @@
 // 接收端起在 127.0.0.1 上，投递时带 allowPrivate（**仅供测试**的开关，
 // 生产调用方不传，见 fish-webhook-service.deliverWebhook 的签名）。
 //
-// 【与转账的接口在哪】「投递行与两条流水同事务写入」「补偿时删掉投递行」这两条
-// 钱的安全性断言，落在 tests/service/fish-market-failclosed.test.ts 里更合适
-//（那里有 mock 好的远端）。本文件测的是回调自己的生命周期。
+// 【与转账的接口在哪】转账成功路径在**同一个事务**里写两条流水 + 一条 outbox 行
+//（src/lib/fish-transfer-service.ts:408-421），本文件钉「投递行随调用方事务回滚」与
+// 回调自身的生命周期；「真实转账会写出 outbox 行」的断言在
+// tests/service/fish-market-service.test.ts 的带回调地址用例里。
+// （本文件头原先指向的 fish-market-failclosed.test.ts 并不存在 —— R3-318。）
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import http from 'node:http';
@@ -234,6 +236,33 @@ describe('outbox 写入', () => {
     expect(await prisma.fishWebhookDelivery.count()).toBe(0);
   });
 
+  it('★ 投递行写在调用方事务里：事务回滚 → 一行都不留（R3-318）', async () => {
+    // 转账路径靠这条性质保证「钱回滚了，回调绝不会还在路上」。若 enqueue 偷用全局
+    // prisma（而不是调用方 tx），回滚后这里会剩一行 → 红。
+    const u = await makeUser();
+    await registerReceiver(u.id);
+    const sender = await makeUser();
+
+    await expect(
+      prisma.$transaction(async (tx) => {
+        await enqueueTransferWebhook({
+          tx,
+          recipientId: u.id,
+          recipientUsername: 'merchant',
+          senderId: sender.id,
+          senderUsername: sender.username,
+          amount: 1.5,
+          note: 'rollback',
+          transferId: 'tid-rollback',
+          balanceAfter: 0,
+        });
+        throw new Error('boom');
+      })
+    ).rejects.toThrow('boom');
+
+    expect(await prisma.fishWebhookDelivery.count(), '事务回滚后 outbox 行必须一起消失').toBe(0);
+  });
+
   it('★ 地址已停用 → 不再产生新的投递行（但历史记录留着）', async () => {
     const u = await makeUser();
     await registerReceiver(u.id);
@@ -309,6 +338,10 @@ describe('投递', () => {
     await registerReceiver(u.id);
     receiver!.statusQueue.push(500);
     const id = (await enqueue(u.id))!;
+    // 取「投递前」的库钟：nextAttemptAt 与 nowForDb() 是**同一把钟**，两把钟相减才能
+    // 暴露退避。旧写法 `nextAttemptAt > Date.now()+5s` 恒真（库钟比真实 UTC 快 8h），
+    // 把退避整体删掉也不会红（R3-317）。
+    const beforeMs = nowForDb().getTime();
 
     expect(await deliverWebhook(id, { allowPrivate: true })).toBe('retry');
 
@@ -317,8 +350,13 @@ describe('投递', () => {
     expect(row.attempts).toBe(1);
     expect(row.lastStatusCode).toBe(500);
     expect(row.lastError).toContain('500');
-    // 退避：下一次不在这会儿
-    expect(row.nextAttemptAt.getTime()).toBeGreaterThan(Date.now() + 5000);
+    // 退避：BACKOFF_MS[0] = 10s（fish-webhook-service.ts:47）；区间取
+    // [10s, 10s+5s] —— 上界只吸收测试机变慢，不吸收「退避被删/被改成 0」。
+    const delay = row.nextAttemptAt.getTime() - beforeMs;
+    expect(delay, '第 1 次失败后必须排到 ~10 秒后（删掉退避这里会变成 ~0）').toBeGreaterThanOrEqual(
+      10_000
+    );
+    expect(delay, `退避偏差过大：实际 ${delay}ms`).toBeLessThan(15_000);
 
     const ep = await getWebhookEndpoint(u.id);
     expect(ep?.consecutiveFailures).toBe(1);

@@ -7,9 +7,14 @@
 // 对它永远不会返回空（详见 docs/deploy.md）。
 //
 // 【为什么在临时库上重建列，而不是用测试库】
-// 生产/开发库这五列是 **REAL 亲和**（0_init 里写的是 `"dried_fish" REAL NOT NULL`），
-// 而 `db push` 出来的测试库是 **INTEGER 亲和**。迁移动的正是「REAL 列里存整数值」
-// 这个具体形态，所以这里照着生产形态重建才有意义。
+// 生产/开发库这五列里，`users.dried_fish` / `fish_transactions.amount` /
+// `blog_feeds.amount` 是 **REAL 亲和**（0_init 里写的是 `REAL NOT NULL`）；而
+// `market_positions.stake_units` / `payout_units` 自 18_market_positions 起就是
+// **INTEGER**（与 schema.prisma 的 Int 一致，迁移 21 只是对它们做 ×1000 的 UPDATE）。
+// 迁移动的正是「REAL 列里存整数值」这个具体形态，所以这里照着生产形态重建才有意义。
+//
+// ⚠️ R3-321：本文件曾把 `stake_units` 也建成 REAL 并声称「五列都是 REAL 亲和」——
+//    与生产 DDL 不符；建库已按生产改为 INTEGER。
 //
 // ⚠️ 这个用例跑的是**迁移文件本身**（读文件、原样执行），不是它的副本 ——
 //    改迁移 SQL 会让它跟着变，而不是悄悄脱钩。
@@ -40,7 +45,11 @@ let dbPath: string;
 // createRequire 取到的是**值**不是类型，所以句柄类型得从它反推（不能直接用 DatabaseSync 当类型）
 let db: InstanceType<typeof DatabaseSync>;
 
-/** 按生产形态建库：五列都是 REAL 亲和（payout_units 除外，它照 18 的 DDL 是 INTEGER）。 */
+/**
+ * 按生产形态建库：三个金额列（users.dried_fish / fish_transactions.amount /
+ * blog_feeds.amount）是 REAL 亲和；market_positions 的 stake_units / payout_units
+ * 照 18_market_positions 的 DDL 是 INTEGER（与 schema.prisma 一致，R3-321）。
+ */
 function buildDb(): void {
   db.exec(`
     CREATE TABLE users (
@@ -58,7 +67,7 @@ function buildDb(): void {
     );
     CREATE TABLE market_positions (
       id TEXT NOT NULL PRIMARY KEY,
-      stake_units REAL NOT NULL,
+      stake_units INTEGER NOT NULL,
       payout_units INTEGER,
       entry_price REAL NOT NULL
     );

@@ -39,8 +39,16 @@ import { FRAME_KEYS, FRAMES, RENT_UNITS, frameUrl, rentableFrameKeys } from '@/l
 const KEY = 'fishblue';
 /** 按月卖的那款 —— 「单位」那几条用例用它。 */
 const MONTHLY_KEY = 'starmoon';
-/** 一款**不零售**的框（站长发放的那种），用来验「不在出售中」。 */
-const NOT_FOR_SALE = FRAME_KEYS.find((k) => FRAMES[k].rent === undefined)!;
+/**
+ * 找一款**不零售**的框（站长发放的那种），用来验「不在出售中」。
+ * ⚠️ 不在模块顶层用非空断言：将来全部上架后 `find` 会变成 undefined，而
+ * `rentFrame(undefined)` 也回 400「未知的头像框」—— 只断 code===400 仍绿，于是
+ * 「不零售」与「未知 key」两句刻意分开的文案失去保护（R3-320）。所以在用例内取、
+ * 先断前提存在，并断到文案。
+ */
+function findNotForSale(): string | undefined {
+  return FRAME_KEYS.find((k) => FRAMES[k].rent === undefined);
+}
 
 const PRICE = FRAMES[KEY].rent!.price;
 const MONTHLY_PRICE = FRAMES[MONTHLY_KEY].rent!.price;
@@ -410,11 +418,18 @@ describe('拒绝的几种情形（一律不扣钱）', () => {
   });
 
   it('不零售的框 → 400（它是站长发放的，不是商品）', async () => {
-    withAsset(NOT_FOR_SALE);
+    const notForSale = findNotForSale();
+    expect(notForSale, '夹具前提：至少要有一款框不零售，否则本用例无法表达「不在出售中」').toBeDefined();
+    if (!notForSale) return;
+    withAsset(notForSale);
     const user = await makeFishUser(10);
-    const res = await rentFrame({ userId: user.id, key: NOT_FOR_SALE, count: 1 });
+    const res = await rentFrame({ userId: user.id, key: notForSale, count: 1 });
     expect(res.ok).toBe(false);
-    if (!res.ok) expect(res.code).toBe(400);
+    if (!res.ok) {
+      expect(res.code).toBe(400);
+      // 必须断到「不在出售中」这句话：与「未知的头像框」共用 400，只断 code 分不开两者。
+      expect(res.message).toContain('不在出售中');
+    }
     expect(await balanceOf(user.id)).toBeCloseTo(10, 4);
   });
 

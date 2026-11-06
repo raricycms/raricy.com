@@ -20,6 +20,7 @@ import {
   makeFishUser,
 } from '../helpers/fish-ledger';
 import { fishToUnits, unitsToFish } from '@/lib/fish-units';
+import { nowForDb } from '@/lib/db-time';
 import { postEntry, addFish } from '@/lib/fish-service';
 
 beforeEach(async () => {
@@ -167,6 +168,21 @@ describe('★ 助手真的抓得住撕裂（没有这几条，它就是空转的
     // 注意要重读：makeFishUser 的返回值是**建行那一刻**的对象，postEntry 在那之后发生。
     const reread = await prisma.user.findUniqueOrThrow({ where: { id: good.id } });
     expect(reread.driedFish).toBe(fishToUnits(3));
+  });
+
+  it('★ 归档用户的账也在核对范围（archive-scope 默认过滤不能把账漏掉）', async () => {
+    // R3-730：withArchiveScope 给 User 的所有读默认附加 archivedAt:null，而
+    // fish_transactions 不在扩展名单里 —— 直接 findMany 会让归档用户的余额核对
+    // 永远查不到（他们偏偏是「恢复时最需要账对」的一群人）。这里先造坏账再归档，
+    // 断助手仍能枚举到他们；auditLedger 若退回普通 findMany，本用例必红。
+    const u = await makeFishUser(5);
+    await corruptBalance(u.id, 0); // 5 鱼干凭空消失
+    await prisma.user.update({ where: { id: u.id }, data: { archivedAt: nowForDb() } });
+
+    const r = await auditLedger();
+    expect(r.userCount, '归档用户必须仍被枚举（否则永远查不到他们的账）').toBe(1);
+    expect(r.mismatches.map((m) => m.userId), '归档用户的撕裂必须报出来').toEqual([u.id]);
+    await expect(expectLedgerConsistent('归档用户的账')).rejects.toThrow(/账目撕裂/);
   });
 });
 

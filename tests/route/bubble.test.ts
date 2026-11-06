@@ -13,6 +13,7 @@ import { prisma } from '@/lib/db';
 import { grantBubble, equipBubble } from '@/lib/bubble-service';
 import { sendMessage } from '@/lib/chat-service';
 import { nowForDb } from '@/lib/db-time';
+import { fishToUnits } from '@/lib/fish-units';
 
 const KEY = 'blue-square';
 const login = async (id: string) => { session.token = await createSessionToken({ uid: id, sv: 0 }); };
@@ -41,6 +42,18 @@ it('成员可花自己的鱼干；篡改价格/单位无效；禁言拒扣款', 
   expect(await res.json()).toMatchObject({ cost: 10, unit: 'month', balance: 20 });
   await prisma.user.update({ where: { id: user.id }, data: { isBanned: true, banUntil: null } });
   expect((await POST(request('POST', { bubble_key: KEY, count: 1 }))).status).toBe(403);
+  // 只断 403 + 账目自洽是不够的：禁言判定若被挪到扣款之后，同一事务提交后
+  // 「余额 == 流水和」仍然成立（账没撕裂，只是钱被扣了），用例会静默变绿。
+  // 必须回读「钱与持有行都没动」（R3-320）。
+  expect(
+    (await prisma.user.findUniqueOrThrow({ where: { id: user.id }, select: { driedFish: true } }))
+      .driedFish,
+    '禁言拒扣款：余额必须还是买完那次的 20 鱼干'
+  ).toBe(fishToUnits(20));
+  expect(
+    await prisma.userBubble.count({ where: { userId: user.id } }),
+    '禁言拒扣款：不能再多发一个持有行'
+  ).toBe(1);
   await expectLedgerConsistent();
 });
 it('装备快照遵守会话权限、专注模式及作者范围', async () => {

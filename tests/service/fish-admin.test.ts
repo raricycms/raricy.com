@@ -148,7 +148,13 @@ describe('adminDeductFish：扣减', () => {
     );
     const ok = results.filter((r) => r.status === 'fulfilled').length;
 
-    expect((await snapshot(u.id)).driedFish, '余额被扣成负数 —— 原子扣减失效').toBe(10 - ok * 4);
+    // 旧写法用 `10 - ok*4` 与右边自指：原子谓词被删、成功 3 笔时两边仍相等；
+    // busy 导致 ok=0 时 10===10 也全过 —— 「最多 2 笔」的意图完全没有断言（R3-320）。
+    expect(ok, '余额 10、每笔扣 4 → 最多只该成功 2 笔（谓词失效会 >2）').toBeLessThanOrEqual(2);
+    expect(ok, '并发用例至少要有一笔成功，否则本用例在空转').toBeGreaterThanOrEqual(1);
+    const after = (await snapshot(u.id)).driedFish;
+    expect(after, '余额必须正好是 10 - 4×(成功笔数)，不能多扣一笔').toBe(10 - ok * 4);
+    expect(after, '余额不能为负 —— 出账谓词失效的第一征兆').toBeGreaterThanOrEqual(0);
     expect(await txCountSince(mark, u.id), '成功几笔就该有几条流水').toBe(ok);
     await expectLedgerConsistent('并发扣减之后');
   });
