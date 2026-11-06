@@ -38,12 +38,21 @@ export async function getBalance(userId: string): Promise<number> {
 }
 
 /**
+ * 批量查询余额一次最多查多少个 id。超出部分**截断**（响应里带 `truncated` 标记，
+ * 见 `api/fish/balance/batch`）—— 公开读口不能拿一次请求把任意大的 IN 子句塞给 SQLite。
+ */
+export const BALANCE_BATCH_MAX = 500;
+
+/**
  * 批量查询余额。返回 {userId: balance}。
- * 不存在的 userId 对应 0；最多支持 500 个 ID，超出截断。
+ * 不存在的 userId 对应 0；最多支持 `BALANCE_BATCH_MAX` 个 ID，超出截断。
+ *
+ * 调用方负责保证元素都是字符串（HTTP 入口判 400）—— 非字符串会被 Prisma 的 `in`
+ * 客户端校验直接抛错，那不是业务结果，而是输入信任边界漏了。
  */
 export async function getBalanceBatch(userIds: string[]): Promise<Record<string, number>> {
   if (!userIds || userIds.length === 0) return {};
-  const ids = userIds.slice(0, 500);
+  const ids = userIds.slice(0, BALANCE_BATCH_MAX);
   const users = await prisma.user.findMany({
     where: { id: { in: ids } },
     select: { id: true, driedFish: true },

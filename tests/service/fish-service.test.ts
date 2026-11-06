@@ -14,6 +14,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 
 import {
+  BALANCE_BATCH_MAX,
   getBalance,
   getBalanceBatch,
   getTodayCheckinFish,
@@ -96,12 +97,15 @@ describe('getBalanceBatch', () => {
     expect(await getBalanceBatch([])).toEqual({});
   });
 
-  it('超过 500 个 ID 时截断到前 500（防止 IN 子句爆炸）', async () => {
-    const ids = Array.from({ length: 600 }, (_, i) => `id-${i}`);
+  it('超过上限时截断到 BALANCE_BATCH_MAX（防止 IN 子句爆炸）', async () => {
+    const ids = Array.from({ length: BALANCE_BATCH_MAX + 100 }, (_, i) => `id-${i}`);
     const r = await getBalanceBatch(ids);
-    expect(Object.keys(r)).toHaveLength(500);
-    expect(r['id-499']).toBe(0);
-    expect(r['id-500'], '第 501 个之后应被截断，键不存在').toBeUndefined();
+    expect(Object.keys(r)).toHaveLength(BALANCE_BATCH_MAX);
+    expect(r[`id-${BALANCE_BATCH_MAX - 1}`]).toBe(0);
+    expect(
+      r[`id-${BALANCE_BATCH_MAX}`],
+      '第 501 个之后应被截断，键不存在（HTTP 入口用 truncated 标记告诉调用方）'
+    ).toBeUndefined();
   });
 });
 
