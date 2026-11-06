@@ -45,7 +45,7 @@ export interface AvatarProps {
   /** 挂在**头像 `<img>`** 上的类（原来是 `.comment-author-avatar` 那种直接给 img 的）。 */
   imgClassName?: string;
   /**
-   * 仅给原先用**内联尺寸**的那几处（FeedButton 的弹窗名单）。
+   * 仅给原先用**内联尺寸**的那几处（BlogAudienceDialogs 的点赞者/投喂者名单）。
    * 走内联是因为 `docs/frontend-styles.md` §3.4 明确要求「内联样式同样写
    * `border-radius: '8%'`，不要写死 px」。
    */

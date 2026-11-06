@@ -1,70 +1,26 @@
 'use client';
 
-// FeedButton — 文章详情页「读者交互区」。三块内容的可见/可交互形态：
-//   • 单行操作区：返回、点赞/投喂/收藏胶囊、向右展开的管理胶囊
-//   • 两步式投喂弹窗（选数量 → 确认），由投喂按钮触发
-//   • 管理胶囊（管理员 / 作者）提供点赞者、投喂者、编辑、可见性与删除入口，
-//     列表和确认操作仍使用弹窗
+// FeedButton — 文章详情页「读者交互区」的壳层。
 //
-// 由 blog/[id]/page.tsx 挂载。点赞 → POST /api/blogs/:id/like；投喂 → POST /api/blogs/:id/feed；
-// 可见性 → PATCH /api/blogs/:id。
+// 按状态所有权拆分（依据 reports/round3/notes/impl-split.md §3.1 B1）：
+//   · 读者写路径（BlogLike / BlogFeed / 收藏）→ BlogReactions；
+//   · 作者/管理员写路径（可见性 PATCH / 删除 DELETE / 编辑）→ BlogManageMenu + BlogManageDialogs；
+//   · 只读名单投影（点赞者 / 投喂者）→ BlogAudienceDialogs。
+// 本文件只保留：对外 props、布局（#read-controls / 返回按钮 / 管理齿轮位置）、
+// 移动端断点，以及 overlay 开合（外部点击 / ESC / 焦点归还）的 effect 编排。
+// 对外 API 与 DOM 钩子保持不变（e2e 依赖 #read-controls、#admin-manage-btn 等）。
 
-import Avatar from '@/app/components/Avatar';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ChevronLeft } from 'lucide-react';
-// 可见性词汇必须从 ./blog-visibility 取（那个模块零依赖）—— **不能**从 blog-service，
-// 它拖着 prisma，进不了客户端包。BlogForm 同款。
-import { BLOG_VISIBILITIES, VISIBILITY_LABEL } from '@/lib/blog-visibility';
 import type { BlogVisibility } from '@/lib/blog-visibility';
 import { decideBackTarget } from '@/lib/navigation-back';
-import FavoriteButton from './FavoriteButton';
+import BlogReactions from './BlogReactions';
+import BlogManageMenu from './BlogManageMenu';
+import { BlogLikersDialog, BlogFeedersDialog } from './BlogAudienceDialogs';
+import { BlogVisibilityDialog, BlogDeleteDialog } from './BlogManageDialogs';
 
-const FEED_CAP = 5;
-
-function ReadCount({ count, id, className }: { count: number; id: string; className: string }) {
-  const visible = count > 0;
-  const [lastCount, setLastCount] = useState(count);
-
-  // 收回时保留上一枚数字供淡出；零值不占宽度，也不进入辅助技术的读数。
-  useEffect(() => {
-    if (count > 0) setLastCount(count);
-  }, [count]);
-
-  return (
-    <span
-      className={`read-count numeric${visible ? ' read-count--visible' : ''}`}
-      style={{ width: visible ? `calc(${String(count).length}ch + 6px)` : '0px' }}
-      aria-hidden={!visible}
-    >
-      <span className={className} id={visible ? id : undefined}>
-        {visible ? count : lastCount || ''}
-      </span>
-    </span>
-  );
-}
-
-function toast(msg: string, type: string) {
-  const w = window as unknown as { showToast?: (m: string, t: string) => void };
-  if (w.showToast) w.showToast(msg, type);
-}
-
-// ⚠️ 这两个是**手抄**的服务端 DTO 形状（客户端组件 import 不了拖着 prisma 的
-// blog-service / feed-service）。加了字段却忘了这里 → 那一处静默地没有框，
-// 所以字段名要与服务端逐字对齐，别自己改名。
-interface LikerRow {
-  id: string;
-  username: string;
-  avatar_url?: string | null;
-  frame_url?: string | null;
-}
-interface FeederRow {
-  user_id: string;
-  username: string;
-  amount: number;
-  avatar_path?: string | null;
-  frame_url?: string | null;
-}
+type Overlay = 'menu' | 'likers' | 'feeders' | 'visibility' | 'delete' | 'feed' | null;
 
 interface Props {
   blogId: string;
@@ -124,112 +80,10 @@ export default function FeedButton({
 }: Props) {
   const router = useRouter();
 
-  // ── 可见性（作者改，见下面的「管理文章」弹窗）────────────────────────────────
-  // visibility = 服务端确认过的档位；visDraft = 弹窗里正在挑的那个。
-  // 分成两个而不是共用一个：取消 / 关闭弹窗要能丢弃草稿，否则「点开看了一眼又关掉」
-  // 会把界面留在未提交的状态上。
-  const [visibility, setVisibility] = useState<BlogVisibility>(initialVisibility);
-  const [visDraft, setVisDraft] = useState<BlogVisibility>(initialVisibility);
-  const [visBusy, setVisBusy] = useState(false);
-
-  // ── 点赞 ────────────────────────────────────────────────────────────────────
-  const [liked, setLiked] = useState(initialLiked);
-  const [likes, setLikes] = useState(initialLikes);
-  const [likeBusy, setLikeBusy] = useState(false);
-
-  async function handleLike() {
-    if (!isAuth) {
-      toast('请先登录后再点赞', 'info');
-      window.location.href = '/login';
-      return;
-    }
-    setLikeBusy(true);
-    try {
-      const res = await fetch(`/api/blogs/${blogId}/like`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'same-origin',
-      });
-      const data = await res.json();
-      if (data.code === 200) {
-        setLiked(!!data.liked);
-        setLikes(data.likes_count);
-        toast(data.liked ? '已点赞' : '已取消点赞', data.liked ? 'success' : 'info');
-      } else {
-        toast(data.message || '操作失败', 'error');
-      }
-    } catch {
-      toast('网络错误，请稍后重试', 'error');
-    } finally {
-      setLikeBusy(false);
-    }
-  }
-
-  // ── 投喂 ────────────────────────────────────────────────────────────────────
-  const [fed, setFed] = useState(initialFed);
-  const [fishCount, setFishCount] = useState(initialFishCount);
-  const [feedOpen, setFeedOpen] = useState(false);
-  const [selected, setSelected] = useState(0);
-  const [feedStatus, setFeedStatus] = useState('');
-  const [feedBusy, setFeedBusy] = useState(false);
-  const remaining = Math.max(0, FEED_CAP - fed);
-
-  function openFeedModal() {
-    if (canEdit) return;
-    if (!isAuth) {
-      window.location.href = '/login';
-      return;
-    }
-    if (!isCore) {
-      toast('仅核心用户可投喂小鱼干', 'warning');
-      return;
-    }
-    if (fed >= FEED_CAP) {
-      toast('已投满 5 条，不能再投了', 'info');
-      return;
-    }
-    setSelected(0);
-    setFeedStatus(`已投 ${fed}/5，还可投喂 ${remaining} 条`);
-    setFeedOpen(true);
-  }
-
-  function selectAmount(n: number) {
-    setSelected(n);
-    setFeedStatus(`已投 ${fed}/5，投喂 ${n} 条`);
-  }
-
-  async function doFeed() {
-    if (selected <= 0 || feedBusy) return;
-    const amount = selected;
-    setFeedBusy(true);
-    setFeedStatus('投喂中...');
-    try {
-      const res = await fetch(`/api/blogs/${blogId}/feed`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'same-origin',
-        body: JSON.stringify({ amount }),
-      });
-      const data = await res.json();
-      if (data.code === 200) {
-        setFed(data.fed_total ?? fed + amount);
-        setFishCount(data.fish_count ?? fishCount + amount);
-        setFeedOpen(false);
-        toast(`投喂成功！消耗 ${amount} 条小鱼干`, 'success');
-      } else {
-        toast(data.message || '投喂失败', 'error');
-        setFeedStatus(`已投 ${fed}/5，投喂 ${amount} 条`);
-      }
-    } catch {
-      toast('网络错误，请重试', 'error');
-    } finally {
-      setFeedBusy(false);
-    }
-  }
-
-  // menu 是行内展开态，其余为独立弹窗。
-  type ModalKind = 'menu' | 'likers' | 'feeders' | 'visibility' | 'delete' | null;
-  const [modal, setModal] = useState<ModalKind>(null);
+  // 同一时刻只有一个 overlay：管理目录 / 两个只读名单 / 两个管理弹窗 / 投喂弹窗。
+  // 读者与管理写路径的事实状态分别住在 BlogReactions / BlogManageDialogs 里，
+  // 这里只管「谁开着」与「怎么关」。
+  const [overlay, setOverlay] = useState<Overlay>(null);
   const manageRef = useRef<HTMLDivElement>(null);
   const manageToggleRef = useRef<HTMLButtonElement>(null);
   const [mobileControls, setMobileControls] = useState(false);
@@ -243,172 +97,32 @@ export default function FeedButton({
     return () => query.removeEventListener('change', sync);
   }, []);
 
-  function returnToManage() {
-    setModal('menu');
-    requestAnimationFrame(() => manageToggleRef.current?.focus());
-  }
-
+  // 管理目录的外部点击收起。
   useEffect(() => {
-    if (modal !== 'menu') return;
+    if (overlay !== 'menu') return;
     const onOutside = (e: PointerEvent) => {
-      if (!manageRef.current?.contains(e.target as Node)) setModal(null);
+      if (!manageRef.current?.contains(e.target as Node)) setOverlay(null);
     };
     document.addEventListener('pointerdown', onOutside);
     return () => document.removeEventListener('pointerdown', onOutside);
-  }, [modal]);
+  }, [overlay]);
 
-  // ESC 关闭
+  // ESC 关闭；从管理视图（含目录）关闭时把焦点还给齿轮，投喂弹窗不抢焦点。
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        setModal(null);
-        setFeedOpen(false);
-        if (modal) manageToggleRef.current?.focus();
-      }
+      if (e.key !== 'Escape') return;
+      const wasManageView = overlay !== null && overlay !== 'feed';
+      setOverlay(null);
+      if (wasManageView) manageToggleRef.current?.focus();
     };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
-  }, [modal]);
+  }, [overlay]);
 
-  // 点赞者列表
-  const [likers, setLikers] = useState<LikerRow[]>([]);
-  const [likersPage, setLikersPage] = useState(1);
-  const [likersPages, setLikersPages] = useState(1);
-  const [likersMsg, setLikersMsg] = useState('');
-  const loadLikers = useCallback(
-    async (page: number) => {
-      setLikersMsg('加载中...');
-      setLikers([]);
-      try {
-        const limit = 20;
-        const res = await fetch(`/api/blogs/${blogId}/likers?offset=${(page - 1) * limit}&limit=${limit}`, {
-          credentials: 'same-origin',
-        });
-        const data = await res.json();
-        if (data.code === 200) {
-          const users: LikerRow[] = data.users || data.data?.users || [];
-          const total = data.total || data.data?.total || 0;
-          setLikers(users);
-          setLikersPage(page);
-          setLikersPages(Math.max(1, Math.ceil(total / limit)));
-          setLikersMsg(users.length ? '' : '暂无点赞者');
-        } else {
-          setLikersMsg(`加载失败: ${data.message || '未知错误'}`);
-        }
-      } catch {
-        setLikersMsg('网络错误，请稍后重试');
-      }
-    },
-    [blogId]
-  );
-
-  // 投喂者列表
-  const [feeders, setFeeders] = useState<FeederRow[]>([]);
-  const [feedersPage, setFeedersPage] = useState(1);
-  const [feedersPages, setFeedersPages] = useState(1);
-  const [feedersMsg, setFeedersMsg] = useState('');
-  const loadFeeders = useCallback(
-    async (page: number) => {
-      setFeedersMsg('加载中...');
-      setFeeders([]);
-      try {
-        const limit = 20;
-        const res = await fetch(`/api/blogs/${blogId}/feeders?offset=${(page - 1) * limit}&limit=${limit}`, {
-          credentials: 'same-origin',
-        });
-        const data = await res.json();
-        if (data.code === 200) {
-          const list: FeederRow[] = data.feeders || [];
-          const total = data.total || 0;
-          setFeeders(list);
-          setFeedersPage(page);
-          setFeedersPages(Math.max(1, Math.ceil(total / limit)));
-          setFeedersMsg(list.length ? '' : '暂无投喂者');
-        } else {
-          setFeedersMsg(`加载失败: ${data.message || '未知错误'}`);
-        }
-      } catch {
-        setFeedersMsg('网络错误，请稍后重试');
-      }
-    },
-    [blogId]
-  );
-
-  // 从「管理文章」目录进入子视图：先切视图再拉列表，保证列表状态与视图同步
-  function openLikers() {
-    setModal('likers');
-    void loadLikers(1);
-  }
-  function openFeeders() {
-    setModal('feeders');
-    void loadFeeders(1);
-  }
-
-  // 删除
-  const [deleteReason, setDeleteReason] = useState('');
-  const [deleteBusy, setDeleteBusy] = useState(false);
-  async function confirmDelete() {
-    if (isAdminDelete && !deleteReason.trim()) {
-      toast('请填写删除原因', 'warning');
-      return;
-    }
-    setDeleteBusy(true);
-    try {
-      const url = isAdminDelete ? `/api/admin/blogs/${blogId}` : `/api/blogs/${blogId}`;
-      const res = await fetch(url, {
-        method: 'DELETE',
-        headers: isAdminDelete ? { 'Content-Type': 'application/json' } : undefined,
-        credentials: 'same-origin',
-        body: isAdminDelete ? JSON.stringify({ reason: deleteReason.trim() }) : undefined,
-      });
-      const data = await res.json().catch(() => ({ code: res.status, message: '删除失败' }));
-      if (data.code === 200) {
-        toast('文章已删除', 'success');
-        window.location.href = '/blog';
-      } else {
-        toast(data.message || '删除失败', 'error');
-      }
-    } catch {
-      toast('网络错误，请稍后重试', 'error');
-    } finally {
-      setDeleteBusy(false);
-    }
-  }
-
-  // 可见性：提交草稿。**只走窄接口 PATCH**，不是拿 PUT 把整篇回传一遍
-  // （那样既有丢更新的竞态，又把正文白往返一趟）。
-  async function saveVisibility() {
-    if (visBusy) return;
-    if (visDraft === visibility) {
-      toast('可见性没有变化', 'info');
-      returnToManage();
-      return;
-    }
-    setVisBusy(true);
-    try {
-      const res = await fetch(`/api/blogs/${blogId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'same-origin',
-        body: JSON.stringify({ visibility: visDraft }),
-      });
-      const data = await res.json().catch(() => ({ code: res.status, message: '设置失败' }));
-      if (res.ok) {
-        setVisibility(visDraft);
-        toast(data.message || '已更新可见性', 'success');
-        // ⚠️ 必须让服务端重渲染，不能只改本地 state：robots 元数据、OG 卡片、JSON-LD
-        // 与页脚的「对外公开」状态**全部在服务端算**。只改本地的话，这个标签页会停在
-        // 「界面说站内、响应头说 public」的不一致里，而刷新一下又好了 —— 最难查的那种。
-        router.refresh();
-        setModal(null);
-      } else {
-        toast(data.message || '设置失败', 'error');
-      }
-    } catch {
-      toast('网络错误，请稍后重试', 'error');
-    } finally {
-      setVisBusy(false);
-    }
+  // 管理弹窗的「取消」：回到「管理文章」目录而非直接关闭，并把焦点还给齿轮。
+  function returnToManage() {
+    setOverlay('menu');
+    requestAnimationFrame(() => manageToggleRef.current?.focus());
   }
 
   // 「返回上页」：历史记录多于一条时沿用 back()，只有当前页时就
@@ -423,410 +137,68 @@ export default function FeedButton({
   return (
     <>
       {/* 整排随内容宽度居中；手机端展开管理时，互动胶囊同步收缩。 */}
-      <div className={`read-controls${modal === 'menu' ? ' is-manage-open' : ''}`} id="read-controls">
+      <div className={`read-controls${overlay === 'menu' ? ' is-manage-open' : ''}`} id="read-controls">
         <div className="read-controls__bar">
           <button onClick={handleBack} className="read-btn" aria-label="返回上页" title="返回上页">
             <ChevronLeft aria-hidden="true" />
           </button>
-          <div className="read-controls__interaction" inert={mobileControls && modal === 'menu'}>
-            <div className="read-controls__row">
-              <button
-                id="like-btn"
-                className={`like-btn${liked ? ' liked' : ''}`}
-                onClick={handleLike}
-                disabled={likeBusy}
-                aria-label="点赞"
-                aria-pressed={liked}
-                title={liked ? '已点赞' : '点赞'}
-              >
-                <span className="icon icon-heart-fill" aria-hidden="true"></span>
-                <ReadCount count={likes} id="like-count" className="like-count-badge" />
-              </button>
-
-              <button
-                id="feed-fish-btn"
-                className={`fish-btn${fed > 0 ? ' fish-btn--fed' : ''}`}
-                onClick={openFeedModal}
-                disabled={canEdit || (isAuth && fed >= FEED_CAP)}
-                title={canEdit ? '不能给自己的文章投喂' : '投喂小鱼干'}
-                aria-label={canEdit ? '收到的投喂' : '投喂小鱼干'}
-              >
-                <span className="icon icon-fish" aria-hidden="true"></span>
-                <ReadCount count={fishCount} id="fish-count" className="fish-count-badge" />
-              </button>
-
-              {/* 收藏夹（黄色五角星）。刻意**不带计数徽标** —— 站内不显示被收藏数。
-                  组件自带选择器弹窗；对所有人渲染，档位判断在组件内做。 */}
-              <FavoriteButton
-                blogId={blogId}
-                isAuth={isAuth}
-                isCore={isCore}
-                initialFavorited={initialFavorited}
-              />
-            </div>
+          <div className="read-controls__interaction" inert={mobileControls && overlay === 'menu'}>
+            <BlogReactions
+              blogId={blogId}
+              isAuth={isAuth}
+              isCore={isCore}
+              canEdit={canEdit}
+              initialLiked={initialLiked}
+              initialLikes={initialLikes}
+              initialFed={initialFed}
+              initialFishCount={initialFishCount}
+              initialFavorited={initialFavorited}
+              feedOpen={overlay === 'feed'}
+              onOpenFeed={() => setOverlay('feed')}
+              onCloseFeed={() => setOverlay(null)}
+            />
           </div>
 
           {canManage && (
-            <div
-              ref={manageRef}
-              className={`manage-control${modal === 'menu' ? ' is-open' : ''}`}
-              onBlur={(e) => {
-                if (modal === 'menu' && !e.currentTarget.contains(e.relatedTarget)) setModal(null);
-              }}
-            >
-              <button
-                ref={manageToggleRef}
-                id="admin-manage-btn"
-                className="manage-control__toggle"
-                onClick={() => setModal(modal === 'menu' ? null : 'menu')}
-                aria-label="管理文章"
-                title="管理文章"
-                aria-expanded={modal === 'menu'}
-                aria-controls="blog-manage-menu"
-              >
-                <span className="icon icon-gear-fill" aria-hidden="true" />
-              </button>
-              <div className="manage-control__panel" inert={modal !== 'menu'} aria-hidden={modal !== 'menu'}>
-                <div className="manage-menu" id="blog-manage-menu" role="group" aria-label="文章管理操作">
-                  <button type="button" className="manage-menu__item" onClick={openLikers} aria-label="点赞者" title="点赞者">
-                    <span className="icon icon-person-heart-fill" aria-hidden="true" /><span>点赞者</span>
-                  </button>
-                  <button type="button" className="manage-menu__item" onClick={openFeeders} aria-label="投喂者" title="投喂者">
-                    <span className="icon icon-person-fish-fill" aria-hidden="true" /><span>投喂者</span>
-                  </button>
-                  {canEdit && (
-                    <a href={`/blog/${blogId}/edit`} className="manage-menu__item" aria-label="编辑" title="编辑">
-                      <span className="icon icon-pencil-fill" aria-hidden="true" /><span>编辑</span>
-                    </a>
-                  )}
-                  {/* 编辑与可见性仅作者可用，服务端 PATCH / PUT 也只认作者。 */}
-                  {canEdit && (
-                    <button type="button" className="manage-menu__item" aria-label="可见性" title="可见性" onClick={() => {
-                      setVisDraft(visibility);
-                      setModal('visibility');
-                    }}>
-                      <span className="icon icon-eye-fill" aria-hidden="true" /><span>可见性</span>
-                    </button>
-                  )}
-                  <button type="button" className="manage-menu__item manage-menu__item--danger" onClick={() => setModal('delete')} aria-label="删除" title="删除">
-                    <span className="icon icon-trash-fill" aria-hidden="true" /><span>删除</span>
-                  </button>
-                </div>
-              </div>
-            </div>
+            <BlogManageMenu
+              blogId={blogId}
+              open={overlay === 'menu'}
+              canEdit={canEdit}
+              onToggle={() => setOverlay(overlay === 'menu' ? null : 'menu')}
+              onClose={() => setOverlay(null)}
+              onOpenView={(view) => setOverlay(view)}
+              containerRef={manageRef}
+              toggleRef={manageToggleRef}
+            />
           )}
         </div>
       </div>
 
-      {/* 小鱼干投喂弹窗（两步式：选数量 → 确认）*/}
-      <div className={`feed-modal${feedOpen ? ' feed-modal--open' : ''}`} id="feedModal">
-        <div className="feed-modal__backdrop" onClick={() => setFeedOpen(false)} />
-        <div className="feed-modal__content">
-          <div className="feed-modal__header">
-            <h3><span className="icon icon-fish" aria-hidden="true" style={{ marginRight: '0.5rem' }}></span>投喂小鱼干</h3>
-            <p className="numeric" id="feedModalStatus">{feedStatus}</p>
-          </div>
-          <div className="feed-modal__buttons" id="feedButtons">
-            {[1, 2, 3, 4, 5].map((n) => (
-              <button
-                key={n}
-                className={`numeric feed-modal__amount-btn${selected === n ? ' feed-modal__amount-btn--selected' : ''}`}
-                data-amount={n}
-                onClick={() => selectAmount(n)}
-                disabled={feedBusy || n > remaining}
-              >
-                {n} 条
-              </button>
-            ))}
-          </div>
-          <div className="feed-modal__actions">
-            <button className="feed-modal__close-btn" id="feedCancelBtn" onClick={() => setFeedOpen(false)}>
-              取消
-            </button>
-            <button
-              className="feed-modal__confirm-btn"
-              id="feedConfirmBtn"
-              onClick={doFeed}
-              disabled={selected <= 0 || feedBusy}
-            >
-              确认投喂
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* 点赞者列表 Modal */}
       {canManage && (
-        <div
-          className={`modal${modal === 'likers' ? ' is-open' : ''}`}
-          id="likersModal"
-          role="dialog"
-          aria-hidden={modal !== 'likers'}
-          onClick={(e) => e.target === e.currentTarget && setModal(null)}
-        >
-          <div className="modal-dialog modal-dialog-centered">
-            <div className="modal-content">
-              <div className="modal-header">
-                <h5 className="modal-title"><span className="icon icon-heart-fill" aria-hidden="true" style={{ marginRight: '0.5rem' }}></span>点赞者列表</h5>
-                <button type="button" className="btn-close" aria-label="Close" onClick={() => setModal(null)} />
-              </div>
-              <div className="modal-body">
-                <div id="likers-list" className="list-group" style={{ maxHeight: '50vh', overflow: 'auto' }}>
-                  {likersMsg ? (
-                    <div className="text-muted">{likersMsg}</div>
-                  ) : (
-                    likers.map((u) => (
-                      <div className="list-group-item" key={u.id}>
-                        <div className="d-flex align-items-center">
-                          <Avatar
-                            userId={u.id}
-                            src={u.avatar_url}
-                            frameUrl={u.frame_url}
-                            alt={u.username}
-                            size={32}
-                            style={{ marginRight: 10 }}
-                          />
-                          <strong>{u.username || '匿名用户'}</strong>
-                        </div>
-                      </div>
-                    ))
-                  )}
-                </div>
-                <div className="d-flex justify-content-between align-items-center mt-3">
-                  <button
-                    className="btn btn-sm btn-outline-secondary"
-                    disabled={likersPage <= 1}
-                    onClick={() => loadLikers(likersPage - 1)}
-                  >
-                    上一页
-                  </button>
-                  <small className="text-muted numeric">
-                    第 {likersPage} 页，共 {likersPages} 页
-                  </small>
-                  <button
-                    className="btn btn-sm btn-outline-secondary"
-                    disabled={likersPage >= likersPages}
-                    onClick={() => loadLikers(likersPage + 1)}
-                  >
-                    下一页
-                  </button>
-                </div>
-              </div>
-              <div className="modal-footer">
-                <button type="button" className="btn btn-secondary" onClick={() => setModal(null)}>
-                  关闭
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
+        <BlogLikersDialog blogId={blogId} open={overlay === 'likers'} onClose={() => setOverlay(null)} />
       )}
-
-      {/* 投喂者列表 Modal */}
       {canManage && (
-        <div
-          className={`modal${modal === 'feeders' ? ' is-open' : ''}`}
-          id="feedersModal"
-          role="dialog"
-          aria-hidden={modal !== 'feeders'}
-          onClick={(e) => e.target === e.currentTarget && setModal(null)}
-        >
-          <div className="modal-dialog modal-dialog-centered">
-            <div className="modal-content">
-              <div className="modal-header">
-                <h5 className="modal-title"><span className="icon icon-fish" aria-hidden="true" style={{ marginRight: '0.5rem' }}></span>投喂者列表</h5>
-                <button type="button" className="btn-close" aria-label="Close" onClick={() => setModal(null)} />
-              </div>
-              <div className="modal-body">
-                <div id="feeders-list" className="list-group" style={{ maxHeight: '50vh', overflow: 'auto' }}>
-                  {feedersMsg ? (
-                    <div className="text-muted">{feedersMsg}</div>
-                  ) : (
-                    feeders.map((f) => (
-                      <div className="list-group-item" key={f.user_id}>
-                        <div className="d-flex align-items-center justify-content-between">
-                          <div className="d-flex align-items-center">
-                            {/* 此前这里是 `f.avatar_path ? A : A` 的死三元（两支逐字相同）。
-                                avatar_path 那一列恒为 null，判据本身也是错的 —— 磁盘上的
-                                遗留头像文件跟它无关。<Avatar> 走同一条永不 404 的读口。 */}
-                            <Avatar
-                              userId={f.user_id}
-                              frameUrl={f.frame_url}
-                              alt={f.username}
-                              size={32}
-                              style={{ marginRight: 10 }}
-                            />
-                            <strong>{f.username || '未知用户'}</strong>
-                          </div>
-                          <span
-                            className="badge"
-                            style={{
-                              background: 'var(--color-brand-secondary)',
-                              color: 'var(--color-brand-primary)',
-                              fontSize: '0.9rem',
-                            }}
-                          >
-                            <span className="icon icon-fish" aria-hidden="true" style={{ marginRight: '0.3rem' }}></span><span className="numeric">{f.amount}</span>
-                          </span>
-                        </div>
-                      </div>
-                    ))
-                  )}
-                </div>
-                <div className="d-flex justify-content-between align-items-center mt-3">
-                  <button
-                    className="btn btn-sm btn-outline-secondary"
-                    disabled={feedersPage <= 1}
-                    onClick={() => loadFeeders(feedersPage - 1)}
-                  >
-                    上一页
-                  </button>
-                  <small className="text-muted numeric">
-                    第 {feedersPage} 页，共 {feedersPages} 页
-                  </small>
-                  <button
-                    className="btn btn-sm btn-outline-secondary"
-                    disabled={feedersPage >= feedersPages}
-                    onClick={() => loadFeeders(feedersPage + 1)}
-                  >
-                    下一页
-                  </button>
-                </div>
-              </div>
-              <div className="modal-footer">
-                <button type="button" className="btn btn-secondary" onClick={() => setModal(null)}>
-                  关闭
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
+        <BlogFeedersDialog blogId={blogId} open={overlay === 'feeders'} onClose={() => setOverlay(null)} />
       )}
-
-      {/* 可见性 Modal（作者）。选项从 BLOG_VISIBILITIES 长出来，**不在前端写死档名** ——
-          加第四档时这里会跟着出现，不会静默少一个选项。
-          类名全部复用（modal-* / form-check* / button），零新增 SCSS。 */}
       {canEdit && (
-        <div
-          className={`modal${modal === 'visibility' ? ' is-open' : ''}`}
-          id="visibilityModal"
-          role="dialog"
-          aria-hidden={modal !== 'visibility'}
-          onClick={(e) => e.target === e.currentTarget && setModal(null)}
-        >
-          <div className="modal-dialog modal-dialog-centered">
-            <div className="modal-content">
-              <div className="modal-header">
-                <h5 className="modal-title">设置可见性</h5>
-                <button type="button" className="btn-close" aria-label="Close" onClick={() => setModal(null)} />
-              </div>
-              <div className="modal-body">
-                <p className="form-hint text-muted">当前：{VISIBILITY_LABEL[visibility]}</p>
-                {/* 「上次变更」—— 公开是不可逆的，所以「我什么时候放出去的」是这一档
-                    唯一值得回看的信息。数据来自 blog_visibility_logs（见迁移 19）。 */}
-                {lastVisibilityChange && (
-                  <p className="form-hint text-muted numeric">上次变更：{lastVisibilityChange}</p>
-                )}
-                {BLOG_VISIBILITIES.map((v) => (
-                  <div className="form-check" key={v}>
-                    <input
-                      type="radio"
-                      className="form-check-input"
-                      name="visibility"
-                      id={`vis-${v}`}
-                      value={v}
-                      checked={visDraft === v}
-                      onChange={() => setVisDraft(v)}
-                    />
-                    <label className="form-check-label" htmlFor={`vis-${v}`}>
-                      {VISIBILITY_LABEL[v]}
-                    </label>
-                  </div>
-                ))}
-                <span className="form-hint text-muted">
-                  仅站内可见：只有站内核心用户读得到。凭链接可读：拿到链接的任何人可读，
-                  但不进任何列表、不被搜索引擎收录。对外公开：任何人可读，可能被搜索引擎
-                  收录与第三方存档。
-                </span>
-                {/* 这句必须留着：public 是**唯一不可逆**的那一档，而它恰好是作者最容易
-                    顺手点下去的一档（「让朋友看到」）。 */}
-                <span className="form-hint text-muted">
-                  ⚠️ 改为「对外公开」后可能被搜索引擎与第三方存档抓走副本，之后改回
-                  「仅站内可见」不会收回已经抓走的副本。
-                </span>
-              </div>
-              <div className="modal-footer">
-                {/* 取消：回到「管理文章」目录而非直接关闭（与删除弹窗同款） */}
-                <button type="button" className="button button-primary" onClick={returnToManage}>
-                  取消
-                </button>
-                <button
-                  type="button"
-                  id="confirm-visibility-btn"
-                  className="button button-warning"
-                  onClick={saveVisibility}
-                  disabled={visBusy}
-                >
-                  确认修改
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
+        <BlogVisibilityDialog
+          blogId={blogId}
+          initialVisibility={initialVisibility}
+          lastVisibilityChange={lastVisibilityChange}
+          open={overlay === 'visibility'}
+          onClose={() => setOverlay(null)}
+          onReturnToManage={returnToManage}
+        />
       )}
-
-      {/* 删除确认 Modal */}
       {canManage && (
-        <div
-          className={`modal${modal === 'delete' ? ' is-open' : ''}`}
-          id="deleteConfirmModal"
-          role="dialog"
-          aria-hidden={modal !== 'delete'}
-          onClick={(e) => e.target === e.currentTarget && setModal(null)}
-        >
-          <div className="modal-dialog modal-dialog-centered">
-            <div className="modal-content">
-              <div className="modal-header">
-                <h5 className="modal-title">确认删除</h5>
-                <button type="button" className="btn-close" aria-label="Close" onClick={() => setModal(null)} />
-              </div>
-              <div className="modal-body">
-                确定要删除这篇文章《{blogTitle}》吗？该操作不可恢复。
-                {isAdminDelete && (
-                  <div className="mt-3">
-                    <label htmlFor="delete-reason" className="form-label">
-                      删除原因（管理员必填，将通知作者）：
-                    </label>
-                    <textarea
-                      id="delete-reason"
-                      className="form-control"
-                      rows={3}
-                      maxLength={500}
-                      placeholder="请填写删除原因…"
-                      value={deleteReason}
-                      onChange={(e) => setDeleteReason(e.target.value)}
-                    />
-                  </div>
-                )}
-              </div>
-              <div className="modal-footer">
-                {/* 取消：回到「管理文章」目录而非直接关闭 */}
-                <button type="button" className="button button-primary" onClick={returnToManage}>
-                  取消
-                </button>
-                <button
-                  type="button"
-                  id="confirm-delete-btn"
-                  className="button button-warning"
-                  onClick={confirmDelete}
-                  disabled={deleteBusy}
-                >
-                  确认删除
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
+        <BlogDeleteDialog
+          blogId={blogId}
+          blogTitle={blogTitle}
+          isAdminDelete={isAdminDelete}
+          open={overlay === 'delete'}
+          onClose={() => setOverlay(null)}
+          onReturnToManage={returnToManage}
+        />
       )}
     </>
   );
