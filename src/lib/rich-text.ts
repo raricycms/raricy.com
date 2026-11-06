@@ -9,9 +9,11 @@
 // walkTokens 堵的那个 marked 裸文本通道 —— 那是实测过的假密码框钓鱼向量），
 // 另一边不会知道，而两边看起来都「有净化」。
 //
-// 所以本文件是唯一管线，白名单 / 类名 / 缓存上限由调用方注入：
-//   · src/lib/chat-markdown.ts    → 讨论气泡（linkClass: chat-msg__link）
-//   · src/lib/comment-markdown.ts → 评论正文（linkClass: comment-link）
+// 所以本文件是唯一管线：**标签 / 属性白名单**也收在这里，两个入口共用同一份
+// （R3-151 —— 此前 chat-markdown / comment-markdown 各存一份逐字相同的副本，只改
+// 一边时另一边的用例不会红）；只有链接类名与缓存上限由调用方注入：
+//   · src/lib/chat-markdown.ts    → 讨论气泡（linkClass: chat-msg__link, cacheMax: 300）
+//   · src/lib/comment-markdown.ts → 评论正文（linkClass: comment-link, cacheMax: 200）
 //
 // ⚠️ 改本文件 = 改安全边界。单测在 tests/unit/chat-markdown.test.ts（五道防线逐条
 //    覆盖），comment-markdown 另有一份对等用例 —— 两者都要跟着跑。
@@ -60,6 +62,31 @@ import { USER_REF_PROBE, embedUserRefs, type UserCardData } from './user-refs';
  * DOMPurify 在测试前会把值里的控制字符与首尾空白清掉（`java\nscript:` 这类绕不过去）。
  */
 const ALLOWED_URI_REGEXP = /^(?:(?:https?|mailto):|[^a-z]|[a-z+.\-]+(?:[^a-z+.\-:]|$))/i;
+
+/**
+ * 讨论与评论共用的**标签白名单**（两端同一份，R3-151）。
+ *
+ * 【为什么收在这里】两个入口是同一类东西：用户输入、渲染给所有登录用户看的公共区域。
+ * 两边允许的标签**刻意完全相同**（评论与讨论的排版能力一致，用户不必记两套规则）；
+ * 收成一份之后，「只改了讨论、忘了评论」这种漂移在结构上不可能发生。
+ * 链接类名与缓存上限仍由调用方注入 —— 那是两个入口真正不同的地方。
+ *
+ * ⚠️ **刻意不含 img / iframe / svg / style / form**（防线 4）：发图走图床附件，
+ * 正文里不允许嵌任意外链图片 / 播放器。这是 CLAUDE.md 的关键约定，而且白名单两端
+ * 共用 —— 为某一处放开等于两端一起放开，别这么做。
+ */
+export const RICH_TEXT_ALLOWED_TAGS: string[] = [
+  'p', 'br', 'hr', 'strong', 'b', 'em', 'i', 'u', 's', 'del', 'code', 'pre',
+  'blockquote', 'ul', 'ol', 'li', 'a', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+  'table', 'thead', 'tbody', 'tr', 'th', 'td', 'input',
+];
+
+/**
+ * 讨论与评论共用的**属性白名单**（与标签表同理，见上）。`input` 的 type/checked/
+ * disabled 只为 GFM 任务列表（`- [x] 完成`）服务，渲染出来是禁用复选框（净化后另有
+ * restrictInputs 兜底）。
+ */
+export const RICH_TEXT_ALLOWED_ATTR: string[] = ['href', 'title', 'colspan', 'rowspan', 'start', 'type', 'checked', 'disabled'];
 
 export interface RichTextOptions {
   /**

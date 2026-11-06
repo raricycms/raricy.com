@@ -214,7 +214,7 @@ describe('无 DOM 环境（SSR）的回退', () => {
   });
 });
 
-// 两个渲染器各持白名单与缓存，不能互相串味（共用缓存会让评论拿到讨论类名的 HTML）。
+// 两个渲染器各持缓存，不能互相串味（共用缓存会让评论拿到讨论类名的 HTML）。
 describe('渲染器隔离', () => {
   it('两个入口的链接类名互不污染', async () => {
     const { renderChatMarkdown } = await import('@/lib/chat-markdown');
@@ -222,5 +222,38 @@ describe('渲染器隔离', () => {
     const chatRoot = document.createElement('div');
     chatRoot.innerHTML = renderChatMarkdown('[x](https://example.com/a)');
     expect(chatRoot.querySelector('a')!.className).toBe('chat-msg__link');
+  });
+
+  // R3-151：白名单从「两份逐字相同的副本」收成 rich-text.ts 的一份共享常量之后，
+  // 「只改讨论、忘了评论」在结构上已不可能。但那条不变量的**行为**仍要钉住：
+  // 两个入口对同一段标签必须给出同样的判决（保留哪些元素、剥掉哪些）。
+  // 放在这里而不是新建测试文件 —— 这个 describe 本来就是唯一同时持有两个入口的地方。
+  it('两个入口共用同一份白名单：逐标签探针的判决一致', async () => {
+    const { renderChatMarkdown } = await import('@/lib/chat-markdown');
+    const { RICH_TEXT_ALLOWED_TAGS } = await import('@/lib/rich-text');
+    const tagsOf = (root: HTMLElement) =>
+      Array.from(root.querySelectorAll('*')).map((el) => el.tagName.toLowerCase());
+
+    // 白名单内的标签 + 白名单外/危险标签（原始 HTML 会被管线转义成文本，但判决仍须一致）。
+    const probes = [
+      '<p>x</p>', '<h1>x</h1>', '<blockquote>x</blockquote>', '<ul><li>x</li></ul>',
+      '<table><thead><tr><th>x</th></tr></thead><tbody><tr><td>x</td></tr></tbody></table>',
+      '<input type="checkbox" checked disabled>', '<pre><code>x</code></pre>',
+      '<section>x</section>', '<img src="x">', '<iframe src="x"></iframe>',
+      '<style>x{}</style>', '<form><input></form>', '<svg></svg>',
+      '<script>x</script>', '<video src="x"></video>',
+    ];
+    for (const probe of probes) {
+      const commentRoot = mount(probe);
+      const chatRoot = document.createElement('div');
+      chatRoot.innerHTML = renderChatMarkdown(probe);
+      expect(tagsOf(chatRoot), `讨论与评论对 ${probe} 的标签判决不一致`).toEqual(tagsOf(commentRoot));
+      expect(chatRoot.textContent, `讨论与评论对 ${probe} 的文本判决不一致`).toBe(commentRoot.textContent);
+    }
+
+    // 单点后的白名单只有一份：img / iframe 永远不许回到任何一端的正文里（CLAUDE.md 关键约定）。
+    expect(RICH_TEXT_ALLOWED_TAGS).not.toContain('img');
+    expect(RICH_TEXT_ALLOWED_TAGS).not.toContain('iframe');
+    expect(RICH_TEXT_ALLOWED_TAGS).not.toContain('style');
   });
 });
