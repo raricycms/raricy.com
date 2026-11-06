@@ -33,7 +33,7 @@ import {
   type UserCardData,
 } from '@/lib/user-refs';
 import type { RichTextContext } from '@/lib/rich-text';
-import { validateUsername } from '@/lib/user-service';
+import { validateUsername } from '@/lib/account-service';
 import { extractMentions } from '@/lib/chat-service';
 import { isMentioned } from '@/app/chat/ChatMessageItem';
 import { IMAGE_REF_CLASS } from '@/lib/content-refs';

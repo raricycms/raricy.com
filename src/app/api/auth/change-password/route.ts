@@ -1,5 +1,5 @@
 import { getCurrentUser } from '@/lib/auth';
-import { changeOwnPassword } from '@/lib/user-service';
+import { changeOwnPassword } from '@/lib/account-service';
 import { apiErr } from '@/lib/format';
 import { SESSION_COOKIE } from '@/lib/session';
 import { cookies } from 'next/headers';

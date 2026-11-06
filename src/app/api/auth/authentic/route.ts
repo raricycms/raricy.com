@@ -1,5 +1,5 @@
 import { getCurrentUser } from '@/lib/auth';
-import { verifyInviteAndUpgrade } from '@/lib/user-service';
+import { verifyInviteAndUpgrade } from '@/lib/account-service';
 import { apiErr } from '@/lib/format';
 
 // POST /api/auth/authentic — 邀请码验证 + 角色升级

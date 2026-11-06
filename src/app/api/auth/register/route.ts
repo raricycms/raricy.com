@@ -1,4 +1,4 @@
-import { registerUser } from '@/lib/user-service';
+import { registerUser } from '@/lib/account-service';
 import { createSessionToken, SESSION_COOKIE, sessionCookieOptions } from '@/lib/session';
 import { apiErr } from '@/lib/format';
 import { verifyTurnstile } from '@/lib/turnstile';

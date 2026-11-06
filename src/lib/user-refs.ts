@@ -47,14 +47,14 @@ import { avatarUrl } from './avatar-refs';
  */
 export const USER_CARD_COLLECTION = '用户';
 
-/** 用户名长度上下限，与 user-service.validateUsername 逐字一致。 */
+/** 用户名长度上下限，与 account-service.validateUsername 逐字一致。 */
 const NAME_MIN = 3;
 const NAME_MAX = 20;
 
 /**
  * 用户名段的正则形态：两端是字母/数字，中间可含 `_` 与 `-`。
  *
- * ⚠️ **必须与 src/lib/user-service.ts 的 validateUsername 对齐**，但那个文件拖着
+ * ⚠️ **必须与 src/lib/account-service.ts 的 validateUsername 对齐**，但那个文件拖着
  * prisma（client 侧 import 它会炸构建），所以规则只能复制一份。两边的一致性由
  * tests/unit/user-refs.test.ts 里一条**逐例对照**的用例钉着（拿同一批样本同时过
  * 两边，断言判定相同）。

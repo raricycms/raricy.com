@@ -1,4 +1,4 @@
-// user-service.ts —— 注册 / 改密 / 邀请码升级 / 资料更新。
+// user-service.ts / account-service.ts —— 注册 / 改密 / 邀请码升级 / 资料更新。
 //
 // 【为什么值得重点测】这是账号的入口与钥匙：
 //   · 注册决定了 465 个存量用户之外的每一个新用户的哈希格式（存错 = 登不进来）；
@@ -30,6 +30,8 @@ import {
   validateEmail,
   changeOwnPassword,
   verifyInviteAndUpgrade,
+} from '@/lib/account-service';
+import {
   updateOwnProfile,
   getPublicProfile,
   resolveProfileHandle,
@@ -214,15 +216,6 @@ describe('registerUser：成功路径', () => {
     expect(r.ok).toBe(true);
     expect(await prisma.user.findUnique({ where: { username: 'bob' } }), 'trim 后应能查到').not.toBeNull();
     expect(r.user!.username).toBe('bob');
-  });
-
-  it('dev fallback（账户服务未配置）下不写 fishApiKeyEncrypted，但注册照常成功', async () => {
-    // tests/setup.ts 已 delete ACCOUNT_SERVICE_INTERNAL_TOKEN → accountServiceEnabled() === false
-    const input = goodInput();
-    const r = await registerUser(input);
-    expect(r.ok, '远端未配置不应阻塞本地注册（dev fallback）').toBe(true);
-    const row = await prisma.user.findUniqueOrThrow({ where: { username: input.username } });
-    expect(row.fishApiKeyEncrypted, '无远端 → 没有 api key 可存').toBeNull();
   });
 
   it('Unicode 用户名可注册', async () => {
@@ -976,7 +969,7 @@ async function coreViewer() {
 }
 
 describe('getPublicProfile', () => {
-  it('★ 绝不返回 email / passwordHash / fishApiKeyEncrypted（这是公开页面）', async () => {
+  it('★ 绝不返回 email / passwordHash（这是公开页面）', async () => {
     const u = await makeUser({ username: 'pub', email: 'secret@example.com' });
     const p = await getPublicProfile(u.id, await coreViewer());
     expect(p).not.toBeNull();
