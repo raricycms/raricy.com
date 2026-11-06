@@ -17,9 +17,10 @@ import {
 import type { ContentFormat, ContentWriteErrorCode } from './content-format';
 import { validateContentForPublish } from './reactive/publish';
 
-// 校验上限
-export const CLIP_TITLE_MAX = 40;
-export const CLIP_CONTENT_MAX = 50000;
+// 校验上限：标题/正文的上限住在零依赖的 clipboard-limits.ts（客户端表单也要用），
+// 这里转出保持既有 import 不变；只给本服务用的上限留在本文件。
+export { CLIP_TITLE_MAX, CLIP_CONTENT_MAX } from './clipboard-limits';
+import { CLIP_CONTENT_MAX, CLIP_TITLE_MAX } from './clipboard-limits';
 // 每用户剪贴板总数上限：count >= 200 时拒绝，即**最多 200 条**。
 // ⚠️ 边界是有意的：写成 `count > 200 才拒绝` 会实际放行到 201 条，
 //    与站内文案「一个用户只能发布200篇云剪贴板！」对不上。这里就是真正的 200。

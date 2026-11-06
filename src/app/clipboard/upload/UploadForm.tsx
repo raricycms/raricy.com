@@ -15,6 +15,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import MarkdownEditor, { type MarkdownEditorHandle } from '@/app/components/MarkdownEditor';
 import { DEFAULT_CONTENT_FORMAT, type ContentFormat } from '@/lib/content-format';
+import { CLIP_CONTENT_MAX, CLIP_TITLE_MAX } from '@/lib/clipboard-limits';
 
 function toast(msg: string, type: string) {
   if (typeof window === 'undefined') return;
@@ -277,12 +278,12 @@ export default function UploadForm({ clip }: { clip?: EditClip }) {
       toast('标题和正文不能为空', 'warning');
       return;
     }
-    if (data.title.length > 30) {
-      toast('标题不能超过30个字符', 'warning');
+    if (data.title.length > CLIP_TITLE_MAX) {
+      toast(`标题不能超过${CLIP_TITLE_MAX}个字符`, 'warning');
       return;
     }
-    if (data.content.length > 250000) {
-      toast('正文不能超过250000个字符', 'warning');
+    if (data.content.length > CLIP_CONTENT_MAX) {
+      toast(`正文不能超过${CLIP_CONTENT_MAX}个字符`, 'warning');
       return;
     }
 
