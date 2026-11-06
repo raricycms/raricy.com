@@ -37,8 +37,6 @@ export interface ClipDetail {
   syntaxVersion: string | null;
   /** Shared by API, member embeds and public embeds. */
   version: string;
-  /** 逐篇渲染覆盖（NULL / 'legacy' / 'reactive'）；已不参与渲染选择，保留供旧消费者。 */
-  rendererOverride: string | null;
   createdAt: Date | null;
 }
 
@@ -66,7 +64,6 @@ export async function getClip(
       title: true,
       authorId: true,
       publicity: true,
-      rendererOverride: true,
       createdAt: true,
       author: { select: { username: true } },
       content: { select: { content: true, format: true, syntaxVersion: true } },
@@ -96,7 +93,6 @@ export async function getClip(
         clip.content?.format ?? null, clip.content?.syntaxVersion ?? null,
         clip.title, clip.content?.content ?? '',
       ])).digest('hex'),
-      rendererOverride: clip.rendererOverride ?? null,
       createdAt: clip.createdAt ?? null,
     },
   };

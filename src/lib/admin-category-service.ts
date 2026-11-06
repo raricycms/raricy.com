@@ -76,23 +76,6 @@ export async function listCategoriesTree() {
   }));
 }
 
-/** 扁平列表（供下拉选项 / 文章改栏目使用）。 */
-export async function listCategoriesFlat() {
-  const all = await prisma.category.findMany({
-    orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }],
-    include: { parent: { select: { name: true } } },
-  });
-  return all.map((c) => ({
-    id: c.id,
-    name: c.name,
-    slug: c.slug,
-    parent_id: c.parentId,
-    is_active: c.isActive ?? true,
-    level: c.parentId == null ? 1 : 2,
-    full_path: c.parentId != null && c.parent ? `${c.parent.name} > ${c.name}` : c.name,
-  }));
-}
-
 /** slug 字符集：URL 标识只用小写字母/数字/连字符（与全站既有 slug 风格一致）。 */
 const SLUG_PATTERN = /^[a-z0-9-]+$/;
 

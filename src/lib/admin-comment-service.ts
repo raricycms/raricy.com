@@ -81,7 +81,12 @@ export async function listAdminComments(params: AdminCommentListParams) {
   return { comments, total, page, perPage, pages, hasPrev: page > 1, hasNext: page < pages };
 }
 
-/** 单条评论的管理端详情（确认屏用）。不过滤 isDeleted —— 要恢复的正是被删的那些。 */
+/**
+ * 单条评论的管理端详情（确认屏用）。不过滤 isDeleted —— 要恢复的正是被删的那些。
+ *
+ * 仅供测试钉 isBackendOps 的归档可见性（生产 0 调用）；与 CLI `comment show` 的内联
+ * select 漂移（CLI 带 anonSeq、不加归档过滤），做 /admin/comments 时合并。
+ */
 export async function getCommentForAdmin(id: string) {
   return prisma.blogComment.findUnique({
     where: { id, ...(isBackendOps() ? {} : { author: { archivedAt: null } }) },

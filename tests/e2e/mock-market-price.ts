@@ -80,15 +80,6 @@ const server = http.createServer((req, res) => {
     });
   }
 
-  if (path === '/__e2e__/reset') {
-    prices.set('BTCUSDT', 80000);
-    prices.set('ETHUSDT', 3000);
-    changes.set('BTCUSDT', 1.5);
-    changes.set('ETHUSDT', -0.75);
-    candleCloses.clear();
-    return send(res, 200, { ok: true });
-  }
-
   // ── 真实契约 ────────────────────────────────────────────────────────────────
 
   // GET /api/v3/ticker/price —— 单币（成交用）与多币（批量）两种形状

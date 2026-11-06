@@ -172,11 +172,6 @@ export async function loadSafeUserByUsername(username: string): Promise<SafeUser
   return (u as SafeUser | null) ?? null;
 }
 
-export async function loadUserById(id: string): Promise<SafeUser | null> {
-  const u = await prisma.user.findUnique({ where: { id }, select: PUBLIC_USER_SELECT });
-  return (u as SafeUser | null) ?? null;
-}
-
 /**
  * 库内最早的站长（createdAt 升序，id 兜底保证同秒创建时结果确定）。
  * 与 oauth create-app 既有的 owner 回退口径一致。

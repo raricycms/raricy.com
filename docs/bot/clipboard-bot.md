@@ -210,9 +210,8 @@ Content-Type: application/json
 - 是**整体覆盖**，不是局部更新 —— 只想改标题也得把 `content` 原样带上
 - `format` **省略 = 保留库里原值**（不会把待改的正文打回 Markdown）；但**存量 reactive
   无法编译的 reactive 写入被整笔拒绝**，返回 `400 ReactiveMD 正文无法编译，已拒绝发布`
-- `syntax_version` 与 `renderer_override` 是**只读**字段：写接口不消费它们
-  （传了会被忽略，不产生写入；`syntax_version` 由服务端在开放 reactive 写入后维护，
-  `renderer_override` 目前没有写入口）
+- `syntax_version` 是**只读**字段：写接口不消费它（传了会被忽略，不产生写入；
+  由服务端在开放 reactive 写入后维护）
 - 成功：`{ "code": 200, "message": "success", "id": "a1b2c3d4" }`
 
 | 情形 | 返回 |
