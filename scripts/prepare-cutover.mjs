@@ -93,6 +93,23 @@ const bad = (m) => {
   console.log(`  ${red('✗')} ${m}`);
 };
 
+/**
+ * 从 diagnose 输出里取第 n 段。
+ *
+ * 用**段号**而不是标题文案定位：标题是会改的（"4. 小鱼干密钥" 现在是 "4. 回调签名
+ * 密钥（钥匙对不对 / 解耦进度）"），以前按旧标题 split 的结果恒为 undefined —— 段内
+ * 的 ✗ 永远判不出来，准备脚本还以为「密钥验证过了」。ANSI 颜色先剥掉再按行匹配。
+ */
+function diagnoseSection(out, n) {
+  const clean = String(out).replace(/\x1b\[[0-9;]*m/g, '');
+  const start = clean.search(new RegExp(`^${n}\\. `, 'm'));
+  if (start < 0) return null;
+  const rest = clean.slice(start);
+  const next = rest.slice(1).search(/^\d+\. /m);
+  const block = next < 0 ? rest : rest.slice(0, next + 1);
+  return block.split('\n').slice(0, 6).join('\n');
+}
+
 console.log(bold('\n═══ 切换准备（数据库部分）═══'));
 console.log(`源库：${source}\n目标：${dest}`);
 console.log(green('全程不写源库：只读它，产出的是规整后的新库。'));
@@ -220,13 +237,17 @@ if (!process.env.SECRET_KEY) {
       env: { ...process.env, DATABASE_URL: `file:${dest}` },
       cwd: path.resolve(HERE, '..'),
     });
-    const sec = out.split('4. 小鱼干密钥')[1]?.split('\n').slice(0, 4).join('\n');
+    const sec = diagnoseSection(out, 4);
     console.log(sec ? sec.split('\n').map((l) => '  ' + l.trim()).join('\n') : out.slice(-400));
-    if (/✗/.test(sec ?? '')) bad('密钥验证没过 —— 上线前必须解决');
+    if (sec === null) {
+      bad('拿不到 diagnose 第 4 段（段标题/格式变了？）—— 「密钥能不能解开」仍未验证，别当它过了');
+    } else if (/✗/.test(sec)) {
+      bad('密钥验证没过 —— 上线前必须解决');
+    }
   } catch (e) {
     // diagnose 有致命项时 exit≠0，execFileSync 会抛；它的输出仍要给人看
     const out = String(e.stdout ?? '');
-    const sec = out.split('4. 小鱼干密钥')[1]?.split('\n').slice(0, 4).join('\n');
+    const sec = diagnoseSection(out, 4);
     if (sec) console.log(sec.split('\n').map((l) => '  ' + l.trim()).join('\n'));
     bad('diagnose 报了致命项 —— 上线前必须解决（完整输出请单独跑 npm run diagnose）');
   }

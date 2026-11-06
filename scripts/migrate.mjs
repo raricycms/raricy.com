@@ -174,21 +174,58 @@ async function markApplied(prisma, name, sum) {
 
 // ── SQL 执行 ────────────────────────────────────────────────────────────────
 
+/**
+ * 迁移文件是否自带事务（顶格 BEGIN，含 BEGIN IMMEDIATE / TRANSACTION 等变体）。
+ *
+ * 六个迁移自带：21 / 24 / 25 / 26 / 35 / 38。它们里有的在事务内写「哨兵」跟踪行，
+ * 外面再包一层会变成嵌套 BEGIN 直接报错 —— 所以自带事务的原样交给 `--file`。
+ */
+function hasOwnTransaction(sql) {
+  return /^[ \t]*BEGIN(?:[ \t]+(?:IMMEDIATE|DEFERRED|EXCLUSIVE|TRANSACTION))?[ \t]*;/im.test(sql);
+}
+
+/**
+ * 执行一条迁移。返回 { ok, transactional }：transactional 表示这次是真的在事务里跑的
+ * （runner 包的事务或迁移自带），失败时可以如实说「已回滚」。
+ *
+ * 【为什么给无 BEGIN 的迁移包一层事务】SQLite 在 autocommit 下逐条提交，而 41 个迁移
+ * 里有 27 个是多语句且不带 BEGIN（如 11_comment_attachments 的三条 ALTER）。中途失败
+ * 会留下半套结构，而跟踪表没有记录 → 重跑第一条就撞 duplicate column，**永久卡死**。
+ * 包 `BEGIN IMMEDIATE … COMMIT` 后，「一个迁移 = 一个事务」成为 runner 的不变量；
+ * 已应用 SQL 一个字节都不改，checksum 仍是文件内容的 sha256 前 16。
+ */
 function applySqlFile(name) {
   const file = path.join(MIGRATIONS_DIR, name, 'migration.sql');
+  let own = false;
   try {
     if (!fs.existsSync(PRISMA_CLI)) {
       die(red(`错误：找不到 Prisma CLI（${PRISMA_CLI}）。先运行 npm ci 与 npx prisma generate。`));
     }
+    const sql = readMigrationSql(name);
+    own = hasOwnTransaction(sql);
     // process.execPath + 参数数组：不经过 shell，Windows 路径带空格 / 引号也不会被拆开，
     // 且显式 env 保证 DATABASE_URL 与 PrismaClient 用的是同一个地址。
-    execFileSync(process.execPath, [PRISMA_CLI, 'db', 'execute', '--file', file, '--url', process.env.DATABASE_URL], {
-      stdio: ['ignore', 'inherit', 'inherit'],
-      env: process.env,
-    });
-    return true;
+    const base = [PRISMA_CLI, 'db', 'execute', '--url', process.env.DATABASE_URL];
+    if (own) {
+      execFileSync(process.execPath, [...base, '--file', file], {
+        stdio: ['ignore', 'inherit', 'inherit'],
+        env: process.env,
+      });
+    } else {
+      // `--stdin`：prisma 把整个输入当一条命令发送，SQLite 逐条执行并尊重其中的
+      // 显式事务边界（21 号迁移头部有实测记录）。stdio 的 stdin 必须 pipe 才能喂 input；
+      // stdout 是 prisma 的「Script executed successfully」，每条迁移都会刷一行噪音，
+      // 故只留 stderr（失败原因仍会原样出现在终端）。
+      const wrapped = `BEGIN IMMEDIATE;\n${sql}\nCOMMIT;\n`;
+      execFileSync(process.execPath, [...base, '--stdin'], {
+        input: wrapped,
+        stdio: ['pipe', 'ignore', 'inherit'],
+        env: process.env,
+      });
+    }
+    return { ok: true, own };
   } catch {
-    return false;
+    return { ok: false, own };
   }
 }
 
@@ -248,8 +285,18 @@ async function cmdUp(prisma) {
     const sql = readMigrationSql(name);
     const sum = checksumOf(sql);
     console.log(`  → 应用 ${name} ...`);
-    if (!applySqlFile(name)) {
-      die(red(`  ✗ 应用 ${name} 失败，回滚（无事务；如部分应用需手工清理）`), 1);
+    const outcome = applySqlFile(name);
+    if (!outcome.ok) {
+      // 两种形态都在事务里（runner 包的 / 迁移自带的 BEGIN），失败时连接未提交 → 回滚。
+      // 保留「手工清理」的兜底：若有人绕过 up 用 --file 手工跑过同一份 SQL，库可能
+      // 已经被部分改过，跟踪表却仍无记录。
+      const how = outcome.own ? '迁移自带事务，未提交' : 'runner 包的事务未提交';
+      die(
+        red(
+          `  ✗ 应用 ${name} 失败（${how}）：库应保持迁移前状态。若这是绕过 up 手工执行留下的半套结构，需人工核对后再 mark 或清理（没有自动补偿）`
+        ),
+        1
+      );
     }
     await markApplied(prisma, name, sum);
     console.log(green(`  ✓ ${name} 已应用`));

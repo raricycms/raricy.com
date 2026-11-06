@@ -3,8 +3,11 @@
 // 部署自检：定位「登录 500 / 登录不上 / CSRF 403」的具体原因。
 //
 // 用法（在 web-next 目录下、与线上相同的环境变量里跑）：
-//   node scripts/diagnose-deploy.mjs                     # 只查本地配置与数据库
-//   node scripts/diagnose-deploy.mjs --url https://你的域名  # additionally 打线上活体检查
+//   npx tsx scripts/diagnose-deploy.mjs                     # 只查本地配置与数据库
+//   npx tsx scripts/diagnose-deploy.mjs --url https://你的域名  # additionally 打线上活体检查
+//
+// ⚠️ 必须经 tsx（或 npm run diagnose）：第 4 段动态 import 的是 src/lib 下的
+//    TypeScript 源码，裸 node 在 Node 22 默认配置下加载不了 .ts。
 //
 // 不会修改任何数据；只读检查 + 打印结论。
 // ─────────────────────────────────────────────────────────────────────────────
@@ -242,6 +245,22 @@ if (dbPath && fs.existsSync(dbPath)) {
     );
   }
 
+  // 判定逻辑走服务层那一份（fish-webhook-service 的 inspectWebhookSecret）——
+  // 在这里另抄一遍「先试哪把钥匙」等于给漂移留门。
+  //
+  // ⚠️ 这个模块是 **TypeScript 源码**，只有经 tsx 才能加载。以前这段 import 在下面的
+  // 大 try 里，加载失败会被吞成一句 wrn —— 于是按旧文件头用裸 node 跑时，「唯一不可逆
+  // 的那一项」静默降级，其余段落全绿时脚本仍退出 0。加载失败必须是致命项。
+  let inspectWebhookSecret;
+  try {
+    ({ inspectWebhookSecret } = await import('../src/lib/fish-webhook-service.ts'));
+  } catch (e) {
+    bad(
+      `无法加载服务层密钥判定（${String(e).replace(/\s+/g, ' ').slice(0, 160)}）`,
+      '第 4 段要 import src/lib 的 .ts，必须用 `npx tsx scripts/diagnose-deploy.mjs`（或 npm run diagnose）跑'
+    );
+  }
+
   try {
     const { PrismaClient } = await import('@prisma/client');
     const prisma = new PrismaClient({ log: [] });
@@ -259,10 +278,9 @@ if (dbPath && fs.existsSync(dbPath)) {
           '库里没有任何回调签名密钥 —— 无法验证钥匙对不对',
           '没登记过回调地址就是这样的；等第一个商户登记之后再看'
         );
+      } else if (!inspectWebhookSecret) {
+        // 上面已经报过致命项（import 失败）；这里不再打 ✓，避免「看起来验过了」。
       } else {
-        // 判定逻辑走服务层那一份（fish-webhook-service 的 inspectWebhookSecret）——
-        // 在这里另抄一遍「先试哪把钥匙」等于给漂移留门。
-        const { inspectWebhookSecret } = await import('../src/lib/fish-webhook-service.ts');
         const count = { current: 0, legacy: 0, unreadable: 0 };
         for (const r of rows) count[inspectWebhookSecret(String(r.ct))]++;
 

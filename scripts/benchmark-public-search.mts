@@ -1,13 +1,27 @@
 // 合成语料基准，仅在系统临时目录建库，绝不读取/修改站点数据。
+//
+// 两条执行契约（2026-11 修）：
+// 1. `node:sqlite` 经 `createRequire` 加载：vite-node 会把顶层 `import 'node:sqlite'`
+//    当成 npm 包解析（同仓 reactive-corpus-report.mjs / checkin-migrations.test.ts
+//    都踩过，注释里有记录）。
+// 2. 被调用的 `searchPublicBlogIds` 所在模块在**加载时**就 `import './db'` 并构造
+//    PrismaClient（按 DATABASE_URL）。所以在动态 import 它之前，先把 DATABASE_URL
+//    指向本脚本的临时库：那个单例连的是临时文件，既不需要真实 DATABASE_URL，也不会
+//    把 WAL PRAGMA 写进站点库。
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { DatabaseSync } from 'node:sqlite';
+import { createRequire } from 'node:module';
 import { PrismaClient } from '@prisma/client';
 import { performance } from 'node:perf_hooks';
-import { searchTerms, searchPublicBlogIds, PUBLIC_SEARCH_VERSION } from '../src/lib/public-blog-search';
+
+const require = createRequire(import.meta.url);
+const { DatabaseSync } = require('node:sqlite') as typeof import('node:sqlite');
 const dir=fs.mkdtempSync(path.join(os.tmpdir(),'raricy-public-search-'));
 const file=path.join(dir,'benchmark.db');
+process.env.DATABASE_URL = 'file:' + file.replace(/\\/g, '/');
+const { searchTerms, searchPublicBlogIds, PUBLIC_SEARCH_VERSION } = await import('../src/lib/public-blog-search');
+const siteDb = await import('../src/lib/db');
 const db=new DatabaseSync(file);
 let client: PrismaClient | undefined;
 try {
@@ -52,6 +66,8 @@ try {
 } finally {
   try{db.close();}catch{}
   await client?.$disconnect();
+  // 站点单例也连在临时库上；先断开再删目录，避免 Windows 上文件仍被占用。
+  await siteDb.prisma.$disconnect().catch(() => {});
   if(path.dirname(dir)!==os.tmpdir())throw new Error('临时目录校验失败');
   try { fs.rmSync(dir,{recursive:true,force:true,maxRetries:8,retryDelay:250}); }
   catch { console.warn('临时库清理稍后重试：',dir); }
