@@ -245,6 +245,7 @@
   </div>
 
   <script src="./document/monomial.js"></script>
+  <script src="./document/expression-eval.js"></script>
   <script>
     // ==================== 公式编辑器逻辑 ====================
     let currentSlot = null;
@@ -749,42 +750,35 @@
       return exportFormula(ed).trim();
     }
 
-    // 把一段表达式化简成规范字符串；空输入按 0 处理
+    // 把一段表达式化简成规范字符串；空输入按 0 处理。
+    // 化简失败时抛错（共享实现会拒绝 `错误: …` 串），由 computeDistance 的
+    // try/catch 统一显示受控提示 —— 绝不把错误串当坐标继续算（R3-573）。
     function normalizeExpr(expr) {
-      const s = (expr || '').trim();
-      if (!s) return '0';
-      try {
-        const r = Monomial.simplifyExpression(s);
-        const rs = (r === undefined || r === null) ? '' : String(r).trim();
-        return rs || s;
-      } catch (err) {
-        console.warn('坐标化简失败，按原样使用：', s, err);
-        return s;
-      }
+      return ExpressionEval.normalizeCoord(expr);
     }
 
     // ==================== 计算两点距离 ====================
     function computeDistance() {
-      const ax = normalizeExpr(readCoord('ax'));
-      const ay = normalizeExpr(readCoord('ay'));
-      const az = normalizeExpr(readCoord('az'));
-
-      const bx = normalizeExpr(readCoord('bx'));
-      const by = normalizeExpr(readCoord('by'));
-      const bz = normalizeExpr(readCoord('bz'));
-
-      // 三个方向的坐标差
-      const dx = `(${bx})-(${ax})`;
-      const dy = `(${by})-(${ay})`;
-      const dz = `(${bz})-(${az})`;
-
-      // 空间两点距离公式
-      const radicand =
-        `(${dx})*(${dx})+(${dy})*(${dy})+(${dz})*(${dz})`;
-
       let resultStr;
 
       try {
+        const ax = normalizeExpr(readCoord('ax'));
+        const ay = normalizeExpr(readCoord('ay'));
+        const az = normalizeExpr(readCoord('az'));
+
+        const bx = normalizeExpr(readCoord('bx'));
+        const by = normalizeExpr(readCoord('by'));
+        const bz = normalizeExpr(readCoord('bz'));
+
+        // 三个方向的坐标差
+        const dx = `(${bx})-(${ax})`;
+        const dy = `(${by})-(${ay})`;
+        const dz = `(${bz})-(${az})`;
+
+        // 空间两点距离公式
+        const radicand =
+          `(${dx})*(${dx})+(${dy})*(${dy})+(${dz})*(${dz})`;
+
         // 1. 化简被开方数
         const sumStr = Monomial.simplifyExpression(radicand);
 

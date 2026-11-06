@@ -71,7 +71,11 @@ export function sessionReducer(levels: readonly CompiledLevel[], session: Sessio
   switch (action.type) {
     case 'load': {
       const next = createSession(levels, action.index);
-      return { ...next, last: 'load', status: IDLE };
+      // serial 必须继续单调递增，不能跟着 createSession 归 1。
+      // 容器的通关去重键是 `${level.id}:${serial}`：重进同一关、用同样的步数再通关时，
+      // 若 serial 又走到同一个值，键就和上次相同 —— recordClear / 通关音 / 结算弹层
+      // 会被整体跳过，玩家看到「通关了但没记成绩」（R3-544）。
+      return { ...next, serial: session.serial + 1, last: 'load', status: IDLE };
     }
 
     case 'restart': {

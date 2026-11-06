@@ -92,7 +92,7 @@ class Monomial {
         if (depth < 0) throw new Error("括号不匹配");
       } else if (depth === 0 && ops.includes(ch)) {
         if ((ch === '+' || ch === '-') &&
-            (i === 0 || '+-*/(,'.includes(expr[i - 1]))) {
+            (i === 0 || '+-*/(,^'.includes(expr[i - 1]))) {
           continue;
         }
         parts.push({ op: lastOp, value: expr.slice(start, i) });
@@ -418,7 +418,7 @@ class Monomial {
     if (pow.length > 1) {
       let result = this.evalExpression(pow[pow.length - 1].value);
       for (let i = pow.length - 2; i >= 0; i--) {
-        result = this.powerValues(this.evalExpression(pow[i].value), result);
+        result = this.evalPowBase(pow[i].value, result);
       }
       return result;
     }
@@ -429,8 +429,9 @@ class Monomial {
     }
 
     // 函数调用 r / d / p / sqrt / root / abs
+    // ⚠️ 只有白名单里的名字才算函数调用：`a(b+1)` 是隐式乘法，不是未知函数。
     const call = Monomial.parseFunctionCall(expr);
-    if (call) return this.evalFunctionCall(call);
+    if (call && Monomial.isFunctionName(call.name)) return this.evalFunctionCall(call);
 
     // 参数 a / b / h
     if (Monomial.isParam(expr)) return this.sFromParam(expr);
@@ -440,6 +441,22 @@ class Monomial {
     if (implicit) return this.evalExpression(implicit);
 
     throw new Error(`无效表达式: ${expr}`);
+  }
+
+  // 幂的底数按「最后一个原子」取：`2a^2` = 2·(a^2)、`ab^2` = a·(b^2)。
+  // 隐式乘法的优先级低于幂，所以底数里前面的因子要先求值再相乘。
+  evalPowBase(baseExpr, exponent) {
+    const implicit = Monomial.implicitProduct(baseExpr);
+    if (implicit) {
+      const factors = implicit.split('*');
+      const last = factors.pop();
+      let result = this.powerValues(this.evalExpression(last), exponent);
+      for (let i = factors.length - 1; i >= 0; i--) {
+        result = this.multiplyValues(this.evalExpression(factors[i]), result);
+      }
+      return result;
+    }
+    return this.powerValues(this.evalExpression(baseExpr), exponent);
   }
 
   evalFunctionCall(call) {
@@ -538,6 +555,12 @@ class Monomial {
     }
     const coef = a.coef * b.coef;
     const den = a.den * b.den;
+    // 乘法同样可能把两个大数乘成 Infinity/超出安全整数（`p(10,200)*p(10,200)`），
+    // 不拦会在 normalizeValue 的 gcd 里变成栈溢出。
+    if (!Number.isFinite(coef) || !Number.isFinite(den) ||
+        Math.abs(coef) > Number.MAX_SAFE_INTEGER || Math.abs(den) > Number.MAX_SAFE_INTEGER) {
+      throw new Error("数值过大");
+    }
 
     const aRational = (a.radicand === 1 && a.index === 1);
     const bRational = (b.radicand === 1 && b.index === 1);
@@ -669,15 +692,27 @@ class Monomial {
       const { coef: c, radicand: n, index: k, den: d } = base;
       const newC = Math.pow(c, eInt);
       const newD = Math.pow(d, eInt);
+      // 幂是唯一能把小输入放大到 Infinity 的入口（`p(10,400)`）；不拦就会在
+      // 后续 gcd/约分里变成栈溢出，或静默输出 `d(Infinity,1)`。
+      if (!Number.isFinite(newC) || !Number.isFinite(newD) ||
+          Math.abs(newC) > Number.MAX_SAFE_INTEGER || newD > Number.MAX_SAFE_INTEGER) {
+        throw new Error("数值过大");
+      }
 
       if (n === 1) {
         return this.normalizeValue({ coef: newC, radicand: 1, index: 1, den: newD });
       }
       if (eInt % k === 0) {
         const inner = Math.pow(n, eInt / k);
+        if (!Number.isFinite(inner) || inner > Number.MAX_SAFE_INTEGER) {
+          throw new Error("数值过大");
+        }
         return this.normalizeValue({ coef: newC * inner, radicand: 1, index: 1, den: newD });
       }
       const newN = Math.pow(n, eInt);
+      if (!Number.isFinite(newN) || newN > Number.MAX_SAFE_INTEGER) {
+        throw new Error("数值过大");
+      }
       const simplified = this.rootValue({ coef: 1, radicand: newN, index: 1, den: 1 }, k);
       return this.normalizeValue({
         coef: newC * simplified.coef,
@@ -1541,6 +1576,8 @@ class Monomial {
 
   gcd(a, b) {
     a = Math.abs(a); b = Math.abs(b);
+    // 非有限值会让 `a % b` 恒为 NaN → 递归不收敛（`d(p(10,400),2)` 的栈溢出）。
+    if (!Number.isFinite(a) || !Number.isFinite(b)) throw new Error("数值过大");
     return b === 0 ? a : this.gcd(b, a % b);
   }
 

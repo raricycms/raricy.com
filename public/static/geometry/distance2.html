@@ -233,6 +233,7 @@
   </div>
 
   <script src="./document/monomial.js"></script>
+  <script src="./document/expression-eval.js"></script>
   <script>
     // ==================== 公式编辑器逻辑 ====================
     let currentSlot = null;
@@ -737,37 +738,29 @@
       return exportFormula(ed).trim();
     }
 
-    // 把一段表达式化简成规范字符串；空输入按 0 处理
+    // 把一段表达式化简成规范字符串；空输入按 0 处理。
+    // 化简失败时抛错（共享实现会拒绝 `错误: …` 串），由 computeDistance 的
+    // try/catch 统一显示受控提示 —— 绝不把错误串当坐标继续算（R3-573）。
     function normalizeExpr(expr) {
-      const s = (expr || '').trim();
-      if (!s) return '0';
-      try {
-        const r = Monomial.simplifyExpression(s);
-        const rs = (r === undefined || r === null) ? '' : String(r).trim();
-        return rs || s;
-      } catch (err) {
-        console.warn('坐标化简失败，按原样使用：', s, err);
-        return s;
-      }
+      return ExpressionEval.normalizeCoord(expr);
     }
 
     // ==================== 计算两点距离 ====================
     function computeDistance() {
-      const ax = normalizeExpr(readCoord('ax'));
-      const ay = normalizeExpr(readCoord('ay'));
-      const bx = normalizeExpr(readCoord('bx'));
-      const by = normalizeExpr(readCoord('by'));
-
-      // |AB| = √( (xB-xA)² + (yB-yA)² )
-      // 关键修改：不再使用 ^2，而是用显式乘法 d*d。
-      // 因为 monomial.js 中的幂运算实现未走自身的乘法逻辑，直接写 ^2 会报错；
-      // 用 d*d 可以正确触发 monomial 的乘法与合并同类项流程。
-      const dx = `(${bx})-(${ax})`;
-      const dy = `(${by})-(${ay})`;
-      const radicand = `(${dx})*(${dx})+(${dy})*(${dy})`;
-
       let resultStr;
       try {
+        const ax = normalizeExpr(readCoord('ax'));
+        const ay = normalizeExpr(readCoord('ay'));
+        const bx = normalizeExpr(readCoord('bx'));
+        const by = normalizeExpr(readCoord('by'));
+
+        // |AB| = √( (xB-xA)² + (yB-yA)² )
+        // 用显式乘法 d*d 而不是 `^2`：两种写法等价（`^` 的求值问题已在 R3-571 修好），
+        // 但这里保持既有写法，避免化简结果的展示形式（p() 节点）跟着变。
+        const dx = `(${bx})-(${ax})`;
+        const dy = `(${by})-(${ay})`;
+        const radicand = `(${dx})*(${dx})+(${dy})*(${dy})`;
+
         // 1. 先化简被开方数（两个平方和）
         const sumStr = Monomial.simplifyExpression(radicand);
         // 2. 套上根号

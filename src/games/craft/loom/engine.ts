@@ -239,12 +239,22 @@ export function parseLoomDraft(raw: string | null): LoomDraft | null {
 }
 
 export interface ArtifactGeometry { width: number; height: number; x: number; y: number; fringe: number }
-/** 成品与屏幕上的结果图共用同一份几何，导出的形状不会和看到的不一样。 */
+/** 成品四周的留白。上下同一份、左右同一份 —— 导出时画布直接用这份宽高。 */
+const ARTIFACT_PADDING = 56;
+const ARTIFACT_FRINGE = 30;
+/**
+ * 成品与屏幕上的结果图共用同一份几何，导出的形状不会和看到的不一样。
+ *
+ * 【高度必须把上下留白都算进去】`LoomArtifact` 的 viewBox 与 `downloadSvg` 的画布
+ * 都用这里返回的 width/height。原先 viewBox 自己算高度、漏掉了底部留白，而导出画布
+ * 用的是含留白的 height，两者差 56px —— 栅格化按 `xMidYMid meet` 居中，PNG 上下
+ * 各多一条约 28px 的透明带，玩家导出的成品和屏幕上看到的不是同一张（R3-524）。
+ */
 export function artifactGeometry(rows: number): ArtifactGeometry {
-  const fringe = 30;
+  const fringe = ARTIFACT_FRINGE;
   const x = 64;
-  const y = 56 + fringe;
-  const height = y + Math.max(1, rows) * LOOM_CELL_H + fringe + 56;
+  const y = ARTIFACT_PADDING + fringe;
+  const height = y + Math.max(1, rows) * LOOM_CELL_H + fringe + ARTIFACT_PADDING;
   return { width: LOOM_CLOTH_WIDTH + x * 2, height, x, y, fringe };
 }
 

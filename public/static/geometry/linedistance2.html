@@ -240,6 +240,7 @@
   </div>
 
   <script src="./document/monomial.js"></script>
+  <script src="./document/expression-eval.js"></script>
   <script>
     // ==================== 公式编辑器逻辑 ====================
     let currentSlot = null;
@@ -744,38 +745,31 @@
       return exportFormula(ed).trim();
     }
 
-    // 把一段表达式化简成规范字符串；空输入按 0 处理
+    // 把一段表达式化简成规范字符串；空输入按 0 处理。
+    // 化简失败时抛错（共享实现会拒绝 `错误: …` 串），由 computeDistance 的
+    // try/catch 统一显示受控提示 —— 绝不把错误串当坐标继续算（R3-573）。
     function normalizeExpr(expr) {
-      const s = (expr || '').trim();
-      if (!s) return '0';
-      try {
-        const r = Monomial.simplifyExpression(s);
-        const rs = (r === undefined || r === null) ? '' : String(r).trim();
-        return rs || s;
-      } catch (err) {
-        console.warn('坐标化简失败，按原样使用：', s, err);
-        return s;
-      }
+      return ExpressionEval.normalizeCoord(expr);
     }
 
     // ==================== 计算点到直线距离 ====================
     function computeDistance() {
-      const x = normalizeExpr(readCoord('px'));
-      const y = normalizeExpr(readCoord('py'));
-      const k = normalizeExpr(readCoord('k'));
-      const b = normalizeExpr(readCoord('b'));
-
-      // d = √((kx-y+b)² / (k²+1))
-      // 使用显式乘法，避免幂运算可能存在的兼容问题。
-
-      const numerator = `((${k})*(${x})-(${y})+(${b}))`;
-      const denominator = `((${k})*(${k})+1)`;
-
-      const radicand = `((${numerator})*(${numerator}))/(${denominator})`;
-
       let resultStr;
 
       try {
+        const x = normalizeExpr(readCoord('px'));
+        const y = normalizeExpr(readCoord('py'));
+        const k = normalizeExpr(readCoord('k'));
+        const b = normalizeExpr(readCoord('b'));
+
+        // d = √((kx-y+b)² / (k²+1))
+        // 使用显式乘法，避免幂运算可能存在的兼容问题。
+
+        const numerator = `((${k})*(${x})-(${y})+(${b}))`;
+        const denominator = `((${k})*(${k})+1)`;
+
+        const radicand = `((${numerator})*(${numerator}))/(${denominator})`;
+
         // 1. 化简根号内的表达式
         const sumStr = Monomial.simplifyExpression(radicand);
 

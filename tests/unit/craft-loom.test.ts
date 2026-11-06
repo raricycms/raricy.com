@@ -9,6 +9,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   LOOM_CELL_H,
+  LOOM_CLOTH_WIDTH,
   LOOM_ENDS,
   LOOM_MAX_ROWS,
   LOOM_UNDO_PULL,
@@ -144,7 +145,9 @@ describe('小小织布机：反悔', () => {
 describe('小小织布机：经线连续、纬线只影响之后的投梭', () => {
   it('经线颜色只由第几根决定，与行号无关 —— 这是纵向条纹能连续的原因', () => {
     const draft = woven(5);
-    expect(warpColor(draft, 0)).toBe(warpColor(draft, 0));
+    // 同一根经线在第 1 行和第 5 行上必须是同一个色（原先这里写成 x === x 的恒真断言）。
+    expect(warpColor(woven(1), 0)).toBe(warpColor(draft, 0));
+    expect(warpColor(draft, 0)).toBe(WARP_SCHEMES[0].colors[0]);
     expect(warpColor(draft, 2)).toBe(warpColor(draft, LOOM_ENDS + 2));
     // 每根经线在整块布上取到的都是同一个色，逐行扫描不会出现颜色跳变。
     for (let end = 0; end < LOOM_ENDS; end += 1) {
@@ -228,6 +231,20 @@ describe('小小织布机：平纹与布面', () => {
     expect(five.height - one.height).toBe(4 * LOOM_CELL_H);
     // 一行都没有时也要给出一个非零高度，导出不会得到空图。
     expect(artifactGeometry(0).height).toBeGreaterThan(0);
+  });
+
+  it('成品上下留白对称，导出画布与 viewBox 同源（R3-524）', () => {
+    for (const rows of [1, 5, LOOM_MAX_ROWS]) {
+      const geometry = artifactGeometry(rows);
+      const top = geometry.y - geometry.fringe;
+      const bottom = geometry.height - (geometry.y + rows * LOOM_CELL_H + geometry.fringe);
+      expect(top).toBeGreaterThan(0);
+      // 屏幕 viewBox 与导出画布必须用同一份高度：原先 viewBox 漏算底部留白，
+      // 画布却按含留白的高度导出，差 56px → PNG 上下各多一条透明带。
+      expect(bottom).toBe(top);
+      // 左右同理：两边各留一份 x。
+      expect(geometry.x).toBe(geometry.width - (geometry.x + LOOM_CLOTH_WIDTH));
+    }
   });
 });
 

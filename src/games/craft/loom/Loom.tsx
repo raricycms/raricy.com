@@ -34,6 +34,7 @@ import {
   setWarp,
   setWeft,
   shedGroup,
+  shuttleX,
   undoLoom,
   warpColor,
   weftColor,
@@ -327,14 +328,16 @@ function LoomFrame() {
  * 远看时的样子。画在 pattern 里一次定义、整幅平铺（`<rect fill="url(#…)">`），
  * 不用逐行逐列生成元素。
  */
-function LoomPatternDefs() {
+function LoomPatternDefs({ id = 'loom-weft-texture' }: { id?: string } = {}) {
   return (
     <defs>
-      <pattern id="loom-weft-texture" width={3} height={3} patternUnits="userSpaceOnUse">
+      <pattern id={id} width={3} height={3} patternUnits="userSpaceOnUse">
         {/* 横向的纬线断面：一格一道，压在布面上。 */}
-        <line x1={0} y1={0.5} x2={3} y2={0.5} className="loom-weave__thread" />
+        {/* 线的颜色写在这里而不是 SCSS：成品树导出时没有样式表，靠 class 的 stroke
+            会整层消失（R3-524）。屏幕上的值与本属性一致，主题覆盖仍走 SCSS。 */}
+        <line x1={0} y1={0.5} x2={3} y2={0.5} stroke="#302210" strokeOpacity={0.045} strokeWidth={1} strokeLinecap="butt" />
         {/* 纵向的经线断面：与横向错开半格，就是平纹的交织。 */}
-        <line x1={1.5} y1={0} x2={1.5} y2={3} className="loom-weave__thread" />
+        <line x1={1.5} y1={0} x2={1.5} y2={3} stroke="#302210" strokeOpacity={0.045} strokeWidth={1} strokeLinecap="butt" />
       </pattern>
     </defs>
   );
@@ -364,12 +367,15 @@ function LoomWeave({
   left,
   top,
   width,
+  textureId = 'loom-weft-texture',
 }: {
   draft: LoomDraft;
   rows: number;
   left: number;
   top: number;
   width: number;
+  /** 织纹 pattern 的 id。成品树用自己的 defs，避免与台面那份重复 id。 */
+  textureId?: string;
 }) {
   /** 一条经线占的宽度。整幅均分 12 份，与未织的裸经线一一对应。 */
   const bandWidth = width / LOOM_ENDS;
@@ -396,6 +402,9 @@ function LoomWeave({
           y1={top + (index + 1) * LOOM_CELL_H}
           x2={left + width}
           y2={top + (index + 1) * LOOM_CELL_H}
+          stroke="#302210"
+          strokeOpacity={0.16}
+          strokeWidth={1}
           className="loom-weave__pick"
         />
       ))}
@@ -426,6 +435,7 @@ function LoomWeave({
             stroke={warpColor(draft, end)}
             strokeWidth={bandWidth * 0.62}
             strokeLinecap="butt"
+            opacity={0.8}
             className="loom-weave__warpband"
           />
         );
@@ -443,7 +453,7 @@ function LoomWeave({
         y={top}
         width={width}
         height={rows * LOOM_CELL_H}
-        fill="url(#loom-weft-texture)"
+        fill={`url(#${textureId})`}
         className="loom-weave__texture"
       />
 
@@ -455,6 +465,8 @@ function LoomWeave({
           y1={top}
           x2={left + end * bandWidth + bandWidth * 0.36}
           y2={clothBottom}
+          stroke="#fff"
+          opacity={0.14}
           className="loom-weave__gloss"
           strokeWidth={bandWidth * 0.16}
         />
@@ -576,9 +588,8 @@ function LoomInProgress({ draft }: { draft: LoomDraft }) {
 /** 梭子。位置由 progress 反推，所以它和布面上那根纬线的末端永远对齐。 */
 function LoomShuttle({ draft }: { draft: LoomDraft }) {
   const row = currentRow(draft);
-  const direction = passDirection(draft);
-  const t = direction === 1 ? draft.progress : 1 - draft.progress;
-  const x = LOOM_CLOTH_LEFT + t * LOOM_CLOTH_WIDTH;
+  // 横坐标只从引擎的 shuttleX 取：这里再算一遍就是两份实现，改一处会漂移（R3-525）。
+  const x = shuttleX(draft);
   const y = CLOTH_BOTTOM - (row + 1) * LOOM_CELL_H + LOOM_CELL_H / 2;
   return (
     <g className="loom-shuttle" transform={`translate(${x} ${y})`}>
@@ -609,8 +620,7 @@ function LoomShuttle({ draft }: { draft: LoomDraft }) {
  * 流苏是下机之后才有的 —— 每根经线两端各留一截散线。
  */
 function LoomArtifact({ draft, artifactRef }: { draft: LoomDraft; artifactRef: React.RefObject<SVGSVGElement | null> }) {
-  const { width, x, y, fringe } = artifactGeometry(draft.rows.length);
-  const height = y + draft.rows.length * LOOM_CELL_H + fringe;
+  const { width, height, x, y, fringe } = artifactGeometry(draft.rows.length);
   return (
     <div className="loom-artifact">
       <svg
@@ -620,6 +630,13 @@ function LoomArtifact({ draft, artifactRef }: { draft: LoomDraft; artifactRef: R
         aria-label="织好的布"
         preserveAspectRatio="xMidYMid meet"
       >
+        {/*
+          成品树必须自带 pattern 与全部描边属性：导出时只序列化这一棵 svg，
+          台面上的 defs 与 SCSS 都不在里面 —— 少了它们，导出的 PNG 会没有织纹、
+          经线没有半透明（R3-524）。viewBox 高度也直接用 artifactGeometry 的
+          height，导出画布与屏幕同源，不会多出透明带。
+        */}
+        <LoomPatternDefs id="loom-artifact-weft-texture" />
         {Array.from({ length: LOOM_ENDS }, (_, end) => {
           const cx = x + end * LOOM_CELL_W + LOOM_CELL_W / 2;
           const color = warpColor(draft, end);
@@ -632,7 +649,14 @@ function LoomArtifact({ draft, artifactRef }: { draft: LoomDraft; artifactRef: R
         })}
         {/* 成品与屏幕上的布面共用同一份画法：导出的质感不会和看到的不一样。 */}
         {draft.rows.length > 0 ? (
-          <LoomWeave draft={draft} rows={draft.rows.length} left={x} top={y} width={LOOM_CLOTH_WIDTH} />
+          <LoomWeave
+            draft={draft}
+            rows={draft.rows.length}
+            left={x}
+            top={y}
+            width={LOOM_CLOTH_WIDTH}
+            textureId="loom-artifact-weft-texture"
+          />
         ) : null}
       </svg>
       <p className="craft-note">
