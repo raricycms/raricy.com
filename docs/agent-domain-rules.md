@@ -316,8 +316,9 @@ ftyp 品牌 / 声明归一化 / `planImageUpload` —— 服务端与浏览器�
 （认不出或编译失败 → `unavailable`；可读正文由本次请求编译）；`<site-embed>` 标签与
 `${kind}:${ref}` 的 hostData **原子成对**（缺数据只保留字面量，绝不发半套）；`external`
 模式**零业务请求**（剪贴板、投票与收藏夹均保留字面量）。阅读路径的渲染选择只住
-`reactive/read-render.ts`（规则本体在 `renderer-select.ts`），唯一开关是
-`REACTIVE_MD_MODE=off`；别在页面里另判模式。
+`reactive/read-render.ts`；**reactive 是唯一正文渲染路径**（Markdown 与 Reactive 同引擎，
+编译失败/认不出 → `unavailable`），旧 Markdown 回退管线已整条退役（`REACTIVE_MD_MODE`
+不再被读取）；别在页面里另判模式或恢复第二套渲染器。
 
 ### 表情包
 

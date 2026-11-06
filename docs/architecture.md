@@ -105,7 +105,7 @@
 | 数据层 | `db.ts` · `db-time.ts` · `format.ts` |
 | 博客域 | `blog-service.ts` · `feed-service.ts` · `comment-service.ts` · `comment-shared.ts` · `blog-sort-pref.ts` · `spider-service.ts` |
 | @ 提及 | `mention-shared.ts`（评论 / 讨论共用的提取规则与光标搜索边界，零依赖）· `mention-service.ts`（按文章 / 会话范围搜索可提及用户） |
-| 富文本渲染 | `rich-text.ts`（共享管线）· `chat-markdown.ts` · `comment-markdown.ts` · `blog-markdown.ts` · `content-refs.ts`（评论/讨论那条**同步**管线：只认 8 位与 10 位，9 位投票与 6 位收藏夹刻意不展开）· `favorite-refs.ts`（`[@六位]` 卡片：**只在博客/剪贴板**那条管线生效，见 §6.9）· `user-refs.ts`（`[@用户/用户名]` 名片：同样只在评论/讨论生效，见 §6.7）· `markdown-math.ts` · `linkify.ts` |
+| 富文本渲染 | `rich-text.ts`（评论/讨论共享管线）· `chat-markdown.ts` · `comment-markdown.ts` · `content-refs.ts`（评论/讨论那条**同步**管线：只认 8 位与 10 位，9 位投票与 6 位收藏夹刻意不展开）· `favorite-refs.ts`（`[@六位]` 卡片：**只在 reactive 正文（博客/剪贴板）**生效，由 `reactive/site-embed-static.tsx` 生成，见 §6.9）· `user-refs.ts`（`[@用户/用户名]` 名片：同样只在评论/讨论生效，见 §6.7）· `linkify.ts`。博客/剪贴板正文的渲染见 `reactive/`（§6.23），旧 Markdown 管线已整条退役 |
 | Markdown 编辑器 | `md-editor/commands.ts`（工具条的**事务命令**，零依赖：一切改动都走 `view.dispatch`，于是每步都进撤销历史）· `md-editor/draft.ts`（本地草稿键与防抖落盘）· `md-editor/upload.ts`（多文件调度：筛选 / 排队 / 超限拒收；**单文件怎么发**仍归 `image-client.ts`）· `md-editor/upload-anchors.ts`（上传锚点：零宽 widget，位置随事务映射、按选择顺序落位）· `md-editor/insert-anchor.ts`（「插入引用」面板的落点，同样靠 `ChangeDesc.mapPos`）· `md-editor/resources.ts`（资源面板的词汇与插入语法，**零 React** —— 拼串与解析同源，见 §6.7）。组件在 `src/app/components/markdown-editor/`（`Toolbar.tsx` / `ResourcePanel.tsx` / `cm-theme.ts` / `export.ts`） |
 | 表情包 | `sticker-refs.ts`（`[@合集/表情]` → 内联 `<img>`，跑在`rich-text.ts` 的净化**之后**）· `sticker-service.ts`（素材扫盘与三层缓存）· `emoji-faces.ts`（内置黄脸合集的编译期清单，素材从 npm 包拷进 `public/static/emoji/`）。安全边界与正则纪律见几者头部；玩家向说明见 `docs/guide/表情包使用指南.md` |
 | 讨论 | `chat-service.ts` · `chat-bus.ts`（SSE 订阅）/ `chat-shared.ts`（DTO）· `chat-presence.ts`（「谁正在看哪个会话」—— 进程内，决定被 @ 时发不发通知）· `chat-sidebar-pref.ts` · `focus-mode.ts` |
@@ -438,21 +438,22 @@ GET/HEAD/OPTIONS 视为安全方法，不校验（协议闸不受这条影响，
 
 ### 6.7 Markdown / 内容渲染
 
-**2026-11 起，博客详情与剪贴板详情的正文默认走 §6.23 的 ReactiveMD 统一管线**：
-`format` 只表示源码语言（markdown / reactive），两种语言都由同一个引擎解释；
+**2026-11 起，博客详情与剪贴板详情的正文只走 §6.23 的 ReactiveMD 统一管线**：
+`format` 只表示源码语言（markdown / reactive），两种语言都由同一个引擎解释 ——
+**reactive 是唯一正文渲染路径**，旧 Markdown 回退管线已整条退役（`REACTIVE_MD_MODE`
+不再被读取；`MarkdownRenderer` / `blog-renderer` / `content-ref-processor` 等已删除）。
 `renderer_override` 列保留在库里（**迁移 `42_retire_residual` 明确保留**：它是对外 bot 契约
-`docs/bot/blog-bot.md` 的 GET 响应字段，退役需产品 / 文档批次），但已不参与任何选择。`REACTIVE_MD_MODE=off` 是
-事故回退：Markdown 暂交回本节这套旧管线，Reactive 改用本次编译的静态输出。
-评论、讨论、故事不走 §6.23，始终用下表这套既有管线。下表是旧管线（legacy 分支）的分工。
+`docs/bot/blog-bot.md` 的 GET 响应字段，退役需产品 / 文档批次），但已不参与任何选择。
+**评论、讨论、故事**不走 §6.23，始终用下表这套既有管线（故事由服务端 marked 渲染）。
 
 | 场景 | 渲染方式 | 管线 |
 |------|---------|------|
+| 博客正文 / 剪贴板正文 | **统一 ReactiveMD 管线**（服务端静态首屏 + 客户端水合，见 §6.23） | `reactive/read-render.ts` 决策 → `compile-content.ts`；Markdown 与 Reactive 同引擎，**没有 legacy 分支** |
 | 讨论正文 / 评论正文 | **客户端**渲染，同一套管线 | `rich-text.ts`（marked → DOMPurify → 后处理），白名单与链接类名见 `chat-markdown.ts` / `comment-markdown.ts` |
-| 博客正文（legacy 分支） | **客户端**渲染 | `src/app/components/MarkdownRenderer.tsx`（marked + DOMPurify + highlight.js + MathJax + `[@…]` 内容引用） |
 | 故事正文 | **服务端**渲染 | `src/lib/story-service.ts` 的 `marked` + `stripScripts`。内容由站长直接写在 `instance/stories/`，按可信输入处理，**不走 DOMPurify / highlight.js** |
-| 内容引用 `[@…]` | 浏览器渲染时正则替换为剪贴板/投票/图床/收藏夹组件 | `src/app/components/MarkdownRenderer.tsx` 的 `ContentRefProcessor`（按 id 长度分流：6 位收藏夹 / 8 位剪贴板 / 9 位投票 / 10 位图床）。**表情包不在这条管道上**。**展开到哪一档看 `contentRefs`**（成员 `'expand'` / 对外 `'external'`，见 §7.3）。两次替换都**按区间切片**、不按内容 `replace`；分流扫的是**盖过码**的副本，所以代码块里的引用一律不展开（指南对读者的承诺）。收藏夹卡片是在主循环**之后**单独一趟，理由见 §6.10 |
+| 内容引用 `[@…]`（评论 / 讨论） | 浏览器渲染时正则替换为剪贴板/投票/图床/收藏夹组件 | `rich-text.ts` 的 `content-refs` 管线（按 id 长度分流：6 位收藏夹 / 8 位剪贴板 / 9 位投票 / 10 位图床）。**表情包不在这条管道上**。两次替换都**按区间切片**、不按内容 `replace`；分流扫的是**盖过码**的副本，所以代码块里的引用一律不展开（指南对读者的承诺）。博客 / 剪贴板正文里的引用改由 reactive 的 ref-adapter / hostData 处理（见 §6.23） |
 | 表情包 `[@合集/表情]` | 浏览器渲染时替换为内联 `<img>`（**仅评论 / 讨论**）。两个来源共用这条管道：站长放的图片（`/api/stickers/` 字节路由）与**内置黄脸**（`/static/emoji/` 静态素材）—— 后者多叠一个 `rich-emoji-ref` 类把自己压成文字大小；**整条正文只有这一张黄脸时**再叠 `rich-emoji-solo`，尺寸退回表情包那一档（判据是「最终 DOM 里只有这一张」） | `src/lib/sticker-refs.ts` 的 `embedStickerRefs`，在 `rich-text.ts` 里紧跟 `embedUserRefs` 之后调用；单发那一档是 `markSoloEmojiFaces`（同一文件），在 `render()` 里**最后**跑（任何新的 `embed*` 都必须排在它上面）；黄脸清单在 `src/lib/emoji-faces.ts` |
-| 音频 `[@音频/<ID>]` | 浏览器渲染时替换为内联 `<audio controls>`。**两条管线走法不同**：评论 / 讨论在**净化后**建 DOM（那边白名单里没有 audio）；博客在**源文**上直接拼标签串（那边白名单本来就允许 audio），但必须配 `maskMarkdownCode` —— 否则代码块里会嵌出真播放器。一条正文最多展开 3 个 | `src/lib/audio-refs.ts` 的 `embedAudioRefs`（DOM）/ `collectAudioRefs` + `replaceAudioRefs`（源文）。`音频` 是**保留合集名**（表情那条正则带 `(?!用户/)(?!音频/)` 让开），见 §6.15 |
+| 音频 `[@音频/<ID>]`（评论 / 讨论） | 浏览器渲染时替换为内联 `<audio controls>`：在**净化后**建 DOM（白名单里没有 audio），一条正文最多展开 3 个；博客 / 剪贴板正文的音频引用走 reactive hostData | `src/lib/audio-refs.ts` 的 `embedAudioRefs`（DOM）。`音频` 是**保留合集名**（表情那条正则带 `(?!用户/)(?!音频/)` 让开），见 §6.15 |
 | 用户名片 `[@用户/<用户名>]` | 浏览器渲染时替换为一枚**行内名片**（`<a>` 包住「带头像框的头像 + 用户名」，指向 `/u/<id>`）（**仅评论 / 讨论**）。认的是**用户名**而不是 ID，所以多一条异步取数；**不算 @ 提及**，不发通知 | `src/lib/user-refs.ts` 的 `embedUserRefs`（纯逻辑 + DOM 构造），数据由 `src/app/components/useUserCards.ts` 经 `RichTextContext` 注入，取数口是 `GET /api/users/<用户名>`（要 core+）。`用户` 因此是**保留合集名**（表情那条正则带 `(?!用户/)` 让开） |
 | 工具页 cattca-guide | **服务端**渲染 | marked（仅一次，可信文档） |
 
@@ -523,32 +524,20 @@ core+；讨论大区过滤专注、禁言与静音者，私聊只列未静音的
 div 会卸载重挂，`deps=[]` 的监听器永远附不上。
 
 **编辑器（博客 / 剪贴板）的预览走 `ReactivePreview`**（客户端编译，只发 GET、不发写请求），
-不再是 `MarkdownRenderer`。`MarkdownRenderer` 现在只服务**事故回退**：`REACTIVE_MD_MODE=off`
-下把 Markdown 文档交回旧引擎渲染（`blog/[id]` 与剪贴板详情各自按决策结果使用）。它的引用
-档位仍是两种：
-
-- `contentRefs="expand"`：五类引用（图床 / 音频 / 剪贴板 / 投票 / 收藏夹）展开成成品。
-  这条档位会真去打三条 core+ 读口（剪贴板正文 / 投票 / 收藏夹卡片；图床与音频只是拼 raw
-  地址，不发请求），缓存与并发见 `content-ref-resolver.ts`。
-- `contentRefs="external"`：对外视图，剪贴板 / 投票 / 收藏夹保留原文，**一个请求都不发**。
+与阅读同一套引擎。引用展开由 hostData 的 `external` / `expand` 档位决定（见 §6.23）：
+`expand` 会真去打 core+ 读口（剪贴板正文 / 投票 / 收藏夹卡片；图床与音频只是拼 raw 地址），
+`external` 对外视图保留原文、**一个请求都不发**。
 
 预览**不展开**表情包与用户名片：那两者只挂在评论 / 讨论那条管线上（见上表），
 博客正文里它们就是普通文字。这是刻意的，不要为了「统一」把它们接进来 ——
 一旦接进来，发一篇日记就顺带获得了两项评论区的功能。
 
-⚠️ 那台渲染器的正文 DOM 后处理不区分「正文页」与「只读」两种档位：投票小组件始终可交互。
-`format='reactive'` 的文档不经过它（阅读走 §6.23 的统一管线；把 reactive 源码交给它不会抛错，
-只会把 `{{ }}` 与组件标签当普通文本显示出来）。
-
-投票小组件**自己取数**（`renderVoteEmbed` 拉 `GET /api/votes/<id>`），DOM 后处理只负责把
-`.vote-embed` 占位换成小组件，并用 `data-rendered` 戳保证重复调用不重复取数。
-
 ⚠️ **正文容器上那个 `dangerouslySetInnerHTML` 的 `{__html}` 对象必须 memo 住**
-（`MarkdownRenderer.tsx` 的 `innerHtml`）。React 19 是按**对象身份** diff 它的
+（`RichContentBody` 的 `html`、博客详情页的静态首屏输出）。React 19 是按**对象身份** diff 它的
 （内联字面量每次渲染都是新对象 → 每次都重写 `innerHTML`），而后处理（MathJax 的
 `mjx-container`、投票小组件）是在 commit 之后那次效果里做的、**看不见 DOM 被重写**，
 于是不会重跑：切一下视图公式就退回 `$$…$$` 原文、投票位空掉，控制台一个字都不报。
-按 `doc` memo 之后「doc 变了才重写」，与效果重跑严格同步（机制与用户动作各有测试，
+按内容 memo 之后「内容变了才重写」，与效果重跑严格同步（机制与用户动作各有测试，
 见 `docs/plan/editor-plan.md` §7.1.2 第 8 条）。
 
 **「插入引用」面板**（`markdown-editor/ResourcePanel.tsx`）
@@ -568,8 +557,8 @@ div 会卸载重挂，`deps=[]` 的监听器永远附不上。
 私有收藏夹**列得出来但插不进去**（`public_id` 恒 NULL = 没有对外句柄），行内写清理由
 —— 藏掉它会让用户以为自己的收藏夹丢了。401 / 403 是「这一档你用不了」，只显示接口
 那句原因、**不给重试**；网络失败才给「重试」，且失败**不进面板自己的结果缓存**
-（一次抖动不该被钉成永久失败）。⚠️ 这与 `content-ref-resolver.ts` 的取舍**正好相反**
-（那边失败也缓存）—— 两处都对：那边是每次按键都重渲染的预览，不能每敲一个字就重试；
+（一次抖动不该被钉成永久失败）。⚠️ 这与预览侧引用缓存的取舍**正好相反**
+（预览侧失败也缓存）—— 两处都对：预览是每次按键都重渲染、不能每敲一个字就重试；
 这边是用户主动打开、只会手动刷新的列表。点当前已选中那颗标签是空操作。
 
 **导出 HTML / 打印**（`markdown-editor/export.ts`）取的是**此刻的源码**，与阅读走同一条
@@ -695,9 +684,9 @@ Promise** —— 拿它当「等到了字体」，MathJax 的公式会用回退�
 | `/api/poster/favorite/[id]` | core+ | 分享二维码 PNG，复用 `RULES.posterMinute`；**只按公开句柄查**，所以私密收藏夹结构性不可达 |
 | `/api/spider/favorites/[id]` | core+ | 站外机器人的入口，只返回公开且未软删的；spider 系列里**唯一有限频**的一条（鉴权不替代限频） |
 
-**`[@六位]` 引用。** 只在博客 / 云剪贴板那条管线生效（`MarkdownRenderer` 的
-`ContentRefProcessor`），评论与讨论**刻意不认**（与 9 位投票「只识别不展开」同向）。
-纯逻辑在 `src/lib/favorite-refs.ts`。
+**`[@六位]` 引用。** 只在 **reactive 正文（博客 / 云剪贴板）**生效：由
+`reactive/site-embed-static.tsx` 生成卡片（6 位白名单在 `favorite-refs.ts` 的 `FAVORITE_ID_RE`），
+评论与讨论**刻意不认**（与 9 位投票「只识别不展开」同向）。纯逻辑在 `src/lib/favorite-refs.ts`。
 
 三处反直觉的实现细节，改动前务必读：
 
@@ -1418,18 +1407,17 @@ MP3 的帧同步要核版本 / 层 / 位速率字段（只判 `0xFF` 打头太�
 **两端必须一起改**：`sticker-refs.ts` 的 `RESERVED_CARD_COLLECTIONS` 让开它，
 `sticker-service.ts` 的扫盘跳过同名目录。只改一端 = 「面板里挑得出、一渲染却变成播放器」。
 
-**两条管线的接入方式不同，别互相照抄**：
+**两条渲染路径的接入方式不同，别互相照抄**：
 
-| 管线 | 走法 | 为什么 |
+| 路径 | 走法 | 为什么 |
 |------|------|--------|
 | 评论 / 讨论（`rich-text.ts`） | 净化**后**建 DOM（`createElement` + `setAttribute`） | 白名单里**没有 audio**（与没有 img 同理）——放开白名单等于给任意外链播放器开口子 |
-| 博客（`MarkdownRenderer.tsx`） | **源文**上直接拼标签串，单独一趟放最末、按区间切片 | `BLOG_SANITIZE_OPTIONS` 本来就允许 `audio`/`controls`/`preload`（一行代码都没用过） |
+| 博客 / 剪贴板（reactive） | 源文阶段由 `reactive/ref-adapter.ts` 调 `collectAudioRefs` 扫 token，改写成宿主组件（`audio` host），再交给统一引擎 | 源文阶段没有 DOM，靠盖码跳过 `CODE`/`PRE`；src 由校验过的 ID 拼成，**永不接受用户提供的 URL** |
 
-⚠️ 博客那一趟**必须配 `maskMarkdownCode`**：源文阶段没有 DOM、跳过不了 `CODE`/`PRE`，
-不盖码块就会在 `<code>` 里嵌出一个**真播放器**（而 audio 在白名单里，DOMPurify 不会拦）。
-这是博客侧最可能的静默错误。src 由我们用校验过的 ID 拼成，**永不接受用户提供的 URL**。
+⚠️ 源文那一趟**必须盖码**（`favorite-refs.ts` 同款说明）：不盖码块就会在 `<code>` 里嵌出一个
+**真播放器**。这是博客侧最可能的静默错误。
 
-⚠️ **博客正文的两种视图都展开音频**（成员 `'expand'` / 对外 `'external'`，见 §7.3）——
+⚠️ **博客正文的两种视图都展开音频**（hostData `'expand'` / `'external'`，见 §7.3）——
 音频字节路由匿名可取，与图床同性质，所以《音频床使用指南》的 FAQ 里那句「设为对外可见，
 读到那篇的人就都能听到」才成立。**别把音频归进「要 core+ 的那三种引用」**。
 
@@ -1580,6 +1568,21 @@ MP3 的帧同步要核版本 / 层 / 位速率字段（只判 `0xFF` 打头太�
 ⚠️ **ffmpeg 系依赖在核心未加载时按「可满足」处理**（`edgeAvailable`）。若按字面判，
 菜单要等 31MB 核心下载完才出现 —— 那是「先下载再决定能干什么」。核心**加载失败**时
 才把对应目标标为不可用并说明原因。
+
+**核心加载结果会回填能力报告（R3-465）**：`probeCapabilities` 只能给出 `ffmpeg: null`
+（核心尚未加载）；页面订阅 `subscribeFFmpegState`，把 `loaded` / `encoders` / `error`
+写回 `CapabilityReport.ffmpeg`，失败时给可见提示。没有这个回填点，`requires:['ffmpeg-enc:…']`
+的边在核心加载成功后仍被判为不满足，音频 / 视频目标永远不出菜单。
+
+**单文件边的多选是「明确拒绝」，不是静默丢弃**：`maxFilesPerTask` 是为序列 / 合并 /
+打包开的（图片 200、PDF 50、视频同款），单文件边在 run 前调 `assertSingleFile`，多选时抛
+`unsupported`，消息里写明「该目标一次只处理一个…（当前选了 N 个）」并附该类别支持的
+合并方式（如「多文件仅『合并 PDF』与『图片成 PDF』支持」）。
+
+**PDF 页数当前不在选择时探测（R3-462 保留）**：`CategoryDef.probe` 是可选钩子，PDF 类别
+没有实现它，所以展示参数前 `info.pageCount` 是空的 —— `estimateOutput` 拿不到页数、不做
+预检；300 页上限在 run 里打开文件后由 `checkPageLimit` 执行。**这是已知限制**：超页数
+文件会在开始转换后才被拒绝，而不是在选择时；行为保持不变。
 
 #### 队列纪律（`queue.ts`）
 
@@ -1988,9 +1991,9 @@ Markdown 剪贴板内联一层，Reactive 剪贴板卡片显示；预览不执�
 可交互，卸载释放状态与计时器。复制 / 下载原文使用存储源码，静态 / 交互 HTML 导出
 按当前授权临时适配并编译，不依赖数据库快照。
 
-**失败与事故回退：**单篇编译失败返回 unavailable，不把增强源码交给旧 Markdown
-解析器。`REACTIVE_MD_MODE=off` 保留事故开关：Markdown 暂用旧引擎，Reactive 使用
-本次编译的静态输出。源码大小、累计节点和引用展开预算继续生效。
+**失败与事故回退：**单篇编译失败返回 unavailable，不把增强源码交给 Markdown 解析器
+（**没有旧 Markdown 回退引擎**：`REACTIVE_MD_MODE` 已不再被读取，旧管线整条退役）。
+源码大小、累计节点和引用展开预算继续生效。
 
 **运维：**SQL `up` 只做结构迁移。旧源码升级、公开搜索索引修复均独立执行，不再有
 快照回填或“全站 RMD 必须编译成功”的部署前置。公开索引仍是数据库中的可重建检索
@@ -2154,29 +2157,26 @@ Quoted-printable / 哈希 / AES）`legacy: true`，仍指向 `/tool/<slug>` —�
   → Server Component 先按 visibility / isCore 判可达，再交给 read-render：
        resolveReadRender({ format, override, source, viewer, mode })
          mode = core+ ? 'expand' : 'external'
-  → 四种结果（data-content-renderer）：
-       legacy         → MarkdownRenderer（contentRefs='expand' / 'external'）
+  → 三种结果（data-content-renderer）：
        reactive       → ReactiveDocument（RSC 只传可序列化 document + hostData）
        reactive-static→ 本次请求的静态正文（ReactiveDocument mode="static"）
        unavailable    → 明确失败态（不把源码交给任何解析器）
-       core+ → 正文 + FeedButton + CommentSection
-       访客 → 标题 / 作者 / 文章时间 / 正文，零站内 affordance
-              legacy / Reactive / 静态分支均不下发剪贴板数据，保留引用原文
-  → legacy 由客户端 marked + DOMPurify + highlight.js 完成正文；
-    reactive / reactive-static 不走旧管线
+        core+ → 正文 + FeedButton + CommentSection
+        访客 → 标题 / 作者 / 文章时间 / 正文，零站内 affordance
+               两种 reactive 分支均不下发剪贴板数据，保留引用原文
+  → 正文由统一引擎（Markdown / Reactive 同引擎）渲染，没有 legacy 回退分支
 ```
 
-⚠️ **渲染路径不是可见性判定。** `read-render` 只决定「用哪个渲染器解释正文」，必须在
+⚠️ **渲染路径不是可见性判定。** `read-render` 只决定「正文怎么编译」，必须在
 `getBlogDetail` 已经判过档位之后调用；反过来，`format`（以及已失效的 `renderer_override`
 列）也不改变
 谁能读到这篇文章（§6.11）。
 
 ⚠️ **原始 markdown 是作为 RSC prop 随首屏 payload 下发的** —— 「正文交给客户端渲染」
 不构成任何保护，闸门必须在服务端把串传出去之前（`docs/architecture.md` §6.7 那条管线）。
-对外视图在所有管线中均不读取剪贴板，只保留 token。
+对外视图在所有路径中均不读取剪贴板，只保留 token。
 
-⚠️ `MarkdownRenderer` 的 `contentRefs` 是**必传** prop，两个取值都展开引用，差别在
-**展开到哪一档**：
+⚠️ 引用展开档位由 hostData 的 `external` / `expand` 决定（不再是组件 prop）：
 
 | 取值 | 用在哪 | 剪贴板 | 投票 | 图床 | 收藏夹 | 音频 |
 |------|--------|--------|------|------|--------|------|

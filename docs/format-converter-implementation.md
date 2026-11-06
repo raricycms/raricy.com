@@ -412,6 +412,14 @@ wrapper 由 Next 打包，音频核心 JS / WASM 从锁定依赖复制到同源�
 或哈希的子目录，避免旧 JS 与新 WASM 混配；公共生成目录进 `.gitignore`，二进制
 不作为手工维护文件提交。脚本校验来源版本、必需文件和清单，缺文件时明确失败。
 
+**构建期强制对齐核心版本（R3-013）**：核心目录名由 `scripts/copy-converter-assets.mjs`
+按 `node_modules/@ffmpeg/core/package.json` 的 `version` 决定，浏览器请求的 URL 却来自
+`src/lib/file-converter/engines/ffmpeg.ts` 里**硬编码**的 `FFMPEG_CORE_VERSION`。脚本在
+拷贝 / 自检前显式比对两者，不一致直接 `exit 1` 并指出要改哪一行 —— 否则 `build` 全绿、
+页面却请求 `…/ffmpeg/<旧版本>/…` → 404，症状是「转换引擎加载失败」。这条检查挂在
+`postinstall`、`prepare:converter` 与 `converter:check` 上；`npm ci --ignore-scripts`
+的环境要手工跑一次 `npm run prepare:converter`。
+
 官方安装说明建议自行托管 wrapper，因其会创建 Worker；不能把从 CDN 直接 import
 wrapper 的示例当作适合本站的交付方式。
 [依据：FFmpeg.wasm 安装说明](https://ffmpegwasm.netlify.app/docs/getting-started/installation/)

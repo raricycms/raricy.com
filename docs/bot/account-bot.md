@@ -421,6 +421,7 @@ GET /api/users/u_xxx
     "id": "u_xxx",
     "username": "alice",
     "avatarPath": null,
+    "frameUrl": null,
     "bio": "你好",
     "createdAt": "2026-01-01T00:00:00.000Z",
     "role": null,
@@ -435,6 +436,7 @@ GET /api/users/u_xxx
 | 字段 | 谁能看到 |
 |------|----------|
 | `id` / `username` / `avatarPath` / `bio` / `createdAt` | **所有人**（含游客） |
+| `frameUrl` | 所有人；头像框贴图地址（`null` = 没戴框或已过期）。**已含到期判定**，别自己再算 |
 | `showRecentBlogs` / `showRecentComments` | 所有人（这是资料接口自己的字段） |
 | `role` | **仅本人或 core+**；否则是 `null` |
 | `recentBlogs` / `recentComments` | **仅本人或 core+**；否则是空数组 |

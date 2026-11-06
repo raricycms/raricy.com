@@ -632,6 +632,15 @@ GET /api/chat/users?q=<关键词>&limit=30&offset=0
 
 返回 `core+` 用户（排除自己）。拿到 `user_id` 后发起私聊：
 
+```json
+{ "code": 200, "message": "ok",
+  "users": [{ "id": "u_xxx", "username": "alice", "frame_url": null }],
+  "total": 1 }
+```
+
+`frame_url` 是头像框贴图地址（`null` = 没戴 / 已过期 / 素材缺失），**判定已在服务层做完**；
+响应里**没有 `role`** —— 选人弹窗不需要角色。想把自己也搜出来时加 `&include_self=1`。
+
 ```http
 POST /api/chat/channels
 { "user_id": "u_xxx" }
@@ -837,6 +846,7 @@ GET /api/chat/channels/lobby/appearance?users=u_xxx,u_yyy
     "id": "u_xxx",
     "username": "alice",
     "avatar_url": "https://...",  // 可能为空字符串
+    "frame_url": null,            // 头像框贴图；null = 没戴 / 已过期 / 素材缺失（判定已在服务层做完）
     "bubble_key": null,           // 作者当前有效气泡；默认 null，蓝底直角 "blue-square"，蓝色直角 "blue-outline-square"
     "is_admin": false
   },
@@ -878,7 +888,7 @@ GET /api/chat/channels/lobby/appearance?users=u_xxx,u_yyy
   "id": "lobby",                    // 或 "d_xxx"
   "kind": "lobby",                  // "lobby" | "direct"
   "title": "讨论大区",
-  "peer": null,                     // 私聊才有：{ "id": "u_yyy", "username": "alice" }
+  "peer": null,                     // 私聊才有：{ "id": "u_yyy", "username": "alice", "frame_url": null }
   "unread_count": 3,                // 未读条数
   "mention_count": 1,               // 大区专属：未读里 @ 到我的条数（私聊无此字段）
   "peer_last_read_message_id": null, // 私聊专属：对方读到的最新消息 id

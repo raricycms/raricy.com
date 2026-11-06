@@ -11,6 +11,11 @@
 > 已落地的形状：CodeMirror 6 保存与编辑 Markdown 原文，完整预览与正文共用同一台
 > 渲染器（`MarkdownRenderer`），首版是源码编辑加可切换的完整预览；
 > 就地装饰（在源码里直接看到图片 / 公式）属于 M3，**未做**。
+> **2026-11 追记**：旧 Markdown 渲染整条退役（`3f2508c6`）—— `MarkdownRenderer`、
+> `blog-renderer`、`blog-content-dom`、`content-ref-processor` / `content-ref-resolver`、
+> `markdown-math`、`useHljsThemeStyles`、`renderer-select` 均已删除；完整预览现在与正文
+> 共用 ReactiveMD 管线（`compileLocal` → `LocalDocumentView`）。本文 M0 交付表与后续章节里
+> 出现的这些模块名是**当时的计划记录**，不再指代现存文件。
 > 2026-10-12 校对：本文因 M3 / M4 仍有未完成范围移入 `docs/plan/`；
 > 当前待办见 §7.2，已完成的迁移与加固记录保留在 §7.1。
 

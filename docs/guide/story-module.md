@@ -111,8 +111,8 @@ ignore: false
 > 博客正文会自动给外链加 `target="_blank" rel="noopener noreferrer nofollow"`，**故事页不会**
 > —— 故事走的是服务端 `marked`，没有这层后处理。需要新窗口打开的链接请在正文里自己写 HTML。
 
-**代码块**：无复制按钮，也没有语法高亮 —— 那两项是博客渲染器（`MarkdownRenderer.tsx`）
-的能力，故事页不走它。
+**代码块**：无复制按钮，也没有语法高亮 —— 那两项是博客正文渲染路径（ReactiveMD）的能力，
+故事页走自己的服务端 `marked`，不经过它。
 
 #### Cattca 互动小说（`.cattca`）
 

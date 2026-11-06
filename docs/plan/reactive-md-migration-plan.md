@@ -1,7 +1,8 @@
 # ReactiveMD 接入博客区方案（渲染器换代）
 
 > 状态：早期接入与实施记录（`reactive-md@0.5.3` → 0.6.1）。现行规则由
-> `docs/plan/reactive-md-simplification-plan.md` 与 `src/lib/renderer-select.ts` 定义；
+> `docs/plan/reactive-md-simplification-plan.md` 与 `src/lib/reactive/read-render.ts` 定义；
+> 旧 `src/lib/renderer-select.ts` 已随 legacy 渲染整条退役删除（`3f2508c6`）。
 > 当前依赖 `reactive-md@0.7.0`，0.5.x 协议细节与分阶段记录见 Git 历史。
 
 ## 1. 当前事实与入口
@@ -9,9 +10,9 @@
 - 博客详情、剪贴板详情与编辑器预览共用一条管线：源码 → 引用适配
   （`src/lib/reactive/ref-adapter.ts`）→ `compileLocal` → `LocalDocumentView`；服务端按需
   编译并复用有界内存 LRU（`compile.ts` / `cache.ts`），不读写数据库快照。
-- 走哪条路径只由 `selectContentRenderer` 决定：格式无法识别 → `unavailable`；
-  `REACTIVE_MD_MODE=off` 时 Markdown 临时交回旧渲染器、Reactive 走静态降级；其余一律
-  `reactive`。没有百分比灰度、`shadow` 或逐篇 override 决策（`flags.ts` 只有 `off` / `on`）。
+- 走哪条路径只由 `selectContentRenderer` 决定：格式无法识别 → `unavailable`；其余一律
+  `reactive`。`REACTIVE_MD_MODE` 与「`off` 时交回旧渲染器」的分支已随 legacy 渲染整条退役
+  （`3f2508c6`），现在没有第二条管线。没有百分比灰度、`shadow` 或逐篇 override 决策。
 - 迁移 35 的 `format`、`syntax_version` 仍在表里，供 API、草稿与旧消费者辨别内容；
   `renderer_override` 只剩列与透出；`X-Content-Renderer` 响应头未接入（见 §12），
   `ADAPTER_VERSION` 进缓存键（见 §5.3），结构化日志与 `data-content-renderer` 已落地。
@@ -71,7 +72,7 @@ U1–U6（软换行兼容、屏幕 / 打印样式拆分、公共导出、作者�
 | # | 事项 | 归属 | 需产品决策 | 依据 / 详见 |
 |---|------|------|:---:|------|
 | 1 | `X-Content-Renderer` 响应头 | 渲染 / 观测 | 是：做，还是正式撤销该要求 | `src/` 内零命中；结构化日志与 `data-content-renderer` 已落地 |
-| 2 | 是否完全退出旧 Markdown 引擎 | 渲染 | 是：属事故回退策略 | `renderer-select.ts` 仍保留 `off` 时 Markdown → `legacy` |
+| 2 | 是否完全退出旧 Markdown 引擎 | 渲染 | 已完成 | **已退出**：legacy 渲染整条退役（`3f2508c6`），`renderer-select` 与 `REACTIVE_MD_MODE` 不再存在 |
 | 3 | C1 稳定锚点 | 渲染 | 是：有外部章节分享才触发 | §11 |
 | 4 | C2 数学显示扩展 | 渲染 | 是：实现，或标为已知限制 | §11；语料只命中个别文章的局部降级 |
 | 5 | 生产发布核对 | 运维 | 是（站长 / root） | 迁移 35 / 36 / 37 / 40 是否已应用、搜索索引是否重建、PR #20 远端状态，仓库内无法核实 |
