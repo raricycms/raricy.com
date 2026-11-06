@@ -45,6 +45,31 @@ describe('protectMath', () => {
   it('孤立的 $ 不配对（价格写法不该被当成公式）', () => {
     expect(protectMath('这本书 $5 元。').count).toBe(0);
   });
+
+  // R3-112：代码块 / 行内代码里的成对 `$$` 不是公式，是作者想展示的语法本身。
+  // 抽走它们会让占位符流进 marked 的产物，再被 restoreMath 塞进复制按钮的
+  // `data-code` 属性（见本文件头第 3 条）。
+  it('围栏代码块里的成对 $$ 不被抽走（原文一个字都不变）', () => {
+    const src = '```markdown\n$$E=mc^2$$\n```';
+    const { text, count, placeholders } = protectMath(src);
+    expect(count).toBe(0);
+    expect(placeholders.size).toBe(0);
+    expect(text).toBe(src);
+  });
+
+  it('行内代码里的成对 $ 也不抽', () => {
+    const src = '写成 `$x$` 这样的行内公式';
+    expect(protectMath(src)).toMatchObject({ count: 0, text: src });
+  });
+
+  it('代码块内外的公式互不影响：只抽代码外的那个', () => {
+    const src = '```\n$a$ $$b$$\n```\n\n之后是 $c$';
+    const { text, count } = protectMath(src);
+    expect(count).toBe(1);
+    // 代码块内三处定界符原样保留，代码外的 $c$ 变成占位符
+    expect(text).toContain('```\n$a$ $$b$$\n```');
+    expect(text).not.toContain('$c$');
+  });
 });
 
 describe('restoreMath', () => {
@@ -76,6 +101,19 @@ describe('restoreMath', () => {
   it('代码块里的 $ 也原样保留（内容不被吞）', () => {
     const { text } = roundTrip('```\nconst a = $5;\n```');
     expect(text).toContain('const a = $5;');
+  });
+
+  it('公式里的引号转义后不会截断属性值（data-code 回归）', () => {
+    const math = '$$a"b\'c$$';
+    const restored = restoreMath(
+      '<button type="button" class="copy-btn" data-code="MATHBLOCK0PLACEHOLDER">复制</button>',
+      new Map([['MATHBLOCK0PLACEHOLDER', math]])
+    );
+    expect(restored).toContain('&quot;');
+    // 关键判据：解析回来后属性值完整等于公式原文（提前结束会只剩 `$$a`）
+    const root = document.createElement('div');
+    root.innerHTML = restored;
+    expect(root.querySelector('button')!.getAttribute('data-code')).toBe(math);
   });
 
   it('行内公式与行内 LaTeX 定界符保持原样', () => {

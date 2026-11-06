@@ -25,7 +25,7 @@
 import { AUDIO_REF_RE, MAX_AUDIO_REFS } from '../audio-refs';
 import { MAX_BLOG_REF_ITEMS, MAX_REF_EXPAND_CHARS, MAX_REF_FETCHES } from '../content-refs';
 import { parseContentFormat, type ContentFormat } from '../content-format';
-import { MAX_FAVORITE_REFS } from '../favorite-refs';
+import { MAX_FAVORITE_REFS, isFavoriteId } from '../favorite-refs';
 import { performance } from 'node:perf_hooks';
 import { utf8ByteLength } from './cache';
 import { compileLocal, LOCAL_SYNTAX_VERSION } from 'reactive-md';
@@ -557,7 +557,8 @@ function scanReferences(masked: string, sourceChars: number): CorpusRefScan {
     if (id.length === 10) kind = 'image';
     else if (id.length === 9) kind = 'vote';
     else if (id.length === 8) kind = 'clipboard';
-    else if (/^[0-9]{6}$/.test(id)) kind = 'favorite';
+    // 6 位收藏夹：白名单只认 favorite-refs 的 isFavoriteId（R3-240），别手写正则。
+    else if (isFavoriteId(id)) kind = 'favorite';
     if (!kind) continue;
     counts[kind] += 1;
     unique[kind].add(id);

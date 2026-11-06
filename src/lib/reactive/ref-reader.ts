@@ -2,7 +2,7 @@ import { isCoreUser, isOwner } from '../auth';
 import { getClip } from '../clipboard-query';
 import { getVoteDetail } from '../vote-service';
 import { getPublicFavorite } from '../favorite-service';
-import { MAX_CARD_ITEMS } from '../favorite-refs';
+import { MAX_CARD_ITEMS, isFavoriteId } from '../favorite-refs';
 import { parseContentFormat } from '../content-format';
 import { rateLimit, RULES } from '../rate-limit';
 import type { ReferenceMode, ReferenceReader, ResolvedReference } from './ref-types';
@@ -57,7 +57,8 @@ export function createServiceReferenceReader(
           },
         };
       }
-      if (!/^\d{6}$/.test(slot.ref)) return undefined;
+      // 6 位白名单只认 favorite-refs 那一处（R3-240），别在这里手写正则。
+      if (!isFavoriteId(slot.ref)) return undefined;
       if (clientIp && !rateLimit(`spider:fav:ip:${clientIp}`, RULES.spiderFavoritePerIp).allowed) {
         return { status: 'error' };
       }

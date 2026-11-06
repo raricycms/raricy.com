@@ -12,7 +12,7 @@
 // 单测：tests/unit/blog-content-dom.test.ts（jsdom）。
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { renderVoteEmbed } from '@/lib/blog-markdown';
+import { renderVoteEmbed, type VoteEmbedData } from '@/lib/blog-markdown';
 
 // ── MathJax：模块化 mathjax-full（CHTML 输出），page-lifetime 单例─────────────
 import { mathjax } from 'mathjax-full/js/mathjax.js';
@@ -81,6 +81,12 @@ function typesetMath(root: HTMLElement): void {
 export interface BlogContentDomOptions {
   /** 公式条数（renderBlogMarkdown 的返回值），>0 才跑 MathJax。 */
   mathCount?: number;
+  /**
+   * 预处理阶段已经取到的投票数据（`ContentRefProcessor.voteData`，R3-104）。
+   * 命中的投票位直接用它建小组件，**不发第二条 `GET /api/votes/<id>`**；
+   * 没有的（探测失败 / 旧调用方）仍由 `renderVoteEmbed` 自己拉一次。
+   */
+  voteData?: ReadonlyMap<string, VoteEmbedData>;
 }
 
 /**
@@ -138,7 +144,10 @@ export function enhanceBlogContent(root: HTMLElement, options: BlogContentDomOpt
   root.querySelectorAll<HTMLElement>('.vote-embed[data-vote-id]').forEach((el) => {
     if (el.dataset.rendered === '1') return;
     el.dataset.rendered = '1';
-    void renderVoteEmbed(el, el.getAttribute('data-vote-id'));
+    const voteId = el.getAttribute('data-vote-id');
+    // R3-104：预处理探测那一次已经拿到数据 → 直传小组件，不再发第二条 GET。
+    const prefetched = voteId ? options.voteData?.get(voteId) : undefined;
+    void renderVoteEmbed(el, voteId, prefetched);
   });
 
   // MathJax 数学公式。判据是抽取阶段的公式计数，而不是在渲染后的 HTML 上

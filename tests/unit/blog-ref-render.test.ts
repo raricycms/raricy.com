@@ -231,14 +231,24 @@ describe('投票 / 收藏夹（对外视图的字面量）', () => {
     expect(calls).toEqual([]);
   });
 
-  it('成员视图的投票引用照旧请求 + 建嵌入位', async () => {
-    const calls = stubFetch();
+  it('成员视图的投票引用：建嵌入位 + 只发一次 GET（探测报文直达小组件）', async () => {
+    const calls = stubFetch((url) =>
+      url.includes('/api/votes/')
+        ? {
+            code: 200,
+            data: { title: '午饭吃什么', is_locked: false, total_votes: 0, user_voted: null, options: [] },
+          }
+        : {}
+    );
     const html = await bodyHtml(`投一下 [@${VOTE_ID}]`, { contentRefs: 'expand' });
 
     expect(html).toContain(`data-vote-id="${VOTE_ID}"`);
-    // 两次是**刻意的**：预处理那次只探「存在吗」，小组件自己要再拉一次票数与选项
-    // （renderVoteEmbed，写在 blog-markdown.ts）。对外视图两次都没有。
-    expect(calls).toEqual([`/api/votes/${VOTE_ID}`, `/api/votes/${VOTE_ID}`]);
+    // R3-104：以前这里是两次 GET（预处理探测一次 + 小组件自己再拉一次）。探测那份
+    // 报文现在经 ContentRefProcessor.voteData 直达小组件 → 同一资源只取一次。
+    expect(calls).toEqual([`/api/votes/${VOTE_ID}`]);
+    // 预取数据真的被用上了（而不是「没拉」导致的空壳）
+    expect(html).toContain('午饭吃什么');
+    expect(html).toContain('vote-embed-widget');
   });
 });
 

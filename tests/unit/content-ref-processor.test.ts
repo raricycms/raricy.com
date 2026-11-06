@@ -149,3 +149,43 @@ describe('同一 resolver 的并发预处理', () => {
     expect(calls).toHaveLength(1);
   });
 });
+
+describe('投票预取数据（R3-104：探测报文直达小组件）', () => {
+  const VOTE_DATA = {
+    title: '午饭吃什么',
+    is_locked: false,
+    total_votes: 0,
+    user_voted: null,
+    options: [{ id: 1, label: '面', count: 0, percentage: 0 }],
+  };
+
+  it('探测到的 data 留在 processor.voteData，供后处理直传小组件', async () => {
+    stubFetch((url) => (url.includes('/api/votes/') ? { code: 200, data: VOTE_DATA } : {}));
+    const p = new ContentRefProcessor(new ContentRefResolver('expand'));
+
+    const out = await p.preprocess(`投一下 [@${VOTE_ID}]`);
+
+    expect(out).toContain('vote-embed');
+    expect(p.voteData.get(VOTE_ID)?.title).toBe('午饭吃什么');
+  });
+
+  it('探测失败 / 报文里没有 data 时不留下预取项（后处理走自己拉一次的原路径）', async () => {
+    stubFetch(() => ({ code: 404, message: '不存在' }));
+    const p = new ContentRefProcessor(new ContentRefResolver('expand'));
+
+    await p.preprocess(`投一下 [@${VOTE_ID}]`);
+
+    expect(p.voteData.size).toBe(0);
+  });
+
+  it('每一轮覆盖：上一轮的投票数据不会漏给下一轮', async () => {
+    stubFetch((url) => (url.includes('/api/votes/') ? { code: 200, data: VOTE_DATA } : {}));
+    const p = new ContentRefProcessor(new ContentRefResolver('expand'));
+    await p.preprocess(`投一下 [@${VOTE_ID}]`);
+    expect(p.voteData.size).toBe(1);
+
+    await p.preprocess('这一轮没有投票引用');
+
+    expect(p.voteData.size).toBe(0);
+  });
+});

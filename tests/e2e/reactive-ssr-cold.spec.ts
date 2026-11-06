@@ -1,13 +1,20 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // reactive-ssr-cold.spec.ts —— **冷启动后的第一个正文请求**，且浏览器禁用 JS
 //
-// 为什么单独一条：`ReactiveDocumentLazy` 是 React.lazy + Suspense fallback=null。
-// 如果 SSR 只产出一层空的 Suspense 壳，普通页面在 JS 打开时会“先空后填”，
-// 测试很容易把“已经预热过的页面上看见了正文”误当成静态首屏；关掉 JS 才会露馅。
+// 实现前提：`ReactiveDocumentLazy` 是**静态 import**（刻意不用 React.lazy —— 实测
+// lazy + Suspense fallback={null} 在 SSR 只输出空壳，关 JS 的读者看到空白；见
+// src/app/components/reactive/ReactiveDocumentLazy.tsx 的文件头）。
 //
 // 判据刻意不用“响应 HTML 里含字符串”（标题 / 摘要 / RSC 载荷都可能带上它），
 // 也不用“打开过一个页面再关 JS”：本 spec 只用 API 造数，绝不在无 JS 页面之前
-// 导航任何页面。它必须**单独一个 playwright 调用**、在新建的 next start 上跑。
+// 导航任何页面。
+//
+// ⚠️ **「冷启动」只在单独调用时成立**（R3-146）：
+//   · 真冷启动 —— 单独跑本文件：`npx playwright test tests/e2e/reactive-ssr-cold.spec.ts`
+//     （playwright 会新起 next start，本文件是那个进程收到的第一个页面请求）；
+//   · `npm run e2e` 全量跑时，按文件名顺序排在它前面的 spec 已经把进程预热了 ——
+//     本文件仍然验证「关 JS 也能读到 SSR 正文」，但**不再能区分冷启动专属回归**
+//     （例如日后重新做代码分割、改 SSR 策略）。要验那类回归请用上面那条单跑命令。
 //
 // 断言的是正文容器里一个只存在于**正文段落**的句子 visible（有布局、非隐藏、
 // 不在标题 / 摘要里），并且它位于 `.reactive-document` 内部。

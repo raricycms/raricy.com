@@ -262,6 +262,17 @@ describe('renderVoteEmbed（拉数据 + 投票交互）', () => {
     expect(el.textContent).toBe('[投票链接无效]');
   });
 
+  it('★ 传入预取数据：一次 GET 都不发，直接用那份报文建小组件（R3-104）', async () => {
+    const { fetchMock } = stubApi();
+    const el = document.createElement('div');
+
+    await renderVoteEmbed(el, 'abc12345', VOTE_DATA);
+
+    expect(fetchMock, '预取命中时不该再发 GET').not.toHaveBeenCalled();
+    expect(el.querySelector('.vote-embed-title')!.textContent).toBe(VOTE_DATA.title);
+    expect(el.querySelectorAll('.vote-embed-option')).toHaveLength(VOTE_DATA.options.length);
+  });
+
   it('取不到投票：退化成可点击的兜底链接', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => ({ json: async () => ({ code: 404, message: '投票不存在' }) })));
     const el = document.createElement('div');

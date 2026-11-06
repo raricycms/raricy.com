@@ -50,8 +50,10 @@ export type ContentRefType = 'clipboard' | 'vote' | 'image' | 'favorite';
  *     （剪贴板正文或收藏夹卡片 HTML；失败时是降级文案）。
  *   · vote —— 只做存在性探测：成功 `{ type:'vote' }`，失败 `error:true`。
  *     **顺带把小组件要的那份数据留下**（`data`）—— 探测与小组件取的是**同一个**
- *     `GET /api/votes/<id>`，丢掉再拉一次等于编辑器预览每停一下就多发一轮请求。
- *     正文页不用它（那条路自己拉，票数取当时的值），只有只读预览会读。
+ *     `GET /api/votes/<id>`。`ContentRefProcessor` 把这批 data 收进它的 `voteData`
+ *     （R3-104），`blog-content-dom.ts` 的后处理直接传给小组件，于是每个投票位
+ *     只发一次 GET。**丢掉它**就会回到「探测一次 + 小组件再拉一次」= 请求翻倍、
+ *     两次之间投票变化时票数与探测口径不一致。
  *     注意 `data` 的**有无不影响成败语义**：只要响应 ok 就仍然不算 error。
  *   · image —— 不请求，`url` 直接拼 raw 路由（那边逐条判权，私有档 404）。
  */

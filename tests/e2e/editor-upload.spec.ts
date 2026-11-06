@@ -63,7 +63,37 @@ for (const { name, url, editor } of EDITORS) {
     // 干等着会得到**假绿灯**：实测把守卫去掉后，博客那一条照样通过，只有云剪贴板
     // 那条变红。手动调公开入口对两个页面都稳定 —— 而且这正是「站内路由跳转后再跑
     // 一轮增强」那条真实路径。
-    await page.evaluate(() => (window as { enhanceFileInputs?: () => void }).enhanceFileInputs?.());
+    //
+    // ★ 但「手动调用」本身有个假绿陷阱（R3-144）★ 旧写法是
+    // `window.enhanceFileInputs?.()`：脚本还没加载时可选链静默跳过，`.filepick` 计数 0
+    // 照样成立 —— 「守卫有效」与「增强压根没跑」不可区分。现在两件事都钉住：
+    //   ① 等公开入口真的挂上（= base.js 已执行）；
+    //   ② 做一次**阳性对照**：给页面塞一个看得见的 file input，调用同一个入口，
+    //      它必须被包成 `.filepick`。阳性对照失败 → 本用例的 0 计数毫无意义，直接红。
+    await expect
+      .poll(
+        () => page.evaluate(() => typeof (window as { enhanceFileInputs?: unknown }).enhanceFileInputs),
+        { timeout: 5_000, message: 'base.js 的 enhanceFileInputs 一直没挂上（增强脚本没执行）' }
+      )
+      .toBe('function');
+
+    const positiveControl = await page.evaluate(() => {
+      const w = window as { enhanceFileInputs?: () => void };
+      const probe = document.createElement('input');
+      probe.type = 'file';
+      document.body.appendChild(probe);
+      w.enhanceFileInputs?.();
+      const wrapped = probe.closest('.filepick') !== null;
+      probe.closest('.filepick')?.remove();
+      probe.remove();
+      return wrapped;
+    });
+    expect(
+      positiveControl,
+      '增强入口没把看得见的 file input 包成 .filepick —— 下面的 0 计数不能证明守卫有效'
+    ).toBe(true);
+
+    await page.evaluate(() => (window as { enhanceFileInputs?: () => void }).enhanceFileInputs!());
     await expect(page.locator(`${editor} .filepick`)).toHaveCount(0);
     await expect(input).toHaveCount(1);
   });

@@ -148,6 +148,15 @@ export interface ReactiveAdaptOptions {
   mediaSources?: SiteMediaSources;
   /** `expand` 模式下的取数函数。`external` 模式**绝不调用**它。 */
   resolve?: ReferenceReader;
+  /**
+   * 真实取数的并发闸门（R3-103）。
+   *
+   * 不传 = 本次适配自建一个（单次适配峰值 ≤ `MAX_REF_CONCURRENCY`，与旧行为一致）。
+   * **同一页面上多处适配并发时必须传同一个**：编辑器预览与导出各自调一次
+   * `adaptReactiveReferences`，各建一个闸门就让「同一时刻最多 4 条真实请求」的承诺
+   * 退化成 2×4。共享的那一个由调用方持有（client-compile.ts 的模块级闸门）。
+   */
+  scheduler?: ReturnType<typeof createConcurrencyLimiter>;
 }
 
 /**
@@ -279,10 +288,17 @@ function collectCandidates(
   return candidates;
 }
 
-/** 按实例闸门（4 并发）取数；单条失败 / 抛错一律折算成 `undefined`，保留字面量。 */
+/**
+ * 按闸门取数（默认上限 4 并发）；单条失败 / 抛错一律折算成 `undefined`，保留字面量。
+ *
+ * 闸门由调用方注入（`options.scheduler`）—— 预览 + 导出这类同页多处适配共用同一个，
+ * 十几处引用同时展开时真实 HTTP 仍封在 `MAX_REF_CONCURRENCY` 条（R3-103）。
+ * 没注入时按本次适配自建一个：单次适配的峰值上限不变，只是不跨适配共享。
+ */
 async function resolveCandidates(
   candidates: ReadonlyMap<string, ReferenceSlot>,
-  reader: ReferenceReader | undefined
+  reader: ReferenceReader | undefined,
+  scheduler?: ReturnType<typeof createConcurrencyLimiter>
 ): Promise<Map<string, ResolvedReference | undefined>> {
   const resolved = new Map<string, ResolvedReference | undefined>();
   const entries = [...candidates.entries()];
@@ -291,7 +307,7 @@ async function resolveCandidates(
     return resolved;
   }
 
-  const schedule = createConcurrencyLimiter(MAX_REF_CONCURRENCY);
+  const schedule = scheduler ?? createConcurrencyLimiter(MAX_REF_CONCURRENCY);
   // 先落成 const：闭包里用收窄后的参数在某些 TS 配置下不被保留。
   const read = reader;
   const results = await Promise.all(
@@ -641,7 +657,7 @@ export async function adaptReactiveReferences(
   const slots = scanMasked(source, masked);
 
   const candidates = collectCandidates(slots, mode);
-  const resolvedByKey = await resolveCandidates(candidates, options.resolve);
+  const resolvedByKey = await resolveCandidates(candidates, options.resolve, options.scheduler);
 
   // 伪造标签的转义与预算无关 —— 那是安全改写，哪怕是超长正文也必须做。
   const edits: SourceEdit[] = collectForgedEmbedEdits(source, masked);

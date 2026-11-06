@@ -105,17 +105,42 @@ describe('投票嵌入', () => {
     expect(submit.disabled, '选中一项后提交应解锁').toBe(false);
   });
 
-  it('★ id 里带 HTML 也不会被当成结构注入 ★', async () => {
+  it('★ 属性里的 HTML 不会被重新解析（真判据：非法 id → 兜底文案，img 从未出现）', async () => {
     const calls = stubVoteFetch();
-    const root = mount(
-      `<div class="vote-embed" data-vote-id='x"><img src=x onerror="window.__pwn=1">'></div>`
-    );
+    // 存储型 XSS 的历史形态：id 属性值里夹着闭合引号 + `<img onerror>`。
+    // 用 DOM API 写属性（而不是把它拼进 HTML 串），才能保证这里测的是
+    // **后处理如何对待 id 属性值**，而不是 HTML 解析器先把串拆成什么样。
+    const root = document.createElement('div');
+    root.innerHTML = '<div class="vote-embed"></div>';
+    const el = root.querySelector<HTMLElement>('.vote-embed')!;
+    const evilId = 'x"><img src=x onerror=window.__pwn=1>';
+    el.setAttribute('data-vote-id', evilId);
+    document.body.appendChild(root);
 
     enhanceBlogContent(root);
     await flush();
 
-    expect(root.querySelector('img'), '注入的标签不能出现在正文里').toBeNull();
-    expect(calls.every((u) => u.startsWith('/api/votes/'))).toBe(true);
+    // ① id 只当**文本**：没有从属性值里解析出任何元素
+    expect(root.querySelector('img'), '属性值被当成 HTML 重新解析了').toBeNull();
+    // ② 真机制：非法 id → 整个嵌入位替换成兜底文案（旧用例只断 `calls.every(...)`，
+    //    calls 为空数组时恒真，等于没断言）
+    expect(root.textContent).toBe('[投票链接无效]');
+    // ③ 属性值没有被 DOM 改写，也没有被拼进别的 HTML（回读仍是原文）
+    expect(el.getAttribute('data-vote-id')).toBe(evilId);
+    // ④ 非法 id 一次请求都不该发
+    expect(calls, '非法 id 不该触发任何请求').toEqual([]);
+  });
+
+  it('★ 预处理已带数据：不发 GET，直接建小组件（R3-104）', async () => {
+    const calls = stubVoteFetch();
+    const root = mount(`<div class="vote-embed" data-vote-id="${VOTE_ID}"></div>`);
+
+    enhanceBlogContent(root, { voteData: new Map([[VOTE_ID, VOTE_DATA]]) });
+    await flush();
+
+    expect(calls, '预取命中时不该再发第二条 GET').toEqual([]);
+    expect(root.querySelector('.vote-embed-widget')).not.toBeNull();
+    expect(root.querySelector('.vote-embed-title')!.textContent).toBe(VOTE_DATA.title);
   });
 
   it('重复调用安全：投票位用 data-rendered 去重，不重复拉数据', async () => {

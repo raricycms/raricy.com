@@ -174,11 +174,12 @@ test.describe('ReactiveMD 发布与阅读', () => {
 
   test('无法编译的 reactive 发布被整笔拒绝，且库里不出现半篇文章', async ({ page }) => {
     await loginViaApi(page, SEED_USERS.core.username);
-    const before = await page.request.get('/api/blogs?limit=1');
+    const title = `broken-${uniqueTag()}`;
+    const before = (await (await page.request.get('/api/blogs?per_page=1')).json()) as { total: number };
 
     const res = await page.request.post('/api/blogs', {
       data: {
-        title: `broken-${uniqueTag()}`,
+        title,
         description: 'broken reactive',
         content: '<panel title="未闭合">',
         visibility: 'internal',
@@ -188,8 +189,16 @@ test.describe('ReactiveMD 发布与阅读', () => {
     expect(res.status()).toBe(400);
     expect(((await res.json()) as { message: string }).message).toContain('无法编译渲染');
 
-    const after = await page.request.get('/api/blogs?limit=1');
-    expect(after.status()).toBe(before.status());
+    // ★ R3-145：标题说的是「整笔拒绝、库里不出现半篇文章」，就必须查**库里的数**
+    //   而不是只比两次列表接口的状态码（那两条在「半写落库」时也都是 200，恒绿）。
+    const after = (await (await page.request.get('/api/blogs?per_page=1')).json()) as { total: number };
+    expect(after.total, '文章总数变了 —— 被拒的那篇有半截落库了').toBe(before.total);
+
+    const search = (await (
+      await page.request.get(`/api/blogs?search=${encodeURIComponent(title)}&limit=10`)
+    ).json()) as { total: number; blogs: { title: string }[] };
+    expect(search.total, '按标题还能搜到被拒的那篇 → 元数据已落库').toBe(0);
+    expect(search.blogs.map((b) => b.title)).not.toContain(title);
   });
 
   test('无 JS：public reactive 文章的静态正文与脚注仍可读', async ({ browser }) => {

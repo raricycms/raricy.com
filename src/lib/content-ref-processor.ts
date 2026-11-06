@@ -34,6 +34,7 @@ import {
   replaceFavoriteRefs,
 } from '@/lib/favorite-refs';
 import { collectAudioRefs, replaceAudioRefs } from '@/lib/audio-refs';
+import type { VoteEmbedData } from '@/lib/blog-markdown';
 import type {
   ContentRefResolver,
   ContentRefType,
@@ -42,6 +43,20 @@ import type {
 
 export class ContentRefProcessor {
   constructor(private resolver: ContentRefResolver) {}
+
+  /**
+   * 本轮预处理顺手取到的投票数据（`id → data`，R3-104）。
+   *
+   * 投票引用的「存在性探测」与小组件要的是**同一份** `GET /api/votes/<id>` 报文：
+   * 探测那一次已经拿到 `data`，这里原样留下一份，`blog-content-dom.ts` 的后处理
+   * 直接拿它建小组件 —— 否则每个投票位固定要发第二次 GET（一片多投票的文章请求翻倍，
+   * 两次之间投票还可能变，展示的票数与探测口径不一致）。
+   *
+   * 生命周期：**每次 `preprocess()` 覆盖一次**，只对这一次返回的正文有效。
+   * 调用方在 await 之后立刻读（`MarkdownRenderer` 的渲染 effect 就是这么用的）；
+   * 不读也没关系 —— 后处理发现没有这项时会照旧自己拉一次。
+   */
+  voteData: ReadonlyMap<string, VoteEmbedData> = new Map();
 
   /**
    * 整篇预处理：扫描 → 解析（经 resolver）→ 按区间切片替换。
@@ -54,6 +69,9 @@ export class ContentRefProcessor {
    * 字面量** `[@8位]`（成功取到的内容被丢掉），页面上没有任何提示。
    */
   async preprocess(markdownContent: string): Promise<string> {
+    // 每一轮重新算：上一轮的投票数据不能漏给这一轮（正文可能已经换了一篇）。
+    this.voteData = new Map();
+
     // 分流扫的是**盖过码**的副本（`maskMarkdownCode`，与音频 / 收藏夹那两趟同口径）：
     // 代码块与行内代码里的引用一律不展开 —— 那是《内容引用语法指南》对读者的承诺
     // （「代码里的引用一律不展开」），也是「想展示语法本身」的唯一写法。
@@ -131,6 +149,18 @@ export class ContentRefProcessor {
     //（理由见 preprocessRound 的说明：缓存可能已经被人作废成另一代）。
     const entries = new Map<string, ResolvedRef | undefined>();
     wanted.forEach(([type, id], index) => entries.set(`${type}:${id}`, fetched[index]));
+
+    // ★ R3-104：把投票探测那一份报文留下 ★
+    // 小组件（blog-markdown.ts 的 renderVoteEmbed）要的正是这份 data；后处理通过
+    // `blog-content-dom.ts` 的 options.voteData 直传，不再发第二条 GET。
+    // 失败 / 无 data 的投票不进来 —— 那些会走「兜底链接或让小组件自己拉」的原路径。
+    const votes = new Map<string, VoteEmbedData>();
+    wanted.forEach(([type, id], index) => {
+      if (type !== 'vote') return;
+      const data = fetched[index]?.data;
+      if (data) votes.set(id, data);
+    });
+    this.voteData = votes;
 
     // 替换**按区间切片**（不是 `replace(token, …)`），单向往回走一遍。
     // 三条各自的理由：

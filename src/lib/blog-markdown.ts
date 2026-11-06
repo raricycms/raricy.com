@@ -258,26 +258,34 @@ function attachVoteHandlers(el: HTMLElement, voteId: string, data: VoteEmbedData
 }
 
 /**
- * 博客正文里的投票嵌入入口：校验 id → 拉数据 → 渲染小组件（失败则兜底链接）。
+ * 博客正文里的投票嵌入入口：校验 id → 取数据 → 渲染小组件（失败则兜底链接）。
  * id 来自用户 Markdown，**必须先过 isValidVoteId**（见文件头）。
+ *
+ * `prefetched`：预处理阶段（`ContentRefProcessor` 的投票探测）已经拿到的同一份
+ * `GET /api/votes/<id>` 报文 —— 传进来就**不再发第二次请求**（R3-104）。不传
+ * （旧调用方 / 探测没拿到数据）时照旧自己拉一次，行为与以前逐字一致。
+ * 注意投票成功后的重绘**故意不传**：票数与「本人投没投」必须以服务端最新值为准。
  */
 export async function renderVoteEmbed(
   el: HTMLElement,
-  voteId: string | null | undefined
+  voteId: string | null | undefined,
+  prefetched?: VoteEmbedData | null
 ): Promise<void> {
   if (!isValidVoteId(voteId)) {
     el.textContent = '[投票链接无效]';
     return;
   }
 
-  let data: VoteEmbedData | null = null;
-  el.textContent = '加载投票…';
-  try {
-    const res = await fetch(`/api/votes/${voteId}`, { credentials: 'same-origin' });
-    const json = (await res.json()) as { code?: number; data?: VoteEmbedData };
-    if (json.code === 200 && json.data) data = json.data;
-  } catch {
-    // 网络/解析失败都走兜底链接
+  let data: VoteEmbedData | null = prefetched ?? null;
+  if (!data) {
+    el.textContent = '加载投票…';
+    try {
+      const res = await fetch(`/api/votes/${voteId}`, { credentials: 'same-origin' });
+      const json = (await res.json()) as { code?: number; data?: VoteEmbedData };
+      if (json.code === 200 && json.data) data = json.data;
+    } catch {
+      // 网络/解析失败都走兜底链接
+    }
   }
 
   if (!data) {

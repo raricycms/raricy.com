@@ -22,6 +22,7 @@ import { ContentRefProcessor } from '@/lib/content-ref-processor';
 import { ContentRefResolver, type ContentRefMode } from '@/lib/content-ref-resolver';
 import { renderBlogMarkdown } from '@/lib/blog-renderer';
 import { enhanceBlogContent } from '@/lib/blog-content-dom';
+import type { VoteEmbedData } from '@/lib/blog-markdown';
 import { useHljsThemeStyles } from '@/app/components/useHljsThemeStyles';
 
 export default function MarkdownRenderer({
@@ -59,8 +60,13 @@ export default function MarkdownRenderer({
    */
   contentRefs: ContentRefMode;
 }) {
-  /** 渲染结果 + 抽出的公式数量（决定要不要跑 MathJax，见 markdown-math.ts）。 */
-  const [doc, setDoc] = useState<{ html: string; mathCount: number } | null>(null);
+  /** 渲染结果 + 抽出的公式数量（决定要不要跑 MathJax，见 markdown-math.ts）+ 投票预取数据。 */
+  const [doc, setDoc] = useState<{
+    html: string;
+    mathCount: number;
+    /** 预处理阶段探测到的投票数据（R3-104），后处理直传小组件、不再发第二条 GET。 */
+    voteData: ReadonlyMap<string, VoteEmbedData>;
+  } | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
   /**
@@ -90,8 +96,12 @@ export default function MarkdownRenderer({
       // 两种模式都要过预处理器 —— 差别在处理器**展开到哪一档**，不在「过不过它」。
       // 别在这里写 `contentRefs === 'expand' && …`：那样对外视图连音频都不会展开。
       const resolver = new ContentRefResolver(contentRefs);
-      const text = await new ContentRefProcessor(resolver).preprocess(content ?? '');
-      if (!cancelled) setDoc(renderBlogMarkdown(text));
+      const processor = new ContentRefProcessor(resolver);
+      const text = await processor.preprocess(content ?? '');
+      // ★ 投票预取数据必须与这份正文一起落状态 ★ 后处理（enhanceBlogContent）
+      // 拿着它直接建小组件，省掉每个投票位的第二次 GET（R3-104）。分开两次 setState
+      // 会让「后处理先看到新正文、后看到数据」成为可能，所以并进同一个 doc 对象。
+      if (!cancelled) setDoc({ ...renderBlogMarkdown(text), voteData: processor.voteData });
     })();
     return () => { cancelled = true; };
   }, [content, contentRefs]);
@@ -100,7 +110,7 @@ export default function MarkdownRenderer({
   useEffect(() => {
     const root = containerRef.current;
     if (!root || !doc) return;
-    enhanceBlogContent(root, { mathCount: doc.mathCount });
+    enhanceBlogContent(root, { mathCount: doc.mathCount, voteData: doc.voteData });
   }, [doc]);
 
   return (

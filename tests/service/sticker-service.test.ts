@@ -26,6 +26,18 @@ import {
 } from '@/lib/sticker-service';
 import { detectImageMime } from '@/lib/image-upload';
 import { stickerUrl } from '@/lib/sticker-refs';
+import { GET as stickerRawRoute } from '@/app/api/stickers/[collection]/[name]/route';
+
+/**
+ * 直接调 raw 路由（R3-147）：安全闸门在路由里，测试要压的也是**路由**，
+ * 不是「把路由的判据抄一份再断言抄的那份」。
+ */
+function callStickerRawRoute(collection: string, name: string): Promise<Response> {
+  const url = `http://localhost/api/stickers/${encodeURIComponent(collection)}/${encodeURIComponent(name)}`;
+  return stickerRawRoute(new Request(url), {
+    params: Promise.resolve({ collection, name }),
+  });
+}
 
 // ── 磁盘隔离 ────────────────────────────────────────────────────────────────
 
@@ -238,19 +250,27 @@ describe('sticker-service SVG 闸门', () => {
     }
   });
 
-  it('★ 即便目录里放了 .svg，字节嗅探也会认出它是 svg 并被闸门拒绝', () => {
+  it('★ 即便目录里放了 .svg，字节嗅探也会认出它是 svg —— raw 路由**真的回 404**', async () => {
     // 注意：.svg 不在 EXT_PRIORITY 里，所以根本扫不进来 —— 但闸门是**第二道**，
     // 防的是「有人把 svg 内容改名成 .png 丢进来」这种绕过扩展名的情况。
-    expect(detectImageMime(SVG)).toBe('image/svg+xml');
-    expect(ALLOWED_STICKER_MIME.has(detectImageMime(SVG)!)).toBe(false);
-
-    // 改名成 .png 也一样：闸门看的是字节
+    // ★ 判据必须落在**真路由**上 ★ 在测试里重抄一遍 fs 读 + detectImageMime +
+    // ALLOWED_STICKER_MIME（R3-147 修的就是这个）：路由哪天把字节复核删掉，抄的这份
+    // 照样绿，而线上已经在按扩展名内联 SVG（同源存储型 XSS）。
     write('猫猫/伪装的.png', SVG);
-    const hit = resolveSticker('猫猫', '伪装的');
     // manifest 里 mime 按扩展名声明是 png（那只是声明）
-    expect(hit?.mime).toBe('image/png');
-    // 而按字节复核会认出 svg → 被 ALLOWED_STICKER_MIME 拒绝
-    expect(detectImageMime(fs.readFileSync(hit!.absPath))).toBe('image/svg+xml');
+    expect(resolveSticker('猫猫', '伪装的')?.mime).toBe('image/png');
+    const res = await callStickerRawRoute('猫猫', '伪装的');
+    expect(res.status, '路由若回退成「按扩展名声明的 mime 下发」，这里会 200').toBe(404);
+    expect(await res.text()).not.toContain('<svg');
+  });
+
+  it('合法 PNG：raw 路由 200，Content-Type 按**字节**给 image/png', async () => {
+    // 正向对照：否则上面那条「一律 404」也能绿 —— 那是另一种假绿。
+    write('猫猫/开心.png', PNG);
+    const res = await callStickerRawRoute('猫猫', '开心');
+    expect(res.status).toBe(200);
+    expect(res.headers.get('content-type')).toBe('image/png');
+    expect(res.headers.get('x-content-type-options')).toBe('nosniff');
   });
 
   it('不是图片的字节识别为 null（同样会被闸门拒绝）', () => {

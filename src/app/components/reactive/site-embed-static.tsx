@@ -29,7 +29,7 @@ import type {
 import { CONTENT_FORMAT_LABELS, parseContentFormat } from '@/lib/content-format';
 import { parseLegacyDataImage } from '@/lib/reactive/data-image';
 import { isAllowedReactiveUrl } from '@/lib/reactive/url-policy';
-import { MAX_CARD_ITEMS } from '@/lib/favorite-refs';
+import { FAVORITE_ID_RE, MAX_CARD_ITEMS } from '@/lib/favorite-refs';
 import type { VoteEmbedData, VoteOptionData } from '@/lib/blog-markdown';
 
 /** 与宿主 schema 的 pattern 一致（计划 D1）：只允许短字母数字 id。 */
@@ -39,7 +39,7 @@ const SAFE_REF = /^[A-Za-z0-9]{1,32}$/;
 const KIND_REF: Record<SiteEmbedKind, RegExp> = {
   audio: /^[A-Za-z0-9]{10}$/,
   vote: /^[A-Za-z0-9]{1,32}$/,
-  favorite: /^[0-9]{6}$/,
+  favorite: FAVORITE_ID_RE,
   clipboard: /^[A-Za-z0-9]{8}$/,
   image: /^[a-f0-9]{24}$/,
   // 历史 HTML 音视频：compat 生成的 token 固定 10 位小写十六进制。
@@ -293,6 +293,15 @@ function AudioEmbed({ audioId }: { audioId: string }): ReactNode {
   );
 }
 
+/**
+ * 收藏夹卡片（ReactiveMD 静态渲染）。
+ *
+ * ⚠️ 与 legacy 链 `favorite-refs.ts` 的 `buildFavoriteCardHtml` 是**同一张卡片的两个实现**：
+ * 那边在净化**之前**拼成品 HTML（Markdown 管线），这边是 React 节点（ReactiveMD 管线）。
+ * R3-240 评估后**不合并**：渲染技术与时机都不同，合并要让一方改写另一方，收益只是
+ * 「看起来一致」。共同契约是 `.favorite-embed*` 类名与文案（SCSS / 两端单测各自钉住）；
+ * 改卡片外观或文案时**两处一起改**。6 位 id 白名单已统一到 `favorite-refs`（本项目改动）。
+ */
 function FavoriteEmbed({
   favoriteId,
   data,

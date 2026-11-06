@@ -36,12 +36,27 @@
 
 import { compileLocal, type LocalCompileResult } from 'reactive-md';
 import { parseContentFormat } from '../content-format';
-import { MAX_CARD_ITEMS } from '../favorite-refs';
+import { MAX_CARD_ITEMS, isFavoriteId } from '../favorite-refs';
+import { MAX_REF_CONCURRENCY, createConcurrencyLimiter } from '../content-refs';
 import { reactiveCompileOptions } from './host-components';
 import { adaptReactiveReferences, compatMediaSources } from './ref-adapter';
 import { applyLegacyHtmlCompat } from './legacy-compat';
 import { sourceForCurrentCompiler } from './source-migration';
 import type { ReferenceReader, ResolvedReference, SiteHostData } from './ref-types';
+
+/**
+ * 预览 + 导出**共用**的真实取数闸门（R3-103）。
+ *
+ * 编辑器里预览面板与「导出 / 打印」各自调一次 `adaptReactivePreview`，同页并发时
+ * 两边各自建闸门会让峰值变成 2×`MAX_REF_CONCURRENCY`（8 条真实 HTTP）。闸门放在
+ * 模块级后，同一时刻在飞的请求封在 4 条；「实例级」指的是这一份共享实例，不是每次
+ * 适配一份。
+ *
+ * ⚠️ **不要**把它挪进 `createClientReferenceReader`：reader 是**会话/草稿级**的
+ * （见文件头），而闸门要跨 reader 共享 —— 两个 reader 同时取数时也应该一起封顶。
+ * 也不用担心跨草稿串数据：闸门只排队、不缓存任何结果。
+ */
+const previewFetchGate = createConcurrencyLimiter(MAX_REF_CONCURRENCY);
 
 /** 适配后的预览源码 + 渲染它所需的 hostData（与 `adaptReactiveReferences` 同形）。 */
 export interface AdaptedReactivePreview {
@@ -203,7 +218,9 @@ async function loadClientReference(
       return await readVote(slot.ref, doFetch);
     }
     if (slot.kind === 'favorite') {
-      if (!/^\d{6}$/.test(slot.ref)) return undefined;
+      // 6 位白名单只有一处（favorite-refs 的 FAVORITE_ID_LEN/RE，R3-240）：
+      // 曾在取数处手写 `/^\d{6}$/`，改长度时这里不跟随 → 收藏夹卡片静默消失。
+      if (!isFavoriteId(slot.ref)) return undefined;
       return await readFavorite(slot.ref, doFetch);
     }
     // 图床 / 音频不取数：地址由适配器直接拼 raw 路由。
@@ -236,6 +253,9 @@ export function createClientReferenceReader(
 /**
  * 只做引用适配（不编译）。预览要先在这里拿到 `adaptedSource`，再交给
  * `LocalCompileScheduler`（worker 或主线程回退）编译。
+ *
+ * 取数走本模块共享的 `previewFetchGate`（R3-103）：预览与导出同页并发时，
+ * 真实 HTTP 峰值仍是 `MAX_REF_CONCURRENCY`，而不是各自一份闸门的 2×。
  */
 export async function adaptReactivePreview(
   source: string,
@@ -251,6 +271,7 @@ export async function adaptReactivePreview(
     dataImages: compat.dataImages,
     mediaSources: compatMediaSources(compat),
     resolve: mode === 'expand' ? reader : undefined,
+    scheduler: previewFetchGate,
   });
   return { adaptedSource: adapted.adaptedSource, hostData: adapted.hostData };
 }

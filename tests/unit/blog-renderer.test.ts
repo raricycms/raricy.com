@@ -56,6 +56,21 @@ describe('代码块', () => {
     expect(btn).toContain('type="button"');
   });
 
+  // R3-112：围栏里的成对 `$$` 不是公式。旧行为会把它抽成占位符，restoreMath 再把
+  // 公式原文（含引号）塞回复制按钮的 data-code 属性 → 属性提前结束、复制内容被截断。
+  // 这里同时钉两件事：`mathCount` 不把代码里的 `$$` 算成公式；data-code 解码后逐字等于原文。
+  it('围栏里的 $$ 公式示例不被抽走，data-code 解码后与原文一致', () => {
+    const code = '$$x = "1"$$';
+    const { html, mathCount } = renderBlogMarkdown('```markdown\n' + code + '\n```');
+
+    expect(mathCount, '代码块里的 $$ 被当成公式计数了').toBe(0);
+    const btn = /<button\b[^>]*class="copy-btn"[^>]*>/.exec(html)?.[0];
+    expect(btn, '没渲染出复制按钮，这条用例就测不到东西了').toBeDefined();
+    const encoded = /data-code="([^"]*)"/.exec(btn!)?.[1];
+    expect(encoded, 'data-code 属性被公式里的引号截断了').toBeDefined();
+    expect(decodeURIComponent(encoded!)).toBe(code);
+  });
+
   it('未知语言回退 highlightAuto，不抛错', () => {
     const { html } = renderBlogMarkdown('```not-a-language\nhello\n```');
 
