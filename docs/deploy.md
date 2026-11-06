@@ -541,10 +541,13 @@ tar czf /backup/assets-$(date +%Y%m%d).tar.gz \
   /srv/raricy.com/instance/{avatars,images,audio,stories,stickers}
 ```
 
-> ⚠️ 这份清单要与 `scripts/check-instance.mjs` 的 `SUBDIRS` 和
-> `src/lib/audio-service.ts` 那条存储域**逐项对齐** —— 漏一个目录不会报错，
-> 只会在某次恢复之后表现为「那类文件全没了」。**`frames` 已经不在这里**：
-> 头像框素材是我们自己画的，2026-09 起随代码入库（`public/static/frames/`）。
+> ⚠️ 备份清单与 `scripts/check-instance.mjs` 的 `SUBDIRS` **不是同一份清单**，别照字面对齐：
+> `SUBDIRS` 是 instance/ 的**全部七类**（`avatars` / `database` / `images` / `audio` /
+> `stories` / `stickers` / `blogs`），而这里 tar 的只是**五类资产**（`avatars` / `images` /
+> `audio` / `stories` / `stickers`）—— `database` 由上一节的 `.backup` 单独备份；
+> `blogs` 是历史遗留目录（当前无写入方，`blog-service.ts` 只读注释里提到它），有存量就一起打包，
+> 没有可忽略。**`frames` 已经不在这里**：头像框素材是我们自己画的，2026-09 起随代码入库
+> （`public/static/frames/`）。
 
 ### `.env`（改了值就存一份）
 
@@ -621,9 +624,10 @@ journalctl -u raricy-next -f      # 观察启动日志
 - 存量 `.env` 里的 `ACCOUNT_SERVICE_*` 四个变量不再被任何代码读取 —— 留着没有任何效果，
   删掉即可（`../.env.production.example` 里也写了同一句）。
 
-⚠️ 库里有几处**物理痕迹，别删**：`account_sync_ledger` 表现在只是幂等登记表（新行一律
-`synced`）、`users.fish_api_key_encrypted` 列没有任何代码读它。清单与判据见
-`docs/legacy-constraints.md` §1.1。
+⚠️ 库里的历史物理痕迹：`account_sync_ledger` 表**保留**（现在只是幂等登记表，新行一律
+`synced`，迁移 `42_retire_residual` 明确不动它）；`users.fish_api_key_encrypted` 列
+**已随迁移 `42_retire_residual` 删除**（停服迁移：升级前先确认该列数据可弃或备份，删除不可逆）。
+清单与判据见 `docs/legacy-constraints.md` §1.1。
 
 ## 13. 故障排查速查
 
@@ -680,8 +684,9 @@ DATABASE_URL="file:/绝对路径/db.db" npm run reactive:migrate-v07 -- --apply
 默认命令只读报告，`--apply` 保留原文并发复核与事务保护，写入安全升级结果及完成
 标记；不写编译快照。不要为绕过诊断直接改版本声明，或手工重复执行数据变换 SQL。
 
-历史 `reactive_snapshots` 表和已应用迁移保留，不再由正文读写路径使用；本次不 DROP
-表、不篡改历史 SQL 或 checksum。原 `reactive:backfill` 命令已退出，不需替代回填步骤。
+历史 `reactive_snapshots` 表**已随迁移 `42_retire_residual` 删除**（停服迁移：升级前先确认
+该表为 0 行或备份，删除不可逆）；已应用迁移与历史 SQL / checksum 不动、不篡改。
+原 `reactive:backfill` 命令已退出，不需替代回填步骤。
 
 ### 公开正文索引发布
 

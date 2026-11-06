@@ -148,10 +148,11 @@ SQL 入口。`status` / `verify` 仍只读。
 `docs/architecture.md` §6.3 是主副本（**§6.3.1 是「这里曾经跨进程」的历史注记** ——
 账户微服务已于 2026-09 搬进站内，别再照「远端 / 补偿 / 账本」的旧形状写新代码）。
 各文件头分别讲自己那一段：**`fish-service.ts` 的 `postEntry`（唯一记账内核）**、
-`fish-idempotency.ts`（**哪些操作才登记幂等**的判据）、`fish-market-service.ts`
-（转账的客户端幂等键与共享单号）、`fish-compensate.ts`（群发补偿为何要登记）、
+`fish-idempotency.ts`（**哪些操作才登记幂等**的判据）、`fish-transfer-service.ts`
+（用户间转账 / 收银台 / 收款人查询的客户端幂等键与共享单号；**与练手盘的
+`market-service.ts` 不同义**）、`fish-compensate.ts`（群发补偿为何要登记）、
 `fish-units.ts`（单位换算与 `Blog.fishCount` 例外）、`service-accounts.ts`（配额白名单）。
-注册建号两个入口共用 `user-service.ts` 的 `createUserAccount` 内核。
+注册建号两个入口共用 `account-service.ts` 的 `createUserAccount` 内核。
 
 **记账不变式**：每人 `users.driedFish` == 他所有 `fish_transactions.amount` 之和。
 测试侧由 `tests/helpers/fish-ledger.ts` 的 `expectLedgerConsistent()` 钉住 ——

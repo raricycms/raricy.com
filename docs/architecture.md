@@ -71,7 +71,7 @@
 | `/fish/pay` | page | **收银台**：站外商户把用户送来付款（`?to= &amount= &note= &from= &return=`）。参数一律不可信，只做展示；付款必须**已登录 + 再输一次密码**（step-up），密码只输在本站域名下。不入索引 |
 | `/fish/collect` | page | **扫码收款页**：`?to=<用户名>`，扫「鱼干收款码」落到这里。与收银台的区别是**金额由付款人自己填**（静态码不可能带金额）。前端是 `/fish/pay` 的**同一个组件**（`src/app/fish/PayForm.tsx`）的另一个变体，step-up 与幂等键完全共用 |
 | `/fish/api` · `/api/fish/tokens/*` | page + API | **机器人接入自助页**：签发 / 吊销只读凭据（`GET`/`POST /api/fish/tokens`、`DELETE /api/fish/tokens/[id]`）。**只认会话**、签发要 step-up、只能动自己的。只读凭据的鉴权门在 `src/app/api/fish/market/_auth.ts`（第三道门，`allowReadToken` 默认关）；签发/校验/吊销在 `src/lib/fish-token-service.ts` |
-| `/fish/trade` · `/fish/trade/stats` · `/api/fish/trade/*` | page + API | **鱼干练手盘**：投入鱼干买入一个绑定真实加密价格的仓位（**core+**，签到之外第二条赚取渠道）。`POST buy`（客户端幂等键）/ `POST sell` / `GET quote`（展示行情）/ `GET candles`（图上那段 K 线，**只喂展示**）。档位**与「专注模式屏蔽练手盘」**在两个页面与四个接口**六处各判一次**，禁言只有 `buy` 判。**只走 https**：这六条路径还压在 `src/middleware.ts` 的协议闸下（回环地址豁免，见 §6.4）。`/fish/trade/stats` 是**只读的个人统计页**（总览 + 按标的 / 杠杆拆解 + 持仓快照），**没有接口**：server component 直连服务层，全部数据来自 `market_positions` 既有列，不需要迁移。`/fish/trade` 下方另有一块**最近结清**（`listSettledPositions`，逐笔列出平仓 / 爆仓 —— 补上「实发为 0 不写流水」留下的缺口，同样只读仓位表）。见 §6.13 |
+| `/fish/trade` · `/fish/trade/stats` · `/api/fish/trade/*` | page + API | **鱼干练手盘**：投入鱼干买入一个绑定真实加密价格的仓位（**core+**，签到之外第二条赚取渠道）。`POST buy`（客户端幂等键）/ `POST sell` / `GET quote`（展示行情）/ `GET candles`（图上那段 K 线，**只喂展示**）。档位 core+ 判在**两个页面 + `buy` / `quote` / `candles`**（非 core 页面 403）；`sell` 只要求登录（历史无资格账号仍可平掉已开仓位），**「专注模式屏蔽练手盘」则六处全判**；禁言只有 `buy` 判。**只走 https**：这六条路径还压在 `src/middleware.ts` 的协议闸下（回环地址豁免，见 §6.4）。`/fish/trade/stats` 是**只读的个人统计页**（总览 + 按标的 / 杠杆拆解 + 持仓快照），**没有接口**：server component 直连服务层，全部数据来自 `market_positions` 既有列，不需要迁移。`/fish/trade` 下方另有一块**最近结清**（`listSettledPositions`，逐笔列出平仓 / 爆仓 —— 补上「实发为 0 不写流水」留下的缺口，同样只读仓位表）。见 §6.13 |
 | `/api/poster/profile/[id]` · `/api/poster/collect` | API | **画报 / 收款码出图**（PNG，仅本人）。渲染管线与四条约束见 §6.8 |
 | `/notifications` · `/api/notifications/*` | page + API | 通知中心。其中 `GET count` 是顶栏指示器的**兜底快照**（**不能删**：SSE 有「连着但收不到」的半死状态），`GET stream` 是**实时流**（SSE，未登录 401；首帧全量快照 + 之后增量补丁）。推送点纪律与依赖方向见 `src/lib/topbar-bus.ts` 头部 |
 | `/vote` · `/vote/[id]` | page | 投票 |
@@ -100,7 +100,8 @@
 
 | 分组 | 文件 |
 |------|------|
-| 认证 / 会话 | `auth.ts` · `session.ts` · `password.ts` · `invite-code.ts` · `user-service.ts` · `identicon.ts` · `avatar.ts`（头像字节的**唯一**解析处：`/api/avatar/[id]` 与画报共用同一份目录穿越守卫）· `site-url.ts`（`SITE_URL` → `ALLOWED_ORIGINS` 回退链的唯一实现，OAuth 的 userinfo 与画报的二维码前缀共用）· `avatar-refs.ts`（**零依赖**：`avatarUrl(id)` 是全仓唯一拼 `/api/avatar/` 的地方。单独一个文件是因为 `avatar.ts` 拖着 `node:fs`，客户端组件 import 不了） |
+| 认证 / 会话 | `auth.ts` · `session.ts` · `password.ts` · `invite-code.ts` · `account-service.ts`（**账号 / 凭据事实**：注册建号、邀请码核销与升级、改密；`users.password_hash` / `role` / `session_version` 与 `InviteCode.isUsed/usedBy` 的唯一写者）· `identicon.ts` · `avatar.ts`（头像字节的**唯一**解析处：`/api/avatar/[id]` 与画报共用同一份目录穿越守卫）· `site-url.ts`（`SITE_URL` → `ALLOWED_ORIGINS` 回退链的唯一实现，OAuth 的 userinfo 与画报的二维码前缀共用）· `avatar-refs.ts`（**零依赖**：`avatarUrl(id)` 是全仓唯一拼 `/api/avatar/` 的地方。单独一个文件是因为 `avatar.ts` 拖着 `node:fs`，客户端组件 import 不了） |
+| 用户 / 资料 | `user-service.ts`（公开资料与本人资料：`getPublicProfile` / `updateOwnProfile`、bio / 隐私 / 通知偏好 / 专注屏蔽；**不含账号凭据**，那在 `account-service.ts`）· `profile-service.ts`（主页积木墙读写）· `profile-blocks.ts`（积木词汇 / 校验 / 手机投影，**零依赖**） |
 | 数据层 | `db.ts` · `db-time.ts` · `format.ts` |
 | 博客域 | `blog-service.ts` · `feed-service.ts` · `comment-service.ts` · `comment-shared.ts` · `blog-sort-pref.ts` · `spider-service.ts` |
 | @ 提及 | `mention-shared.ts`（评论 / 讨论共用的提取规则与光标搜索边界，零依赖）· `mention-service.ts`（按文章 / 会话范围搜索可提及用户） |
@@ -120,7 +121,7 @@
 | 聊天气泡与商城词汇 | `bubble-refs.ts`（白名单、展示与定价）· `shop-refs.ts`（共享租期）· `bubble-service.ts`（持有/装备唯一写入者与判定出口）· `bubble-shop-service.ts`（同事务扣款与发放），见 §6.18 |
 | 故事 | `story-service.ts` |
 | 画报 / 收款码 | `poster.ts`（纯 SVG 构造，含二维码与转义）· `poster-render.ts`（取数 + 头像 + sharp 光栅化），见 §6.8 |
-| 小鱼干 | `fish-service.ts`（**记账内核 `postEntry`** + 读路径，见 §6.3）· `fish-idempotency.ts`（哪些操作才登记幂等 —— 判据在文件头）· `fish-admin.ts` · `fish-market-service.ts`（用户间转账，见 §6.3）· `fish-compensate.ts`（`fish compensate` 群发补偿，只发 core+，见 `docs/cli.md` 与文件头）· `fish-units.ts`（单位换算；`Blog.fishCount` 是**例外**，见文件头）· `fish-webhook-service.ts`（收款回调 outbox，见 §6.3） |
+| 小鱼干 | `fish-service.ts`（**记账内核 `postEntry`** + 读路径，见 §6.3）· `fish-idempotency.ts`（哪些操作才登记幂等 —— 判据在文件头）· `fish-admin.ts` · `fish-transfer-service.ts`（用户间转账 / 收银台 / 收款人查询，见 §6.3；**与练手盘的 `market-service.ts` 不同义** —— 它不碰行情与仓位，名字从 `fish-market-service` 改来就是为了不再混淆）· `fish-compensate.ts`（`fish compensate` 群发补偿，只发 core+，见 `docs/cli.md` 与文件头）· `fish-units.ts`（单位换算；`Blog.fishCount` 是**例外**，见文件头）· `fish-webhook-service.ts`（收款回调 outbox，见 §6.3） |
 | 练手盘 | `market-service.ts`（开平仓：**一个事务、没有补偿**；开仓的幂等靠 `open_key` 唯一约束而非独立幂等记录；读口 `listOpenPositions` / `listSettledPositions`（最近结清，只读仓位表的终态行））· `market-math.ts`（**结算公式的唯一实现**，零依赖 —— 服务端真结算与页面「预计到手」是同一个 `settleClose`）· `market-candles.ts`（K 线词汇表：周期白名单 / 根数上限 / 线上形状 / 缓存键，**零依赖**，服务端与客户端共用）· `market-chart.ts`（K 线图的纯计算：窗口 / 聚合 / 刻度 / 映射 / 实时并线 —— 零依赖外加 `db-time` 的一个常量）· `market-price.ts`（行情源与展示缓存，见 §6.13）· `market-stream.ts` + `market-poll-drainer.ts`（喂展示的两个后台循环）· `market-stats.ts`（统计的**纯聚合**：终态白名单 / 拆解表分桶 / 持仓浮动盈亏 —— 白名单由调用方传进来，这样单元用例不必拉 Prisma）· `market-stats-service.ts`（统计的读路径：**盈亏只能来自 `market_positions`，别改成从账本求和**，理由见文件头） |
 | OAuth 2.0 | `oauth.ts`（见 `docs/oauth.md`） |
 | 管理域 | `admin-user-service.ts` · `admin-blog-service.ts` · `admin-category-service.ts` · `admin-comment-service.ts` · `admin-clipboard-service.ts` · `admin-vote-service.ts` · `admin-image-service.ts` · `admin-stats-service.ts` |
@@ -175,7 +176,7 @@ API 端点位于 `src/app/api/<group>/<verb>/route.ts`，**薄**层：参数校�
   同事务，见 `docs/bot/checkin-bot.md`）/ 投喂
   （`feed-service.ts`，作者全额到账、无手续费）/ 管理员发扣与补偿
   （`fish-admin.ts`、`fish-compensate.ts`、历史投喂手续费返还 `feed-fee-refund.ts`）/
-  用户间转账（`fish-market-service.ts`）/ 练手盘开平仓（`market-service.ts`）/
+  用户间转账（`fish-transfer-service.ts`）/ 练手盘开平仓（`market-service.ts`）/
   **租头像框**（`frame-shop-service.ts`，见 §6.14）。
   另有几条同经 `postEntry`、但归各自小节展开：**租聊天气泡**（`bubble-shop-service.ts`，见 §6.18）、
   **每日一言结算**（`daily-quote-service.ts`，见 §6.22）、**账号归档清钱包**
@@ -256,8 +257,8 @@ SQLite 文件**里，只从远端恢复鱼干余额也拼不出站 —— 真正
 
 | 痕迹 | 现状 |
 |------|------|
-| `account_sync_ledger` 表名 | 现在只是**幂等记录**表，新行一律 `status='synced'`。语义以 `fish-idempotency.ts` 头部为准 |
-| `users.fish_api_key_encrypted` 列 | 远端签发的用户 API Key 密文。**没有任何代码读它**，列与存量数据留着不删 |
+| `account_sync_ledger` 表名 | 现在只是**幂等记录**表，新行一律 `status='synced'`。语义以 `fish-idempotency.ts` 头部为准。**迁移 42 明确保留**（它是转账 / 补偿幂等的唯一存储） |
+| `users.fish_api_key_encrypted` 列 | 远端签发的用户 API Key 密文。**没有任何代码读它**；**已随迁移 `42_retire_residual` 删除**（停服迁移：上真库前先 `SELECT COUNT(*)` 确认或备份，见该迁移头部） |
 | `FISH_ENCRYPTION_KEY` / `SECRET_KEY` | **仍然必须正确** —— 回调签名密钥的钥匙：写用前者、读带一段回退到后者的过渡期（见 `fish-webhook-service.ts` 的「回调签名密钥的钥匙」）。跑完 `fish webhook-rekey` 之后只剩前者 |
 | `docs/bot/fish-bank-example.md` | 站外第三方基于**本站对外接口**开银行的参考实现，与那个被撤销的微服务无关，照旧有效 |
 
@@ -423,8 +424,10 @@ GET/HEAD/OPTIONS 视为安全方法，不校验（协议闸不受这条影响，
   这条既定政策，反复「传满 → 软删」就能把占用堆上去。**限频（图床/音频床各 200/时）
   不拦并发**，只是把速率压住。
 - **两个方向都会留下不一致**：写盘成功而落库失败 → 孤儿文件（不进配额、不进统计、
-  硬删也够不到，因为没有 id）；硬删时先 `unlink` 再删行失败 → 行在文件没了
-  （raw 永久 404，配额照占）。
+  硬删也够不到，因为没有 id）；硬删改为**先删行、后 `unlink`**（图床与音频床同序）：
+  删行失败 → 文件原样保留、整笔可重试；删行成功而 `unlink` 失败 → 只留下一个**孤儿文件**
+  （ID 已不在库里、无人引用，可按目录人工清理）。旧顺序（先 `unlink` 再删行）会留下
+  「行在、文件没了」——raw 永久 404、配额照占、管理页仍显示，已修掉。
 
 为什么不修：真正的修法要给「读-判-写」加一层互斥（进程内互斥量，或一条
 `INSERT ... SELECT WHERE sum(...) < quota` 的条件插入），那是**两个存储域共用**
@@ -437,7 +440,8 @@ GET/HEAD/OPTIONS 视为安全方法，不校验（协议闸不受这条影响，
 
 **2026-11 起，博客详情与剪贴板详情的正文默认走 §6.23 的 ReactiveMD 统一管线**：
 `format` 只表示源码语言（markdown / reactive），两种语言都由同一个引擎解释；
-`renderer_override` 列保留在库里，但已不参与任何选择。`REACTIVE_MD_MODE=off` 是
+`renderer_override` 列保留在库里（**迁移 `42_retire_residual` 明确保留**：它是对外 bot 契约
+`docs/bot/blog-bot.md` 的 GET 响应字段，退役需产品 / 文档批次），但已不参与任何选择。`REACTIVE_MD_MODE=off` 是
 事故回退：Markdown 暂交回本节这套旧管线，Reactive 改用本次编译的静态输出。
 评论、讨论、故事不走 §6.23，始终用下表这套既有管线。下表是旧管线（legacy 分支）的分工。
 
@@ -1163,9 +1167,14 @@ URL 请来抓」。（`robots.ts` 的**路径级**规则不需要动 —— `/ex
   而且它连事务都不需要 —— 一条 `where status='open'` 的条件 UPDATE 就是全部写操作。
 - **限频**：`RULES.tradeMinute` / `tradeDaily`（20/分、300/天）。它防的不是刷屏，是
   **出站流量**（每笔成交都要现取一次行情）+ 写压力。桶键 `trade:` 前缀，不复用 `transfer:`。
-- **禁言判定是「不对称」的，别统一**：档位（core+）在两个页面（`/fish/trade`、
-  `/fish/trade/stats`）与 `buy` / `sell` / `quote` / `candles` **六处**各判一次，
-  **禁言只有 `buy` 判** —— 后三个只读口与统计页都不判。禁言是
+- **档位与禁言是两张不同的表，别统一**：
+  - **档位（core+）判在五处**：两个页面（`/fish/trade`、`/fish/trade/stats`，非 core 直接
+    `forbidden()` → **403**，不是「能进页面只是不能交易」）与 `buy` / `quote` / `candles`
+    三个接口。
+  - **`sell` 刻意不判 core+**：只要求登录（+ 未归档 + 未被「屏蔽练手盘」），历史无资格账号
+    仍能平掉自己**已开**的仓位 —— 与「能查询自己的资产」同向，见
+    `src/app/api/fish/trade/sell/route.ts` 头部。
+  - **禁言只有 `buy` 判** —— `sell` / `quote` / `candles` 与统计页都不判。禁言是
   「不能说话」，若在 sell 上也判，用户手上**已经开着的**仓位就一股也卖不掉，只能看着
   浮亏扩大（而且禁言会递增 `sessionVersion` 废掉旧会话、重新登录也一样）——那等于把禁言
   变成锁仓；`quote` / `candles` 同理：他恰恰要靠那张图决定要不要止损。代价是禁言用户
@@ -1173,10 +1182,9 @@ URL 请来抓」。（`robots.ts` 的**路径级**规则不需要动 —— `/ex
   `src/app/api/fish/trade/sell/route.ts` 头部。
   ⚠️ **统计页也不判禁言**：它是只读页，「不能说话」不该顺带变成「不能看自己的账」。
   ⚠️ **强平引擎同样不判禁言**（它连用户请求都不是）。加杠杆**没有多开一处** ——
-  它是 `buy` 的一个参数，当时那五处的档位与禁言判定一个字都没变（统计页是后来才加的
-  第六处，见下一条）；被禁言的用户买不了杠杆仓（同 1 倍那扇门），但手上开着的杠杆仓
-  照旧会被爆、也照旧能自己卖。
-- **「专注模式屏蔽练手盘」也在这六处判，但它与禁言**刚好相反**是「全面封锁」**：
+  它是 `buy` 的一个参数，档位判定只在上面那五处；被禁言的用户买不了杠杆仓（同 1 倍那扇门），
+  但手上开着的杠杆仓照旧会被爆、也照旧能自己卖。
+- **「专注模式屏蔽练手盘」也在这六处（两页面 + 四个接口）全判，但它与禁言**刚好相反**是「全面封锁」**：
   用户同时开着专注模式**且**勾选了「屏蔽鱼干练手盘」（`focusMode && focusBlockFishTrade`）
   时，两页 403（`forbidden()`）、四个接口一律 403，**含只读的 `quote` / `candles` 与统计页**。
   ⚠️ **别把上面那张禁言表当模板** ——「只读口要放行」那条推论的前提是「禁言只能等，
@@ -1964,7 +1972,7 @@ runtime 接管交互。`compile.ts` 复用有界内存 LRU，hostData 每次按�
 
 **写入：**`publish.ts` 保留现有语法与格式检查，检查结果用完即弃。博客与剪贴板 service
 不生成或写入持久编译快照。现有保存 / 发布 API、草稿和编辑器行为保持；不新建云端
-草稿副本系统。`reactive_snapshots` 旧表暂留兼容历史，不参与正文读写。
+草稿副本系统。`reactive_snapshots` 旧表**已随迁移 `42_retire_residual` 删除**（停服迁移：上真库前先确认该表为 0 行或备份；删除不可逆）。
 
 **兼容与版本：**历史 Markdown 兼容规则、软换行、公式和 URL 策略保持唯一来源。
 合法 RMD 组件及别名的结构子项不能被 HTML 清洗拆除。已知 draft-2 内容由
@@ -2111,7 +2119,7 @@ Quoted-printable / 哈希 / AES）`legacy: true`，仍指向 `/tool/<slug>` —�
 「看到 503 就重试一次」的地方都已改写 —— 那些重试建议的前提（本地已被补偿回滚）
 不存在了。
 
-> 例外只有注册（`user-service.ts`）：它的两处**通用故障兜底**仍返回 503
+> 例外只有注册（`account-service.ts`）：它的两处**通用故障兜底**仍返回 503
 > （`registerUser` 的未知 precondition、`mapCreateFailure` 的 `unexpected`）。
 > 那是错误码选择问题，与账户服务无关，改它会连带动 CLI `user create` 的
 > 退出码映射（`docs/cli.md` 有口径）—— **本轮的契约变更不覆盖它**，

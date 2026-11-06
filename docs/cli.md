@@ -181,7 +181,9 @@ CLI 写下的每一条审计日志都落 `visibility='internal'`：**不进** `/
 谁在什么时候禁的言」，就只能靠猜。为了公示页干净而丢掉这个，不值。
 
 > **用之前要知道的一个副作用**：用户申诉的对象就是公示页上的那条日志（申诉入口挂在
-> 日志详情页上），公示页看不到 = **对方无法申诉**。所以：
+> 日志详情页上），公示页看不到 = **对方无法申诉**。**服务层也拦**：`createAppeal`
+> 只接受 `visibility='public'` 的日志，内部日志即使知道日志 id 也提交不了申诉（R3-413）。
+> 所以：
 >
 > - 处罚**真实用户**（禁言 / 删文章 / 删评论）而还想留申诉渠道的，用**网页后台**的对应
 >   入口 —— 那里写的是公开日志，确认屏上也会把这点写出来。
@@ -279,7 +281,7 @@ CLI 写下的每一条审计日志都落 `visibility='internal'`：**不进** `/
 | `user archive <username> --reason <原因>` | 归档用户：撤赞、清钱包、作废凭据和持仓，站长主体专属 |
 | `user unarchive <username> --reason <原因>` | 恢复账号和原本未删除的内容；不恢复余额、点赞、凭据或持仓 |
 | `user reset-password <username> [generate\|manual] [--password <新密码>] --reason <原因>` | 重置密码（旧会话全部失效）。`manual` 模式**必须**给 `--password`（≥8 位）；`generate` 模式不给，**给了会报错**（不是静默忽略） |
-| `user ban <username> --hours N --reason <原因>` | 禁言 |
+| `user ban <username> --hours N --reason <原因>` | 禁言。`--hours` 上限 **87600 小时（10 年）**，超出直接 400 |
 | `user unban <username> [--reason <原因>]` | 解除禁言 |
 | `user force-logout <username> [--reason <原因>]` | 强制下线（比禁言轻一档） |
 | `user create <username> --password <初始密码> [--email <邮箱>] [--reason <原因>]` | 新建账号：站长专属，不经过人机验证与邀请码，角色直接是 core（见下） |
@@ -527,7 +529,7 @@ npm run cli -- fish refund-feed-fees --dry-run       # 应为 0 位、0 篇、0 
 
 | 命令 | 作用 |
 |------|------|
-| `audit log [--user <用户名>] [--action <动作>] [--since 7d] [--visibility …]` | 检索审计日志 |
+| `audit log [--user <用户名>] [--action <动作>] [--since 7d] [--visibility …]` | 检索审计日志。`--user` 匹配**执行者或被处理用户**（模糊匹配，任一命中即返回） |
 | `appeal list [--status pending\|accepted\|rejected\|all]` | 列出申诉 |
 | `appeal decide <id> accept\|reject [--note <说明>]` | 裁决（通过时会自动撤回原处罚） |
 

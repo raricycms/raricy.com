@@ -18,7 +18,7 @@
 |---|---|---|
 | werkzeug 密码哈希格式 | `src/lib/password.ts` | 库里 `password_hash` 躺的是 werkzeug 生成的 `scrypt:N:r:p$salt$hex`。**生态库的默认选择**，不是我们的设计。新哈希也保持 werkzeug 可读（双向过渡），改动即等于让存量用户重置密码 |
 | Fernet 密钥派生自 `SECRET_KEY` | `src/lib/secret-box.ts` | 派生方式 `base64url(sha256(keySource))` 来自旧实现，且**当年的密钥源是旧站的 `SECRET_KEY`**。它当年服务两处凭证：用户发往账户微服务的 API Key、回调签名密钥。**前者随账户服务搬进站内一起消失，后者还是活的** —— 改了派生，`fish_webhook_endpoints.secret_encrypted` 全解不开，商户再也收不到回调、且**不可逆**。⚠️ **密钥源这一半已经可以摘掉**：写成 `FISH_ENCRYPTION_KEY`、跑 `fish webhook-rekey` 把存量重封过去即可（新行已经不碰 `SECRET_KEY` 了，见 `fish-webhook-service.ts` 的「回调签名密钥的钥匙」）—— 冻的只是**派生公式**，不是「必须挂在会话密钥上」 |
-| `users.fish_api_key_encrypted` 列 | `prisma/schema.prisma` | 站外账户微服务签发的用户 API Key 的 Fernet 密文。**该服务已搬进站内，这一列没有任何代码再读它**，但列与存量密文留着不删（删列要迁移，而迁移的风险大于它占的空间）。看到它别以为还有远端 |
+| `users.fish_api_key_encrypted` 列 | `prisma/schema.prisma` | 站外账户微服务签发的用户 API Key 的 Fernet 密文。**该服务已搬进站内，这一列没有任何代码再读它**；**已随迁移 `42_retire_residual` 删除**（停服迁移：升级前先确认该列数据可弃或备份，删除不可逆）。看到 `account_sync_ledger` 里残留的键名别以为还有远端 |
 | `account_sync_ledger` 表名 | `prisma/schema.prisma`、`src/lib/fish-idempotency.ts` | 名字说的是「账户服务同步账本」（outbox），而那个机制已经不存在 —— 现在它只是一张**幂等记录**表，新行一律 `status='synced'`。表**刻意不改名**：里面有真的历史账（那些行的 payload/status 是当年对账的唯一凭据）。语义以 `fish-idempotency.ts` 头部为准 |
 | 时间戳的 TEXT 存储形态 | `src/lib/fish-service.ts`、`src/lib/db-time.ts` | SQLAlchemy 把 `datetime.now()` 按 `"YYYY-MM-DD HH:MM:SS.ffffff"` 写成 **TEXT**；新行是 INTEGER，**混存**。SQLite 跨存储类型比较按类型序不按数值，裸 SQL 日期函数一律不可靠 |
 | 物理库由 Alembic 建出 | `prisma/migrations/0_init/migration.sql` | 530 行基线是从 Alembic 管出来的真库反向生成的。接手已有库必须先 `mark` 不能 `up` |
@@ -115,7 +115,7 @@ git ls-tree -r 7d7be1c^ --name-only app/ # 列出旧 app/ 全树
 | `dragStartRef.current.py` | `src/app/components/ImageLightbox.tsx` | 鼠标事件的 `pageY` 简写字段 |
 | `makeLegacyCheckin` / `legacyRoleCommands` | `tests/`、`scripts/cli/commands/roles.ts` | 「旧」指**本应用自己的旧实现** |
 | 「旧实现 / 原实现」 | `src/lib/chat-service.ts`、`tests/global-setup.ts` 等 | 同上 —— 绝大多数是 Next-vs-Next 的历史，**是解释回归的正当线索，别扫** |
-| `account_sync_ledger` ~ `fish_api_key_encrypted` ~ `ACCOUNT_SERVICE_*` | `prisma/`、`src/lib/fish-idempotency.ts`、`.env*` 的注释 | 站外 **FastAPI 账户微服务**（独立仓库）的遗物 —— 它是 Python，但**不是 Flask，也不是本仓的代码**。那个服务已于 2026-09 搬进站内，见 §1.1 的三行 |
+| `account_sync_ledger` ~ `ACCOUNT_SERVICE_*` | `prisma/`、`src/lib/fish-idempotency.ts`、`.env*` 的注释 | 站外 **FastAPI 账户微服务**（独立仓库）的遗物 —— 它是 Python，但**不是 Flask，也不是本仓的代码**。那个服务已于 2026-09 搬进站内，见 §1.1 的三行。其中 `users.fish_api_key_encrypted` 列已随迁移 `42_retire_residual` 删除；`account_sync_ledger` 表名与 `ACCOUNT_SERVICE_*` 变量保留/无效果，见 §8 |
 | `{{` / `{%` | 各处 `.tsx` | JSX 的 `style={{…}}` 双花括号，不是 Jinja |
 | `Bootstrap 风格 / Bootstrap-like / no Bootstrap` | 十几处 `src/styles-scss/**` 注释 | **本站完全不用 Bootstrap**，这些是**类比**：类名（`.card` / `.table` / `.m*-*`）沿用了 Bootstrap 的命名与外观习惯，实现全是我们自己的。删了这些注释不会少一行样式 |
 | `Bootstrap 的 show / 不是 Bootstrap 那套` | `CommentSection.tsx`、`ImagePickerModal.tsx`、两个 e2e 用例 | **防混淆警告**，价值高：站内 modal 的展开类是 `is-open` / `show`，与 Bootstrap 的不是一回事，写错就点不开 |
@@ -130,3 +130,22 @@ git ls-tree -r 7d7be1c^ --name-only app/ # 列出旧 app/ 全树
 `evaluateAll` 中选中的 HTML 元素断言为 `HTMLElement[]`，不再对联合类型直接读
 `innerText`。这条不再是待办；不能改用 `textContent`，否则隐藏前缀仍被计入，文案压缩
 断言就失去意义。
+
+## 8. schema 与手写迁移的已知结构差异（只记录，不擅自收敛）
+
+生产库由 `prisma/migrations/` 的手写 SQL 建出，测试 / 模板库由 `prisma db push` 从
+`prisma/schema.prisma` 生成 —— 两条路径描述同一个库，但**不是同一份真相**：
+`npm run migrate -- verify` 只比迁移文件 checksum，不比结构。已知差异如下（均已核，
+不逐条收敛的理由写在每行；机器比对用 `npm run schema:diff`）：
+
+| 差异 | 生产（迁移路径） | 测试（schema 路径） | 为什么不收敛 |
+|---|---|---|---|
+| **外键 ON DELETE** | **7 处 `ON DELETE CASCADE`**：`1_oauth` 4 处（OAuth 授权码 / 令牌等）、`15_fish_api_tokens` 1 处、`16_fish_webhooks` 2 处 | `schema.prisma` 全文 `onDelete: Cascade` 计数为 **0**；这些关系都是必填 → `db push` 生成 `RESTRICT` | 已应用迁移不可改；`DELETE FROM users` 只在运维手工 / 未来物理删用户时才会触发，而当前产品路径是软删（`User.archivedAt`），运行期差异为零。真要收敛只能新迁移重建表，风险大于收益（R3-014 方案 B，未采纳） |
+| 金额列物理类型 | `users.dried_fish` / `blog_feeds.amount` / `fish_transactions.amount` 是 SQLite **REAL** | schema 写 `Int` | 历史精度与 0.0001 单位换算依赖 REAL 的存储形态；改类型要重建表 + 全量校验，收益低 |
+| `13_blog_visibility` 的列默认值 | `'private'` | `'internal'` | 插入路径全部显式给值，不依赖默认值；改迁移会改 checksum |
+| 索引名 | 迁移里多为**显式命名** | Prisma 忽略 `name:` 时用派生名 | 只在 `migrate diff` / 人工比对时造成噪音，不影响查询 |
+| `blogs.renderer_override` | 列在库里 | 列在 schema 里 | **保留**：对外 bot 契约字段（见 §1.1 与迁移 `42_retire_residual` 头部），退役需产品 / 文档批次 |
+
+> 判据：这些差异**不改运行期行为**，所以只登记、不逐条收敛。`npm run schema:diff`
+> 会把「迁移路径库」与「schema 路径库」逐项比对（表 / 列 / 索引 / 外键 / 触发器），
+> 输出就是本表的机器版本；新增差异应先在这里登记再决定是否收敛。
