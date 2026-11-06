@@ -4,9 +4,13 @@
 import Link from 'next/link';
 import { useState } from 'react';
 import { ArrowLeft, ArrowLeftRight, ArrowRight } from 'lucide-react';
+import { errorText } from '@/lib/dev-tools/response-read';
 
 const te = new TextEncoder();
 const td = new TextDecoder();
+
+/** 加解密失败时的兜底提示（原始错误没有 message 时，给用户一句能照着改的说明）。 */
+const FAIL_HINT = '操作失败，请检查密钥、IV 与密文格式';
 
 function hexToBytes(hex: string): Uint8Array {
   const cleaned = (hex || '').trim().replace(/^0x/i, '').replace(/\s+/g, '').toLowerCase();
@@ -90,11 +94,6 @@ export default function AesToolPage() {
     return ivBytes;
   }
 
-  function errorText(e: unknown): string {
-    const msg = e instanceof Error ? e.message : '';
-    return msg || '操作失败，请检查密钥、IV 与密文格式';
-  }
-
   function encodeOut(bytes: Uint8Array): string {
     return outFormat === 'hex' ? bytesToHex(bytes) : bytesToBase64(bytes);
   }
@@ -126,7 +125,7 @@ export default function AesToolPage() {
       setStatus('完成（输出已包含 IV/Nonce 前缀）');
     } catch (e) {
       setRight('');
-      setStatus('失败: ' + errorText(e));
+      setStatus('失败: ' + errorText(e, FAIL_HINT));
     }
   }
 
@@ -153,7 +152,7 @@ export default function AesToolPage() {
       setStatus('完成');
     } catch (e) {
       // 解密失败不要把用户已经输入的明文清掉。
-      setStatus('失败: ' + errorText(e));
+      setStatus('失败: ' + errorText(e, FAIL_HINT));
     }
   }
 

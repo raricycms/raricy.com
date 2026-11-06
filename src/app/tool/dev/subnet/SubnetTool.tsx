@@ -8,6 +8,7 @@
 
 import { useEffect, useState } from 'react';
 import { parseSubnetInput, type SubnetResult } from '@/lib/dev-tools/subnet';
+import { errorText } from '@/lib/dev-tools/response-read';
 
 const EXAMPLES: readonly string[] = [
   '192.168.1.0/24',
@@ -20,10 +21,6 @@ const EXAMPLES: readonly string[] = [
 /** 给十进制数字加千位分隔（不能用 toLocaleString：全站禁本地化时间/数字 API）。 */
 function groupThousands(value: string): string {
   return value.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
-}
-
-function errorText(e: unknown): string {
-  return e instanceof Error && e.message ? e.message : '未知错误';
 }
 
 export default function SubnetTool() {

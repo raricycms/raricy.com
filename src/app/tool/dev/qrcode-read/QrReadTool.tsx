@@ -14,16 +14,13 @@
 
 import { useEffect, useRef, useState, type ChangeEvent } from 'react';
 import jsQR from 'jsqr';
+import { errorText } from '@/lib/dev-tools/response-read';
 
 /** 允许的最大源文件大小（再大先让用户自己压缩 —— 读取与解码都在主线程）。 */
 const MAX_FILE_BYTES = 10 * 1024 * 1024;
 
 /** 解码前把最长边缩到这个值以内。 */
 const MAX_DECODE_EDGE = 2000;
-
-function errorText(e: unknown): string {
-  return e instanceof Error && e.message ? e.message : '未知错误';
-}
 
 function loadImage(src: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {

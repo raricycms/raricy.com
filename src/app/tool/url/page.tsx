@@ -4,6 +4,7 @@
 import Link from 'next/link';
 import { useState } from 'react';
 import { ArrowLeft, ArrowLeftRight, ArrowRight } from 'lucide-react';
+import { errorText } from '@/lib/dev-tools/response-read';
 
 export default function UrlToolPage() {
   const [left, setLeft] = useState('');
@@ -39,16 +40,12 @@ export default function UrlToolPage() {
     return decoder(text);
   }
 
-  function errorText(e: unknown): string {
-    return e instanceof Error && e.message ? e.message : '非法输入';
-  }
-
   const encodeLeftToRight = () => {
     try {
       setRight(customEncode(left || ''));
       setStatus('完成');
     } catch (e) {
-      setStatus('编码失败：' + errorText(e));
+      setStatus('编码失败：' + errorText(e, '非法输入'));
     }
   };
   const decodeRightToLeft = () => {
@@ -56,7 +53,7 @@ export default function UrlToolPage() {
       setLeft(customDecode(right || ''));
       setStatus('完成');
     } catch (e) {
-      setStatus('解码失败：' + errorText(e));
+      setStatus('解码失败：' + errorText(e, '非法输入'));
     }
   };
   const swap = () => {

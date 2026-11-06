@@ -8,6 +8,7 @@
 // 覆盖服务端的判据说明）。SSRF 永远在**服务端**判，前端的任何拼接都不可信。
 
 import { useState } from 'react';
+import { asRecord, errorText, readNumber, readString } from '@/lib/dev-tools/response-read';
 
 interface HeaderEntry {
   name: string;
@@ -26,26 +27,6 @@ interface HeaderResult {
   headers: HeaderEntry[];
   redirects: RedirectHop[];
   durationMs: number;
-}
-
-function errorText(e: unknown): string {
-  return e instanceof Error && e.message ? e.message : '未知错误';
-}
-
-function asRecord(value: unknown): Record<string, unknown> | null {
-  return value && typeof value === 'object' && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : null;
-}
-
-function readString(source: Record<string, unknown>, key: string): string {
-  const value = source[key];
-  return typeof value === 'string' ? value : '';
-}
-
-function readNumber(source: Record<string, unknown>, key: string): number | null {
-  const value = source[key];
-  return typeof value === 'number' && Number.isFinite(value) ? value : null;
 }
 
 function readHeaders(raw: unknown): HeaderEntry[] {

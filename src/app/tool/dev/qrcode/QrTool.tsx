@@ -20,12 +20,9 @@ import {
   type QrErrorLevel,
   type QrRender,
 } from '@/lib/dev-tools/qr';
+import { errorText } from '@/lib/dev-tools/response-read';
 
 const DEFAULT_TEXT = 'https://raricy.com';
-
-function errorText(e: unknown): string {
-  return e instanceof Error && e.message ? e.message : '未知错误';
-}
 
 function loadImage(src: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {

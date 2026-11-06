@@ -10,6 +10,7 @@
 // 【必须标注】查询经第三方 DoH 服务；域名会发送给它们。
 
 import { useState } from 'react';
+import { asRecord, errorText, readNumber, readString } from '@/lib/dev-tools/response-read';
 
 const DNS_TYPES = ['A', 'AAAA', 'CNAME', 'MX', 'NS', 'TXT', 'SOA', 'CAA', 'SRV'] as const;
 type DnsType = (typeof DNS_TYPES)[number];
@@ -48,26 +49,6 @@ interface ParsedAnswer {
   hasMx: boolean;
   /** 是否至少有一条 SRV。 */
   hasSrv: boolean;
-}
-
-function errorText(e: unknown): string {
-  return e instanceof Error && e.message ? e.message : '未知错误';
-}
-
-function asRecord(value: unknown): Record<string, unknown> | null {
-  return value && typeof value === 'object' && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : null;
-}
-
-function readString(source: Record<string, unknown>, key: string): string {
-  const value = source[key];
-  return typeof value === 'string' ? value : '';
-}
-
-function readNumber(source: Record<string, unknown>, key: string): number | null {
-  const value = source[key];
-  return typeof value === 'number' && Number.isFinite(value) ? value : null;
 }
 
 /** MX 的 data 形如 "10 mail.example.com."。 */

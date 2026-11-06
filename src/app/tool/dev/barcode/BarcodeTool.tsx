@@ -18,6 +18,7 @@ import {
   type BarcodeFormat,
   type BarcodeSymbol,
 } from '@/lib/dev-tools/barcode';
+import { errorText } from '@/lib/dev-tools/response-read';
 
 /** 预览的每模块像素宽（viewBox 坐标）。 */
 const PREVIEW_MODULE_WIDTH = 3;
@@ -38,10 +39,6 @@ function downloadBlobUrl(url: string, filename: string): void {
   link.click();
   link.remove();
   setTimeout(() => URL.revokeObjectURL(url), 2000);
-}
-
-function errorText(e: unknown): string {
-  return e instanceof Error && e.message ? e.message : '未知错误';
 }
 
 export default function BarcodeTool() {
