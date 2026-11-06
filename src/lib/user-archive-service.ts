@@ -20,8 +20,8 @@ async function refreshCommentCounts(tx: Prisma.TransactionClient, blogIds: strin
   for (const blogId of new Set(blogIds)) {
     const where = { blogId, isDeleted: false, author: { archivedAt: null } };
     const commentsCount = await tx.blogComment.count({ where });
-    const latest = await tx.blogComment.findFirst({ where, orderBy: { createdAt: 'desc' }, select: { createdAt: true } });
-    await tx.blog.update({ where: { id: blogId }, data: { commentsCount, lastCommentAt: latest?.createdAt ?? null } });
+    // lastCommentAt 已停写（2026-11）：列与索引保留历史值，当前没有任何读者。
+    await tx.blog.update({ where: { id: blogId }, data: { commentsCount } });
   }
 }
 

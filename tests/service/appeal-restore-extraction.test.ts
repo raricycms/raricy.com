@@ -2,7 +2,7 @@
 // appeal-restore-extraction.test.ts —— 钉死「裁决通过」的审计行为
 //
 // 【为什么单独一个文件】decideAppeal 里内联着一段「恢复被删评论」的事务
-// （设 isDeleted=false + 重算 commentsCount / lastCommentAt），它要被抽成
+// （设 isDeleted=false + 重算 commentsCount；lastCommentAt 已停写留列），它要被抽成
 // comment-service 的 restoreCommentRow 供运维 CLI 复用。
 //
 // 现有用例（admin-user-and-appeal.test.ts）覆盖的是**数据效果**：isDeleted 复位、
@@ -122,7 +122,7 @@ describe('decideAppeal：恢复评论时的审计日志条数', () => {
     ).toBe(0);
   });
 
-  it('恢复本身确实生效（计数与最后评论时间都回补）', async () => {
+  it('恢复本身确实生效（计数回补；lastCommentAt 已停写、不回补）', async () => {
     const owner = await makeUser({ role: 'owner' });
     const author = await makeUser({ role: 'core' });
     const blog = await makeBlog({ authorId: author.id });
@@ -146,7 +146,7 @@ describe('decideAppeal：恢复评论时的审计日志条数', () => {
     expect((await prisma.blogComment.findUnique({ where: { id: comment.id } }))!.isDeleted).toBe(false);
     const b = await prisma.blog.findUnique({ where: { id: blog.id } });
     expect(b!.commentsCount).toBe(1);
-    expect(b!.lastCommentAt!.getTime()).toBe(comment.createdAt!.getTime());
+    expect(b!.lastCommentAt, 'lastCommentAt 已停写，恢复时不再回补').toBeNull();
   });
 
   it('评论本来就没被删 → 幂等：不重算计数、也不写多余日志', async () => {

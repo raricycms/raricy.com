@@ -10,8 +10,8 @@
 //      DB 里 isBanned 仍是 true。service 层返回的 currentlyBanned 必须跟纯函数
 //      口径一致，否则后台列表显示的禁言状态和实际拦截行为对不上。
 //   3. 申诉通过要「撤销原操作」，三条撤销路径（解禁 / 恢复文章 / 恢复评论）各写
-//      不同的表，其中恢复评论还要回补 Blog.commentsCount / lastCommentAt 冗余字段
-//      —— 算错不报错，只会让列表页的评论数对不上详情页。
+//      不同的表，其中恢复评论还要回补 Blog.commentsCount 冗余字段（lastCommentAt
+//      已停写留列）—— 算错不报错，只会让列表页的评论数对不上详情页。
 //   4. AdminActionLog.extra 在生产库里是 JSON 声明列（历史 schema 迁移建的），Prisma 驱动层
 //      拒读，写入走 raw UPDATE。本测试库由 `prisma db push` 从 schema（extra String?）
 //      生成，列类型是 TEXT，所以这里「直接 select extra」其实读得到 —— 测试环境复现不了
@@ -1381,12 +1381,13 @@ describe('adjudicate（裁决申诉）', () => {
     for (const n of notes) expect(n.detail).not.toContain('已恢复被删文章');
   });
 
-  it('accept + delete_comment → isDeleted 复位，并回补 Blog.commentsCount / lastCommentAt', async () => {
+  it('accept + delete_comment → isDeleted 复位，并回补 Blog.commentsCount（lastCommentAt 停写）', async () => {
     const admin = await makeUser({ role: 'owner' }); // 裁决仅站长，见块首说明
     const author = await makeUser({ role: 'core' });
     const blog = await makeBlog({ authorId: author.id });
 
-    // c1 存活（早），c2 被删（晚）—— 恢复后 lastCommentAt 应前移到 c2
+    // c1 存活（早），c2 被删（晚）—— 恢复后 commentsCount 回补到 2；
+    // lastCommentAt 已停写，保持夹具里的 c1 不变（不再前移）。
     const c1 = await makeComment({ blogId: blog.id, authorId: author.id });
     const c2 = await makeComment({ blogId: blog.id, authorId: author.id, isDeleted: true });
     await prisma.blog.update({
@@ -1409,7 +1410,7 @@ describe('adjudicate（裁决申诉）', () => {
 
     const b = await prisma.blog.findUnique({ where: { id: blog.id } });
     expect(b!.commentsCount).toBe(2);
-    expect(b!.lastCommentAt!.getTime()).toBe(c2.createdAt!.getTime());
+    expect(b!.lastCommentAt!.getTime(), 'lastCommentAt 已停写，不随恢复前移').toBe(c1.createdAt!.getTime());
 
     const note = await prisma.notification.findFirst({
       where: { recipientId: author.id, action: '申诉结果' },

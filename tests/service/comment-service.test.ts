@@ -8,8 +8,9 @@
 //   2. _filter_deleted_leaves：已删除且无子评论的叶子要从树里摘掉，但「已删除
 //      却仍有存活子评论」的节点必须保留（否则整棵子树连带消失 —— 用户的评论
 //      被别人的删除行为顺手抹掉）。这条最容易写反。
-//   3. Blog.commentsCount / lastCommentAt 是冗余字段，靠每次评论操作手工维护，
-//      对不上就是列表页显示「3 条评论」点进去只有 1 条。
+//   3. Blog.commentsCount 是冗余字段，靠每次评论操作手工维护，对不上就是列表页
+//      显示「3 条评论」点进去只有 1 条。（`lastCommentAt` 已停写留列：列与索引
+//      保留历史值，当前没有任何读者，见 comment-service 的写入点注释。）
 //
 // 这里跑真实 SQLite（tests/.tmp/test.db），不 mock Prisma —— 计数/唯一约束/
 // 外键这些正是要验的东西，mock 掉就什么也没测。
@@ -537,11 +538,11 @@ describe('软删除：权限与落库', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 5. 冗余计数：Blog.commentsCount / lastCommentAt
+// 5. 冗余计数：Blog.commentsCount（lastCommentAt 已停写留列）
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('冗余计数：新增评论', () => {
-  it('每次创建都刷新 commentsCount 与 lastCommentAt', async () => {
+  it('每次创建都刷新 commentsCount（lastCommentAt 已停写，保持 null）', async () => {
     const { author, blog } = await seedBlog();
     const before = await prisma.blog.findUnique({ where: { id: blog.id } });
     expect(before!.commentsCount).toBe(0);
@@ -552,7 +553,7 @@ describe('冗余计数：新增评论', () => {
       expect(r.ok, `第 ${i} 条应创建成功`).toBe(true);
       const b = await prisma.blog.findUnique({ where: { id: blog.id } });
       expect(b!.commentsCount, `创建 ${i} 条后计数应为 ${i}`).toBe(i);
-      expect(b!.lastCommentAt, 'lastCommentAt 每条都要刷新').not.toBeNull();
+      expect(b!.lastCommentAt, 'lastCommentAt 已停写，应保持 null').toBeNull();
     }
   });
 
@@ -568,14 +569,13 @@ describe('冗余计数：新增评论', () => {
     expect(b!.commentsCount).toBe(2);
   });
 
-  it('lastCommentAt 与最新评论的 createdAt 一致', async () => {
+  it('创建评论不再写 lastCommentAt（停写留列）', async () => {
     const { author, blog } = await seedBlog();
     const r = await createComment({ blogId: blog.id, authorId: author.id, content: 'x' });
     if (!r.ok) throw new Error('前置失败');
 
     const b = await prisma.blog.findUnique({ where: { id: blog.id } });
-    const c = await prisma.blogComment.findUnique({ where: { id: r.comment.id } });
-    expect(b!.lastCommentAt!.getTime()).toBe(c!.createdAt!.getTime());
+    expect(b!.lastCommentAt, 'lastCommentAt 已停写，不随新评论刷新').toBeNull();
   });
 
   it('创建失败（文章不存在）不会误伤其它文章的计数', async () => {
@@ -626,7 +626,7 @@ describe('冗余计数：软删除评论', () => {
     expect((await prisma.blog.findUnique({ where: { id: blog.id } }))!.commentsCount).toBe(2);
   });
 
-  it('删光所有评论 → commentsCount 归 0 且 lastCommentAt 回 null', async () => {
+  it('删光所有评论 → commentsCount 归 0（lastCommentAt 停写、保持原值）', async () => {
     const { author, blog } = await seedBlog();
     const c = await makeComment({ blogId: blog.id, authorId: author.id });
     await prisma.blog.update({
@@ -637,12 +637,12 @@ describe('冗余计数：软删除评论', () => {
     await softDeleteComment(c.id, { id: author.id, role: 'core' });
     const b = await prisma.blog.findUnique({ where: { id: blog.id } });
     expect(b!.commentsCount).toBe(0);
-    expect(b!.lastCommentAt, '没有存活评论时 lastCommentAt 应清空').toBeNull();
+    expect(b!.lastCommentAt, 'lastCommentAt 已停写，不随删除回空').toEqual(c.createdAt);
   });
 
-  it('删掉最新一条 → lastCommentAt 回退到剩下的最新存活评论', async () => {
+  it('删掉最新一条 → commentsCount 重算（lastCommentAt 停写、不回退）', async () => {
     const { author, blog } = await seedBlog();
-    const older = await makeComment({
+    await makeComment({
       blogId: blog.id, authorId: author.id, content: 'older', createdAt: new Date(1_000_000),
     });
     const newer = await makeComment({
@@ -658,8 +658,8 @@ describe('冗余计数：软删除评论', () => {
     expect(b!.commentsCount).toBe(1);
     expect(
       b!.lastCommentAt!.getTime(),
-      'lastCommentAt 应重算为剩余最新存活评论的时间，而非停在已删那条上'
-    ).toBe(older.createdAt!.getTime());
+      'lastCommentAt 已停写，不会回退到剩余最新存活评论'
+    ).toBe(newer.createdAt!.getTime());
   });
 
   it('删除失败（越权）不改动计数', async () => {

@@ -636,7 +636,8 @@ export async function createComment(input: CreateCommentInput): Promise<CreateCo
       });
 
       const commentsCount = await tx.blogComment.count({ where: { blogId, isDeleted: false, author: { archivedAt: null } } });
-      await tx.blog.update({ where: { id: blogId }, data: { commentsCount, lastCommentAt: now } });
+      // lastCommentAt 已停写（2026-11）：列与索引保留历史值，当前没有任何读者。
+      await tx.blog.update({ where: { id: blogId }, data: { commentsCount } });
 
       return {
         row: created,
@@ -783,7 +784,7 @@ export type DeleteCommentResult =
 
 /**
  * 软删除评论：作者本人或管理员可删。
- * 删除后重算文章未删除评论数与 lastCommentAt。
+ * 删除后重算文章未删除评论数（`lastCommentAt` 已停写，列与索引保留历史值）。
  *
  * @param reason 管理员删「他人」评论时必填（1..500）；作者删自己的可省略。
  *               该原因会写入 AdminActionLog —— /audit 公示与用户申诉依赖它。
@@ -822,14 +823,10 @@ export async function softDeleteComment(
     await tx.blogComment.update({ where: { id: commentId }, data: { isDeleted: true } });
 
     const commentsCount = await tx.blogComment.count({ where: { blogId: comment.blogId, isDeleted: false, author: { archivedAt: null } } });
-    const latest = await tx.blogComment.findFirst({
-      where: { blogId: comment.blogId, isDeleted: false, author: { archivedAt: null } },
-      orderBy: { createdAt: 'desc' },
-      select: { createdAt: true },
-    });
+    // lastCommentAt 停写（列与索引保留，见 createComment 处的说明）。
     await tx.blog.update({
       where: { id: comment.blogId },
-      data: { commentsCount, lastCommentAt: latest?.createdAt ?? null },
+      data: { commentsCount },
     });
 
     return {
@@ -905,7 +902,8 @@ class RestoreCommentDenied extends Error {
 
 /**
  * 恢复软删评论的**内核**：isDeleted=false + 在同一事务内按「未删除评论数」重算
- * Blog.commentsCount 并刷新 lastCommentAt（与 softDeleteComment 的计数口径完全一致）。
+ * Blog.commentsCount（与 softDeleteComment 的计数口径完全一致；`lastCommentAt`
+ * 已停写，列与索引保留历史值）。
  *
  * @returns 成功返回 { blogId, authorId, anonSeq }；评论不存在或本来就没被删 → null（幂等，不报错）
  */
@@ -928,14 +926,10 @@ export async function restoreCommentRow(
     const commentsCount = await tx.blogComment.count({
       where: { blogId: comment.blogId, isDeleted: false, author: { archivedAt: null } },
     });
-    const latest = await tx.blogComment.findFirst({
-      where: { blogId: comment.blogId, isDeleted: false, author: { archivedAt: null } },
-      orderBy: { createdAt: 'desc' },
-      select: { createdAt: true },
-    });
+    // lastCommentAt 停写（列与索引保留，见 createComment 处的说明）。
     await tx.blog.update({
       where: { id: comment.blogId },
-      data: { commentsCount, lastCommentAt: latest?.createdAt ?? null },
+      data: { commentsCount },
     });
 
     return { blogId: comment.blogId, authorId: comment.authorId, anonSeq: comment.anonSeq };
