@@ -1,6 +1,7 @@
 import { getCurrentUser, isCoreUser } from '@/lib/auth';
 import { apiOk, apiErr } from '@/lib/format';
 import { getQuotaLimitMb, getUserUsedBytes } from '@/lib/image-upload';
+import { quotaView } from '@/lib/upload-quota';
 
 // 依赖 DB 聚合，需 Node 运行时
 export const runtime = 'nodejs';
@@ -15,16 +16,9 @@ export async function GET() {
 
   const usedBytes = await getUserUsedBytes(user.id);
   const limitMb = getQuotaLimitMb(user.role);
-  const limitBytes = limitMb * 1024 * 1024;
-  const remaining = Math.max(0, limitBytes - usedBytes);
 
-  // 数值口径是对外契约：MB 两位小数、百分比一位小数；配额为 0 时百分比直接给 100（不除零）
-  const quota = {
-    used_mb: Math.round((usedBytes / (1024 * 1024)) * 100) / 100,
-    limit_mb: limitMb,
-    remaining_mb: Math.round((remaining / (1024 * 1024)) * 100) / 100,
-    usage_percent: limitBytes > 0 ? Math.round((usedBytes / limitBytes) * 1000) / 10 : 100,
-  };
+  // 数值口径（MB 两位小数、百分比一位小数、配额 0 → 100）的唯一实现在 upload-quota.ts。
+  const quota = quotaView(usedBytes, limitMb);
 
   return apiOk({ quota });
 }

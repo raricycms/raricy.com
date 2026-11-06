@@ -2,6 +2,7 @@ import { getCurrentUser, isOwner } from '@/lib/auth';
 import { requireCoreUser } from '@/lib/guard';
 import { listUserImages } from '@/lib/image-service';
 import { getQuotaLimitMb, getUserUsedBytes } from '@/lib/image-upload';
+import { quotaView } from '@/lib/upload-quota';
 import ImageUploader, { ImageGallery } from '@/app/components/ImageUploader';
 import { GuidePill } from '@/app/components/MarkdownGuide';
 
@@ -32,9 +33,9 @@ export default async function ImageGalleryPage() {
 
   const usedBytes = await getUserUsedBytes(user.id);
   const limitMb = getQuotaLimitMb(user.role);
-  const limitBytes = limitMb * 1024 * 1024;
-  const usedMb = Math.round((usedBytes / (1024 * 1024)) * 100) / 100;
-  const usagePercent = limitBytes > 0 ? Math.round((usedBytes / limitBytes) * 1000) / 10 : 100;
+  // 取整口径与 /api/images/quota 共用同一公式（R3-379）；页面只消费两个展示字段，
+  // `> 80` 的 --warn 阈值仍由本页决定。
+  const { used_mb: usedMb, usage_percent: usagePercent } = quotaView(usedBytes, limitMb);
 
   return (
     <div className="image-hosting-page">

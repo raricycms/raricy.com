@@ -2,6 +2,7 @@ import { getCurrentUser, isOwner } from '@/lib/auth';
 import { requireCoreUser } from '@/lib/guard';
 import { getQuotaLimitMb } from '@/lib/image-upload';
 import { getUserUsedAudioBytes, listUserAudio } from '@/lib/audio-service';
+import { quotaView } from '@/lib/upload-quota';
 import AudioUploader, { AudioGallery } from '@/app/components/AudioUploader';
 import { GuidePill } from '@/app/components/MarkdownGuide';
 
@@ -38,10 +39,8 @@ export default async function AudioGalleryPage() {
 
   const usedBytes = await getUserUsedAudioBytes(user.id);
   const limitMb = getQuotaLimitMb(user.role);
-  const limitBytes = limitMb * 1024 * 1024;
-  const usedMb = Math.round((usedBytes / (1024 * 1024)) * 100) / 100;
-  const usagePercent =
-    limitBytes > 0 ? Math.round((usedBytes / limitBytes) * 1000) / 10 : 100;
+  // 取整口径与 /api/audio/quota 共用同一公式（R3-379）；`> 80` 的 --warn 阈值仍由本页决定。
+  const { used_mb: usedMb, usage_percent: usagePercent } = quotaView(usedBytes, limitMb);
 
   return (
     <div className="image-hosting-page">

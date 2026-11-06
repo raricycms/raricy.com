@@ -2,6 +2,7 @@ import { getCurrentUser } from '@/lib/auth';
 import { apiOk, apiErr } from '@/lib/format';
 import { getQuotaLimitMb } from '@/lib/image-upload';
 import { getUserUsedAudioBytes } from '@/lib/audio-service';
+import { quotaView } from '@/lib/upload-quota';
 
 export const runtime = 'nodejs';
 
@@ -18,15 +19,8 @@ export async function GET() {
   if (limitMb === 0) return apiErr(403, '无权访问');
 
   const usedBytes = await getUserUsedAudioBytes(user.id);
-  const limitBytes = limitMb * 1024 * 1024;
-  const remaining = Math.max(0, limitBytes - usedBytes);
 
-  const quota = {
-    used_mb: Math.round((usedBytes / (1024 * 1024)) * 100) / 100,
-    limit_mb: limitMb,
-    remaining_mb: Math.round((remaining / (1024 * 1024)) * 100) / 100,
-    usage_percent:
-      limitBytes > 0 ? Math.round((usedBytes / limitBytes) * 1000) / 10 : 100,
-  };
+  // 数值口径与 /api/images/quota 共用 upload-quota.ts 的 quotaView（逐字一致，对外契约）。
+  const quota = quotaView(usedBytes, limitMb);
   return apiOk({ quota });
 }
