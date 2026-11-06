@@ -231,8 +231,8 @@ if (dbPath && fs.existsSync(dbPath)) {
 //   ② **解耦进度** —— 还有几条是 `SECRET_KEY` 封的。有 legacy **不算错**（照样能
 //      解开），但「换会话密钥 = 商户回调全废」这条风险还在，`fish webhook-rekey` 可解。
 //
-// ⚠️ 查的是**回调密钥**，不是 users.fish_api_key_encrypted —— 后者是当年发往
-// 站外账户微服务的用户 Key，已经没有任何代码读它（见 docs/legacy-constraints.md §1.1）。
+// ⚠️ 查的是**回调密钥**，不是当年的 users.fish_api_key_encrypted —— 后者是发往
+// 站外账户微服务的用户 Key，已随 migration 42 删除（历史见 docs/legacy-constraints.md §1.1）。
 head('4. 回调签名密钥（钥匙对不对 / 解耦进度）');
 if (dbPath && fs.existsSync(dbPath)) {
   if (process.env.FISH_ENCRYPTION_KEY) {

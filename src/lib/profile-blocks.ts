@@ -21,8 +21,8 @@ import { safeExternalReturnUrl } from './safe-url';
 
 /**
  * 桌面网格列数。手机上是**同一份坐标的投影**（见下面的 projectMobile）：2 列由桌面
- * 左右两半折成，宽 ≥2 的块通栏；不再有独立的手机顺序（迁移 32 的 `sort` 列已失效，
- * 只保留旧值，读写都不再依赖）。
+ * 左右两半折成，宽 ≥2 的块通栏；没有独立的手机顺序（迁移 32 的 `sort` 列已在
+ * migration 42 删除）。
  */
 export const GRID_COLUMNS = 4;
 /** 一页最多几块。超过就拒绝保存 —— 防「每块一次查询」被堆成慢查询。 */

@@ -651,29 +651,6 @@ describe('★★ 事务中途故障：本地零痕迹、异常如实上抛', () 
   });
 });
 
-// ── 与账户 Key 无关 ─────────────────────────────────────────────────────────
-
-describe('与账户 Key 无关', () => {
-  it('投喂不看 users.fishApiKeyEncrypted：留一坨坏密文也照样投成', async () => {
-    // 那一列（连同 ACCOUNT_SERVICE_* 环境变量）当年是发往站外账户微服务的**用户凭据**，
-    // 现在没有任何代码读它。这条用例的价值不是「解密失败也能投」，而是钉住
-    // 「投喂路径完全不碰它」—— 谁哪天把凭据校验加回来，这里会红。
-    //
-    // （这里原有两条「ACCOUNT_SERVICE_INTERNAL_TOKEN 未配置 → dev fallback」的用例，
-    //   测的是「远端启用 / 未启用」两套模式：未启用时不打远端、不解密 Key、
-    //   没有 Key 也能投。模式本身没有了 —— 那个 token 已无人读取，
-    //   留下的就是这个更强的事实：**任何模式下都不需要 Key**。）
-    const { blog, feeder } = await scene({ feederFish: 10 });
-    await prisma.user.update({
-      where: { id: feeder.id },
-      data: { fishApiKeyEncrypted: 'fernet-blob-that-would-never-decrypt' },
-    });
-
-    expect((await feedBlog(blog.id, feeder.id, 1)).ok).toBe(true);
-    await expectLedgerConsistent('投喂者带着坏密文时');
-  });
-});
-
 // ── 禁言：校验在路由层，服务层不管 ──────────────────────────────────────────
 
 describe('禁言用户', () => {

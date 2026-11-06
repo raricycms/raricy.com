@@ -43,7 +43,10 @@ function run(args: string[], options: { url?: string; cwd?: string; timeout?: nu
     cwd: options.cwd ?? ROOT,
     env,
     encoding: 'utf8',
-    timeout: options.timeout ?? 180_000,
+    // 迁移数已到 43 个：每个迁移都要起一次 `prisma db execute` 子进程，空库全量 up 在
+    // 高负载机器上会逼近原来的 180s（本地并行跑测试时实测超时）。给足余量，避免把
+    // 「机器忙」误报成迁移缺陷。
+    timeout: options.timeout ?? 300_000,
     windowsHide: true,
   });
   return {
@@ -176,10 +179,20 @@ afterAll(() => {
 });
 
 describe('migrate up 仅应用 SQL', () => {
-  it('空库首跑只应用结构，不写 Reactive 标记或快照', () => {
+  it('空库首跑只应用结构，不写 Reactive 标记；41/42 的索引与退役项已落地', () => {
     expect(one<{ n: number }>(BASE_DB, 'SELECT COUNT(*) AS n FROM _raricy_migrations').n).toBe(MIGRATION_COUNT);
     expect(one<{ n: number }>(BASE_DB, 'SELECT COUNT(*) AS n FROM reactive_source_migrations').n).toBe(0);
-    expect(one<{ n: number }>(BASE_DB, 'SELECT COUNT(*) AS n FROM reactive_snapshots').n).toBe(0);
+    // 42_retire_residual：快照表、账户 Key 列、profile 手机排序列都已删除。
+    expect(one<{ n: number }>(BASE_DB, "SELECT COUNT(*) AS n FROM sqlite_master WHERE type='table' AND name='reactive_snapshots'").n).toBe(0);
+    expect(one<{ n: number }>(BASE_DB, "SELECT COUNT(*) AS n FROM pragma_table_info('users') WHERE name='fish_api_key_encrypted'").n).toBe(0);
+    expect(one<{ n: number }>(BASE_DB, "SELECT COUNT(*) AS n FROM pragma_table_info('profile_blocks') WHERE name='sort'").n).toBe(0);
+    // 41_lookup_indexes：R3-015 的两条热点索引都在（空库建索引 → 物理名与 schema.map 一致）。
+    expect(
+      one<{ n: number }>(
+        BASE_DB,
+        "SELECT COUNT(*) AS n FROM sqlite_master WHERE type='index' AND name IN ('ix_notifications_recipient_read','ix_market_positions_open')"
+      ).n
+    ).toBe(2);
   });
   it('错误或旧版正文不阻塞 SQL up，正文、快照与索引均不改写', () => {
     const target = path.join(SANDBOX, 'content.db');
@@ -193,7 +206,6 @@ describe('migrate up 仅应用 SQL', () => {
       expect(output(result)).not.toContain('[reactive]');
     }
     expect(fileHash(target)).toBe(before);
-    expect(one<{ n: number }>(target, 'SELECT COUNT(*) AS n FROM reactive_snapshots').n).toBe(0);
     expect(one<{ n: number }>(target, 'SELECT COUNT(*) AS n FROM public_blog_search_state').n).toBe(0);
   });
   it('status / verify 只读；空库不创建跟踪表', () => {

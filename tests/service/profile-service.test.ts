@@ -254,7 +254,7 @@ describe('文章摘要（只给 h≥2 的块，读时现算）', () => {
 });
 
 describe('保存', () => {
-  it('读序 = 桌面 (y, x)；profile_blocks.sort 既不读也不写', async () => {
+  it('读序 = 桌面 (y, x)（手机由投影得出；旧的 sort 列已在 migration 42 删除）', async () => {
     const u = await makeUser({ role: 'core' });
     const a = await makeBlog({ authorId: u.id, visibility: 'public', title: 'A' });
     const b = await makeBlog({ authorId: u.id, visibility: 'public', title: 'B' });
@@ -274,16 +274,9 @@ describe('保存', () => {
       [2, 1],
     ]);
 
-    // 保存路径不再写 sort：两行都停在列默认值 0。这一列已无任何读取方。
+    // 手机顺序是 (x, y) 的投影，不再有独立的排序列；保存只落坐标。
     const rows = await prisma.profileBlock.findMany({ where: { userId: u.id, deleted: false } });
-    expect(rows.map((r) => r.sort)).toEqual([0, 0]);
-
-    // 就算有人手工把 sort 改成与 (y, x) 相反的值，读序也不受影响 ——
-    // 谁再按 sort 排序，症状是「手机顺序与桌面阅读顺序对不上」，且全程不报错。
-    const rowA = rows.find((r) => JSON.parse(r.config).blogId === a.id)!;
-    const rowB = rows.find((r) => JSON.parse(r.config).blogId === b.id)!;
-    await prisma.profileBlock.update({ where: { id: rowA.id }, data: { sort: 99 } });
-    await prisma.profileBlock.update({ where: { id: rowB.id }, data: { sort: 0 } });
+    expect(rows).toHaveLength(2);
 
     const again = await getProfilePageData(u.id, { isOwner: false });
     expect(again.blocks.map((x) => (x.view?.kind === 'blog' ? x.view.title : ''))).toEqual(['A', 'B']);

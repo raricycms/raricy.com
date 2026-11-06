@@ -85,8 +85,6 @@ model User {
   // SQLite 列仍是 REAL 亲和（动态类型，整数值无损存取；db pull 会显示 Float，以此注释为准）。
   driedFish Int @default(0) @map("dried_fish")
 
-  fishApiKeyEncrypted String? @map("fish_api_key_encrypted")
-
   /// 当前装备的头像框 key。**冗余列** —— 权威持有关系在 user_frames。
   /// 唯一写入者是 src/lib/frame-service.ts 的 grantFrame / revokeFrame / equipFrame
   /// （见该文件头部的不变量 F1/F2）。**别在渲染点直接读它** —— 渲染一律走
@@ -618,6 +616,8 @@ model Notification {
   recipient User  @relation("NotificationRecipient", fields: [recipientId], references: [id])
   actor     User? @relation("NotificationActor", fields: [actorId], references: [id])
   @@index([timestamp], map: "ix_notifications_timestamp")
+  // 列表 / 未读数 / 批量已读的主谓词（migration 41，R3-015）。
+  @@index([recipientId, read, timestamp], map: "ix_notifications_recipient_read")
 
   @@map("notifications")
 }
@@ -837,7 +837,7 @@ model FishApiToken {
 model FishWebhookEndpoint {
   userId              String    @id @map("user_id")
   url                 String
-  /** Fernet 密文（同 User.fishApiKeyEncrypted）。签名密钥是凭证，不能明文落库。 */
+  /** Fernet 密文（与 secret-box.ts 同一套派生）。签名密钥是凭证，不能明文落库。 */
   secretEncrypted     String    @map("secret_encrypted")
   disabledAt          DateTime? @map("disabled_at")
   /** 只用于展示，**不自动停用** —— 悄悄停掉全部回调是静默失效。 */
@@ -945,6 +945,8 @@ model MarketPosition {
 
   user User @relation(fields: [userId], references: [id])
   @@index([userId, status], map: "ix_market_positions_user_status")
+  // 强平扫描 `status='open' AND liquidation_price > 0`（migration 41，R3-015）。
+  @@index([status, liquidationPrice], map: "ix_market_positions_open")
   @@map("market_positions")
 }
 
@@ -1367,10 +1369,6 @@ model ProfileBlock {
   h         Int       @default(1)
   /// JSON 文本；每类块自己的参数（blogId / imageId / text / url…）。
   config    String    @default("{}")
-  /// ⚠️ **历史列，2026-10 起不再被读写**。迁移 32 当初用它存手机端的独立顺序；改版
-  /// 后手机 2 列由桌面 (x, y) 投影得出（src/lib/profile-blocks.ts 的 projectMobile），
-  /// 两端是同一份布局，因此这一列既不是读序也不是真相。旧值留在库里无害，别照着它写新代码。
-  sort      Int       @default(0)
   createdAt DateTime? @map("created_at")
   updatedAt DateTime? @map("updated_at")
   deleted   Boolean   @default(false)
@@ -1381,9 +1379,7 @@ model ProfileBlock {
   @@map("profile_blocks")
 }
 
-// reactive 正文的同版本静态快照（迁移 36）。
-// 存的是可信编译产物（LocalDocument + hostData），不是作者上传的 HTML。
-// 正文与这一行必须在同一个事务里写入；编译签名不一致的旧行按 stale 拒读。
+// 正文变换完成标记（与正文写入同一事务，确保数据迁移只执行一次）。
 model ReactiveSourceMigration {
   name        String @id
   completedAt String @map("completed_at")
@@ -1391,23 +1387,3 @@ model ReactiveSourceMigration {
   @@map("reactive_source_migrations")
 }
 
-model ReactiveSnapshot {
-  id              String @id
-  kind            String
-  contentId       String @map("content_id")
-  contentVersion  String @map("content_version")
-  format          String @default("reactive")
-  scope           String @default("external")
-  syntaxVersion   String @map("syntax_version")
-  compilerVersion String @map("compiler_version")
-  adapterVersion  String @map("adapter_version")
-  optionsKey      String @map("options_key")
-  documentJson    String @map("document_json")
-  hostDataJson    String @map("host_data_json")
-  digest          String
-  generatedAt     String @map("generated_at")
-
-  @@unique([kind, contentId, contentVersion], name: "uq_reactive_snapshot_version")
-  @@index([kind, contentId], name: "idx_reactive_snapshot_content")
-  @@map("reactive_snapshots")
-}

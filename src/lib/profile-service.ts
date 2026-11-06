@@ -24,12 +24,11 @@
 // 本人是同一份：博客有 external 档、图片音频有 isPublic。主页不再做「core+ 才看
 // 内容」那套分档（那是旧档案页的口径），所以这里没有 canSeeContent。
 //
-// 【顺序：桌面阅读顺序 (y, x)，sort 不再决定任何东西】2026-10 改版后手机端是桌面布局
+// 【顺序：桌面阅读顺序 (y, x)】2026-10 改版后手机端是桌面布局
 // 的**投影**（profile-blocks.ts 的 projectMobile），不再是「另一套按保存顺序流式排」
-// 的布局。所以读路径只按 (y, x) 排 —— **不读 `profile_blocks.sort`**；保存路径也不再
-// 写它。迁移 32 加的那一列还留在库里，旧值**无害**（没有任何读取方），删列要另做迁移，
-// 不值得。⚠️ 谁再按 sort 排序，症状是「手机上看到的顺序与桌面阅读顺序对不上」，而
-// **全程不报错** —— 手机顺序的唯一来源已经是 (x, y)。
+// 的布局。所以读路径只按 (y, x) 排；保存路径也只落坐标。迁移 32 加的 `sort` 列
+// 已在 migration 42 删除。⚠️ 谁再按保存顺序排序，症状是「手机上看到的顺序与桌面阅读
+// 顺序对不上」，而**全程不报错** —— 手机顺序的唯一来源已经是 (x, y)。
 //
 // 【excerpt 是读时现算的，不是又一份快照】文章块在 h≥2（高卡片）时带一段正文纯文本
 // 摘要：只对**这些块指向的文章**额外查一次 blog_contents，且查询仍叠归属与
@@ -302,9 +301,8 @@ export async function getProfilePageData(
 ): Promise<ProfilePageData> {
   const rows = await prisma.profileBlock.findMany({
     where: { userId, deleted: false },
-    // 桌面阅读顺序 (y, x) 是**唯一**的布局顺序：手机端由它投影（projectMobile），
-    // 不再读迁移 32 那一列 sort。旧行里残留的 sort 值不会影响任何东西 —— 刻意不删列、
-    // 不回填（那需要一次迁移，而它已经不参与任何判定）。
+    // 桌面阅读顺序 (y, x) 是**唯一**的布局顺序：手机端由它投影（projectMobile）。
+    // 迁移 32 的 sort 列已在 migration 42 删除，没有第二份顺序可读。
     orderBy: [{ y: 'asc' }, { x: 'asc' }],
     select: { id: true, kind: true, x: true, y: true, w: true, h: true, config: true },
   });

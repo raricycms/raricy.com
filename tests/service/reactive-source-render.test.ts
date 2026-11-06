@@ -12,12 +12,8 @@ afterEach(() => vi.restoreAllMocks());
 const source = '<radio-group bind="pace" label="节奏" initial="guided">\n<option value="guided">跟随</option>\n<option value="free">自由</option>\n</radio-group>';
 
 describe('仅源码保存与按需渲染', () => {
-  it('博客和剪贴板创建、更新、冷读取完全不访问快照模型', async () => {
+  it('博客和剪贴板创建、更新、冷读取都不落快照（快照表已随 R3-018 退役）', async () => {
     const user = await makeUser();
-    const forbidden = () => { throw new Error('snapshot access forbidden'); };
-    vi.spyOn(prisma.reactiveSnapshot, 'create').mockImplementation(forbidden);
-    vi.spyOn(prisma.reactiveSnapshot, 'upsert').mockImplementation(forbidden);
-    vi.spyOn(prisma.reactiveSnapshot, 'findUnique').mockImplementation(forbidden);
     const data = { title: '源码文章', description: '', content: source, categoryId: null, visibility: 'internal' as const, format: 'reactive' as const };
     const blogId = await createBlog(user.id, data);
     const clip = await createClip(user.id, { title: '源码片段', content: source, format: 'reactive' });
@@ -30,7 +26,6 @@ describe('仅源码保存与按需渲染', () => {
     const result = await resolveReadRender({ source: edited, format: 'reactive', viewer: user, mode: 'expand' });
     expect(result.bundle?.result.ok).toBe(true);
     if (result.bundle?.result.ok) expect(result.bundle.result.document.bindings.pace).toBeDefined();
-    expect(await prisma.reactiveSnapshot.count()).toBe(0);
   });
 
   it('draft-2 在冷读时临时适配，存储原文和版本保持不变', async () => {
@@ -41,7 +36,6 @@ describe('仅源码保存与按需渲染', () => {
     const rendered = await resolveReadRender({ source: old, format: 'reactive', syntaxVersion: 'local-draft-2', viewer: user, mode: 'expand' });
     expect(rendered.bundle?.result.ok).toBe(true);
     expect(await prisma.blogContent.findUniqueOrThrow({ where: { blogId: id } })).toMatchObject({ content: old, syntaxVersion: 'local-draft-2' });
-    expect(await prisma.reactiveSnapshot.count()).toBe(0);
   });
 
   it('不安全旧修订的保存返回语法错误，不抛服务异常', async () => {

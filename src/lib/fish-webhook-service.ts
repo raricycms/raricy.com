@@ -207,7 +207,7 @@ export async function disableWebhookEndpoint(userId: string): Promise<boolean> {
 // 【两把钥匙的分工】**写**一律用 `FISH_ENCRYPTION_KEY`；**读**先试它，解不开再
 // 回退 `SECRET_KEY`。回退这条不是设计，是**过渡**：存量密文是仓库早期用会话密钥
 // 封的（那时两处凭证共用一套派生，见 secret-box.ts 文件头；另一处
-// `users.fish_api_key_encrypted` 已经死了，只剩这一处还活着）。
+// `users.fish_api_key_encrypted` 已随 migration 42 删除，只剩这一处还活着）。
 //
 // 为什么读要留回退：否则「先迁移再上线」成了一条**没有报错的部署顺序约束** ——
 // 顺序反了就是全部回调投递失败。有回退就没有时序问题：设上 `FISH_ENCRYPTION_KEY`、

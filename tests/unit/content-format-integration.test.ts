@@ -146,8 +146,6 @@ describe('博客格式：validateBlogData / 落库 / 读出口', () => {
     const row = await prisma.blogContent.findUnique({ where: { blogId: id } });
     expect(row?.format).toBe('reactive');
     expect(row?.syntaxVersion).toBe('local-draft-3');
-    const snap = await prisma.reactiveSnapshot.findFirst({ where: { kind: 'blog', contentId: id } });
-    expect(snap).toBeNull();
   });
 
   it('历史 HTML 属性被净化后正文仍可读，并与交互组件一起发布', async () => {
@@ -156,8 +154,6 @@ describe('博客格式：validateBlogData / 落库 / 读出口', () => {
     const id = await createBlog(u.id, {
       ...BLOG_BASE, content, categoryId: null, visibility: 'internal', format: 'reactive',
     });
-    const snapshot = await prisma.reactiveSnapshot.findFirst({ where: { kind: 'blog', contentId: id } });
-    expect(snapshot).toBeNull();
     const rendered = await resolveReadRender({ source: content, format: 'reactive', viewer: u, mode: 'expand' });
     if (!rendered.bundle?.result.ok) throw new Error('live compilation failed');
     const document = rendered.bundle.result.document;
@@ -179,7 +175,6 @@ describe('博客格式：validateBlogData / 落库 / 读出口', () => {
     ).rejects.toThrow('正文无法编译渲染');
     expect(await prisma.blog.count()).toBe(0);
     expect(await prisma.blogContent.count()).toBe(0);
-    expect(await prisma.reactiveSnapshot.count()).toBe(0);
   });
 
   it('★ 有效增强语法却写 markdown → 具名格式不匹配，不落库 ★', async () => {
@@ -234,7 +229,6 @@ describe('博客格式：validateBlogData / 落库 / 读出口', () => {
       ).rejects.toMatchObject({ code: 'content_format_mismatch' });
     }
     expect(await prisma.blog.count()).toBe(0);
-    expect(await prisma.reactiveSnapshot.count()).toBe(0);
   });
 
   it('超预算的未闭合标签正文被明确拒绝，不落库、不截断原文', async () => {
@@ -251,7 +245,6 @@ describe('博客格式：validateBlogData / 落库 / 读出口', () => {
     ).rejects.toMatchObject({ code: 'content_unrenderable' });
     expect(await prisma.blog.count()).toBe(0);
     expect(await prisma.blogContent.count()).toBe(0);
-    expect(await prisma.reactiveSnapshot.count()).toBe(0);
   });
 
   it('未知普通标签的历史 Markdown 仍可保存（不被误判成增强语法）', async () => {
@@ -266,10 +259,6 @@ describe('博客格式：validateBlogData / 落库 / 读出口', () => {
       format: 'markdown',
     });
     expect((await prisma.blogContent.findUniqueOrThrow({ where: { blogId: id } })).format).toBe('markdown');
-    const snapshot = await prisma.reactiveSnapshot.findFirst({
-      where: { kind: 'blog', contentId: id, format: 'markdown' },
-    });
-    expect(snapshot).toBeNull();
   });
 
   it('更新省略 format → 保留库里原值（markdown 仍是 markdown）', async () => {
@@ -307,7 +296,6 @@ describe('博客格式：validateBlogData / 落库 / 读出口', () => {
     expect(row?.content).toBe('# 新 reactive\n\n正文');
     expect(row?.format).toBe('reactive');
     expect(row?.syntaxVersion).toBe('local-draft-3');
-    expect(await prisma.reactiveSnapshot.count({ where: { kind: 'blog', contentId: id, format: 'reactive' } })).toBe(0);
 
     const downgraded = await updateBlog(
       id,
@@ -368,9 +356,6 @@ describe('剪贴板格式：createClip / updateClip / getClip', () => {
       const row = await prisma.clipText.findUnique({ where: { clipId: reactive.id } });
       expect(row?.format).toBe('reactive');
       expect(row?.syntaxVersion).toBe('local-draft-3');
-      expect(
-        await prisma.reactiveSnapshot.count({ where: { kind: 'clipboard', contentId: reactive.id, format: 'reactive' } })
-      ).toBe(0);
     }
 
     expect(
@@ -428,9 +413,6 @@ describe('剪贴板格式：createClip / updateClip / getClip', () => {
     expect(reactive?.content).toBe('# 改过的 reactive\n\n正文');
     expect(reactive?.format).toBe('reactive');
     expect(reactive?.syntaxVersion).toBe('local-draft-3');
-    expect(
-      await prisma.reactiveSnapshot.count({ where: { kind: 'clipboard', contentId: reactiveId, format: 'reactive' } })
-    ).toBe(0);
 
     expect(
       await updateClip(reactiveId, u.id, {
