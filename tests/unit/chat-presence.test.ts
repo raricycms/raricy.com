@@ -17,7 +17,7 @@ import {
   VIEWING_TTL_MS,
   __resetChatPresence,
 } from '@/lib/chat-presence';
-import { subscribe, onlineConnections, __resetChatBus, type ChatSubscriber } from '@/lib/chat-bus';
+import { subscribe, __resetChatBus, type ChatSubscriber } from '@/lib/chat-bus';
 
 /** 模拟「这个人开着 /chat 页」：讨论流连着（客户端切后台会自己关掉它）。 */
 function connect(userId: string): () => void {
@@ -102,6 +102,7 @@ describe('chat-presence：三条判据', () => {
     expect(isViewingChannel('u-b', 'lobby')).toBe(true);
     off();
     offB();
-    expect(onlineConnections()).toBe(0);
+    // 连接断了「在看」立刻不成立（不必等 TTL）——这是本模块最要紧的那条判据
+    expect(isViewingChannel('u-b', 'lobby')).toBe(false);
   });
 });

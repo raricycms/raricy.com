@@ -147,13 +147,6 @@ export function kickTopbarUser(userId: string): void {
   state.subs.delete(userId);
 }
 
-/** 当前在线连接数（诊断用；同一用户多标签页算多条）。 */
-export function onlineConnections(): number {
-  let n = 0;
-  for (const set of state.subs.values()) n += set.size;
-  return n;
-}
-
 // ── 心跳 ────────────────────────────────────────────────────────────────────
 
 function ensureHeartbeat(): void {

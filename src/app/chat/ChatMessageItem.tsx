@@ -477,7 +477,7 @@ function ChatMessageItemInner({
     const pattedMe = msg.pat.target_id === currentUserId;
     return (
       <div
-        className={`chat-pat${pattedMe ? ' chat-pat--me' : ''}${canMenu ? ' chat-pat--actionable' : ''}${pressed ? ' chat-pat--pressed' : ''}`}
+        className={`chat-pat${pattedMe ? ' chat-pat--me' : ''}${pressed ? ' chat-pat--pressed' : ''}`}
         {...handlers}
       >
         <span className="chat-pat__text">
@@ -609,7 +609,7 @@ function ChatMessageItemInner({
 
   return (
     <div
-      className={`chat-msg${isMine ? ' chat-msg--mine' : ''}${grouped ? ' chat-msg--grouped' : ''}${highlighted ? ' chat-msg--highlight' : ''}${canMenu ? ' chat-msg--actionable' : ''}${pressed ? ' chat-msg--pressed' : ''}`}
+      className={`chat-msg${isMine ? ' chat-msg--mine' : ''}${grouped ? ' chat-msg--grouped' : ''}${highlighted ? ' chat-msg--highlight' : ''}${pressed ? ' chat-msg--pressed' : ''}`}
       data-message-id={msg.id}
       {...handlers}
     >

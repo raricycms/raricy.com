@@ -14,7 +14,7 @@ import {
   publishToUsers,
   publishToAll,
   kickUser,
-  onlineConnections,
+  hasSubscriber,
   sseFrame,
   __resetChatBus,
   type ChatSubscriber,
@@ -116,13 +116,13 @@ describe('chat-bus：投递', () => {
 });
 
 describe('chat-bus：订阅生命周期', () => {
-  it('注销后不再收消息；最后一条注销后在线数归零', () => {
+  it('注销后不再收消息，且该用户不再算在线', () => {
     const a = makeSub('u-a');
     const off = subscribe(a.sub);
-    expect(onlineConnections()).toBe(1);
+    expect(hasSubscriber('u-a')).toBe(true);
 
     off();
-    expect(onlineConnections()).toBe(0);
+    expect(hasSubscriber('u-a')).toBe(false);
 
     publishToUsers(['u-a'], msgEvent('ch-1', 1), 1);
     expect(a.chunks).toHaveLength(0);
@@ -133,9 +133,9 @@ describe('chat-bus：订阅生命周期', () => {
     const a2 = makeSub('u-a');
     const off1 = subscribe(a1.sub);
     subscribe(a2.sub);
-    expect(onlineConnections()).toBe(2);
 
     off1();
+    expect(hasSubscriber('u-a'), '还有一条连接在，不该判成离线').toBe(true);
     publishToUsers(['u-a'], msgEvent('ch-1', 2), 2);
 
     expect(a1.chunks).toHaveLength(0);
@@ -147,7 +147,7 @@ describe('chat-bus：订阅生命周期', () => {
     const off = subscribe(a.sub);
     off();
     expect(() => off()).not.toThrow();
-    expect(onlineConnections()).toBe(0);
+    expect(hasSubscriber('u-a')).toBe(false);
   });
 });
 
@@ -197,7 +197,9 @@ describe('chat-bus：背压与踢连接', () => {
     expect(a1.state.closed).toBe(true);
     expect(a2.state.closed).toBe(true);
     expect(b.state.closed).toBe(false);
-    expect(onlineConnections()).toBe(1);
+    // 被踢的用户整条记录都没了；没被踢的照常在线
+    expect(hasSubscriber('u-a')).toBe(false);
+    expect(hasSubscriber('u-b')).toBe(true);
 
     publishToUsers(['u-a'], msgEvent('ch-1', 5), 5);
     expect(a1.chunks).toHaveLength(0);

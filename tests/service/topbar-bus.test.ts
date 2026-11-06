@@ -15,7 +15,6 @@ import {
   publishToUser,
   hasSubscriber,
   kickTopbarUser,
-  onlineConnections,
   __resetTopbarBus,
   type TopbarPatch,
   type TopbarSubscriber,
@@ -116,13 +115,13 @@ describe('topbar-bus：hasSubscriber（推送方靠它决定要不要去算值�
 });
 
 describe('topbar-bus：订阅生命周期', () => {
-  it('注销后不再收帧；最后一条注销后在线数归零', () => {
+  it('注销后不再收帧，且该用户不再算在线', () => {
     const a = makeSub('u-a');
     const off = subscribe(a.sub);
-    expect(onlineConnections()).toBe(1);
+    expect(hasSubscriber('u-a')).toBe(true);
 
     off();
-    expect(onlineConnections()).toBe(0);
+    expect(hasSubscriber('u-a')).toBe(false);
 
     publishToUser('u-a', { count: 1 });
     expect(a.chunks).toHaveLength(0);
@@ -133,7 +132,7 @@ describe('topbar-bus：订阅生命周期', () => {
     const off = subscribe(a.sub);
     off();
     expect(() => off()).not.toThrow();
-    expect(onlineConnections()).toBe(0);
+    expect(hasSubscriber('u-a')).toBe(false);
   });
 });
 
@@ -181,8 +180,8 @@ describe('topbar-bus：背压与踢连接', () => {
     expect(a1.state.closed).toBe(true);
     expect(a2.state.closed).toBe(true);
     expect(b.state.closed).toBe(false);
-    expect(onlineConnections()).toBe(1);
     expect(hasSubscriber('u-a')).toBe(false);
+    expect(hasSubscriber('u-b'), '没被踢的用户照常在线').toBe(true);
 
     publishToUser('u-a', { count: 1 });
     expect(a1.chunks).toHaveLength(0);
