@@ -29,6 +29,32 @@
     var(--safe-left);
 }
 
+/* 全站 .modal-overlay 基态（R3-646 从 pages/admin/_users.scss 归位到本文件）：
+   讨论、图床 / 表情 / 帖子选择器、练手盘、栏目编辑等十来处都用这一个类定位遮罩；
+   它不属于管理端用户页，删了这些弹窗会退化成页面流里的一块透明 div。
+   与 .modal 同一套「可滚弹窗」约定：内容比视口高时整层可滚，垂直定位交给子元素
+   margin:auto（flex 的 align-items:center 会把超高内容的顶部挤出可滚区域）。
+   z-index 10000 与 .modal 的 1050 是两套壳的既有层级，是否统一待视觉决定。 */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 10000;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  overflow-y: auto;
+
+  &.show {
+    display: flex;
+  }
+}
+
+.modal-overlay .modal-dialog { margin: auto; }
+
 .modal.is-open { display: flex; }
 
 .modal-dialog {
@@ -92,6 +118,4 @@
   border-bottom: 1px solid var(--color-border);
 }
 .list-group .list-group-item:last-child { border-bottom: none; }
-.list-group-item-action { cursor: pointer; }
-.list-group-item-action:hover { background: var(--color-background-subtle); }
 

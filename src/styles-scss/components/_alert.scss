@@ -27,10 +27,4 @@
   background-color: var(--color-warning-secondary);
 }
 
-// Dismissible / fade helpers
-.alert-dismissible { padding-right: 3rem; }
-.alert-dismissible .btn-close { position: absolute; top: 0.5rem; right: 0.5rem; }
-.fade { opacity: 0; transition: opacity .15s linear; }
-.fade.show { opacity: 1; }
-
 

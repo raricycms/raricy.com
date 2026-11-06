@@ -71,7 +71,6 @@ export default function LoginPage() {
                 onChange={(e) => setUsername(e.target.value)}
                 required
               />
-              <div className="invalid-feedback">请输入用户名</div>
             </div>
 
             <div className="form-group">
@@ -88,7 +87,6 @@ export default function LoginPage() {
                 required
                 minLength={6}
               />
-              <div className="invalid-feedback">密码长度至少6个字符</div>
             </div>
 
             <button

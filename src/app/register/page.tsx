@@ -99,9 +99,6 @@ export default function RegisterPage() {
               <div className="form-text">
                 没有邀请码？<Link href="/contact">申请邀请</Link>
               </div>
-              <div className="invalid-feedback">
-                请输入有效的邀请码
-              </div>
             </div>
 
             <div className="form-group">
@@ -121,9 +118,6 @@ export default function RegisterPage() {
                 minLength={3}
                 maxLength={20}
               />
-              <div className="invalid-feedback">
-                用户名长度应在3-20个字符之间
-              </div>
             </div>
 
             <div className="form-group">
@@ -141,9 +135,6 @@ export default function RegisterPage() {
                 onChange={(e) => setEmail(e.target.value)}
                 required
               />
-              <div className="invalid-feedback">
-                请输入有效的邮箱地址
-              </div>
             </div>
 
             <div className="form-group">
@@ -166,9 +157,6 @@ export default function RegisterPage() {
                 required
                 minLength={6}
               />
-              <div className="invalid-feedback">
-                密码长度至少6个字符
-              </div>
             </div>
 
             <div className="form-group">
@@ -190,9 +178,6 @@ export default function RegisterPage() {
                 }}
                 required
               />
-              <div className="invalid-feedback">
-                两次输入的密码不一致
-              </div>
             </div>
 
             <TurnstileWidget onToken={setTurnstileToken} />
@@ -212,9 +197,6 @@ export default function RegisterPage() {
                   <Link href="/terms" target="_blank">用户协议</Link> 和{' '}
                   <Link href="/privacy" target="_blank">隐私政策</Link>
                 </label>
-                <div className="invalid-feedback">
-                  请同意用户协议和隐私政策
-                </div>
               </div>
             </div>
 

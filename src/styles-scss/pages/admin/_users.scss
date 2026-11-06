@@ -159,35 +159,6 @@
   border-top: 1px solid var(--color-border);
 }
 
-// ---- 弹窗外壳 ----
-// ⚠️ 这一段是**全站** .modal-overlay 的定义（components/_modal.scss 只补了安全区，
-// 并管着另一套 .modal）。讨论、图床 / 表情 / 帖子选择器、练手盘、栏目编辑等十来处
-// 都靠这一个类定位遮罩；components/_poster.scss 里还专门注明「定义在
-// pages/admin/_users.scss」。所以用户页改版**不能**顺手删它 ——
-// 删了这些弹窗会退化成页面流里的一块透明 div。
-// 与 .modal 同一套「可滚弹窗」约定：内容比视口高时整层可滚，垂直定位交给子元素
-// margin:auto（flex 的 align-items:center 会把超高内容的顶部挤出可滚区域）。
-.modal-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background: rgba(0, 0, 0, 0.5);
-  z-index: 10000;
-  display: none;
-  align-items: center;
-  justify-content: center;
-  overflow-y: auto;
-  // 安全区与滚动边距统一由 components/_modal.scss 的共享规则给出。
-
-  &.show {
-    display: flex;
-  }
-}
-
-.modal-overlay .modal-dialog { margin: auto; }
-
 // ---- 响应式 ----
 @media (max-width: 576px) {
   .user-card {

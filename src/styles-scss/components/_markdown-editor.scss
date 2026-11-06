@@ -413,11 +413,6 @@
     padding: 8px;
   }
 
-  .md-toolbar__menu--components {
-    width: auto;
-    max-height: 40vh;
-  }
-
   .md-toolbar__section--emoji {
     grid-column: auto;
   }
@@ -1342,14 +1337,6 @@
   }
 
   @media (max-width: 767px) {
-    // 窄屏：Reactive 入口跟随其余次要分组收进「更多工具」。order 只在窄屏
-    // 设置 —— 放进宽屏会把这一组甩到工具条最右边（宽屏其余分组 order: 0）。
-    // 与「更多」同 order、且 DOM 排在它后面 ⇒ 展开时开关原地不动。
-    .md-toolbar__group--reactive {
-      order: 3;
-    }
-
-
     // 触摸控件：菜单与诊断行至少 44px（WCAG 2.5.8 的 24px 之上留足余量）。
     .md-authoring__diagnostic,
     .md-authoring__completion,

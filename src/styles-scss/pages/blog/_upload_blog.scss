@@ -18,12 +18,3 @@
         padding: 16px;
     }
 }
-
-#message-container {
-    position: fixed;
-    top: 20px;
-    right: 20px;
-    z-index: 9999;
-    min-width: 300px;
-    background: var(--color-background-content);
-}

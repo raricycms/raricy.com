@@ -54,8 +54,6 @@ textarea.form-control {
   font-size: 0.85rem;
 }
 
-.form-option { display: block; padding: 0.375rem 0.75rem; font-size: 1rem; line-height: 1.5; color: var(--color-text-primary); background-color: var(--color-background-page); cursor: pointer; }
-
 // <select> 属于字段而不是按钮：与 .form-control 同一套外观（原先它是
 // 品牌浅底 + 品牌字 + 粗体，那是「最高级按钮」的样子，不是输入框的样子）。
 .form-select {
@@ -89,11 +87,10 @@ select.form-control {
 
 .form-text { display: block; margin-top: 0.25rem; font-size: 0.875rem; color: var(--color-text-secondary); }
 
-.invalid-feedback { display: none; width: 100%; margin-top: .25rem; font-size: .875rem; color: var(--color-warning-primary); }
-
-/* ⚠️ 字段常态是 border: none，所以这里的 border-color 只在**同时**给了可见边框时
-   才有意义 —— 目前无效态是靠 .invalid-feedback 的文字表达的。若以后要给错误字段
-   描边，必须同时在常态预留一条 transparent 边框，否则字段会在报错时长高。 */
+/* 字段级错误统一走 toast（R3-647 产品口径）：`.invalid-feedback` 的显示规则与 9 处
+   错误 div 已删，不再新增第二套反馈通道。下面的无效态描边保留作将来恢复字段级提示的
+   预留；字段常态是 border: none，真要用时必须同时给常态留 transparent 边框，否则
+   字段会在报错时长高。 */
 .is-invalid, .was-validated .form-control:invalid {
   border-color: var(--color-warning-primary);
   background-image: none;
@@ -103,8 +100,6 @@ select.form-control {
 .was-validated .form-control:invalid:focus {
   box-shadow: 0 0 0 3px var(--color-warning-secondary);
 }
-.is-invalid ~ .invalid-feedback,
-.was-validated .form-control:invalid ~ .invalid-feedback { display: block; }
 
 .form-check { display: block; min-height: 1.5rem; padding-left: 1.5rem; margin-bottom: .5rem; }
 .form-check-input { width: 1rem; height: 1rem; margin-left: -1.5rem; margin-top: 0.25rem; vertical-align: top; background-color: var(--color-text-tertiary); border: none; appearance: none; border-radius: 999px; cursor: pointer; }
@@ -120,21 +115,6 @@ select.form-control {
 //   .form-check-input { background-color: #1e1e1e; border-color: #4a5568; }
 // }
 
-
-/* ── 随 SCSS 拆分（02f6ab5）丢失的那一批 ────────────────────────────────────── */
-
-/* 两栏表单行（后台广播页的「通知范围」）。窄屏自动折成一列。 */
-.form-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 16px;
-  margin-bottom: 16px;
-
-  > * {
-    flex: 1;
-    min-width: 200px;
-  }
-}
 
 /* 字段下方的说明文字。与 .form-text 同一档外观 —— 但**不能**直接复用 .form-text：
    这两个类所在的元素挂的是 .text-muted（只给颜色），没有 .form-text，

@@ -1,4 +1,7 @@
 /* Site footer (custom, no Bootstrap dependency) */
+
+@use '../abstracts/mixins' as m;
+
 .site-footer {
   background-color: var(--color-background-card);
   color: var(--color-text-primary);
@@ -7,19 +10,17 @@
   box-shadow: var(--shadow-card-brand);
 }
 .site-footer a { color: var(--color-brand-primary); text-decoration: none; }
-.site-footer a:hover { color: var(--color-brand-primary) }
 
+/* 页脚内容与 .container / .site-container 共用同一宽度阶梯与 16px 内距
+   （docs/frontend-styles.md §4.1）。此前这里手写 Bootstrap 阶梯（540/720/960/1140）
+   且内距 15px，576–991px 区间页脚内容比正文窄一截、左缘对不齐 —— 改用共享 mixin。 */
 .site-footer-container {
   width: 100%;
-  padding-right: 15px;
-  padding-left: 15px;
   margin-right: auto;
   margin-left: auto;
+  @include m.container-padding;
+  @include m.site-width-ladder;
 }
-@media (min-width: 576px) { .site-footer-container { max-width: 540px; } }
-@media (min-width: 768px) { .site-footer-container { max-width: 720px; } }
-@media (min-width: 992px) { .site-footer-container { max-width: 960px; } }
-@media (min-width: 1200px) { .site-footer-container { max-width: 1140px; } }
 
 .site-footer-row {
   display: flex;

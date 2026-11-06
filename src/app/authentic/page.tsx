@@ -74,9 +74,6 @@ export default function AuthenticPage() {
                 onChange={(e) => setCode(e.target.value)}
                 required
               />
-              <div className="invalid-feedback">
-                请输入有效的邀请码
-              </div>
             </div>
             <p style={{ textAlign: 'center', marginBottom: '1rem' }}>
               没有邀请码？

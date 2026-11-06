@@ -61,19 +61,3 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-
-.user-picker__hint {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin: var(--fd-space-3, 12px) 0 0;
-  font-size: 0.8rem;
-  // 次要色：这是说明，不是操作
-  color: var(--color-text-secondary);
-}
-
-.user-picker__hint svg {
-  width: 14px;
-  height: 14px;
-  flex: none;
-}

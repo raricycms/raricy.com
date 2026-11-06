@@ -12,24 +12,18 @@
 [class^="col-"], [class*=" col-"] { padding-left: calc(var(--gutter) / 2); padding-right: calc(var(--gutter) / 2); }
 
 /* 列间距档位。此前只在旧 rebuild.css 里有，随 SCSS 拆分丢了 —— 于是 .g-2/.g-3/.g-4
-   全部静默失效（没有 .g-* 规则时列距恒为默认的 16px，看不出「没生效」）。 */
-.g-0 { --gutter: 0; }
-.g-1 { --gutter: 4px; }
+   全部静默失效（没有 .g-* 规则时列距恒为默认的 16px，看不出「没生效」）。
+   只保留有生产者的档位：g-0/g-1/g-5 与 col-3/4/6、col-md-2 已零消费者清退（R3-661）。 */
 .g-2 { --gutter: 8px; }
 .g-3 { --gutter: 16px; }
 .g-4 { --gutter: 24px; }
-.g-5 { --gutter: 32px; }
 
 /* Mobile-first: columns take full width by default (lower specificity so breakpoints override) */
 [class^="col-"], [class*=" col-"] { flex: 0 0 100%; max-width: 100%; }
 .col-12 { flex: 0 0 100%; max-width: 100%; }
-.col-6 { flex: 0 0 50%; max-width: 50%; }
-.col-4 { flex: 0 0 33.3333%; max-width: 33.3333%; }
-.col-3 { flex: 0 0 25%; max-width: 25%; }
 
 /* Responsive columns to mimic Bootstrap behavior */
 @media (min-width: 768px) {
-  .col-md-2 { flex: 0 0 16.6667%; max-width: 16.6667%; }
   .col-md-4 { flex: 0 0 33.3333%; max-width: 33.3333%; }
   .col-md-6 { flex: 0 0 50%; max-width: 50%; }
   .col-md-8 { flex: 0 0 66.6667%; max-width: 66.6667%; }

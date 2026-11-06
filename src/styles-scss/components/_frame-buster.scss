@@ -5,7 +5,7 @@
 
    垂直居中照抄 _modal.scss 的结论：flex 容器上 align-items:center 会把超高内容的
    顶部挤出可滚区域，所以定位交给子元素的 margin:auto，overlay 只负责 flex + 滚动。
-   z-index 10050：站内最高是 .modal-overlay 的 10000、toast 9999 —— 这条提示必须盖住一切。 */
+   z-index 10050：站内最高是 .modal-overlay 的 10000、讨论灯箱的 9999 —— 这条提示必须盖住一切。 */
 .frame-buster {
   position: fixed;
   inset: 0;

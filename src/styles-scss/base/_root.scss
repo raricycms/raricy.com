@@ -32,8 +32,6 @@
     --color-background-subtle: #f3f4f6;
     --color-background-highlight: #eef2ff;
     --color-border: #E2E8F0;
-    --color-border-unread: #f1c40f;
-    --color-border-highlight: #007bff;
     --color-text-primary: #0f172a;
     --color-text-secondary: #64748B;
     --color-text-tertiary: #dde4ee;
@@ -43,7 +41,7 @@
     --color-success-secondary: rgba(16, 185, 129, 0.1);
     --color-info-secondary: rgba(59, 130, 246, 0.08);
     /* 收藏夹的黄色五角星。站内此前**没有**黄色系语义令牌：--color-warning-* 其实是红
-       （#ea3b3b），--color-border-unread 的 #f1c40f 是「未读边框」语义、借不得。
+       （#ea3b3b），也没有现成的黄色边框语义可借。
        与其它色系一样成对给出（secondary = 10% 淡底，用于按钮选中态的背景）。 */
     --color-star-primary: #f1c40f;
     --color-star-secondary: rgba(241, 196, 15, 0.12);
@@ -115,8 +113,6 @@
     --color-background-subtle: #1e2024;
     --color-background-highlight: #1a2040;
     --color-border: #334155;
-    --color-border-unread: #033ae3;
-    --color-border-highlight: #23A5FF;
     --color-text-primary: #f1f5f9;
     --color-text-secondary: #94A3B8;
     --color-text-tertiary: #2b3036;

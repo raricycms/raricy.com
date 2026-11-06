@@ -5,7 +5,7 @@
 //
 // 弹窗外壳（.modal-overlay / .modal-dialog / .modal-content / .modal-header）沿用
 // 站内既有那套 —— 两个坑：展开类名是 **.show**（不是 Bootstrap 的 in），
-// 且 .modal-overlay 的定义其实在 pages/admin/_users.scss 里，不在 components/_modal.scss。
+// 且 .modal-overlay 的定义在 components/_modal.scss（R3-646 已从管理端用户页归位）。
 // 与 _image-picker.scss / _fish-market.scss 是同一套用法。
 //
 // .poster-trigger 是给 <button> 的**复位**：站内没有全局 button reset，不写它就会

@@ -134,19 +134,6 @@
     background: var(--color-accent-amber-soft);
     color: var(--color-accent-amber);
   }
-
-  /* 内部日志（CLI 写下的那批，visibility≠public）。只有 /admin/logs 用得上 ——
-     公示页只列 public，永远不会出现这一档。 */
-  &--internal {
-    background: var(--color-accent-amber-soft);
-    color: var(--color-accent-amber);
-  }
-}
-
-// 类型列的动作名（/audit/<id> 详情页用这一枚；列表页的动作已由 .audit-chip 承担）。
-.log-row__type {
-  color: var(--color-text-primary);
-  font-weight: 600;
 }
 
 // 已被申诉通过的日志行：整行压暗，状态列另有「已撤回」chip。

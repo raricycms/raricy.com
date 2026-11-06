@@ -23,12 +23,6 @@
   padding: 10px 16px;
 }
 
-.button-primary-small {
-  @include m.btn-primary;
-  font-size: 12px;
-  padding: 5px 10px;
-}
-
 // 次级档的 `.button-*`：表面走次级、尺寸**跟着 .button-primary 走**。
 // 博客编辑页一行里站着「保存修改」（最高级）+「取消」（次级），两颗必须一样大 ——
 // 一档按钮配一档尺寸，用户才不会把「大小不同」读成「层级不同」。原先那两颗 <a>
@@ -62,30 +56,6 @@
   // 会被拉到与主按钮同高，文字顶格 —— 所以这里必须居中。
   align-items: center;
   gap: 10px;
-}
-
-.button-warning-small {
-  @include m.btn-primary;
-  font-size: 12px;
-  padding: 5px 10px;
-  background-color: var(--color-warning-secondary);
-  color: var(--color-warning-primary);
-
-  &:hover:not(:disabled) {
-    background-color: var(--color-warning-primary);
-    color: #fff;
-  }
-}
-
-/* Legacy alias from site.css */
-.btn-brand {
-  background: var(--color-brand-primary);
-  color: #fff;
-  border: 0;
-}
-.btn-brand:hover {
-  filter: brightness(0.95);
-  color: #fff;
 }
 
 // ── Bootstrap 形状的按钮（无 Bootstrap 依赖）──────────────────────────────────

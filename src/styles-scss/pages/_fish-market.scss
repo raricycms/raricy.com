@@ -11,13 +11,6 @@
 //  通用组件，直接用，不重写。
 // ═══════════════════════════════════════════════════════
 
-.market-subtitle {
-  text-align: center;
-  color: var(--color-text-secondary);
-  font-size: 0.95rem;
-  margin: -$space-2 0 $space-6;
-}
-
 // ── 转账卡片 ────────────────────────────────────────────────────────────────
 
 .market-card {
@@ -677,16 +670,6 @@
   }
 }
 
-// 商城小标题。刻意**不是** .page-title（与页面 h1 同类名会让 e2e 的裸选择器歧义）。
-.market-shop__title {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin: $space-8 0 $space-4;
-  font-size: 1.25rem;
-  font-weight: 700;
-  color: var(--color-text-primary);
-}
 // 两类装扮共用余额与租赁表单，分类只筛商品，不触碰转账面板。
 .market-shop__categories { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
 .market-shop__category { @include m.btn-tab; }
