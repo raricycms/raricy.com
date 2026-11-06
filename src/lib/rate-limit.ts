@@ -44,8 +44,9 @@ function snapshotPath(): string {
  *
  * ⚠️ **key 必须自带场景前缀**（如 `like:h:${userId}` / `like:d:${userId}`）。
  * rule 不参与分桶 —— 同一个 key 配不同 rule 会共用同一计数桶、互相消耗配额。
- * 现有调用方都遵守了该约定（见 blog/comment/vote/image 各处），
- * 这里用一条断言把它从「口头约定」变成「会报错的契约」。
+ * 现有调用方都遵守了该约定（见 blog/comment/vote/image 各处）。
+ * **这里没有运行时断言**：key 是调用方拼的字符串，前缀纪律靠 `RULES` 的消费者清单、
+ * 测试与评审守；新增调用方必须自带前缀（拼错不会报错，只会静默共用/分裂桶）。
  *
  * @returns { allowed, remaining, retryAfterMs }
  */
@@ -139,7 +140,6 @@ function maybeSweep(now: number) {
 
 /** 把当前所有桶写入快照文件（原子写）。返回是否成功。 */
 export function flushSnapshot(): boolean {
-  dirty = false;
   const file = snapshotPath();
   try {
     fs.mkdirSync(path.dirname(file), { recursive: true });
@@ -154,6 +154,9 @@ export function flushSnapshot(): boolean {
       })
     );
     fs.renameSync(tmp, file);
+    // 只有写成功才清 dirty：失败时保留脏标记，`exit` 兜底与下一次清扫会再试一次。
+    // （先清 dirty 会让失败的那次写入彻底失去重试机会，最多丢掉一个窗口的命中。）
+    dirty = false;
     return true;
   } catch (e) {
     console.warn(`[rate-limit] 限频快照落盘失败（降级为纯内存，不影响限流正确性）:`, e);

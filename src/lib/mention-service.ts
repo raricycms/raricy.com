@@ -2,6 +2,7 @@
 import { prisma } from './db';
 import { nowForDb } from './db-time';
 import { canAccessChannel, CHAT_KIND_LOBBY } from './chat-service';
+import { FOCUS_LOBBY_NOT_BLOCKED_WHERE } from './focus-mode';
 import type { Prisma } from '@prisma/client';
 import type { MentionScope, MentionUser } from './mention-shared';
 
@@ -32,10 +33,10 @@ export async function suggestMentionUsers(
       ? { none: { channelId: scope.id, mutedAt: { not: null } } }
       : { some: { channelId: scope.id, mutedAt: null } };
     // 大区候选人不含「专注模式屏蔽了大区」的账号（他们收不到大区 @ 通知，列出来
-    // 会让发送者以为叫得动）。判据与 chat-service 共用 isFocusLobbyBlocked：
-    // NOT (focusMode AND focusBlockLobby)。
+    // 会让发送者以为叫得动）。这段 where 是 focus-mode 判据的 **Prisma 编码**，
+    // 常量与 null 语义的对齐说明都写在 focus-mode.ts 里 —— 别在这里手写一份。
     if (access.kind === CHAT_KIND_LOBBY) {
-      where.NOT = { focusMode: true, focusBlockLobby: true };
+      Object.assign(where, FOCUS_LOBBY_NOT_BLOCKED_WHERE);
     }
   }
   return prisma.user.findMany({

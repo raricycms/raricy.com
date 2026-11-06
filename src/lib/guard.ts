@@ -74,11 +74,3 @@ export async function requireOwner(): Promise<SafeUser> {
   if (!isOwner(user)) forbidden();
   return user;
 }
-
-// 通用鉴权门（只要求登录，不要求角色）—— 用于"编辑自己的资源"类页面。
-// 未登录 → 重定向到登录；登录后权限够不够交给调用方判定。
-export async function requireLogin(): Promise<SafeUser> {
-  const user = await getCurrentUser();
-  if (!user) return redirectToLogin();
-  return user;
-}

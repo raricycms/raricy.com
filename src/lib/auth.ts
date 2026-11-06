@@ -11,14 +11,12 @@ import { cookies } from 'next/headers';
 import { prisma } from './db';
 import { nowForDb } from './db-time';
 import { SESSION_COOKIE, verifySessionToken } from './session';
-import type { User } from '@prisma/client';
-
-export type SafeUser = Omit<User, 'passwordHash' | 'fishApiKeyEncrypted'>;
+import type { Prisma } from '@prisma/client';
 
 /**
  * SafeUser 形状的字段投影。导出给需要「拿到一个能当审计主体的用户」的调用方复用
  * （admin-user-service 的 loadSafeUserByUsername / loadDefaultOwner，进而给运维 CLI），
- * 避免同一份 22 个字段抄两遍、日后加字段只改一处。
+ * 避免同一份 29 列抄两遍、日后加字段只改一处。
  */
 export const PUBLIC_USER_SELECT = {
   id: true,
@@ -55,6 +53,14 @@ export const PUBLIC_USER_SELECT = {
   equippedFrameExpiresAt: true,
 } as const;
 
+/**
+ * 当前用户的安全形状 —— **由 `PUBLIC_USER_SELECT` 派生**，不是 `Omit<User, 两个敏感列>`。
+ * 用 Omit 会把未投影的列也带进类型（例如 `equippedBubbleKey` /
+ * `equippedBubbleExpiresAt`），于是「类型上有、运行时 undefined」，消费方读它不报错。
+ * 从投影派生让类型与真实返回值始终一致；要加字段请改上面的投影。
+ */
+export type SafeUser = Prisma.UserGetPayload<{ select: typeof PUBLIC_USER_SELECT }>;
+
 /** 读取并校验当前登录用户；未登录 / 会话失效返回 null。 */
 export async function getCurrentUser(): Promise<SafeUser | null> {
   const store = await cookies();
@@ -73,7 +79,7 @@ export async function getCurrentUser(): Promise<SafeUser | null> {
   // session_version 失效检查：重置密码 / 禁言 / 强制下线都会递增版本 → 旧 cookie 立即作废
   if ((user.sessionVersion ?? 0) !== payload.sv) return null;
 
-  return user as SafeUser;
+  return user;
 }
 
 // ── 角色判定（逐档包含：user < core < admin < owner）────────────────────────

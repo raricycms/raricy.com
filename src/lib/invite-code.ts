@@ -142,6 +142,13 @@ export type RevokeInviteCodeResult =
  *     删掉就永久丢失，审计日志也重建不出来（用户行不受影响，没有级联，
  *     所以只是数据丢失 —— 但这就够了）。
  *
+ * 【为什么删除也要带条件】`findInviteCode` 与 `delete` 之间不是原子的：CLI 撤销与
+ * 注册 / 补码（`verifyInviteAndUpgrade` 的 `updateMany({code, isUsed:false})`）可能
+ * 同时命中同一枚码。若只按 id 删，就会把「刚被标记已使用」的行物理删掉 —— 正好绕过
+ * 上面那条「拒绝已使用」的契约，而且事后无从发现。所以删除本身带同一条件，
+ * `count === 0` 即「竞争输了」，按失败返回（不静默成功）。`isUsed: null` 算未使用，
+ * 与上方预检、列表页 `isUsed:{not:true}` 的口径一致。
+ *
  * 【码值绝不进审计日志】12 位邀请码就是注册凭证，不该在库里多抄一份到审计表 ——
  * 日志是要被翻、被导出、将来还可能被改成公示的。所以只记 objectType + 数字 id。
  *（调用方目前只有运维 CLI，后台运维的日志落 visibility='internal'，见 audit-context.ts；
@@ -162,7 +169,18 @@ export async function revokeInviteCode(
     };
   }
 
-  await prisma.inviteCode.delete({ where: { id: row.id } });
+  // 条件删除（见上方「为什么删除也要带条件」）：count=0 说明在查到与删除之间
+  // 被注册 / 补码抢先用掉 —— 按「已被使用」失败返回，绝不静默成功。
+  const deleted = await prisma.inviteCode.deleteMany({
+    where: { id: row.id, OR: [{ isUsed: false }, { isUsed: null }] },
+  });
+  if (deleted.count === 0) {
+    return {
+      ok: false,
+      code: 400,
+      message: '该邀请码已被使用，不能撤销（撤销会丢失「谁邀请了谁」的记录）',
+    };
+  }
 
   // 审计里只出现数字 id 与「撤销」这件事，**不出现码值**（见上方说明）
   const { logAdminAction } = await import('./admin-user-service');

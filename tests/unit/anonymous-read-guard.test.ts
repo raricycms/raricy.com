@@ -13,12 +13,15 @@
 //
 // 【判据】扫 `src/app/**/route.ts`，凡导出 `GET` / `HEAD` 的，必须满足其一：
 //   · 文件里出现守卫符号（下表），或
-//   · 在 PUBLIC_READ_ROUTES 里，**且写明为什么公开**。
+//   · 在 PUBLIC_READ_ROUTES 里，**且写明为什么公开**，或
+//   · 解析了会话但允许匿名 → 在 OPTIONAL_SESSION_READ_ROUTES 里写明为什么允许。
 // 都不是 → 测试失败，报错里给两条出路。
 //
 // 【它抓不到什么】只看符号**出现**，不证明真的**调用**了 —— 一个 import 了却没用
-// 的文件照样能过。它是绊线，不是证明器：作用是在你新增一条匿名读口时当场变红，
-// 逼你写下一句理由。真判档位对不对，靠 tests/route/ 下那些逐条断言 401/403 的用例。
+// 的文件照样能过；对「部分匿名」的路由（同一条 GET 里有的分支拒绝、有的放行）也只能
+// 靠 OPTIONAL 清单里的人工说明 + 单条防退化断言。它是绊线，不是证明器：作用是在你
+// 新增一条匿名读口时当场变红，逼你写下一句理由。真判档位对不对，靠 tests/route/ 下
+// 那些逐条断言 401/403 的用例。
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { describe, expect, it } from 'vitest';
@@ -89,6 +92,31 @@ const PUBLIC_READ_ROUTES: Record<string, string> = {
   '/api/tool/http-headers': '开发者工具：只回目标站点的响应头，不含本站用户数据；出站有 SSRF 判据与按 IP 限频',
 };
 
+/**
+ * 会话**可选**的读接口。与 PUBLIC_READ_ROUTES 的区别：
+ *   · PUBLIC_READ_ROUTES = 完全不看会话（素材字节 / Bearer / 只读榜）；
+ *   · 本表 = **解析了会话，但未登录也返回 200**（不是拒绝）。
+ * 这类形状最容易被上面的符号判据误判成「已有守卫」—— 文件里 import 了
+ * `getCurrentUser`，却没有一个分支拒绝匿名。所以它们必须在这里写下为什么允许匿名，
+ * 否则「解析会话但没有任何拒绝形态」那条断言会红。
+ *
+ * ⚠️ 本表只放「整个响应都不拒绝匿名」的路由；**部分匿名**（同一条 GET 里有的分支
+ * 拒绝）也列在这里，但另有一条专门的防退化断言（见 /api/users/[id] 那条）。
+ */
+const OPTIONAL_SESSION_READ_ROUTES: Record<string, string> = {
+  '/api/auth/me':
+    '探活口：未登录回 200 + user:null（docs/bot/chat-bot.md §3.2 的稳定契约；恒 200 是为了让机器人按 body 判活，不能拿状态码判）',
+  '/api/notifications/count':
+    '顶栏指示器的兜底快照：未登录回 count:0 / chatUnread:false（SSE 半死状态下唯一能纠正数字的口）',
+  '/api/users/[id]':
+    '部分匿名：id 路匿名可达（公开主页二维码把站外人引进来），用户名路必须 core+（可枚举句柄），查不到一律 404',
+};
+
+/** 「用过会话」与「有任何拒绝形态」的判据。后者只求符号出现，不求落在正确分支。 */
+const SESSION_RE = /\bgetCurrentUser\b/;
+const DENIAL_RE =
+  /(apiErr\(\s*(401|403)|status:\s*(401|403)|forbidden\(|redirect\(|isCoreUser\(|hasAdminRights\(|isOwner\(|requireChatUser\(|requireCoreUser\(|requireMarketActor\(|quoteRequest\(|verifySessionToken)/;
+
 /** 递归找出所有 route.ts。 */
 function findRouteFiles(dir: string, out: string[] = []): string[] {
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -156,5 +184,44 @@ describe('免认证读口台账', () => {
       .filter(([, why]) => why.trim().length < 8)
       .map(([route]) => route);
     expect(undocumented, '白名单条目必须带一句能说服下一个人的理由').toEqual([]);
+  });
+
+  it('解析了会话、却没有任何拒绝形态的读口 → 必须在 OPTIONAL_SESSION_READ_ROUTES 里写理由', () => {
+    const optional = readRoutes
+      .filter((r) => !(r.route in PUBLIC_READ_ROUTES))
+      .filter((r) => SESSION_RE.test(r.src) && !DENIAL_RE.test(r.src))
+      .map((r) => r.route);
+    const undocumented = optional.filter((route) => !(route in OPTIONAL_SESSION_READ_ROUTES));
+
+    expect(
+      undocumented,
+      '这些接口 import 了 getCurrentUser，但整份 handler 里没有任何 401 / 403 / 重定向 / 角色判定 ——\n' +
+        '也就是「解析了会话、却允许匿名」。要么补上拒绝分支，要么写进 OPTIONAL_SESSION_READ_ROUTES\n' +
+        '并写清为什么允许匿名（这类形状最容易被符号判据误判成已经有守卫）。'
+    ).toEqual([]);
+  });
+
+  it('OPTIONAL 清单不腐化：每条都是真实读口、确实解析会话、理由足够具体', () => {
+    const known = new Map(readRoutes.map((r) => [r.route, r]));
+    const problems: string[] = [];
+    for (const [route, why] of Object.entries(OPTIONAL_SESSION_READ_ROUTES)) {
+      const row = known.get(route);
+      if (!row) {
+        problems.push(`${route}：已经不是 GET / HEAD 路由（改名或删掉了？同步更新本表）`);
+      } else if (!SESSION_RE.test(row.src)) {
+        problems.push(`${route}：不再解析会话 —— 应挪去 PUBLIC_READ_ROUTES，或从本表删掉`);
+      }
+      if (why.trim().length < 12) {
+        problems.push(`${route}：理由太短，写清「为什么允许匿名 / 哪条分支放行」`);
+      }
+    }
+    expect(problems).toEqual([]);
+  });
+
+  it('/api/users/[id] 的两条路都还在（id 匿名 / 用户名 core+），别改成只留一条', () => {
+    const row = readRoutes.find((r) => r.route === '/api/users/[id]');
+    expect(row, '路由改名了？同步改本条与文件顶部的 OPTIONAL 清单').toBeTruthy();
+    expect(row!.src, '必须仍按 id / 用户名解析句柄').toContain('resolveProfileHandle');
+    expect(row!.src, '用户名那条路必须仍收 core+（可枚举句柄）').toMatch(/isCoreUser\s*\(/);
   });
 });

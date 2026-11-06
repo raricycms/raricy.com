@@ -17,6 +17,7 @@ import { hashPassword, verifyPassword } from './password';
 import { allowPasswordAttempt } from './password-budget';
 import { kickUser } from './chat-bus';
 import { publishToUser, kickTopbarUser } from './topbar-bus';
+import { INVITE_CODE_LENGTH } from './invite-code';
 import {
   isFocusLobbyBlocked,
   parseFocusHiddenCategories,
@@ -157,7 +158,7 @@ export async function registerUser(input: RegisterInput): Promise<RegisterResult
   // 但号没建成」的中间态，也就没有要单独撤销的东西。
   let beforeCommit: ((tx: Prisma.TransactionClient, userId: string) => Promise<void>) | undefined;
   if (inviteCode) {
-    if (inviteCode.length !== 12) {
+    if (inviteCode.length !== INVITE_CODE_LENGTH) {
       return { ok: false, code: 400, message: '邀请码错误' };
     }
     const record = await prisma.inviteCode.findUnique({ where: { code: inviteCode } });
@@ -720,8 +721,8 @@ export interface AuthenticResult {
  *   • 角色升级：仅当当前仍为普通用户（role === 'user'）时升级为 'core'
  */
 export async function verifyInviteAndUpgrade(userId: string, code: string): Promise<AuthenticResult> {
-  // 长度必须恰为 12（生成侧恒产 12 位，见 invite-code.ts）
-  if (code.length !== 12) {
+  // 长度必须恰为 INVITE_CODE_LENGTH（生成侧恒产 12 位，见 invite-code.ts 的常量）
+  if (code.length !== INVITE_CODE_LENGTH) {
     return { ok: false, code: 400, message: '邀请码无效' };
   }
 

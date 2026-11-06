@@ -37,9 +37,16 @@ export async function PATCH(req: Request) {
   const user = await getCurrentUser();
   if (!user) return apiErr(401, '未登录');
 
+  // 与 /api/users/me/focus 对齐：合法但非对象的 JSON（null / 数字 / 字符串 / 数组）
+  // 不能原样交给 updateOwnProfile —— 它第一句就是 `'bio' in patch`，对 null 会抛
+  // TypeError 变 500。这里统一折成 400。
   let body: ProfilePatch;
   try {
-    body = (await req.json()) as ProfilePatch;
+    const parsed: unknown = await req.json();
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      return apiErr(400, '请求体格式错误');
+    }
+    body = parsed as ProfilePatch;
   } catch {
     return apiErr(400, '请求体格式错误');
   }

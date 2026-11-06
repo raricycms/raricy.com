@@ -31,6 +31,14 @@ export async function POST(req: Request) {
         key => body[key as keyof typeof body] !== undefined && typeof body[key as keyof typeof body] !== 'string'
       )) return apiErr(400, '请求体格式错误');
 
+  // 限频排在 Turnstile **之前**：`verifyTurnstile` 会发一次出站请求（最长 8s 超时），
+  // 若排在它后面，未认证的洪水可以先驱动一轮对外请求再被本地闸门挡下 —— 顺序反了
+  // 就等于给站点加了一个出站放大器。Turnstile 未启用时它直接放行，所以本顺序对
+  // 现有用户的注册体验没有任何变化。
+  if (!allowPasswordAttempt('register', clientIp(req), RULES.passwordPerIp)) {
+    return apiErr(429, '注册过于频繁，请稍后再试');
+  }
+
   // 人机验证（禁用时 verifyTurnstile 直接放行）。
   //
   // ⚠️ 两类失败必须分开报：token 不合格是 400（用户重试有用）；校验服务不可用
@@ -48,9 +56,6 @@ export async function POST(req: Request) {
     return apiErr(400, '人机验证失败，请重试');
   }
 
-  if (!allowPasswordAttempt('register', clientIp(req), RULES.passwordPerIp)) {
-    return apiErr(429, '注册过于频繁，请稍后再试');
-  }
   let result;
   try {
     result = await registerUser({

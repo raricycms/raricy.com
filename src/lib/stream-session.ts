@@ -42,8 +42,16 @@ export async function isStreamSessionCurrent(user: { id: string; sessionVersion:
 
 /**
  * 讨论还受角色与「大区屏蔽」影响；两者变化不递增会话版本，必须单独复核快照。
- * 快照里存的是**连接建立时算好的 lobbyBlocked**（focusMode && focusBlockLobby），
+ * 快照里存的是**连接建立时算好的 lobbyBlocked**（`isFocusLobbyBlocked(user)` 的返回值），
  * 重连后按新值重新决定收不收大区广播。
+ *
+ * 【快照契约】`lobbyBlocked` 是**派生快照**，不是事实来源：
+ *   · 唯一写入点是讨论 SSE 路由建立连接时（`src/app/api/chat/stream/route.ts`），
+ *     且必须调 `focus-mode.isFocusLobbyBlocked` 算 —— 别在任何地方手写
+ *     `focusMode && focusBlockLobby`（那是判定语义的第二份拷贝，改规则时会漏）；
+ *   · 本函数每帧（含心跳）回库重算一次并与快照比对，不一致即关流 ——
+ *     「快照过期」是设计的一部分，不是要修的 bug；
+ *   · 同一规则的 Prisma 编码（`@` 候选人查询）见 `FOCUS_LOBBY_NOT_BLOCKED_WHERE`。
  */
 export async function isChatStreamSessionCurrent(
   user: { id: string; sessionVersion: number; lobbyBlocked: boolean }

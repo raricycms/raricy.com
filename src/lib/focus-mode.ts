@@ -28,10 +28,6 @@ export const FOCUS_MODE_BLOCKED_TITLE = '已开启专注模式，无法使用该
 /** 设置页专注模式卡片的锚点（横幅「此处」/ 讨论空态同源）。 */
 export const FOCUS_MODE_SETTINGS_HREF = '/settings#focus-mode';
 
-/** 专注模式里可分别开关的三类「干扰源」。博客栏目是第四项（多选，单独存）。 */
-export const FOCUS_TOGGLE_ITEMS = ['lobby', 'games', 'fishTrade'] as const;
-export type FocusToggleItem = (typeof FOCUS_TOGGLE_ITEMS)[number];
-
 /** 判定所需的最小字段形状（SafeUser 与各处 select 出来的窄对象都满足）。 */
 export interface FocusFlags {
   focusMode?: boolean | null;
@@ -54,6 +50,22 @@ export function isFocusGamesBlocked(u: FocusFlags | null | undefined): boolean {
 export function isFocusFishTradeBlocked(u: FocusFlags | null | undefined): boolean {
   return !!u && u.focusMode === true && u.focusBlockFishTrade !== false;
 }
+
+/**
+ * 同一规则的 **Prisma 编码**（供「查候选人」这类无法在 JS 侧过滤的查询用，当前唯一
+ * 消费者是 `mention-service` 的 `@` 选人）。保持零依赖：纯对象字面量，不 import prisma。
+ *
+ * 与 `isFocusLobbyBlocked` 必须同义，注意两者的 null 语义**不同**：
+ *   · JS 判据：`focusMode === true && focusBlockLobby !== false`（null / undefined 按「屏蔽」）
+ *   · 本片段：`NOT (focusMode = true AND focusBlockLobby = true)`（null 按「不屏蔽」）
+ * 两列在 schema 里都是非空 `@default(true)`，所以当前等价。**改判定语义、或把列改成可空时，
+ * 这里与 `isFocusLobbyBlocked` 必须一起改**，否则 `@` 候选人名单会与其它出口口径分叉且不报错。
+ */
+export const FOCUS_LOBBY_NOT_BLOCKED_WHERE: {
+  NOT: { focusMode: boolean; focusBlockLobby: boolean };
+} = {
+  NOT: { focusMode: true, focusBlockLobby: true },
+};
 
 /** 单个自选栏目 id 的上限：防「把整份脏 JSON 塞进去」把列撑爆（栏目总数远小于它）。 */
 export const FOCUS_HIDDEN_CATEGORY_LIMIT = 500;

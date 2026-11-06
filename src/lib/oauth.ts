@@ -106,15 +106,9 @@ export function parseRedirectUris(json: string): string[] {
   return out;
 }
 
-/**
- * 精确字符串匹配（OAuth 2.0 Security BCP §4.1 推荐做法）。
- * 无通配、无前缀、无子串：避免攻击者注册 "https://app.example.com" 后挟持
- * "https://app.example.com.attacker.com/"。loopback / http 也走同一条规则。
- */
-export function isValidRedirectUri(candidate: string, allowed: string[]): boolean {
-  if (!candidate || candidate.length > MAX_REDIRECT_URI_LEN) return false;
-  return allowed.includes(candidate);
-}
+// redirect_uri 的比较一律在调用方用 `allowed.includes(redirectUri)`：**精确字符串相等**，
+// 无通配 / 无前缀 / 无子串（OAuth 2.0 Security BCP §4.1）——别在这里另写一个匹配函数，
+// 也别改成 startsWith，否则 "https://app.example.com.attacker.com/" 会被放行。
 
 // ── Scope 工具 ───────────────────────────────────────────────────────────────
 
@@ -383,32 +377,6 @@ export async function touchAccessTokenUsage(rawToken: string): Promise<void> {
   } catch {
     // 静默：用法计数不应阻断 userinfo 响应
   }
-}
-
-// ── 吊销 ─────────────────────────────────────────────────────────────────────
-
-export type RevokeResult = 'ok' | 'not_found' | 'forbidden';
-
-export async function revokeAccessToken(
-  rawToken: string,
-  requesterUserId: string,
-  requesterIsOwner: boolean
-): Promise<RevokeResult> {
-  if (!rawToken) return 'not_found';
-  const tokenHash = hashOpaqueToken(rawToken);
-  const row = await prisma.oAuthAccessToken.findUnique({
-    where: { tokenHash },
-    select: { tokenHash: true, userId: true, revokedAt: true },
-  });
-  if (!row) return 'not_found';
-  if (!requesterIsOwner && row.userId !== requesterUserId) return 'forbidden';
-  if (row.revokedAt) return 'ok'; // 幂等：已吊销视作成功
-  await prisma.oAuthAccessToken.update({
-    where: { tokenHash },
-    data: { revokedAt: nowForDb() },
-    select: { tokenHash: true },
-  });
-  return 'ok';
 }
 
 // ── 应用 CRUD（owner 路径） ───────────────────────────────────────────────────

@@ -2311,12 +2311,14 @@ external 模式不读取剪贴板、投票或收藏夹，所有此类 token 保�
 > 登录限频那几处注释，说的都是**这个请求带没带凭据**，与角色轴无关。按主体分就不会错 ——
 > **主体是「人 / 账号」走角色轴，主体是「请求 / 接口」走凭据轴。**
 
-`src/lib/guard.ts` 是**页面级**鉴权门 —— async 函数，不是装饰器，共四个：
+`src/lib/guard.ts` 是**页面级**鉴权门 —— async 函数，不是装饰器，共三个：
 
-- `requireLogin()`（已登录）—— 只要求登录，角色够不够交给调用方
 - `requireCoreUser()`（已登录 + core+）—— 「核心用户」档：管理员与站长自然也过
 - `requireAdmin()`（已登录 + admin+）—— 段内放宽后，由真正要管理权的页面自己把门
 - `requireOwner()`（仅站长）—— 全站最高一档，其它角色一律挡在外面
+
+（只要求登录、不要求角色的页面直接 `await getCurrentUser()` 后自己判 —— 没有
+`requireLogin()`，别再照旧文档补一个。）
 
 未登录 → `redirect('/login?next=<原URL>')` 回跳；已登录但角色不够 → `forbidden()` 原地渲染 403 页。
 
@@ -2335,7 +2337,7 @@ external 模式不读取剪贴板、投票或收藏夹，所有此类 token 保�
 
 | 层 | 判定 |
 |----|------|
-| `/checkin` 页面 | `isCoreUser(user)` → 渲染 403 页（不用 `requireCoreUser`，理由见该文件头）|
+| `/checkin` 页面 | `requireCoreUser('/checkin')` → 未登录带 `next=/checkin` 回登录、已登录非 core 原地 403 |
 | `GET /api/checkin` | `isCoreUser` → `apiErr(403, CORE_ONLY)` |
 | `POST /api/checkin` | `isCoreUser` → `apiErr(403, CORE_ONLY)` |
 

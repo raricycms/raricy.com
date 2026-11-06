@@ -214,9 +214,3 @@ export function noteFingerprint(fp: string): number {
   }
   return next;
 }
-
-/** 运维口：看一眼内存里还剩什么。 */
-export function storeStats(): { challenges: number; fingerprints: number } {
-  const s = store();
-  return { challenges: s.challenges.size, fingerprints: s.fingerprints.size };
-}

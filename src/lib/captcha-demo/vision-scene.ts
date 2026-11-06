@@ -26,7 +26,6 @@
 import sharp from 'sharp';
 import { randomInt } from 'node:crypto';
 import {
-  SHAPE_LABEL,
   COLOR_HEX,
   type SceneObject,
   type ShapeKind,
@@ -262,10 +261,4 @@ export async function renderScene(
     `</svg>`;
 
   return sharp(Buffer.from(svg)).png().toBuffer();
-}
-
-/** 给攻击脚本 / 报告用的中文描述。 */
-export function describeObject(o: SceneObject): string {
-  const sizeWord = o.size === 0 ? '小' : o.size === 1 ? '中' : '大';
-  return `${sizeWord}${SHAPE_LABEL[o.kind]}(${o.color})`;
 }
