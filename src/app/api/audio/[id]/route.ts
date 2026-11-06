@@ -22,8 +22,8 @@ export async function DELETE(_req: Request, ctx: { params: Promise<{ id: string 
   if (!isCoreUser(user)) return apiErr(403, '需要核心用户权限');
 
   const { id } = await ctx.params;
-  // 注意用 getAudioForServe 而不是 getAudioMeta：后者对已软删的行返回 null，
-  // 于是「已经被删过」会伪装成 404「音频不存在」。这里要能分辨这两件事。
+  // 注意用 getAudioForServe（不按软删过滤）：换成任何「过滤掉 ignore 的元信息读法」
+  // 都会让「已经被删过」伪装成 404「音频不存在」—— 这里要能分辨这两件事。
   const audio = await getAudioForServe(id);
   if (!audio) return apiErr(404, '音频不存在');
 

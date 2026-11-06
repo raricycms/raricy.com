@@ -40,7 +40,7 @@
 //
 //   frame-refs.resolveFrameKey(key, exp, now)   ← 唯一的比较运算（纯函数）
 //            ↓ 只被一处调用
-//   frameUrlFor(row) / frameUrlOfUser(id)       ← 唯一出口：白名单 → 未退役 →
+//   frameUrlFor(row)                            ← 唯一出口：白名单 → 未退役 →
 //            ↓                                    未过期 → 盘上有图，四道合一
 //   ~10 个 DTO 生产者 / 两个 API / CLI          下发「判定后的结果」
 //            ↓
@@ -438,18 +438,6 @@ export function frameUrlFor(u: FrameFields | null | undefined): string | null {
   if (!key) return null;
   if (!frameAssetAvailable(key)) return null;
   return frameUrl(key);
-}
-
-/**
- * 同上，但手上只有用户 id 时用。**多一次主键查询** —— 只在拿不到 users 行的
- * 那几个调用点用（例：收银台只有 `?to=<id>`），别当成通用取法。
- */
-export async function frameUrlOfUser(userId: string): Promise<string | null> {
-  const u = await prisma.user.findUnique({
-    where: { id: userId },
-    select: { equippedFrameKey: true, equippedFrameExpiresAt: true },
-  });
-  return frameUrlFor(u);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════

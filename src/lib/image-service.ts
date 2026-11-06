@@ -136,16 +136,6 @@ export async function getTotalStorageBytes(): Promise<number> {
   return agg._sum.fileSize ?? 0;
 }
 
-/** 取单张图片元信息；不存在或已软删返回 null。 */
-export async function getImageMeta(id: string): Promise<ImageMeta | null> {
-  const img = await prisma.imageHosting.findUnique({
-    where: { id },
-    select: { ...META_SELECT, ignore: true },
-  });
-  if (!img || img.ignore) return null;
-  return serialize(img);
-}
-
 // ── 原生服务 / 删除（Node 运行时）────────────────────────────────────────────
 
 export interface ServeImage {

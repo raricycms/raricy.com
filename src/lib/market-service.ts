@@ -171,9 +171,9 @@ export const MIN_STAKE_FISH = 1;
 // 上下界（MIN_LEVERAGE / MAX_LEVERAGE）、快捷档（LEVERAGE_PRESETS）、警告带
 //（HIGH_RISK_LEVERAGE）、方向词表与两个解析函数，连同各自的判据与实测表，全在那边。
 //
-// 下面这行**重导出** `parseLeverage`：它的既有 import 路径（buy 路由、若干用例）
-// 不必跟着搬 —— 搬家不该变成一次全仓的改名。
-export { parseLeverage };
+// 本文件仍 import `parseLeverage` **自用**（openPosition 解析 input.leverageRaw），
+// 但**不再重导出** —— 页面 / 路由 / 用例一律从 `market-leverage` 取那一个真身
+//（这里转导出会让客户端误以为能从拖着 prisma 的模块进，见 TradePanel 的注释）。
 
 /** 页面与文案用的短名：BTCUSDT → BTC。 */
 export function displaySymbol(symbol: string): string {

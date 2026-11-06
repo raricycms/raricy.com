@@ -205,9 +205,11 @@ export function frameUrl(key: FrameKey): string {
 // ─────────────────────────────────────────────────────────────────────────────
 
 // 兼容原有头像框调用点，租期权威已抽到商城共享词汇，不复制单位或区间。
+// 这里只转导出**确实仍有人从这里 import** 的三个符号（RENT_UNITS / parseRentCount /
+// RentUnit）—— 其余租期词汇一律直接从 `shop-refs` 取，别再往这里加。
 import { isRentCountInRange, type RentUnit } from './shop-refs';
-export { RENT_UNITS, isRentCountInRange, parseRentCount } from './shop-refs';
-export type { RentUnit, RentUnitSpec } from './shop-refs';
+export { RENT_UNITS, parseRentCount } from './shop-refs';
+export type { RentUnit } from './shop-refs';
 
 /**
  * 一款框**能卖的价**（单位 + 单价）；null = 不卖。

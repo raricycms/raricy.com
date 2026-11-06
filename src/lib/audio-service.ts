@@ -150,16 +150,6 @@ export async function getUserUsedAudioBytes(userId: string): Promise<number> {
   return agg._sum.fileSize ?? 0;
 }
 
-/** 取单条音频元信息；不存在或已软删返回 null。 */
-export async function getAudioMeta(id: string): Promise<AudioMeta | null> {
-  const row = await prisma.audioHosting.findUnique({
-    where: { id },
-    select: { ...META_SELECT, ignore: true },
-  });
-  if (!row || row.ignore) return null;
-  return serialize(row);
-}
-
 // ── 原生服务 / 删除（Node 运行时）────────────────────────────────────────────
 
 export interface ServeAudio {

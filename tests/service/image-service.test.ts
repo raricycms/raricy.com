@@ -24,7 +24,6 @@ import {
   listUserImages,
   listAllImages,
   getTotalStorageBytes,
-  getImageMeta,
   getImageForServe,
   softDeleteImage,
   hardDeleteImage,
@@ -951,27 +950,8 @@ describe('getTotalStorageBytes', () => {
 });
 
 // ═════════════════════════════════════════════════════════════════════════════
-// 九、getImageMeta / getImageForServe
+// 九、getImageForServe
 // ═════════════════════════════════════════════════════════════════════════════
-
-describe('getImageMeta', () => {
-  it('返回元信息', async () => {
-    const u = await makeUser({ role: 'core', username: 'zoe' });
-    const img = await makeImage({ authorId: u.id, filename: 'q.gif', mimeType: 'image/gif' });
-    const meta = await getImageMeta(img.id);
-    expect(meta).toMatchObject({ id: img.id, filename: 'q.gif', ext: '.gif', authorName: 'zoe' });
-  });
-
-  it('不存在返回 null', async () => {
-    expect(await getImageMeta('nope')).toBeNull();
-  });
-
-  it('软删除的图片返回 null（元信息层面视同不存在）', async () => {
-    const u = await makeUser({ role: 'core' });
-    const img = await makeImage({ authorId: u.id, ignore: true });
-    expect(await getImageMeta(img.id)).toBeNull();
-  });
-});
 
 describe('getImageForServe', () => {
   it('返回服务所需最小字段，且不含 fileSize / 作者名等无关信息', async () => {
@@ -992,8 +972,9 @@ describe('getImageForServe', () => {
     expect(await getImageForServe('nope')).toBeNull();
   });
 
-  it('★ 软删除的图片仍会被返回（ignore=true）—— 由调用方裁决，与 getImageMeta 不同', async () => {
-    // 这是有意的语义分叉：DELETE 路由需要读到已软删的行才能回「图片已被删除」。
+  it('★ 软删除的图片仍会被返回（ignore=true）—— 由调用方裁决', async () => {
+    // 这是有意的语义分叉：DELETE 路由需要读到已软删的行才能回「图片已被删除」；
+    // 列表 / 管理端路径则一律按 ignore=false 过滤。
     const u = await makeUser({ role: 'core' });
     const img = await makeImage({ authorId: u.id, ignore: true });
     const r = await getImageForServe(img.id);
@@ -1154,8 +1135,8 @@ describe('saveUpload', () => {
     expect(saved.id).toMatch(/^[A-Za-z0-9]{10}$/);
     expect(fs.existsSync(storagePathFor(saved.id, 'image/png')), '文件必须落盘').toBe(true);
 
-    const meta = await getImageMeta(saved.id);
-    expect(meta).toMatchObject({ filename: 'hello.png', mimeType: 'image/png', authorId: u.id });
+    const r = await getImageForServe(saved.id);
+    expect(r).toMatchObject({ filename: 'hello.png', mimeType: 'image/png', authorId: u.id });
   });
 
   it('★ 文件名经过净化后才落库（路径穿越名不会原样入库）', async () => {

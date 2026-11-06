@@ -12,7 +12,6 @@ import {
   mintFishToken,
   listFishTokens,
   revokeFishToken,
-  revokeAllFishTokens,
   validateFishToken,
   touchFishTokenUsage,
   FISH_TOKEN_LABEL_MAX,
@@ -213,19 +212,6 @@ describe('吊销的所有权', () => {
     const minted = await mintFishToken(u.id);
     expect(await revokeFishToken(u.id, minted.id)).toBe('ok');
     expect(await revokeFishToken(u.id, minted.id)).toBe('ok');
-  });
-
-  it('revokeAllFishTokens 只吊销该用户的，且只数「确实从有效变无效」的那些', async () => {
-    const a = await makeUser();
-    const b = await makeUser();
-    const a1 = await mintFishToken(a.id);
-    const a2 = await mintFishToken(a.id);
-    const b1 = await mintFishToken(b.id);
-    await revokeFishToken(a.id, a1.id); // 先吊销一张
-
-    expect(await revokeAllFishTokens(a.id)).toBe(1); // 只剩 a2 有效
-    expect(await validateFishToken(a2.token)).toBeNull();
-    expect(await validateFishToken(b1.token), '别人的不受影响').not.toBeNull();
   });
 });
 

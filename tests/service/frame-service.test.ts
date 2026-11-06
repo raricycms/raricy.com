@@ -31,7 +31,6 @@ import {
   equipFrame,
   frameAssetAvailable,
   frameUrlFor,
-  frameUrlOfUser,
   grantFrame,
   listMyFrames,
   pngHasAlpha,
@@ -669,20 +668,14 @@ describe('★ F2：持有行的到期时刻变了，装备列的冗余副本必�
 
     await grantFrame({ userId: u.id, key: KEY, expiresAt: inMs(1 * DAY) });
     await equipFrame(u.id, KEY);
-    expect(await frameUrlOfUser(u.id)).not.toBeNull();
+    expect(frameUrlFor(await equipCols(u.id)), '续期前就应当是显示着的').not.toBeNull();
 
     await grantFrame({ userId: u.id, key: KEY, expiresAt: null });
-    expect(await frameUrlOfUser(u.id)).not.toBeNull();
+    expect(frameUrlFor(await equipCols(u.id)), '续期之后仍必须显示（F2）').not.toBeNull();
   });
 });
 
 describe('frameUrlFor —— 唯一的判定出口', () => {
-  let u: { id: string };
-  beforeEach(async () => {
-    await resetDb();
-    u = await makeUser();
-  });
-
   it('没装备 → null', () => {
     expect(frameUrlFor(null)).toBeNull();
     expect(frameUrlFor(undefined)).toBeNull();
@@ -723,16 +716,6 @@ describe('frameUrlFor —— 唯一的判定出口', () => {
     writeAsset(`${KEY}.png`, png(6));
     __resetFrameAssetCacheForTests();
     expect(frameUrlFor(fields)).toBe(`/api/frames/${KEY}`);
-  });
-
-  it('frameUrlOfUser：只有 id 时多查一次主键，结果与 frameUrlFor 一致', async () => {
-    writeAsset(`${KEY}.png`, png(6));
-    __resetFrameAssetCacheForTests();
-    await grantFrame({ userId: u.id, key: KEY, expiresAt: null });
-    await equipFrame(u.id, KEY);
-
-    expect(await frameUrlOfUser(u.id)).toBe(`/api/frames/${KEY}`);
-    expect(await frameUrlOfUser('nobody')).toBeNull();
   });
 });
 

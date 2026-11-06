@@ -12,6 +12,11 @@
 // 这是刻意的：机器人不该因为用户改了密码就集体停摆。反过来，用户禁言/封号时
 // 它**必须**立刻失效 —— 所以鉴权路径每次都实时查 `isCurrentlyBanned`，见 _auth.ts。
 //
+// 【为什么不提供「一次吊销某人全部凭据」的导出】唯一会用到它的场景是**账号归档**，
+// 而归档必须在自己的事务里吊销 —— 与清余额、作废 OAuth、递增 sessionVersion 同一个
+// 提交（见 user-archive-service.ts 的归档事务）。把 updateMany 做成独立导出只会诱使
+// 后来者在事务外调用，做出「已归档但凭据还能用」的裂口；自助页 / CLI 只按 id 逐张吊销。
+//
 // 【令牌形状对齐 OAuth】复用 oauth.ts 的 generateAccessToken（32 字节随机 →
 // base64url）与 hashOpaqueToken（sha256 hex）。库里只存哈希：库泄露拿不到可用的
 // 凭据。明文只在签发那一次返回，之后**不可恢复** —— 与 OAuth 的 client_secret 同款。
@@ -134,15 +139,6 @@ export async function revokeFishToken(
     data: { revokedAt: nowForDb() },
   });
   return 'ok';
-}
-
-/** 吊销某用户的全部有效凭据。改密 / 怀疑泄露时的一键止血。 */
-export async function revokeAllFishTokens(userId: string): Promise<number> {
-  const res = await prisma.fishApiToken.updateMany({
-    where: { userId, revokedAt: null },
-    data: { revokedAt: nowForDb() },
-  });
-  return res.count;
 }
 
 /**
