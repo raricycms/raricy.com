@@ -12,6 +12,7 @@ import {
   fmtFishInput,
   parseFishAmount,
   roundFish,
+  signedFish,
 } from '@/lib/fish-amount';
 import { FISH_DECIMALS } from '@/lib/fish-units';
 
@@ -35,6 +36,15 @@ describe('fmtFish（展示：固定 4 位小数）', () => {
   it('浮点残差被 toFixed 收敛掉', () => {
     expect(fmtFish(0.1 + 0.2)).toBe('0.3000');
     expect(fmtFish(1.005)).toBe('1.0050');
+  });
+});
+
+describe('signedFish（流水列表的带符号金额）', () => {
+  it('正数加号、0 与负数原样（与旧的三处内联写法逐字一致）', () => {
+    expect(signedFish(1)).toBe('+1.0000');
+    expect(signedFish(0.0001)).toBe('+0.0001');
+    expect(signedFish(0)).toBe('0.0000');
+    expect(signedFish(-1.5)).toBe('-1.5000');
   });
 });
 

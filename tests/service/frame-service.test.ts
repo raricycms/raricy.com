@@ -37,7 +37,7 @@ import {
   resolveFrameAsset,
   revokeFrame,
 } from '@/lib/frame-service';
-import { FRAME_KEYS } from '@/lib/frame-refs';
+import { FRAME_KEYS, FRAMES } from '@/lib/frame-refs';
 import { prisma } from '@/lib/db';
 import { nowForDb } from '@/lib/db-time';
 import { makeUser, resetDb } from '../helpers/db';
@@ -400,6 +400,43 @@ describe('grantFrame', () => {
     expect(rows[0].source).toBe('cli');
     // 授予 ≠ 装备
     expect((await equipCols(u.id))?.equippedFrameKey).toBeNull();
+  });
+
+  it('★ 退役框不能新授权（R3-322）—— 400 且不建持有行', async () => {
+    // 退役框用户永远戴不上（equipFrame 拒），发出去只会制造「frame list 显示持有、
+    // equip 报已下架」的半截状态。历史持有行不受影响（另有用例钉收回仍可用）。
+    const def = FRAMES[KEY];
+    const prev = def.retired;
+    def.retired = true;
+    try {
+      const res = await grantFrame({ userId: u.id, key: KEY, expiresAt: null });
+      expect(res.ok).toBe(false);
+      if (!res.ok) {
+        expect(res.code).toBe(400);
+        expect(res.message).toContain('下架');
+      }
+      expect(await holdingRows(u.id, KEY), '拒绝授权时不能留下持有行').toHaveLength(0);
+    } finally {
+      if (prev === undefined) delete def.retired;
+      else def.retired = prev;
+    }
+  });
+
+  it('★ 退役框的历史持有行仍可收回（revoke 不因 retired 变成 no-op）', async () => {
+    await grantFrame({ userId: u.id, key: KEY, expiresAt: null });
+    await equipFrame(u.id, KEY);
+    const def = FRAMES[KEY];
+    const prev = def.retired;
+    def.retired = true;
+    try {
+      const res = await revokeFrame({ userId: u.id, key: KEY });
+      expect(res).toMatchObject({ revoked: true, unequipped: true });
+      expect((await holdingRows(u.id, KEY))[0].deleted).toBe(true);
+      expect((await equipCols(u.id))?.equippedFrameKey).toBeNull();
+    } finally {
+      if (prev === undefined) delete def.retired;
+      else def.retired = prev;
+    }
   });
 
   it('永久授予 → expiresAt 落 null', async () => {

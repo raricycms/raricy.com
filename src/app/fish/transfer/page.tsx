@@ -3,23 +3,14 @@ import { redirect } from 'next/navigation';
 import { getCurrentUser } from '@/lib/auth';
 import { loginUrlWithNext } from '@/lib/safe-url';
 import { getBalance, getTransactions } from '@/lib/fish-service';
-import { fmtFish } from '@/lib/fish-amount';
+import { signedFish } from '@/lib/fish-amount';
+import { ymdhm } from '@/lib/format';
 import { TRANSFER_NOTE_MAX } from '@/lib/fish-transfer-service';
 import { RULES } from '@/lib/rate-limit';
 import PageHeader from '@/app/components/PageHeader';
 import TransferPanel from '../market/TransferPanel';
 export const dynamic='force-dynamic';
 export const metadata={title:'鱼干转账',robots:{index:false,follow:false}};
-
-// 展示用时间：库内是「UTC+8 墙上时间贴 Z」，一律 getUTC* 读（见 src/lib/db-time.ts）。
-// 与 /fish 首页「最近流水」同口径，精确到分钟。
-function fmtTransferTime(iso: string | null): string {
-  if (!iso) return '';
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return '';
-  const p = (n: number) => String(n).padStart(2, '0');
-  return `${d.getUTCFullYear()}-${p(d.getUTCMonth() + 1)}-${p(d.getUTCDate())} ${p(d.getUTCHours())}:${p(d.getUTCMinutes())}`;
-}
 
 // 版式：桌面双栏（左 = 转账表单，右 = 最近转账 + 转账说明），窄屏单列。
 //
@@ -53,10 +44,10 @@ export default async function TransferPage(){
                 <div className="fish-transfer__tx" key={tx.id}>
                   <div className="fish-transfer__tx-text">
                     <span className="fish-transfer__tx-desc">{tx.description || tx.type}</span>
-                    <span className="fish-transfer__tx-time numeric">{fmtTransferTime(tx.createdAt)}</span>
+                    <span className="fish-transfer__tx-time numeric">{ymdhm(tx.createdAt)}</span>
                   </div>
                   <span className={`fish-transfer__tx-amount numeric ${tx.amount > 0 ? 'fish-transfer__tx-amount--in' : 'fish-transfer__tx-amount--out'}`}>
-                    {tx.amount > 0 ? '+' : ''}{fmtFish(tx.amount)}
+                    {signedFish(tx.amount)}
                   </span>
                 </div>
               ))}

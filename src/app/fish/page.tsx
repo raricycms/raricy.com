@@ -5,21 +5,12 @@ import { getCurrentUser } from '@/lib/auth';
 import { isFocusFishTradeBlocked } from '@/lib/focus-mode';
 import { loginUrlWithNext } from '@/lib/safe-url';
 import { getBalance, getTransactions } from '@/lib/fish-service';
-import { fmtFish } from '@/lib/fish-amount';
+import { signedFish } from '@/lib/fish-amount';
+import { ymdhm } from '@/lib/format';
 import PageHeader from '@/app/components/PageHeader';
 import FishEntry from './FishEntry';
 import PosterModal from '@/app/components/PosterModal';
 export const dynamic = 'force-dynamic';
-
-// 展示用时间：库内是「UTC+8 墙上时间贴 Z」，一律 getUTC* 读（见 src/lib/db-time.ts）。
-// 与 /fish/transactions 的格式化同口径，精确到分钟。
-function fmtTxTime(iso: string | null): string {
-  if (!iso) return '';
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return '';
-  const p = (n: number) => String(n).padStart(2, '0');
-  return `${d.getUTCFullYear()}-${p(d.getUTCMonth() + 1)}-${p(d.getUTCDate())} ${p(d.getUTCHours())}:${p(d.getUTCMinutes())}`;
-}
 
 export default async function FishPage() {
   const user = await getCurrentUser();
@@ -67,10 +58,10 @@ export default async function FishPage() {
             <div className="fish-recent__row" key={tx.id}>
               <div className="fish-recent__text">
                 <span className="fish-recent__desc">{tx.description || tx.type}</span>
-                <span className="fish-recent__time numeric">{fmtTxTime(tx.createdAt)}</span>
+                <span className="fish-recent__time numeric">{ymdhm(tx.createdAt)}</span>
               </div>
               <span className={`fish-recent__amount numeric ${tx.amount > 0 ? 'fish-recent__amount--in' : 'fish-recent__amount--out'}`}>
-                {tx.amount > 0 ? '+' : ''}{fmtFish(tx.amount)}
+                {signedFish(tx.amount)}
               </span>
             </div>
           ))}

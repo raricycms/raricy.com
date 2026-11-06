@@ -3,7 +3,8 @@ import { redirect } from 'next/navigation';
 import { getCurrentUser } from '@/lib/auth';
 import { loginUrlWithNext } from '@/lib/safe-url';
 import { getTransactions } from '@/lib/fish-service';
-import { fmtFish } from '@/lib/fish-amount';
+import { signedFish } from '@/lib/fish-amount';
+import { ymdhm } from '@/lib/format';
 import PageHeader from '@/app/components/PageHeader';
 import SitePager from '@/app/components/SitePager';
 
@@ -12,17 +13,6 @@ export const dynamic = 'force-dynamic';
 interface SearchParams {
   page?: string;
   type?: string;
-}
-
-// 时间格式 YYYY-MM-DD HH:MM
-// 一律 getUTC* 读：库内时间戳是「UTC+8 墙上时间贴 Z」（见 src/lib/db-time.ts），
-// 本地 getter 会按**服务器时区**平移 —— 服务器 TZ=UTC 时碰巧对，TZ=UTC+8 时整体 +8 小时。
-function fmtDateTime(iso: string | null): string {
-  if (!iso) return '';
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return '';
-  const p = (n: number) => String(n).padStart(2, '0');
-  return `${d.getUTCFullYear()}-${p(d.getUTCMonth() + 1)}-${p(d.getUTCDate())} ${p(d.getUTCHours())}:${p(d.getUTCMinutes())}`;
 }
 
 const FILTERS: { label: string; type: string | null }[] = [
@@ -101,14 +91,13 @@ export default async function FishTransactionsPage({
                     <span className={`fish-transaction__type-tag fish-transaction__type-tag--${tx.type}`}>
                       {tx.type}
                     </span>
-                    <span className="fish-transaction__time numeric">{fmtDateTime(tx.createdAt)}</span>
+                    <span className="fish-transaction__time numeric">{ymdhm(tx.createdAt)}</span>
                   </div>
                 </div>
                 <div
                   className={`numeric fish-transaction__amount ${tx.amount > 0 ? 'fish-transaction__amount--in' : 'fish-transaction__amount--out'}`}
                 >
-                  {tx.amount > 0 ? '+' : ''}
-                  {fmtFish(tx.amount)}
+                  {signedFish(tx.amount)}
                 </div>
               </div>
             ))}

@@ -155,15 +155,20 @@ export const FRAMES: Record<FrameKey, FrameDef> = {
 export const FRAME_URL_PREFIX = '/api/frames/';
 
 /**
- * 解析提交上来的 frame key。
+ * 解析提交上来的 frame key：**已登记**就返回 key，退役与否不在这一步判。
  *
- * 非白名单值（含 `undefined` / `null` / 空串 / 已退役的 key）一律 **null**，
- * 由调用方报 400 —— **不静默丢弃**。这里**没有**像 `parseVisibility` 那样的缺省值：
- * 可见性有「最安全的那一档」可以兜，而 frame key 没有安全默认值
- * （兜成任何一个 key 都等于替用户做了个他没做的决定）。
+ * 非白名单值（含 `undefined` / `null` / 空串）一律 **null**，由调用方报 400 ——
+ * **不静默丢弃**。这里**没有**像 `parseVisibility` 那样的缺省值：可见性有
+ * 「最安全的那一档」可以兜，而 frame key 没有安全默认值（兜成任何一个 key 都等于
+ * 替用户做了个他没做的决定）。
  *
- * 所以「卸下」这件事**不走本函数** —— 调用方拿到的 `null` 就是卸下信号，
- * 与「key 非法」是两条不同的路（见 `/api/users/me/frame` 的 PUT）。
+ * 【为什么退役 key 也返回】它是「这个 key 存不存在」的解析器，不是「能不能新授权」
+ * 的闸门。保留退役 key 的解析是**历史持有可读**的前提：
+ *   · `revokeFrame` / CLI `frame revoke` 必须还能收回一款已退役的框（否则用户摘不掉）；
+ *   · `equipFrame` 要靠它给出「已下架，不能装备」这句专属文案（而不是「未知的头像框」）；
+ *   · 设置面板要靠它把已退役的持有行渲染出来（见文件头「退役一个框时别删 key」）。
+ * 写路径各自判 `FRAMES[key].retired`：`equipFrame`（拒装备）、`rentFrame`（不在售）、
+ * `grantFrameTx`（拒新授权）—— **不要**把所有语义都塞进这个纯解析函数。
  */
 export function parseFrameKey(raw: unknown): FrameKey | null {
   if (typeof raw !== 'string' || raw === '') return null;
@@ -173,9 +178,9 @@ export function parseFrameKey(raw: unknown): FrameKey | null {
 /**
  * key → 显示名。**未知 key 返回 null**，退役的 key 照常返回名字。
  *
- * 与 `parseFrameKey` 的分工：那个是「能不能用它做写操作」（退役即不可再装备），
- * 这个是「能不能把它显示给人看」（退役了也要说得出它叫什么，
- * 否则设置面板只能显示一行 `unknown-frame-3`）。
+ * 与 `parseFrameKey` 的分工：那个是「是不是一个已登记的 key」（退役也认，历史行要
+ * 显示/收回）；「能不能新授权 / 装备」由各写路径自己判 `retired`。退役了也要说得出
+ * 它叫什么，否则设置面板只能显示一行 `unknown-frame-3`。
  */
 export function frameLabel(key: string): string | null {
   return (FRAMES as Record<string, FrameDef | undefined>)[key]?.label ?? null;

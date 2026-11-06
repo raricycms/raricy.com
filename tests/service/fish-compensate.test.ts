@@ -241,6 +241,8 @@ describe('★ 续跑：同一个 batchId 重跑不重复发放', () => {
 
     const p = await planCompensation({ amount: 6, batchId: 'batch-1' });
     expect(p).toMatchObject({ total: 2, alreadyDone: 1, blocked: 0, amount: 6, totalFish: 12 });
+    // R3-328：续跑确认屏不能拿满批合计（2×6=12）冒充本次实发 —— 本次只有 b 一人可发。
+    expect(p.newlyIssuedFish).toBe(6);
 
     // 给 b 造一行迁移前遗留的 pending（下一组用例详述）：预检要把它算成「卡住」
     await prisma.accountSyncLedger.create({
@@ -255,6 +257,7 @@ describe('★ 续跑：同一个 batchId 重跑不重复发放', () => {
     expect(await planCompensation({ amount: 6, batchId: 'batch-1' })).toMatchObject({
       alreadyDone: 1,
       blocked: 1,
+      newlyIssuedFish: 0,
     });
     // 预检**不写库**：账本里还是「原批次那行 + 手造这行」
     expect(await prisma.accountSyncLedger.count()).toBe(2);
@@ -407,6 +410,7 @@ describe('★ 只发 core+', () => {
     const p = await planCompensation({ amount: 5 });
     expect(p.total, '确认屏把 role=user 也算进去的话，运维会以为要发给三个人').toBe(2);
     expect(p.totalFish).toBe(10);
+    expect(p.newlyIssuedFish, '无 batchId 时本次实发 = 满批').toBe(10);
   });
 });
 

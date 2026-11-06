@@ -282,6 +282,24 @@ export interface WebhookPostResult {
 }
 
 /**
+ * 投递时该给 TLS 的 SNI 主机名。
+ *
+ * 【为什么字面量 IP 一律不传】`URL.hostname` 对 IPv6 字面量是**带方括号**的
+ *（`[2001:db8::1]`），`isIP('[2001:db8::1]')` 返回 0 —— 旧写法因此把方括号原样
+ * 塞进 `servername`，Node 的证书主机名校验拿 `[2001:db8::1]` 去比证书的 IP SAN，
+ * 必然失败：每次投递都失败、按退避重试到判死，而配置看起来完全合法（R3-316）。
+ * 这里先去括号再判：字面量 v4/v6 一律返回 undefined（与 v4 既有行为对齐，
+ * 证书校验走 IP SAN）；域名照常返回（SNI + 虚拟主机路由靠它）。
+ */
+export function webhookServername(url: URL): string | undefined {
+  if (url.protocol !== 'https:') return undefined;
+  const host = url.hostname;
+  const bare =
+    host.startsWith('[') && host.endsWith(']') ? host.slice(1, -1) : host;
+  return isIP(bare) ? undefined : host;
+}
+
+/**
  * 把正文 POST 到已校验的目标。**连的是 target.address，不是再解析一次的域名**。
  *
  * 用 node:https.request 而不是 fetch：fetch 不接受「连到这个 IP、但按那个域名做
@@ -309,7 +327,9 @@ export function postWebhook(
         method: 'POST',
         // SNI 与 Host 用**域名**：证书要按域名校验、虚拟主机也要按域名路由。
         // 只有 TCP 层连的是 IP —— 这正是我们要的（DNS rebinding 无处下手）。
-        servername: isHttps && !isIP(url.hostname) ? url.hostname : undefined,
+        // ⚠️ 字面量 IPv6 的 hostname 带方括号，必须先去括号再判 IP 字符串（见
+        // webhookServername 的注释；否则 servername 会是 `[2001:db8::1]`，TLS 必失败）。
+        servername: webhookServername(url),
         headers: {
           ...headers,
           Host: url.host,

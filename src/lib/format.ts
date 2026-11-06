@@ -43,3 +43,17 @@ export function ymdhms(d: Date | null | undefined): string | null {
   if (!d) return null;
   return d.toISOString().slice(0, 19).replace('T', ' ');
 }
+
+/**
+ * 库里墙上时间的 `YYYY-MM-DD HH:MM`（**分钟级**，流水/最近记录列表用）。
+ *
+ * 与 `ymdhms` 同一套「toISOString 按 UTC 解读」的理由；差在精度：列表里秒没有信息量，
+ * 反而把行撑长。入参接受 ISO 文本或 Date（DTO 里两种都有）；null / 无效值回空串
+ *（页面既有口径：宁可不显示，也不显示 `Invalid Date`）。
+ */
+export function ymdhm(input: Date | string | null | undefined): string {
+  if (!input) return '';
+  const d = input instanceof Date ? input : new Date(input);
+  if (Number.isNaN(d.getTime())) return '';
+  return d.toISOString().slice(0, 16).replace('T', ' ');
+}

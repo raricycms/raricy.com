@@ -217,13 +217,16 @@ export const fishCommands: CommandSpec[] = [
       const lines = [
         `  目标用户数：${p.total}（全部 core+，含被禁言用户 —— 补偿是系统行为，与个人状态无关）`,
         `  每人发放：${amount} 小鱼干`,
-        `  合计发放：${p.totalFish} 小鱼干`,
+        `  满批合计（一位不跳过时的上限）：${p.totalFish} 小鱼干`,
       ];
       if (batchId) {
+        const issuedCount = p.total - p.alreadyDone - p.blocked;
         lines.push(
           `  批次 ID：${batchId}（续跑）`,
           `    ├─ 已发放、本次跳过：${p.alreadyDone} 位`,
-          `    └─ 迁移前遗留（非 synced）、须人工查证：${p.blocked} 位`
+          `    ├─ 迁移前遗留（非 synced）、须人工查证：${p.blocked} 位`,
+          // R3-328：续跑时「合计发放」若仍按满批显示会高估；这一行才是本次实发口径。
+          `    └─ 本次预计新发放：${issuedCount} 位 = ${p.newlyIssuedFish} 小鱼干`
         );
       } else {
         lines.push('  批次 ID：开跑时生成并立即打印（续跑时用 --batch-id 传回来）');
@@ -259,11 +262,19 @@ export const fishCommands: CommandSpec[] = [
       });
 
       if (r.dryRun) {
+        // dry-run 也走真实预检：续跑时「合计」不能拿 r.total × amount 冒充（R3-328）。
+        const { planCompensation } = await import('../../../src/lib/fish-compensate');
+        const p = await planCompensation({ amount, batchId });
+        const issuedCount = p.total - p.alreadyDone - p.blocked;
         return {
           lines: [
-            `--dry-run：未实际执行。目标 ${r.total} 位，每人 ${amount}，合计 ${r.total * amount} 小鱼干。`,
+            `--dry-run：未实际执行。目标 ${p.total} 位，每人 ${amount}，满批合计 ${p.totalFish} 小鱼干。`,
+            `  本次预计新发放：${issuedCount} 位 = ${p.newlyIssuedFish} 小鱼干` +
+              (p.alreadyDone > 0 ? `（已发放跳过 ${p.alreadyDone} 位` : '（') +
+              (p.blocked > 0 ? `，迁移前遗留 ${p.blocked} 位` : '') +
+              '）。',
           ],
-          json: r,
+          json: { ...r, plan: p },
         };
       }
 

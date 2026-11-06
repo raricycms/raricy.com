@@ -43,7 +43,7 @@ vi.mock('@/lib/auth', async (importOriginal) => ({
   getCurrentUser: auth.getCurrentUser,
 }));
 
-import { apiOk, apiErr, categoryFullPath, ymd } from '@/lib/format';
+import { apiOk, apiErr, categoryFullPath, ymd, ymdhm } from '@/lib/format';
 import { requireCoreUser, requireOwner } from '@/lib/guard';
 
 /** 造一个够用的 SafeUser 替身：guard 只关心 role。 */
@@ -189,6 +189,21 @@ describe('ymd —— 对齐 Blog.to_dict 的 %Y-%m-%d', () => {
   it('Unix 纪元前后的边界日期不越界', () => {
     expect(ymd(new Date(Date.UTC(1970, 0, 1, 0, 0, 0)))).toBe('1970-01-01');
     expect(ymd(new Date(Date.UTC(1999, 11, 31, 23, 59, 59)))).toBe('1999-12-31');
+  });
+});
+
+describe('ymdhm —— 分钟级的库内墙上时间文本（流水/最近记录用）', () => {
+  it('Date 与 ISO 文本同样输出 YYYY-MM-DD HH:MM（不出现秒）', () => {
+    const d = new Date(Date.UTC(2026, 6, 16, 8, 30, 45));
+    expect(ymdhm(d)).toBe('2026-07-16 08:30');
+    expect(ymdhm('2026-07-16T08:30:45.000Z')).toBe('2026-07-16 08:30');
+    expect(ymdhm(d)).toMatch(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/);
+  });
+
+  it('null / undefined / 无效文本 → 空串（页面不显示 Invalid Date）', () => {
+    expect(ymdhm(null)).toBe('');
+    expect(ymdhm(undefined)).toBe('');
+    expect(ymdhm('not-a-date')).toBe('');
   });
 });
 

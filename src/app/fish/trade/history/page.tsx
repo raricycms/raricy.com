@@ -4,12 +4,14 @@ import { getCurrentUser } from '@/lib/auth';
 import { isFocusFishTradeBlocked } from '@/lib/focus-mode';
 import { listSettledPositions,settledPositionCount,displaySymbol } from '@/lib/market-service';
 import { loginUrlWithNext } from '@/lib/safe-url';
-import { fmtFish } from '@/lib/fish-amount';
+import { fmtFish, signedFish } from '@/lib/fish-amount';
 import { ymdhms } from '@/lib/format';
 import SitePager from '@/app/components/SitePager';
 import TradeNav from '../TradeNav';
 export const dynamic='force-dynamic';
 export const metadata={title:'练手盘交易记录',robots:{index:false,follow:false}};
+// 与 /fish/trade 的「最近结清」是**两份刻意不同的渲染**（见那边 SettledList 的注释）：
+// 这里是窄栏分页明细 —— 方向用文字、倍数恒显示、状态用「平仓」、不带结清价、秒级时间。
 export default async function TradeHistory({searchParams}:{searchParams:Promise<{page?:string}>}){
   const user=await getCurrentUser();if(!user)redirect(loginUrlWithNext('/fish/trade/history'));
   if(isFocusFishTradeBlocked(user))forbidden();
@@ -22,7 +24,7 @@ export default async function TradeHistory({searchParams}:{searchParams:Promise<
         <span className="trade-settled__name">{displaySymbol(row.symbol)}</span>
         <span>{row.direction==='short'?'做空':'做多'} · {row.leverage}×</span>
         <span className="numeric">投入 {fmtFish(row.stake)}</span>
-        <span className="numeric">{row.profit===null?'—':(row.profit>0?'+':'')+fmtFish(row.profit)} · {row.status==='liquidated'?'爆仓':'平仓'}</span>
+        <span className="numeric">{row.profit===null?'—':signedFish(row.profit)} · {row.status==='liquidated'?'爆仓':'平仓'}</span>
         <time className="numeric">{ymdhms(row.closedAt)}</time>
       </li>)}</ul>:<p>还没有已结清的交易。</p>}
     </section>

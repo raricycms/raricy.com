@@ -506,6 +506,12 @@ export async function grantFrameTx(
   if (!key) {
     return { ok: false, code: 400, message: `未知的头像框：${input.key}（合法值见 src/lib/frame-refs.ts 的 FRAME_KEYS）` };
   }
+  // 退役框**不能再新授权**（R3-322）：已退役的框用户永远戴不上，发出去只会让
+  // 「frame list 显示持有、equip 报已下架」这种半截状态出现。历史持有行不受影响
+  //（parseFrameKey 仍认退役 key，收回 / 显示照常）。
+  if (FRAMES[key].retired) {
+    return { ok: false, code: 400, message: `「${frameLabel(key) ?? key}」已下架，不能再发放` };
+  }
 
   const user = await tx.user.findUnique({ where: { id: userId }, select: { id: true } });
   if (!user) return { ok: false, code: 404, message: '用户不存在' };

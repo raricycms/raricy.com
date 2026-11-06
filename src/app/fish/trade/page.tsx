@@ -18,7 +18,8 @@ import { isLiquidationRunning } from '@/lib/market-liquidator';
 // 方向徽标（零依赖模块 —— 页面与服务端共用同一份词表）
 import { DIRECTION_BADGES } from '@/lib/market-leverage';
 import { getCachedQuotes, getCandles, MARKET_SYMBOLS } from '@/lib/market-price';
-import { fmtFish } from '@/lib/fish-amount';
+import { fmtFish, signedFish } from '@/lib/fish-amount';
+import { formatFeeRate } from '@/lib/market-math';
 import { formatPrice } from '@/lib/market-chart';
 import {
   DEFAULT_INTERVAL,
@@ -106,7 +107,7 @@ export default async function FishTradePage() {
       <TradeNav current="trade" />
       <details className="trade-subtitle"><summary>交易规则</summary>
         <p>使用小鱼干做多或做空真实行情。杠杆放大盈亏，投入可能全部亏损；不产生欠款。
-        平仓手续费为名义本金的 {MARKET_FEE_RATE * 100}%，成交时获取实时价格。</p>
+        平仓手续费为名义本金的 {formatFeeRate(MARKET_FEE_RATE)}，成交时获取实时价格。</p>
       </details>
 
       <TradePanel
@@ -135,9 +136,6 @@ function fmtSettledAt(d: Date | null): string {
   return `${p(d.getUTCMonth() + 1)}-${p(d.getUTCDate())} ${p(d.getUTCHours())}:${p(d.getUTCMinutes())}`;
 }
 
-/** 带符号的鱼干数。0 不带正号 —— 与统计页的 signed 同一条判据。 */
-const signedFish = (v: number) => `${v > 0 ? '+' : ''}${fmtFish(v)}`;
-
 /**
  * 「最近结清」—— 平掉 / 爆掉的每一笔逐条列出。
  *
@@ -146,6 +144,13 @@ const signedFish = (v: number) => `${v > 0 ? '+' : ''}${fmtFish(v)}`;
  *
  * 【口径与统计页一致】盈亏 = 实发 − 投入，来自 `market_positions`（见 listSettledPositions）。
  * ⚠️ **别改成从流水求和** —— 强平与实发为 0 的平仓都不写流水。
+ *
+ * 【与 /fish/trade/history 的两份渲染是**刻意**的，不要再合并成一张组件】两处的信息
+ * 层级不同：这里是「最近 10 笔」的概览行（带方向角标、只在杠杆仓显示倍数、给结清价、
+ * 时间只到分钟）；历史页是窄栏里的分页明细（方向用文字恒显示、倍数恒显示、状态用
+ * 「平仓」而非「卖出/平空」、不带结清价、时间精确到秒）。把两者抽成一个「字段取并集」
+ * 的组件的代价是：概览行为多出用不上的列、历史页被迫改文案。同语义的 **金额/时间
+ * 文本**已经抽走（`signedFish` / `ymdhm` / `ymdhms`），剩下的差异是信息架构。
  */
 function SettledList({ rows, hasMore }: { rows: SettledPositionView[]; hasMore: boolean }) {
   return (

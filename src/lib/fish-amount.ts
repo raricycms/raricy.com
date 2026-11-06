@@ -54,6 +54,16 @@ export function fmtFish(n: number): string {
   return n.toFixed(FISH_DECIMALS);
 }
 
+/**
+ * 带符号的鱼干数：正数加 `+`、0 与负数原样（`0.0000` / `-1.0000`）。
+ *
+ * 这是**流水/结清列表**的统一口径（收入显示成 `+1.0000`）。⚠️ 统计页的 `signed(units)`
+ * 不是同一个函数：它吃的是存储单位、还要先换算，别合并。
+ */
+export function signedFish(n: number): string {
+  return `${n > 0 ? '+' : ''}${fmtFish(n)}`;
+}
+
 /** 回填输入框：去掉无意义的尾零（见文件头「三个函数分别管什么」）。 */
 export function fmtFishInput(n: number): string {
   return String(roundFish(n));

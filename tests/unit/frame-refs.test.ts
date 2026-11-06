@@ -73,6 +73,15 @@ describe('parseFrameKey', () => {
     expect(parseFrameKey(DEMO)).toBe(DEMO);
   });
 
+  it('★ 退役 key 仍原样返回 —— 解析器管「存不存在」，写路径各自判 retired', () => {
+    // R3-322：把退役判定塞进解析器会顺带打断三个真实消费者 —— 收回退役框（revokeFrame /
+    // CLI frame revoke）、设置面板显示历史持有行、以及 equipFrame 的「已下架」专属文案。
+    // 所以这里钉住「解析照样认」，退役闸门由 grantFrameTx / equipFrame / rentFrame 各判。
+    FRAMES[DEMO] = { ...PRISTINE[DEMO], retired: true };
+    expect(parseFrameKey(DEMO)).toBe(DEMO);
+    expect(parseFrameKey('no-such-frame')).toBeNull();
+  });
+
   it.each([
     ['未登记的字符串', 'no-such-frame'],
     ['空串', ''],

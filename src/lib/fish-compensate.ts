@@ -134,12 +134,16 @@ export interface CompensatePlan {
   /** 传入 batchId 时才有意义：登记行不是 synced（迁移前遗留）、须人工查证的位数。 */
   blocked: number;
   amount: number;
+  /** **满批合计**（全部 core+ 用户都发一遍）：只作上限参考，续跑时不是本次实发。 */
   totalFish: number;
+  /** **本次预计实际新发放** = (total − alreadyDone − blocked) × amount。 */
+  newlyIssuedFish: number;
 }
 
 /**
  * 只读预检：给「即将执行」确认屏用。**不写库**。
- * 传了 batchId 就顺带算出续跑时会跳过多少位、有多少位卡在迁移前的遗留行里。
+ * 传了 batchId 就顺带算出续跑时会跳过多少位、有多少位卡在迁移前的遗留行里，
+ * 以及**本次预计实发多少**（R3-328：确认屏不能拿满批合计冒充本次发放）。
  */
 export async function planCompensation(opts: {
   amount: number;
@@ -163,6 +167,7 @@ export async function planCompensation(opts: {
     blocked,
     amount: opts.amount,
     totalFish: opts.amount * users.length,
+    newlyIssuedFish: opts.amount * Math.max(0, users.length - alreadyDone - blocked),
   };
 }
 

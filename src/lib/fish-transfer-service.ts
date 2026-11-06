@@ -117,14 +117,74 @@ function isUniqueViolation(e: unknown): boolean {
   );
 }
 
+/** 同键异参的 409 文案（「收款人不可见且参数对不上」也复用它）。 */
+const DUPLICATE_PARAM_MISMATCH =
+  '该幂等键已用于另一笔转账（收款人 / 金额 / 留言不同），请换一个键';
+/** 记录状态不是 synced —— 迁移前遗留（本地曾提交、远端那半笔状态不明）。 */
+const DUPLICATE_LEGACY_STATE =
+  '该幂等键对应的记录状态异常（迁移前的遗留），请人工查证后再换键重试';
+/** 记录已生效，但收款人现在不可见（归档账号被读口统一过滤）。 */
+const DUPLICATE_RECIPIENT_ARCHIVED =
+  '该笔转账已成交，但收款人账号已归档（当前不可见），无法再次查询结果；请勿重复转账';
+
+/** 幂等登记行的 payload（损坏一律当空对象 —— 参数比对失败 → 409，绝不冒重复转账的险）。 */
+function parseLedgerPayload(row: { payload: string }): {
+  fromUserId?: string;
+  toUserId?: string;
+  amount?: number;
+  description?: string;
+} {
+  try {
+    return JSON.parse(row.payload) as ReturnType<typeof parseLedgerPayload>;
+  } catch {
+    return {};
+  }
+}
+
 /**
- * 客户端幂等键命中**已登记的记录**时的处理。三种局面各有各的对：
+ * 「收款人**不可见**」时的同键重放判定。
+ *
+ * 调用点：`transferFish` 里收付款人查不到（`archive-scope` 把归档账号从所有读口过滤掉）
+ * 且调用方带了幂等键的情形。必须先看登记行再回 404：这笔钱可能早已成交，只是对手方
+ * 归档了 —— 回「接收者不存在」会让用户换个人重转，而回「迁移前遗留」会把人指向一张
+ * 根本不需要查的账本行（R3-315）。
+ *
+ * ⚠️ 这里只能比对 from / to / amount（收款人 username 不可见，拿不到 description 的
+ * 期望值）。三种原因都仍然是 409、都不动钱，区别只在文案：已成交而不可见 / 遗留 /
+ * 参数不一致。
+ */
+function resolveInvisibleRecipientReplay(
+  row: { payload: string; status: string },
+  expected: { fromUserId: string; toUserId: string; amount: number }
+): TransferOutcome {
+  const payload = parseLedgerPayload(row);
+  if (
+    payload.fromUserId !== expected.fromUserId ||
+    payload.toUserId !== expected.toUserId ||
+    payload.amount !== expected.amount
+  ) {
+    return { ok: false, code: 409, message: DUPLICATE_PARAM_MISMATCH };
+  }
+  if (row.status !== 'synced') {
+    return { ok: false, code: 409, message: DUPLICATE_LEGACY_STATE };
+  }
+  return { ok: false, code: 409, message: DUPLICATE_RECIPIENT_ARCHIVED };
+}
+
+/**
+ * 客户端幂等键命中**已登记的记录**时的处理。四种局面各有各的对：
  *   · 参数一致且已生效 → 原样回报（`duplicated: true`），一分钱都不再动；
  *   · 参数不一致 → 409（同键换个参数是调用方的 bug，静默改单更糟）；
- *   · 记录存在但状态不是 synced → 409。
+ *   · 已生效，但收款人现在**不可见**（归档账号被读口过滤）→ 409，文案说明是这个原因；
+ *   · 记录存在但状态不是 synced → 409（迁移前遗留，须人工查证）。
  *
- * 【第三种为什么还留着】新写入的记录**一律是 synced**（登记与转账同事务提交，
- * 提交成功就是已生效）。这个分支只为**迁移前遗留的行**服务 —— 那时记录会停在
+ * 【第三种为什么也拒绝】重放查询要回收款人名字与头像框，而归档账号在全局 prisma
+ * 上被 `archive-scope` 统一过滤（`archivedAt: null`）—— 这里拿不到那一行。拒绝是
+ * 安全的一侧（不会重复转账），但**不能**把它混进「迁移前遗留」：那条文案会把人指向
+ * `account_sync_ledger` 去查一个根本不存在的问题（R3-315）。
+ *
+ * 【第四种为什么还留着】新写入的记录**一律是 synced**（登记与转账同事务提交，
+ * 提交成功就是已生效）。那个分支只为**迁移前遗留的行**服务 —— 那时记录会停在
  * pending / failed（本地已提交、远端没同步 / 补偿也失败）。对它们的正确动作是人工
  * 查证，绝不是当它已成交再回报一次「转账成功」。
  */
@@ -140,17 +200,7 @@ async function resolveDuplicate(
    */
   transferId: string
 ): Promise<TransferOutcome> {
-  let payload: {
-    fromUserId?: string;
-    toUserId?: string;
-    amount?: number;
-    description?: string;
-  } = {};
-  try {
-    payload = JSON.parse(row.payload) as typeof payload;
-  } catch {
-    /* 记录 payload 损坏：当作参数不一致处理，宁可 409 也不冒重复转账的险 */
-  }
+  const payload = parseLedgerPayload(row);
   if (
     // ⚠️ 发起人也必须比：幂等键里的身份只有 sha256 前 8 hex（32 bit），仅当两个
     // 账号在这 8 位相撞、且用了同一个客户端键时，B 派生的键才会命中 A 登记的行。
@@ -164,7 +214,7 @@ async function resolveDuplicate(
     return {
       ok: false,
       code: 409,
-      message: '该幂等键已用于另一笔转账（收款人 / 金额 / 留言不同），请换一个键',
+      message: DUPLICATE_PARAM_MISMATCH,
     };
   }
   if (row.status === 'synced') {
@@ -192,11 +242,18 @@ async function resolveDuplicate(
         duplicated: true,
       };
     }
+    // 记录已生效（synced）却查不到收款人 = 对方账号已归档/不可见（读口统一过滤）。
+    // 与「迁移前遗留」区分开：这笔钱**确实已经转成功了**，只是重放查询拿不到对手方。
+    return {
+      ok: false,
+      code: 409,
+      message: DUPLICATE_RECIPIENT_ARCHIVED,
+    };
   }
   return {
     ok: false,
     code: 409,
-    message: '该幂等键对应的记录状态异常（迁移前的遗留），请人工查证后再换键重试',
+    message: DUPLICATE_LEGACY_STATE,
   };
 }
 
@@ -287,11 +344,34 @@ export async function transferFish(
     return { ok: false, code: 400, message: `留言最多 ${TRANSFER_NOTE_MAX} 个字` };
   }
 
+  // 幂等键**只算一次**：登记（事务内）、重放判定与单号派生都用它。
+  // 放在收款人查询**之前** —— 「同键重放」的判定不该被「对手方已归档、读不到」挡住
+  //（见下面 !recipientRow 分支；这是 R3-315 的关键顺序）。
+  const clientKey = (opts?.clientIdempotencyKey ?? '').trim();
+  if (clientKey && !CLIENT_KEY_RE.test(clientKey)) {
+    return {
+      ok: false,
+      code: 400,
+      message: '幂等键格式不合法（1-48 位，仅字母数字与 _ . : -）',
+    };
+  }
+
   const recipientRow = await prisma.user.findUnique({
     where: { id: toUserId },
     select: { id: true, username: true, equippedFrameKey: true, equippedFrameExpiresAt: true },
   });
-  if (!recipientRow) return { ok: false, code: 404, message: '接收者不存在' };
+  if (!recipientRow) {
+    // 收款人读不到有两种可能：真的不存在，或**已归档**（archive-scope 对 User 统一追加
+    // archivedAt:null）。带键重放时先查登记行，把「已成交但对手方不可见」从 404 里摘出来
+    // —— 它既不是「接收者不存在」，也不是「迁移前遗留」（R3-315）。
+    if (clientKey) {
+      const existing = await findIdempotency(makeClientIdempotencyKey(fromUserId, clientKey));
+      if (existing) {
+        return resolveInvisibleRecipientReplay(existing, { fromUserId, toUserId, amount });
+      }
+    }
+    return { ok: false, code: 404, message: '接收者不存在' };
+  }
   // 装备两列在这里就换成 frame_url —— TransferTarget 是**下发形状**，
   // 不该带着原始列跑（下面 recipient 被塞进多个返回值）
   const recipient: TransferTarget = {
@@ -311,15 +391,6 @@ export async function transferFish(
     ? `转给「${recipient.username}」：${cleanNote}`
     : `转给「${recipient.username}」`;
 
-  // 幂等键**只算一次**：登记（事务内）与单号派生都用它。
-  const clientKey = (opts?.clientIdempotencyKey ?? '').trim();
-  if (clientKey && !CLIENT_KEY_RE.test(clientKey)) {
-    return {
-      ok: false,
-      code: 400,
-      message: '幂等键格式不合法（1-48 位，仅字母数字与 _ . : -）',
-    };
-  }
   const idempotencyKey = clientKey
     ? makeClientIdempotencyKey(fromUserId, clientKey)
     : makeTransferIdempotencyKey(fromUserId, recipient.id, units, randomBytes(4).toString('hex'));

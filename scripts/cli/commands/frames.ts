@@ -148,6 +148,11 @@ export const frameCommands: CommandSpec[] = [
       const username = String(ctx.args.username);
       const key = parseFrameKey(ctx.args.key);
       if (!key) return [`头像框 ${String(ctx.args.key)} 未登记（合法值：${FRAME_KEYS.join(' / ')}）`];
+      // 退役框不能新授权（R3-322）：服务端 grantFrameTx 会拒（400），确认屏先说清楚，
+      // 免得运维在确认屏点完才看到「发放失败」。
+      if (FRAMES[key].retired) {
+        return [`「${frameLabel(key)}」已下架，不能再发放（历史持有行仍可用 frame revoke 收回）`];
+      }
 
       const u = await ctx.prisma.user.findUnique({
         where: { username },
@@ -176,6 +181,13 @@ export const frameCommands: CommandSpec[] = [
       const parsed = parseFrameKey(ctx.args.key);
       if (!parsed) {
         throw new CliError(`错误：未知的头像框 ${String(ctx.args.key)}（合法值：${FRAME_KEYS.join(' / ')}）`);
+      }
+      // 退役框不能再新授权（R3-322）：这是用户错误档（exit 1），不是本地事务故障（exit 2）。
+      if (FRAMES[parsed].retired) {
+        throw new CliError(
+          `错误：「${frameLabel(parsed)}」已下架，不能再发放（历史持有行仍可用 frame revoke 收回）`,
+          1
+        );
       }
       const key = parsed;
       const user = await requireUser(ctx.prisma, username);

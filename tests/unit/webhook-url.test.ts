@@ -13,6 +13,7 @@ import {
   parseWebhookUrl,
   isBlockedAddress,
   resolveWebhookTarget,
+  webhookServername,
   WebhookUrlError,
   WEBHOOK_URL_MAX,
 } from '@/lib/webhook-url';
@@ -230,5 +231,27 @@ describe('resolveWebhookTarget —— 解析后校验', () => {
   it('★ allowPrivate **不会**让 https 要求失效之外的东西放宽 —— 生产路径不传它', async () => {
     // 不带 opts 时连 http 都不收
     await expect(resolveWebhookTarget('http://127.0.0.1:9999/cb')).rejects.toThrow(WebhookUrlError);
+  });
+});
+
+describe('★ webhookServername —— TLS SNI 参数（R3-316）', () => {
+  it('域名：https 传域名（SNI 与证书主机名校验靠它）', () => {
+    expect(webhookServername(new URL('https://bank.example.com/cb'))).toBe('bank.example.com');
+    expect(webhookServername(new URL('https://bank.example.com:8443/cb'))).toBe('bank.example.com');
+  });
+
+  it('字面量 IPv6 → undefined（URL.hostname 带方括号，绝不能原样当 servername）', () => {
+    // 旧实现 isIP('[2001:db8::1]') === 0，于是把带方括号的地址塞进 servername，
+    // 证书按 IP SAN 校验必然失败 —— 每次投递都失败且没有任何配置错误提示。
+    expect(webhookServername(new URL('https://[2001:db8::1]/cb'))).toBeUndefined();
+    expect(webhookServername(new URL('https://[::ffff:8.8.8.8]/cb'))).toBeUndefined();
+  });
+
+  it('字面量 IPv4 → undefined（与 v4 既有行为对齐，证书按 IP SAN 校验）', () => {
+    expect(webhookServername(new URL('https://93.184.216.34/cb'))).toBeUndefined();
+  });
+
+  it('http 没有 SNI → undefined', () => {
+    expect(webhookServername(new URL('http://bank.example.com/cb'))).toBeUndefined();
   });
 });

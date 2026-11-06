@@ -31,6 +31,7 @@ import {
   makeTransferIdempotencyKey,
 } from '@/lib/fish-idempotency';
 import { fishToUnits, unitsToFish } from '@/lib/fish-units';
+import { WEBHOOK_EVENT_TRANSFER_RECEIVED } from '@/lib/fish-webhook-service';
 import { nowForDb } from '@/lib/db-time';
 import { __resetRateLimitStore, RULES } from '@/lib/rate-limit';
 
@@ -125,6 +126,48 @@ describe('transferFish —— 成功路径', () => {
     expect(inn[0].createdAt).not.toBeNull();
 
     await expectLedgerConsistent('转账 12.5 成功后');
+  });
+
+  it('★ 收款人登记了回调地址 → 同一事务写出 outbox 行（R3-318，接口在 fish-transfer-service）', async () => {
+    const { sender, recipient } = await scene(10, 0);
+    // outbox 只看「有没有地址」，不解密：给个不会被投递用的占位密文即可。
+    await prisma.fishWebhookEndpoint.create({
+      data: {
+        userId: recipient.id,
+        url: 'http://127.0.0.1:9/hook',
+        secretEncrypted: 'outbox-test-not-used',
+      },
+    });
+
+    const res = await transferFish(sender.id, recipient.id, 5, '货款');
+    expect(res.ok, JSON.stringify(res)).toBe(true);
+    if (!res.ok) return;
+
+    // 投递行与两条流水共用 transfer_id；它必须真的存在（删掉 enqueue 调用这里会红）。
+    const row = await prisma.fishWebhookDelivery.findFirstOrThrow({
+      where: { transferId: res.transferId },
+    });
+    expect(row.status).toBe('pending');
+    expect(row.event).toBe(WEBHOOK_EVENT_TRANSFER_RECEIVED);
+    expect(JSON.parse(row.payload)).toMatchObject({
+      transfer_id: res.transferId,
+      amount: 5,
+      note: '货款',
+    });
+    expect(await prisma.fishWebhookDelivery.count()).toBe(1);
+    await expectLedgerConsistent('带回调地址的转账之后');
+  });
+
+  it('收款人没登记回调地址 → 转账成功但不写 outbox 行', async () => {
+    const { sender, recipient } = await scene(10, 0);
+
+    const res = await transferFish(sender.id, recipient.id, 5);
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    expect(
+      await prisma.fishWebhookDelivery.count({ where: { transferId: res.transferId } }),
+      '没地址就不该有 outbox 行'
+    ).toBe(0);
   });
 
   it('最小额 0.0001 可转，且 0.1 这样的中间值也没问题（转账没有下限）', async () => {
@@ -608,6 +651,44 @@ describe('客户端幂等键 —— 对外契约', () => {
     expect(await prisma.accountSyncLedger.count(), '不新增行、也不改动遗留行').toBe(1);
 
     await expectLedgerConsistent('遗留 pending 行被 409 拒后');
+  });
+
+  it('★ 已成交但收款人已归档 → 409，文案指向归档（不是「迁移前遗留」也不是 404）', async () => {
+    // 重放查询要回收款人名字/头像框，而归档账号在 archive-scope 下对所有 User 读口
+    // 不可见。旧行为会把一笔**已经成交**的账说成别的东西：要么在收款人预检处回 404
+    //「接收者不存在」，要么（竞态窗口里）落到「迁移前遗留」—— 后者会把人指向一个
+    // 根本不存在的问题、让人去翻 account_sync_ledger（R3-315）。
+    const { sender, recipient } = await scene(100, 0);
+    const clientKey = 'wd-archived-1';
+    const first = await transferFish(sender.id, recipient.id, 5, null, {
+      clientIdempotencyKey: clientKey,
+    });
+    expect(first.ok).toBe(true);
+
+    // 只放归档标记（archive-scope 的过滤依据），不模拟归档时的清余额等动作。
+    await prisma.user.update({ where: { id: recipient.id }, data: { archivedAt: nowForDb() } });
+
+    const replay = await transferFish(sender.id, recipient.id, 5, null, {
+      clientIdempotencyKey: clientKey,
+    });
+
+    expect(replay.ok, '已成交的重放不能返回成功（收款人已不可见，无法原样回报）').toBe(false);
+    if (replay.ok) return;
+    expect(replay.code, '不是 404 —— 那笔转账已经成交了').toBe(409);
+    expect(replay.message, '文案必须指向真正原因（收款人已归档）').toContain('归档');
+    expect(replay.message).not.toContain('迁移前');
+    expect(replay.message).not.toContain('状态异常');
+
+    // 钱一分没有再动：只有第一笔
+    expect(await balanceOf(sender.id)).toBe(95);
+    expect(await txnsOf(recipient.id), '收款方的入账流水仍是第一笔那条').toHaveLength(1);
+
+    // 同键换金额（收款人仍不可见）→ 仍 409，但走「参数不一致」文案，不冒充归档
+    const mismatch = await transferFish(sender.id, recipient.id, 6, null, {
+      clientIdempotencyKey: clientKey,
+    });
+    expect(mismatch.ok).toBe(false);
+    if (!mismatch.ok) expect(mismatch.message).toContain('另一笔转账');
   });
 
   it('重放不消耗限频额度（否则超时重试会被自己的配额挡在门外）', async () => {

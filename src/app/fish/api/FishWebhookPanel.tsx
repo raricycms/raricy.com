@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { ymdhm } from '@/lib/format';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // FishWebhookPanel.tsx — /fish/api 的回调配置区
@@ -44,17 +45,8 @@ export interface DeliveryRow {
   created_at: string | null;
 }
 
-/** 时间戳是本站时钟（UTC+8 墙上时间贴 Z）—— 一律 getUTC* 读。 */
-function fmtDateTime(iso: string | null): string {
-  if (!iso) return '—';
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return '—';
-  const p = (n: number) => String(n).padStart(2, '0');
-  return (
-    `${d.getUTCFullYear()}-${p(d.getUTCMonth() + 1)}-${p(d.getUTCDate())} ` +
-    `${p(d.getUTCHours())}:${p(d.getUTCMinutes())}`
-  );
-}
+/** 时间戳是本站时钟（UTC+8 墙上时间贴 Z）—— 统一走 ymdhm（见 src/lib/format.ts）。 */
+const fmtDateTime = (iso: string | null): string => ymdhm(iso) || '—';
 
 const STATUS_LABEL: Record<string, string> = {
   pending: '待投递',
