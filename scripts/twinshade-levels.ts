@@ -314,8 +314,14 @@ for (const def of LEVELS) {
     const hint = offsetCandidate(level);
     verdict += hint ? `（几何上可行：${hint}，检查路线是否被堵死）` : '（两盏灯的相对位置与出生点不一致）';
   } else if (result.optimal !== def.par) verdict = `par 不符：最优是 ${result.optimal}`;
-  // 有石头、却能把石头冻成墙照常过（且不更长）⇒ 这一关的石头从没被推过。
-  else if (level.blocks.length > 0 && frozen !== null && frozen <= def.par) {
+  // 石头必须是「工具」，两个改写都是硬指标（与 tests/unit/twinshade-levels.test.ts 同口径）：
+  //   · 换成地板后仍能在 par 内走通 ⇒ 这关的石头白给，不用推也能过；
+  //   · 冻成墙后仍能在 par 内走通 ⇒ 这关的石头从没被推过。
+  // 两条不能只判一半：只判冻石时，「删掉石头一样短」的关卡会打 ✓ 并退出 0，
+  // 而文件头与 levels.ts 的说明都写着两个都要判。
+  else if (level.blocks.length > 0 && without !== null && without <= def.par) {
+    verdict = `石头不必要（无石 par=${without}）`;
+  } else if (level.blocks.length > 0 && frozen !== null && frozen <= def.par) {
     verdict = `石头没被推（冻石 par=${frozen}）`;
   }
   if (verdict !== '✓') failures++;
@@ -344,7 +350,10 @@ for (const def of LEVELS) {
 
 console.log(rows.join('\n'));
 if (failures > 0) {
-  console.error(`\n${failures} 关没通过。par 必须等于 solver 的最优步数。`);
+  console.error(
+    `\n${failures} 关没通过。par 必须等于 solver 的最优步数；有石头的关卡，` +
+      '把石头换成地板 / 冻成墙两种改写都必须无解或长于 par（石头必须是工具）。'
+  );
   process.exit(1);
 }
-console.log(`\n全部 ${LEVELS.length} 关通过（par = 最优步数）。`);
+console.log(`\n全部 ${LEVELS.length} 关通过（par = 最优步数，含石头的关卡两种改写都必要）。`);

@@ -42,6 +42,22 @@ if (fonts.length === 0) {
   process.exit(1);
 }
 
+// ─── 自检模式（只读）：先于任何清空 / 写入 ──────────────────────────────────
+// `--check` 曾经放在拷贝之后：于是 `npm run mathjax:check` 会先清空再重写整个
+// public/static/mathjax/woff-v2/，然后检查「刚刚写进去」的文件 —— 名为 check 实为
+// 写操作，缺项列表几乎必然为空。与 copy-converter-assets.mjs 的顺序保持一致。
+if (process.argv.includes('--check')) {
+  const missing = fonts.filter((f) => !fs.existsSync(path.join(DEST, f)));
+  if (missing.length > 0) {
+    console.error(`[check] 缺 ${missing.length} 个字体：`);
+    for (const m of missing) console.error('  ✗', m);
+    console.error('[check] 请先 npm run prepare:mathjax');
+    process.exit(1);
+  }
+  console.log(`[check] OK，${fonts.length} 个字体齐全。`);
+  process.exit(0);
+}
+
 fs.mkdirSync(DEST, { recursive: true });
 // 先清空再拷：升级 mathjax-full 时字体名可能增减，残留旧文件会让人误以为已更新
 for (const f of fs.readdirSync(DEST)) fs.rmSync(path.join(DEST, f), { force: true });
@@ -54,15 +70,3 @@ for (const f of fonts) {
 console.log(
   `[copy-mathjax-fonts] 完成。${fonts.length} 个 woff，约 ${(bytes / 1024).toFixed(0)}KB → public/static/mathjax/woff-v2/`
 );
-
-// ─── 自检模式：CI / 升级 mathjax-full 后验证字体齐全 ──────────────────────
-if (process.argv.includes('--check')) {
-  const missing = fonts.filter((f) => !fs.existsSync(path.join(DEST, f)));
-  if (missing.length > 0) {
-    console.error(`[check] 缺 ${missing.length} 个字体：`);
-    for (const m of missing) console.error('  ✗', m);
-    console.error('[check] 请先 npm run prepare:mathjax');
-    process.exit(1);
-  }
-  console.log(`[check] OK，${fonts.length} 个字体齐全。`);
-}

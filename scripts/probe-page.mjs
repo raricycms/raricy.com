@@ -78,7 +78,7 @@ const HELP = `用法: npx tsx scripts/probe-page.mjs <路径> [选项]
   --type <文本>                   点击 .cm-content 后一次性输入（编辑器用例）
   --type-file <文件>              同上，从 UTF-8 文件读（避开 shell 引号 / 换行）
   --then-wait <选择器>            点击 / 输入之后再等一个选择器（如预览编译完成）
-  --assert-no <选择器>            最后断言该选择器不存在（不存在则失败退出）
+  --assert-no <选择器>            最后断言该选择器不存在（不存在=通过；出现了才失败退出）
   --timeout <毫秒>                总超时，默认 30000
 
 注意：需要 e2e 的 webServer 已在跑（npm run e2e:ci 那套）。这个脚本不做断言、不算测试。
@@ -98,8 +98,9 @@ async function main() {
   const base = `http://127.0.0.1:${opts.port}`;
   const browser = await chromium.launch();
   try {
-    // 临时上下文落在系统临时目录 —— 探针不该在仓库里留任何东西。
-    const userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-probe-'));
+    // 用 browser.newContext()：浏览器自己把临时 profile 放在系统临时目录，
+    // 探针不在仓库里留任何东西。（早先这里还 mkdtempSync 了一个 userDataDir，
+    // 但从没传给 newContext/launch —— 那是一段只创建、只删除空目录的死代码。）
     const context = await browser.newContext(
       opts.width ? { viewport: { width: opts.width, height: opts.height ?? 900 } } : undefined
     );
@@ -186,7 +187,6 @@ async function main() {
     }
 
     await context.close();
-    fs.rmSync(userDataDir, { recursive: true, force: true });
   } finally {
     await browser.close();
   }

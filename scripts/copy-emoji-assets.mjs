@@ -132,6 +132,32 @@ if (missing.length > 0) {
   process.exit(1);
 }
 
+// ─── 4. 自检模式（只读）：先于任何清空 / 写入 ───────────────────────────────
+//
+// `--check` 曾经放在拷贝之后：于是 `npm run emoji:check` 会先 mkdir + **清空整个
+// public/static/emoji/**，再逐文件重拷（连 LICENSE.txt 一起重写），最后检查「刚
+// 刚拷完」的目录 —— 名为 check 实为写操作，缺项列表几乎必然为空，在只读文件系统
+// 上还会失败。与 copy-converter-assets.mjs 的顺序保持一致：check 只读、先返回。
+
+if (process.argv.includes('--check')) {
+  const absent = faces.filter((f) => !fs.existsSync(path.join(DEST, f.file)));
+  if (absent.length > 0) {
+    console.error(`[check] 缺 ${absent.length} 个素材：`);
+    for (const a of absent) console.error('  ✗', a.file);
+    console.error('[check] 请先 npm run prepare:emoji');
+    process.exit(1);
+  }
+  if (!fs.existsSync(path.join(DEST, 'LICENSE.txt'))) {
+    // 署名文件缺失是**许可问题**，不是美观问题，单独报一条
+    console.error('[check] 缺 LICENSE.txt（CC BY 4.0 要求署名，这个文件不能少）');
+    process.exit(1);
+  }
+  console.log(`[check] OK，${faces.length} 个素材与 LICENSE.txt 齐全。`);
+  process.exit(0);
+}
+
+// ─── 5. 拷贝（非 --check 路径）──────────────────────────────────────────────
+
 fs.mkdirSync(DEST, { recursive: true });
 // 先清空再拷：改清单时表情会增减，残留旧文件会让人以为改动没生效。
 // 另外 LICENSE.txt 也一并删掉，由下面重写（免得留下上一次的内容）。
@@ -170,20 +196,3 @@ console.log(
   `[copy-emoji-assets] 完成。${faces.length} 个 SVG，约 ${(bytes / 1024).toFixed(0)}KB → public/static/emoji/`
 );
 
-// ─── 5. 自检模式：CI / 升级 @twemoji/svg 后验证素材齐全 ──────────────────────
-
-if (process.argv.includes('--check')) {
-  const absent = faces.filter((f) => !fs.existsSync(path.join(DEST, f.file)));
-  if (absent.length > 0) {
-    console.error(`[check] 缺 ${absent.length} 个素材：`);
-    for (const a of absent) console.error('  ✗', a.file);
-    console.error('[check] 请先 npm run prepare:emoji');
-    process.exit(1);
-  }
-  if (!fs.existsSync(path.join(DEST, 'LICENSE.txt'))) {
-    // 署名文件缺失是**许可问题**，不是美观问题，单独报一条
-    console.error('[check] 缺 LICENSE.txt（CC BY 4.0 要求署名，这个文件不能少）');
-    process.exit(1);
-  }
-  console.log(`[check] OK，${faces.length} 个素材与 LICENSE.txt 齐全。`);
-}

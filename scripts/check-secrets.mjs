@@ -14,6 +14,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { execFileSync } from 'node:child_process';
+import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -78,14 +79,32 @@ for (const p of MUST_IGNORE) {
   try {
     execFileSync('git', ['check-ignore', '-q', p], { cwd: ROOT });
     ok(`${p} 已被 .gitignore 盖住`);
-  } catch {
-    bad(`${p} 没被 .gitignore 盖住 —— 下次 git add . 就会提交它`, '加进 .gitignore');
+  } catch (error) {
+    // 退出码 1 = 「没被忽略」（真正的判红）；其它（git 不在、不在仓库里）是执行失败，
+    // 不能报成「加进 .gitignore」——那会把环境问题指成配置问题。
+    if (error?.status === 1) {
+      bad(`${p} 没被 .gitignore 盖住 —— 下次 git add . 就会提交它`, '加进 .gitignore');
+    } else {
+      bad(
+        `无法判断 ${p} 是否被忽略（git check-ignore 失败：${String(error?.message ?? error).split('\n')[0]}）`,
+        '先在仓库根、确认 git 可用；本次结果不可信'
+      );
+    }
   }
 }
 
 // ── 3. 代码里有没有硬编码的真密钥 ───────────────────────────────────────────
-// 只扫**当前工作树**：历史那部分上面已经查过了。
-const tracked = git(['ls-files']).split('\n').filter(Boolean);
+// 扫**当前工作树**（含未提交改动与未跟踪但没被 .gitignore 的文件）。
+//
+// 【为什么是工作树而不是 HEAD】这一道闸门要防的是「手滑把密钥写进代码」——那一步
+// 发生在**提交之前**；读 `git show HEAD:` 只能看到已经进库的版本，等于把「拦在
+// 提交前」降级成「下次运行才告知，而那时密钥已进历史」。历史侧由第 1 道闸门管。
+// 未跟踪文件也要扫：`git add .` 会把它们一起带走，而它们此刻还没出现在任何提交里。
+const trackedRaw = git(['ls-files', '-z', '--cached', '--others', '--exclude-standard']);
+const tracked = (trackedRaw ?? '').split('\0').filter(Boolean);
+if (trackedRaw === null) {
+  bad('无法列出工作树文件（git ls-files 失败），第三道闸门未执行', '先在仓库根运行，并确认 git 可用；本次结果不可信');
+}
 // 测试文件天然充满假凭据（`SECRET_KEY = 'a-different-secret'` 之类），扫它们只会
 // 产出噪音 —— 而一个总在误报的检查，下场就是被所有人忽略，等于没有。
 // 真密钥藏在测试里属于极异常情况，且上面「历史 + gitignore」那两道才是主防线。
@@ -97,17 +116,28 @@ const ASSIGN = /\b(SECRET_KEY|INTERNAL_TOKEN|ACCOUNT_SYSTEM_KEY|FISH_ENCRYPTION_
 const BENIGN = /example|placeholder|换成|改成|占位|待填|请填|xxx+|your[-_]|<.*>|^test|test-|dev-|e2e|not-?real|smoke|fake|dummy|生产的/i;
 
 let hard = 0;
+let readFailures = 0;
 for (const f of tracked) {
   if (SKIP.test(f) || SKIP_SELF.test(f)) continue;
   if (!/\.(ts|tsx|js|mjs|cjs|py|json|ya?ml|env\.example)$/.test(f)) continue;
-  const txt = git(['show', `HEAD:${f}`]);
+  let txt;
+  try {
+    txt = fs.readFileSync(path.join(ROOT, f), 'utf8');
+  } catch (error) {
+    // 列出来却读不到（权限 / 刚被删）：不能当成「扫过了、没问题」
+    readFailures++;
+    bad(`${f} 读不到，未扫描：${String(error).split('\n')[0]}`, '确认文件权限或删掉这个未跟踪文件后重跑');
+    continue;
+  }
   for (const m of txt.matchAll(ASSIGN)) {
     if (BENIGN.test(m[2])) continue;
     hard++;
     bad(`${f} 里疑似硬编码密钥：${m[1]} = "${m[2].slice(0, 8)}…"`, '挪进 .env，并轮换这个值');
   }
 }
-if (!hard) ok('代码里没有硬编码的真密钥（占位与测试值已排除）');
+if (!hard && readFailures === 0 && trackedRaw !== null) {
+  ok('代码里没有硬编码的真密钥（占位与测试值已排除）');
+}
 
 console.log(bold('\n═══ 结论 ═══'));
 if (fail) {

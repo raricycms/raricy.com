@@ -210,10 +210,14 @@ for (const [p, name, h1] of [
 //
 // 挑的这四条各代表一类：索引页、中文 slug（URL 转义往返 —— 线上最可能悄悄坏的一类，
 // 本地单测直接喂字符串永远是对的）、ASCII slug 的 bot 文档、根下的开发文档。
+// ⚠️ 中文 slug 必须挑**没有**规范跳转的条目（`guide/图床使用指南` 之类六份功能指南
+// 会 308 到 `/image/guide` 这类规范页，见 src/lib/docs-catalog.ts 的
+// GUIDE_CANONICAL_ROUTES）。用被跳转的旧地址查 200，只会让这一条长期假红 ——
+// 规范跳转本身单列在下面的「2c2」里查。
 console.log(bold('\n2c. 文档页'));
 for (const [p, mustContain] of [
   ['/docs', '给机器人开发者'],
-  ['/docs/guide/图床使用指南', '图床使用指南'],
+  ['/docs/guide/编辑器使用指南', '编辑器使用指南'],
   ['/docs/bot/chat-bot', '讨论机器人接入说明'],
   ['/docs/architecture', '项目架构'],
 ]) {
@@ -234,6 +238,25 @@ for (const [p, mustContain] of [
   } catch (e) {
     bad(`${p} 打不开：${String(e).split('\n')[0]}`);
   }
+}
+
+// 2c2. 中文 slug 的规范跳转（六份功能指南的旧 /docs/guide/<中文名> → 站内功能页）。
+// 这是**有意**的 308（见 GUIDE_CANONICAL_ROUTES），不是断链；单独查一次，
+// 既钉住「旧地址不许变成 404」，又不必把它混进上面「200 才算过」的循环。
+console.log(bold('\n2c2. 中文 slug 规范跳转'));
+try {
+  const r = await get('/docs/guide/图床使用指南');
+  const location = r.headers.get('location') ?? '';
+  if (r.status === 308 && location.endsWith('/image/guide')) {
+    ok(`/docs/guide/图床使用指南 → 308 ${location}`);
+  } else {
+    bad(
+      `/docs/guide/图床使用指南 → HTTP ${r.status}（Location: ${location || '无'}），期望 308 → /image/guide`,
+      '查 src/lib/docs-catalog.ts 的 GUIDE_CANONICAL_ROUTES 与 src/app/docs/[...slug]/page.tsx 的 permanentRedirect'
+    );
+  }
+} catch (e) {
+  bad(`/docs/guide/图床使用指南 打不开：${String(e).split('\n')[0]}`);
 }
 
 // ── 3. CSRF ─────────────────────────────────────────────────────────────────

@@ -101,10 +101,14 @@ console.log(green('全程不写源库：只读它，产出的是规整后的新�
 step(0, '源库是否已停止写入');
 // -wal 有内容通常意味着还有连接在写。规整一个正在被写的库，会丢掉规整开始之后
 // 写入的行，而且**事后完全看不出来** —— 数据就是少了几条，没有任何报错。
+// 这是文件头 8 行声称要钉死的第一个前提，所以它必须是**硬闸**：只打一句黄字
+// 然后继续，等于把「前提」降级成了「建议」。
 const wal = source + '-wal';
 if (fs.existsSync(wal) && fs.statSync(wal).size > 0) {
-  console.log(`  ${yellow('!')} 存在非空的 WAL（${fs.statSync(wal).size} 字节）—— 还有进程在写这个库`);
+  bad(`存在非空的 WAL（${fs.statSync(wal).size} 字节）—— 还有进程在写这个库`);
   console.log(`     ${yellow('→ 先停掉它再来。带着写入做规整会静默丢数据，且事后看不出来')}`);
+  console.log(red('\n  ⛔ 源库仍在被写入：立即终止（第 1 步及之后的动作都以「源库已静止」为前提）。\n'));
+  process.exit(1);
 } else {
   ok('未见活跃 WAL');
 }

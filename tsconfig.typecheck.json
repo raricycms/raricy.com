@@ -14,7 +14,13 @@
     "",
     "实测（本机 8 核）：npm run typecheck 168.8s（exit 0）；只查 src 的变体 18.8s。",
     "改完一个文件想快速看一眼时，用 `npx tsc -p tsconfig.typecheck.json --noEmit` 仍然慢，",
-    "那就先跑相关单测 —— 见 CLAUDE.md「验证纪律」。"
+    "那就先跑相关单测 —— 见 CLAUDE.md「验证纪律」。",
+    "",
+    "【.mts 的覆盖边界】include 里补了 `scripts/*.mts`（根目录 4 个：benchmark-public-search /",
+    "reactive-budget-measure / rebuild-public-search / seed-acceptance），但**没有**放开",
+    "`scripts/**/*.mts`：captcha-attack/ 下 9 个 .mts 用显式 `.mts` 后缀互相 import（TS5097），",
+    "要么开启 allowImportingTsExtensions、要么清掉那 9 条 import 后缀才能纳入；两者都超出",
+    "本轮改动面（R3-010），留待后续单独处理。"
   ],
   "extends": "./tsconfig.json",
   "compilerOptions": {
@@ -27,6 +33,7 @@
     "tests/**/*.ts",
     "tests/**/*.tsx",
     "scripts/**/*.ts",
+    "scripts/*.mts",
     "scripts/**/*.mjs",
     "services/**/*.ts"
   ],

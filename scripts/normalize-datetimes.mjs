@@ -22,10 +22,18 @@
 // 注：路径默认是相对于**进程 cwd**（=项目根），不是 schema.prisma 目录。
 //     Prisma 自己解析 DATABASE_URL 时则相对 schema.prisma 目录 —— 同名"相对路径"
 //     在不同语境下基点不同，不要照搬给 Prisma 用。
+//
+// ── 复制 / 参数的两条硬规则（2026-11 修）────────────────────────────────────
+// 1. 复制分支用 `VACUUM INTO` 取快照，**不是 copyFileSync 主库文件**：库处于 WAL
+//    模式且有未 checkpoint 的写入时，只复制主文件会得到一个缺表/缺行的旧库
+//    （`-wal`/`-shm` 不在主文件里）。VACUUM INTO 会把 WAL 里已提交的内容一起写进
+//    快照，且快照是完整一致的。
+// 2. 参数严格解析：未知开关与缺值开关直接报错。旧实现会静默忽略，于是
+//    `--in-place` 写在末尾就落回「复制到默认 dev.db」还打印成功。
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { DatabaseSync } from 'node:sqlite';
-import { copyFileSync, existsSync } from 'node:fs';
+import { existsSync, rmSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -55,14 +63,67 @@ const DATETIME_COLUMNS = {
   admin_action_appeals: ['created_at', 'updated_at', 'decided_at'],
 };
 
+const USAGE = `用法：
+  node scripts/normalize-datetimes.mjs [--source <库>] [--dest <库>]
+  node scripts/normalize-datetimes.mjs --in-place <库>
+
+省略 --source / --dest 时用默认路径：./instance/database/db.db → ./instance/database/dev.db。`;
+
+/**
+ * 严格解析参数：未知开关与缺值开关一律抛错。
+ *
+ * 【为什么不能静默忽略】`--in-place` 写在末尾时 `argv[++i]` 是 undefined，旧实现
+ * 会把它当成「没给 --in-place」落进复制分支，用两个默认路径复制完还打印成功 ——
+ * 用户以为就地规整了生产库，实际只多了一个 dev.db 副本。拼错开关同理
+ * （`--in-plcae` / `--sourec` 都会被当成没给，静默走默认值）。
+ */
 function parseArgs(argv) {
   const args = { source: null, dest: null, inPlace: null };
+  const valueOf = (i, flag) => {
+    const v = argv[i + 1];
+    if (v === undefined || v.startsWith('--')) throw new Error(`${flag} 缺少值\n\n${USAGE}`);
+    return v;
+  };
   for (let i = 0; i < argv.length; i++) {
-    if (argv[i] === '--source') args.source = argv[++i];
-    else if (argv[i] === '--dest') args.dest = argv[++i];
-    else if (argv[i] === '--in-place') args.inPlace = argv[++i];
+    const flag = argv[i];
+    if (flag === '--source') {
+      args.source = valueOf(i, flag);
+      i++;
+    } else if (flag === '--dest') {
+      args.dest = valueOf(i, flag);
+      i++;
+    } else if (flag === '--in-place') {
+      args.inPlace = valueOf(i, flag);
+      i++;
+    } else if (flag === '--help' || flag === '-h') {
+      console.log(USAGE);
+      process.exit(0);
+    } else {
+      throw new Error(`未知参数：${flag}\n\n${USAGE}`);
+    }
   }
   return args;
+}
+
+/**
+ * 把 source 的**一致性快照**写到 target（VACUUM INTO），覆盖旧 target。
+ *
+ * 不用 copyFileSync：WAL 模式下未 checkpoint 的已提交内容在 `-wal` 里，只复制主文
+ * 件会得到一个缺表/缺行的库（实测：副本 `SELECT` 直接 `no such table`）。
+ * VACUUM INTO 会把 WAL 一起读进去，产出与源库等价的独立文件。
+ */
+function snapshotInto(source, target) {
+  for (const stale of [target, `${target}-wal`, `${target}-shm`, `${target}-journal`]) {
+    if (existsSync(stale)) rmSync(stale, { force: true });
+  }
+  const reader = new DatabaseSync(source, { readOnly: true });
+  try {
+    // VACUUM INTO 的目标是 SQL 字符串字面量：路径里的单引号要双写转义。
+    const literal = target.replace(/\\/g, '/').replace(/'/g, "''");
+    reader.exec(`VACUUM INTO '${literal}'`);
+  } finally {
+    reader.close();
+  }
 }
 
 function tableExists(db, name) {
@@ -84,8 +145,8 @@ function main() {
     const source = resolve(process.cwd(), args.source || './instance/database/db.db');
     target = resolve(process.cwd(), args.dest || './instance/database/dev.db');
     if (!existsSync(source)) throw new Error(`源库不存在: ${source}`);
-    copyFileSync(source, target);
-    console.log(`📋 已复制 ${source} → ${target}`);
+    snapshotInto(source, target);
+    console.log(`📋 已快照 ${source} → ${target}（VACUUM INTO，含 WAL 中已提交的写入）`);
   }
 
   const db = new DatabaseSync(target);
@@ -158,4 +219,9 @@ function main() {
   console.log(`\n✅ 规整完成，共更新 ${totalUpdated} 个时间戳。目标库: ${target}`);
 }
 
-main();
+try {
+  main();
+} catch (error) {
+  console.error(`\n❌ ${error instanceof Error ? error.message : String(error)}`);
+  process.exit(1);
+}
