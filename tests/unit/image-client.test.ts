@@ -32,7 +32,7 @@ vi.mock('next/navigation', () => ({
   useRouter: () => ({ refresh: () => {} }),
 }));
 
-import { isUploadableImage, prepareImageFile } from '@/lib/image-client';
+import { isUploadableImage, prepareImageFile, uploadImageFile } from '@/lib/image-client';
 import { buildImagePayload } from '@/app/components/ImageUploader';
 
 const PNG_SIG: Uint8Array<ArrayBuffer> = new Uint8Array([
@@ -161,6 +161,38 @@ describe('prepareImageFile（按字节纠正）', () => {
     expect(out.ok).toBe(false);
     if (out.ok) return;
     expect(out.message).toContain('/tool/convert');
+  });
+});
+
+describe('uploadImageFile —— 网络层失败', () => {
+  it('★ 网络中断只发一次，不自动重发同一个 FormData（响应可能已落库）', async () => {
+    // 服务端上传没有幂等键：每次 POST 都生成新 id。若浏览器在「已落库、响应丢失」的
+    // 情况下自动重发同一个 FormData，就会落第二张图、白占配额（R3-373）。
+    // 这里用一个必然 onerror 的 XHR 桩断言「只发了一次」。
+    let sends = 0;
+    class FailingXhr {
+      status = 0;
+      responseText = '';
+      onload: (() => void) | null = null;
+      onerror: (() => void) | null = null;
+      onabort: (() => void) | null = null;
+      open() {}
+      send() {
+        sends += 1;
+        this.onerror?.();
+      }
+    }
+    vi.stubGlobal('XMLHttpRequest', FailingXhr as unknown as typeof XMLHttpRequest);
+    try {
+      const out = await uploadImageFile(file(PNG_SIG, 'a.png', 'image/png'));
+
+      expect(out.ok).toBe(false);
+      if (out.ok) return;
+      expect(out.message, '必须让用户看见失败、自己决定是否重试').toContain('网络');
+      expect(sends, '服务端没有上传幂等键：自动重发 = 可能落第二张图').toBe(1);
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });
 

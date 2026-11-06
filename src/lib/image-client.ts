@@ -252,14 +252,10 @@ export async function uploadImageFile(file: File): Promise<UploadResult> {
   try {
     return await uploadImage(fd);
   } catch {
-    // 网络层失败（请求没发出去 / 连接被中断）重试一次：移动端弱网、微信内置浏览器里
-    // 第一次失败很常见，而重新选图的成本远高于悄悄重发一次。HTTP 层失败走的是
-    // resolve，不重试 —— 重发还是同样结果。
-    await new Promise((r) => setTimeout(r, 800));
-    try {
-      return await uploadImage(fd);
-    } catch {
-      return { ok: false, status: 0, message: '图片上传失败：网络中断，请重试' };
-    }
+    // 网络层失败**不自动重发**（R3-373）：服务端每次 POST 都生成新 id、没有上传幂等键，
+    // 而浏览器无法区分「请求确实没发出去」与「服务端已落库、响应在回程丢了」——
+    // 重发同一个 FormData 就可能落第二张图、白占配额，用户却只看到（并只插入）后一张。
+    // 这里如实返回失败，让用户自己决定：重试前可以先在「我的图片」里确认那张在不在。
+    return { ok: false, status: 0, message: '图片上传失败：网络中断，请重试' };
   }
 }
