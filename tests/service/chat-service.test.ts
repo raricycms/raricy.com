@@ -1454,7 +1454,11 @@ describe('读游标只能落在本频道的消息上', () => {
       authorId: a.id,
       content: '大区消息',
     })) as { message: { id: number } };
-    await sendMessage({ channelId: ch.channel.id, authorId: a.id, content: '私聊消息' });
+    const dmMsg = (await sendMessage({
+      channelId: ch.channel.id,
+      authorId: a.id,
+      content: '私聊消息',
+    })) as { message: { id: number } };
 
     // 给私聊频道传大区的 id：不该把游标推到那个值
     const upTo = await markChannelRead(ch.channel.id, b.id, lobbyMsg.message.id);
@@ -1462,12 +1466,70 @@ describe('读游标只能落在本频道的消息上', () => {
       where: { uq_chat_member_channel_user: { channelId: ch.channel.id, userId: b.id } },
       select: { lastReadMessageId: true },
     });
-    // 回落后应为私聊里的最大 id（大于大区那条，但不是「被传进来的那个」的语义）
-    expect(upTo).toBeGreaterThan(0);
+    // 回落后应为私聊里的最大 id（返回值 = 实际生效的游标，断言精确值而不是 > 0）
+    expect(upTo).toBe(dmMsg.message.id);
     expect(row?.lastReadMessageId).toBe(upTo);
     // 未读归零（私聊里只有那一条，已被本频道最大 id 覆盖）
     const list = await listChannelsForUser(b.id);
     expect(list.find((c) => c.id === ch.channel.id)?.unread_count).toBe(0);
+  });
+});
+
+describe('读游标只增不减（R3-261）', () => {
+  it('先推进到较大 id 后再报较小 id：游标不倒退，返回值是实际生效的游标', async () => {
+    const a = await makeUser({ role: 'core' });
+    const b = await makeUser({ role: 'core' });
+    const ch = (await startDirectChannel(a.id, b.id)) as { channel: { id: string } };
+
+    const first = (await sendMessage({
+      channelId: ch.channel.id,
+      authorId: a.id,
+      content: '1',
+    })) as { message: { id: number } };
+    const second = (await sendMessage({
+      channelId: ch.channel.id,
+      authorId: a.id,
+      content: '2',
+    })) as { message: { id: number } };
+
+    // 端 A：先推进到较大 id
+    expect(await markChannelRead(ch.channel.id, b.id, second.message.id)).toBe(second.message.id);
+
+    // 端 B / 重放：晚到一个更旧的 id —— 游标不能回退
+    expect(await markChannelRead(ch.channel.id, b.id, first.message.id)).toBe(second.message.id);
+    // 同一个 id 再报一次也不该产生变化
+    expect(await markChannelRead(ch.channel.id, b.id, second.message.id)).toBe(second.message.id);
+
+    const row = await prisma.chatMember.findUnique({
+      where: { uq_chat_member_channel_user: { channelId: ch.channel.id, userId: b.id } },
+      select: { lastReadMessageId: true },
+    });
+    expect(row?.lastReadMessageId).toBe(second.message.id);
+
+    // 未读不能因为「回退请求」重新变脏（这是本条要防的用户可见后果）
+    const list = await listChannelsForUser(b.id);
+    expect(list.find((c) => c.id === ch.channel.id)?.unread_count).toBe(0);
+    expect(await getChatUnreadSummary(b.id)).toEqual({ count: 0, dot: false });
+  });
+
+  it('大区首次进入、成员行缺失时仍会建行（基线 = 本次上报）', async () => {
+    const a = await makeUser({ role: 'core' });
+    const me = await makeUser({ role: 'core' });
+    const sent = (await sendMessage({
+      channelId: CHAT_LOBBY_ID,
+      authorId: a.id,
+      content: '大区新消息',
+    })) as { message: { id: number } };
+
+    // 刻意不先走 listChannelsForUser（那会懒建）：markChannelRead 自己要把行建出来
+    const cursor = await markChannelRead(CHAT_LOBBY_ID, me.id, sent.message.id);
+    expect(cursor).toBe(sent.message.id);
+
+    const row = await prisma.chatMember.findUnique({
+      where: { uq_chat_member_channel_user: { channelId: CHAT_LOBBY_ID, userId: me.id } },
+      select: { lastReadMessageId: true },
+    });
+    expect(row?.lastReadMessageId).toBe(sent.message.id);
   });
 });
 

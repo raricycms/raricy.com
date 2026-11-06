@@ -215,4 +215,28 @@ describe('已读回执（C7）', () => {
     await markChannelRead(CHAT_LOBBY_ID, a.id, sent.message.id);
     expect(wa.events().filter((e) => e.type === 'read')).toHaveLength(0);
   });
+
+  it('重放更小 / 相同的 id 不推「退版」回执：只在游标真正推进时推一次', async () => {
+    const a = await makeUser({ role: 'core' });
+    const b = await makeUser({ role: 'core' });
+    const ch = (await startDirectChannel(a.id, b.id)) as { channel: { id: string } };
+    const first = await sendMessage({ channelId: ch.channel.id, authorId: a.id, content: '1' });
+    const second = await sendMessage({ channelId: ch.channel.id, authorId: a.id, content: '2' });
+    if (!first.ok || !second.ok) throw new Error('send failed');
+
+    const wa = watch(a.id);
+    // 推进到较大 id → 一条回执（message_id = 推进后的游标）
+    await markChannelRead(ch.channel.id, b.id, second.message.id);
+    // 之后重放更小 / 相同的 id：游标不动，回执也不该再出现 —— 否则对端
+    // peer_last_read_message_id 会先退回去再回来
+    await markChannelRead(ch.channel.id, b.id, first.message.id);
+    await markChannelRead(ch.channel.id, b.id, second.message.id);
+
+    const evs = wa.events().filter((e) => e.type === 'read');
+    expect(evs).toHaveLength(1);
+    if (evs[0].type === 'read') {
+      expect(evs[0].message_id).toBe(second.message.id);
+      expect(evs[0].user_id).toBe(b.id);
+    }
+  });
 });

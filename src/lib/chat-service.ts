@@ -1416,6 +1416,11 @@ export async function sendMessage(input: SendMessageInput): Promise<SendMessageR
 /**
  * 推进某频道读游标到给定消息 id（缺省 = 频道当前最大 id）。私聊非成员静默忽略。
  *
+ * **游标只增不减**：双端并发、脚本重放较旧的 message_id 时，游标不会被写回去
+ * （未读数 = 频道内 id > 游标，一旦回退就会「复活」出一批旧未读和红点）。返回的是
+ * **这次写完后实际生效的游标**（只增不减；权限不足 / 空频道为 0），不是请求里的
+ * message_id —— 调用方拿到的数字本身也是单调的。
+ *
  * 两件事一起发生，缺一不可：
  *   • 讨论**未读**不进通知列表，读游标推进后顶栏「讨论」红点自然熄灭（见 getChatUnreadSummary）；
  *   • 该会话里 **@ 我**的通知（唯一进列表的那种）随之标已读 —— 人已经把消息看了，
@@ -1451,15 +1456,68 @@ export async function markChannelRead(
   if (upTo <= 0) return 0;
 
   const now = nowForDb();
-  // 大区成员行可能还没建 → upsert；私聊成员行必然已存在
-  await prisma.chatMember.upsert({
-    where: { uq_chat_member_channel_user: { channelId, userId } },
-    create: { channelId, userId, lastReadMessageId: upTo, createdAt: now },
-    update: { lastReadMessageId: { set: upTo } },
-  });
+  const memberKey = { channelId, userId };
+  const memberWhere = { uq_chat_member_channel_user: memberKey };
 
-  // 私聊已读回执：告诉对方「我读到哪了」（大区人多，不推）
-  if (access.kind === CHAT_KIND_DIRECT) {
+  // ── 游标只增不减 ──────────────────────────────────────────────────────────
+  // 不能直接用 `{ lastReadMessageId: { set: upTo } }` 覆盖：读游标是「读到哪」的
+  // 唯一真相（未读数、顶栏红点都由它派生），双端同时看一个会话、或脚本重放旧的
+  // message_id 时，后到达的较小 id 会把游标写回去，旧未读随之复活。
+  // 改成**带条件的单条 UPDATE**：只有库里当前游标更小时才写。SQLite 对单条 UPDATE
+  // 是原子的，既不需要事务，也没有「先读后写」被并发覆盖的窗口 —— 并发的多个请求
+  // 只会把它推向各自请求里更大的那个值。
+  const bumped = await prisma.chatMember.updateMany({
+    where: { ...memberKey, lastReadMessageId: { lt: upTo } },
+    data: { lastReadMessageId: upTo },
+  });
+  let advanced = bumped.count > 0;
+  /** 已确认的当前游标；null = 还没读到，下面按分支补一次回读。 */
+  let cursor: number | null = null;
+
+  if (!advanced) {
+    // 两种可能：游标已经 >= upTo，或者成员行还不存在（大区首次进入；私聊成员行由
+    // canAccessChannel 的成员校验兜住，必然已存在）。只有「行不存在」才需要写。
+    const row = await prisma.chatMember.findUnique({
+      where: memberWhere,
+      select: { lastReadMessageId: true },
+    });
+    if (row) {
+      cursor = row.lastReadMessageId;
+    } else {
+      try {
+        await prisma.chatMember.create({
+          data: { ...memberKey, lastReadMessageId: upTo, createdAt: now },
+        });
+        advanced = true;
+      } catch (e) {
+        // 并发首建：唯一约束只会让一方落败。落败者别丢掉这次推进 —— 对方建行时的
+        // 基线可能更小（大区基线 = 建行那一刻的最大 id），补一次条件 UPDATE。
+        if ((e as { code?: string } | null)?.code !== 'P2002') throw e;
+        const retried = await prisma.chatMember.updateMany({
+          where: { ...memberKey, lastReadMessageId: { lt: upTo } },
+          data: { lastReadMessageId: upTo },
+        });
+        advanced = retried.count > 0;
+      }
+    }
+  }
+
+  // 实际生效的游标 = 写后回读。并发下可能有更大的值同时落地，回读能把它反映出来；
+  // 上面「没写」的分支已经读到过库里那个 >= upTo 的值，无需再读。
+  if (cursor == null) {
+    cursor =
+      (
+        await prisma.chatMember.findUnique({
+          where: memberWhere,
+          select: { lastReadMessageId: true },
+        })
+      )?.lastReadMessageId ?? upTo;
+  }
+
+  // 私聊已读回执：只在**游标真的被推进**时推，且推推进后的值。重放 / 乱序到达的
+  // 较小 id 不推 —— 否则对端拿到的 message_id 会先退回去再回来（ChatApp 的 read
+  // 帧处理直接把它写进 peer_last_read_message_id，「已读」标记会跟着闪）。大区人多，不推。
+  if (advanced && access.kind === CHAT_KIND_DIRECT) {
     try {
       const members = await prisma.chatMember.findMany({
         where: { channelId, NOT: { userId } },
@@ -1467,8 +1525,8 @@ export async function markChannelRead(
       });
       publishToUsers(
         members.map((m) => m.userId),
-        { type: 'read', channel_id: channelId, user_id: userId, message_id: upTo },
-        upTo
+        { type: 'read', channel_id: channelId, user_id: userId, message_id: cursor },
+        cursor
       );
     } catch (e) {
       console.error(`[chat-service] 已读回执推送失败（channelId=${channelId}）:`, e);
@@ -1488,7 +1546,7 @@ export async function markChannelRead(
   // 不动 pushChatDot 里「算值」那一步：静音 / 隐藏 / 是否还有别的未读会话，
   // 都在 getChatUnreadSummary 里判，这里只负责触发重算。
   void pushChatDot(userId);
-  return upTo;
+  return cursor;
 }
 
 // ── 软删除 ──────────────────────────────────────────────────────────────────
