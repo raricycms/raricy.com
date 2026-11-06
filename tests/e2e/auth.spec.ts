@@ -8,7 +8,7 @@
 
 import { test, expect } from '@playwright/test';
 import { SEED_USERS, SEED_PASSWORD } from './seed';
-import { loginViaUI, serverSeesAuthenticated, uniqueTag } from './helpers';
+import { freshInvite, loginViaUI, serverSeesAuthenticated, uniqueTag } from './helpers';
 
 test.describe('认证主链路', () => {
   test('注册后会话立即生效（服务端认得新用户）', async ({ page }) => {
@@ -20,12 +20,16 @@ test.describe('认证主链路', () => {
     await page.fill('#email', `${tag}@e2e.local`);
     await page.fill('#password', SEED_PASSWORD);
     await page.fill('#confirmPassword', SEED_PASSWORD);
+    // 邀请码是 required 输入框（注册必须持有效邀请码）：不填会被原生表单校验拦下，
+    // 请求根本发不出去 —— 用例就会停在 /register 等一个不会来的跳转。
+    await page.fill('#inviteCode', await freshInvite(page));
     // 用户协议是 required 勾选框，不勾会被原生表单校验拦下、请求根本发不出去
     await page.check('#agreeTerms');
     await page.click('button[type="submit"]');
 
-    // 注册成功后前端 setTimeout 1.8s 再 router.push('/login')
-    await page.waitForURL('**/login', { timeout: 15_000 });
+    // 注册成功后前端 `router.push(safeNextPath(next || ''))`：没带 next 就回首页
+    //（不是 /login —— 注册接口已经下发了会话 cookie，再要求登录是旧实现的残留说法）。
+    await page.waitForURL((url) => url.pathname === '/', { timeout: 15_000 });
 
     // 关键断言：注册接口下发的会话 cookie 必须被浏览器接受、并在**新的导航**里发回服务端。
     // 直接跳去首页而不是信任上一跳，确保这是一次真实的服务端往返。
