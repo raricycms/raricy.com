@@ -19,6 +19,7 @@
 
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
 import { SEED_BLOG, SEED_PASSWORD, SEED_USERS } from './seed';
+import { CHAT_TEXT_MAX } from '../../src/lib/chat-shared';
 
 const BLOG_URL = `/blog/${SEED_BLOG.id}`;
 const LOBBY = 'lobby';
@@ -285,11 +286,23 @@ test.describe('讨论区的内容引用', () => {
     );
   });
 
-  test('★ 字数上限提示是 5000（与常量同源，不是硬编码的旧值）', async ({ page }) => {
+  test('★ 字数提示与上限常量同源（≥90% 才出现 "N / 5000 字"）', async ({ page }) => {
     await page.goto(`/chat?channel=${LOBBY}`);
-    const hint = page.locator('.chat-composer__hint');
-    await expect(hint).toContainText('最多5000字');
-    // 键盘说明不该被字数提示顶掉（footerSlot 曾经是整体替换）
-    await expect(hint).toContainText('Enter');
+    const input = page.locator('.chat-composer__input');
+
+    // 键盘说明常驻在 placeholder 上（旧实现里那句「最多5000字」的常驻提示已被删掉，
+    // 现在 `__hint` 只在接近/超过上限时渲染）。
+    await expect(input).toHaveAttribute('placeholder', /Enter 发送/);
+    await expect(
+      page.locator('.chat-composer__hint'),
+      '没到阈值就不该渲染字数提示（若这里就能看见，说明又变回常驻提示）'
+    ).toHaveCount(0);
+
+    // 到 90% 阈值才出现，且上限数字来自共享常量（不是硬编码的旧值）。
+    const nearLimit = '字'.repeat(Math.ceil(CHAT_TEXT_MAX * 0.9));
+    await input.fill(nearLimit);
+    await expect(page.locator('.chat-composer__hint')).toContainText(
+      `${nearLimit.length} / ${CHAT_TEXT_MAX} 字`
+    );
   });
 });
