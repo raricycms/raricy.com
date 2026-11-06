@@ -199,18 +199,17 @@ export async function softDeleteAudio(id: string): Promise<void> {
  * `image_missing` / 「[图片已删除]」占位（见 chat-service、comment-service）。
  * 音频目前没有任何列引用它；哪天加了（比如 ChatMessage.audioId），读取侧照这个模式给占位，
  * **不要**反过来加 FK 把删除挡住。
+ *
+ * 【顺序：先删行，再删盘】与 image-service.hardDeleteImage 同一条理由 —— 删行失败时
+ * 文件还在，可重试；删行成功而 unlink 失败只留孤儿文件（可人工清理），不会出现
+ * 「行在、文件没了」这种修不回来的半删状态。
  */
 export async function hardDeleteAudio(id: string): Promise<void> {
-  const row = await prisma.audioHosting.findUnique({
-    where: { id },
-    select: { mimeType: true },
-  });
-  if (row) {
-    try {
-      await fs.unlink(audioStoragePathFor(id, row.mimeType));
-    } catch {
-      // 文件可能已不存在，忽略
-    }
+  const row = await prisma.audioHosting.delete({ where: { id } });
+  try {
+    await fs.unlink(audioStoragePathFor(row.id, row.mimeType));
+  } catch (error) {
+    // 文件已不存在（并发重复删的竞态）或磁盘错误，都不改变「行已删掉」这个结论。
+    console.warn(`[audio] 硬删已删除行，但磁盘文件删除失败（孤儿文件）id=${row.id}:`, error);
   }
-  await prisma.audioHosting.delete({ where: { id } });
 }

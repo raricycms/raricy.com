@@ -26,17 +26,23 @@ export async function DELETE(_req: Request, ctx: { params: Promise<{ id: string 
 
   await hardDeleteAudio(id);
 
-  // 通知被删音频的上传者（非站长本人上传时）；force 绕过对方的通知偏好设置
+  // 通知被删音频的上传者（非站长本人上传时）；force 绕过对方的通知偏好设置。
+  // 【必须是「删除之后的尽力动作」】通知写失败不能把一次已经完成的硬删变成 500 ——
+  // 前端只认 200，会把 500 当「删除失败」并保留行；站长重试只会拿到 400「不存在」。
   if (authorId !== user.id) {
-    await sendNotification({
-      recipientId: authorId,
-      action: '音频删除',
-      actorId: user.id,
-      objectType: 'audio',
-      objectId: id,
-      detail: `你上传的音频 "${filename}" 因违规被站长删除`,
-      force: true,
-    });
+    try {
+      await sendNotification({
+        recipientId: authorId,
+        action: '音频删除',
+        actorId: user.id,
+        objectType: 'audio',
+        objectId: id,
+        detail: `你上传的音频 "${filename}" 因违规被站长删除`,
+        force: true,
+      });
+    } catch (error) {
+      console.warn(`[audio] 硬删已提交，但通知上传者失败（不影响删除结果）id=${id}:`, error);
+    }
   }
 
   return apiOk({}, '已永久删除');

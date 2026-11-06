@@ -10,8 +10,9 @@
 //
 // 本文件打的是真实 route handler（不 mock Prisma），只 mock 登录态。
 
-import { describe, it, expect, beforeEach, beforeAll, afterAll, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, beforeAll, afterAll, vi } from 'vitest';
 import fs from 'node:fs';
+import fsp from 'node:fs/promises';
 import path from 'node:path';
 
 // 上传目录必须在任何 storagePathFor 之前指向临时目录，绝不能碰 instance/images/ 里的真实图片
@@ -23,6 +24,19 @@ const mockUser = vi.hoisted(() => ({ current: null as unknown }));
 vi.mock('@/lib/auth', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/auth')>();
   return { ...actual, getCurrentUser: async () => mockUser.current };
+});
+
+// 通知是**删除之后的尽力动作**：这里可注入失败，验证它不会把已完成的硬删变成 500。
+const notifyState = vi.hoisted(() => ({ fail: false }));
+vi.mock('@/lib/notification-service', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/notification-service')>();
+  return {
+    ...actual,
+    sendNotification: async (...args: Parameters<typeof actual.sendNotification>) => {
+      if (notifyState.fail) throw new Error('通知写入失败（注入）');
+      return actual.sendNotification(...args);
+    },
+  };
 });
 
 import { resetDb, makeUser, prisma } from '../helpers/db';
@@ -53,6 +67,11 @@ afterAll(() => {
 beforeEach(async () => {
   await resetDb();
   mockUser.current = null;
+  notifyState.fail = false;
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
 });
 
 let seq = 0;
@@ -167,5 +186,50 @@ describe('DELETE /api/images/admin/:id —— 硬删（站长专属）', () => {
     mockUser.current = admin;
     expect((await adminDeleteImage(new Request('http://x'), ctx(row.id))).status).toBe(403);
     expect(await prisma.imageHosting.findUnique({ where: { id: row.id } })).not.toBeNull();
+  });
+
+  it('★ 通知失败不影响删除结果 → 仍 200，行与文件都已删', async () => {
+    const owner = await makeUser({ role: 'owner' });
+    const other = await makeUser({ role: 'core' });
+    const { row, diskPath } = await makeImageWithFile(other.id);
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    mockUser.current = owner;
+    notifyState.fail = true;
+    const res = await adminDeleteImage(new Request('http://x'), ctx(row.id));
+
+    expect(res.status, '一次已完成的硬删不能因为通知失败报 500').toBe(200);
+    expect(await prisma.imageHosting.findUnique({ where: { id: row.id } })).toBeNull();
+    expect(fs.existsSync(diskPath)).toBe(false);
+    expect(warn).toHaveBeenCalled();
+  });
+
+  it('★ 磁盘文件删不掉（unlink 抛错）→ 仍 200，只留下孤儿文件', async () => {
+    const owner = await makeUser({ role: 'owner' });
+    const { row, diskPath } = await makeImageWithFile(owner.id);
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.spyOn(fsp, 'unlink').mockRejectedValueOnce(
+      Object.assign(new Error('EACCES: permission denied'), { code: 'EACCES' })
+    );
+
+    mockUser.current = owner;
+    const res = await adminDeleteImage(new Request('http://x'), ctx(row.id));
+
+    expect(res.status, '文件删不掉不该让接口报「删除失败」').toBe(200);
+    expect(await prisma.imageHosting.findUnique({ where: { id: row.id } })).toBeNull();
+    expect(fs.existsSync(diskPath), '删行已成功，留下孤儿文件是可接受的一侧').toBe(true);
+    expect(warn, '孤儿文件必须留一条可排查的日志').toHaveBeenCalled();
+  });
+
+  it('★ 删行失败 → 异常上抛，磁盘文件原样保留（绝不出现「行在、文件没了」）', async () => {
+    const owner = await makeUser({ role: 'owner' });
+    const { row, diskPath } = await makeImageWithFile(owner.id);
+    vi.spyOn(prisma.imageHosting, 'delete').mockRejectedValueOnce(new Error('db down'));
+
+    mockUser.current = owner;
+    await expect(adminDeleteImage(new Request('http://x'), ctx(row.id))).rejects.toThrow('db down');
+
+    expect(fs.existsSync(diskPath), '删行失败时文件不能被提前删掉').toBe(true);
+    expect(await prisma.imageHosting.findUnique({ where: { id: row.id } }), '行仍然在').not.toBeNull();
   });
 });

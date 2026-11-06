@@ -26,17 +26,24 @@ export async function DELETE(_req: Request, ctx: { params: Promise<{ id: string 
 
   await hardDeleteImage(id);
 
-  // 通知被删图片的上传者（非站长本人上传时）；force 绕过对方的通知偏好设置
+  // 通知被删图片的上传者（非站长本人上传时）；force 绕过对方的通知偏好设置。
+  // 【必须是「删除之后的尽力动作」】通知写失败不能把一次已经完成的硬删变成 500 ——
+  // 前端只认 200，会把 500 当「删除失败」并保留行；站长重试只会拿到 400「不存在」，
+  // 于是同一件事先报失败、再报不存在，没人知道到底删没删。
   if (authorId !== user.id) {
-    await sendNotification({
-      recipientId: authorId,
-      action: '图片删除',
-      actorId: user.id,
-      objectType: 'image',
-      objectId: id,
-      detail: `你上传的图片 "${filename}" 因违规被站长删除`,
-      force: true,
-    });
+    try {
+      await sendNotification({
+        recipientId: authorId,
+        action: '图片删除',
+        actorId: user.id,
+        objectType: 'image',
+        objectId: id,
+        detail: `你上传的图片 "${filename}" 因违规被站长删除`,
+        force: true,
+      });
+    } catch (error) {
+      console.warn(`[image] 硬删已提交，但通知上传者失败（不影响删除结果）id=${id}:`, error);
+    }
   }
 
   return apiOk({}, '已永久删除');

@@ -176,18 +176,26 @@ export async function softDeleteImage(id: string): Promise<void> {
   await prisma.imageHosting.update({ where: { id }, data: { ignore: true } });
 }
 
-/** 硬删除：物理删除磁盘文件 + 删除数据库行，对齐 hard_delete_image（站长专属）。 */
+/**
+ * 硬删除：**先删数据库行，再删磁盘文件**（站长专属），对齐 hard_delete_image。
+ *
+ * 【为什么是这个顺序】两步跨 DB 与文件系统，无法放进一个事务。旧顺序（先 unlink 后
+ * delete）一旦删行失败就留下「行在、文件没了」：raw 永久 404、配额继续占用、管理页
+ * 仍显示这一行，且没有任何办法修回。反过来先删行：
+ *   · 删行失败 → 文件原样保留，整笔可重试，不会出现半删状态；
+ *   · 删行成功、文件删不掉 → 只留下一个**孤儿文件**（ID 已不在库里、无人引用，
+ *     可按目录人工清理）。本仓没有清道夫，但这是可观察、可人工收拾的一侧。
+ *
+ * 用 delete 的返回值拿 mimeType，不必先查一次（也少一个「查到时文件还在、删行时
+ * 被别人改过」的窗口）。
+ */
 export async function hardDeleteImage(id: string): Promise<void> {
-  const img = await prisma.imageHosting.findUnique({
-    where: { id },
-    select: { mimeType: true },
-  });
-  if (img) {
-    try {
-      await fs.unlink(storagePathFor(id, img.mimeType));
-    } catch {
-      // 文件可能已不存在，忽略
-    }
+  const row = await prisma.imageHosting.delete({ where: { id } });
+  try {
+    await fs.unlink(storagePathFor(row.id, row.mimeType));
+  } catch (error) {
+    // 文件已不存在（并发重复删的竞态）或磁盘错误，都不改变「行已删掉」这个结论。
+    // 绝不能让调用方把一次已完成的硬删当成失败去重试（重试只会拿到 400「不存在」）。
+    console.warn(`[image] 硬删已删除行，但磁盘文件删除失败（孤儿文件）id=${row.id}:`, error);
   }
-  await prisma.imageHosting.delete({ where: { id } });
 }
