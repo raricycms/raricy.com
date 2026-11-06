@@ -87,13 +87,47 @@ export async function loginViaUI(
  * APIRequestContext，它拿到的 Set-Cookie 进不了浏览器的 cookie jar，
  * 随后的 page.goto 依然是未登录 —— 用例会以「跳转到登录页」的假象挂掉，
  * 而且看起来像被测代码的鉴权有问题。page.request 与页面共用同一个 context 的 cookie。
+ *
+ * 【进程内会话缓存】登录接口按**用户名**限频（`RULES.passwordPerUser`，20 次/分钟）：
+ * 全量 e2e 里同一个种子号会被几十条用例各自登录一次（blog.spec 一个文件就 21 次），
+ * 30 秒内必然撞 429，而失败信息却指向业务用例。所以首个 200 登录的会话 cookie 按
+ * username 缓存在本 worker 进程，后续调用直接 `context.addCookies` 种回去。
+ *
+ * ⚠️ 缓存命中前必须用一次 `GET /api/auth/me` **校验会话仍认人**：会话会在别处被
+ * 作废（改密 / 登出 / 归档都会自增 sessionVersion，见 src/lib/session.ts）——
+ * 盲目复用旧 cookie 会让那些用例以 401 收场。校验只读会话、不消耗登录限频。
+ *
+ * ⚠️ 只缓存**成功**的登录：密码错误一类用例走自己的 request / loginViaUI，
+ * 永远不会拿缓存冒充「登录成功」。
  */
+const SESSION_COOKIE = 'raricy_session'; // 与 src/lib/session.ts 的 SESSION_COOKIE 同值
+type StoredCookie = Awaited<ReturnType<APIRequestContext['storageState']>>['cookies'][number];
+/** username → 首次真实登录后浏览器 context 里那条会话 cookie。 */
+const loginCache = new Map<string, StoredCookie[]>();
+
 export async function loginViaApi(page: Page, username: string) {
+  const cached = loginCache.get(username);
+  if (cached && cached.length > 0) {
+    await page.context().addCookies(cached);
+    // 缓存可能已被作废（上一条用例改过密码 / 登出 / 归档）：以「服务端还认不认」为准。
+    const probe = await page.request.get('/api/auth/me').catch(() => null);
+    const probeBody = probe ? await probe.json().catch(() => null) : null;
+    if (probe?.ok() && probeBody?.user?.username === username) return;
+    loginCache.delete(username);
+  }
+
   const res = await page.request.post('/api/auth/login', {
     data: { username, password: SEED_PASSWORD },
   });
   expect(res.status()).toBe(200);
   expect((await res.json()).code).toBe(200);
+
+  // 缓存浏览器 context 收到的**真实 Set-Cookie**（storageState 里那条）：domain /
+  // path / secure / sameSite / httpOnly 与服务端 sessionCookieOptions 完全一致，
+  // 不自己拼一个「看起来差不多」的 cookie。
+  const state = await page.context().storageState();
+  const session = state.cookies.filter((c) => c.name === SESSION_COOKIE);
+  if (session.length > 0) loginCache.set(username, session);
 }
 
 /**
