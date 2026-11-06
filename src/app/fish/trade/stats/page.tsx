@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import TradeNav from '../TradeNav';
 import { redirect, forbidden } from 'next/navigation';
-import { getCurrentUser } from '@/lib/auth';
+import { getCurrentUser, isCoreUser } from '@/lib/auth';
 import { isFocusFishTradeBlocked } from '@/lib/focus-mode';
 import { loginUrlWithNext } from '@/lib/safe-url';
 import { getMarketStats } from '@/lib/market-stats-service';
@@ -62,6 +62,8 @@ export default async function FishTradeStatsPage() {
   // 专注模式屏蔽了练手盘：统计页也在闸内（它是练手盘的一部分，不是另一件事）。
   // forbidden() 收不了参数，而入口整段不渲染 —— 解释只剩 /settings 的专注模式说明。
   if (isFocusFishTradeBlocked(user)) forbidden();
+  // 档位 core+ 与 /fish/trade 同档（2026-11 产品口径：非 core 不可进入练手盘任何页面）。
+  if (!isCoreUser(user)) forbidden();
 
   const [stats, positions, quoteData] = await Promise.all([
     getMarketStats(user.id),

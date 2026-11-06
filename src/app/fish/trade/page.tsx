@@ -1,6 +1,5 @@
 import Link from 'next/link';
 import TradeNav from './TradeNav';
-import LegacyPositions from './LegacyPositions';
 import { redirect, forbidden } from 'next/navigation';
 import { getCurrentUser, isCoreUser } from '@/lib/auth';
 import { isFocusFishTradeBlocked } from '@/lib/focus-mode';
@@ -36,10 +35,9 @@ import TradePanel, { type QuoteView, type PositionProp } from './TradePanel';
 // 增减（见 docs/architecture.md §6.3）。
 // 没有突破「非核心账号没有鱼干赚取渠道」这条口径 —— 只是把 core+ 的路多开了一条。
 //
-// 【为什么自己进门而不用 requireCoreUser】非核心账号在这里不 403，而是渲染
-// 「历史持仓」让它查询和平仓（见下面的分支），所以档位要自己判。回跳地址显式写死
-// `/fish/trade`：练手盘从 /fish 面板点进来，直连 / 书签时没有可用的 referer。
-// `access-control.spec` 钉住了这条 next。
+// 【为什么自己进门而不用 requireCoreUser】回跳地址显式写死 `/fish/trade`：练手盘从
+// /fish 面板点进来，直连 / 书签时没有可用的 referer。`access-control.spec` 钉住了这条 next。
+// 非 core 一律 forbidden()（与页面、接口同档）；历史持仓/平仓入口已随档位口径恢复 403 删除。
 export const dynamic = 'force-dynamic';
 
 export default async function FishTradePage() {
@@ -47,17 +45,7 @@ export default async function FishTradePage() {
   if (!user) redirect(loginUrlWithNext('/fish/trade'));
   if (user.archivedAt) forbidden();
   if (isFocusFishTradeBlocked(user)) forbidden();
-  if (!isCoreUser(user)) {
-    const positions = await listOpenPositions(user.id);
-    return <div className="container py-4">
-      <h1>历史持仓</h1>
-      <p>当前账号未取得成员资格，可以查询和平仓。</p>
-      <TradeNav current="trade" />
-      <LegacyPositions feePercent={MARKET_FEE_RATE * 100} positions={positions.map(p => ({ id: p.id, symbol: p.symbol, stake: p.stake, direction: p.direction }))} />
-      <Link href="/authentic" className="button button-secondary">认证成员资格</Link>{' '}
-      <Link href="/fish" className="button button-secondary">返回账户</Link>
-    </div>;
-  }
+  if (!isCoreUser(user)) forbidden();
 
   const [balance, positions, settled, quoteData, candleEntries] = await Promise.all([
     getBalance(user.id),
