@@ -159,13 +159,12 @@ describe('纯 #锚点链接在导出件里就地跳', () => {
 });
 
 describe('剥掉站内才成立的空壳', () => {
-  it('代码块的复制按钮被摘掉，代码本身留着', () => {
+  it('代码块自带的复制按钮被摘掉，代码本身留着', () => {
     const el = holder(
-      '<div class="highlight"><pre><code class="hljs">x</code></pre>' +
-        '<button class="copy-btn" data-code="x">复制</button></div>'
+      '<pre><code>x</code><button class="md-code-block-copy">复制</button></pre>'
     );
     stripInteractiveShells(el);
-    expect(el.querySelector('.copy-btn')).toBeNull();
+    expect(el.querySelector('.md-code-block-copy')).toBeNull();
     expect(el.querySelector('pre code')?.textContent).toBe('x');
   });
 });

@@ -18,7 +18,7 @@ a {
     background: var(--color-background-card);
     border-radius: v.$radius-card;
 
-    // 页眉与正文共用卡片内距；MarkdownRenderer 在剪贴板和预览里仍保留自己的外观。
+    // 页眉与正文共用卡片内距；剪贴板页与编辑器预览复用这层容器。
     > .blog-content-container-container {
         padding: 0;
     }
@@ -241,7 +241,7 @@ a {
        被滚动盒子裁掉（编辑器预览与窄屏读文章都是这个样子）。
        只加 max-width：宽屏仍保持 300px 的默认观感，不动宽度本身。
        ⚠️ 别把它写成 `width: 100%` —— 那会把宽正文里的播放器拉成一整条。
-       这条容器同时供**文章页**与**编辑器预览**用（MarkdownRenderer 的根节点），
+       这条容器同时供**文章页**与**编辑器预览**用（阅读 / 预览共用 .blog-content-container），
        所以修一处两边都好。 */
     max-width: 100%;
 }

@@ -3,7 +3,7 @@
 // 云剪贴板 上传/编辑表单
 //
 // - 编辑器：MarkdownEditor（CodeMirror 6，与博客共用），工具条带公式按钮。
-// - Math（LaTeX）：预览走共享的整篇渲染管线（MathJax），`$inline$` / `$$block$$` 都能渲染。
+// - Math（LaTeX）：预览走统一的 reactive 预览管线，`$inline$` / `$$block$$` 都能渲染。
 // - 提交：新建 → POST /api/clipboard；编辑 → PUT /api/clipboard/:id。
 // - 交互约定：Ctrl/⌘+S 手动保存、autoSave 每分钟自动保存、publicity 是否公开。
 //

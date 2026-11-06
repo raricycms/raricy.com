@@ -241,7 +241,6 @@ export default defineConfig({
       // 登录会「成功但不粘」。这正是线上踩过的坑；此处显式关掉，
       // 另有专门用例验证该判定逻辑本身。
       COOKIE_SECURE: 'false',
-      // 渲染回退用例明确验证 flag=off，不能继承本机 .env 的灰度开关。
       // 画报 / 收款码的二维码前缀取自 SITE_URL（见 src/lib/site-url.ts）。
       // 不显式给的话会回落到 .env 里的 http://localhost:3000 —— 图照样能出，
       // 但二维码指向的是开发端口而不是这个测试服务器，等于测了个假的。

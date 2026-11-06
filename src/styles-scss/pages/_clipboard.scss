@@ -283,7 +283,7 @@
     
     /* 正文区：**一层，不是三层**。
        ⚠️ 这里过去画过一块灰底（--color-background-content）+ 圆角 + 内距，本意是
-       「在白卡里托出正文块」。可里面装的是 MarkdownRenderer，而它的根节点自带一张
+       「在白卡里托出正文块」。可里面装的是 reactive 正文，而它的根节点自带一张
        **完整的博客正文卡**（.blog-content-container，版式在 pages/blog/_blog.scss）：
        白底 / 30px 圆角 / 40px 内距 / max-width 900px 居中 / margin 40px auto 60px。
        于是实际渲染成「白卡 → 灰框 → 白卡」：那张内卡被 900px 掐窄，宽屏下两侧各露
@@ -300,7 +300,7 @@
          逐条：max-width + margin 是那张卡给自己留的阅读行宽与外边距，padding 是它的内距，
          background + border-radius 是它的皮；容器那层的 padding: 0 20px 是给博客页
          对齐评论区的檐沟，这里没有第二个东西要对齐。
-         ⚠️ 选择器锚在 .blog-content-container 这个**类名**上。哪天 MarkdownRenderer
+         ⚠️ 选择器锚在 .blog-content-container 这个**类名**上。哪天 reactive 阅读页
          换了根节点类名，这两条会**静默失效** —— 不报错，只是本页又长回那张内卡。 */
       .blog-content-container-container,
       .blog-content-container {

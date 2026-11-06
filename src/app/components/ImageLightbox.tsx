@@ -15,9 +15,9 @@
 // 分成滚轮与拖动两条独立路径（pointerdown/move/up）。两套事件各管各的场景，
 // 互不冲突（触摸时浏览器不会同时发 wheel）。
 //
-// 观感对齐博客正文与云剪贴板的图片放大（MarkdownRenderer / ClipDetailClient 的
-// 内联覆盖层）；那两处是给 innerHTML 挂 onclick，只能手搓 DOM 节点 —— 讨论消息
-// 本来就是 React 渲染的，用状态开关更省事：Esc 监听与卸载清理都归组件管。
+// 观感对齐正文与云剪贴板的图片放大（ReactiveMD 引擎的 image-view / 讨论消息的
+// 状态开关）；讨论消息本来就是 React 渲染的，用状态开关更省事：Esc 监听与卸载
+// 清理都归组件管。
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useCallback, useEffect, useRef, useState } from 'react';

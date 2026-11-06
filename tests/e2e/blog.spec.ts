@@ -1,10 +1,10 @@
 // 博客列表页与详情页的渲染。
 //
-// 【为什么详情页非 E2E 不可】正文是**客户端**渲染的（MarkdownRenderer = marked +
-// DOMPurify + highlight.js，见 src/app/components/MarkdownRenderer.tsx）。
-// 服务端只吐一个空壳 + 原始 Markdown，页面 200 且标题正确，但正文可能一个字都没渲染出来
-// —— 只要 marked 加载失败、hydration 报错、或 DOMPurify 把内容清空了。
-// 断言 HTTP 状态或服务端 HTML 都发现不了；必须真跑浏览器、等脚本执行完再看 DOM。
+// 【为什么详情页非 E2E 不可】正文是**客户端**水合后才可交互的：服务端编译出静态
+// `LocalDocument` 并渲出首屏，交互（滑块 / 投票 / 剪贴板内联）要靠浏览器里的
+// ReactiveMD runtime 接管。服务端 HTML 正确、但 runtime 加载失败 / hydration 报错
+// 时正文会停成静态或空壳 —— 断言 HTTP 状态或服务端 HTML 都发现不了；必须真跑
+// 浏览器、等脚本执行完再看 DOM。
 
 import { test, expect, type Page } from '@playwright/test';
 import {

@@ -3,18 +3,20 @@
 // copy-mathjax-fonts.mjs —— 把 MathJax CHTML 的 woff 字体从 mathjax-full 拷到
 // public/static/mathjax/，让浏览器从同源加载。
 //
-// 【为什么需要】MarkdownRenderer 用 mathjax-full 的 CHTML 输出排版公式，它注入
-// 的样式表里带 @font-face，而 fontURL 默认是相对路径
-// `js/output/chtml/fonts/tex-woff-v2` —— 按**当前页面**解析，在 /clipboard/xxx
-// 下就变成 /clipboard/js/…，一律 404，公式只能用回退字体渲染（字形与间距都不对）。
-// 组件里已把 fontURL 显式指到 /static/mathjax/woff-v2，这个脚本负责把文件放过去。
+// ⚠️【现状：已随 legacy 渲染面退役】旧 Markdown 渲染器（MarkdownRenderer /
+// blog-content-dom）用 mathjax-full 排版公式，本脚本服务的是它。那条管线已在
+// 2026-11 整体删除，reactive 引擎自带公式排版（`.local-math-*`），当前仓库内
+// **没有任何消费者**引用 /static/mathjax/。保留脚本只是因为移除它要同步改
+// package.json 的 postinstall 与文档 —— 属运维/退役批，见 implementation notes。
+//
+// 【历史上的必要性】旧组件把 fontURL 显式指到 /static/mathjax/woff-v2（默认的
+// 相对路径在 /clipboard/xxx 下会 404，公式只能用回退字体），本脚本负责把文件放过去。
 //
 // 【为什么不入库】npm 包的派生产物，package-lock.json 已经钉住版本，
 // 由 postinstall 自动重建（见 .gitignore）。
 //
 // 【注意】`npm ci --ignore-scripts`、或只从缓存拷 node_modules 的构建会跳过
-// postinstall —— 那种环境要手工跑一次 `npm run prepare:mathjax`。少了字体公式
-// 仍会显示，但用的是回退字体。
+// postinstall —— 那种环境要手工跑一次 `npm run prepare:mathjax`。
 //
 // 用法：npm run prepare:mathjax  /  npm run mathjax:check
 // ─────────────────────────────────────────────────────────────────────────────

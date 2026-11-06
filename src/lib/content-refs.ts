@@ -1,15 +1,18 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // content-refs.ts — `[@<内容ID>]` 引用语法的**纯逻辑**（识别 / 替换 / 截断）
 //
-// 【与博客的关系】博客正文那套在 src/lib/content-ref-processor.ts 的
-// ContentRefProcessor 里，是**博客专用**的异步预处理器（它还会内联投票小组件）。
-// 评论与讨论走的是另一条同步管线（src/lib/rich-text.ts），本文件是那条管线的
-// 引用支持 —— 三种引用里只认两种：
+// 【与 reactive 正文的关系】博客 / 云剪贴板正文由 reactive 渲染链适配
+// （src/lib/reactive/ref-adapter.ts）—— 旧 Markdown 异步预处理器已随 legacy 渲染面
+// 整体退役。本文件同时服务两条仍在用的管线：
+//   · 评论 / 讨论（src/lib/rich-text.ts）：跑在**净化后的 DOM** 上，只认 8 位剪贴板
+//     与 10 位图床（见下）；9 位投票刻意不认，原样保留字面量。
+//   · reactive 引用适配：数字 id 按长度分流 + 音频 token，展开成宿主组件。
 //
 //   8 位  → 云剪贴板，正文内联；**一条消息最多展开 1 条**（见 MAX_CLIPBOARD_REFS）
 //   10 位 → 图床图片，内联成 <img>；**不请求 API**，只拼 /api/images/<id>/raw
-//   9 位  → 投票，**刻意不认**，原样保留字面量（2026-09 定的口径：投票箱是交互
-//           组件，塞进讨论气泡 / 楼中楼里没有意义）
+//   9 位  → 投票，评论 / 讨论里**刻意不认**，原样保留字面量（2026-09 定的口径：
+//           投票箱是交互组件，塞进讨论气泡 / 楼中楼里没有意义）；reactive 正文里走
+//           宿主组件，由适配器单独处理。
 //
 // ⚠️ 这里导出的正则**比博客那条 `\[@\s*(\w+)\s*\]` 严**（`\w` 含下划线，
 // `[@__________]` 也凑得出 10 个字符）。理由：id 会被拼进 `/api/images/<id>/raw`
@@ -73,11 +76,10 @@ export const CLIPBOARD_REF_PROBE = new RegExp(
 /**
  * 客户端主循环里最多替换几处 `[@…]` 引用（**按引用条数**，不是按种类）。
  *
- * 【只管显示，不管取数】这是**显示档**：博客渲染器（`content-ref-processor.ts` 的
- * `ContentRefProcessor`）用它封顶主循环的替换次数，剪贴板 / 投票 / 图床**共用**这一
- * 份额度。**取数预算另行计算**（见 `MAX_REF_FETCHES`）；
- * **收藏夹与音频也各有自己的显示上限**，不占这 50 处（各跑一趟，见
- * `MAX_FAVORITE_REFS` / `MAX_AUDIO_REFS`）。
+ * 【只管显示，不管取数】这是**显示档**：reactive 适配器（`ref-adapter.ts` 的替换
+ * 主循环）用它封顶替换次数，剪贴板 / 投票 / 图床**共用**这一份额度。**取数预算
+ * 另行计算**（见 `MAX_REF_FETCHES`）；**收藏夹与音频也各有自己的显示上限**，
+ * 不占这 50 处（各跑一趟，见 `MAX_FAVORITE_REFS` / `MAX_AUDIO_REFS`）。
  */
 export const MAX_BLOG_REF_ITEMS = 50;
 
@@ -87,15 +89,15 @@ export const MAX_BLOG_REF_ITEMS = 50;
  * 【和 `MAX_BLOG_REF_ITEMS` 是两件事，别合并】**那个**管「最多替换几处」，这个管
  * 「最多发几次取数」。两者都按原文出现顺序数，但数的是不同的东西：
  *
- *   · 图床只拼 URL、不取数（见 content-ref-resolver.ts），所以**不占**这份预算 ——
- *     否则一篇图多的文章会把剪贴板 / 投票的取数名额饿死（「图多的页面点不动引用」）。
+ *   · 图床只拼 URL、不取数，所以**不占**这份预算 —— 否则一篇图多的文章会把
+ *     剪贴板 / 投票的取数名额饿死（「图多的页面点不动引用」）。
  *   · 取到了却因为替换上限 / 展开预算而没处放的候选**仍然占过**这份名额：候选只按
  *     出现顺序挑，与「最终放不放得下」无关。
  *   · **缓存命中同样占名额**：候选是从正文文本选出来的，与缓存状态无关 —— 这样同一篇
  *     正文每轮挑中的都是同一批，结果确定。
  *
  * 超出这份预算的引用**既不发请求、也不替换**，原样留在正文里（静默保留字面量）。
- * 客户端渲染器与服务端解析共用这个数，两边必须一致。
+ * 阅读与编辑器预览两条路径共用这个数，两边必须一致。
  */
 export const MAX_REF_FETCHES = 50;
 
@@ -105,21 +107,20 @@ export const MAX_REF_FETCHES = 50;
  * 【为什么要有】一次渲染把整篇的引用一股脑交给取数层（`Promise.all`）—— 没有这个闸，
  * 一篇塞满引用的正文会同时打出几十条请求，连上站内其它限频、把上游打成一堵墙。
  *
- * 【谁排队】只有**真正会发 HTTP 的**那一类（'expand' 模式的剪贴板 / 投票 / 收藏夹）
- * 才占名额；图床（只拼 URL）与对外视图（查字典、一个请求都不发）**不排队** ——
- * 占着名额只会让真正的取数变慢。判据在 content-ref-resolver.ts 的 needsSlot。
+ * 【谁排队】只有**真正会发 HTTP 的**那一类（expand 模式的剪贴板 / 投票 / 收藏夹）
+ * 才占名额；图床（只拼 URL）与对外视图（一个请求都不发）**不排队** ——
+ * 占着名额只会让真正的取数变慢。判据在 reactive/ref-adapter.ts 的候选筛选。
  *
- * 【实例级】编辑器预览那个**共享** resolver 会跨多轮渲染复用它，所以闸门挂在实例上：
- * 多轮同时在飞时并发仍封在 4 以内，不同 resolver 互不影响。
+ * 【共享实例】编辑器预览 + 导出共用 client-compile.ts 的**模块级**闸门（同一时刻
+ * 在飞 ≤ 4）；单次适配（如服务端阅读）没注入时按本次适配自建一个，上限相同。
  */
 export const MAX_REF_CONCURRENCY = 4;
 
 /**
  * 引用展开后的**总字符预算**。
  *
- * 【管三处】客户端管线（content-ref-processor.ts）、ReactiveMD 适配器
- * （reactive/ref-adapter.ts）和编辑器导出（markdown-editor/export.ts）都用它封顶
- * 「整篇 Markdown 展开后有多长」。
+ * 【管两处】ReactiveMD 适配器（reactive/ref-adapter.ts）和编辑器导出
+ * （markdown-editor/export.ts）都用它封顶「整篇 Markdown 展开后有多长」。
  *
  * 【语义】按出现顺序**整块**接受替换：接受后总量不超过本值就换，超了就**原样保留
  * token** —— 绝不截断内容、更不切整篇字符串（把半截 Markdown / HTML 交给 marked 或
@@ -133,8 +134,9 @@ export const MAX_REF_EXPAND_CHARS = 500000;
 /**
  * 一个「同一时刻最多跑 `limit` 个」的并发闸门（先进先出）。
  *
- * 【为什么住在这里】两处要用同一个上限：客户端取数层（content-ref-resolver.ts，每实例
- * 一个闸门）与服务端映射的查库（clipboard-service.ts）。各写一份的话，改了一处另一处
+ * 【为什么住在这里】取数层与导出都要同一个上限：编辑器预览/导出（client-compile.ts
+ * 的共享闸门）、reactive 适配器（未注入时的默认闸门）都用它；服务端映射的查库
+ * （clipboard-service.ts）也沿用同一实现。各写一份的话，改了一处另一处
  * 还是老数 —— **没有任何报错**，只是并发悄悄翻倍。
  *
  * 【语义】返回的 Promise 在任务真正跑完时兑现；任务抛错**原样透传**（调用方自己 catch，
@@ -158,7 +160,7 @@ export function createConcurrencyLimiter(limit: number) {
     return new Promise<T>((resolve, reject) => {
       queue.push(() => {
         // **同步**调用 task：闸门未满时要让请求立刻发出 —— 在飞的那一格因此同步可见
-        // （这条时序被 content-ref-resolver 的用例钉着）。任务**同步抛错**时走 catch
+        // （这条时序被取数层的并发用例钉着）。任务**同步抛错**时走 catch
         // 直接兑现成 reject，不能让它逃出 pump 把 `active` 漏成永久占用。
         let started: Promise<T>;
         try {
@@ -235,9 +237,23 @@ export const MAX_IMAGE_REFS = 50;
  */
 export const CLIP_EXPAND_MAX = 2000;
 
-/** 剪贴板取不到时的占位文案。博客侧的取数层（content-ref-resolver.ts）用的就是本函数。 */
+/** 剪贴板取不到时的占位文案。评论 / 讨论的取数层（useResolvedContent.ts）用的就是本函数。 */
 export function clipboardFailureText(id: string): string {
   return `[剪贴板 ${id} 加载失败]`;
+}
+
+/**
+ * reactive 剪贴板在 **Markdown 文本**里的唯一合法形态：一个站内链接。
+ *
+ * 评论 / 讨论那条管线读不懂 reactive 语法，内联源码的结果是整段源码被当成
+ * Markdown/HTML 重新解释（静默坏内容）。文案不掺标题等用户输入，id 再过滤一遍
+ * 非字母数字字符 —— 这个字符串会被拼进 Markdown 再交给富文本管线。
+ *
+ * （曾住在 content-ref-resolver.ts；legacy 渲染管线退役后随本文件迁入。）
+ */
+export function reactiveClipboardLink(id: string): string {
+  const safeId = id.replace(/[^A-Za-z0-9]/g, '');
+  return `[查看剪贴板](/clipboard/${safeId})`;
 }
 
 /** 内联图片的类名（净化后由我们自己的代码添加，用户伪造不了）。 */
@@ -297,8 +313,8 @@ export function truncateClipboardContent(content: string, id: string): string {
  *
  * ★ 这是「我们不放开 img 白名单、图片却出得来」的全部秘密 ★
  * 换在 DOMPurify **之后**：走 createElement + setAttribute，绝不拼 innerHTML
- * （拼 innerHTML = 把到手的内容又交还给解析器；blog-markdown.ts 的文件头记着
- * 一次真实存储型 XSS 就是这么来的）。因此用户手写的 `<img>` 照旧被转义、
+ * （拼 innerHTML = 把到手的内容又交还给解析器；历史上投票嵌入因此出过一次真实的
+ * 存储型 XSS）。因此用户手写的 `<img>` 照旧被转义、
  * `![](外链)` 照旧降级成链接 —— 能出现的图片只有我们亲手建的这一种形态。
  *
  * 三处刻意跳过（父节点是 `A` / `CODE` / `PRE`）：

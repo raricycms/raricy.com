@@ -463,8 +463,8 @@
   }
 }
 
-// 剪贴板详情里的 reactive 正文：沿用 .clipboard-markdown-content 那套「一页一张白卡」，
-// 只是根节点不同（这里没有 .blog-content-container 可供抵消）。
+// 剪贴板详情里的 reactive 正文：与文章页共用同一套版式（这里没有
+// .blog-content-container 可供抵消，只做宽度裁剪）。
 .clipboard-reactive-content {
   min-width: 0;
 }

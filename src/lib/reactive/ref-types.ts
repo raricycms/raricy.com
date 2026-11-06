@@ -57,6 +57,27 @@ export interface SiteMediaPayload {
 /** compat 返回的 `mediaSources`；键 = token 里的 10 位小写十六进制。 */
 export type SiteMediaSources = Readonly<Record<string, SiteMediaPayload>>;
 
+// ── 投票嵌入的 payload（`GET /api/votes/:id` 的 `data`）──────────────────────
+//
+// 住在 ref-types 而不是渲染器里：hostData 里 `vote:<id>.payload` 就是它，
+// reactive 的静态渲染（site-embed-static）与交互渲染（SiteEmbedView）共用同一份形状。
+// （legacy Markdown 管线退役前定义在 blog-markdown.ts，随该管线整体迁入。）
+
+export interface VoteOptionData {
+  id: number;
+  label: string;
+  count: number;
+  percentage: number;
+}
+
+export interface VoteEmbedData {
+  title: string;
+  is_locked: boolean;
+  total_votes: number;
+  user_voted: number | null;
+  options: VoteOptionData[];
+}
+
 export interface ReferenceSlot {
   kind: ReferenceKind;
   ref: string;

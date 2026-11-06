@@ -13,7 +13,7 @@
 //
 // 【只复用既有读口，绝不发明端点、绝不发写请求】
 //   剪贴板 `GET /api/clipboard/<id>`、投票 `GET /api/votes/<id>`、
-//   收藏夹 `GET /api/spider/favorites/<id>` —— 与 `ContentRefResolver` 的
+//   收藏夹 `GET /api/spider/favorites/<id>` —— 与阅读页服务端 `ref-reader.ts` 的
 //   'expand' 模式逐字一致（含 `credentials: 'same-origin'`）。本模块只发 GET。
 //   图床与音频**不取数**：适配器只拼 `/api/images|audio/<id>/raw`，权限由 raw
 //   路由逐条判。
@@ -91,7 +91,7 @@ async function readClipboard(
   };
   const clip = data?.clip;
   if (!clip || typeof clip.content !== 'string') return { status: 'error' };
-  // 兼容未带 format 的旧响应（与 ContentRefResolver 一致）；带了认不出的值
+  // 兼容未带 format 的旧响应（与 ref-reader.ts 一致）；带了认不出的值
   // 绝不猜成 markdown —— 不给数据，适配器保留字面量。
   const format =
     clip.format === undefined ? 'markdown' : parseContentFormat(clip.format);

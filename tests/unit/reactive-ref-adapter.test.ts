@@ -12,8 +12,6 @@
 // 要的是行为，不是实现细节。
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
@@ -565,15 +563,6 @@ describe('剪贴板引用：Markdown 父文档内联一层，Reactive 父文档�
     );
     expect(card).toContain('site-embed-clipboard');
     expect(card).not.toContain('clipboard-inline');
-  });
-
-  it('SiteEmbedView 不再引用旧 Markdown 渲染器（内联只剩新引擎一条路）', () => {
-    const view = readFileSync(
-      resolve(import.meta.dirname, '../../src/app/components/reactive/SiteEmbedView.tsx'),
-      'utf8'
-    );
-    expect(view).not.toContain('MarkdownRenderer');
-    expect(view).not.toContain('InlineClipboardMarkdown');
   });
 });
 

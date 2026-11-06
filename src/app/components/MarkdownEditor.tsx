@@ -9,15 +9,15 @@
 //
 // 【预览统一走新引擎】无论 Markdown 还是 Reactive，预览都由 `ReactivePreview`
 // （compat → 引用适配 → worker 编译 → ReactiveDocument）渲染，与阅读页同一套
-// 配置。**不再保留旧的 MarkdownRenderer 分支** —— 两套引擎的表格 / HTML 清洗 /
-// 数学 / 脚注 / 引用内联会静默漂开，而「追加组件后普通正文排版不变」正是靠
-// 同一套引擎 + 站点级 `markdownBreaks: true` 保证的。
+// 配置。**旧的 MarkdownRenderer / blog-renderer 已随 legacy 渲染面整体退役** ——
+// 两套引擎的表格 / HTML 清洗 / 数学 / 脚注 / 引用内联会静默漂开，而「追加组件后
+// 普通正文排版不变」正是靠同一套引擎 + 站点级 `markdownBreaks: true` 保证的。
 //
 // 【预览可本地交互，但不写业务】`ReactivePreview` 以 interactive + preview 渲染：
 // 滑块 / 输入 / 图表可试；投票 / 收藏等站点嵌入只读。预览不发出任何业务写请求。
 //
 // 【导出 / 打印】等待当前正文的格式判定后，用 `renderStaticMarkup`（同一套 compat +
-// 适配 + 编译选项）渲染**静态初始状态**；不再走预览 DOM 或旧的 blog-renderer。
+// 适配 + 编译选项）渲染**静态初始状态**；不走预览 DOM。
 //
 // 【主题】编辑器配色全走站点 CSS 变量，不需要监听 `data-theme`（见 cm-theme.ts）。
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1014,7 +1014,7 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(
      *      350ms 分析还没回来时立刻点导出，不能按旧格式走另一套引擎（审查 5.4）；
      *   2. 无论 Markdown 还是 Reactive，都用**统一的新引擎**做静态渲染
      *      （`renderStaticMarkup` → compat + 引用适配 + `reactiveCompileOptions(format)`），
-     *      不再保留旧的 blog-renderer / MarkdownRenderer 分支（审查 5.1）。
+     *      旧 MarkdownRenderer / blog-renderer 已随 legacy 渲染面整体退役（审查 5.1）。
      *
      * 判定 blocked（无效增强语法 / 不可发布）时明确提示并拒绝导出 —— 宁可什么都不
      * 下载，也不要给一份按错误格式生成的残缺文件。

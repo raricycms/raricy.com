@@ -1,14 +1,13 @@
 // 博客正文里的投票箱（`[@<9位投票ID>]`）。
 //
-// 【为什么非 E2E 不可】正文是**客户端**渲染的：ContentRefProcessor 先把 `[@id]`
-// 换成 `<div class="vote-embed">`，再由 blog-markdown.ts 拉数据渲染小组件。
-// 单测只能钉住构造函数那一半（buildVoteWidget），钉不住「预处理器真的替换了 /
-// 请求真的发了 / 组件真的挂进了正文」—— 这条链路上任何一环断了，页面照样 200、
-// 标题照样正确，只有真跑浏览器才看得见。
+// 【为什么非 E2E 不可】正文是**客户端**渲染的：服务端由 reactive 引用适配把 `[@id]`
+// 换成 `<site-embed kind="vote">`，浏览器里的 runtime 再用水合后的 hostData 渲染
+// 交互小组件。单测只能钉住渲染函数那一半（site-embed / VoteWidget），钉不住
+// 「适配器真的替换了 / 数据真的随 hostData 下发了 / 组件真的挂进了正文」—— 这条
+// 链路上任何一环断了，页面照样 200、标题照样正确，只有真跑浏览器才看得见。
 //
-// 【回归的正是这么一断】blog-markdown.ts 里只实现了「结果行」那一支：没有标题、
-// 没有投票入口、也没有详情页链接，且最外层少了 .vote-embed-widget（卡片样式全挂在
-// 它上面）。而小组件本应**可投**。
+// 【历史上的回归】旧 Markdown 管线里小组件曾只剩「结果行」：没有标题、没有投票
+// 入口、也没有详情页链接，且最外层少了 .vote-embed-widget。小组件本应**可投**。
 
 import { test, expect } from '@playwright/test';
 import { registerFreshUser } from './helpers';

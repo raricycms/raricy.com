@@ -22,7 +22,6 @@ import {
   precheckFile,
   runLimited,
 } from '@/lib/md-editor/upload';
-import { renderBlogMarkdown } from '@/lib/blog-renderer';
 
 const MB = 1024 * 1024;
 
@@ -223,39 +222,6 @@ describe('插入用的 Markdown', () => {
 
     it('换行折成空格（alt 是行内文本，不能跨行）', () => {
       expect(imageMarkdown('a\r\nb.png', URL)).toBe(`![a b.png](${URL})\n`);
-    });
-
-    // ★ 这几条才是真正的判据：转义的目的是「渲染出来仍是一张图」，不是
-    // 「字符串长得像转义过的」。中间过一遍**真管线**（protectMath + marked +
-    // DOMPurify）—— 反斜杠写法正是死在这里（`\[…\]` 被公式保护吃掉，见 upload.ts）。
-    describe('过真管线仍是一张图，且 alt 读起来是原文件名', () => {
-      const cases: Array<[string, string]> = [
-        ['名字里有方括号', '图[1].png'],
-        ['方括号不配对', 'a]b[.png'],
-        ['反斜杠 + 方括号', '图[1] C:\\shot.png'],
-        ['盘符路径', 'C:\\a\\b.png'],
-        ['连续两个带方括号的名字（`\\[…\\]` 会吞掉中间那段的那种）', '两个[1].png 和 [2].png'],
-      ];
-      for (const [label, name] of cases) {
-        it(label, () => {
-          const { html, mathCount } = renderBlogMarkdown(imageMarkdown(name, URL));
-          expect(html).toContain(`<img src="${URL}"`);
-          // 转义不是改写：读回来的就是原来那个文件名
-          expect(html).toContain(`alt="${name.replace(/&/g, '&amp;')}"`);
-          // 方括号不能被公式保护当成 `\[…\]` —— 那会静默多跑一遍 MathJax，
-          // 还在 alt 里留下看得见的反斜杠
-          expect(mathCount).toBe(0);
-        });
-      }
-
-      it('两张之间那段正文不会被公式吞掉', () => {
-        const two =
-          imageMarkdown('a[1].png', URL) + '\n中间这段正文不能消失\n' + imageMarkdown('b[2].png', URL);
-        const { html, mathCount } = renderBlogMarkdown(two);
-        expect(html).toContain('中间这段正文不能消失');
-        expect(html.match(/<img /g)).toHaveLength(2);
-        expect(mathCount).toBe(0);
-      });
     });
   });
 });

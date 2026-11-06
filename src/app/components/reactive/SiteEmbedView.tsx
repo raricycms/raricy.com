@@ -22,7 +22,7 @@ import {
   resolveSiteEmbed,
   VoteWidget,
 } from './site-embed-static';
-import type { VoteEmbedData } from '@/lib/blog-markdown';
+import type { VoteEmbedData } from '@/lib/reactive/ref-types';
 
 export interface SiteEmbedViewOptions {
   /** 编辑器预览：看得见、点不动，不发任何业务写请求。 */
@@ -34,7 +34,7 @@ interface InteractiveVoteProps {
   initial: VoteEmbedData;
 }
 
-/** 交互投票：POST 形状与 `src/lib/blog-markdown.ts` 的 attachVoteHandlers 逐字一致。 */
+/** 交互投票：POST 形状与 `GET /api/votes/:id` 的 data 形状一致（payload 见 ref-types）。 */
 function InteractiveVote({ voteId, initial }: InteractiveVoteProps): ReactNode {
   const [data, setData] = useState<VoteEmbedData>(initial);
   const [selected, setSelected] = useState<number | null>(null);

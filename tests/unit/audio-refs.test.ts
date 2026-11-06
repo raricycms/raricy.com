@@ -9,7 +9,7 @@
 //      只改一端 = 「面板里挑得出、一渲染却变成播放器」。这里直接对 STICKER_REF_RE
 //      断言（那是真两端之一），另一端（sticker-service 扫盘）在 service 用例里。
 //   3. **代码块里的 token 不许展开**（源文阶段没有 DOM，跳过不了 CODE/PRE）。
-//      这是博客侧最可能的静默错误：用户想展示语法本身，却得到一个真播放器。
+//      这是 reactive 正文渲染链最可能的静默错误：用户想展示语法本身，却得到一个真播放器。
 
 import { describe, it, expect } from 'vitest';
 import {
@@ -19,11 +19,9 @@ import {
   AUDIO_REF_PROBE,
   AUDIO_REF_RE,
   MAX_AUDIO_REFS,
-  audioRefHtml,
   audioUrl,
   collectAudioRefs,
   embedAudioRefs,
-  replaceAudioRefs,
   stripAudioTokens,
 } from '@/lib/audio-refs';
 import { STICKER_REF_RE, STICKER_REF_PROBE } from '@/lib/sticker-refs';
@@ -209,9 +207,9 @@ describe('embedAudioRefs', () => {
   });
 });
 
-// ═══ 五、博客侧：收集与替换 ═══════════════════════════════════════════════════
+// ═══ 五、源文：代码块内不收集（reactive 适配器据此决定展不展开）════════════════
 
-describe('collectAudioRefs / replaceAudioRefs（博客源文）', () => {
+describe('collectAudioRefs（源文）', () => {
   it('收集到 id 与位置', () => {
     const src = `前 ${TOKEN} 后`;
     const slots = collectAudioRefs(src, maskMarkdownCode(src));
@@ -226,50 +224,22 @@ describe('collectAudioRefs / replaceAudioRefs（博客源文）', () => {
     const inline = `写 \`${TOKEN}\` 就能引用`;
 
     for (const src of [fenced, inline]) {
-      const slots = collectAudioRefs(src, maskMarkdownCode(src));
-      expect(slots, `${src} 里的 token 不该被展开`).toHaveLength(0);
-      // 替换也不该改动原文 —— 用户要的就是看见语法本身
-      expect(replaceAudioRefs(src, slots)).toBe(src);
+      expect(
+        collectAudioRefs(src, maskMarkdownCode(src)),
+        `${src} 里的 token 不该被展开`
+      ).toHaveLength(0);
     }
   });
 
-  it('代码块外的照常展开（盖码没有误伤）', () => {
+  it('代码块外的照常收集（盖码没有误伤）', () => {
     const src = [`\`\`\``, TOKEN, '```', '', `正文 ${TOKEN}`].join('\n');
     const slots = collectAudioRefs(src, maskMarkdownCode(src));
     expect(slots).toHaveLength(1);
     expect(slots[0].start).toBeGreaterThan(src.indexOf('```\n\n'));
   });
 
-  it('替换成 <audio> 标签串，且按区间切片（不是 replace）', () => {
-    const src = `听 ${TOKEN}`;
-    const out = replaceAudioRefs(src, collectAudioRefs(src, maskMarkdownCode(src)));
-    expect(out).toContain('<audio');
-    expect(out).toContain(`src="/api/audio/${ID}/raw"`);
-    expect(out).toContain('controls');
-    expect(out).not.toContain(TOKEN);
-  });
-
-  it('多个 token 一起替换，位置不互相位移', () => {
-    const a = `[@${AUDIO_REF_COLLECTION}/AAAAAAAAAA]`;
-    const b = `[@${AUDIO_REF_COLLECTION}/BBBBBBBBBB]`;
-    const src = `${a} 中间 ${b}`;
-    const out = replaceAudioRefs(src, collectAudioRefs(src, maskMarkdownCode(src)));
-
-    expect(out).toContain('/api/audio/AAAAAAAAAA/raw');
-    expect(out).toContain('/api/audio/BBBBBBBBBB/raw');
-    expect(out).toContain('中间');
-    expect(out).not.toContain(TOKEN);
-  });
-
   it(`收集也受 ${MAX_AUDIO_REFS} 封顶`, () => {
     const many = Array.from({ length: MAX_AUDIO_REFS + 5 }, () => TOKEN).join(' ');
     expect(collectAudioRefs(many, maskMarkdownCode(many))).toHaveLength(MAX_AUDIO_REFS);
-  });
-
-  it('audioRefHtml 只输出我们自己的 URL，不含任何用户可控的 URL', () => {
-    expect(audioRefHtml(ID)).toContain(`src="/api/audio/${ID}/raw"`);
-    // ⚠️ 不设 data-token：博客那条管线会过 DOMPurify 且 ALLOW_DATA_ATTR: false，
-    // 写了也会被剥掉 —— 与其留一个看似有效实则失效的属性，不如不写。
-    expect(audioRefHtml(ID)).not.toContain('data-token');
   });
 });

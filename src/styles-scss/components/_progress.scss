@@ -50,7 +50,7 @@
   }
 }
 
-// 转圈指示（MarkdownRenderer 渲染中用它）。与进度条同属「加载指示」，故同文件。
+// 转圈指示（当前无生产消费者；legacy 渲染面退役后只剩样式，待样式批清理）。与进度条同属「加载指示」，故同文件。
 .spinner-border {
   display: inline-block;
   width: 2rem;

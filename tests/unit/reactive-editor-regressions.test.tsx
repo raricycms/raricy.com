@@ -103,7 +103,6 @@ vi.mock('@/app/components/reactive/ReactiveDocument', async () => {
 
 // 编辑器测试不需要真的预览 / 工具条 —— 它们在别的用例里各自被测过。
 vi.mock('@/app/components/reactive/ReactivePreview', () => ({ default: () => null }));
-vi.mock('@/app/components/MarkdownRenderer', () => ({ default: () => null }));
 vi.mock('@/app/components/markdown-editor/Toolbar', () => ({
   default: () => null,
   VIEW_MODES: [],

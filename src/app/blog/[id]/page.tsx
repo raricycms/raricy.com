@@ -13,7 +13,6 @@ import {
 } from '@/lib/blog-service';
 import { ymd } from '@/lib/format';
 import { prisma } from '@/lib/db';
-import MarkdownRenderer from '@/app/components/MarkdownRenderer';
 import ReactiveDocument from '@/app/components/reactive/ReactiveDocumentLazy';
 import Avatar from '@/app/components/Avatar';
 import BlogTimestamps from '@/app/components/BlogTimestamps';
@@ -140,8 +139,8 @@ export default async function BlogDetailPage({ params }: { params: Promise<{ id:
       ])
     : [{ fed: 0 }, null, false];
 
-  // 渲染路径决策全部交给 read-render（它内部用唯一的 selectContentRenderer）：
-  // 页面不自己判管线，也绝不把 reactive 源码交给 MarkdownRenderer。
+  // 渲染路径由服务端 read-render 决定：能编译出来就是 reactive（唯一正文渲染路径），
+  // 否则 unavailable。页面不自己判管线，也不存在「交回旧 Markdown 渲染器」的分支。
   // 访客（非 core）走 external —— 剪贴板、投票与收藏均保留字面量。
   const contentSource = blog.content?.content ?? '';
   const readRender = await resolveReadRender({
@@ -167,19 +166,15 @@ export default async function BlogDetailPage({ params }: { params: Promise<{ id:
     ? `${ymd(visLog.at) ?? ''} 由「${VISIBILITY_LABEL[visLog.from]}」改为「${VISIBILITY_LABEL[visLog.to]}」`
     : null;
 
-  // 三种新路径都保留 `.blog-content-container-container > .blog-content-container
-  // #userContentContainer` 这层外壳（e2e 与 _clipboard/_blog 样式都钉着它）。
-  // 只有 legacy 分支由 MarkdownRenderer 自己产出这两个节点。
+  // `.blog-content-container-container > .blog-content-container #userContentContainer`
+  // 这层外壳由阅读页统一产出（e2e 与 _clipboard / _blog 样式都钉着它）。
   const contentRenderer = readRender.choice.renderer;
   // 按当前源码编译，staticFirst 先给 SSR 首屏，再接管为交互视图。
   const reactiveDocument =
     readRender.bundle?.result.ok ? readRender.bundle.result.document : null;
   const reactiveHostData = readRender.bundle?.hostData;
-  const staticDocument = reactiveDocument;
-  const staticHostData = reactiveHostData;
-  let contentNode: ReactNode;
-  if (contentRenderer === 'reactive' && reactiveDocument) {
-    contentNode = (
+  const contentNode: ReactNode =
+    contentRenderer === 'reactive' && reactiveDocument ? (
       <div className="blog-content-container-container">
         <div
           className="blog-content-container"
@@ -194,28 +189,7 @@ export default async function BlogDetailPage({ params }: { params: Promise<{ id:
           />
         </div>
       </div>
-    );
-  } else if (contentRenderer === 'reactive-static' && staticDocument) {
-    contentNode = (
-      <div className="blog-content-container-container">
-        <div
-          className="blog-content-container"
-          id="userContentContainer"
-          data-content-renderer="reactive-static"
-        >
-          {/* 同版本快照 / 本次编译产物，按上游 static 分支渲染：SSR 首屏即静态正文，
-              无 JS 也可读；不需要（也不允许）在服务端 import react-dom/server。 */}
-          <ReactiveDocument
-            document={staticDocument}
-            hostData={staticHostData}
-            mode="static"
-            role="read"
-          />
-        </div>
-      </div>
-    );
-  } else if (contentRenderer === 'unavailable') {
-    contentNode = (
+    ) : (
       <div className="blog-content-container-container">
         <div
           className="blog-content-container"
@@ -228,16 +202,6 @@ export default async function BlogDetailPage({ params }: { params: Promise<{ id:
         </div>
       </div>
     );
-  } else {
-    contentNode = (
-      <div data-content-renderer="legacy">
-        <MarkdownRenderer
-          content={contentSource}
-          contentRefs={member ? 'expand' : 'external'}
-        />
-      </div>
-    );
-  }
 
   return (
     <>
@@ -294,9 +258,8 @@ export default async function BlogDetailPage({ params }: { params: Promise<{ id:
               </div>
             </header>
 
-            {/* 渲染路径由服务端 read-render 决定（legacy / reactive /
-                reactive-static / unavailable），data-content-renderer 是观测钩子。
-                旧分支原样交给 MarkdownRenderer；reactive 源文绝不进 Markdown 管线。 */}
+            {/* 渲染路径由服务端 read-render 决定（reactive / unavailable），
+                data-content-renderer 是观测钩子。reactive 是唯一正文渲染路径。 */}
             {contentNode}
           </div>
         </div>

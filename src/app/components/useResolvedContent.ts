@@ -6,8 +6,8 @@
 // 【为什么必须留在 React 层】净化管线（src/lib/rich-text.ts）是**同步**的：
 // renderCommentMarkdown 在 render 期间被同步调用（每棵子树每个节点一次），改成
 // async 会把整个评论区翻成状态机。所以异步只留在这里 —— 取到正文后当普通字符串
-// 交给渲染器，渲染器本身仍然又纯又可缓存。这与博客侧 MarkdownRenderer 的
-// useEffect + cancelled 标志是同一种分层。
+// 交给渲染器，渲染器本身仍然又纯又可缓存。这与阅读页的「服务端编译 + 客户端渲染」
+// 是同一种分层：异步取数留在 React 层，渲染器只吃字符串。
 //
 // 【图床图片为什么不在这个文件】`[@10位]` 不需要请求（只是拼 URL），所以它在
 // 渲染器内部同步完成 —— 见 src/lib/content-refs.ts 的 embedImageRefs。
@@ -24,12 +24,12 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   clipboardFailureText,
   firstClipboardRef,
+  reactiveClipboardLink,
   replaceClipboardRef,
   truncateClipboardContent,
 } from '@/lib/content-refs';
 import { parseContentFormat } from '@/lib/content-format';
 import type { ContentFormat } from '@/lib/content-format';
-import { reactiveClipboardLink } from '@/lib/content-ref-resolver';
 
 /** 缓存条数上限（与 chat-markdown 的 CACHE_MAX 同量级即可）。 */
 const CACHE_MAX = 200;
@@ -84,7 +84,7 @@ function loadClipboard(id: string): Promise<LoadedClip> {
       const clip = (data as { clip?: { content?: unknown; format?: unknown; version?: unknown } })?.clip;
       const raw = typeof clip?.content === 'string' ? clip.content : '';
       // 未带 format 的旧响应按 markdown（兼容）；带了认不出的值**不猜 markdown**，
-      // 与博客侧 ContentRefResolver 同一口径：只给一个安全的站内链接。
+      // 与正文引用适配（reactive/ref-adapter + ref-reader）同一口径：只给一个安全的站内链接。
       const rawFormat = clip?.format;
       const version = typeof clip?.version === 'string' ? clip.version : undefined;
       const format =

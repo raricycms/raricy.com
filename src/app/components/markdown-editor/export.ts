@@ -14,7 +14,7 @@
 //
 // 【样式怎么带过去】把当前文档 head 里的样式表**原样抄一份绝对地址**进去：
 //   · `<link rel=stylesheet>` → 用 `.href`（浏览器已经解析成绝对地址）；
-//   · `<style>`（Next 注入的、hljs 双主题、MathJax 的 CHTML 字体表）→ outerHTML，
+//   · `<style>`（Next 注入的、hljs 双主题、公式字体表）→ outerHTML，
 //     并且把里面**站内相对**的 `url(/…)` 补成绝对地址（见 absolutizeCssUrls）。
 // 比在客户端重新内联一遍 CSS 可靠：那份 CSS 里带 hashed 文件名与 `@font-face`
 // 相对路径，自己拼必然漏。代价是导出的文件**需要联网**才能取到样式 ——
@@ -28,8 +28,8 @@
 // 而锚点恰恰是导出件内部该在自己身上跳的那一类。同理，**媒体与链接仍然需要
 // 联网**（而且私有图 / 私有音频在站外本来就取不到）—— 这一点如实写进导出说明。
 //
-// 【公式】MathJax 已经渲染成 CHTML（内联样式 + head 里的字体表），所以把 `<style>`
-// 抄过去就够了，导出件里**不需要**再加载 MathJax。
+// 【公式】公式已由引擎排成静态 DOM（内联样式 + head 里的字体表），所以把 `<style>`
+// 抄过去就够了，导出件里**不需要**再跑一遍排版。
 //
 // 【ReactiveMD】`renderStaticMarkup` 用离屏 React 根按**初始状态**渲染一份只读正文，
 // 再取出 innerHTML（见该函数头）。适配、编译、图片内联都在这里做，调用方只负责
@@ -95,7 +95,7 @@ export function resolveUrl(value: string, base: string): string {
 /**
  * `<style>` / 行内 `style` 里 `url(…)` 的地址补成绝对地址。
  *
- * MathJax 的 CHTML 字体表就是这种形态：`src: url("/static/mathjax/woff-v2/…")`。
+ * 公式字体表就是这种形态：`src: url("/static/…/woff-v2/…")`。
  * 样式里的相对地址是**相对于文档基址**解析的 —— 导出件从 `file://` 打开时
  * 它指向 `file:///C:/…/static/…`，一律 404，公式只能用回退字体（字形与间距都不对）。
  * 判据与属性那条同一个 `resolveUrl`：`data:` / `#filter` / 已经是绝对的地址不动。
@@ -161,7 +161,7 @@ function collectStyleMarkup(base: string): string {
  * 打开时图片、音频、站内链接、背景图照样出得来。
  *
  * 覆盖四类落点：`src` / `href` / `poster` 三个属性、以及 `style` 属性与正文里的
- * `<style>`（MathJax / 编辑器的行内样式都可能带 `url(…)`）。
+ * `<style>`（公式字体 / 编辑器的行内样式都可能带 `url(…)`）。
  * 不动的那些（`#锚点`、`data:`、已经是绝对的地址）见 `resolveUrl` 的说明。
  */
 export function absolutizeSiteUrls(root: HTMLElement, base?: string): void {
@@ -207,14 +207,11 @@ export function localizeFragmentLinks(root: HTMLElement): void {
 /**
  * 剥掉**只在站内页面上才成立的空壳**。
  *
- * 目前只有代码块的「复制」按钮：它是 `blog-renderer.ts` 直接写在 HTML 里的
- * `<button class="copy-btn" data-code="…">`，行为由 blog-content-dom.ts 挂 JS。
+ * 只有代码块自带的「复制」按钮（`.md-code-block-copy`）：它的行为由运行时 JS 挂，
  * 导出件是一份**死**的静态文件，留着它就是一颗按不动的按钮 —— 占版面、还误导人。
  */
 export function stripInteractiveShells(root: HTMLElement): void {
-  // 旧 MarkdownRenderer 的复制按钮。
-  root.querySelectorAll('.copy-btn').forEach((el) => el.remove());
-  // 新引擎代码块自带「复制」按钮：行为由运行时 JS 挂，导出件里没有 JS → 死按钮。
+  // 代码块「复制」按钮：行为由运行时 JS 挂，导出件里没有 JS → 死按钮。
   root.querySelectorAll('.md-code-block-copy').forEach((el) => el.remove());
 }
 
@@ -735,7 +732,7 @@ function withinDeadline(p: Promise<void>, deadline: number): Promise<void> {
  * 三样都必须等，各有各的后果（而且都只在真按下打印时才看得见）：
  *   · 样式表没到 → 打出来**没有版式**；
  *   · 图片没到   → PDF 里是空白框（尤其刚插进去的那张图）；
- *   · 字体没就绪 → MathJax 的 CHTML 公式字形与间距都不对。
+ *   · 字体没就绪 → 公式的字形与间距都不对。
  *
  * ★ 顺序不能反：字体必须**排在样式与布局之后** ★
  * `doc.fonts.ready` 在没有字体请求在跑时是**已经兑现**的 Promise。刚 `document.write`

@@ -86,8 +86,7 @@ export default function VoteEmbed({
     <div className="vote-embed-widget">
       {/* 这里**不**渲染「已锁定」徽章：详情页的 meta 行（page.tsx）已经有一个，
           两边都写就会并排出现两个一模一样的徽章 —— 徽章属于页面元信息，不属于组件本身。
-          （博客正文里的嵌入没有 meta 行，那个由 blog-markdown.ts 的
-           buildVoteWidget 渲染自己的徽章。） */}
+          （正文里的嵌入由 reactive/site-embed-static.tsx 的 VoteWidget 渲染自己的徽章。） */}
       {showResults && <p className="vote-embed-total numeric">共 {total} 票</p>}
 
       {options.map((o) => {

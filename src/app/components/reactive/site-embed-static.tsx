@@ -3,7 +3,7 @@
 //
 // 这份文件同时被两处使用：
 //   · `SiteEmbedView`（客户端）在 static / 预览态直接调用它；
-//   · 阅读页的 `reactive-static`（同版本快照或本次现编译）也走它。
+//   · 阅读页（本次现编译的 `LocalDocument`）也走它。
 // 所以这里只允许纯数据与 React 元素：不读 window、不发请求。剪贴板内联的子文档
 // 交给 `ReactiveSubDocument`（它自己管 runtime 生命周期），本文件仍不持有 hooks。
 //
@@ -30,7 +30,7 @@ import { CONTENT_FORMAT_LABELS, parseContentFormat } from '@/lib/content-format'
 import { parseLegacyDataImage } from '@/lib/reactive/data-image';
 import { isAllowedReactiveUrl } from '@/lib/reactive/url-policy';
 import { FAVORITE_ID_RE, MAX_CARD_ITEMS } from '@/lib/favorite-refs';
-import type { VoteEmbedData, VoteOptionData } from '@/lib/blog-markdown';
+import type { VoteEmbedData, VoteOptionData } from '@/lib/reactive/ref-types';
 
 /** 与宿主 schema 的 pattern 一致（计划 D1）：只允许短字母数字 id。 */
 const SAFE_REF = /^[A-Za-z0-9]{1,32}$/;
@@ -132,7 +132,7 @@ export interface VoteWidgetProps {
   onSubmit?: () => void;
 }
 
-/** 可投票 = 未锁定且本人未投过（与 blog-markdown.ts 的 canVote 同口径）。 */
+/** 可投票 = 未锁定且本人未投过（详情页 VoteEmbed 同口径）。 */
 function canVote(data: VoteEmbedData): boolean {
   return !data.is_locked && data.user_voted == null;
 }
@@ -296,11 +296,9 @@ function AudioEmbed({ audioId }: { audioId: string }): ReactNode {
 /**
  * 收藏夹卡片（ReactiveMD 静态渲染）。
  *
- * ⚠️ 与 legacy 链 `favorite-refs.ts` 的 `buildFavoriteCardHtml` 是**同一张卡片的两个实现**：
- * 那边在净化**之前**拼成品 HTML（Markdown 管线），这边是 React 节点（ReactiveMD 管线）。
- * R3-240 评估后**不合并**：渲染技术与时机都不同，合并要让一方改写另一方，收益只是
- * 「看起来一致」。共同契约是 `.favorite-embed*` 类名与文案（SCSS / 两端单测各自钉住）；
- * 改卡片外观或文案时**两处一起改**。6 位 id 白名单已统一到 `favorite-refs`（本项目改动）。
+ * 旧 Markdown 管线里那张同名卡片（`favorite-refs.ts` 的 `buildFavoriteCardHtml`）
+ * 已随 legacy 渲染面整体退役 —— 现在只剩这一份实现。共同契约是 `.favorite-embed*`
+ * 类名与文案（SCSS / e2e 选择器钉住），6 位 id 白名单在 `favorite-refs`。
  */
 function FavoriteEmbed({
   favoriteId,

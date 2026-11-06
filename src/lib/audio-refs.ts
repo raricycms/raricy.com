@@ -23,11 +23,10 @@
 //   · 评论 / 讨论（rich-text.ts）：跑在**净化后的 DOM** 上，走 embedAudioRefs ——
 //     createElement + setAttribute，绝不拼 innerHTML。这三个格式的白名单里**没有**
 //     audio，所以音频只能从这条路出来（与 content-refs.ts 的图片同一条秘密）。
-//   · 博客（content-ref-processor.ts）：跑在 **Markdown 源文**上、marked 之前，
-//     走 collectAudioRefs + replaceAudioRefs。那边 `audio` 本来就在白名单里
-//     （blog-markdown.ts 的 BLOG_SANITIZE_OPTIONS），所以直接拼标签串即可。
-//     ⚠️ 但**必须配 maskMarkdownCode** —— 源文阶段没有 DOM，跳过不了 CODE/PRE，
-//     不盖码块就会在 `<code>` 里嵌出一个真播放器（见 favorite-refs.ts 的说明）。
+//   · 博客 / 云剪贴板正文（reactive 渲染链）：跑在 **Markdown 源文**上，由
+//     reactive/ref-adapter.ts 调 collectAudioRefs 扫出 token、改写成宿主组件；
+//     扫描同样跑在 maskMarkdownCode 的盖码副本上 —— 源文阶段没有 DOM，不盖码就
+//     会在代码块里嵌出一个真播放器（见 favorite-refs.ts 的说明）。
 //
 // 本文件**零 import**：chat-shared.ts 的 stripPreviewTokens 要同时被服务端
 // （chat-service.ts）与客户端（ChatApp.tsx）引用，拖进 prisma 会把客户端包弄炸。
@@ -161,9 +160,9 @@ export function embedAudioRefs(root: HTMLElement): void {
   }
 }
 
-// ── 博客：Markdown 源文上的收集与按区间替换 ───────────────────────────────────
+// ── 源文上的收集（reactive 适配器用）────────────────────────────────────────
 
-/** 正文里的一处音频引用（位置用于精确切片，见 replaceAudioRefs）。 */
+/** 正文里的一处音频引用（位置用于精确切片）。 */
 export interface AudioRefSlot {
   id: string;
   /** 原文里的完整匹配，用于精确定位替换区间。 */
@@ -177,6 +176,7 @@ export interface AudioRefSlot {
  *
  * `masked` 是盖过代码块的副本（maskMarkdownCode 的产物），`source` 是原文 ——
  * 两边**等长**，所以下标一一对应，切片要切 `source`。`match` 也取自 `source`。
+ * 调用方是 reactive/ref-adapter.ts（把 slot 改写成宿主组件）。
  *
  * ★ 每次调用新建正则 ★ 全局正则的 lastIndex 会残留（content-refs.ts 记着同一条）。
  */
@@ -189,52 +189,4 @@ export function collectAudioRefs(source: string, masked: string): AudioRefSlot[]
     slots.push({ id: m[1], match: source.slice(at, at + m[0].length), start: at });
   }
   return slots;
-}
-
-/**
- * 把引用按**区间切片**换成 `<audio>` 标签串。
- *
- * 【为什么不 replace(match, …)】与 replaceClipboardRef / replaceFavoriteRefs 同一条：
- * 按内容搜索会命中**插入内容里的那处**。这里插进去的是标签串本身，不含 token，
- * 但保持同一种写法，将来改标签内容时不会突然长出这条 bug。
- *
- * 按出现顺序单向走一遍（游标 + 累计净增），所以下标不会互相位移。
- *
- * `charBudget` 是**整篇展开后的总长度上限**（`MAX_REF_EXPAND_CHARS`）：接受后
- * `source.length` 加上累计净增不超过它就换，超了就保留 token —— **不截断标签串**。
- * 单独的音频引用（正文里没有别的 `[@…]`）走的就是这条，同样受这条预算约束。
- */
-export function replaceAudioRefs(
-  source: string,
-  slots: AudioRefSlot[],
-  charBudget: number = Infinity
-): string {
-  const ordered = [...slots].sort((a, b) => a.start - b.start);
-  let out = '';
-  let cursor = 0;
-  let extra = 0;
-  for (const s of ordered) {
-    const html = audioRefHtml(s.id);
-    const delta = html.length - s.match.length;
-    if (source.length + extra + delta > charBudget) continue;
-    extra += delta;
-    out += source.slice(cursor, s.start) + html;
-    cursor = s.start + s.match.length;
-  }
-  return out + source.slice(cursor);
-}
-
-/**
- * 博客侧的 `<audio>` 标签串。
- *
- * 只接 id，且调用方传进来的一定是 AUDIO_REF_RE 捕获组里的 `[A-Za-z0-9]{10}`，
- * 所以这里**不需要转义** —— 但也正因如此，别把本函数导出给「用户能传任意串」的
- * 调用点用。`class` / `controls` / `preload` / `src` 都在 blog-markdown.ts 的
- * BLOG_SANITIZE_OPTIONS 里，DOMPurify 会让它过。
- */
-export function audioRefHtml(id: string): string {
-  return (
-    `<audio class="${AUDIO_REF_CLASS}" controls preload="metadata" ` +
-    `src="${audioUrl(id)}"></audio>`
-  );
 }

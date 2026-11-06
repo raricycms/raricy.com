@@ -537,7 +537,7 @@ export function maskProtectedContent(source: string): string {
   // 误当成公式起点，把后面一整段正文一起保护掉。
   out = maskInterpolations(out);
   out = maskEscapedDollars(out);
-  // 数学区域：与 markdown-math.ts 的四组定界符同口径。顺序配对，线性。
+  // 数学区域：四组定界符（`$$` / `\[` / `$` / `\(`），顺序配对、线性。
   out = maskDelimitedPairs(out, '$$', '$$');
   out = maskDelimitedPairs(out, '\\[', '\\]');
   out = maskDelimitedPairs(out, '$', '$', true, 1);

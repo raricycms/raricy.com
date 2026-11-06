@@ -3,9 +3,9 @@
 //
 // 【它长什么样】正文里写 `[@用户/张三]`，渲染出来是一枚**行内名片**：带头像框的头像
 // + 用户名，整体是一个指向 /u/<id> 的链接。讨论区与评论区共用同一条管线，所以两处
-// 一起生效；博客正文走另一条异步管线（content-ref-processor.ts 的 ContentRefProcessor），
-// 那边**不认**（`\[@\s*(\w+)\s*\]` 里的 `\w` 不含 `/`），`[@用户/张三]` 原样显示字面量
-// —— 与「表情只在评论与讨论生效」是同一类有意的口径差异。
+// 一起生效；reactive 正文渲染链（ref-adapter 的引用适配）只认数字 id 与音频 token，
+// 那边**不认** `[@用户/张三]`，原样显示字面量 —— 与「表情只在评论与讨论生效」是
+// 同一类有意的口径差异。
 //
 // 【为什么 token 用用户名而不是 uuid】可读、能手打，而且**用户名在本站不可改**
 // （registerUser / createUserAdmin 之后没有任何写入路径），所以引用不会因为改名失效。
@@ -171,8 +171,8 @@ export function stripUserCardTokens(text: string): string {
  * 把一张名片建成 DOM。
  *
  * ★ 动态文本一律走 textContent ★ 用户名是**不可信输入**（虽然注册时过了字符白名单，
- * 但那是另一层的事）—— 拼 innerHTML 等于把到手的内容又交还给解析器，正是
- * blog-markdown.ts 文件头那次存储型 XSS 的成因。
+ * 但那是另一层的事）—— 拼 innerHTML 等于把到手的内容又交还给解析器。历史上投票嵌入
+ * 就是这样踩过一次存储型 XSS（那次教训见 reactive/site-embed-static.tsx 的注释）。
  *
  * 产出的 DOM 与 `<Avatar>` 组件**逐字同构**（`avatar` 盒子 + `avatar__img` +
  * `avatar__frame`），否则 `_avatar.scss` 里那套按 `.avatar > img.avatar__frame`

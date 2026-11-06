@@ -61,7 +61,6 @@ export default async function ClipDetailPage({ params }: { params: Promise<{ id:
 
         <div className="clipboard-detail__content">
           <ClipContent
-            content={contentSource}
             renderer={readRender.choice.renderer}
             reactiveDocument={reactiveDocument}
             hostData={hostData}

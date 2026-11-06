@@ -3,15 +3,13 @@
 // 剪贴板详情的客户端交互层：把页面上原来靠原生 JS 做的交互用 React 等价实现。
 //   - 行内 ID 复制按钮（.clipboard-detail__header__inline-copy）
 //   - 底部操作栏（编辑 / 删除 / 复制正文 / 返回主页 / 返回上页）
-//   - 正文图片点击放大（覆盖层，纯内联样式）
-// 正文渲染仍交给 MarkdownRenderer（不改该组件）。
+//   - 正文渲染：统一交给 ReactiveMD（与博客详情页同一条管线，唯一正文渲染路径）。
 import Link from 'next/link';
-import { useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
 import type { LocalDocument } from 'reactive-md';
-import MarkdownRenderer from '@/app/components/MarkdownRenderer';
 import ReactiveDocument from '@/app/components/reactive/ReactiveDocumentLazy';
 import type { SiteHostData } from '@/lib/reactive/ref-types';
-import type { RendererChoice } from '@/lib/renderer-select';
+import type { ReadRenderer } from '@/lib/reactive/read-render';
 
 // 通用文本复制 + 按钮反馈（navigator.clipboard，不可用时落到 execCommand）
 async function copyText(text: string): Promise<boolean> {
@@ -131,83 +129,33 @@ export function ClipActions({
   );
 }
 
-// 正文容器：legacy 走 MarkdownRenderer（保留旧图片放大）；reactive 用上游
-// LocalDocumentView（图片放大由上游 image-view 负责，**不要**再叠一层旧放大）。
+// 正文容器：唯一路径是上游 ReactiveMD（图片放大由上游 image-view 负责，
+// 不要再叠一层旧放大）。
 export function ClipContent({
-  content,
   renderer,
   reactiveDocument,
   hostData,
 }: {
-  content: string;
-  renderer: RendererChoice['renderer'];
+  renderer: ReadRenderer;
   reactiveDocument: LocalDocument | null;
   hostData?: SiteHostData;
 }) {
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (renderer !== 'legacy') return;
-    const root = ref.current;
-    if (!root) return;
-
-    const zoom = (src: string) => {
-      const overlay = document.createElement('div');
-      overlay.style.cssText =
-        'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.8);display:flex;justify-content:center;align-items:center;z-index:9999;cursor:pointer;';
-      const img = document.createElement('img');
-      img.src = src;
-      img.style.cssText = 'max-width:90%;max-height:90%;object-fit:contain;border-radius:8px;';
-      overlay.appendChild(img);
-      overlay.addEventListener('click', () => document.body.removeChild(overlay));
-      document.body.appendChild(overlay);
-    };
-
-    const bound = new WeakSet<HTMLImageElement>();
-    const bind = () => {
-      root.querySelectorAll('img').forEach((el) => {
-        const img = el as HTMLImageElement;
-        if (bound.has(img)) return;
-        bound.add(img);
-        img.style.cursor = 'pointer';
-        img.addEventListener('click', () => zoom(img.src));
-      });
-    };
-
-    // MarkdownRenderer 通过 effect 异步注入 HTML，用 MutationObserver 兜住后续渲染
-    const obs = new MutationObserver(bind);
-    obs.observe(root, { childList: true, subtree: true });
-    bind();
-    return () => obs.disconnect();
-  }, [renderer]);
-
-  if ((renderer === 'reactive' || renderer === 'reactive-static') && reactiveDocument) {
+  if (renderer === 'reactive' && reactiveDocument) {
     return (
-      <div className="clipboard-reactive-content" data-content-renderer={renderer}>
+      <div className="clipboard-reactive-content" data-content-renderer="reactive">
         <ReactiveDocument
           document={reactiveDocument}
           hostData={hostData}
-          mode={renderer === 'reactive-static' ? 'static' : 'interactive'}
-          staticFirst={renderer === 'reactive'}
+          staticFirst
           role="read"
         />
       </div>
     );
   }
 
-  if (renderer === 'unavailable') {
-    return (
-      <div className="clipboard-reactive-content" data-content-renderer="unavailable" role="alert">
-        <p>这条剪贴板暂时无法显示；正文格式或渲染器配置有误。</p>
-      </div>
-    );
-  }
-
   return (
-    <div className="clipboard-markdown-content" ref={ref} data-content-renderer="legacy">
-      {/* 剪贴板详情页是 core+（page.tsx 的 requireCoreUser），所以正文里的 `[@…]`
-          照常展开 —— 与它首页那条 `<MarkdownRenderer>` 的档位一致。 */}
-      <MarkdownRenderer content={content} contentRefs="expand" />
+    <div className="clipboard-reactive-content" data-content-renderer="unavailable" role="alert">
+      <p>这条剪贴板暂时无法显示；正文格式或渲染器配置有误。</p>
     </div>
   );
 }

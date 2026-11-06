@@ -23,8 +23,8 @@
 // ⚠️ 加第三个保留名时要**两端一起改**：这里 + sticker-service.ts 的扫盘跳过。
 // 只改一端 = 「面板里挑得出、一渲染却变成别的东西」。
 //
-// 【只在评论与讨论生效】博客正文走另一条异步管线（content-ref-processor.ts 的
-// ContentRefProcessor），那边不支持表情，`[@猫猫/开心]` 原样显示字面量 ——
+// 【只在评论与讨论生效】reactive 正文渲染链的引用适配只认数字 id 与音频 token，
+// 不支持表情：博客 / 云剪贴板正文里的 `[@猫猫/开心]` 原样显示字面量 ——
 // 与「9 位投票在评论/讨论里不展开」是同一类有意的口径差异。
 //
 // 本文件不依赖任何 Node 侧东西（会被打进客户端包）、不碰 React，
@@ -193,8 +193,7 @@ export function stripStickerTokens(text: string, to = '[表情]'): string {
  *
  *   · 富组件的注入点在**净化之后**（rich-text.ts 的 render()），用
  *     `createElement` + `setAttribute`，**绝不拼 innerHTML** —— 拼 innerHTML
- *     等于把到手的内容又交还给解析器，正是 blog-markdown.ts 文件头那次
- *     存储型 XSS 的成因。
+ *     等于把到手的内容又交还给解析器（历史上投票嵌入因此出过存储型 XSS）。
  *   · 三处跳过（父节点是 `A` / `CODE` / `PRE`）与 embedImageRefs 逐字相同：
  *     CODE/PRE 让用户写得出字面量（能在文档里展示语法本身），A 避免
  *     `[[@a/b]](url)` 变成 `<a>` 里套 `<img>`。

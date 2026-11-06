@@ -461,7 +461,7 @@ export default function CommentSection({
        左右比正文卡各宽 4px（手机端窄 16px），并自带一个滚动容器 —— 楼中楼缩进一旦溢出，
        横条就画在它身上（见 `tests/e2e/comment-layout.spec.ts`）。
        现在改用**与正文同一层壳**：`.blog-content-container-container` 就是「文章正文列」，
-       MarkdownRenderer 的根节点用的也是它（`components/MarkdownRenderer.tsx`）。两处同宽
+       阅读页的 reactive 正文用的也是它。两处同宽
        同边距，且檐沟只有一份定义（桌面 20px / 窄屏 0，见 `_blog.scss` 的 768px 档），
        不会 drift —— 别再在这里写死一个 padding。 */
     <div className="blog-content-container-container">

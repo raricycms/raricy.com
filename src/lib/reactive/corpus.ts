@@ -549,7 +549,7 @@ function scanReferences(masked: string, sourceChars: number): CorpusRefScan {
     clipboard: 0,
   };
 
-  // 数字 token 按长度分流，与 content-ref-processor 同口径；只认字母数字
+  // 数字 token 按长度分流，与 ref-adapter 同口径；只认字母数字
   // （下划线凑出来的伪 id 不算）。
   for (const match of masked.matchAll(/\[@\s*([A-Za-z0-9]+)\s*\]/g)) {
     const id = match[1];
