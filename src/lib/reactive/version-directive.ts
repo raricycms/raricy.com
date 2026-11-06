@@ -46,10 +46,13 @@ export function findLeadingVersionDirective(source: string): LeadingDeclaration 
     const declaration = DECLARATION_LINE.exec(line);
     if (declaration) return { version: declaration[1], range: { start: cursor, end: contentEnd } };
 
-    // 普通 HTML 注释：可能跨行。跨行时一直跳到 `-->` 之后，再继续看下一行。
+    // 普通 HTML 注释：可能跨行。**只有整行（或跨行注释的 `-->` 之后）没有其它内容时**
+    // 才算前导注释；`<!-- 说明 --> 正文` 这种同行带正文的形状必须当作「正文开始」
+    // 停止扫描，否则会把下一行的旧声明误当成前导声明（R3-102）。
     if (/^\s*<!--/.test(line)) {
       const closeInLine = line.indexOf('-->');
       if (closeInLine !== -1) {
+        if (line.slice(closeInLine + 3).trim() !== '') return null;
         if (lineEnd === source.length) return null;
         cursor = lineEnd + 1;
         continue;
@@ -59,6 +62,9 @@ export function findLeadingVersionDirective(source: string): LeadingDeclaration 
       const after = blockEnd + 3;
       if (after >= source.length) return null;
       const nextNewline = source.indexOf('\n', after);
+      const tailEnd = nextNewline === -1 ? source.length : nextNewline;
+      // 跨行注释的 `-->` 之后同一行还有正文 → 前导区到此为止。
+      if (source.slice(after, tailEnd).trim() !== '') return null;
       cursor = nextNewline === -1 ? source.length : nextNewline + 1;
       if (cursor >= source.length) return null;
       continue;

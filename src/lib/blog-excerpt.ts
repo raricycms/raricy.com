@@ -40,6 +40,7 @@ import type { LocalNode, LocalRuntime } from 'reactive-md';
 import type { ContentFormat } from './content-format';
 import { reactiveCompileOptions, SITE_EMBED_TAG } from './reactive/host-components';
 import { applyLegacyHtmlCompat } from './reactive/legacy-compat';
+import { checkSyntaxBudget } from './reactive/syntax-budget';
 
 /** 摘要默认长度（UTF-16 码元）。主页高卡片一行放得下的量级，也是本模块的调用口径。 */
 export const DEFAULT_EXCERPT_MAX = 280;
@@ -246,6 +247,10 @@ function collectReactiveText(nodes: readonly LocalNode[], runtime: LocalRuntime,
  * 运行时只读初值，收集完立即 dispose。
  */
 function reactiveExcerpt(source: string, format: ContentFormat, max: number): string {
+  // R3-105：与阅读 / 发布走**同一个语法预算闸门**。摘要在主页请求里逐卡同步编译，
+  // 病态正文（海量未闭合 `<` / `{{`）会在这里把单进程卡住；超预算直接给空串
+  // （主页少一段摘要），绝不进入超线性编译。闸门实测是线性的。
+  if (checkSyntaxBudget(source)) return '';
   let result: ReturnType<typeof compileLocal>;
   try {
     result = compileLocal(applyLegacyHtmlCompat(source).source, reactiveCompileOptions(format));

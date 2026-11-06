@@ -30,6 +30,8 @@ import {
 import { getClip } from '@/lib/clipboard-query';
 import { getSpiderBlog } from '@/lib/spider-service';
 import { nowForDb } from '@/lib/db-time';
+import { validateContentForPublish } from '@/lib/reactive/publish';
+import { LOCAL_SYNTAX_VERSION } from 'reactive-md';
 
 const BLOG_BASE = { title: 'T', description: 'D', content: 'C' };
 
@@ -145,7 +147,50 @@ describe('博客格式：validateBlogData / 落库 / 读出口', () => {
     });
     const row = await prisma.blogContent.findUnique({ where: { blogId: id } });
     expect(row?.format).toBe('reactive');
-    expect(row?.syntaxVersion).toBe('local-draft-3');
+    expect(row?.syntaxVersion).toBe(LOCAL_SYNTAX_VERSION);
+  });
+
+  // R3-101：旧版前导声明曾经被当成 syntaxVersion 原样落库 → 新行永久停在旧标记、
+  // 每次阅读都要再迁移一次。现在写入闸门直接拒绝「正文声明不是当前版本」的内容；
+  // 存量旧行不受影响（阅读路径仍按声明迁移）。
+  it('★ 带旧版前导声明的 reactive 正文被整笔拒绝（不把旧声明当 syntaxVersion 落库）', async () => {
+    const u = await makeUser();
+    const stale = '<!-- reactive-md: local-draft-2 -->\n\n正文';
+
+    // 纯校验层：拒绝 + 可区分的诊断码
+    expect(await validateContentForPublish({ content: stale, format: 'reactive' })).toMatchObject({
+      ok: false,
+      reason: 'compile',
+      codes: ['site.syntax.outdated'],
+    });
+
+    // 博客 / 剪贴板两条写入路径都不落库
+    await expect(
+      createBlog(u.id, {
+        ...BLOG_BASE,
+        content: stale,
+        categoryId: null,
+        visibility: 'internal',
+        format: 'reactive',
+      })
+    ).rejects.toThrow();
+    expect(await prisma.blog.count()).toBe(0);
+    expect(await prisma.blogContent.count()).toBe(0);
+    const clip = await createClip(u.id, { title: 't', content: stale, format: 'reactive' });
+    expect(clip.ok).toBe(false);
+    if (!clip.ok) expect(clip.reason).toBe('reactive_invalid');
+
+    // 当前版本声明可以发布，且落库的是**当前**版本（不是正文里写的那一行）。
+    const current = `<!-- reactive-md: ${LOCAL_SYNTAX_VERSION} -->\n\n正文`;
+    const id = await createBlog(u.id, {
+      ...BLOG_BASE,
+      content: current,
+      categoryId: null,
+      visibility: 'internal',
+      format: 'reactive',
+    });
+    const row = await prisma.blogContent.findUnique({ where: { blogId: id } });
+    expect(row?.syntaxVersion).toBe(LOCAL_SYNTAX_VERSION);
   });
 
   it('历史 HTML 属性被净化后正文仍可读，并与交互组件一起发布', async () => {

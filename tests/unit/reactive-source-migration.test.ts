@@ -54,6 +54,22 @@ ${OLD_DECLARATION}
     const source = `正文\n\n${OLD_DECLARATION}`;
     expect(findLeadingVersionDirective(source)).toBeNull();
   });
+
+  // R3-102：`<!-- 说明 --> 正文` 这种「注释行里还带正文」的形状不是前导注释；
+  // 整行当注释跳过的旧实现会把下一行的旧声明误认成前导声明。
+  it('同行注释 + 正文之后不再认声明（前导区到正文为止）', () => {
+    expect(findLeadingVersionDirective(`<!-- 说明 --> 正文\n${OLD_DECLARATION}`)).toBeNull();
+    expect(findLeadingVersionDirective(`<!-- 说明 -->正文\n\n${OLD_DECLARATION}`)).toBeNull();
+    // 只有空白尾巴的注释行仍是合法前导注释
+    expect(
+      findLeadingVersionDirective(`<!-- 说明 -->   \n${OLD_DECLARATION}`)?.version
+    ).toBe('local-draft-2');
+  });
+
+  it('跨行注释的结束行后面还带正文 → 同样停止（不再认声明）', () => {
+    const source = `<!--\n说明\n--> 正文\n\n${OLD_DECLARATION}`;
+    expect(findLeadingVersionDirective(source)).toBeNull();
+  });
 });
 
 describe('findDynamicConstraintActivations：只看约束属性的值区间', () => {

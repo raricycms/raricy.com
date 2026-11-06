@@ -217,12 +217,43 @@ describe('useResolvedContent', () => {
     expect(out.value).toBe('乙的正文');
   });
 
-  it('卸载后结果才回来 → 不报错、不写入已卸载的组件', async () => {
+  it('卸载后结果才回来 → 不写已卸载组件，但结果仍进缓存（重挂零请求命中）', async () => {
     const id = freshClipId();
-    stubFetch(() => clipResponse('迟到的正文'));
+    const calls: string[] = [];
+    let resolveFetch: (() => void) | undefined;
+    // 手工控制 resolve 时机：先卸载，再让响应回来。
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((input: RequestInfo | URL) => {
+        calls.push(String(input));
+        return new Promise<Response>((resolve) => {
+          resolveFetch = () =>
+            resolve({
+              ok: true,
+              status: 200,
+              json: async () => clipResponse('迟到的正文'),
+            } as Response);
+        });
+      })
+    );
+
     const h = mountHook(`[@${id}]`);
+    expect(out.value, '响应还没回来时应显示字面量').toBe(`[@${id}]`);
     h.unmount();
-    await flush(); // 这一步若没做取消保护，React 会抛「更新已卸载组件」
-    expect(true).toBe(true);
+    resolveFetch?.();
+    await flush();
+
+    // R3-162：旧用例这里只写 `expect(true).toBe(true)`（空断言）。现在至少钉两件事：
+    // ① 已卸载组件没有被写（值停在字面量）—— 若实现改成写模块级可变状态/回调，这里会红；
+    // ② 迟到的结果确实完成了并进了缓存（重挂同一 id 零请求直接显示）。
+    // 注：React 18+ 已移除「unmounted setState」的告警，所以 cancelled 守卫本身在
+    // React 层面静默；②是它对用户可见的那一半（成功后重挂不再请求）。
+    expect(out.value, '已卸载组件被写入了迟到的结果').toBe(`[@${id}]`);
+
+    const before = calls.length;
+    mountHook(`[@${id}]`);
+    await flush();
+    expect(out.value).toBe('迟到的正文');
+    expect(calls, '迟到结果已进缓存，重挂不该再请求').toHaveLength(before);
   });
 });

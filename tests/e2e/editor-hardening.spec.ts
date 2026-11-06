@@ -487,14 +487,12 @@ test.describe('导出的正文是哪一份', () => {
 // ═══ 视图切换（一次纯粹的父级重渲染）不该抹掉预览里的后处理 ═══════════════════
 //
 // 【为什么只有 E2E 说得清】预览面板在编辑态是 `display:none`，**切一下视图**就是一次
-// 父级重渲染 —— 而 React 19 是按**对象身份** diff `dangerouslySetInnerHTML` 的
-// （内联 `{{ __html }}` 每次渲染都是新对象），于是那一瞬间容器的 innerHTML 会被整块
-// 重写。后处理（MathJax 排出来的 mjx-container、投票小组件）是在 commit 之后那次效果
-// 里做的，效果只认 doc 那几个依赖 —— **DOM 被重写它看不见**，于是不会重跑：
-// 公式退回 `$$…$$` 原文、投票位空掉，控制台一个字都不报。
+// 父级重渲染。预览正文由 ReactivePreview 编译 + ReactiveDocument 渲染：公式与投票
+// 嵌入位的「后处理」发生在水合之后。若父级重渲染把容器整块重挂/重写，那次后处理
+// 不会跟着重跑 —— 公式退回源码文本、投票位空掉，控制台一个字都不报。
 //
-// 单测（blog-ref-render.test.ts 的「重渲染不重写正文 DOM」）钉的是机制本身，
-// 这一条钉的是**用户真的会撞上的那个动作**：敲完公式切到预览看一眼。
+// 单测覆盖编译/适配与嵌入渲染本身；这一条钉的是**用户真的会撞上的那个动作**：
+// 敲完公式切到预览看一眼。
 
 test.describe('切视图不抹掉预览（后处理的产物要留住）', () => {
   test('★ 敲完公式再切到「预览」：公式还排着、投票小组件还填着 ★', async ({ page }) => {
@@ -535,15 +533,21 @@ test.describe('切视图不抹掉预览（后处理的产物要留住）', () =>
 
     // 先在「并排」里看着它排出来（两个面板都可见，排不出来与重写无关）
     await setView('并排');
-    await expect(preview.locator('.local-math').first()).toBeVisible({ timeout: 15_000 });
+    // R3-136：`.local-math` 是**裸子串**，成功节点与 `.local-math-fallback`（降级原文）
+    // 都会命中 —— 用它断言等于抓不到「公式被打回原文」。按具体角色 + fallback 计数判。
+    await expect(
+      preview.locator('.local-math-display, .local-math-inline').first()
+    ).toBeVisible({ timeout: 15_000 });
+    await expect(preview.locator('.local-math-fallback')).toHaveCount(0);
     await expect(widget).toHaveCount(1, { timeout: 15_000 });
 
     // ★ 切到「预览」：正文一个字没改，纯粹一次父级重渲染 ★
     await setView('预览');
     await expect(
-      preview.locator('.local-math').first(),
+      preview.locator('.local-math-display, .local-math-inline').first(),
       '切一次视图就把公式打回了原文（后处理过的 DOM 被整块重写了）'
     ).toBeVisible();
+    await expect(preview.locator('.local-math-fallback'), '公式退回成 fallback 原文').toHaveCount(0);
     await expect(widget, '切一次视图就把投票位清空了').toHaveCount(1);
   });
 });

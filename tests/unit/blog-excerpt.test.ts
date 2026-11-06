@@ -176,6 +176,15 @@ describe('buildBlogExcerpt：按格式分派', () => {
     expect(buildBlogExcerpt('{{ 未闭合', 'reactive')).toBe('');
   });
 
+  // R3-105：摘要在主页请求里逐卡同步编译。病态正文（海量未闭合标记）超线性，
+  // 必须与阅读 / 发布共用同一个语法预算闸门；超预算给空串（少一段摘要），不编译。
+  it('★ 超过语法预算的病态正文直接给空串（不进入超线性编译）', () => {
+    expect(buildBlogExcerpt('<'.repeat(1_000), 'reactive')).toBe('');
+    expect(buildBlogExcerpt('{{'.repeat(200), 'reactive')).toBe('');
+    // 预算内的正常结构不受影响（不误伤）
+    expect(buildBlogExcerpt('<div>正文</div>', 'reactive')).toContain('正文');
+  });
+
   it('markdown / null / 未识别格式仍走原来的 Markdown 路径', () => {
     const md = '# 标题\n\n**粗**体 [@8位abc]';
     expect(buildBlogExcerpt(md, 'markdown')).toBe(blogExcerpt(md));

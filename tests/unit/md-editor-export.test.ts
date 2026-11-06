@@ -704,3 +704,22 @@ describe('打印：等资源画得出来，但绝不等到死', () => {
     expect(document.querySelector('iframe')).toBeNull();
   });
 });
+
+describe('语法预算（R3-105：导出走同步编译，病态正文必须先拒）', () => {
+  it('★ 海量未闭合标记在适配/编译前就被拒，错误可行动', async () => {
+    // 旧实现靠 prepareSubmit 间接挡；库级 / 测试 / 新调用方（或 adaptedSource 快路径）
+    // 会真正走到 compileLocal —— 这里断言闸门本身。
+    await expect(
+      renderStaticMarkup({ source: '<'.repeat(1_000), format: 'markdown' })
+    ).rejects.toThrow(/语法复杂度预算/);
+    await expect(
+      renderStaticMarkup({ source: '{{'.repeat(200), format: 'reactive' })
+    ).rejects.toThrow(/语法复杂度预算/);
+  });
+
+  it('预算内的正常正文不误伤（适配 + 编译 + 离屏渲染照常）', async () => {
+    const html = await renderStaticMarkup({ source: '普通 **加粗** 段落', format: 'markdown' });
+    expect(html).toContain('加粗');
+    expect(html).toContain('普通');
+  });
+});

@@ -55,6 +55,7 @@ import { reactiveCompileOptions } from '@/lib/reactive/host-components';
 import type { SiteEmbedData, SiteHostData } from '@/lib/reactive/ref-types';
 import { isAllowedReactiveUrl } from '@/lib/reactive/url-policy';
 import { MAX_REF_CONCURRENCY, createConcurrencyLimiter } from '@/lib/content-refs';
+import { SYNTAX_BUDGET_CODE, checkSyntaxBudget } from '@/lib/reactive/syntax-budget';
 
 /**
  * 解析相对地址时的**基准地址** —— 这一页自己的地址。
@@ -512,6 +513,13 @@ export interface ReactiveStaticMarkupInput {
  * 编译失败会抛出（调用方据此提示「导出失败」）—— 绝不拿一份空正文冒充成功。
  */
 export async function renderStaticMarkup(input: ReactiveStaticMarkupInput): Promise<string> {
+  // R3-105：导出是**同步编译**（下面的 compileLocal），病态正文（海量未闭合
+  // `<` / `{{`）会把工作台卡死。这里与阅读 / 发布共用同一个语法预算闸门：
+  // 源文一次；适配后的源码再一次（内联的剪贴板子正文来自他人正文，同样可能带病态标记）。
+  // 超预算明确失败，由调用方提示「导出失败」—— 绝不拿空正文冒充成功。
+  if (checkSyntaxBudget(input.source)) {
+    throw new Error(`正文超过语法复杂度预算（${SYNTAX_BUDGET_CODE}），已拒绝导出`);
+  }
   const adapted =
     input.adaptedSource !== undefined
       ? { adaptedSource: input.adaptedSource, hostData: input.hostData ?? {} }
@@ -523,6 +531,9 @@ export async function renderStaticMarkup(input: ReactiveStaticMarkupInput): Prom
           input.referenceMode ?? 'expand',
           input.format
         );
+  if (checkSyntaxBudget(adapted.adaptedSource)) {
+    throw new Error(`正文超过语法复杂度预算（${SYNTAX_BUDGET_CODE}），已拒绝导出`);
+  }
 
   const compiled = compileLocal(adapted.adaptedSource, reactiveCompileOptions(input.format));
   if (!compiled.ok) {

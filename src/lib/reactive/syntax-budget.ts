@@ -5,9 +5,12 @@
 // 超线性的：隔离实测 25 万个 `<` 约 30.7s、5 万个未闭合 `{{` 约 19.9s。编译是
 // 同步的，落在一个 core+ 的写入 / 阅读请求上会把单进程整站一起排队。
 //
-// 这里在**编译前**数一遍「屏蔽区之外」的未闭合标签起点与未闭合插值起点：
+// 这里在**编译前**数一遍「屏蔽区之外」的未闭合标签 / 插值的**峰值嵌套深度**：
 //   · 代码 / 数学 / `<pre><code>` / 缩进代码由 `maskProtectedContent` 盖成 x；
-//   · 正常成对标签（`<div>…</div>`）的 `<` 与 `>` 数量平衡，不计入；
+//   · 成对标签（`<div>…</div>`）的 `<` 与 `>` 会互相抵消，正常长文不受影响；
+//   · **按峰值而不是净差**：`'<'.repeat(N) + '>'.repeat(N)` 的净差是 0，但编译时
+//     先要扫过连续 N 个 `<` 起点 —— 那正是上游超线性的输入（R3-100）。所以只要
+//     任何时刻「未闭合起点」的累计数超过预算就拒绝，不会被后面的 `>` 补回来。
 //   · 超过预算返回一条 `site.syntax-budget` 诊断 —— 调用方必须**明确拒绝**
 //     （保留原文，不截断、不字面化后当成功）。
 //
@@ -65,46 +68,53 @@ function budgetDiagnostic(
 export function checkSyntaxBudget(source: string): SyntaxBudgetResult | null {
   const masked = maskProtectedContent(source);
 
-  let tagOpenings = 0;
-  let tagClosings = 0;
+  // 标签：跟踪「未闭合起点」的**峰值深度**，而不是最终净差 —— 净差会被后面的
+  // `>` 补回 0（`'<'.repeat(N) + '>'.repeat(N)`），而上游的扫描代价发生在峰值那一段。
+  let tagDepth = 0;
+  let peakTagDepth = 0;
   let firstTag = -1;
   for (let index = 0; index < masked.length; index += 1) {
     const char = masked[index];
     if (char === '<') {
-      tagOpenings += 1;
-      if (firstTag < 0) firstTag = index;
-    } else if (char === '>') {
-      tagClosings += 1;
+      tagDepth += 1;
+      if (tagDepth > peakTagDepth) {
+        peakTagDepth = tagDepth;
+        if (firstTag < 0) firstTag = index;
+      }
+    } else if (char === '>' && tagDepth > 0) {
+      tagDepth -= 1;
     }
   }
-  const unclosedTags = tagOpenings - tagClosings;
-  if (unclosedTags > MAX_UNCLOSED_TAGS) {
+  if (peakTagDepth > MAX_UNCLOSED_TAGS) {
     return budgetDiagnostic(
       source,
       firstTag,
-      `正文含 ${unclosedTags} 个未闭合的标签起点，超过编译预算（${MAX_UNCLOSED_TAGS}）；已保留原文并拒绝本次编译。`
+      `正文的未闭合标签起点峰值达到 ${peakTagDepth}，超过编译预算（${MAX_UNCLOSED_TAGS}）；已保留原文并拒绝本次编译。`
     );
   }
 
-  let interpolationOpenings = 0;
-  let interpolationClosings = 0;
+  // 插值同一口径：峰值嵌套而不是净差（`'{{'.repeat(N) + '}}'.repeat(N)` 净差为 0）。
+  let interpolationDepth = 0;
+  let peakInterpolationDepth = 0;
   let firstInterpolation = -1;
   for (let index = 0; index + 1 < masked.length; index += 1) {
     if (masked[index] === '{' && masked[index + 1] === '{') {
-      interpolationOpenings += 1;
-      if (firstInterpolation < 0) firstInterpolation = index;
+      interpolationDepth += 1;
+      if (interpolationDepth > peakInterpolationDepth) {
+        peakInterpolationDepth = interpolationDepth;
+        if (firstInterpolation < 0) firstInterpolation = index;
+      }
       index += 1;
     } else if (masked[index] === '}' && masked[index + 1] === '}') {
-      interpolationClosings += 1;
+      if (interpolationDepth > 0) interpolationDepth -= 1;
       index += 1;
     }
   }
-  const unclosedInterpolations = interpolationOpenings - interpolationClosings;
-  if (unclosedInterpolations > MAX_UNCLOSED_INTERPOLATIONS) {
+  if (peakInterpolationDepth > MAX_UNCLOSED_INTERPOLATIONS) {
     return budgetDiagnostic(
       source,
       firstInterpolation,
-      `正文含 ${unclosedInterpolations} 个未闭合的插值起点，超过编译预算（${MAX_UNCLOSED_INTERPOLATIONS}）；已保留原文并拒绝本次编译。`
+      `正文的未闭合插值起点峰值达到 ${peakInterpolationDepth}，超过编译预算（${MAX_UNCLOSED_INTERPOLATIONS}）；已保留原文并拒绝本次编译。`
     );
   }
 

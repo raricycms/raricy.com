@@ -217,19 +217,23 @@ describe('容量估算与 LRU', () => {
     expect(cache.has('c')).toBe(true);
   });
 
-  it('键本身也计入容量；peek / has 不刷新顺序', () => {
+  it('键本身也计入容量；peek / has 不刷新顺序（真淘汰下才可观测，R3-160）', () => {
     const small = new ReactiveLruCache<string>({ maxBytes: 6 });
     expect(small.set('k', 'a')).toBe(true); // 1 + 3
     expect(small.set('longkey', 'a')).toBe(false); // 7 + 3 > 6
 
-    const cache = new ReactiveLruCache<string>({ maxBytes: 100 });
+    // 旧写法用 maxBytes:100 塞 3 条（容量充足、根本没有淘汰）→「peek/has 不刷新顺序」
+    // 在「刷新了顺序」的实现上也会绿。改成条数上限 2 下造真实淘汰：若 peek/has 错误
+    // 地刷新顺序，被淘汰的会是 b；正确实现淘汰最旧的 a。
+    const cache = new ReactiveLruCache<string>({ maxBytes: 1000, maxEntries: 2 });
     cache.set('a', '1');
     cache.set('b', '2');
     cache.peek('a');
     cache.has('a');
     cache.set('c', '3');
-    // 没有刷新，a 仍是最旧的；但容量足够，不淘汰。
-    expect(cache.has('a')).toBe(true);
+    expect(cache.has('a'), 'peek/has 刷新了顺序 —— 被淘汰的应是 a').toBe(false);
+    expect(cache.has('b')).toBe(true);
+    expect(cache.has('c')).toBe(true);
   });
 });
 describe('语料输入校验', () => {

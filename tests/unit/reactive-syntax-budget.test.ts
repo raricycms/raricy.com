@@ -45,6 +45,28 @@ describe('checkSyntaxBudget', () => {
     ).toBe(SYNTAX_BUDGET_CODE);
   });
 
+  // R3-100：旧实现按 `开 - 闭` 的**净差**计数，`'<'.repeat(N) + '>'.repeat(N)` 净差为 0
+  // → 放行；而上游的超线性扫描代价发生在**峰值**那一段，与末尾有没有 `>` 无关。
+  it('★ 成对补齐的长起点串仍被拒（净差为 0 不是免死金牌）', () => {
+    const tagFlood =
+      '<'.repeat(MAX_UNCLOSED_TAGS + 1) + '>'.repeat(MAX_UNCLOSED_TAGS + 1);
+    expect(checkSyntaxBudget(tagFlood)?.diagnostic.code).toBe(SYNTAX_BUDGET_CODE);
+
+    const interpolationFlood =
+      '{{'.repeat(MAX_UNCLOSED_INTERPOLATIONS + 1) +
+      '}}'.repeat(MAX_UNCLOSED_INTERPOLATIONS + 1);
+    expect(checkSyntaxBudget(interpolationFlood)?.diagnostic.code).toBe(SYNTAX_BUDGET_CODE);
+  });
+
+  it('峰值恰好等于预算仍放行（阈值边界，成对补齐形式）', () => {
+    expect(
+      checkSyntaxBudget('<'.repeat(MAX_UNCLOSED_TAGS) + '>'.repeat(MAX_UNCLOSED_TAGS))
+    ).toBeNull();
+    expect(
+      checkSyntaxBudget('{{'.repeat(MAX_UNCLOSED_INTERPOLATIONS) + '}}'.repeat(MAX_UNCLOSED_INTERPOLATIONS))
+    ).toBeNull();
+  });
+
   it('成对标签 / 代码块 / 数学里的同样字符不算（正常长文仍可编译）', async () => {
     const balanced = '<div>正文</div>'.repeat(10_000);
     expect(checkSyntaxBudget(balanced)).toBeNull();

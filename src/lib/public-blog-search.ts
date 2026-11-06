@@ -15,6 +15,7 @@ import { parseContentFormat } from './content-format';
 import { reactiveCompileOptions } from './reactive/host-components';
 import { applyLegacyHtmlCompat } from './reactive/legacy-compat';
 import { currentCompileSignature } from './reactive/compile-identity';
+import { checkSyntaxBudget } from './reactive/syntax-budget';
 import { sourceForCurrentCompiler } from './reactive/source-migration';
 
 // 改正文提取规则时递增基础版本；包 / 语法 / 兼容规则 / 选项变化自动进入组合版本。
@@ -43,6 +44,10 @@ const SKIPPED_COMPONENTS = new Set(['computed', 'const', 'validation', 'site-emb
 export async function publicBodyText(source: string, rawFormat: unknown): Promise<{ text: string; status: 'ready' | 'missing' }> {
   const format = parseContentFormat(rawFormat);
   if (!format) return { text: '', status: 'missing' };
+  // R3-105：索引重建是**同步编译**（保存 / 手工 rebuild 时逐篇），超线性病态正文
+  // 不该在这条路径上卡住单进程 —— 超预算直接记 missing（搜索降级为 metadata-only），
+  // 与「编译失败」同一出口。
+  if (checkSyntaxBudget(source)) return { text: '', status: 'missing' };
   try {
     const { compileLocal } = await import('reactive-md');
     // 与阅读 / 预览同一套历史 HTML 兼容；否则旧 HTML 文章会 body_status='missing'。
