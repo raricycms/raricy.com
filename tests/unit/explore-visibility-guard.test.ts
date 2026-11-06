@@ -103,4 +103,26 @@ describe('explore / 对外列表与 sitemap 同源（不变量【5】）', () =>
       /prisma\.blog\./
     );
   });
+
+  it('公开检索的 raw SQL 也复用同一定义（不许手抄可见性白名单）', () => {
+    // 检索是另一个载体（Prisma.sql），但它列的就是「可索引集合」。条件若在
+    // public-blog-search.ts 里再写一份，改白名单 / 加过滤条件时就会与列表分叉。
+    const search = fs.readFileSync(
+      path.resolve(import.meta.dirname, '../../src/lib/public-blog-search.ts'),
+      'utf-8'
+    );
+    expect(search).toContain('PUBLIC_SEARCH_BLOG_SQL');
+    // 注释里可以出现「手抄 visibility IN (...)」这种反例说明，只扫代码行。
+    const code = search
+      .split(/\r?\n/)
+      .filter((line) => {
+        const t = line.trim();
+        return !(t.startsWith('//') || t.startsWith('*') || t.startsWith('/*'));
+      })
+      .join('\n');
+    expect(
+      code,
+      'public-blog-search.ts 自己手写了可见性条件 —— 必须从 blog-public-scope.ts 取片段'
+    ).not.toMatch(/visibility\s+(IN|in)\s*\(/);
+  });
 });

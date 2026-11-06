@@ -26,7 +26,7 @@ vi.mock('next/headers', () => ({
   }),
 }));
 
-import { resetDb, makeUser, makeBlog } from '../helpers/db';
+import { resetDb, makeUser, makeBlog, makeCategory } from '../helpers/db';
 import { createSessionToken } from '@/lib/session';
 import { __resetRateLimitStore, RULES } from '@/lib/rate-limit';
 import { GET as blogsApi } from '@/app/api/blogs/route';
@@ -64,6 +64,41 @@ describe('GET /api/blogs — 档位', () => {
     await login(u.id);
     expect((await get('?search=x')).status).toBe(403);
     expect((await get('?search=x&search_fields=content')).status).toBe(403);
+  });
+});
+
+describe('GET /api/blogs — category_path 与同域其它出口同口径（R3-171）', () => {
+  it('子栏目 → 「父 > 子」；无父栏目 → 自身名称；category 仍是叶子名', async () => {
+    const u = await loginCore();
+    const parent = await makeCategory({ name: '技术' });
+    const child = await makeCategory({ name: 'Python', parentId: parent.id });
+    const flat = await makeCategory({ name: '随笔' });
+    await makeBlog({ authorId: u.id, title: '子栏目文', categoryId: child.id });
+    await makeBlog({ authorId: u.id, title: '平铺文', categoryId: flat.id });
+
+    const res = await get('');
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      blogs: { title: string; category: string | null; category_path: string | null }[];
+    };
+    const byTitle = new Map(body.blogs.map((b) => [b.title, b]));
+
+    // 修复前这里只有子栏目名（路由手工把 parentId/parent 置成了 null）
+    expect(byTitle.get('子栏目文')?.category_path).toBe('技术 > Python');
+    expect(byTitle.get('子栏目文')?.category, 'category 字段语义不变，仍是叶子名').toBe('Python');
+    expect(byTitle.get('平铺文')?.category_path).toBe('随笔');
+  });
+
+  it('没有栏目的文章 → category / category_path 都是 null（字段只增不改）', async () => {
+    const u = await loginCore();
+    await makeBlog({ authorId: u.id, title: '无栏目文' });
+
+    const body = (await (await get('')).json()) as {
+      blogs: { title: string; category: string | null; category_path: string | null }[];
+    };
+    const row = body.blogs.find((b) => b.title === '无栏目文');
+    expect(row?.category).toBeNull();
+    expect(row?.category_path).toBeNull();
   });
 });
 

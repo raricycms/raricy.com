@@ -3,7 +3,14 @@
 import { Prisma, type PrismaClient } from '@prisma/client';
 import type { LocalNode } from 'reactive-md';
 import { prisma } from './db';
-import { INDEXABLE_VISIBILITIES } from './blog-visibility';
+// 公开集合的可见性条件只有一份定义（Prisma where / raw SQL / 内存判断三种载体），
+// 见 blog-public-scope.ts 的文件头 —— 别在本文件重新手抄 `visibility IN (...)`。
+import {
+  PUBLIC_BLOG_SQL,
+  PUBLIC_BLOG_WHERE,
+  PUBLIC_SEARCH_BLOG_SQL,
+  isPublicIndexableBlog,
+} from './blog-public-scope';
 import { parseContentFormat } from './content-format';
 import { reactiveCompileOptions } from './reactive/host-components';
 import { applyLegacyHtmlCompat } from './reactive/legacy-compat';
@@ -66,7 +73,7 @@ export async function publicBodyText(source: string, rawFormat: unknown): Promis
 /** 写入与索引编译分开；事务内复核原文，防慢编译把更新后的版本盖回去。 */
 export async function syncPublicBlogSearch(blogId: string, db: PrismaClient = prisma): Promise<void> {
   const row = await db.blog.findUnique({ where: { id: blogId }, include: { content: true } });
-  if (!row || row.ignore || !(INDEXABLE_VISIBILITIES as readonly string[]).includes(row.visibility) || !row.content) {
+  if (!row || !isPublicIndexableBlog(row) || !row.content) {
     await db.$transaction([db.$executeRaw`DELETE FROM public_blog_search WHERE blog_id = ${blogId}`, db.$executeRaw`DELETE FROM public_blog_search_state WHERE blog_id = ${blogId}`]);
     return;
   }
@@ -77,7 +84,7 @@ export async function syncPublicBlogSearch(blogId: string, db: PrismaClient = pr
   const version = PUBLIC_SEARCH_VERSION;
   await db.$transaction(async tx => {
     const current = await tx.blog.findUnique({ where: { id: blogId }, include: { content: true } });
-    if (!current || current.ignore || !(INDEXABLE_VISIBILITIES as readonly string[]).includes(current.visibility) || current.content?.content !== source || current.content?.format !== format) return;
+    if (!current || !isPublicIndexableBlog(current) || current.content?.content !== source || current.content?.format !== format) return;
     await tx.$executeRaw`DELETE FROM public_blog_search WHERE blog_id = ${blogId}`;
     await tx.$executeRaw`INSERT INTO public_blog_search(rowid,blog_id,body,folded,tokens,version,body_status)
       SELECT rowid,id,${body.text},${body.text.toLowerCase()},${tokens},${version},${body.status}
@@ -93,14 +100,16 @@ export async function refreshPublicBlogSearch(blogId: string): Promise<void> {
 }
 
 export async function rebuildPublicBlogSearch(db: PrismaClient = prisma) {
-  const rows = await db.blog.findMany({ where: { ignore: false, visibility: { in: [...INDEXABLE_VISIBILITIES] } }, select: { id: true } });
+  const rows = await db.blog.findMany({ where: PUBLIC_BLOG_WHERE, select: { id: true } });
   for (const row of rows) await syncPublicBlogSearch(row.id, db);
-  await db.$executeRaw`DELETE FROM public_blog_search WHERE blog_id NOT IN (SELECT id FROM blogs WHERE visibility IN (${Prisma.join(INDEXABLE_VISIBILITIES)}) AND ignore=0)`;
+  // 用同一个片段判断「哪些索引行不再属于公开集合」（子查询里 blogs 别名必须是 b）。
+  await db.$executeRaw`DELETE FROM public_blog_search WHERE blog_id NOT IN (SELECT b.id FROM blogs b WHERE ${PUBLIC_BLOG_SQL})`;
   return rows.length;
 }
 
 export async function searchPublicBlogIds(tx: Prisma.TransactionClient, q: string, categoryIds: number[] | null, page: number, perPage: number) {
-  const publicWhere = Prisma.sql`b.visibility IN (${Prisma.join(INDEXABLE_VISIBILITIES)}) AND b.ignore=0 AND u.archived_at IS NULL`;
+  // 公开集合（含 raw SQL 对归档作者的补偿）—— 唯一定义见 blog-public-scope.ts。
+  const publicWhere = PUBLIC_SEARCH_BLOG_SQL;
   const version = PUBLIC_SEARCH_VERSION;
   const coverage = await tx.$queryRaw<{ missing: bigint; partial: bigint }[]>`SELECT
     SUM(CASE WHEN p.blog_id IS NULL OR p.version != ${version} THEN 1 ELSE 0 END) AS missing,

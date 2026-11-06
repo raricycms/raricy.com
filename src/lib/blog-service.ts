@@ -58,11 +58,14 @@ import { frameUrlFor } from './frame-service';
 import {
   BLOG_VISIBILITIES,
   EXTERNAL_VISIBILITIES,
-  INDEXABLE_VISIBILITIES,
   VISIBILITY_LABEL,
   parseVisibility,
 } from './blog-visibility';
 import type { BlogVisibility } from './blog-visibility';
+// 可索引集合的 where 片段住在博客词汇表旁边（零依赖模块）：public-blog-search 不能从
+// 本文件取它（本文件 → public-blog-search 已有依赖，反过来会成环），所以定义下沉到
+// blog-public-scope.ts，本文件只负责「服务端调用方的既有入口」再导出。
+import { INDEXABLE_BLOG_WHERE } from './blog-public-scope';
 import {
   CONTENT_WRITE_ERROR_CODES,
   CONTENT_FORMAT_LABELS,
@@ -84,6 +87,7 @@ export {
   VISIBILITY_LABEL,
   parseVisibility,
 } from './blog-visibility';
+export { INDEXABLE_BLOG_WHERE } from './blog-public-scope';
 export type { BlogVisibility } from './blog-visibility';
 
 export type BlogSort = 'created' | 'updated';
@@ -121,11 +125,6 @@ export function parseSortParam(raw: unknown): BlogSort {
  */
 export const EXTERNAL_VISIBLE_BLOG_WHERE: Prisma.BlogWhereInput = Object.freeze({
   visibility: { in: [...EXTERNAL_VISIBILITIES] },
-});
-
-/** 可索引的 where 片段（sitemap 用）。同上，不要写成 `as const`。 */
-export const INDEXABLE_BLOG_WHERE: Prisma.BlogWhereInput = Object.freeze({
-  visibility: { in: [...INDEXABLE_VISIBILITIES] },
 });
 
 /**
@@ -661,8 +660,8 @@ export async function listPublicBlogs(params: PublicListParams = {}): Promise<{
         authorId: true,
         author: { select: { username: true, equippedFrameKey: true, equippedFrameExpiresAt: true } },
         // ⚠️ parentId 与 parent.name 必须**一起** select。只给 name 会让
-        // categoryFullPath() 静默退化成「只显示子栏目名，丢掉父级」——
-        // src/app/api/blogs/route.ts:117-119 就是这么错的。
+        // categoryFullPath() 静默退化成「只显示子栏目名，丢掉父级」；消费方必须把
+        // 整个 category 对象交给 categoryFullPath，别手工重建「父级为空」的形状。
         category: { select: { name: true, parentId: true, parent: { select: { name: true } } } },
       },
     }),

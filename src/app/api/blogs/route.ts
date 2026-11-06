@@ -98,7 +98,11 @@ export async function GET(req: Request) {
       commentsCount?: number | null;
       fishCount?: number | null;
       isFeatured?: boolean | null;
-      category?: { name: string } | null;
+      category?: {
+        name: string;
+        parentId: number | null;
+        parent: { name: string } | null;
+      } | null;
       content?: { updatedAt: Date | null } | null;
       snippet?: string | null;
     }) => ({
@@ -118,9 +122,10 @@ export async function GET(req: Request) {
       fish_count: b.fishCount ?? 0,
       is_featured: b.isFeatured ?? false,
       category: b.category?.name ?? null,
-      category_path: b.category
-        ? categoryFullPath({ name: b.category.name, parentId: null, parent: null })
-        : null,
+      // 完整路径直接交给 categoryFullPath（service 的 select 已带 parentId / parent.name）。
+      // 别在这里手工重建 `{ parentId: null, parent: null }` —— 那会让子栏目的路径退化成
+      // 只剩子栏目名，与 /blog 页面、/api/blogs/:id、/api/categories 的 `path` 口径不一致。
+      category_path: b.category ? categoryFullPath(b.category) : null,
     })),
     pagination: {
       page: result.page,
