@@ -5,7 +5,7 @@ import { getCurrentUser } from '@/lib/auth';
 import { isFocusFishTradeBlocked } from '@/lib/focus-mode';
 import { loginUrlWithNext } from '@/lib/safe-url';
 import { getBalance, getTransactions } from '@/lib/fish-service';
-import { signedFish } from '@/lib/fish-amount';
+import { fmtFish, signedFish } from '@/lib/fish-amount';
 import { ymdhm } from '@/lib/format';
 import PageHeader from '@/app/components/PageHeader';
 import FishEntry from './FishEntry';
