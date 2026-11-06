@@ -2,7 +2,12 @@
 // admin-blog-service.ts — 文章管理业务逻辑
 //
 // 与用户端 blog-service 不同：管理端列出**所有**文章（含 ignore=true 软删除）。
-// 提供精选切换、软删除/恢复（ignore 字段）、改栏目。
+// 提供精选切换、软删除/恢复（ignore 字段）、改栏目。管理端的写路径按「三件套」分档：
+//   • 精选切换 / 改栏目 —— 排版操作，无理由、无审计；
+//   • 软删除 —— deleteBlogForAdmin：reason 必填 + 审计 delete_blog + 通知作者；
+//   • 恢复 —— restoreBlog：审计 restore_blog（reason 可选）。
+// 网页 PATCH/DELETE /api/admin/blogs/:id 与 `npm run cli -- blog delete/restore`
+// 都转调上面两个函数；setBlogIgnore 只是它们共用的写库动作，不是管理端入口。
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { prisma } from './db';
@@ -100,7 +105,17 @@ export async function setBlogFeatured(
   return { ok: true, data: { id: blogId, isFeatured } };
 }
 
-/** 软删除 / 恢复（ignore 字段）。 */
+/**
+ * 软删除 / 恢复（ignore 字段）的写库动作 —— **无 reason、无审计、无通知**。
+ *
+ * ⚠️ 这不是管理端入口：管理员删文走 deleteBlogForAdmin（reason 必填 + 审计 + 通知），
+ * 恢复走 restoreBlog（写 restore_blog 审计）。除 deleteBlogForAdmin 内部的软删调用
+ * 之外，唯一的直接调用点是作者自删（/api/blogs/:id 的 DELETE：不强制理由、不写
+ * 日志、不通知）。
+ * 管理端 PATCH {ignore} 也**不**直接调它 —— 那会让「必填理由 / 记日志 / 通知作者」
+ * 出现第二份残缺实现：同一路由的 DELETE 三件套齐全，PATCH 却无理由、无审计、
+ * 不通知作者，/audit 上查无此事。
+ */
 export async function setBlogIgnore(
   blogId: string,
   ignore: boolean
@@ -115,9 +130,9 @@ export async function setBlogIgnore(
 /**
  * 管理员删他人文章：软删 + 审计日志 + 通知作者。**reason 必填**。
  *
- * 从 /api/admin/blogs/[id] 的 DELETE 里抽出来，好让运维 CLI 走同一条路径 ——
- * 否则「必填理由 / 记日志 / 通知作者」这三件事会有第二份实现，而漏掉任何一件
- * 都是静默的（作者不知道自己文章被删了，或者 /audit 上查无此事）。
+ * 网页端 DELETE 与 PATCH {ignore:true}、以及 `npm run cli -- blog delete` 都走这条
+ * 路径 —— 否则「必填理由 / 记日志 / 通知作者」这三件事会有第二份实现，而漏掉任何
+ * 一件都是静默的（作者不知道自己文章被删了，或者 /audit 上查无此事）。
  *
  * 作者本人删自己的文章走另一条路（/api/blogs/:id：不强制理由、不写日志、不通知）。
  */
@@ -175,8 +190,10 @@ export async function deleteBlogForAdmin(
 /**
  * 恢复软删的文章（ignore=false）+ 审计日志。
  *
- * 与 setBlogIgnore(id,false) 的区别只有审计那一笔 —— 但那一笔正是关键：
- * 网页端的「恢复」入口此前也不写日志，运维 CLI 删了再恢复在 /audit 上是**不可见**的。
+ * 网页 PATCH {ignore:false} 与 `npm run cli -- blog restore` 都走这里，两处都留
+ * restore_blog 审计 —— 恢复不是「无害操作」：没有那一笔，网页端恢复一场误删、
+ * 或运维删了再恢复，在 /audit（网页公示面）与 CLI audit log（内部面）上都不可见。
+ * 不要直接调 setBlogIgnore(id,false) 做管理端恢复，那会漏掉这条审计。
  *
  * 注：恢复文章**不需要**连带恢复评论 —— 删文章从来没动过评论（BlogComment 的
  * isDeleted 一直是 false，只是随文章一起从列表里消失了）。
