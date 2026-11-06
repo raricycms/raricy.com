@@ -1410,15 +1410,28 @@ export default function ChatApp({
   const closeLightbox = useCallback(() => setLightbox(null), []);
 
   // ── 加载更早 ───────────────────────────────────────────────────────────
+  /**
+   * 向上翻当前频道的历史。
+   *
+   * 【为什么要有作废语义】响应只判 `code` 就前插的话，请求在飞时切了频道（或走了
+   * resync / 跳转导致列表整段换过），旧频道的这页历史会拼进新频道的列表，`hasMore`
+   * 也会被旧频道的结论覆盖 —— 表现是「私聊里冒出一段大区消息」，点它的「回复」还会被
+   * 服务端以 replyInvalid 拒绝（引用的消息不属于本频道）。
+   * 与 catchUpActive / jumpToMessage 同一套：发请求时记下频道与 viewToken，落地前复核；
+   * **不预先 ++viewToken** —— 空手而归的请求不该作废别人在飞的加载。
+   */
   const loadOlder = useCallback(async () => {
     const aid = activeRef.current;
     if (!aid || loadingOlder) return;
     const oldest = messagesRef.current[0]?.id;
     if (oldest == null) return;
+    const token = viewTokenRef.current;
     setLoadingOlder(true);
     try {
       const data = await api(`/api/chat/channels/${aid}/messages?before=${oldest}`);
       if (data.code !== 200 || !Array.isArray(data.messages)) return;
+      // 在飞期间切了频道 / 列表被整段换过（resync、跳转、重载）→ 这份响应已无意义
+      if (aid !== activeRef.current || token !== viewTokenRef.current) return;
       const older = data.messages as ChatMessageDTO[];
       if (!older.length) {
         setHasMore(false);

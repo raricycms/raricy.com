@@ -166,6 +166,15 @@ function isForeignKeyViolation(e: unknown): boolean {
   );
 }
 
+/** 唯一约束冲突（P2002）—— 并发「先查后建」时用来把竞争转成幂等成功。 */
+function isUniqueViolation(e: unknown): boolean {
+  return (
+    typeof e === 'object' &&
+    e !== null &&
+    (e as Prisma.PrismaClientKnownRequestError).code === 'P2002'
+  );
+}
+
 // ── 内部工具：频道与成员 ─────────────────────────────────────────────────────
 
 /** 幂等建大区频道行（生产由迁移种子化；测试库空表时兜底）。 */
@@ -195,14 +204,28 @@ export async function ensureLobbyMembership(userId: string): Promise<{ lastReadM
     _max: { id: true },
   });
   const baseline = agg._max.id ?? 0;
-  await prisma.chatMember.create({
-    data: {
-      channelId: CHAT_LOBBY_ID,
-      userId,
-      lastReadMessageId: baseline,
-      createdAt: nowForDb(),
-    },
-  });
+  try {
+    await prisma.chatMember.create({
+      data: {
+        channelId: CHAT_LOBBY_ID,
+        userId,
+        lastReadMessageId: baseline,
+        createdAt: nowForDb(),
+      },
+    });
+  } catch (e) {
+    // 并发首进大区：两个请求都读到「还没有行」，后建的那个撞唯一约束。
+    // 这不是错误 —— 竞争输了就回读对方建好的行（基线以先建成的那次为准），
+    // 不能把 P2002 漏到 poll 路由变成 500。其它约束冲突照旧抛出。
+    if (!isUniqueViolation(e)) throw e;
+    const raced = await prisma.chatMember.findUnique({
+      where: { uq_chat_member_channel_user: { channelId: CHAT_LOBBY_ID, userId } },
+      select: { lastReadMessageId: true },
+    });
+    // P2002 说明行确实存在；读不到只可能是同一连接上极端的可见性问题，按原样抛出。
+    if (!raced) throw e;
+    return raced;
+  }
   return { lastReadMessageId: baseline };
 }
 
@@ -1073,18 +1096,27 @@ export async function listMessages(
  * 消息 id 是**全局自增**（大区与私聊共用一个序列），所以一个游标就能同时覆盖
  * 大区 + 全部私聊，不需要按频道分别维护游标。
  * more=true 表示积压超过 limit（断得太久），调用方应让客户端整页重拉（resync 事件）。
+ *
+ * `lobbyBlocked` 是连接建立时的大区可见性快照（与 listMessages / canAccessChannel 同口径）：
+ * 专注模式屏蔽了大区的连接**看不到大区**，补齐也必须把它排除在外 —— 否则它重连后会
+ * 收到断线期间的大区消息，客户端给大区累加未读 / 这些内容本身也超出了它的可见范围。
  */
 export async function listMessagesSince(
   userId: string,
   afterId: number,
-  limit = 100
+  limit = 100,
+  lobbyBlocked = false
 ): Promise<{ messages: ChatMessageDTO[]; more: boolean }> {
   await ensureLobbyChannel();
   const memberships = await prisma.chatMember.findMany({
     where: { userId },
     select: { channelId: true },
   });
-  const channelIds = [CHAT_LOBBY_ID, ...memberships.map((m) => m.channelId)];
+  // 成员表里也可能有 'lobby' 行（进过大区就会懒建）：屏蔽时一并剔除，而不是只不追加。
+  const channelIds = memberships
+    .map((m) => m.channelId)
+    .filter((id) => !lobbyBlocked || id !== CHAT_LOBBY_ID);
+  if (!lobbyBlocked) channelIds.push(CHAT_LOBBY_ID);
 
   const rows = await prisma.chatMessage.findMany({
     where: { channelId: { in: channelIds }, id: { gt: afterId } },

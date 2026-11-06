@@ -128,7 +128,7 @@ export async function GET(req: Request) {
               if (!write(chunk)) { sub.close(); return; }
             }
             pending.length = 0;
-            if (lastEventId > 0) await backfill(user.id, lastEventId, write);
+            if (lastEventId > 0) await backfill(user.id, lastEventId, sub.write, lobbyBlocked);
           } catch {
             sub.close(); // 权限复核失败不能降级成继续投递私聊
           }
@@ -144,14 +144,24 @@ export async function GET(req: Request) {
   return new Response(stream, { headers: SSE_HEADERS });
 }
 
-/** 补齐断线期间漏掉的消息；积压超窗口则发 resync 让客户端整页重拉。 */
+/**
+ * 补齐断线期间漏掉的消息；积压超窗口则发 resync 让客户端整页重拉。
+ *
+ * ⚠️ `write` 必须是订阅者上那个**逐帧复核包装**（`sub.write`），不能是外层的裸 write：
+ * 补齐发生在首帧之后，若绕过复核，从建立连接到这里之间发生的撤权 / 降级 / 禁言 /
+ * 大区屏蔽变更就不会被拦下 —— 会把几帧「本人此刻已无权看」的消息写出去。包一层之后，
+ * 补齐帧与实时帧走同一条校验路径（含背压与 close 语义）。
+ *
+ * `lobbyBlocked` 同连接快照，传给 listMessagesSince 过滤大区（见那边的说明）。
+ */
 async function backfill(
   userId: string,
   afterId: number,
-  write: (chunk: string) => boolean
+  write: (chunk: string) => boolean,
+  lobbyBlocked: boolean
 ): Promise<void> {
   try {
-    const { messages, more } = await listMessagesSince(userId, afterId, BACKFILL_LIMIT);
+    const { messages, more } = await listMessagesSince(userId, afterId, BACKFILL_LIMIT, lobbyBlocked);
     for (const m of messages) {
       if (!write(sseFrame({ type: 'message', channel_id: m.channel_id, message: m }, m.id))) return;
     }

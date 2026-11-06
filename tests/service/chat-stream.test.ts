@@ -159,6 +159,23 @@ describe('断线补齐 listMessagesSince', () => {
     expect(messages).toHaveLength(0);
   });
 
+  it('专注屏蔽大区的连接：补齐跳过全部大区消息，私聊照常补（R3-260）', async () => {
+    const a = await makeUser({ role: 'core' });
+    const b = await makeUser({ role: 'core' });
+    const ch = (await startDirectChannel(a.id, b.id)) as { channel: { id: string } };
+
+    await sendMessage({ channelId: CHAT_LOBBY_ID, authorId: b.id, content: '断线期间的大区' });
+    await sendMessage({ channelId: ch.channel.id, authorId: b.id, content: '断线期间的私聊' });
+
+    // 连接的大区可见性快照 = 屏蔽：大区那一条不能出现（否则会灌给看不到大区的人）
+    const blocked = await listMessagesSince(a.id, 0, 100, true);
+    expect(blocked.messages.map((m) => m.channel_id)).toEqual([ch.channel.id]);
+
+    // 同一批消息，不屏蔽时大区也在 —— 证明过滤的是「大区」，不是补齐本身坏了
+    const all = await listMessagesSince(a.id, 0);
+    expect(all.messages.map((m) => m.channel_id)).toEqual([CHAT_LOBBY_ID, ch.channel.id]);
+  });
+
   it('积压超过窗口 → more=true（调用方据此发 resync 让客户端整页重拉）', async () => {
     const a = await makeUser({ role: 'core' });
     for (let i = 0; i < 3; i++) {
