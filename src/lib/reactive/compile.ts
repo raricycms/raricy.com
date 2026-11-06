@@ -1,9 +1,9 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // compile.ts — 服务端 ReactiveMD 编译核心（适配 → 缓存 → compileLocal）
 //
-// 【只缓存编译产物】缓存里只放 `{ ok, document?, diagnostics }`。`hostData`、
-// `segments`、`referenceSnapshotId` 都随**当前请求的权限上下文**变化（同一份源码
-// 对成员与访客可以不同），放进来等于把两名用户串在一起。它们每次调用现算。
+// 【只缓存编译产物】缓存里只放 `{ ok, document?, diagnostics }`。`hostData` 随
+// **当前请求的权限上下文**变化（同一份源码对成员与访客可以不同），放进来等于把
+// 两名用户串在一起。它每次调用现算。
 //
 // 【缓存键 = 一次编译的完整身份】适配后源码 hash + 语法版本 + 编译包精确版本 +
 // 适配器版本 + 选项键（计划 §5.3）。漏任一段都会静默命中「另一次编译」的结果。
@@ -32,7 +32,6 @@ import {
 import { reactiveDiagnosticCodes } from './diagnostics';
 import { checkSyntaxBudget } from './syntax-budget';
 import { sourceForCurrentCompiler } from './source-migration';
-import type { AdaptedSourceSegment } from './source-map';
 import type { ContentFormat } from '../content-format';
 import type { ReferenceMode, SiteHostData } from './ref-types';
 
@@ -48,10 +47,6 @@ export interface ReactiveCompileOutcome {
   result: LocalCompileResult;
   adaptedSource: string;
   hostData: SiteHostData;
-  segments: AdaptedSourceSegment[];
-  referenceSnapshotId: string;
-  sourceHash: string;
-  adaptedHash: string;
   adapterVersion: string;
   compilerVersion: string;
   syntaxVersion: string;
@@ -71,7 +66,7 @@ export interface ReactiveCompileInput {
   clientIp?: string;
 }
 
-/** 缓存里允许出现的全部内容 —— 故意没有 hostData / segments / 会话数据。 */
+/** 缓存里允许出现的全部内容 —— 故意没有 hostData / 会话数据。 */
 interface CachedCompile {
   ok: boolean;
   document?: LocalDocument;
@@ -135,7 +130,7 @@ export function stats(): { hits: number; misses: number; entries: number; bytes:
  * 编译一篇正文。
  *
  * 顺序固定：先适配（引用取数在请求权限上下文中发生），再查缓存，最后才编译。
- * 适配结果不缓存 —— 它的产物体积（segments / hostData）与会话数据同量级，而且
+ * 适配结果不缓存 —— 它的产物（hostData）与会话数据同量级，而且
  * 缓存键本身已经用适配后源码的 hash 表达了「编译输入相同」。
  */
 export async function compileReactiveSource(
@@ -156,10 +151,6 @@ export async function compileReactiveSource(
       result: { ok: false, diagnostics: [budget.diagnostic] },
       adaptedSource: input.source,
       hostData: {},
-      segments: [],
-      referenceSnapshotId: '',
-      sourceHash: '',
-      adaptedHash: '',
       adapterVersion: 'syntax-budget',
       compilerVersion: REACTIVE_COMPILER_VERSION,
       syntaxVersion: LOCAL_SYNTAX_VERSION,
@@ -235,10 +226,6 @@ export async function compileReactiveSource(
     result,
     adaptedSource: prepared.adaptedSource,
     hostData: prepared.hostData,
-    segments: prepared.segments,
-    referenceSnapshotId: prepared.referenceSnapshotId,
-    sourceHash: prepared.sourceHash,
-    adaptedHash: prepared.adaptedHash,
     adapterVersion: prepared.adapterVersion,
     compilerVersion: REACTIVE_COMPILER_VERSION,
     syntaxVersion: LOCAL_SYNTAX_VERSION,

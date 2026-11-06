@@ -21,7 +21,6 @@ import { compileLocal } from 'reactive-md';
 import ReactiveSubDocument from '@/app/components/reactive/ReactiveSubDocument';
 import { renderSiteEmbedStatic } from '@/app/components/reactive/site-embed-static';
 import {
-  ADAPTER_VERSION,
   __resetInlineMarkdownCacheForTests,
   adaptReactiveReferences,
   prepareInlineMarkdownDocument,
@@ -31,11 +30,6 @@ import { checkSyntaxBudget } from '@/lib/reactive/syntax-budget';
 import type { SiteMediaPayload } from '@/lib/reactive/ref-types';
 import { applyLegacyHtmlCompat } from '@/lib/reactive/legacy-compat';
 import { reactiveCompileOptions } from '@/lib/reactive/host-components';
-import {
-  locateDiagnosticRange,
-  mapAdaptedRangeToSource,
-  mapSourceRangeToAdapted,
-} from '@/lib/reactive/source-map';
 import type { ReferenceReader, ReferenceSlot, ResolvedReference } from '@/lib/reactive/ref-types';
 import {
   MAX_BLOG_REF_ITEMS,
@@ -156,23 +150,19 @@ describe('adaptReactiveReferences（expand）', () => {
     expect(calls.sort()).toEqual([`clipboard:${CLIP_ID}`, `favorite:${FAV_ID}`, `vote:${VOTE_ID}`].sort());
   });
 
-  it('referenceSnapshotId 稳定；引用版本一变就变', async () => {
+  it('同输入同引用版本 → 产物稳定；引用版本变化反映在 hostData 上', async () => {
     const source = `板 [@${CLIP_ID}] 投 [@${VOTE_ID}]`;
-    const a = await adaptReactiveReferences(source, {
-      mode: 'expand',
-      resolve: async () => ({ status: 'ready', version: 'v1' }),
-    });
-    const b = await adaptReactiveReferences(source, {
-      mode: 'expand',
-      resolve: async () => ({ status: 'ready', version: 'v1' }),
-    });
-    const c = await adaptReactiveReferences(source, {
-      mode: 'expand',
-      resolve: async () => ({ status: 'ready', version: 'v2' }),
-    });
-    expect(a.referenceSnapshotId).toBe(b.referenceSnapshotId);
-    expect(a.referenceSnapshotId).not.toBe(c.referenceSnapshotId);
-    expect(a.referenceSnapshotId).toContain(ADAPTER_VERSION);
+    const run = (version: string) =>
+      adaptReactiveReferences(source, {
+        mode: 'expand',
+        resolve: async () => ({ status: 'ready', version }),
+      });
+    const a = await run('v1');
+    const b = await run('v1');
+    const c = await run('v2');
+    expect(a.adaptedSource).toBe(b.adaptedSource);
+    expect(a.hostData).toEqual(b.hostData);
+    expect(c.hostData).not.toEqual(a.hostData);
   });
 });
 
@@ -231,18 +221,13 @@ describe('作者伪造 `<site-embed`', () => {
     expect(Object.keys(result.hostData)).toHaveLength(0);
   });
 
-  it('转义也生成正确的映射：诊断落到原文那个 `<` 上', async () => {
+  it('转义只替换开头的 `<`，其余逐字保留', async () => {
     const source = `前 ${forged} 后`;
     const result = await adaptReactiveReferences(source, { mode: 'external' });
 
     const at = result.adaptedSource.indexOf('&lt;');
     expect(at).toBeGreaterThanOrEqual(0);
-    const mapped = locateDiagnosticRange(result.segments, { start: at, end: at + 4 });
-    expect(mapped).toMatchObject({
-      origin: 'generated',
-      start: source.indexOf('<site-embed'),
-      end: source.indexOf('<site-embed') + 1,
-    });
+    expect(result.adaptedSource).toBe(source.replace('<', '&lt;'));
   });
 });
 
@@ -347,10 +332,10 @@ describe('单个引用失败不拖垮整篇', () => {
   });
 });
 
-// ═══ 七、区间映射 ════════════════════════════════════════════════════════════
+// ═══ 七、产物形状与稳定性（区间映射已随快照机制退出，见 R3-106）════════════
 
-describe('source-map：半开区间双向映射', () => {
-  it('原文保留区精确往返；引用区间映射成整段生成内容', async () => {
+describe('适配产物：替换落点精确、同输入稳定', () => {
+  it('引用替换只落在 token 区间，前缀/后缀逐字保留', async () => {
     const token = `[@${CLIP_ID}]`;
     const source = `前缀 ${token} 后缀`;
     const result = await adaptReactiveReferences(source, {
@@ -358,45 +343,22 @@ describe('source-map：半开区间双向映射', () => {
       resolve: async () => ({ status: 'ready' }),
     });
 
-    const tokenStart = source.indexOf(token);
-    const tokenEnd = tokenStart + token.length;
-    const tagRange = mapSourceRangeToAdapted(result.segments, { start: tokenStart, end: tokenEnd });
-    expect(tagRange).not.toBeNull();
-    expect(result.adaptedSource.slice(tagRange!.start, tagRange!.end)).toContain(
-      tag('clipboard', CLIP_ID)
-    );
-
-    const inside = { start: tagRange!.start + 2, end: tagRange!.start + 6 };
-    expect(mapAdaptedRangeToSource(result.segments, inside)).toEqual({ start: tokenStart, end: tokenEnd });
-    expect(locateDiagnosticRange(result.segments, inside)).toMatchObject({
-      origin: 'reference',
-      kind: 'clipboard',
-      ref: CLIP_ID,
-      start: tokenStart,
-      end: tokenEnd,
-    });
-
-    const prefix = { start: 0, end: 3 };
-    expect(mapAdaptedRangeToSource(result.segments, prefix)).toEqual(prefix);
-    expect(mapSourceRangeToAdapted(result.segments, prefix)).toEqual(prefix);
+    expect(result.adaptedSource.startsWith('前缀 ')).toBe(true);
+    expect(result.adaptedSource).toContain(tag('clipboard', CLIP_ID));
+    expect(result.adaptedSource.endsWith(' 后缀')).toBe(true);
   });
 
-  it('没有引用时输出逐字不变、映射是一整段 source', async () => {
+  it('没有引用时输出逐字不变', async () => {
     const plain = '普通正文，没有引用。';
     const result = await adaptReactiveReferences(plain, { mode: 'external' });
     expect(result.adaptedSource).toBe(plain);
     expect(result.hostData).toEqual({});
-    expect(result.segments).toEqual([
-      { origin: 'source', sourceStart: 0, sourceEnd: plain.length, adaptedStart: 0, adaptedEnd: plain.length },
-    ]);
   });
 
   it('空正文也不炸', async () => {
     const result = await adaptReactiveReferences('', { mode: 'external' });
     expect(result.adaptedSource).toBe('');
-    expect(result.segments).toEqual([]);
     expect(result.hostData).toEqual({});
-    expect(result.referenceSnapshotId).toContain(`adapter=${ADAPTER_VERSION}`);
   });
 });
 

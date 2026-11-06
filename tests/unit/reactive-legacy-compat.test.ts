@@ -48,7 +48,7 @@ function compatCompile(source: string) {
 }
 
 describe('applyLegacyHtmlCompat', () => {
-  it('结果与原文等长（source-map 的前提）', () => {
+  it('结果与原文等长（兼容改写的既有前提）', () => {
     const source = '<font color="red" style="font-size:20px" class="x" id="y">正文</font>\n\n</br>';
     expect(applyLegacyHtmlCompat(source).source).toHaveLength(source.length);
   });

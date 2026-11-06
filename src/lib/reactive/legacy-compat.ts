@@ -20,8 +20,8 @@
 //     转成 Markdown 图片，仍由 `isAllowedReactiveUrl(url, 'image')` 复核。
 //
 // 【长度必须守恒】本函数**只做等长改写**（用空格填充、保留换行）。原因是它跑在
-// 引用适配之前，`source-map.ts` 的区间映射依赖「原文与适配后源码等长」；一旦长度
-// 变化，编辑器里的诊断会落到错的字上，而且不报错。data 图片转 Markdown 时用
+// 引用适配之前，引用 token 的偏移与诊断 range 都依赖「原文与适配后源码等长」；一旦
+// 长度变化，定位会落到错的字上，而且不报错。data 图片转 Markdown 时用
 // alt 文本里的空格补齐到原长度。
 //
 // 【零依赖之外的两个 import】`maskMarkdownCode`（零依赖）与 data-image /
@@ -196,7 +196,7 @@ function blankRange(chars: string[], start: number, end: number): void {
  * 等长（本模块的常态）时逐字符写回；长度不同时用数组重建，不用 spread。
  *
  * 【必须按 UTF-16 code unit 而不是 code point 重建】`chars` 是 `source.split('')`
- * 的结果，下标就是 JS 字符串下标（source-map / 诊断 range 都用它）。`Array.from`
+ * 的结果，下标就是 JS 字符串下标（引用 token 偏移与诊断 range 都用它）。`Array.from`
  * 会把 emoji 收成一个元素，长度差分支一旦碰到代理对，后续所有偏移都会错一位。
  */
 function replaceRange(chars: string[], start: number, length: number, text: string): void {
@@ -217,7 +217,7 @@ function replaceRange(chars: string[], start: number, length: number, text: stri
  * ⚠️ **数据图不能走 `fitReplacement` 的空格补齐**：一张 400k 的 `data:` 图被
  * 替换成 `[@图片/…]` 或 alt 后，剩下几十万个空格会拼成一段巨型空白；上游在
  * 这一段上会卡死（实测 400k 空格 > 120s，整批扫描只能超时）。零宽不参与
- * Markdown 的空白/缩进语义，长度不变，source-map 仍然对齐。
+ * Markdown 的空白/缩进语义，长度不变，偏移仍然对齐。
  */
 function writeVisiblePrefix(
   chars: string[],
@@ -888,7 +888,7 @@ function stripUnsupportedAttrs(
  *
  * 配对成功的公式已经在上面的 `masked` 里变成 `x`，剩下的 `$` / `\(` / `\[` 就是
  * 未配对的那一些。替换成同长度的全角字符（`＄` / `（ ` / `［ `），既不会触发数学
- * 解析，也保持 source-map 的等长前提。
+ * 解析，也保持等长前提。
  */
 function normalizeUnpairedMath(chars: string[], masked: string, counts: MutableCounts): void {
   for (let index = 0; index < masked.length; index += 1) {

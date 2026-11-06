@@ -17,7 +17,6 @@ import {
   ReactiveLruCache,
   estimateReactiveCacheBytes,
   reactiveCompileCacheKey,
-  reactiveContentHash,
   sha256Hex,
 } from '@/lib/reactive/cache';
 import {
@@ -127,7 +126,6 @@ describe('编译缓存键', () => {
     const expected = `${sha256Hex('hello')}:local-draft-2:0.5.2:1:opts`;
     expect(reactiveCompileCacheKey(base)).toBe(expected);
     expect(reactiveCompileCacheKey({ ...base })).toBe(expected);
-    expect(reactiveContentHash('hello')).toBe(sha256Hex('hello'));
   });
 
   it('任一输入变化都会换键', () => {

@@ -48,14 +48,6 @@ export function sha256Hex(text: string): string {
   return createHash('sha256').update(text, 'utf8').digest('hex');
 }
 
-/** 适配后源码的摘要（缓存键的第一段，也用于语料报告/观测）。 */
-export function reactiveContentHash(adaptedSource: string): string {
-  if (typeof adaptedSource !== 'string') {
-    throw new TypeError('adaptedSource 必须是字符串');
-  }
-  return sha256Hex(adaptedSource);
-}
-
 function requireVersionToken(name: string, value: unknown): string {
   if (typeof value !== 'string' || value.length === 0) {
     throw new TypeError(`${name} 必须是非空字符串`);

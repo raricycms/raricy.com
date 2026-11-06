@@ -23,7 +23,9 @@ describe('request-scoped reference permissions', () => {
     expect(result.hostData).toEqual({});
     expect(result.adaptedSource).toBe(source);
     expect(result.adaptedSource).toContain('[@AbCdEf123]');
-    expect(result.sourceHash).toMatch(/^[a-f0-9]{64}$/);
+    // 同一输入再准备一次，适配产出必须一致（快照/哈希机制已退出，见 R3-106）。
+    const again = await prepareReactiveDocument(source, { mode: 'external', format: 'reactive', viewer: null });
+    expect(again.adaptedSource).toBe(result.adaptedSource);
     expect(mocks.clip).not.toHaveBeenCalled();
     expect(mocks.vote).not.toHaveBeenCalled();
     expect(mocks.favorite).not.toHaveBeenCalled();

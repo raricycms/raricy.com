@@ -99,12 +99,11 @@ import type {
   SiteMediaPayload,
   SiteMediaSources,
 } from './ref-types';
-import type { AdaptedSourceSegment, SegmentOrigin } from './source-map';
 import type { ContentFormat } from '../content-format';
 
 /**
- * 适配器版本。进缓存键 / 快照标识（见 docs/plan/reactive-md-migration-plan.md
- * §5.3）。**每次改变输出形状或转义规则都必须递增** —— 否则旧缓存会继续发一份
+ * 适配器版本。进缓存键（见 docs/plan/reactive-md-migration-plan.md §5.3）。
+ * **每次改变输出形状或转义规则都必须递增** —— 否则旧缓存会继续发一份
  * 按旧规则生成的源码。
  */
 export const ADAPTER_VERSION = 'reactive-ref-adapter/5';
@@ -164,12 +163,8 @@ export function compatMediaSources(compat: unknown): SiteMediaSources | undefine
 
 export interface ReactiveAdaptResult {
   adaptedSource: string;
-  /** 连续覆盖整篇的区间映射（见 source-map.ts）。 */
-  segments: AdaptedSourceSegment[];
   /** 键 = `${kind}:${ref}`，与 `<site-embed>` 的 `kind` / `ref` 属性一一对应。 */
   hostData: SiteHostData;
-  /** 稳定序列化的引用版本清单；同一输入与同一引用数据必须得到同一个值。 */
-  referenceSnapshotId: string;
 }
 
 /** 一处输出改写：原文 `[start, end)` → `text`。 */
@@ -177,9 +172,6 @@ interface SourceEdit {
   start: number;
   end: number;
   text: string;
-  origin: SegmentOrigin;
-  kind?: ReferenceKind;
-  ref?: string;
 }
 
 function classifyNumericRef(ref: string): ReferenceKind | null {
@@ -613,89 +605,32 @@ function collectForgedEmbedEdits(source: string, masked: string): SourceEdit[] {
   for (const m of masked.matchAll(re)) {
     const at = m.index ?? 0;
     if (at < 0 || at >= source.length) continue;
-    edits.push({ start: at, end: at + 1, text: '&lt;', origin: 'generated' });
+    edits.push({ start: at, end: at + 1, text: '&lt;' });
   }
   return edits;
 }
 
-function assemble(
-  source: string,
-  edits: readonly SourceEdit[]
-): { adaptedSource: string; segments: AdaptedSourceSegment[] } {
+/** 按 `[start, end) → text` 应用改写，返回适配后源码。 */
+function assemble(source: string, edits: readonly SourceEdit[]): string {
   const ordered = [...edits].sort((a, b) => a.start - b.start || a.end - b.end);
-  const segments: AdaptedSourceSegment[] = [];
   let adaptedSource = '';
   let cursor = 0;
 
   for (const edit of ordered) {
     // 防御：未知输入下万一出现重叠 / 越界，跳过它而不是破坏整篇。
     if (edit.start < cursor || edit.end > source.length || edit.start > edit.end) continue;
-
-    if (edit.start > cursor) {
-      const text = source.slice(cursor, edit.start);
-      segments.push({
-        origin: 'source',
-        sourceStart: cursor,
-        sourceEnd: edit.start,
-        adaptedStart: adaptedSource.length,
-        adaptedEnd: adaptedSource.length + text.length,
-      });
-      adaptedSource += text;
-    }
-
-    const segment: AdaptedSourceSegment = {
-      origin: edit.origin,
-      sourceStart: edit.start,
-      sourceEnd: edit.end,
-      adaptedStart: adaptedSource.length,
-      adaptedEnd: adaptedSource.length + edit.text.length,
-    };
-    if (edit.kind) segment.kind = edit.kind;
-    if (edit.ref) segment.ref = edit.ref;
-    segments.push(segment);
+    if (edit.start > cursor) adaptedSource += source.slice(cursor, edit.start);
     adaptedSource += edit.text;
     cursor = edit.end;
   }
 
-  if (cursor < source.length) {
-    const text = source.slice(cursor);
-    segments.push({
-      origin: 'source',
-      sourceStart: cursor,
-      sourceEnd: source.length,
-      adaptedStart: adaptedSource.length,
-      adaptedEnd: adaptedSource.length + text.length,
-    });
-    adaptedSource += text;
-  }
-
-  return { adaptedSource, segments };
-}
-
-function buildReferenceSnapshotId(
-  mode: ReferenceMode,
-  candidates: ReadonlyMap<string, ReferenceSlot>,
-  resolvedByKey: ReadonlyMap<string, ResolvedReference | undefined>,
-  hostData: SiteHostData,
-  imageRefs: ReadonlySet<string>
-): string {
-  const parts = new Set<string>();
-  parts.add(`adapter=${ADAPTER_VERSION}`);
-  parts.add(`mode=${mode}`);
-  for (const key of candidates.keys()) {
-    const resolved = resolvedByKey.get(key);
-    parts.add(`${key}=${resolved ? `${resolved.status}/${resolved.version ?? ''}` : 'missing'}`);
-  }
-  for (const [key, data] of Object.entries(hostData)) {
-    parts.add(`${key}=${data.status}/${data.version ?? ''}`);
-  }
-  for (const ref of imageRefs) parts.add(`image:${ref}=static`);
-  return [...parts].sort().join('|');
+  if (cursor < source.length) adaptedSource += source.slice(cursor);
+  return adaptedSource;
 }
 
 /**
- * 适配一篇正文：扫描 → 取数（仅 expand）→ 逐处替换 / 转义 → 产出区间映射与
- * hostData。永不抛「整篇失败」：任何一处引用出问题都只保留它的字面量。
+ * 适配一篇正文：扫描 → 取数（仅 expand）→ 逐处替换 / 转义 → 产出 hostData。
+ * 永不抛「整篇失败」：任何一处引用出问题都只保留它的字面量。
  */
 export async function adaptReactiveReferences(
   source: string,
@@ -713,7 +648,6 @@ export async function adaptReactiveReferences(
 
   const hostData: Record<string, SiteEmbedData> = {};
   const dataByKey = new Map<string, SiteEmbedData>();
-  const imageRefs = new Set<string>();
 
   // 预算语义与旧管线一致：从原文长度起算，只累加**被接受**替换的净增；
   // 原文本身已超预算时一律不替换（保留原文，不再增长）。
@@ -748,14 +682,8 @@ export async function adaptReactiveReferences(
       start: slot.start,
       end: slot.end,
       text: planned.text,
-      origin: 'reference',
-      kind: slot.kind,
-      ref: slot.ref,
     });
 
-    if (slot.kind === 'image') {
-      imageRefs.add(slot.ref);
-    }
     if (planned.data) {
       const key = `${slot.kind}:${slot.ref}`;
       // 同一 id 的多处引用共享同一个数据对象：hostData 稳定、比较也便宜。
@@ -768,16 +696,11 @@ export async function adaptReactiveReferences(
     }
   }
 
-  const { adaptedSource, segments } = assemble(source, edits);
+  const adaptedSource = assemble(source, edits);
 
   // 子产物在父 hostData 定稿后补齐：它需要自己的那趟 compat / 适配 / 编译，
   // 且只认本次权限下的 `content`。external 模式下这里没有任何剪贴板数据。
   await attachInlineMarkdownDocuments(hostData);
 
-  return {
-    adaptedSource,
-    segments,
-    hostData,
-    referenceSnapshotId: buildReferenceSnapshotId(mode, candidates, resolvedByKey, hostData, imageRefs),
-  };
+  return { adaptedSource, hostData };
 }
