@@ -42,17 +42,11 @@ export type ValidateContentResult =
 export async function validateContentForPublish(
   input: ValidateContentInput,
 ): Promise<ValidateContentResult> {
-  // R3-101：**不把前导旧声明当 syntaxVersion 落库**。
-  // 旧声明（如 local-draft-2）只允许存在于「存量行」里（阅读路径按声明迁移）；
-  // 新写入一律要求当前版本 —— 否则库里会永久停在旧标记、每次阅读再迁移一次。
-  // 这里在编译前就拒绝，文案由调用方按 `site.syntax.outdated` 统一映射。
-  if (input.format === 'reactive') {
-    const declared = findLeadingVersionDirective(input.content)?.version;
-    if (declared && declared !== LOCAL_SYNTAX_VERSION) {
-      return { ok: false, reason: 'compile', codes: ['site.syntax.outdated'] };
-    }
-  }
-
+  // R3-101 复核后**不拒绝**旧版前导声明：旧版 RMD 原文必须可保存、可编辑（云剪贴板
+  // 的既有契约，e2e reactive-render 与 reactive-source-render 都钉住「原文不变、
+  // syntax_version 保持旧标记、阅读时按声明迁移」）。收紧写入会让存量旧内容一编辑
+  // 就 400，属破坏兼容；旧标记的迁移由读路径（source-migration）负责。
+  //
   // 延迟加载：避开 service ↔ compile 的模块环，见文件头。
   const { compileContent } = await import('./compile-content');
 
@@ -95,9 +89,11 @@ export async function validateContentForPublish(
 
   const detectedFormat: ContentFormat =
     documentEvidence(outcome.result.document).length > 0 ? 'reactive' : 'markdown';
-  // 纯当前版本（或没有声明）才走到这里（旧声明已在上面拒绝）。写当前版本而不是
-  // 「正文里那条前导声明」——后者会让新行永久停在旧标记（R3-101）。
-  const syntaxVersion = input.format === 'reactive' ? LOCAL_SYNTAX_VERSION : null;
+  // 旧版前导声明按原文写回（R3-101 复核后的取舍）：存量旧内容必须保持「原文 +
+  // 旧 syntax_version」，阅读路径据此迁移；写入当前版本会改变已发布内容的版本语义。
+  const syntaxVersion = input.format === 'reactive'
+    ? findLeadingVersionDirective(input.content)?.version ?? LOCAL_SYNTAX_VERSION
+    : null;
   return {
     ok: true,
     syntaxVersion,

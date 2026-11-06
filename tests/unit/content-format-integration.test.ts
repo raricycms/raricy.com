@@ -150,38 +150,39 @@ describe('博客格式：validateBlogData / 落库 / 读出口', () => {
     expect(row?.syntaxVersion).toBe(LOCAL_SYNTAX_VERSION);
   });
 
-  // R3-101：旧版前导声明曾经被当成 syntaxVersion 原样落库 → 新行永久停在旧标记、
-  // 每次阅读都要再迁移一次。现在写入闸门直接拒绝「正文声明不是当前版本」的内容；
-  // 存量旧行不受影响（阅读路径仍按声明迁移）。
-  it('★ 带旧版前导声明的 reactive 正文被整笔拒绝（不把旧声明当 syntaxVersion 落库）', async () => {
+  // R3-101 复核：**不**拒绝旧版前导声明。旧版 RMD 原文必须可保存、可编辑（云剪贴板
+  // 与博客的既有契约：原文不变、syntax_version 保持旧标记、阅读时按声明迁移）。
+  // 收紧写入会让存量旧内容一编辑就 400，属破坏兼容；迁移责任在读路径。
+  it('带旧版前导声明的 reactive 正文仍可保存：原文与旧 syntax_version 原样保留', async () => {
     const u = await makeUser();
     const stale = '<!-- reactive-md: local-draft-2 -->\n\n正文';
 
-    // 纯校验层：拒绝 + 可区分的诊断码
+    // 纯校验层：旧声明内容能通过发布校验
     expect(await validateContentForPublish({ content: stale, format: 'reactive' })).toMatchObject({
-      ok: false,
-      reason: 'compile',
-      codes: ['site.syntax.outdated'],
+      ok: true,
     });
 
-    // 博客 / 剪贴板两条写入路径都不落库
-    await expect(
-      createBlog(u.id, {
-        ...BLOG_BASE,
-        content: stale,
-        categoryId: null,
-        visibility: 'internal',
-        format: 'reactive',
-      })
-    ).rejects.toThrow();
-    expect(await prisma.blog.count()).toBe(0);
-    expect(await prisma.blogContent.count()).toBe(0);
-    const clip = await createClip(u.id, { title: 't', content: stale, format: 'reactive' });
-    expect(clip.ok).toBe(false);
-    if (!clip.ok) expect(clip.reason).toBe('reactive_invalid');
+    const blogId = await createBlog(u.id, {
+      ...BLOG_BASE,
+      content: stale,
+      categoryId: null,
+      visibility: 'internal',
+      format: 'reactive',
+    });
+    const blogRow = await prisma.blogContent.findUnique({ where: { blogId } });
+    expect(blogRow?.content).toBe(stale);
+    expect(blogRow?.syntaxVersion).toBe('local-draft-2');
 
-    // 当前版本声明可以发布，且落库的是**当前**版本（不是正文里写的那一行）。
-    const current = `<!-- reactive-md: ${LOCAL_SYNTAX_VERSION} -->\n\n正文`;
+    const clip = await createClip(u.id, { title: 't', content: stale, format: 'reactive' });
+    expect(clip.ok).toBe(true);
+    if (clip.ok) {
+      const clipRow = await prisma.clipText.findUnique({ where: { clipId: clip.id } });
+      expect(clipRow?.content).toBe(stale);
+      expect(clipRow?.syntaxVersion).toBe('local-draft-2');
+    }
+
+    // 没有声明 / 当前版本声明的新内容写当前版本
+    const current = '# 标题\n\n正文';
     const id = await createBlog(u.id, {
       ...BLOG_BASE,
       content: current,
