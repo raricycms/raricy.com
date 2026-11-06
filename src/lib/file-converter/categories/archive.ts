@@ -472,6 +472,17 @@ async function runToZip(ctx: RunContext, level: number): Promise<ConvertResultDa
     } else {
       throw { kind: 'unsupported', message: '只支持 RAR / 7Z 输入' } satisfies ConvertError;
     }
+    // R3-468：RAR / 7Z 分支此前只判「输入 ≤100MiB」，没有 ZIP 路径那条 64MiB
+    // 单输出预算闸 —— 100–500MiB 的解压结果会完整解出、重打成 ZIP，最后被队列的
+    // 输出预算整任务丢弃并报「结果未保留」，用户白等一轮。这里在**重打包之前**
+    // 就按解压后字节数拒掉（kind 与 openZip 的预算闸一致，错误可见）。
+    const uncompressed = raw.reduce((s, m) => s + (m.isDir ? 0 : m.data.byteLength), 0);
+    if (uncompressed > LIMITS.queue.maxOutputEach) {
+      throw {
+        kind: 'budget',
+        message: `解压后约 ${formatBytes(uncompressed)}，超过单次输出上限 ${formatBytes(LIMITS.queue.maxOutputEach)}`,
+      } satisfies ConvertError;
+    }
     ctx.onPhase('converting');
     const takenInner = new Set<string>();
     const entries: NamedBytes[] = [];

@@ -10,18 +10,25 @@ export default function UrlToolPage() {
   const [left, setLeft] = useState('');
   const [right, setRight] = useState('');
   const [status, setStatus] = useState('');
-  const [useEncodeURI, setUseEncodeURI] = useState(true);
+  // 名字按「做什么」而非「用哪个 API」：true = 编码全部字符（encodeURIComponent）。
+  // 旧名 useEncodeURI 语义正好相反，下一位读者很容易照着名字改错分支（R3-485）。
+  const [encodeAll, setEncodeAll] = useState(true);
   const [spacePlus, setSpacePlus] = useState(false);
   const [preserveSlash, setPreserveSlash] = useState(false);
   const [lowercaseHex, setLowercaseHex] = useState(false);
 
   function customEncode(input: string): string {
-    const encoder = useEncodeURI ? encodeURIComponent : encodeURI;
+    const encoder = encodeAll ? encodeURIComponent : encodeURI;
     let encoded = encoder(input);
     if (preserveSlash) {
       encoded = encoded.replace(/%2F/gi, '/');
     }
     if (spacePlus) {
+      // 「空格转 +」的往返靠解码侧把 '+' 还原成空闲；而 encodeURI 模式不会转义
+      // 保留字符 '+'，原文里的字面 '+' 会被解码吞成空格（a+b → a b，静默丢数据）。
+      // 先把所有**字面** '+' 转成 %2B（%2B 本身不含 '+'，重复执行也安全），
+      // 再把 %20 换成 '+'。R3-485。
+      encoded = encoded.replace(/\+/g, '%2B');
       encoded = encoded.replace(/%20/g, '+');
     }
     if (lowercaseHex) {
@@ -35,7 +42,7 @@ export default function UrlToolPage() {
     if (spacePlus) {
       text = text.replace(/\+/g, '%20');
     }
-    const decoder = useEncodeURI ? decodeURIComponent : decodeURI;
+    const decoder = encodeAll ? decodeURIComponent : decodeURI;
     // 让异常抛给调用方：解码失败只体现在状态栏，不要把错误文案当结果写进左栏。
     return decoder(text);
   }
@@ -115,15 +122,15 @@ export default function UrlToolPage() {
                       <input
                         className="form-check-input"
                         type="checkbox"
-                        id="useEncodeURI"
-                        checked={useEncodeURI}
+                        id="encodeAll"
+                        checked={encodeAll}
                         onChange={(e) => {
-                          setUseEncodeURI(e.target.checked);
+                          setEncodeAll(e.target.checked);
                           setRight('');
                           setStatus('');
                         }}
                       />
-                      <label className="form-check-label" htmlFor="useEncodeURI">
+                      <label className="form-check-label" htmlFor="encodeAll">
                         使用 encodeURIComponent（取消选中使用 encodeURI）
                       </label>
                     </div>

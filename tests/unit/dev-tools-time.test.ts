@@ -277,6 +277,34 @@ describe('cron：解析与解释', () => {
     if (!sunday.ok) throw new Error('unreachable');
     expect(sunday.fields[4].values).toEqual([0]);
   });
+
+  it('星期区间含 7：0-7 / 1-7 / MON-SUN / 5-7 按 0–7 原值排序后再归一（R3-492）', () => {
+    const cases: Array<[string, number[]]> = [
+      ['0 0 * * 0-7', [0, 1, 2, 3, 4, 5, 6]], // 整周
+      ['0 0 * * 1-7', [0, 1, 2, 3, 4, 5, 6]], // 周一至周日
+      ['0 0 * * MON-SUN', [0, 1, 2, 3, 4, 5, 6]],
+      ['0 0 * * 5-7', [0, 5, 6]], // 周五至周日
+      ['0 0 * * SAT-SUN', [0, 6]],
+    ];
+    for (const [expr, want] of cases) {
+      const parsed = parseCron(expr);
+      expect(parsed.ok, `${expr} 应合法`).toBe(true);
+      if (!parsed.ok) continue;
+      expect(parsed.fields[4].values, expr).toEqual(want);
+    }
+
+    // 1-7 覆盖整周：wildcard 必须为 true，描述不能再说「每周日」式的单值（旧实现静默错答）
+    const full = parseCron('0 0 * * 1-7');
+    expect(full.ok).toBe(true);
+    if (full.ok) {
+      expect(full.fields[4].wildcard).toBe(true);
+      expect(full.fields[4].description).toBe('每周的每一天');
+    }
+
+    // 反向区间仍然报错（不是所有含 7 的写法都放行）
+    const reversed = parseCron('0 0 * * 7-1');
+    expect(reversed.ok).toBe(false);
+  });
 });
 
 describe('cron：下次执行时间一律按站点时区 UTC+8', () => {

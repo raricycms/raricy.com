@@ -118,6 +118,11 @@ export async function openPdfDocument(bytes: Uint8Array, signal?: AbortSignal): 
   try {
     doc = await withTimeout(loadingTask.promise, LIMITS.timeouts.probeMs, '打开 PDF 超时');
   } catch (e) {
+    // 超时 / 打开失败后 loadingTask 与 worker 仍挂在 pdfjs 里：不销毁的话后续同页
+    // 任务会继续复用坏状态直到刷新（R3-505）。
+    void loadingTask.destroy().catch(() => {
+      /* 已释放 */
+    });
     if (signal?.aborted) throw cancelled();
     throw classifyError(e, 'PDF 无法打开：文件可能损坏、已加密，或不是标准 PDF');
   }
@@ -176,6 +181,13 @@ export async function openPdfDocument(bytes: Uint8Array, signal?: AbortSignal): 
         try {
           await withTimeout(task.promise, RENDER_TIMEOUT_MS, '渲染页面超时');
         } catch (e) {
+          // 超时也只 reject 不取消：渲染仍在后台跑，而 finally 会立刻 cleanupCanvas
+          // + page.cleanup()，canvas 被置零后渲染还可能回写 —— 先主动 cancel（R3-505）。
+          try {
+            task.cancel();
+          } catch {
+            /* 已结束 */
+          }
           if (opts.signal?.aborted) throw cancelled();
           throw classifyError(e, 'PDF 页面渲染失败');
         } finally {

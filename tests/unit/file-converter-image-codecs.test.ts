@@ -235,4 +235,16 @@ describe('parseSvgSize：自身尺寸解析', () => {
   it('没有 svg 根标签 → 全 null', () => {
     expect(parseSvgSize('<html></html>')).toEqual({ width: null, height: null });
   });
+
+  it('stroke-width 在前时不能把 width/height 读成描边宽度（R3-497）', () => {
+    // 无左边界正则会把 `stroke-width="2"` 里的 `width="2"` 当根标签的 width。
+    expect(parseSvgSize('<svg stroke-width="2" width="24" height="24"></svg>')).toEqual({
+      width: 24,
+      height: 24,
+    });
+    expect(parseSvgSize('<svg stroke-height="3" width="24" height="24"></svg>')).toEqual({
+      width: 24,
+      height: 24,
+    });
+  });
 });

@@ -178,9 +178,11 @@ export function parseSvgSize(text: string): { width: number | null; height: numb
   const tag = m[0];
 
   const attrNum = (name: string): number | null => {
+    // ⚠️ 必须带左边界：`stroke-width="2"` 里的子串 `width="2"` 会被无边界正则先命中，
+    // 于是真实 SVG 的固有尺寸被读成 2px（R3-497）。属性名前面只可能是行首或空白。
     const a =
-      new RegExp(`${name}\\s*=\\s*"([^"]*)"`, 'i').exec(tag) ??
-      new RegExp(`${name}\\s*=\\s*'([^']*)'`, 'i').exec(tag);
+      new RegExp(`(?:^|\\s)${name}\\s*=\\s*"([^"]*)"`, 'i').exec(tag) ??
+      new RegExp(`(?:^|\\s)${name}\\s*=\\s*'([^']*)'`, 'i').exec(tag);
     if (!a) return null;
     if (!/^\s*[\d.]+\s*(px)?\s*$/i.test(a[1])) return null;
     const v = parseFloat(a[1]);

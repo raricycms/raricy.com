@@ -118,7 +118,9 @@ async function runDocxTo(
     mime = FORMATS.md.mime;
     notices.push('按语义映射为 Markdown，不是原样导出');
     notices.push('复杂版式、样式表、字体、页眉页脚不保留');
-    notices.push('图片不导出（只保留文字）；表格降级为管道表文本');
+    // R3-503：mammoth 默认 images.dataUri，图片实际会以 base64 内嵌进 .md（体积约 ×4/3），
+    // 旧文案写「图片不导出」与实现相反；大图文档还可能撞 64MiB 输出预算。
+    notices.push('图片以 base64 data: URL 内嵌（体积会明显增大，大图文档可能触及输出上限）；表格降级为管道表文本');
   } else {
     const r = await docxToHtml(bytes);
     messages = r.messages;

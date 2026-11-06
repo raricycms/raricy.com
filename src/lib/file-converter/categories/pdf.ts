@@ -525,8 +525,9 @@ export const CATEGORY: CategoryDef = {
         if (files.length < 2) throw unsupported('合并至少需要选择两个 PDF 文件');
         if (files.length > MERGE_MAX_FILES) throw oversize(`一次最多合并 ${MERGE_MAX_FILES} 个 PDF（当前 ${files.length} 个）`);
         ctx.onPhase('loading-engine');
-        const { mergePdfs } = await import('../engines/pdf');
+        const { mergePdfs, getPdfPageCount } = await import('../engines/pdf');
         const sources: Uint8Array<ArrayBuffer>[] = [];
+        let pagesSoFar = 0;
         for (const f of files) {
           throwIfAborted(ctx.signal);
           checkInputBytes(f);
@@ -534,10 +535,16 @@ export const CATEGORY: CategoryDef = {
           if (sniffBytes(bytes.subarray(0, Math.min(bytes.length, 4096))).kind !== 'pdf') {
             throw unsupported(`${f.name} 不是 PDF 文件`);
           }
+          // R3-505：先累加页数判上限再进合并。旧顺序是「全都拷进内存合并完」才判，
+          // 20×300 页会把 6000 页拷完再丢弃；这里在拷贝前逐个拒（多一次只读打开，
+          // 与 split/reorder 两处既有的 getPdfPageCount 用法一致）。
+          pagesSoFar += await getPdfPageCount(bytes);
+          checkPageLimit(pagesSoFar);
           sources.push(bytes);
         }
         ctx.onPhase('converting');
         const { bytes: merged, totalPages } = await mergePdfs(sources, ctx.signal);
+        // mergePdfs 回报的页数应与前置累加一致；保留一次断言性校验（成本仅比较）。
         checkPageLimit(totalPages);
         const name = convertedName(ctx.file.name, 'pdf', new Set());
         return {

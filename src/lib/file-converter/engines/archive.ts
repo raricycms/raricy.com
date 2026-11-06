@@ -420,6 +420,12 @@ export async function extract7z(bytes: Uint8Array): Promise<RawMember[]> {
   }
 
   const out: RawMember[] = [];
+  // R3-468：7z-wasm 没有「只列不解」的稳定接口，真正的解压发生在 callMain 里，
+  // 无法在校验前拦住压缩炸弹。折中：在 MEMFS 里**边遍历边累计**，超过解压总量
+  // 上限就立刻中止，不再把剩余成员 copy 进内存数组 —— 至少避免「整包读出后才发现
+  // 超限」的双份内存，并给出正确的 oversize 而不是由外层 validateMembers 事后判。
+  let totalBytes = 0;
+  let fileCount = 0;
   const walk = (dir: string, rel: string) => {
     for (const name of FS.readdir(dir)) {
       if (name === '.' || name === '..') continue;
@@ -430,6 +436,20 @@ export async function extract7z(bytes: Uint8Array): Promise<RawMember[]> {
         out.push({ path: relPath + '/', data: new Uint8Array(0), isDir: true });
         walk(full, relPath);
       } else {
+        fileCount += 1;
+        totalBytes += Number(st.size ?? 0);
+        if (fileCount > LIMITS.archive.maxMembers) {
+          throw {
+            kind: 'oversize',
+            message: `7Z 解压后成员数超过 ${LIMITS.archive.maxMembers} 个上限，已中止读取`,
+          } satisfies ConvertError;
+        }
+        if (totalBytes > LIMITS.archive.maxTotalUncompressed) {
+          throw {
+            kind: 'oversize',
+            message: `7Z 解压总量超过 ${Math.round(LIMITS.archive.maxTotalUncompressed / 1024 / 1024)} MiB 上限，已中止读取`,
+          } satisfies ConvertError;
+        }
         const data = FS.readFile(full);
         out.push({ path: relPath, data: data.slice() as Uint8Array<ArrayBuffer>, isDir: false });
       }

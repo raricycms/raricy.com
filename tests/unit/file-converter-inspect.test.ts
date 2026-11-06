@@ -9,6 +9,7 @@
 import { describe, it, expect } from 'vitest';
 import { zipSync, strToU8 } from 'fflate';
 import { sniffBytes, imageHeaderInfo, buildInspectInfo, readZipCentralDirectory, parseEocd } from '@/lib/file-converter/inspect';
+import { verifyOutputBytes } from '@/lib/file-converter/inspect-client';
 
 const u8 = (...bytes: number[]) => new Uint8Array(bytes);
 const ascii = (s: string) => new Uint8Array([...s].map((c) => c.charCodeAt(0)));
@@ -256,5 +257,36 @@ describe('ZIP 中央目录与容器细分', () => {
     expect(info.sniff.kind).toBe('png');
     expect(info.width).toBe(100);
     expect(info.height).toBe(50);
+  });
+});
+
+describe('verifyOutputBytes：无 BOM UTF-16 文本的窄放宽（R3-502）', () => {
+  /** ASCII 文本的 UTF-16LE / BE 字节（含大量 0x00，会被 sniffBytes 判 unknown）。 */
+  function utf16Bytes(text: string, littleEndian = true): Uint8Array {
+    const out = new Uint8Array(text.length * 2);
+    const dv = new DataView(out.buffer);
+    for (let i = 0; i < text.length; i++) dv.setUint16(i * 2, text.charCodeAt(i), littleEndian);
+    return out;
+  }
+
+  /** 复制到普通 ArrayBuffer 支撑的 Blob（与 encodeText 的产出形状一致）。 */
+  const blobOf = (bytes: Uint8Array) => new Blob([new Uint8Array(bytes)]);
+
+  it('UTF-16LE / BE 无 BOM 的输出被认作文本（txt / md / json 等文本类扩展名）', async () => {
+    const sample = 'hello world, this is utf-16 without bom. '.repeat(4);
+    for (const le of [true, false]) {
+      expect(await verifyOutputBytes(blobOf(utf16Bytes(sample, le)), 'txt')).toBe(true);
+      expect(await verifyOutputBytes(blobOf(utf16Bytes(sample, le)), 'md')).toBe(true);
+      // 换编码会保留源扩展名：.json 源转 UTF-16 后仍是 .json
+      expect(await verifyOutputBytes(blobOf(utf16Bytes(sample, le)), 'json')).toBe(true);
+    }
+  });
+
+  it('放宽不外溢：同样的字节声明成二进制格式仍然复核失败', async () => {
+    const sample = 'hello world, this is utf-16 without bom. '.repeat(4);
+    expect(await verifyOutputBytes(blobOf(utf16Bytes(sample)), 'png')).toBe(false);
+    // 普通二进制（含 NUL 但不呈半字节 NUL 形态）也不被误收
+    const binary = new Uint8Array(64).map((_, i) => (i % 5 === 0 ? 0 : i + 1));
+    expect(await verifyOutputBytes(blobOf(binary), 'txt')).toBe(false);
   });
 });

@@ -208,6 +208,27 @@ interface ParsedFieldValues {
 }
 
 /**
+ * 星期的**区间端点**按原始值解析（R3-492）。
+ *
+ * 单值归一（7→0）发生在 parseToken；但区间必须先按 0–7 的原值排序再归一：
+ *   · `0-7`  → 整周（7 是周日）
+ *   · `1-7`  → 周一至周日
+ *   · `MON-SUN` → 1-7（SUN 作终点时按 7 处理）
+ * 旧实现先把两端归一成 0、再判「起点 > 终点」：`1-7` 被拒、`0-7` 静默变成「仅周日」。
+ */
+function dowRangeEndpointRaw(
+  token: string
+): { value: number; sundayName: boolean } | null {
+  const up = token.trim().toUpperCase();
+  if (up === 'SUN') return { value: 0, sundayName: true };
+  if (Object.prototype.hasOwnProperty.call(DOW_NAMES, up)) {
+    return { value: DOW_NAMES[up], sundayName: false };
+  }
+  if (!/^\d{1,3}$/.test(up)) return null;
+  return { value: Number(up), sundayName: false };
+}
+
+/**
  * 解析一个字段（通配符 / 区间 / 列表 / 步长写法 / 单值 / 名称）。
  * 返回全部取值（升序去重）与「整段步长」（仅当整个字段就是一个带步长的区间时）。
  */
@@ -266,24 +287,51 @@ function parseFieldValues(
         allPartsAreRanges = false;
         continue;
       }
-      const lo = parseToken(seg[0].trim(), spec);
-      const hi = parseToken(seg[1].trim(), spec);
-      if (!lo.ok) {
-        errors.push(`区间起点无法识别：${lo.reason}`);
-        allPartsAreRanges = false;
-        continue;
-      }
-      if (!hi.ok) {
-        errors.push(`区间终点无法识别：${hi.reason}`);
-        allPartsAreRanges = false;
-        continue;
-      }
-      start = lo.value;
-      end = hi.value;
-      if (start > end) {
-        errors.push(`区间 ${rangePart} 的起点大于终点`);
-        allPartsAreRanges = false;
-        continue;
+      if (spec.name === 'dayOfWeek') {
+        // 区间端点保留 0–7 原值，排序后再归一（见 dowRangeEndpointRaw）。
+        const loRaw = dowRangeEndpointRaw(seg[0].trim());
+        const hiRaw = dowRangeEndpointRaw(seg[1].trim());
+        if (!loRaw || !hiRaw) {
+          errors.push(`区间 ${rangePart} 含无法识别的星期值`);
+          allPartsAreRanges = false;
+          continue;
+        }
+        if (loRaw.value < 0 || loRaw.value > 7 || hiRaw.value < 0 || hiRaw.value > 7) {
+          errors.push(`星期区间 ${rangePart} 超出 0–7 范围`);
+          allPartsAreRanges = false;
+          continue;
+        }
+        start = loRaw.value;
+        end = hiRaw.value;
+        if (start > end) {
+          // `MON-SUN` / `1-7`：终点写成 SUN（按 0 解析）时按 7 处理；其余反向区间照旧报错。
+          if (hiRaw.sundayName) end = 7;
+          else {
+            errors.push(`区间 ${rangePart} 的起点大于终点`);
+            allPartsAreRanges = false;
+            continue;
+          }
+        }
+      } else {
+        const lo = parseToken(seg[0].trim(), spec);
+        const hi = parseToken(seg[1].trim(), spec);
+        if (!lo.ok) {
+          errors.push(`区间起点无法识别：${lo.reason}`);
+          allPartsAreRanges = false;
+          continue;
+        }
+        if (!hi.ok) {
+          errors.push(`区间终点无法识别：${hi.reason}`);
+          allPartsAreRanges = false;
+          continue;
+        }
+        start = lo.value;
+        end = hi.value;
+        if (start > end) {
+          errors.push(`区间 ${rangePart} 的起点大于终点`);
+          allPartsAreRanges = false;
+          continue;
+        }
       }
     } else {
       const single = parseToken(rangePart, spec);
@@ -297,7 +345,10 @@ function parseFieldValues(
     }
 
     const stride = step ?? 1;
-    for (let v = start; v <= end; v += stride) values.add(v);
+    for (let v = start; v <= end; v += stride) {
+      // 星期区间的 7 与 0 同义；归一在展开时做（区间排序必须用原值，见 R3-492）。
+      values.add(spec.name === 'dayOfWeek' ? v % 7 : v);
+    }
 
     if (parts.length === 1 && step !== null) {
       wholeRangeStep = step;

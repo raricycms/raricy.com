@@ -134,6 +134,14 @@ async function runConvertEncoding(ctx: RunContext): Promise<ConvertResultData> {
   if (bomWanted) {
     if (encodingSupportsBom(toRaw)) notices.push(`输出带 ${toLabel} BOM`);
     else notices.push(`${toLabel} 不使用 BOM，「输出带 BOM」已忽略`);
+  } else if (toRaw === 'utf-16le' || toRaw === 'utf-16be') {
+    // R3-502：无 BOM 的 UTF-16 在不少系统 / 编辑器里会被当成二进制或乱码，
+    // 用户选了「不勾 BOM」时至少说清代价（输出本身仍是合法 UTF-16，复核已放宽接受）。
+    notices.push(`${toLabel} 未带 BOM：部分系统 / 编辑器可能无法自动识别，跨系统交换建议勾选「输出带 BOM」`);
+  }
+  if (toRaw !== 'utf-8') {
+    // 结果预览统一按 UTF-8 解码前 4KiB（ConverterApp 的 TaskPreview）。
+    notices.push('结果预览按 UTF-8 解码，非 UTF-8 输出在预览里可能显示为乱码（下载得到的文件是正确的）');
   }
   if (await hasUnrepresentable(text, toRaw)) {
     notices.push(`目标编码 ${toLabel} 无法表示的字符已被替换为 “?”，请核对结果`);
