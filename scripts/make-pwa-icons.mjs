@@ -8,8 +8,12 @@
 //
 // ⚠️ 【改了本文件就必须重跑并提交素材】入库之后 PNG 成了仓库里的独立副本：
 //    只改这里的比例 / 来源而不重跑，站点会继续显示旧图，**且不报任何错**。
-//    出图会把「生成这一刻」写进 pwa/manifest.json（本文件自身 + 每张产物的 sha256），
-//    那是给人核对来源用的台账 —— 没有自动化守卫，重跑与否只能靠看完这份清单。
+//    出图会把「生成这一刻」写进 pwa/manifest.json（本文件自身 + 每张产物的 sha256）。
+//    守卫有两道：`node scripts/make-pwa-icons.mjs --check`（本文件，只读校验台账）与
+//    `tests/unit/pwa-assets.test.ts`（全量单测里跑同一套判据）。
+//
+// 用法：node scripts/make-pwa-icons.mjs            # 出图并写台账
+//       node scripts/make-pwa-icons.mjs --check    # 只校验已入库台账，不写任何文件
 //
 // ── 【为什么不重新画一套品牌图】──────────────────────────────────────────────
 // 判据是「保留既有美术，而不是自造品牌」：本站 favicon 是白底透明背景上的四个几何
@@ -65,6 +69,79 @@ function sha256(buf) {
   return createHash('sha256').update(buf).digest('hex');
 }
 
+const PNG_SIG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+
+/** 台账里必须出现的产物名（与上面的 ICONS 同步）。 */
+const EXPECTED_FILES = ICONS.map(([name]) => name);
+
+/**
+ * `--check`：只读校验「入库素材 = 出图脚本的产物」。不重新光栅化 —— 那要过 sharp，
+ * 各平台预编译二进制不保证逐字节相同（frame-assets.test.ts 头部解释过同一件事）。
+ */
+function check() {
+  const errors = [];
+  const manifestFile = path.join(OUT_DIR, 'manifest.json');
+  if (!fs.existsSync(manifestFile)) {
+    console.error(`缺少 ${path.relative(ROOT, manifestFile)} —— 素材不是本脚本生成的。`);
+    console.error('修复：node scripts/make-pwa-icons.mjs');
+    process.exitCode = 1;
+    return;
+  }
+  const manifest = JSON.parse(fs.readFileSync(manifestFile, 'utf8'));
+
+  const expectedGenerator = path.relative(ROOT, fileURLToPath(import.meta.url)).replace(/\\/g, '/');
+  const expectedSource = path.relative(ROOT, SRC).replace(/\\/g, '/');
+  if (manifest.generator !== expectedGenerator) {
+    errors.push(`generator 应指向 ${expectedGenerator}，台账写的是 ${String(manifest.generator)}`);
+  }
+  if (manifest.source !== expectedSource) {
+    errors.push(`source 应是 ${expectedSource}，台账写的是 ${String(manifest.source)}`);
+  }
+
+  // Windows 检出可能转换行尾；校验逻辑内容，不把 CRLF 当成脚本漂移（同 frame-assets）。
+  const actualGenerator = sha256(fs.readFileSync(fileURLToPath(import.meta.url), 'utf8').replace(/\r\n/g, '\n'));
+  if (actualGenerator !== manifest.generatorSha256) {
+    errors.push(
+      `generatorSha256 与脚本当前内容不一致（台账 ${String(manifest.generatorSha256)}，实际 ${actualGenerator}）——` +
+        '脚本改了没重跑？'
+    );
+  }
+
+  const files = manifest.files ?? {};
+  for (const name of EXPECTED_FILES) {
+    if (!(name in files)) errors.push(`manifest.files 缺 ${name}`);
+  }
+  for (const name of Object.keys(files)) {
+    if (!EXPECTED_FILES.includes(name)) errors.push(`manifest.files 多出 ${name}（脚本已不再生成它）`);
+  }
+  for (const name of EXPECTED_FILES) {
+    const file = path.join(OUT_DIR, name);
+    if (!fs.existsSync(file)) {
+      errors.push(`缺 ${name}`);
+      continue;
+    }
+    const buf = fs.readFileSync(file);
+    if (!buf.subarray(0, PNG_SIG.length).equals(PNG_SIG)) errors.push(`${name} 不是 PNG`);
+    const digest = sha256(buf);
+    if (digest !== files[name]) {
+      errors.push(`${name} 与台账哈希不一致（被手改过 / 被替换 / 生成后没更新台账）`);
+    }
+  }
+
+  if (!fs.existsSync(SRC)) errors.push(`源图 ${path.relative(ROOT, SRC)} 不存在`);
+  if (errors.length > 0) {
+    console.error('PWA 图标台账校验失败：');
+    for (const error of errors) console.error(`  · ${error}`);
+    console.error('修复：node scripts/make-pwa-icons.mjs，并把 public/static/img/pwa/ 的改动一起提交。');
+    process.exitCode = 1;
+    return;
+  }
+  console.log(
+    `PWA 图标台账一致：generatorSha256、${EXPECTED_FILES.length} 张 PNG 与源图路径均对得上` +
+      `（${path.relative(ROOT, manifestFile)}）。`
+  );
+}
+
 /** 去掉 favicon 四周的透明边，只留美术本体（透明背景用 alpha 判定）。 */
 async function trimmedArt() {
   return sharp(SRC).ensureAlpha().trim({ threshold: 1 }).toBuffer();
@@ -93,6 +170,10 @@ async function opaqueIcon(size, contentRatio) {
 }
 
 async function main() {
+  if (process.argv.includes('--check')) {
+    check();
+    return;
+  }
   if (!fs.existsSync(SRC)) {
     throw new Error(`缺少源图标 ${path.relative(ROOT, SRC)} —— 请确认 favicon 还在。`);
   }
