@@ -289,6 +289,13 @@ export interface ListAdminLogsParams {
   adminUsername?: string | null;
   /** 按被处理用户用户名模糊筛选。 */
   targetUsername?: string | null;
+  /**
+   * 「执行者**或**被处理用户」的用户名模糊筛选（OR）。
+   * CLI `audit log --user` 的语义就是「涉及的用户」，必须用这个字段：
+   * 把同一个值同时塞进 adminUsername 与 targetUsername 会被 Prisma 当成两个顶层
+   * 键的 AND，结果只剩「自己处理自己」的行（R3-410）。
+   */
+  adminOrTargetUsername?: string | null;
   objectType?: string | null;
   objectId?: string | null;
   /** 默认 'all' —— 运维要看得见 visibility 非 public 的内部日志。 */
@@ -324,6 +331,14 @@ export async function listAdminLogs(params: ListAdminLogsParams) {
   if (params.adminUsername) where.admin = { is: { username: { contains: params.adminUsername } } };
   if (params.targetUsername) {
     where.targetUser = { is: { username: { contains: params.targetUsername } } };
+  }
+  if (params.adminOrTargetUsername) {
+    // 两个顶层键（admin / targetUser）之间是 AND；验「涉及某人」必须显式 OR。
+    const contains = { contains: params.adminOrTargetUsername };
+    where.OR = [
+      { admin: { is: { username: contains } } },
+      { targetUser: { is: { username: contains } } },
+    ];
   }
   if (params.since || params.until) {
     where.createdAt = {
@@ -399,9 +414,10 @@ export type AppealResult =
 /**
  * 提交申诉：
  *   1. 内容非空、≤2000 字
- *   2. 该日志已有 accepted 申诉 → 拒绝
- *   3. 当日申诉数 ≥ 20 → 拒绝
- *   4. 同日志 + 同申诉人已存在 pending → 拒绝
+ *   2. 日志存在**且是公示可见的**（visibility='public'）—— internal 日志不可申诉
+ *   3. 该日志已有 accepted 申诉 → 拒绝
+ *   4. 当日申诉数 ≥ 20 → 拒绝
+ *   5. 同日志 + 同申诉人已存在 pending → 拒绝
  * 通过则创建 status='pending'，并给所有 owner 发『申诉提交』通知（失败不影响申诉）。
  */
 export async function createAppeal(params: {
@@ -414,9 +430,14 @@ export async function createAppeal(params: {
   if (content.length > APPEAL_MAX_LEN)
     return { ok: false, message: '申诉内容过长（最多2000字）', appealId: null };
 
-  // 日志必须存在
+  // 日志必须存在**且是公示可见的**（visibility='public'）。
+  // 后台运维写下的日志是 'internal'：/audit 与其详情页都看不到，当事人唯一能看到
+  // 它的地方就是「猜自增 id」—— 若这里不挡，当事人可用 POST /api/audit/:id/appeal
+  // 对一条他根本看不到的内部处置提起申诉，站长一旦通过，裁决就会反向撤回那次处置。
+  // 与 getLogDetail 的强制 public 同口径：对调用方一律回「日志不存在」，不泄露
+  // internal 日志的存在性。
   const log = await prisma.adminActionLog.findUnique({
-    where: { id: params.logId },
+    where: { id: params.logId, visibility: 'public' },
     select: { id: true, targetUserId: true },
   });
   if (!log) return { ok: false, message: '日志不存在', appealId: null };

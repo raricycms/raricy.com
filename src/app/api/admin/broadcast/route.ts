@@ -4,10 +4,9 @@
 // 因此路由与 service 层各判一次，只对站长放开。
 // 此前这里只判 hasAdminRights，任何管理员都能给全站发通知，故收紧到站长一档。
 import { getCurrentUser, isOwner } from '@/lib/auth';
-import { broadcast, type TargetGroup } from '@/lib/broadcast-service';
+import { broadcast } from '@/lib/broadcast-service';
+import { isTargetGroup, type TargetGroup } from '@/lib/broadcast-groups';
 import { apiOk, apiErr } from '@/lib/format';
-
-const GROUPS: TargetGroup[] = ['all', 'authenticated', 'normal'];
 
 export async function POST(req: Request) {
   const user = await getCurrentUser();
@@ -25,10 +24,14 @@ export async function POST(req: Request) {
   if (!detail.trim()) return apiErr(400, '通知内容不能为空');
 
   const action = body && typeof body.action === 'string' ? body.action : undefined;
-  const rawGroup = body && typeof body.targetGroup === 'string' ? body.targetGroup : 'all';
-  const targetGroup = (GROUPS as string[]).includes(rawGroup)
-    ? (rawGroup as TargetGroup)
-    : 'all';
+  // 缺省（未传 / null / 空串）仍按 'all'，保持既有调用方；**非空且非法**一律 400。
+  // 不能回落 all：一次参数拼错 = 一条发错对象、不可撤回的全站打扰（R3-417）。
+  const rawGroup = body?.targetGroup;
+  let targetGroup: TargetGroup = 'all';
+  if (rawGroup !== undefined && rawGroup !== null && rawGroup !== '') {
+    if (!isTargetGroup(rawGroup)) return apiErr(400, '无效的目标用户组');
+    targetGroup = rawGroup;
+  }
   const objectType = body && typeof body.objectType === 'string' ? body.objectType : null;
   const objectId = body && typeof body.objectId === 'string' ? body.objectId : null;
 

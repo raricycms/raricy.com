@@ -21,7 +21,7 @@ import { sendNotification } from './notification-service';
 import { kickUser } from './chat-bus';
 import { kickTopbarUser, publishToUser } from './topbar-bus';
 import { defaultLogVisibility } from './audit-context';
-// 建号复用公开注册那条 fail-closed 链路的内核（已查证两边不成环：user-service 不反向依赖本文件）
+// 建号复用公开注册那条 fail-closed 链路的内核（已查证两边不成环：account-service 不反向依赖本文件）
 import {
   buildPlaceholderEmail,
   createUserAccount,
@@ -29,11 +29,21 @@ import {
   validateEmail,
   validateUsername,
   PLACEHOLDER_EMAIL_DOMAIN,
-} from './user-service';
+} from './account-service';
 
 const DEFAULT_PER_PAGE = 50;
 const MAX_PER_PAGE = 100;
 const BAN_REASON_MAX = 200;
+/**
+ * 禁言时长上限：10 年（87600 小时）。
+ *
+ * 没有上界时 `hours >= 2.4e9` 会让 `now + hours*3600*1000` 越过 JS Date 的
+ * 8.64e15 毫秒上限 → Invalid Date → 驱动序列化直接抛错 → 500（而不是 400）。
+ * 10 年足够表达「实际上就是长期封禁」，且远未逼近 Date 上限；要「永久禁言」
+ * 得走另一条产品决定（UserBan.banUntil 目前不接受 null）。
+ */
+const BAN_MAX_HOURS = 10 * 365 * 24;
+const BAN_MAX_HOURS_LABEL = '87600 小时（10 年）';
 
 export const ROLES = ['user', 'core', 'admin', 'owner'] as const;
 export type Role = (typeof ROLES)[number];
@@ -285,7 +295,7 @@ export async function setRole(p: SetRoleParams): Promise<AdminResult<{ role: str
 
   // 顶栏红点同样受角色影响（非 core 不进讨论，红点必为 false）。这里**不踢顶栏流**：
   // 会话没废，铃铛照常要收推送。推送值分两种（够不着 chat-service，会成环 ——
-  // chat-service → admin-user-service → user-service，见 topbar-bus 的 TopbarPatch）：
+  // chat-service → admin-user-service → account-service，见 topbar-bus 的 TopbarPatch）：
   //   降级到 user → 必为 false，推精确值；升级 → 可能是 true（有未读私聊），推「重算」。
   publishToUser(p.targetId, newRole === 'user' ? { chatUnread: false } : { refresh: true });
 
@@ -324,6 +334,8 @@ export async function banUser(p: BanUserParams): Promise<AdminResult<{ banId: nu
   const hours = Number(p.hours);
   if (!Number.isFinite(hours) || hours <= 0)
     return { ok: false, code: 400, message: '禁言时长必须大于 0' };
+  if (hours > BAN_MAX_HOURS)
+    return { ok: false, code: 400, message: `禁言时长不能超过 ${BAN_MAX_HOURS_LABEL}` };
 
   if (p.targetId === p.actor.id) return { ok: false, code: 403, message: '不能禁言自己' };
 
@@ -659,7 +671,7 @@ export async function adminCreateUser(p: AdminCreateUserParams): Promise<AdminCr
   }
 
   // 密码由站长手填（本入口不生成），底线与 resetUserPassword / changeOwnPassword 一致；
-  // 上限与公开注册共用同一条策略（见 user-service 的 100 字符校验）—— 两条入口别漂移。
+  // 上限与公开注册共用同一条策略（见 account-service 的 100 字符校验）—— 两条入口别漂移。
   if (password.length < 8) return { ok: false, code: 400, message: '密码长度至少为 8 位' };
   if (password.length > 100) return { ok: false, code: 400, message: '密码过长！' };
 

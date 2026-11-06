@@ -1,7 +1,6 @@
 import { getCurrentUser, hasAdminRights } from '@/lib/auth';
-import { apiErr } from '@/lib/format';
+import { apiOk, apiErr, categoryFullPath, ymd } from '@/lib/format';
 import { listAdminBlogs } from '@/lib/admin-blog-service';
-import { categoryFullPath, ymd } from '@/lib/format';
 
 // GET /api/admin/blogs?page=&category=&search=&status= — 列出所有文章（含软删除）
 export async function GET(req: Request) {
@@ -21,9 +20,8 @@ export async function GET(req: Request) {
     status,
   });
 
-  return Response.json({
-    code: 200,
-    message: 'ok',
+  // 走 apiOk 而不是裸 Response.json：统一带 Cache-Control: no-store（含软删文章）。
+  return apiOk({
     blogs: result.blogs.map((b: {
       id: string;
       title: string;

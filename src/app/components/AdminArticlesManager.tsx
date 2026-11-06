@@ -118,15 +118,44 @@ export default function AdminArticlesManager({
 
   const clearSelection = () => setSelected(new Set());
 
-  async function patchOne(id: string, body: Record<string, unknown>): Promise<boolean> {
+  /**
+   * 逐条 PATCH。**必须把失败原因带回来** —— 批量循环里只看 `code===200`
+   * 会把 403/400/404 的具体文案整条丢掉，管理员只知道「成功了几篇」（R3-420）。
+   */
+  async function patchOne(
+    id: string,
+    body: Record<string, unknown>
+  ): Promise<{ ok: boolean; message: string }> {
     const res = await fetch(`/api/admin/blogs/${id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'same-origin',
       body: JSON.stringify(body),
     });
-    const data = await res.json();
-    return data.code === 200;
+    const data = await res.json().catch(() => ({ code: res.status, message: '操作失败' }));
+    return data.code === 200
+      ? { ok: true, message: data.message || '操作成功' }
+      : { ok: false, message: data.message || '操作失败' };
+  }
+
+  /**
+   * 批量逐条 PATCH：返回成功数与失败清单（含服务端 message）。
+   *
+   * 选中集合的收尾也在这里：全部成功才清空；有失败则**只保留失败项的选中**，
+   * 管理员改条件后可直接重试，成功的那批不会被重复提交。
+   */
+  async function patchMany(ids: string[], body: Record<string, unknown>) {
+    const failed: { id: string; message: string }[] = [];
+    let ok = 0;
+    for (const id of ids) {
+      const r = await patchOne(id, body);
+      if (r.ok) ok += 1;
+      else failed.push({ id, message: r.message });
+    }
+    if (failed.length === 0) clearSelection();
+    else setSelected(new Set(failed.map((f) => f.id)));
+    router.refresh();
+    return { ok, failed };
   }
 
   async function batchUpdate() {
@@ -134,13 +163,10 @@ export default function AdminArticlesManager({
     setBusy(true);
     try {
       const categoryId = batchCategory === 'none' ? null : Number(batchCategory);
-      let ok = 0;
-      for (const id of selectedOnPage) {
-        if (await patchOne(id, { categoryId })) ok += 1;
-      }
-      toast(`已更新 ${ok} 篇文章的栏目`, 'success');
-      clearSelection();
-      router.refresh();
+      const { ok, failed } = await patchMany(selectedOnPage, { categoryId });
+      if (failed.length === 0) toast(`已更新 ${ok} 篇文章的栏目`, 'success');
+      else if (ok === 0) toast(`更新失败：${failed.length} 篇均未成功（${failed[0].message}）`, 'error');
+      else toast(`已更新 ${ok} 篇，${failed.length} 篇失败（${failed[0].message}）`, 'error');
     } catch {
       toast('网络错误，请稍后重试', 'error');
     } finally {
@@ -152,13 +178,10 @@ export default function AdminArticlesManager({
     if (selectedOnPage.length === 0 || busy) return;
     setBusy(true);
     try {
-      let ok = 0;
-      for (const id of selectedOnPage) {
-        if (await patchOne(id, { isFeatured: true })) ok += 1;
-      }
-      toast(`已将 ${ok} 篇文章设为精选`, 'success');
-      clearSelection();
-      router.refresh();
+      const { ok, failed } = await patchMany(selectedOnPage, { isFeatured: true });
+      if (failed.length === 0) toast(`已将 ${ok} 篇文章设为精选`, 'success');
+      else if (ok === 0) toast(`设置精选失败：${failed.length} 篇均未成功（${failed[0].message}）`, 'error');
+      else toast(`已将 ${ok} 篇设为精选，${failed.length} 篇失败（${failed[0].message}）`, 'error');
     } catch {
       toast('网络错误，请稍后重试', 'error');
     } finally {

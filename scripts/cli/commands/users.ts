@@ -135,13 +135,22 @@ export const userCommands: CommandSpec[] = [
       const { isCurrentlyBanned } = await import('../../../src/lib/auth');
       const { unitsToFish } = await import('../../../src/lib/fish-units');
       const banned = isCurrentlyBanned(user);
+      // banUntil 为 null 而 isBanned=true 是历史数据（正常路径 banUser 一定写到期时间）；
+      // ymdhms(null) 会打印成「禁言中（至 null）」，这里如实说「无到期」。
+      const statusText = user.archivedAt
+        ? '已归档'
+        : banned
+          ? user.banUntil
+            ? `禁言中（至 ${ymdhms(user.banUntil)}）`
+            : '禁言中（无到期）'
+          : '正常';
 
       const lines = renderKv([
         ['用户名', user.username],
         ['用户 ID', user.id],
         ['邮箱', user.email],
         ['角色', user.role],
-        ['状态', user.archivedAt ? '已归档' : banned ? `禁言中（至 ${ymdhms(user.banUntil)}）` : '正常'],
+        ['状态', statusText],
         ['归档时间', ymdhms(user.archivedAt)],
         ['归档原因', user.archiveReason],
         ['归档操作人 ID', user.archivedBy],
@@ -446,7 +455,7 @@ export const userCommands: CommandSpec[] = [
       });
       if (existing) throw new CliError(`错误：用户名 ${username} 已被占用`);
 
-      const { buildPlaceholderEmail } = await import('../../../src/lib/user-service');
+      const { buildPlaceholderEmail } = await import('../../../src/lib/account-service');
       return [
         `新用户：${username}（角色 core）`,
         `邮箱：${email || `${buildPlaceholderEmail(username)}（自动合成，不可投递）`}`,

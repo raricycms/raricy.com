@@ -1,7 +1,7 @@
 // GET /api/admin/appeals?page=&status= — 申诉列表（与裁决页面同为站长档）
 import { getCurrentUser, isOwner } from '@/lib/auth';
 import { listAppeals } from '@/lib/admin-appeal-service';
-import { apiErr } from '@/lib/format';
+import { apiOk, apiErr } from '@/lib/format';
 
 export async function GET(req: Request) {
   const user = await getCurrentUser();
@@ -13,9 +13,9 @@ export async function GET(req: Request) {
     status: url.searchParams.get('status'),
   });
 
-  return Response.json({
-    code: 200,
-    message: 'ok',
+  // 走 apiOk 而不是裸 Response.json：统一带 Cache-Control: no-store（申诉列表含
+  // 当事人与处置理由，不允许被中间缓存留副本）。
+  return apiOk({
     appeals: result.items,
     pagination: {
       page: result.page,

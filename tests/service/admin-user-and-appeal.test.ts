@@ -93,6 +93,8 @@ async function makeLog(opts: {
   targetUserId?: string | null;
   objectType?: string | null;
   objectId?: string | null;
+  /** 默认 public；CLI 后台写下的日志是 internal（不可被当事人申诉，见 R3-413）。 */
+  visibility?: string;
 }) {
   const log = await prisma.adminActionLog.create({
     data: {
@@ -102,7 +104,7 @@ async function makeLog(opts: {
       objectType: opts.objectType ?? null,
       objectId: opts.objectId ?? null,
       reason: 'r',
-      visibility: 'public',
+      visibility: opts.visibility ?? 'public',
       createdAt: new Date(),
     },
     select: { id: true },
@@ -457,6 +459,24 @@ describe('banUser（禁言）', () => {
       expect(r).toMatchObject({ ok: false, code: 400 });
     }
     expect(await prisma.userBan.count()).toBe(0);
+  });
+
+  it('hours 无上界会被 Date 上限打成 500：超大时长现在 400 且什么都没写（R3-431）', async () => {
+    // 2.4e9 小时 ≈ 2.7e14 年；now + hours*3600*1000 越过 Date 的 8.64e15 ms 上限
+    // → Invalid Date → Prisma 序列化抛错。此前没有上界，表现为 500 而不是参数错误。
+    const admin = await makeUser({ role: 'admin' });
+    const target = await makeUser({ role: 'core' });
+
+    for (const hours of [2.4e9, 1e12, Infinity]) {
+      const r = await banUser({ actor: asActor(admin), targetId: target.id, hours, reason: 'x' });
+      expect(r, `hours=${hours} 应 400`).toMatchObject({ ok: false, code: 400 });
+    }
+    // 边界内仍然放行：10 年整
+    expect(
+      (await banUser({ actor: asActor(admin), targetId: target.id, hours: 87600, reason: '长期' })).ok
+    ).toBe(true);
+    expect(await prisma.userBan.count()).toBe(1);
+    expect((await prisma.user.findUnique({ where: { id: target.id } }))!.banUntil).toBeInstanceOf(Date);
   });
 
   it('不能禁言自己（403）', async () => {
@@ -928,6 +948,40 @@ describe('createAppeal（提交申诉）', () => {
     expect(
       await createAppeal({ logId: 999999, appellantId: user.id, content: '啊' })
     ).toMatchObject({ ok: false, message: '日志不存在', appealId: null });
+  });
+
+  it('★ internal（CLI 后台写下的）日志不可申诉 —— 与 /audit 抹除口径一致（R3-413）', async () => {
+    // 反例：internal 日志在公示页与其详情页都看不到，但日志 id 是自增整数、可枚举；
+    // 当事人若能用 POST /api/audit/:id/appeal 对它提起申诉，站长通过后裁决会反向
+    // 撤回那次内部处置（如解禁）。故写口必须与读口同口径：只认 visibility='public'。
+    const owner = await makeUser({ role: 'owner' });
+    const admin = await makeUser({ role: 'admin' });
+    const user = await makeUser({ role: 'core' });
+    const logId = await makeLog({
+      action: 'ban_user',
+      adminId: admin.id,
+      targetUserId: user.id,
+      visibility: 'internal',
+    });
+
+    expect(
+      await createAppeal({ logId, appellantId: user.id, content: '我不服' })
+    ).toMatchObject({ ok: false, message: '日志不存在', appealId: null });
+    expect(await prisma.adminActionAppeal.count()).toBe(0);
+    expect(await prisma.notification.count()).toBe(0);
+
+    // 同一个当事人对同内容的 public 日志仍可申诉（不是把人挡死）
+    const publicLogId = await makeLog({
+      action: 'ban_user',
+      adminId: admin.id,
+      targetUserId: user.id,
+    });
+    expect((await createAppeal({ logId: publicLogId, appellantId: user.id, content: '我不服' })).ok).toBe(
+      true
+    );
+    const notes = await prisma.notification.findMany({ where: { action: '申诉提交' } });
+    expect(notes).toHaveLength(1);
+    expect(notes[0].recipientId).toBe(owner.id);
   });
 
   it('该日志已有 accepted 申诉 → 任何人都不能再申诉（一事不再理）', async () => {
@@ -1523,6 +1577,33 @@ describe('adjudicate（裁决申诉）', () => {
       decideLogs
     );
     // 状态没被 reject 覆盖
+    expect((await prisma.adminActionAppeal.findUnique({ where: { id: appealId } }))!.status).toBe(
+      'accepted'
+    );
+  });
+
+  it('★ 并发裁决只有一次生效：一个 ok、一个 400，且只留 1 条审计 / 1 条通知（R3-414）', async () => {
+    // 旧实现：findUnique 读 status → findBy 看到的都是 pending，然后各自
+    // update({where:{id}})，两个请求都成功 → 两条 decide_appeal（网页路径会进
+    // /audit 公示页）、两条结果通知。新实现用 updateMany({status:'pending'}) 仲裁。
+    const owner = await makeUser({ role: 'owner' });
+    const target = await makeUser({ role: 'core' });
+    const { appealId } = await makePendingAppeal({
+      action: 'other_action',
+      adminId: owner.id,
+      appellantId: target.id,
+    });
+
+    const [a, b] = await Promise.all([
+      adjudicate({ actor: asActor(owner), appealId, decision: 'accept' }),
+      adjudicate({ actor: asActor(owner), appealId, decision: 'accept' }),
+    ]);
+    expect([a.ok, b.ok].filter(Boolean), '只能有一次裁决成功').toHaveLength(1);
+    const loser = a.ok ? b : a;
+    expect(loser).toMatchObject({ ok: false, code: 400, message: '申诉已处理' });
+
+    expect(await prisma.adminActionLog.count({ where: { action: 'decide_appeal' } })).toBe(1);
+    expect(await prisma.notification.count({ where: { action: '申诉结果' } })).toBe(1);
     expect((await prisma.adminActionAppeal.findUnique({ where: { id: appealId } }))!.status).toBe(
       'accepted'
     );

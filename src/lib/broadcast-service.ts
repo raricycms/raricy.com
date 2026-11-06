@@ -11,8 +11,10 @@
 import { prisma } from './db';
 import { isOwner, type SafeUser } from './auth';
 import { sendNotification } from './notification-service';
+import { isTargetGroup, type TargetGroup } from './broadcast-groups';
 
-export type TargetGroup = 'all' | 'authenticated' | 'normal';
+// 组名与其中文名只此一份（见 broadcast-groups.ts）。转导出保持既有 import 路径可用。
+export type { TargetGroup };
 
 export interface BroadcastParams {
   actor: SafeUser;
@@ -38,13 +40,14 @@ export async function broadcast(p: BroadcastParams): Promise<BroadcastResult> {
   if (!detail) return { ok: false, code: 400, message: '通知内容不能为空' };
 
   const group: TargetGroup = p.targetGroup ?? 'all';
+  // 服务层也校验：直接在代码里调 broadcast 的路径同样不该把非法组当 all 全站群发。
+  if (!isTargetGroup(group)) return { ok: false, code: 400, message: '无效的目标用户组' };
   const action = (p.action ?? '').trim() || 'admin';
 
   let roleWhere: { role?: string | { in: string[] } } = {};
   if (group === 'all') roleWhere = {};
   else if (group === 'authenticated') roleWhere = { role: { in: ['core', 'admin', 'owner'] } };
-  else if (group === 'normal') roleWhere = { role: 'user' };
-  else return { ok: false, code: 400, message: '无效的目标用户组' };
+  else roleWhere = { role: 'user' };
 
   const recipients = await prisma.user.findMany({
     where: { ...roleWhere, id: { not: p.actor.id } }, // 排除发送者

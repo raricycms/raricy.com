@@ -8,7 +8,7 @@
 // 未登录 → 401；非 core → 403。**成功路径的形状一字不动**。
 import { listPublicLogs } from '@/lib/audit-service';
 import { getCurrentUser, isCoreUser } from '@/lib/auth';
-import { apiErr } from '@/lib/format';
+import { apiOk, apiErr } from '@/lib/format';
 
 export async function GET(req: Request) {
   const user = await getCurrentUser();
@@ -21,9 +21,9 @@ export async function GET(req: Request) {
     action: url.searchParams.get('action'),
   });
 
-  return Response.json({
-    code: 200,
-    message: 'ok',
+  // 走 apiOk 而不是裸 Response.json：统一带 Cache-Control: no-store（公示面含
+  // 管理员与被处置用户名、处置理由）。
+  return apiOk({
     logs: result.items.map((l: {
       id: string | number;
       createdAt: Date | null;

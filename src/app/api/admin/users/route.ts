@@ -8,7 +8,7 @@
 // 网页侧的 owner 够不着。**别再把它加回来。**
 import { getCurrentUser, hasAdminRights } from '@/lib/auth';
 import { listUsers } from '@/lib/admin-user-service';
-import { apiErr } from '@/lib/format';
+import { apiOk, apiErr } from '@/lib/format';
 
 export async function GET(req: Request) {
   const user = await getCurrentUser();
@@ -21,9 +21,9 @@ export async function GET(req: Request) {
     search: url.searchParams.get('search'),
   });
 
-  return Response.json({
-    code: 200,
-    message: 'ok',
+  // 走 apiOk 而不是裸 Response.json：统一带 Cache-Control: no-store。
+  // 这条响应含全体用户的 email / lastLogin / banReason，是四条管理端 GET 里最敏感的一条。
+  return apiOk({
     users: result.users,
     pagination: {
       page: result.page,

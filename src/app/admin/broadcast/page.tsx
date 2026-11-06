@@ -15,12 +15,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Check, Megaphone, Search } from 'lucide-react';
 import AdminPageHeader from '@/app/components/AdminPageHeader';
-
-const GROUPS: Array<{ value: string; label: string }> = [
-  { value: 'all', label: '所有用户' },
-  { value: 'authenticated', label: '认证用户' },
-  { value: 'normal', label: '普通用户' },
-];
+// 目标用户组与路由 / service 共用一份常量（不能从 broadcast-service 取：那是服务端
+// 模块，会把 Prisma 拖进浏览器包）。新增组名只改 broadcast-groups.ts 一处。
+import { TARGET_GROUPS } from '@/lib/broadcast-groups';
 
 const OBJECT_TYPES: Array<{ value: string; label: string }> = [
   { value: '', label: '无关联对象' },
@@ -138,16 +135,20 @@ export default function AdminBroadcastPage() {
   }, []);
 
   const targetUserCount = useMemo(() => {
+    // 服务端发送时一律 `id: { not: actor.id }` 排除发送者，所以预览也要减掉自己。
+    // 本页只有站长能进（layout 守卫），而站长必然属于 'all' 与 'authenticated' 两组；
+    // 'normal' 不含站长，不用减。
     // 「所有用户」优先用服务端总数（不受分页上限影响）；其余分组只能按已加载列表算，
     // 截断时页面会额外标出这一点。
-    if (targetGroup === 'all' && totalUsers != null) return totalUsers;
-    return users.filter((u) => {
+    if (targetGroup === 'all' && totalUsers != null) return Math.max(0, totalUsers - 1);
+    const count = users.filter((u) => {
       const isCore = ['core', 'admin', 'owner'].includes(u.role);
       if (targetGroup === 'all') return true;
       if (targetGroup === 'authenticated') return isCore;
       if (targetGroup === 'normal') return u.role === 'user';
       return false;
     }).length;
+    return targetGroup === 'normal' ? count : Math.max(0, count - 1);
   }, [users, totalUsers, targetGroup]);
 
   const filteredUsers = useMemo(() => {
@@ -449,7 +450,7 @@ export default function AdminBroadcastPage() {
                     onChange={(e) => setTargetGroup(e.target.value)}
                     disabled={busy}
                   >
-                    {GROUPS.map((g) => (
+                    {TARGET_GROUPS.map((g) => (
                       <option key={g.value} value={g.value}>
                         {g.label}
                       </option>
@@ -510,7 +511,7 @@ export default function AdminBroadcastPage() {
 
               {/* 预览：目标是「先看清有多少人再按发送」 */}
               <div className="admin-broadcast-preview">
-                <div className="admin-broadcast-preview__label">目标用户数量</div>
+                <div className="admin-broadcast-preview__label">目标用户数量（不含你本人）</div>
                 <div className="admin-broadcast-preview__count numeric">{targetUserCount}</div>
                 <p className="admin-broadcast-preview__caveat">
                   群发将忽略接收者的通知偏好设置，请确认发送范围后再提交。

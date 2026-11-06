@@ -253,6 +253,7 @@ describe('listAdminLogs', () => {
   async function makeLog(opts: {
     action: string;
     adminId: string;
+    targetUserId?: string | null;
     visibility?: string;
     createdAt?: Date;
     extra?: string;
@@ -261,6 +262,7 @@ describe('listAdminLogs', () => {
       data: {
         action: opts.action,
         adminId: opts.adminId,
+        targetUserId: opts.targetUserId ?? null,
         visibility: opts.visibility ?? 'public',
         createdAt: opts.createdAt ?? nowForDb(),
       },
@@ -320,6 +322,19 @@ describe('listAdminLogs', () => {
     expect((await listAdminLogs({ action: 'x' })).total).toBe(1);
     expect((await listAdminLogs({ adminUsername: 'alice' })).total).toBe(2);
     expect((await listAdminLogs({ since: new Date(nowForDb().getTime() - 86_400_000) })).total).toBe(2);
+  });
+
+  it('adminOrTargetUsername 是「执行者**或**对象用户」（R3-410 的 OR 语义）', async () => {
+    const alice = await makeUser({ username: 'alice', role: 'owner' });
+    const bob = await makeUser({ username: 'bob', role: 'admin' });
+    await makeLog({ action: 'ban_user', adminId: alice.id, targetUserId: bob.id }); // alice 执行
+    await makeLog({ action: 'ban_user', adminId: bob.id, targetUserId: alice.id }); // alice 被处理
+    await makeLog({ action: 'ban_user', adminId: bob.id }); // 与 alice 无关
+
+    expect((await listAdminLogs({ adminOrTargetUsername: 'alice' })).total).toBe(2);
+    // 对照：把同一值分别塞进 adminUsername + targetUsername 就是 Prisma 的 AND → 0 条，
+    // 这正是 CLI `--user` 修复前的形状（R3-410）。别把 CLI 改回两个字段。
+    expect((await listAdminLogs({ adminUsername: 'alice', targetUsername: 'alice' })).total).toBe(0);
   });
 });
 

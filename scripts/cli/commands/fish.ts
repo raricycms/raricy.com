@@ -398,7 +398,10 @@ export const fishCommands: CommandSpec[] = [
 
       // 时间一律走 format 的 ymdhms（读 UTC getter）—— 本库时间戳是
       // 「UTC+8 墙上时间贴 Z」，本地 getter 会按服务器时区平移（cli-guards 静态盯着）。
-      const now = Date.now();
+      // 「是否过期」也必须用同一把钟：expires_at 由 mintFishToken 用 nowForDb() 写入，
+      // 拿 Date.now() 比会差 8 小时 —— 凭据真实到期后仍显示「有效」（R3-428）。
+      const { nowForDb } = await import('../../../src/lib/db-time');
+      const now = nowForDb().getTime();
       const lines = renderTable(
         [
           { key: 'id', title: 'ID', align: 'right' },

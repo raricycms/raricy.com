@@ -89,8 +89,9 @@ export const auditCommands: CommandSpec[] = [
         page: Number(ctx.args.page ?? 1),
         perPage: 30,
         action: ctx.args.action ? String(ctx.args.action) : null,
-        adminUsername: user,
-        targetUsername: user,
+        // 一个 `--user` 是「执行者**或**对象用户」——服务层必须走 OR 字段；
+        // 分别传 adminUsername + targetUsername 会被 Prisma 当成 AND（R3-410）。
+        adminOrTargetUsername: user,
         visibility: String(ctx.args.visibility) as 'all' | 'public' | 'internal',
         since,
       });

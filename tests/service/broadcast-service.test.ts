@@ -12,7 +12,7 @@
 
 import { describe, it, expect, beforeEach } from 'vitest';
 import { resetDb, makeUser, prisma } from '../helpers/db';
-import { broadcast } from '@/lib/broadcast-service';
+import { broadcast, type TargetGroup } from '@/lib/broadcast-service';
 import type { SafeUser } from '@/lib/auth';
 
 beforeEach(resetDb);
@@ -112,6 +112,17 @@ describe('broadcast 目标用户组', () => {
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.code).toBe(400);
     expect(await prisma.notification.count()).toBe(0);
+  });
+
+  it('★ 非法 targetGroup → 400，绝不回落 all（R3-417 的服务层兜底）', async () => {
+    const owner = await seed();
+    const r = await broadcast({
+      actor: asActor(owner),
+      detail: 'x',
+      targetGroup: 'core' as TargetGroup, // 调用方绕过路由直接传非法组
+    });
+    expect(r).toMatchObject({ ok: false, code: 400, message: '无效的目标用户组' });
+    expect(await prisma.notification.count(), '非法组不许发给任何人').toBe(0);
   });
 
   it('force 发送：无视接收者的通知偏好（群发是公告，不该被个人开关吞掉）', async () => {

@@ -2,9 +2,12 @@
 // admin-appeal-service.ts — 申诉列表 + 裁决
 //
 // 裁决时：置 status/decision/decidedBy/decidedAt + 写 AdminActionLog + 通知申诉人。
+// 状态迁移用带 `status:'pending'` 条件的 updateMany 仲裁 —— 并发/双击只有一次生效，
+// 第二次拿 count=0 回 400「申诉已处理」。审计与通知各自 try/catch：失败不回滚
+// 已生效的裁决（否则会出现「状态已改、调用方却收到 500」的半写观感）。
 // 通过（accept）时尽力而为地撤回原动作：ban_user 自动解禁；delete_blog 恢复文章
 // （ignore=False）；delete_comment 恢复评论（isDeleted=False）并回补文章冗余计数
-// （commentsCount 重算 + lastCommentAt 刷新）。
+// （commentsCount 重算；lastCommentAt 已停写，列与索引保留历史值）。
 //
 // 注意：不 select AdminActionLog.extra（JSON 列，驱动层拒读，见 audit-service）。
 //
@@ -197,8 +200,14 @@ export async function adjudicate(p: AdjudicateParams): Promise<AdminResult> {
   }
 
   const now = nowForDb();
-  await prisma.adminActionAppeal.update({
-    where: { id: appeal.id },
+  // ★ 状态迁移必须是一次**带 status 条件的原子更新** ★
+  // 上面的 findUnique 只用于取撤回所需信息与权限判断；拿它当「还没人处理」的依据
+  // 是 TOCTOU：并发/双击的两个请求会双双读到 pending，随后各自 update（原来按 id
+  // 更新、无 status 条件）→ 两条 decide_appeal 审计（网页路径会进 /audit 公示页）、
+  // 两条结果通知、两次撤回尝试。updateMany + count 是唯一仲裁点：只有第一个把
+  // status 从 pending 改走的人拿到 count=1，第二个拿 0 → 400「申诉已处理」。
+  const claimed = await prisma.adminActionAppeal.updateMany({
+    where: { id: appeal.id, status: 'pending' },
     data: {
       status,
       decision: note,
@@ -206,76 +215,93 @@ export async function adjudicate(p: AdjudicateParams): Promise<AdminResult> {
       decidedAt: now,
       updatedAt: now,
     },
-    select: { id: true },
   });
+  if (claimed.count === 0) return { ok: false, code: 400, message: '申诉已处理' };
 
-  // 尽力而为撤回原动作
+  // 尽力而为撤回原动作。撤回不是裁决的一部分：unbanUser 自带日志/通知、
+  // restoreCommentRow 自带事务，任何一步出错都只该表现为「结果通知里没写已撤回」，
+  // 不能让异常把已经生效的裁决变成 500（R3-414 的另一个半写面）。
   let reversedNote = '';
-  if (status === 'accepted' && appeal.log) {
-    if (appeal.log.action === 'ban_user' && appeal.log.targetUserId) {
-      // unbanUser 自带日志与通知；若目标当前未被禁言会返回 ok:false，忽略即可
-      const r = await unbanUser({
-        actor: p.actor,
-        targetId: appeal.log.targetUserId,
-        reason: '申诉通过，自动解除禁言',
-      });
-      if (r.ok) reversedNote = '，已自动解除禁言';
-    } else if (
-      appeal.log.action === 'delete_blog' &&
-      appeal.log.objectType === 'blog' &&
-      appeal.log.objectId
-    ) {
-      // 恢复被删文章：ignore=False（仅当当前处于软删除态）。
-      const blogId = appeal.log.objectId;
-      const blog = await prisma.blog.findUnique({
-        where: { id: blogId },
-        select: { id: true, ignore: true },
-      });
-      if (blog && blog.ignore) {
-        await prisma.blog.update({ where: { id: blog.id }, data: { ignore: false } });
-        reversedNote = '，已恢复被删文章';
+  try {
+    if (status === 'accepted' && appeal.log) {
+      if (appeal.log.action === 'ban_user' && appeal.log.targetUserId) {
+        // unbanUser 自带日志与通知；若目标当前未被禁言会返回 ok:false，忽略即可
+        const r = await unbanUser({
+          actor: p.actor,
+          targetId: appeal.log.targetUserId,
+          reason: '申诉通过，自动解除禁言',
+        });
+        if (r.ok) reversedNote = '，已自动解除禁言';
+      } else if (
+        appeal.log.action === 'delete_blog' &&
+        appeal.log.objectType === 'blog' &&
+        appeal.log.objectId
+      ) {
+        // 恢复被删文章：ignore=False（仅当当前处于软删除态）。
+        const blogId = appeal.log.objectId;
+        const blog = await prisma.blog.findUnique({
+          where: { id: blogId },
+          select: { id: true, ignore: true },
+        });
+        if (blog && blog.ignore) {
+          await prisma.blog.update({ where: { id: blog.id }, data: { ignore: false } });
+          reversedNote = '，已恢复被删文章';
+        }
+      } else if (
+        appeal.log.action === 'delete_comment' &&
+        appeal.log.objectType === 'comment' &&
+        appeal.log.objectId
+      ) {
+        // 恢复被删评论：isDeleted=false + 重算文章冗余计数，口径与 createComment /
+        // softDeleteComment 完全一致（在同一事务内按「未删除评论数」重算 —— 重算不会把
+        // 历史漂移累积进去，比在旧计数上 +1 更健壮；lastCommentAt 已停写留列）。
+        //
+        // ★ 这里用**不带审计**的 restoreCommentRow，而不是 comment-service 里带审计的
+        //   restoreComment：本次裁决已经由下面那条 decide_appeal 日志覆盖了，再写一条
+        //   restore_comment 就是凭空多出审计行 —— 而 /audit 是**公开页**，
+        //   多出来的行是用户可见的行为变化。这条由
+        //   tests/service/appeal-restore-extraction.test.ts 钉死。
+        const restored = await restoreCommentRow(appeal.log.objectId);
+        if (restored) reversedNote = '，已恢复被删评论';
       }
-    } else if (
-      appeal.log.action === 'delete_comment' &&
-      appeal.log.objectType === 'comment' &&
-      appeal.log.objectId
-    ) {
-      // 恢复被删评论：isDeleted=false + 重算文章冗余计数，口径与 createComment /
-      // softDeleteComment 完全一致（在同一事务内按「未删除评论数」重算，并刷新
-      // lastCommentAt —— 重算不会把历史漂移累积进去，比在旧计数上 +1 更健壮）。
-      //
-      // ★ 这里用**不带审计**的 restoreCommentRow，而不是 comment-service 里带审计的
-      //   restoreComment：本次裁决已经由下面那条 decide_appeal 日志覆盖了，再写一条
-      //   restore_comment 就是凭空多出审计行 —— 而 /audit 是**公开页**，
-      //   多出来的行是用户可见的行为变化。这条由
-      //   tests/service/appeal-restore-extraction.test.ts 钉死。
-      const restored = await restoreCommentRow(appeal.log.objectId);
-      if (restored) reversedNote = '，已恢复被删评论';
     }
+  } catch {
+    /* 撤回失败不回滚裁决：状态已落定，人工可再处置；通知里不会宣称已撤回 */
   }
 
-  await logAdminAction({
-    action: 'decide_appeal',
-    adminId: p.actor.id,
-    objectType: 'admin_action_appeal',
-    objectId: String(appeal.id),
-    reason: note || (status === 'accepted' ? '申诉通过' : '申诉驳回'),
-    metadata: { appeal_id: appeal.id, result: status, log_id: appeal.log?.id ?? null },
-  });
+  // 审计写入失败不回滚已生效的裁决（对齐 admin-blog-service / comment-service 的
+  // 既有口径）；若在这里把异常抛出去，路由会 500、CLI 会 exit 1 —— 而状态其实已经
+  // 改完，表现为「裁决成功了但调用方以为失败」。
+  try {
+    await logAdminAction({
+      action: 'decide_appeal',
+      adminId: p.actor.id,
+      objectType: 'admin_action_appeal',
+      objectId: String(appeal.id),
+      reason: note || (status === 'accepted' ? '申诉通过' : '申诉驳回'),
+      metadata: { appeal_id: appeal.id, result: status, log_id: appeal.log?.id ?? null },
+    });
+  } catch {
+    /* 审计写入失败不影响裁决结果 */
+  }
 
-  // 通知申诉人
-  await sendNotification({
-    recipientId: appeal.appellantId,
-    action: '申诉结果',
-    actorId: p.actor.id,
-    objectType: 'admin_action_appeal',
-    objectId: String(appeal.id),
-    detail:
-      (status === 'accepted' ? '申诉通过' : '申诉驳回') +
-      (note ? `：${note}` : '') +
-      reversedNote,
-    force: true,
-  });
+  // 通知申诉人（失败同样不影响裁决结果）
+  try {
+    await sendNotification({
+      recipientId: appeal.appellantId,
+      action: '申诉结果',
+      actorId: p.actor.id,
+      objectType: 'admin_action_appeal',
+      objectId: String(appeal.id),
+      detail:
+        (status === 'accepted' ? '申诉通过' : '申诉驳回') +
+        (note ? `：${note}` : '') +
+        reversedNote,
+      force: true,
+    });
+  } catch {
+    /* 通知失败不影响裁决结果 */
+  }
 
   return { ok: true, message: '处理完成' };
 }

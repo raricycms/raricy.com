@@ -37,6 +37,13 @@ const RE_ARGLESS_NEW_DATE = /new\s+Date\s*\(\s*\)/g;
 const RE_NEW_DATE_NOW = /new\s+Date\s*\(\s*Date\.now\s*\(/g;
 const RE_MIXED_SUBTRACTION =
   /\.getTime\(\)\s*-\s*Date\.now\(\)|Date\.now\(\)\s*-\s*[\w.$]+\.getTime\(\)/g;
+/**
+ * 库内时间戳与 Date.now() 的**比较式**（同样差 8 小时，但相减守卫抓不到）。
+ * R3-428 的原始形状：`r.expiresAt.getTime() <= Date.now()` —— 凭据真实到期后
+ * CLI 仍显示「有效」。能比大小的运算符都算。
+ */
+const RE_MIXED_COMPARE =
+  /\.getTime\(\)\s*(?:[<>]=?|===|!==)\s*Date\.now\(\)|Date\.now\(\)\s*(?:[<>]=?|===|!==)\s*[\w.$]+\.getTime\(\)/g;
 const RE_TO_LOCALE = /toLocale(String|DateString|TimeString|Format)/g;
 const RE_TOP_LEVEL_AWAIT = /^await\s/gm;
 
@@ -151,6 +158,10 @@ describe('运维 CLI：时间戳只用一把钟', () => {
 
   it('不许库内时间戳与 Date.now() 相减（两把钟差 8 小时）', () => {
     expect(hits(RE_MIXED_SUBTRACTION)).toEqual([]);
+  });
+
+  it('不许库内时间戳与 Date.now() 比大小（同上；R3-428 的 expiresAt 形状）', () => {
+    expect(hits(RE_MIXED_COMPARE)).toEqual([]);
   });
 
   it('不许 toLocale*（按运行机器时区再平移一次）', () => {
