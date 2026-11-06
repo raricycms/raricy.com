@@ -97,14 +97,16 @@ Cattca 脚本 = **你写的故事正文** + **用 `<//>` 包裹的游戏规则**
 如果你想记住玩家选了什么：
 
 ```
-</input case 选择:
+</input case choice:
 '打开宝箱' -> goto 宝箱:
 '继续前进' -> goto 走廊;/>
 
-你选择了：</apply 选择 />
+你选择了：</apply choice />
 ```
 
-`input case` 后面的 `选择` 是变量名，选中的按钮文字会自动存进去。
+`input case` 后面的 `choice` 是变量名，选中的按钮文字会自动存进去。
+**变量名必须以字母或下划线开头，只能由字母、数字、下划线组成**（同 `docs/guide/cattca-syntax.md` 的「变量名」规则）——
+这里写中文名不行：引擎只认 ASCII 变量名，会把 `选择` 当成第一个选项，报「input case 选项缺少 ->」。
 
 ## 跳来跳去：label 和 goto
 

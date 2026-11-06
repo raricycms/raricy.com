@@ -321,7 +321,7 @@ Content-Type: application/json
 | `parent_id` | string | 否 | 回复某条评论，用被回复评论的 **UUID**。须**同一篇文章且未被删除** |
 | `image_id` | string | 否 | 引用图床图片，**必须是你自己上传的** |
 | `quote_blog_id` | string | 否 | 引用一篇文章的 UUID |
-| `anonymous` | boolean | 否 | `true` = 以**化名**发表（见 §10.4）。缺省 `false`。必须是 JSON 布尔值；传字符串 `"false"` 会被 400 拒（不是静默当 false） |
+| `anonymous` | boolean | 否 | `true` = 以**化名**发表（见 §10.4）。缺省 `false`。**只有 JSON 布尔 `true` 才算匿名**；传字符串 `"false"` 或其它非布尔值会被**静默按 `false` 处理**（不报 400） |
 
 \* 至少要有一个有效载荷（正文或附件），否则报 `评论内容不能为空`。
 

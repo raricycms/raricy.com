@@ -253,7 +253,7 @@ Content-Type: application/json
 | `category_id` | number \| string | 否 | 栏目数字 ID（§6）；不传 = 未分类 |
 | `visibility` | string | 否 | 对外可见性三档（见下）；**不传 = `internal`（仅站内）** |
 | `allow_anonymous_comments` | boolean | 否 | 本文允不允许匿名评论（默认 `true`）。**必须是 JSON 布尔值**，传 `"false"` 会被 400 拒 |
-| `format` | string | 否 | 正文语言：`markdown`（默认）或 `reactive`。未知值 `400`，不静默当 Markdown。reactive 发布前会先编译并生成同版本静态快照；编译失败返回 `400 ReactiveMD 正文无法编译，已拒绝发布`，不会落半份正文 |
+| `format` | string | 否 | 正文语言：`markdown`（默认）或 `reactive`。未知值 `400`，不静默当 Markdown。reactive 发布前会先做一次**编译校验**（编译结果用完即弃，**不产生持久快照**）；编译失败返回 `400 ReactiveMD 正文无法编译，已拒绝发布`，不会落半份正文 |
 
 > `syntax_version` 与 `renderer_override` 是**只读**字段，不属于写请求的键集；
 > 传了会按未知字段 `400`。它们只在 `GET /api/blogs/:id` 的响应里出现。
@@ -339,7 +339,7 @@ Content-Type: application/json
 | 超过长度上限 | `400 标题不能超过30个字符` / `描述不能超过100个字符` / `内容不能超过250000个字符` |
 | **传了不认识的键** | `400 未知字段 "…"，本接口只接受：title / description / content / category_id / visibility / allow_anonymous_comments / format` |
 | `format` 不在白名单 | `400 内容格式取值不合法，可选：markdown / reactive` |
-| `format='reactive'` | 先编译并生成同版本快照；无法编译时 `400 ReactiveMD 正文无法编译，已拒绝发布`（正文 / 快照都不落库） |
+| `format='reactive'` | 先做编译校验（**不产生持久快照**）；无法编译时 `400 ReactiveMD 正文无法编译，已拒绝发布`（正文不落库） |
 | `allow_anonymous_comments` 不是布尔 | `400 allow_anonymous_comments 必须是布尔值（true / false）` |
 | `category_id` 不是整数 | `400 栏目ID格式错误` |
 | `category_id` 不存在或**已停用** | `400 选择的栏目不存在` |
@@ -377,8 +377,9 @@ Content-Type: application/json
 > 这个键的旧调用方改一次标题，就会把作者刻意关掉的匿名评论**重新打开**。
 >
 > ⚠️ `format` 也是「不传 = 保留库里原值」：旧调用方整体覆盖时不会把一篇 reactive
-> 文章悄悄改回 Markdown。但**存量 reactive 文章目前拒绝任何写入**（没有同版本快照
-> 可回滚）；reactive 发布同样先编译，失败时返回 `400 ReactiveMD 正文无法编译，已拒绝发布`。
+> 文章悄悄改回 Markdown。**存量 reactive 文章可以正常写入**（服务端每次写入都重新做编译
+> 校验，不生成持久快照）；版本以只读字段 `syntax_version` 记录，编译失败时返回
+> `400 ReactiveMD 正文无法编译，已拒绝发布`。
 >
 > 📌 这条豁免**只对 PUT 有效**。`POST`（创建）没有「原值」可保持，不传就是
 > 默认档 `internal`（§7.1）—— 两条路径的缺省语义**相反**，别一起记。
@@ -552,7 +553,7 @@ GET /api/blogs?page=1       # 列表
 |------|--------|
 | `400 未知字段 "category"` | §6.2：栏目字段叫 `category_id`，值是**数字 ID**，不是 slug |
 | `400 未知字段 "tags"` | 键集封闭：只认 `title` / `description` / `content` / `category_id` / `visibility` / `allow_anonymous_comments` / `format` |
-| `400 内容格式取值不合法…` | `format` 只认 `markdown` / `reactive`；当前 reactive **写入**未开放（§7.1） |
+| `400 内容格式取值不合法…` | `format` 只认 `markdown` / `reactive`；reactive **写入已开放**，但每次写入都会先做编译校验（§7.1） |
 | 拿到 `format: "reactive"` 的 `content` | 那是 ReactiveMD 源码，**不要按 Markdown 解析**（§9） |
 | `400 可见性取值不合法…` | `visibility` 不在 `internal` / `link` / `public` 三档里 —— 多半是拼错了（§7.1） |
 | 文章发出去，但访客打开是登录页 | **默认档就是仅站内**（`internal`）。要对外得显式传 `visibility`（§7.1） |

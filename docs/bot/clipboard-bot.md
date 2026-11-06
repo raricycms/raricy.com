@@ -8,7 +8,8 @@
 ## 0. 一句话说清
 
 云剪贴板是**一段可复用的文本**，建成后换一个 **8 位 ID**。正文可以是 Markdown
-（默认）或 ReactiveMD；ReactiveMD 发布前会先编译并生成同版本快照：
+（默认）或 ReactiveMD；ReactiveMD 发布前会先做一次**编译校验**（编译结果用完即弃，
+不产生持久快照）：
 
 1. `POST /api/clipboard` —— 建一条，拿回 8 位 `id`；
 2. 在评论 / 讨论 / 博客正文里写 `[@<8位ID>]`，读者看到的就是**这段正文本身**
@@ -112,7 +113,7 @@ Content-Type: application/json
 | `content` 不是字符串 / 超过 50000 | `400 content too long` |
 | `title` 不是字符串 / 空 / 超过 40 | `400 title too long` |
 | `format` 不在白名单 | `400 内容格式取值不合法，可选：markdown / reactive` |
-| `format='reactive'` | 先编译并生成同版本快照；无法编译时 `400 ReactiveMD 正文无法编译，已拒绝发布` |
+| `format='reactive'` | 先做编译校验（**不产生持久快照**）；无法编译时 `400 ReactiveMD 正文无法编译，已拒绝发布` |
 | 已有 200 条 | `400 一个用户只能发布200篇云剪贴板！` |
 
 > ⚠️ **报错文案是「英文键名」而不是中文说明**（`wrong publicity format` /
@@ -208,10 +209,10 @@ Content-Type: application/json
 - **请求字段与 §3 完全一致**（`title` / `content` / `publicity` 三个必传，`format` 可选，
   同样是那几档上限）
 - 是**整体覆盖**，不是局部更新 —— 只想改标题也得把 `content` 原样带上
-- `format` **省略 = 保留库里原值**（不会把待改的正文打回 Markdown）；但**存量 reactive
-  无法编译的 reactive 写入被整笔拒绝**，返回 `400 ReactiveMD 正文无法编译，已拒绝发布`
+- `format` **省略 = 保留库里原值**（不会把待改的正文打回 Markdown）；reactive 写入**已开放**，
+  但每次写入都会先做编译校验，编译失败时整笔拒绝并返回 `400 ReactiveMD 正文无法编译，已拒绝发布`
 - `syntax_version` 是**只读**字段：写接口不消费它（传了会被忽略，不产生写入；
-  由服务端在开放 reactive 写入后维护）
+  由服务端在写入 reactive 正文时按编译结果维护）
 - 成功：`{ "code": 200, "message": "success", "id": "a1b2c3d4" }`
 
 | 情形 | 返回 |
@@ -325,9 +326,9 @@ Cookie: raricy_session=<JWT>
 | `400 wrong publicity format` | 没传 `publicity`，或传的不是布尔（§3） |
 | `400 title too long` | 标题为空串、或超过 40 字符（文案不区分两种情况） |
 | `400 content too long` | 正文不是字符串、或超过 50000 字符 |
-| `400 内容格式取值不合法…` | `format` 只认 `markdown` / `reactive`；当前 reactive **写入**未开放（§3） |
+| `400 内容格式取值不合法…` | `format` 只认 `markdown` / `reactive`；reactive 写入**已开放**，但每次写入都会先做编译校验（§3） |
 | 读到的 `format` 是 `reactive` | `content` 是 ReactiveMD 源码，不能按 Markdown 解析（§4.2） |
-| `400 一个用户只能发布200篇云剪贴板！` | 未软删的剪贴板满 200 条 —— 删掉不用的再建 |
+| `400 一个用户只能发布200篇云剪贴板！` | **总数（含已软删的）**满 200 条 —— 配额按作者名下全部行数算，软删不释放名额 |
 | `403 该剪贴板为私有内容` | 别人的私有条。**这条 ID 是存在的**，只是你看不到（§4.2） |
 | `403 您不是该文章作者，无法编辑！` | 改别人的剪贴板（站长也不行） |
 | `403 您不是该剪贴板的作者，无法删除！` | 删别人的（站长可以删） |
@@ -352,7 +353,7 @@ const created = await (await fetch(`${BASE}/api/clipboard`, {
     title: '答疑模板',
     content: '## 常见问题\n\n- 问题一：……',
     publicity: true,                        // 显式指定，没有默认值
-    format: 'markdown',                     // 可省略；reactive 会先编译并生成同版本快照
+    format: 'markdown',                     // 可省略；reactive 会先做编译校验（不产生持久快照）
   }),
 })).json();
 if (created.code !== 200) throw new Error(`建失败：${created.message}`);

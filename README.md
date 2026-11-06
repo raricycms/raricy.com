@@ -43,7 +43,7 @@ Next.js 15 + Prisma + SQLite 主站，自有 `instance/` 数据目录；实时�
 | `docs/`        | 全部文档 —— `docs/guide/` 给玩家与创作者、`docs/bot/` 给站外机器人开发者，其余给开发运维。见 `docs/README.md` |
 | `reports/`     | 本地过程材料（gitignored）：`research/` 放调研与评审，`announcements/` 放公告草稿 |
 | `.cache/typescript/` | TypeScript 增量缓存（gitignored）；开发、生产构建与源码检查分别使用独立文件 |
-| `instance/`    | 运行时数据（gitignored）：avatars / database / frames / images / stories / stickers / blogs |
+| `instance/`    | 运行时数据（gitignored）：avatars / database / images / audio / stories / stickers / blogs（与 `scripts/check-instance.mjs` 的 `SUBDIRS` 同一份清单） |
 | `public/`      | 静态资源（图标 / CSS / favicon）；`static/{mathjax,emoji,converter}/` 是**生成的**（`npm ci` 的 postinstall 拷，见下方「工具脚本」） |
 
 根目录保留项目入口、工具配置与环境模板；一次性报告和公告草稿归入 `reports/`。
@@ -126,6 +126,6 @@ npm run dev                              # http://localhost:3000
 ## 关键约定
 
 改代码前**先读 `CLAUDE.md`** —— 约束与反直觉决策都在那里（时间戳语义、鱼干写路径、
-iframe 刻意允许嵌入、软删除、讨论与通知的关系等）。其中的**「红线」一节每次都要看**，
-其余各节是指针（展开在源码文件头与 `docs/architecture.md`，用到再看）。
+iframe 刻意允许嵌入、软删除、讨论与通知的关系等）。其中**「关键约定」与「按任务读取」两节
+每次都要看**，其余各节是指针（展开在源码文件头与 `docs/architecture.md`，用到再看）。
 此处不复述，避免第三份会 drift 的副本。

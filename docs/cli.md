@@ -7,9 +7,15 @@
 
 ```bash
 npm run cli                    # 交互式：菜单向导
-npm run cli -- --help          # 全部命令一览
+npm run cli -- --help          # 全部命令一览（非 TTY / 管道 / 带 --json 时；TTY 下会先进菜单，见下方说明）
 npm run cli -- stats overview  # 命令式：看一眼站点状态
 ```
+
+> ⚠️ **`--help` 在真正的 TTY 里不会直接打印**：不带命令时 CLI 先判「TTY + 非 `--json`」，
+> 命中就进交互式向导（菜单里有一项「查看全部命令与用法」）。要在终端里看全部命令，
+> 用 `npm run cli -- --help --json`（隐含非交互）或直接选菜单那一项；脚本 / CI / 管道里
+> `npm run cli -- --help` 照常打印帮助并退出。命令后面跟 `--help`（如
+> `npm run cli -- fish grant --help`）不受影响，总是打印该命令的详细帮助。
 
 > **未迁移**：旧版 CLI 的 `import-blogs`（历史博客导入；正文早已存
 > `BlogContent` 表）。需要时另写专用脚本（参考 `scripts/normalize-datetimes.mjs`）。
@@ -106,7 +112,7 @@ npm run cli -- stats overview  # 命令式：看一眼站点状态
 | `--yes` / `-y` | 跳过危险操作的二次确认（非交互场景**必须**显式加上） |
 | `--as <username>` | 指定审计身份（默认取库内最早的站长） |
 | `--no-color` | 关闭颜色（也遵循 `NO_COLOR` 环境变量；非 TTY 自动关闭） |
-| `--help` / `-h` | 顶层帮助；放在命令后则是该命令的详细帮助 |
+| `--help` / `-h` | 顶层帮助（**不带命令且在 TTY 下会先进向导**，见第一节的说明）；放在命令后则是该命令的详细帮助 |
 
 ## 三、退出码
 
@@ -181,15 +187,57 @@ CLI 写下的每一条审计日志都落 `visibility='internal'`：**不进** `/
 >   入口 —— 那里写的是公开日志，确认屏上也会把这点写出来。
 > - CLI 更适合「我自己知道后果」的操作：建号、重置密码、修数据、批量补偿。
 
-> ⚠️ **例外 —— 这些写操作根本不写审计日志，`audit log` 里也找不到**：
-> `fish grant` / `fish deduct` / `fish compensate` / `fish refund-feed-fees` / `oauth create-app` /
-> `oauth disable-app` / `oauth enable-app` / `invite generate`。
->
-> 鱼干那三条是**现状，不是结构约束**：当年不写是因为写路径是三段结构（本地事务 +
-> 远端 HTTP + 补偿事务），`logAdminAction` 挤进去会占满 SQLite 写锁；现在只剩一次本地
-> 事务，那条理由**已经不成立**。要不要补上是一次独立的决定 —— 在那之前，它们留下的凭据
-> 是 `fish_transactions` 流水（`fish compensate` 另有按批次派生的幂等登记行，一条 / 人）。
-> `fish refund-feed-fees` 同样留下退款流水和同事务的幂等登记行，每位作者的每篇欠款文章一条。
+### 审计覆盖表：哪些写入口留痕、留到哪、能不能申诉
+
+下表是**当前**覆盖情况，口径与 `src/lib/audit-context.ts` 一致：**网页后台**写下的日志是
+`visibility='public'`（进 `/audit` 公示页），**`npm run cli`** 写下的一律 `visibility='internal'`
+（只进 `audit log`，不进公示页）。「可申诉」只看两件事：日志是 `public`，且
+`targetUserId` 就是申诉人本人 —— `createAppeal` 强制 `log.targetUserId === appellantId`；
+`targetUserId` 为 null 的日志没有「当事人」，一律不可申诉。
+
+#### 有审计的写入口
+
+| 写入口 | 动作码 | visibility | 可申诉 |
+|---|---|---|---|
+| 角色变更 / 禁言 / 解禁 / 重置密码 / 强制下线 / 建号 | `change_role` `ban_user` `unban_user` `reset_password` `force_logout` `create_user` | 由入口决定：网页 `public` / CLI `internal` | 网页可（当事人本人）；CLI 不可（不进公示页） |
+| 删除 / 恢复文章 | `delete_blog` `restore_blog` | 同上 | 网页可（作者）；CLI 不可 |
+| 删除 / 恢复评论 | `delete_comment` `restore_comment` | 同上 | 网页可（作者）；CLI 不可 |
+| 删除 / 恢复剪贴板 | `delete_clip` `restore_clip` | 同上 | 网页可（作者）；CLI 不可 |
+| 删除 / 恢复投票 | `delete_vote` `restore_vote` | 同上 | 网页可（作者）；CLI 不可 |
+| 恢复图床图片 | `restore_image` | 同上 | 网页可（作者）；CLI 不可 |
+| 删除讨论消息 | `delete_chat_message` | 同上 | 网页可（作者）；CLI 不可 |
+| 申诉裁决 | `decide_appeal` | 同上 | 不可（无 `targetUserId`） |
+| 撤销邀请码 | `revoke_invite_code` | 同上 | 不可（无 `targetUserId`） |
+| 发放 / 收回头像框、聊天气泡 | `frame_grant` `frame_revoke` `bubble_grant` `bubble_revoke` | 仅 CLI → `internal` | 不可（不进公示页） |
+| 归档 / 恢复归档用户 | `archive_user` `unarchive_user` | 仅 CLI → `internal` | 不可（归档日志连网页管理日志也不展示） |
+
+> 「仅 CLI」的五个动作码登记在 `CLI_ONLY_ACTIONS` 里，`/audit` 公示页的筛选下拉会主动滤掉
+> 它们 —— 留着只会永远筛出空结果。
+
+#### 无审计的写入口（登记为例外，不是遗漏）
+
+这些入口**不写 `admin_action_logs`**，`audit log` 里也找不到。产品口径已定：**保持行为、
+登记例外、在文档里声明**；本表只描述现状，不改任何接口行为。
+
+| 写入口 | 入口 | 为什么接受例外 | 留下的凭据 |
+|---|---|---|---|
+| 栏目增删改 / 启停 | 网页 `/api/admin/categories*` | 日常排版操作，进公示页只会刷屏、并制造无意义的申诉面 | `categories` 表本身（行即记录） |
+| 文章精选 / 改栏目 | 网页 `PATCH /api/admin/blogs/:id`（`isFeatured` / `categoryId`） | 同上；删文 / 恢复已走三件套（见上表） | `blogs.isFeatured` / `blogs.categoryId` |
+| OAuth 应用创建 / 启停 | 网页 `/api/admin/oauth/applications*` 与 CLI `oauth create-app` / `disable-app` / `enable-app` | 应用配置属运维数据，不进对外公示；变更可在库内对账 | `oauth_applications` 行本身 |
+| 定向通知 | 网页 `POST /api/admin/notify-user` | 运营动作，通知正文含运营文案，不宜进公示页 | `notifications` 行 |
+| 全站群发 | 网页 `POST /api/admin/broadcast` | 同上；不可撤回的风险由确认屏承担（见上文「破坏性」） | `notifications` 行（一批一条 / 人） |
+| `fish grant` / `fish deduct` / `fish compensate` / `fish refund-feed-fees` | CLI | 见下方「鱼干四条为什么不在审计里」 | `fish_transactions` 流水；`compensate` / `refund-feed-fees` 另有同事务的幂等登记行 |
+| `invite generate` | CLI | 生成动作本身没有处置对象；撤销（`invite revoke`）才写审计 | `invite_codes` 行（含 `used_by`） |
+| `fish credential-revoke` | CLI | 只读凭据的吊销，没有「处置某人」的语义；`fish credential-list` 可随时对账 | `fish_api_tokens.revokedAt`（行不删除，幂等） |
+| `fish webhook-rekey` | CLI | 只换密文封装、不改业务状态；逐行判状态、可重复跑 | 库内 `fish_webhook_endpoints.secret_encrypted` 的新封装；`npm run diagnose` 段 4 逐条报状态 |
+
+#### 鱼干四条为什么不在审计里
+
+鱼干那四条是**现状，不是结构约束**：当年不写是因为写路径是三段结构（本地事务 +
+远端 HTTP + 补偿事务），`logAdminAction` 挤进去会占满 SQLite 写锁；现在只剩一次本地
+事务，那条理由**已经不成立**。要不要补上是一次独立的决定 —— 在那之前，它们留下的凭据
+是 `fish_transactions` 流水（`fish compensate` 另有按批次派生的幂等登记行，一条 / 人）。
+`fish refund-feed-fees` 同样留下退款流水和同事务的幂等登记行，每位作者的每篇欠款文章一条。
 
 ### 两个由此而来的限制
 
@@ -542,18 +590,25 @@ frame list   [username] [--keys]
 ```
 
 ```bash
-npm run cli -- frame grant alice sakura --days 30 -r "中秋活动"
-#   已发放：alice ← 「樱花」
+npm run cli -- frame grant alice fishblue --days 30 -r "中秋活动"
+#   已发放：alice ← 「鱼干蓝」
 #   到期：2026-10-20T12:00:00.000Z
 
 npm run cli -- frame list alice
-#   alice   樱花(sakura)   有效   到期:2026-10-20 12:00:00   来源:cli   佩戴中
+#   alice   鱼干蓝(fishblue)   有效   到期:2026-10-20 12:00:00   来源:cli   佩戴中
 
 npm run cli -- frame list --keys     # ★ 素材体检
-#   sakura    樱花     素材:有   透明通道:有   18244 字节   租金:—
-#   fishblue  鱼干蓝   素材:有   透明通道:有   6953 字节    租金:1 鱼干 / 天
-#   starmoon  星落月畔 素材:有   透明通道:有   55671 字节   租金:50 鱼干 / 月
+#   ring      素环     素材:有   透明通道:有   租金:—
+#   gradient  流光     素材:有   透明通道:有   租金:—
+#   glow      光晕     素材:有   透明通道:有   租金:—
+#   corner    角框     素材:有   透明通道:有   租金:—
+#   dashed    点线     素材:有   透明通道:有   租金:—
+#   fishblue  鱼干蓝   素材:有   透明通道:有   租金:1 鱼干 / 天
+#   starmoon  星落月畔 素材:有   透明通道:有   租金:50 鱼干 / 月
 ```
+
+> **key 以 `src/lib/frame-refs.ts` 的 `FRAME_KEYS` 为准**（当前是上列七个）；不在白名单的
+> key 会被 `resolveFrameKey` 直接拒绝 —— 旧示例里的 `sakura` 就是这样失效的，别照抄。
 
 > `租金:` 是**鱼干商城**的在售价（单位 + 单价：`鱼干 / 天` 或 `鱼干 / 月`）；
 > `—` = 不零售，只能由这里发放。它同时是「哪些框在卖」的清单 —— 定价与单位

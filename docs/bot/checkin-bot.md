@@ -233,7 +233,8 @@ Cookie: raricy_session=<JWT>
 ### 6.2 想看排名
 
 `GET /api/fish/leaderboard` —— **免登录**，返回**小鱼干余额榜**：按**当前余额**倒序，
-字段 `rank` / `user_id` / `username` / `avatar_path` / `balance`。只读，与签到是两回事。
+只列余额 > 0 的账号；字段是 `rank` / `userId` / `username` / `avatarPath` / `balance`
+（**camelCase**，不是 snake_case）。`?limit=` 默认 50、夹在 1–100 之间。只读，与签到是两回事。
 
 ---
 

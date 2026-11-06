@@ -14,7 +14,7 @@
 | 鉴权 | JWT（`jose`）· 密码哈希与历史 werkzeug **双向互通**（用户无需改密） |
 | 会话 | JWT cookie + `User.sessionVersion` 失效机制（改密 / 禁言 / 强制下线时递增，旧会话立即全废） |
 | CSRF | `src/middleware.ts` 对状态变更方法校验 `Origin`/`Referer` 同源 |
-| 文件落盘 | 头像/图床/故事/表情包落 `instance/`（gitignored，六个子目录见 §3） |
+| 文件落盘 | 头像/图床/故事/表情包落 `instance/`（gitignored，七个子目录见 §3） |
 | 鱼干账户 | 站内余额与账本，同一个 SQLite 事务（见 §6.3） |
 | 实时游戏 | Node.js + ws 独立进程，共用仓库、lockfile、环境与启停入口；承载 Wand demo |
 | 渲染 | 博客 / 评论 / 故事 — 客户端 marked + DOMPurify（详见 §6.7） |
@@ -45,13 +45,13 @@
 ├── src/lib/                业务逻辑层（详见 §5）
 ├── src/middleware.ts       CSRF 同源校验
 ├── prisma/
-│   ├── schema.prisma       36 表 1:1 映射真实库
-│   └── migrations/         含 0_init 基线（已 apply 到 db.db）
+│   ├── schema.prisma       model ↔ 库表 1:1（不含迁移登记表与 FTS 影子表）
+│   └── migrations/         手写 SQL 迁移，0_init 为基线（条数以 `npm run migrate -- status` 为准）
 ├── scripts/                运维/自检/迁移/切换脚本
 ├── tests/                  vitest 单测 + Playwright e2e
 ├── docs/                   本文与运维文档；guide/ 为玩家/创作者文档
 ├── public/                 静态资源（图标 / CSS / favicon）
-└── instance/               gitignored: avatars/ database/ frames/ images/ stories/ stickers/ blogs/
+└── instance/               gitignored: avatars/ database/ images/ audio/ stories/ stickers/ blogs/
 ```
 
 ## 4. 路由分布（src/app/）
@@ -128,10 +128,11 @@
 | 鉴权基建 | `credential-auth.ts`（「用户名+密码」校验，`/api/auth/login` 与鱼干市场无状态接口**共用**，限频桶也共用）· `request-ip.ts`（反代后取真实 IP） |
 | 配额白名单 | `service-accounts.ts`（`FISH_SERVICE_ACCOUNTS` 里的账号走 `SERVICE_QUOTA`：转账 500/时、5000/天。给「站外银行」这类自动化账号用，撤销即删配置） |
 
-> 上表是**穷尽** `src/lib/*.ts` 的（新增文件记得补一行）—— §6.3、§8 会引用其中若干。
+> 上表按子域**分组示例**，不追求逐文件穷尽（`src/lib/*.ts` 当前约 150 个文件，表内只列各子域的主要
+> 实现；新增文件按分组补一行即可）—— §6.3、§8 会引用其中若干。
 > 这张表漏过两次（先是讨论子域与 `oauth.ts`，后是 `content-refs.ts` / `sticker-refs.ts` /
 > `sticker-service.ts` / `fish-compensate.ts`），症状都是正文引用的文件在本表里查不到。
-> 核对命令：`comm -13 <(本表提取的文件名) <(ls src/lib/*.ts | xargs -n1 basename)`。
+> 完整清单用 `ls src/lib/*.ts`（或 `git ls-files src/lib`）核对，别再假设本表等于全集。
 
 API 端点位于 `src/app/api/<group>/<verb>/route.ts`，**薄**层：参数校验 + 权限校验 + 调 `src/lib/*` + 组装响应。
 
@@ -170,12 +171,15 @@ API 端点位于 `src/app/api/<group>/<verb>/route.ts`，**薄**层：参数校�
   `InsufficientFishError`，入账走 `increment`。`addFish` 是它的「只加不减」语义壳。
   ⚠️ **新增鱼干写路径时不要绕过它自己写 `update` + `create`** —— 那正是
   「余额改了、流水没写」这类静默账目损坏的入口。
-- **六条写路径，全部一个事务**：签到（`checkin-service.ts`：建记录 + 发鱼干 + 写流水
+- **主要写路径（不追求穷尽），全部一个事务**：签到（`checkin-service.ts`：建记录 + 发鱼干 + 写流水
   同事务，见 `docs/bot/checkin-bot.md`）/ 投喂
   （`feed-service.ts`，作者全额到账、无手续费）/ 管理员发扣与补偿
   （`fish-admin.ts`、`fish-compensate.ts`、历史投喂手续费返还 `feed-fee-refund.ts`）/
   用户间转账（`fish-market-service.ts`）/ 练手盘开平仓（`market-service.ts`）/
   **租头像框**（`frame-shop-service.ts`，见 §6.14）。
+  另有几条同经 `postEntry`、但归各自小节展开：**租聊天气泡**（`bubble-shop-service.ts`，见 §6.18）、
+  **每日一言结算**（`daily-quote-service.ts`，见 §6.22）、**账号归档清钱包**
+  （`user-archive-service.ts`，见 §8）—— 新增写路径时按同样标准接入，别只照抄上面六条。
   **注册建号不再属于这里** —— 它当年要走一环「在远端建账户」，现在只是建一行
   `users`（初始余额就是列默认值 0），一行鱼干都不写。
   ⚠️ 新增写路径时两条硬要求：一是别绕过 `postEntry`（见上），二是**用例末尾调一次
@@ -684,8 +688,8 @@ Promise** —— 拿它当「等到了字体」，MathJax 的公式会用回退�
 |------|------|------|
 | `/favorite` · `/favorite/mine/[uuid]` · `/favorite/[publicId]` · `/favorite/guide` | core+ | 后者是公开分享页，解析走 `getPublicFavorite` |
 | `/api/favorites`（GET/POST）· `/api/favorites/[id]`（GET/PATCH/DELETE）· `…/items` · `…/copy` · `…/export` · `/api/favorites/import` | core+ | 每条各自判档（§8 的档位阶梯）；`PATCH` **只接受 `title`**，改 `isPublic` 明确报 400 |
-| `/api/poster/favorite/[publicId]` | core+ | 分享二维码 PNG，复用 `RULES.posterMinute`；**只按公开句柄查**，所以私密收藏夹结构性不可达 |
-| `/api/spider/favorites/[publicId]` | core+ | 站外机器人的入口，只返回公开且未软删的；spider 系列里**唯一有限频**的一条（鉴权不替代限频） |
+| `/api/poster/favorite/[id]` | core+ | 分享二维码 PNG，复用 `RULES.posterMinute`；**只按公开句柄查**，所以私密收藏夹结构性不可达 |
+| `/api/spider/favorites/[id]` | core+ | 站外机器人的入口，只返回公开且未软删的；spider 系列里**唯一有限频**的一条（鉴权不替代限频） |
 
 **`[@六位]` 引用。** 只在博客 / 云剪贴板那条管线生效（`MarkdownRenderer` 的
 `ContentRefProcessor`），评论与讨论**刻意不认**（与 9 位投票「只识别不展开」同向）。
@@ -2080,9 +2084,8 @@ Quoted-printable / 哈希 / AES）`legacy: true`，仍指向 `/tool/<slug>` —�
 ```
 浏览器 POST /api/auth/login
   → middleware.ts  ✓ 同源
-  → route.ts       校验 Turnstile（如开启）
-  → auth.ts        password.verify()    (werkzeug 互通)
-  → route.ts       session.sign()       (JWT cookie)
+  → route.ts       调 credential-auth：限频 + 密码校验（werkzeug 互通；Turnstile 只在注册页）
+  → route.ts       签发 JWT cookie（带 session_version 快照）+ 记 lastLogin
   → 响应 200 + Set-Cookie
 ```
 
