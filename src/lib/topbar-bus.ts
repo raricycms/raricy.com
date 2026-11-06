@@ -145,6 +145,9 @@ export function kickTopbarUser(userId: string): void {
     }
   }
   state.subs.delete(userId);
+  // 被踢的连接随后 abort 触发的 unsubscribe 会因「条目已不存在」提前 return，不再
+  // 走到这里；所以清空表后要自己停心跳，否则零订阅者时每 25s 空转一次遍历。
+  if (state.subs.size === 0) stopHeartbeat();
 }
 
 // ── 心跳 ────────────────────────────────────────────────────────────────────

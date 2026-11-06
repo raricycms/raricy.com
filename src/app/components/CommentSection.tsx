@@ -159,16 +159,23 @@ interface ReplyTarget {
 }
 
 async function api(url: string, init?: RequestInit): Promise<{ code: number; message: string; [k: string]: unknown }> {
-  const res = await fetch(url, {
-    credentials: 'same-origin',
-    headers: { 'Content-Type': 'application/json' },
-    ...init,
-  });
-  return (await res.json().catch(() => ({ code: res.status, message: '请求失败' }))) as {
-    code: number;
-    message: string;
-    [k: string]: unknown;
-  };
+  try {
+    const res = await fetch(url, {
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      ...init,
+    });
+    return (await res.json().catch(() => ({ code: res.status, message: '请求失败' }))) as {
+      code: number;
+      message: string;
+      [k: string]: unknown;
+    };
+  } catch {
+    // 网络层失败（断网 / 请求被拦）：折成 code 0 而不是抛给调用方 —— 调用方是
+    // 以 `await api()` 写直线代码的，「抛」会让 setLoading/setSubmitting 永远复位不了，
+    // 界面停在「加载中…」「发表中…」「确认删除」不可用的死状态。
+    return { code: 0, message: '网络错误，请稍后重试' };
+  }
 }
 
 export default function CommentSection({
@@ -180,6 +187,8 @@ export default function CommentSection({
 }: Props) {
   const [comments, setComments] = useState<CommentNode[]>([]);
   const [loading, setLoading] = useState(true);
+  /** 加载失败的原因；null = 没失败。失败不能落进「还没有评论」的空态。 */
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [text, setText] = useState('');
   /**
    * 「匿名」勾选项。**提交后保持勾着**（不重置）—— 两种忘法的代价不对称：
@@ -222,11 +231,17 @@ export default function CommentSection({
 
   const load = useCallback(async () => {
     setLoading(true);
-    const data = await api(`/api/blogs/${blogId}/comments`);
-    if (data.code === 200 && Array.isArray(data.comments)) {
-      setComments(data.comments as CommentNode[]);
+    setLoadError(null);
+    try {
+      const data = await api(`/api/blogs/${blogId}/comments`);
+      if (data.code === 200 && Array.isArray(data.comments)) {
+        setComments(data.comments as CommentNode[]);
+      } else {
+        setLoadError(data.message || '加载评论失败');
+      }
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   }, [blogId]);
 
   useEffect(() => {
@@ -241,6 +256,12 @@ export default function CommentSection({
   const submit = useCallback(async () => {
     const content = text.trim();
     if (submitting) return;
+    // 图片还在上传：此时提交会发出「没有附件」的评论，图成了幽灵附件（上传完成后才进
+    // pendingImage，但那一条评论已经以无图正文发出去了）。
+    if (uploadingImage) {
+      toast('图片上传中，请稍候再发表', 'info');
+      return;
+    }
     const hasAttach = !!pendingImage || !!blogQuote;
     if (!content && !hasAttach) {
       toast('评论内容不能为空', 'info');
@@ -287,6 +308,7 @@ export default function CommentSection({
     clearImage,
     anonymous,
     allowAnonymousComments,
+    uploadingImage,
   ]);
 
   /**
@@ -453,7 +475,7 @@ export default function CommentSection({
             </span>
             评论
             <span className="comment-section__count numeric">
-              {loading ? '—' : totalComments}
+              {loading || loadError ? '—' : totalComments}
             </span>
           </h2>
         </header>
@@ -468,6 +490,19 @@ export default function CommentSection({
         {loading ? (
           <ul className="comment-list" id="comment-list">
             <li className="comment-status">加载评论中…</li>
+          </ul>
+        ) : loadError ? (
+          // 失败与「还没有评论」必须可区分：把断网/权限/500 说成空态，读者会以为
+          // 评论区真的没人说话，也就不会重试。
+          <ul className="comment-list" id="comment-list">
+            <li className="comment-status">
+              <p>
+                评论加载失败：{loadError}{' '}
+                <button type="button" className="read-btn" onClick={() => void load()}>
+                  重试
+                </button>
+              </p>
+            </li>
           </ul>
         ) : comments.length === 0 ? (
           <ul className="comment-list" id="comment-list">

@@ -284,6 +284,10 @@ export default function ChatApp({
   const [drawerOpen, setDrawerOpen] = useState(false);
   /** 首次频道列表加载完成（区分「加载中」与「专注模式空态」） */
   const [channelsLoaded, setChannelsLoaded] = useState(false);
+  /** 首屏加载失败原因；null = 没失败。失败不能与「加载中」同形（见主区渲染）。 */
+  const [loadError, setLoadError] = useState<string | null>(null);
+  /** 点「重试」时自增，重新触发首屏加载 effect。 */
+  const [retryTick, setRetryTick] = useState(0);
   /** 当前会话的消息搜索弹窗 */
   const [searchOpen, setSearchOpen] = useState(false);
   /** 正在输入的人（仅当前频道，3.5 秒无新信号自动移除） */
@@ -1076,55 +1080,66 @@ export default function ChatApp({
     let alive = true;
     const initialChannel = initialChannelRef.current;
     const initialMessage = initialMessageRef.current;
+    setLoadError(null);
     (async () => {
-      // 深链进入（来自「保存的消息」）：先解除「删除会话」的隐藏。
-      // 隐藏的会话不在 poll 列表里，不先恢复就会静默落到第一个会话 —— 用户点了一条
-      // 保存的消息，打开的却是别的对话，且不报错。显式进入 = 我要看这个会话。
-      // 失败（不是成员 / 频道没了）不阻断：poll 自然回退，只是到不了目标消息。
-      if (initialMessage != null && initialChannel) {
-        await api(`/api/chat/channels/${encodeURIComponent(initialChannel)}/reveal`, {
-          method: 'POST',
-        });
-        if (!alive) return;
-      }
-      const data = await api('/api/chat/poll');
-      if (!alive || data.code !== 200) return;
-      const list = (data.channels ?? []) as ChatChannelDTO[];
-      setChannels(list);
-      setChannelsLoaded(true);
-      // 选中策略：请求的频道可用（存在且未禁用）优先；否则退回第一个可用行；
-      // 专注模式下大区行带 disabled（服务端仍发这一行，侧栏只是不渲染它）—— 想进 lobby /
-      // 没有私聊时落到 null（空态，主区展示专注提示；顺带清掉 URL 里残留的 ?channel=lobby
-      // 防止刷新死循环）。
-      const want = initialChannel ?? CHAT_LOBBY_ID;
-      const usable = list.filter((c) => !c.disabled);
-      let target: string | null = null;
-      if (usable.some((c) => c.id === want)) target = want;
-      else if (usable.length) target = usable[0].id;
-      setActiveId(target);
-      activeRef.current = target;
-      if (target === null) {
-        if (initialChannel !== null) {
-          router.replace('/chat', { scroll: false });
+      try {
+        // 深链进入（来自「保存的消息」）：先解除「删除会话」的隐藏。
+        // 隐藏的会话不在 poll 列表里，不先恢复就会静默落到第一个会话 —— 用户点了一条
+        // 保存的消息，打开的却是别的对话，且不报错。显式进入 = 我要看这个会话。
+        // 失败（不是成员 / 频道没了）不阻断：poll 自然回退，只是到不了目标消息。
+        if (initialMessage != null && initialChannel) {
+          await api(`/api/chat/channels/${encodeURIComponent(initialChannel)}/reveal`, {
+            method: 'POST',
+          });
+          if (!alive) return;
         }
-        return;
-      }
-      // 深链目标只在**确实进到了目标频道**时才排期（被回退到别的频道时跳过去毫无意义）。
-      // 消息可能不在首页（很久以前保存的）—— 交给 jumpToMessage 补拉上下文窗口。
-      if (initialMessage != null && target === initialChannel) {
-        pendingDeepLinkRef.current = { channelId: target, messageId: initialMessage };
-      }
-      const token = ++viewTokenRef.current;
-      await loadMessages(target, token);
-      if (target !== CHAT_LOBBY_ID) {
-        router.replace(`/chat?channel=${encodeURIComponent(target)}`, { scroll: false });
+        const data = await api('/api/chat/poll');
+        if (!alive) return;
+        if (data.code !== 200) {
+          // 首屏 poll 失败不能静静地停在「加载中…」：403（禁言/档位）、网络、5xx 都
+          // 要给出可区分的原因与重试入口，否则页面看起来像永远没加载完。
+          setLoadError(data.message || '加载失败，请稍后重试');
+          return;
+        }
+        const list = (data.channels ?? []) as ChatChannelDTO[];
+        setChannels(list);
+        setChannelsLoaded(true);
+        // 选中策略：请求的频道可用（存在且未禁用）优先；否则退回第一个可用行；
+        // 专注模式下大区行带 disabled（服务端仍发这一行，侧栏只是不渲染它）—— 想进 lobby /
+        // 没有私聊时落到 null（空态，主区展示专注提示；顺带清掉 URL 里残留的 ?channel=lobby
+        // 防止刷新死循环）。
+        const want = initialChannel ?? CHAT_LOBBY_ID;
+        const usable = list.filter((c) => !c.disabled);
+        let target: string | null = null;
+        if (usable.some((c) => c.id === want)) target = want;
+        else if (usable.length) target = usable[0].id;
+        setActiveId(target);
+        activeRef.current = target;
+        if (target === null) {
+          if (initialChannel !== null) {
+            router.replace('/chat', { scroll: false });
+          }
+          return;
+        }
+        // 深链目标只在**确实进到了目标频道**时才排期（被回退到别的频道时跳过去毫无意义）。
+        // 消息可能不在首页（很久以前保存的）—— 交给 jumpToMessage 补拉上下文窗口。
+        if (initialMessage != null && target === initialChannel) {
+          pendingDeepLinkRef.current = { channelId: target, messageId: initialMessage };
+        }
+        const token = ++viewTokenRef.current;
+        await loadMessages(target, token);
+        if (target !== CHAT_LOBBY_ID) {
+          router.replace(`/chat?channel=${encodeURIComponent(target)}`, { scroll: false });
+        }
+      } catch {
+        if (alive) setLoadError('网络错误，请稍后重试');
       }
     })();
     return () => {
       alive = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loadMessages, router]);
+  }, [loadMessages, router, retryTick]);
 
   // ── 草稿暂存 / 恢复（按频道） ────────────────────────────────────────────
   const stashDraft = useCallback((channelId: string | null) => {
@@ -1371,11 +1386,30 @@ export default function ChatApp({
     [text]
   );
 
+  /**
+   * 点头像打开选项框；**再点同一个头像 = 收起**（toggle）。
+   *
+   * 这里必须用函数式更新比对「当前开着的那个」：菜单的外部点击收起在 pointerdown
+   * 阶段，而 toggle 发生在随后的 click —— 两者之间 React 会重渲染一次，用渲染期
+   * 闭包里的状态判 toggle 会拿到已清空的值。AvatarMenu 那侧对「点同一个 trigger」
+   * 也不再抢先 onClose（见 useChatMenu 的 onPointerDown），于是这里看到的 prev 仍是
+   * 打开的那个，toggle 才成立。
+   */
   const openAvatarMenu = useCallback(
     (m: ChatMessageDTO, el: HTMLButtonElement) => {
-      setAvatarMenu({
-        author: m.author,
-        anchor: { rect: el.getBoundingClientRect(), alignRight: m.author.id === currentUserId },
+      setAvatarMenu((prev) => {
+        if (prev && prev.author.id === m.author.id) return null;
+        return {
+          author: m.author,
+          anchor: {
+            rect: el.getBoundingClientRect(),
+            alignRight: m.author.id === currentUserId,
+            trigger: el,
+            // 键盘激活（Enter/Space）时按钮处于 :focus-visible → 焦点进菜单；
+            // 鼠标点击不抢焦点（否则菜单第一项顶着蓝色 outline）。
+            fromKeyboard: el.matches(':focus-visible'),
+          },
+        };
       });
     },
     [currentUserId]
@@ -1952,6 +1986,18 @@ export default function ChatApp({
                   前往设置
                 </Link>{' '}
                 调整屏蔽范围。
+              </>
+            ) : loadError ? (
+              // 失败要有可区分提示 + 重试入口；不能一直显示「加载中…」
+              <>
+                {loadError}{' '}
+                <button
+                  type="button"
+                  className="read-btn"
+                  onClick={() => setRetryTick((t) => t + 1)}
+                >
+                  重试
+                </button>
               </>
             ) : (
               '加载中…'

@@ -9,7 +9,7 @@
 //   4. 背压必须断开连接（而不是无限缓冲）—— 否则慢客户端 = 内存泄漏。
 //   5. kickTopbarUser 要能真正断掉该用户全部连接（重置密码 / 强制下线靠它即时生效）。
 
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import {
   subscribe,
   publishToUser,
@@ -189,5 +189,21 @@ describe('topbar-bus：背压与踢连接', () => {
 
   it('kickTopbarUser 对不存在的用户是安全的 no-op', () => {
     expect(() => kickTopbarUser('u-none')).not.toThrow();
+  });
+
+  it('kickTopbarUser 清空最后一条连接后停掉心跳定时器（零订阅者不空转）', () => {
+    vi.useFakeTimers();
+    try {
+      const a = makeSub('u-a');
+      subscribe(a.sub);
+      expect(vi.getTimerCount(), '有订阅者时应有心跳定时器').toBeGreaterThan(0);
+
+      kickTopbarUser('u-a');
+      // 被踢连接的 unsubscribe 会因「条目已不存在」提前 return，不会补停定时器；
+      // 这里靠 kick 自己停 —— 否则零订阅者时每 25s 空转一次遍历。
+      expect(vi.getTimerCount(), 'kick 后仍留着零订阅者的心跳定时器').toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

@@ -97,6 +97,16 @@ describe('入库的头像框素材', () => {
     ).toBe(manifest.generatorSha256);
   });
 
+  it('台账的 generator 字段指向真正写它的那个脚本（脚本搬家/改名没重跑就红）', () => {
+    // generatorSha256 只证明「manifest 与某个脚本一致」，不证明「与**当前这份**脚本的
+    // 路径一致」：脚本改名/搬家后若只改哈希、不改 generator，台账会静默把排查线索指错。
+    // manifest 里写的是仓库相对 POSIX 路径（脚本内写死 POSIX 分隔符，Windows 也如此）。
+    const expected = path.relative(ROOT, GENERATOR).split(path.sep).join('/');
+    expect(manifest.generator, `manifest.generator 与实际出图脚本路径不一致（${REMEDY}）`).toBe(
+      expected
+    );
+  });
+
   it('每一项 FRAME_KEYS 都有素材，且是一张真 PNG', () => {
     for (const key of FRAME_KEYS) {
       const file = path.join(FRAMES_DIR, `${key}.png`);

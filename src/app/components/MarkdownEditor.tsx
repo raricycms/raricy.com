@@ -1165,13 +1165,18 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(
             },
           };
         }
-        // 解析器认识这份增强语法，但发布闸门（预算 / 降级 / 未知宿主）仍可能
-        // 拒绝。服务端会 400 —— 前端必须同样拦下并给出诊断，而不是只回一句通用错误。
-        if (result.effective === 'reactive' && !result.publishable) {
+        // 解析器认识这份语法，但发布闸门（预算 / 降级 / 未知宿主）仍可能拒绝。
+        // 服务端会 400 —— 前端必须同样拦下并给出诊断，而不是只回一句通用错误。
+        //
+        // 这条判定**对 markdown 同样成立**：effective='markdown' 但 publishable=false
+        // （典型：超预算的未闭合 `<` / `{{`）时，若按 markdown 交给表单，服务端只会
+        // 回通用 400，本地预算诊断整段丢失（R3-141）。所以不按 effective 分叉。
+        const reactive = result.effective === 'reactive' || floorReactive;
+        if (!result.publishable) {
           return {
             content,
-            format: 'reactive',
-            syntaxVersion: result.syntaxVersion ?? syntaxVersionRef.current,
+            format: reactive ? 'reactive' : 'markdown',
+            syntaxVersion: reactive ? (result.syntaxVersion ?? syntaxVersionRef.current) : null,
             blocked: {
               message: '正文暂时不能发布，请按诊断修正后再保存',
               diagnostics,
@@ -1179,7 +1184,6 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(
           };
         }
         if (result.syntaxVersion) syntaxVersionRef.current = result.syntaxVersion;
-        const reactive = result.effective === 'reactive' || floorReactive;
         return {
           content,
           format: reactive ? 'reactive' : 'markdown',

@@ -47,10 +47,13 @@ export default function ClipboardMenu() {
   const [clips, setClips] = useState<ClipItem[]>([]);
   const [loadingList, setLoadingList] = useState(true);
   const [needLogin, setNeedLogin] = useState(false);
+  /** 加载失败的原因；null = 没失败。与「还没有剪贴板」必须可区分（见渲染处）。 */
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [targetId, setTargetId] = useState('');
 
   const loadList = useCallback(async () => {
     setLoadingList(true);
+    setLoadError(null);
     try {
       const res = await fetch('/api/clipboard', { credentials: 'same-origin' });
       const data = await res.json();
@@ -58,10 +61,14 @@ export default function ClipboardMenu() {
         setClips(data.clips ?? []);
         setNeedLogin(false);
       } else if (data.code === 401) {
+        // 会话过期：别落进「还没有剪贴板」的空态，否则用户会以为内容丢了。
         setNeedLogin(true);
+        setLoadError('登录状态已过期，请重新登录后查看');
+      } else {
+        setLoadError(data.message || '加载剪贴板失败');
       }
     } catch {
-      // 忽略
+      setLoadError('网络错误，请稍后重试');
     } finally {
       setLoadingList(false);
     }
@@ -70,8 +77,6 @@ export default function ClipboardMenu() {
   useEffect(() => {
     void loadList();
   }, [loadList]);
-
-  void needLogin;
 
   function gotoClip() {
     const v = targetId.trim();
@@ -108,7 +113,26 @@ export default function ClipboardMenu() {
         </div>
       </div>
 
-      {(loadingList || clips.length > 0) && (
+      {loadingList && (
+        <div className="clipboard-list__empty">
+          <div className="clipboard-list__empty-text">加载中…</div>
+        </div>
+      )}
+      {!loadingList && loadError && (
+        <div className="clipboard-list__empty">
+          <div className="clipboard-list__empty-text">{loadError}</div>
+          {needLogin ? (
+            <Link href="/login" className="action-button primary">
+              去登录
+            </Link>
+          ) : (
+            <button type="button" className="read-btn" onClick={() => void loadList()}>
+              重试
+            </button>
+          )}
+        </div>
+      )}
+      {!loadingList && !loadError && clips.length > 0 && (
         <div className="clipboard-list">
           {clips.map((c) => (
             <Link key={c.id} href={`/clipboard/${c.id}`} className="clipboard-item">
@@ -118,7 +142,7 @@ export default function ClipboardMenu() {
           ))}
         </div>
       )}
-      {!loadingList && clips.length === 0 && (
+      {!loadingList && !loadError && clips.length === 0 && (
         <div className="clipboard-list__empty">
           <div className="clipboard-list__empty-icon" aria-hidden="true">
             <Clipboard />

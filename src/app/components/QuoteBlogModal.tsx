@@ -26,6 +26,8 @@ export default function QuoteBlogModal({
   const [query, setQuery] = useState('');
   const [blogs, setBlogs] = useState<BlogRow[]>([]);
   const [loading, setLoading] = useState(true);
+  /** 加载失败的原因；null = 没失败。失败不能落进「没有匹配的博客」的空态。 */
+  const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const [pages, setPages] = useState(1);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -36,6 +38,7 @@ export default function QuoteBlogModal({
 
   async function load(q: string, p: number) {
     setLoading(true);
+    setError(null);
     try {
       const qs = new URLSearchParams({
         sort: 'updated',
@@ -50,9 +53,12 @@ export default function QuoteBlogModal({
         setBlogs(data.blogs as BlogRow[]);
         setPage(p);
         setPages(Math.max(1, Number(data.pagination?.pages) || 1));
+      } else {
+        // 401/403/500 都是「没读到」，不是「没有匹配」—— 要给出可区分的原因与重试入口。
+        setError(data.message || '加载博客列表失败');
       }
     } catch {
-      /* 忽略：保留旧列表 */
+      setError('网络错误，请稍后重试');
     } finally {
       setLoading(false);
     }
@@ -86,6 +92,17 @@ export default function QuoteBlogModal({
             <div className="chat-blog-list">
               {loading ? (
                 <div className="chat-new-empty">加载中…</div>
+              ) : error ? (
+                <div className="chat-new-empty">
+                  {error}{' '}
+                  <button
+                    type="button"
+                    className="read-btn"
+                    onClick={() => void load(query, page)}
+                  >
+                    重试
+                  </button>
+                </div>
               ) : blogs.length === 0 ? (
                 <div className="chat-new-empty">没有匹配的博客</div>
               ) : (

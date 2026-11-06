@@ -57,7 +57,9 @@ test.describe('讨论头像选项框', () => {
       '取消',
     ]);
     await expect(menu.locator('.chat-menu__sep')).toHaveCount(1);
-    await expect(menu.getByRole('link', { name: '访问个人主页' })).toHaveAttribute(
+    // 链接补了 role="menuitem"（ARIA menu 里的项必须是一等菜单项，读屏才认），
+    // 所以 getByRole('link') 不再命中 —— 用 menuitem 定位，href 仍是同一契约。
+    await expect(menu.getByRole('menuitem', { name: '访问个人主页' })).toHaveAttribute(
       'href',
       `/u/${SEED_USERS.admin.id}`
     );
@@ -75,6 +77,24 @@ test.describe('讨论头像选项框', () => {
     await expect(page.locator('.chat-composer__input')).toHaveValue(
       `@${SEED_USERS.admin.username} `
     );
+    await expect(menu).toHaveCount(0);
+  });
+
+  test('再点同一个头像 = 收起菜单（toggle，不原地重开）', async ({ page }) => {
+    await loginViaApi(page, SEED_USERS.core.username);
+    const marker = `e2e-toggle-${uniqueTag()}`;
+    await postLobby(page, marker);
+    await page.goto(`/chat?channel=${LOBBY}`);
+
+    const row = msgRow(page, marker);
+    await expect(row).toBeVisible();
+    const avatar = row.locator('.chat-msg__avatar');
+    const menu = page.locator('.chat-menu');
+
+    await avatar.click();
+    await expect(menu).toBeVisible();
+    // pointerdown 不再抢先收起、click 做 toggle —— 旧实现这里是「关掉又立刻重开」
+    await avatar.click();
     await expect(menu).toHaveCount(0);
   });
 

@@ -8,12 +8,17 @@
 // 就地 absolute 会被裁掉。
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { ChatChannelDTO } from '@/lib/chat-shared';
+import { useChatMenuBehavior } from './useChatMenu';
 
 export interface ChannelMenuAnchor {
   rect: DOMRect;
+  /** 触发按钮：关闭后焦点归还。 */
+  trigger?: HTMLButtonElement;
+  /** 这次是键盘打开的吗（Enter/Space 激活按钮时按钮处于 :focus-visible）。 */
+  fromKeyboard?: boolean;
 }
 
 const MENU_GAP = 8;
@@ -53,24 +58,13 @@ export default function ChatChannelMenu({
     setPos({ top, left });
   }, [anchor]);
 
-  useEffect(() => {
-    const onPointerDown = (e: PointerEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) onClose();
-    };
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
-    };
-    document.addEventListener('pointerdown', onPointerDown, true);
-    document.addEventListener('keydown', onKeyDown);
-    window.addEventListener('scroll', onClose, true);
-    window.addEventListener('resize', onClose);
-    return () => {
-      document.removeEventListener('pointerdown', onPointerDown, true);
-      document.removeEventListener('keydown', onKeyDown);
-      window.removeEventListener('scroll', onClose, true);
-      window.removeEventListener('resize', onClose);
-    };
-  }, [onClose]);
+  useChatMenuBehavior({
+    menuRef: ref,
+    trigger: anchor.trigger ?? null,
+    fromKeyboard: anchor.fromKeyboard === true,
+    ready: !!pos,
+    onClose,
+  });
 
   return createPortal(
     <div

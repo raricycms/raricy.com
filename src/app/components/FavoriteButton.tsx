@@ -45,6 +45,8 @@ export default function FavoriteButton({ blogId, isAuth, isCore, initialFavorite
   const [open, setOpen] = useState(false);
   const [rows, setRows] = useState<FavoriteRow[]>([]);
   const [loading, setLoading] = useState(false);
+  /** 加载失败的原因；null = 没失败。与「还没有收藏夹」必须可区分（见渲染处）。 */
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [newTitle, setNewTitle] = useState('');
   const [creating, setCreating] = useState(false);
@@ -52,6 +54,7 @@ export default function FavoriteButton({ blogId, isAuth, isCore, initialFavorite
   /** 拉我的收藏夹 + 本文的归属（一次请求拿全）。 */
   const load = useCallback(async () => {
     setLoading(true);
+    setLoadError(null);
     try {
       const res = await fetch(`/api/favorites?blogId=${encodeURIComponent(blogId)}`, {
         credentials: 'same-origin',
@@ -61,9 +64,14 @@ export default function FavoriteButton({ blogId, isAuth, isCore, initialFavorite
         setRows(data.favorites as FavoriteRow[]);
         setFavorited((data.favorites as FavoriteRow[]).some((f) => f.contains));
       } else {
-        toast(data.message || '加载收藏夹失败', 'error');
+        // 失败不能落进「还没有收藏夹」的空态 —— 那会把 401/403/500 说成「你一个都没建」，
+        // 用户照着提示去新建，反而可能建出重复的同名夹。
+        const message = data.message || '加载收藏夹失败';
+        setLoadError(message);
+        toast(message, 'error');
       }
     } catch {
+      setLoadError('网络错误，请稍后重试');
       toast('网络错误，请稍后重试', 'error');
     } finally {
       setLoading(false);
@@ -204,6 +212,13 @@ export default function FavoriteButton({ blogId, isAuth, isCore, initialFavorite
             <div className="modal-body">
               {loading ? (
                 <div className="favorite-picker__empty">加载中…</div>
+              ) : loadError ? (
+                <div className="favorite-picker__empty">
+                  {loadError}{' '}
+                  <button type="button" className="read-btn" onClick={() => void load()}>
+                    重试
+                  </button>
+                </div>
               ) : rows.length === 0 ? (
                 <div className="favorite-picker__empty">
                   还没有收藏夹。在下面建一个吧 —— 同一篇文章可以同时放进多个收藏夹。

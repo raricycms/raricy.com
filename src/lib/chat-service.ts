@@ -839,6 +839,9 @@ async function attachImagesAndReplies(rows: MessageRow[]): Promise<ChatMessageDT
     content: string;
     isDeleted: boolean | null;
     imageId: string | null;
+    /** 纯博客卡 / 拍一拍消息正文为空，引用块要靠它们给占位文案（否则只剩「作者：」） */
+    blogId: string | null;
+    patTargetId: string | null;
     author: { username: string; archivedAt: Date | null };
   }>();
   if (replyIds.length) {
@@ -849,6 +852,8 @@ async function attachImagesAndReplies(rows: MessageRow[]): Promise<ChatMessageDT
         content: true,
         isDeleted: true,
         imageId: true,
+        blogId: true,
+        patTargetId: true,
         author: { select: { username: true, archivedAt: true } },
       },
     });
@@ -914,15 +919,17 @@ async function attachImagesAndReplies(rows: MessageRow[]): Promise<ChatMessageDT
     const reply = m.replyTo != null ? replyMap.get(m.replyTo) : undefined;
     const blog = m.blogId ? blogMap.get(m.blogId) : undefined;
     const replyImage = reply?.imageId ? imageMap.get(reply.imageId) : undefined;
-    // 引用块正文：被引用消息是纯图片消息时正文为空 —— 图还在就交给 image_url 渲染
-    // 缩略图，图没了给占位文案（否则引用块只剩「作者：」）。
+    // 引用块正文：被引用消息是纯图片 / 纯博客卡 / 拍一拍时正文为空 —— 图片还在就交给
+    // image_url 渲染缩略图；其余按侧栏预览同口径给占位文案，否则引用块只剩「作者：」。
     const replyText = !reply
       ? ''
       : (reply.isDeleted || reply.author.archivedAt)
         ? CHAT_DELETED_TEXT
         : // 引用块是一行摘要，内联 token 一律换成短标记（与侧栏预览、通知预览同口径）
           stripPreviewTokens(reply.content) ||
-          (reply.imageId && !replyImage ? '[图片已删除]' : '');
+          (reply.imageId && !replyImage ? '[图片已删除]' : '') ||
+          (reply.blogId ? '[博客]' : '') ||
+          (reply.patTargetId ? '[拍一拍]' : '');
     return {
       id: m.id,
       channel_id: m.channelId,

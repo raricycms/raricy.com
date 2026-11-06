@@ -255,7 +255,6 @@ vi.mock('@/app/components/reactive/ReactivePreview', () => ({
     return null;
   },
 }));
-vi.mock('@/app/components/MarkdownRenderer', () => ({ default: () => null }));
 // 格式分析器是后端契约（worker）；单测里只要一个不排后台任务的替身 ——
 // 无候选语法的正文根本不会调用它，需要结果的用例各自再覆盖。
 vi.mock('@/lib/reactive/format-observer', () => ({
@@ -907,6 +906,47 @@ describe('prepareSubmit：无效增强语法绝不静默按 Markdown 保存', ()
     expect(snapshot.blocked).not.toBeNull();
     expect(snapshot.blocked!.diagnostics).toHaveLength(1);
     expect(snapshot.format).toBe('reactive');
+  });
+
+  it('effective=markdown 但 publishable=false → 同样 blocked（本地诊断不能丢给服务端 400）', async () => {
+    // 典型：超预算的未闭合 `<` / `{{` —— 解析器判定「就是 markdown」，但发布闸门
+    // 仍不接受。旧实现只在 effective==='reactive' 时拦，于是这类正文被当 markdown
+    // 交给表单、服务端回通用 400，本地预算诊断丢失（R3-141）。
+    mocks.analyzeResult = {
+      effective: 'markdown',
+      valid: true,
+      publishable: false,
+      evidence: [],
+      candidates: [],
+      codes: ['local.budget.exceeded'],
+      diagnostics: [
+        {
+          code: 'local.budget.exceeded',
+          severity: 'error',
+          message: '超过预算',
+          line: 1,
+          column: 1,
+          range: { start: 0, end: 4 },
+        },
+      ],
+      declaredVersion: null,
+      syntaxVersion: null,
+    };
+    const ref = createRef<MarkdownEditorHandle>();
+    mount(
+      createElement(MarkdownEditor, {
+        initialValue: '<未闭合',
+        format: 'markdown',
+        ref,
+      })
+    );
+    let snapshot!: EditorSubmitSnapshot;
+    await act(async () => {
+      snapshot = await ref.current!.prepareSubmit();
+    });
+    expect(snapshot.blocked).not.toBeNull();
+    expect(snapshot.blocked!.diagnostics).toHaveLength(1);
+    expect(snapshot.format, 'markdown 不可发布时不能伪装成 reactive').toBe('markdown');
   });
 
   it('等待分析期间正文又变了 → 重试并提交新正文', async () => {

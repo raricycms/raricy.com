@@ -18,9 +18,10 @@
 // 使用者时改了名 —— 它本来就不是头像专属的）。
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { ChatMessageDTO } from '@/lib/chat-shared';
+import { useChatMenuBehavior } from './useChatMenu';
 
 /** 右键 / 长按落点的视口坐标。 */
 export interface MessageMenuAnchor {
@@ -100,64 +101,13 @@ export default function ChatMessageMenu({
     setPos({ top, left });
   }, [anchor]);
 
-  useEffect(() => {
-    if (!pos) return;
-    // 指针打开不抢焦点：否则浏览器会给第一项画 :focus-visible 蓝框（看起来像
-    // 右键点出了选中态）。键盘打开才把焦点移到第一项，方向键随即可用。
-    if (anchor.fromKeyboard === false) return;
-    ref.current?.querySelector<HTMLButtonElement>('[role="menuitem"]')?.focus({ preventScroll: true });
-  }, [pos, anchor.fromKeyboard]);
-
-  useEffect(() => {
-    const menu = ref.current;
-    return () => {
-      // 回复等动作可能已把焦点交给输入框，此时不能再抢回来。
-      if (menu?.contains(document.activeElement) || document.activeElement === document.body) {
-        anchor.trigger?.focus({ preventScroll: true });
-      }
-    };
-  }, [anchor]);
-
-  useEffect(() => {
-    const onPointerDown = (e: PointerEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) onClose();
-    };
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        onClose();
-        return;
-      }
-      if (!ref.current?.contains(document.activeElement)) return;
-      const items = [...ref.current.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')];
-      const index = items.indexOf(document.activeElement as HTMLButtonElement);
-      let next: number;
-      if (e.key === 'ArrowDown') next = (index + 1) % items.length;
-      else if (e.key === 'ArrowUp') next = (index - 1 + items.length) % items.length;
-      else if (e.key === 'Home') next = 0;
-      else if (e.key === 'End') next = items.length - 1;
-      else if (e.key === 'Tab') {
-        // 先回到触发按钮，让浏览器默认的 Tab 接着走页面的焦点顺序。
-        anchor.trigger?.focus({ preventScroll: true });
-        onClose();
-        return;
-      } else return;
-      e.preventDefault();
-      items[next]?.focus({ preventScroll: true });
-    };
-    // 列表滚动 / 窗口缩放 → 锚点已经不在原位了，直接收起（比跟着重算更稳）。
-    // scroll 不冒泡，但捕获阶段能拿到列表内部的滚动。
-    document.addEventListener('pointerdown', onPointerDown, true);
-    document.addEventListener('keydown', onKeyDown);
-    window.addEventListener('scroll', onClose, true);
-    window.addEventListener('resize', onClose);
-    return () => {
-      document.removeEventListener('pointerdown', onPointerDown, true);
-      document.removeEventListener('keydown', onKeyDown);
-      window.removeEventListener('scroll', onClose, true);
-      window.removeEventListener('resize', onClose);
-    };
-  }, [anchor, onClose]);
+  useChatMenuBehavior({
+    menuRef: ref,
+    trigger: anchor.trigger ?? null,
+    fromKeyboard: anchor.fromKeyboard !== false,
+    ready: !!pos,
+    onClose,
+  });
 
   // 菜单项一律「先收起、再执行」：删除会弹 confirm / prompt，菜单留着会挡在后面。
   const run = (fn: (m: ChatMessageDTO) => void) => () => {

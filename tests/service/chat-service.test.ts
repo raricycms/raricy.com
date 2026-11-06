@@ -1335,6 +1335,46 @@ describe('软删消息不返回附件', () => {
     expect(reply?.image_url).toBeNull();
   });
 
+  it('回复纯博客 / 拍一拍消息：引用块给占位文案，不只剩「作者：」', async () => {
+    const a = await makeUser({ role: 'core' });
+    const b = await makeUser({ role: 'core' });
+    const ch = (await startDirectChannel(a.id, b.id)) as { channel: { id: string } };
+    const blogId = await makeBlog(b.id);
+
+    // 两条正文为空的可引用消息：博客卡（blogId）与拍一拍（patTargetId）
+    const blogMsg = (await sendMessage({
+      channelId: ch.channel.id,
+      authorId: b.id,
+      blogId,
+      content: '',
+    })) as { message: { id: number } };
+    const patMsg = (await sendMessage({
+      channelId: ch.channel.id,
+      authorId: b.id,
+      patTargetId: a.id,
+    })) as { message: { id: number } };
+
+    await sendMessage({
+      channelId: ch.channel.id,
+      authorId: a.id,
+      content: '回复博客卡',
+      replyTo: blogMsg.message.id,
+    });
+    await sendMessage({
+      channelId: ch.channel.id,
+      authorId: a.id,
+      content: '回复拍一拍',
+      replyTo: patMsg.message.id,
+    });
+
+    const list = (await listMessages(ch.channel.id, b.id)) as {
+      messages: { content: string; reply: { content: string } | null }[];
+    };
+    // 服务端占位口径与侧栏预览一致（previewOfMessage 的 [博客] / 拍一拍文案）
+    expect(list.messages.find((m) => m.content === '回复博客卡')?.reply?.content).toBe('[博客]');
+    expect(list.messages.find((m) => m.content === '回复拍一拍')?.reply?.content).toBe('[拍一拍]');
+  });
+
   it('拍一拍软删后仍带 pat（前端要渲染居中删除占位行）', async () => {
     const a = await makeUser({ role: 'core' });
     const sent = (await sendMessage({

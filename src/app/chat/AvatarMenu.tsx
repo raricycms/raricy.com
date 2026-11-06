@@ -11,15 +11,20 @@
 // 因此不会出现「先闪在错误位置再跳过去」。
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import Link from 'next/link';
+import { useChatMenuBehavior } from './useChatMenu';
 
 /** 锚点：头像按钮的视口矩形 + 对齐方向。 */
 export interface AvatarMenuAnchor {
   rect: DOMRect;
   /** 我方消息头像在右侧 → 菜单右对齐，避免溢出屏幕 */
   alignRight: boolean;
+  /** 触发按钮：关闭后焦点归还，也用于「再点同一个头像 = 收起」的 toggle 判定。 */
+  trigger?: HTMLButtonElement;
+  /** 这次是键盘打开的吗（Enter/Space 激活按钮时按钮处于 :focus-visible）。 */
+  fromKeyboard?: boolean;
 }
 
 const MENU_GAP = 8; // 菜单与头像的间距
@@ -63,26 +68,13 @@ export default function AvatarMenu({
     setPos({ top, left });
   }, [anchor]);
 
-  useEffect(() => {
-    const onPointerDown = (e: PointerEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) onClose();
-    };
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
-    };
-    // 列表滚动 / 窗口缩放 → 锚点已经不在原位了，直接收起（比跟着重算更稳）。
-    // scroll 不冒泡，但捕获阶段能拿到列表内部的滚动。
-    document.addEventListener('pointerdown', onPointerDown, true);
-    document.addEventListener('keydown', onKeyDown);
-    window.addEventListener('scroll', onClose, true);
-    window.addEventListener('resize', onClose);
-    return () => {
-      document.removeEventListener('pointerdown', onPointerDown, true);
-      document.removeEventListener('keydown', onKeyDown);
-      window.removeEventListener('scroll', onClose, true);
-      window.removeEventListener('resize', onClose);
-    };
-  }, [onClose]);
+  useChatMenuBehavior({
+    menuRef: ref,
+    trigger: anchor.trigger ?? null,
+    fromKeyboard: anchor.fromKeyboard === true,
+    ready: !!pos,
+    onClose,
+  });
 
   return createPortal(
     <div
@@ -96,7 +88,12 @@ export default function AvatarMenu({
       <button type="button" role="menuitem" className="chat-menu__item" onClick={onPat}>
         拍一拍
       </button>
-      <Link className="chat-menu__item" href={`/u/${target.id}`} onClick={onClose}>
+      <Link
+        className="chat-menu__item"
+        role="menuitem"
+        href={`/u/${target.id}`}
+        onClick={onClose}
+      >
         访问个人主页
       </Link>
       <button type="button" role="menuitem" className="chat-menu__item" onClick={onMention}>

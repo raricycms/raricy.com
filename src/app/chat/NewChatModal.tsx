@@ -28,12 +28,28 @@ export default function NewChatModal({
   const [page, setPage] = useState(1);
   const [pages, setPages] = useState(1);
   const inputRef = useRef<HTMLInputElement>(null);
+  /** 请求序号：慢网下旧搜索响应不能覆盖新结果（与 ChatSearchModal 同一套）。 */
+  const reqSeqRef = useRef(0);
+  /** 已关闭：在飞请求回来时不得再切频道 / 弹 toast（关闭即放弃）。 */
+  const closedRef = useRef(false);
+  useEffect(() => () => {
+    closedRef.current = true;
+    reqSeqRef.current++;
+  }, []);
 
   useEffect(() => {
     inputRef.current?.focus();
   }, []);
 
+  const requestClose = useCallback(() => {
+    if (busyId) return; // 发起请求在途：关掉会让人以为没发出去（两条关闭路径同一判据）
+    closedRef.current = true;
+    reqSeqRef.current++;
+    onClose();
+  }, [busyId, onClose]);
+
   const load = useCallback(async (q: string, p: number) => {
+    const seq = ++reqSeqRef.current;
     setLoading(true);
     try {
       const qs = new URLSearchParams({
@@ -44,6 +60,7 @@ export default function NewChatModal({
       if (trimmed) qs.set('q', trimmed);
       const res = await fetch(`/api/chat/users?${qs.toString()}`, { credentials: 'same-origin' });
       const data = await res.json();
+      if (seq !== reqSeqRef.current) return;
       if (data.code === 200 && Array.isArray(data.users)) {
         setUsers(data.users as ChatUserLite[]);
         setPage(p);
@@ -52,14 +69,17 @@ export default function NewChatModal({
     } catch {
       /* 忽略 */
     } finally {
-      setLoading(false);
+      if (seq === reqSeqRef.current) setLoading(false);
     }
   }, []);
 
   // 输入防抖搜索；条件变化回第 1 页
   useEffect(() => {
     const t = setTimeout(() => void load(query, 1), 200);
-    return () => clearTimeout(t);
+    return () => {
+      clearTimeout(t);
+      reqSeqRef.current++; // 条件变了：在飞请求作废
+    };
   }, [query, load]);
 
   async function start(user: ChatUserLite) {
@@ -74,25 +94,27 @@ export default function NewChatModal({
         body: JSON.stringify({ user_id: user.id }),
       });
       const data = await res.json();
+      // 关闭后到达的响应不再切频道（否则点了 × 还是被推进新会话）
+      if (closedRef.current) return;
       if (data.code === 200 && data.channel) {
         onCreated(data.channel as ChatChannelDTO);
       } else {
         window.showToast?.(data.message || '发起失败', 'error');
       }
     } catch {
-      window.showToast?.('网络错误，请重试', 'error');
+      if (!closedRef.current) window.showToast?.('网络错误，请重试', 'error');
     } finally {
-      setBusyId(null);
+      if (!closedRef.current) setBusyId(null);
     }
   }
 
   return (
-    <div className="modal-overlay show" onClick={() => !busyId && onClose()}>
+    <div className="modal-overlay show" onClick={requestClose}>
       <div className="modal-dialog chat-new-modal" onClick={(e) => e.stopPropagation()}>
         <div className="modal-content">
           <div className="modal-header">
             <h3 className="modal-title">发起私聊</h3>
-            <button type="button" className="chat-modal-close" onClick={onClose} aria-label="关闭">
+            <button type="button" className="chat-modal-close" onClick={requestClose} aria-label="关闭">
               ×
             </button>
           </div>

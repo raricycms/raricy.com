@@ -32,6 +32,11 @@ export default function ChatSearchModal({
   const [page, setPage] = useState(1);
   const [pages, setPages] = useState(1);
   const inputRef = useRef<HTMLInputElement>(null);
+  /**
+   * 请求序号：输入防抖与翻页共用。慢网下 `ab` 的结果若晚于 `abc` 到达，
+   * 旧响应不能覆盖新结果；关弹窗时 cleanup 也要把它作废（关闭即放弃在飞请求）。
+   */
+  const reqSeqRef = useRef(0);
 
   useEffect(() => {
     inputRef.current?.focus();
@@ -41,12 +46,14 @@ export default function ChatSearchModal({
   useEffect(() => {
     const q = query.trim();
     if (!q) {
+      reqSeqRef.current++; // 清空输入 = 作废在飞请求
       setHits([]);
       setPage(1);
       setPages(1);
       return;
     }
     const timer = setTimeout(() => {
+      const seq = ++reqSeqRef.current;
       void (async () => {
         setLoading(true);
         try {
@@ -59,6 +66,7 @@ export default function ChatSearchModal({
             messages?: ChatMessageDTO[];
             total?: number;
           };
+          if (seq !== reqSeqRef.current) return; // 已有更新的请求 / 已关闭
           if (data.code === 200 && Array.isArray(data.messages)) {
             setHits(data.messages);
             setPage(1);
@@ -67,16 +75,21 @@ export default function ChatSearchModal({
         } catch {
           /* 忽略：保留旧结果 */
         } finally {
-          setLoading(false);
+          if (seq === reqSeqRef.current) setLoading(false);
         }
       })();
     }, 250);
-    return () => clearTimeout(timer);
+    return () => {
+      clearTimeout(timer);
+      // 条件变了 / 组件卸载：旧请求的落地必须作废（否则旧结果会盖新结果）
+      reqSeqRef.current++;
+    };
   }, [query, channelId]);
 
   async function goPage(p: number) {
     const q = query.trim();
     if (!q || loading) return;
+    const seq = ++reqSeqRef.current;
     setLoading(true);
     try {
       const qs = new URLSearchParams({ q, page: String(p) });
@@ -88,6 +101,7 @@ export default function ChatSearchModal({
         messages?: ChatMessageDTO[];
         total?: number;
       };
+      if (seq !== reqSeqRef.current) return;
       if (data.code === 200 && Array.isArray(data.messages)) {
         setHits(data.messages);
         setPage(p);
@@ -96,7 +110,7 @@ export default function ChatSearchModal({
     } catch {
       /* 忽略 */
     } finally {
-      setLoading(false);
+      if (seq === reqSeqRef.current) setLoading(false);
     }
   }
 

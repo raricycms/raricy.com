@@ -173,7 +173,16 @@ export default function ChatSidebar({
             ch={c}
             active={c.id === activeId}
             onClick={() => onSelect(c.id)}
-            onMenu={(ch, el) => setMenu({ ch, anchor: { rect: el.getBoundingClientRect() } })}
+            onMenu={(ch, el) =>
+              setMenu({
+                ch,
+                anchor: {
+                  rect: el.getBoundingClientRect(),
+                  trigger: el,
+                  fromKeyboard: el.matches(':focus-visible'),
+                },
+              })
+            }
           />
         ))}
         {visible.length === 0 && (

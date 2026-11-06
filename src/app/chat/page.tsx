@@ -1,6 +1,7 @@
 import { cookies } from 'next/headers';
+import { forbidden } from 'next/navigation';
 import { requireCoreUser } from '@/lib/guard';
-import { hasAdminRights } from '@/lib/auth';
+import { hasAdminRights, isCurrentlyBanned } from '@/lib/auth';
 import { isFocusLobbyBlocked } from '@/lib/focus-mode';
 import { COOKIE_NAME } from '@/lib/chat-sidebar-pref';
 import ChatApp from './ChatApp';
@@ -19,6 +20,10 @@ export default async function ChatPage({
   searchParams: Promise<SearchParams>;
 }) {
   const user = await requireCoreUser();
+  // 【禁言】页面必须与 /api/chat/* 同档（接口在禁言时连读都拦，见 api/chat/_auth.ts）。
+  // 不拦的话：首个 poll 拿 403 → ChatApp 早退 → channelsLoaded 永假 → 两侧永久
+  // 「加载中…」，用户看不到任何原因也没有出口。与保存箱同一做法（chat/saved/page.tsx）。
+  if (isCurrentlyBanned(user)) forbidden();
   const sp = await searchParams;
   // 只接正整数；形态不对就当没传 —— 深链是「尽力跳过去」，不该因此 400 或报错。
   const rawMessage = typeof sp.message === 'string' ? sp.message : '';
