@@ -6,6 +6,7 @@ import { UploadQuotaError } from '@/lib/upload-quota';
 import {
   MAX_IMAGE_SIZE,
   MAX_REQUEST_BYTES,
+  compressImage,
   filenameWithMimeExtension,
   getQuotaLimitMb,
   getUserUsedBytes,
@@ -64,8 +65,12 @@ export async function GET() {
 // POST /api/images — multipart 二进制上传（登录 + 禁言校验）
 //
 // 上传流程：内容判定（image-sniff 的 planImageUpload，**以字节为准**）→ 尺寸上限 →
-// 角色配额累计 → 内存限频（RULES.imageUploadHourly，**按张计**）→ sharp 压缩 →
-// 10 位安全 ID 写盘 → 落库（file_size 记压缩后字节）。
+// **先压缩** → 角色配额累计（按压缩后字节）→ 内存限频（RULES.imageUploadHourly，**按张计**）
+// → 10 位安全 ID 写盘 → 落库（file_size 记压缩后字节）。
+//
+// ⚠️ 压缩必须发生在配额预检**之前**：配额按 `file_size`（压缩后）累加，若预检用压缩前
+// 字节，一张 9.5MB 的原图在只剩 0.5MB 时会被 400 掉，而它压缩后可能只有 300KB
+// （R3-370）。`saveUpload` 内部仍会按事务内真实用量复核，预检只是省掉无谓的落盘。
 //
 // 【一次可以传多个】表单字段 `file` 可以重复出现 —— **用同名重复字段表达多选**，
 // 不另造 `files[]` 那种形状。逐个文件跑同一条校验链：任一张不合格只让它自己进
@@ -111,9 +116,9 @@ export async function POST(req: Request) {
   const compress = form.get('compress') !== '0';
 
   const limitBytes = limitMb * 1024 * 1024;
-  // 已用字节在批内累加 —— 每张图都按「同批前面已落盘的量」判配额，不另查库。它记的是**压缩后**大小，
-  // 所以只在落盘成功之后累加 saved.fileSize；累加压缩前大小会虚高、错误拒掉后面
-  // 本来合法的文件（配额 50MB、已用 45MB、三张压缩后各 200KB 的截图就是例子）。
+  // 已用字节在批内累加 —— 每张图都按「同批前面已落盘的量」判配额，不另查库。
+  // 它（以及下面的预检）记的是**压缩后**字节：累加/预检压缩前大小会虚高、错误拒掉
+  // 后面本来合法的文件（配额 50MB、已用 45MB、三张压缩后各 200KB 的截图就是例子）。
   let used = await getUserUsedBytes(user.id);
 
   const items: { filename: string; id: string; url: string }[] = [];
@@ -157,7 +162,10 @@ export async function POST(req: Request) {
         continue;
       }
 
-      if (used + buffer.length > limitBytes) {
+      // 先压再判配额：配额记的是压缩后 file_size，预检也必须用同一个口径。
+      // 压缩失败时 compressImage 内部回退原字节（绝不丢图），不会抛。
+      const finalBuffer = compress ? await compressImage(buffer, mimeType) : buffer;
+      if (used + finalBuffer.length > limitBytes) {
         failed.push({ filename, message: `存储空间不足，你的配额为 ${limitMb} MB` });
         continue;
       }
@@ -178,10 +186,12 @@ export async function POST(req: Request) {
 
       const saved = await saveUpload({
         userId: user.id,
-        buffer,
+        // 已经压过一次（见上面的 finalBuffer）：交给 saveUpload 的是**最终字节**，
+        // 不能让它再压一遍（重复压缩既浪费 CPU，也会让「预检 == 落库」不再等价）。
+        buffer: finalBuffer,
         mimeType,
         filename,
-        compress,
+        compress: false,
         quotaBytes: limitBytes,
       });
       used += saved.fileSize;
