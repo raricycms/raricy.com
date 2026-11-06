@@ -24,7 +24,15 @@ if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = prisma;
 // 瞬时锁直接抛 "database is locked"。WAL 是持久设置(写进库头)，busy_timeout 逐连接。
 // 只在本进程新建 client 时跑一次（dev 热重载复用全局单例，不会重复发）。真正的高并发
 // 写扩展仍建议迁 Postgres(见迁移文档)。
-if (createdClient) {
+//
+// 测试进程**故意跳过**：这里的 PRAGMA 一发出，Prisma 就立即打开（必要时创建）库文件与
+// -wal/-shm；而测试库文件的生死由 tests/helpers/db.ts 管——每个测试文件先把
+// tests/.tmp/test-<pid>-<rand>.db 连同 -wal/-shm 删掉，再从模板库拷一份。
+// 2026-11 实测：上面那次「新建连接就发 PRAGMA」在 import 阶段抢先开库，ensureSchema()
+// 随后 unlink 该文件在 Windows 直接 EBUSY（文件被本进程连接占用）→ 全量 86 文件
+// /2362 用例红、单独跑也红。测试是每文件独立库、单进程串行，WAL 与 busy_timeout
+// 不带来任何收益，故按环境跳过；dev/production 仍是修好后的「新建连接即生效」。
+if (createdClient && process.env.NODE_ENV !== 'test') {
   // 用 queryRaw（PRAGMA 会返回结果行，executeRaw 会因 "results not allowed" 报错）
   void prisma
     .$queryRawUnsafe('PRAGMA journal_mode=WAL')
