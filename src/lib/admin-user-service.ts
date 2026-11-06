@@ -30,6 +30,7 @@ import {
   validateUsername,
   PLACEHOLDER_EMAIL_DOMAIN,
 } from './account-service';
+import { parsePage, parsePerPage } from './pagination';
 
 const DEFAULT_PER_PAGE = 50;
 const MAX_PER_PAGE = 100;
@@ -203,8 +204,8 @@ export interface ListUsersParams {
 }
 
 export async function listUsers(params: ListUsersParams) {
-  const page = Math.max(1, params.page ?? 1);
-  const perPage = Math.min(MAX_PER_PAGE, Math.max(1, params.perPage ?? DEFAULT_PER_PAGE));
+  const page = parsePage(params.page);
+  const perPage = parsePerPage(params.perPage, DEFAULT_PER_PAGE, MAX_PER_PAGE);
   const search = (params.search ?? '').trim();
 
   const where = search ? { username: { contains: search } } : {};

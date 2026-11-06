@@ -62,6 +62,13 @@ export default function QrTool() {
     }
   }, []);
 
+  /** 输入 / 选项变了 → 旧二维码与旧错误立即失效（R3-483：结果必须与当前输入对应）。 */
+  function invalidateResult(): void {
+    setResult(null);
+    setError('');
+    setStatus('');
+  }
+
   function generate(): void {
     try {
       const rendered = renderQr(text, { level, size, marginModules: margin });
@@ -103,6 +110,7 @@ export default function QrTool() {
       const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'));
       if (!blob) throw new Error('PNG 编码失败');
       downloadBlobUrl(URL.createObjectURL(blob), 'qrcode.png');
+      setError(''); // 成功必须清掉旧错误，否则 {error ? … : null} 会把「已导出」压住
       setStatus('已导出 PNG');
     } catch (e) {
       setError('导出 PNG 失败：' + errorText(e));
@@ -116,6 +124,7 @@ export default function QrTool() {
     }
     const blob = new Blob([result.svg], { type: 'image/svg+xml;charset=utf-8' });
     downloadBlobUrl(URL.createObjectURL(blob), 'qrcode.svg');
+    setError('');
     setStatus('已导出 SVG');
   }
 
@@ -132,7 +141,7 @@ export default function QrTool() {
           value={text}
           onChange={(e) => {
             setText(e.target.value);
-            setStatus('');
+            invalidateResult();
           }}
           onKeyDown={(e) => {
             if (e.ctrlKey && e.key === 'Enter') {
@@ -153,7 +162,7 @@ export default function QrTool() {
             value={level}
             onChange={(e) => {
               setLevel(e.target.value as QrErrorLevel);
-              setStatus('');
+              invalidateResult();
             }}
           >
             {QR_ERROR_LEVELS.map((value) => (
@@ -177,7 +186,7 @@ export default function QrTool() {
             value={size}
             onChange={(e) => {
               setSize(Number(e.target.value));
-              setStatus('');
+              invalidateResult();
             }}
           />
         </div>
@@ -195,7 +204,7 @@ export default function QrTool() {
             value={margin}
             onChange={(e) => {
               setMargin(Number(e.target.value));
-              setStatus('');
+              invalidateResult();
             }}
           />
           <p className="devtool-hint">

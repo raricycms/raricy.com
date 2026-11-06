@@ -160,7 +160,9 @@ export function ean13CheckDigit(digits12: string): number {
 export function normalizeEan13(raw: string): { digits: string; note: string } {
   const trimmed = raw.trim().replace(/\s+/g, '');
   if (!/^\d{12,13}$/.test(trimmed)) {
-    throw new Error('EAN-13 需要 12 位或 13 位数字（不能有字母、空格或符号）');
+    // 实现会先剥掉空白，所以文案不能说「不能有空格」——否则用户盯着一个纯数字输入
+    // 完全无从下手（R3-496）。
+    throw new Error('EAN-13 需要 12 位或 13 位数字（空格会自动忽略；不能有字母或符号）');
   }
   const digits12 = trimmed.slice(0, 12);
   const check = ean13CheckDigit(digits12);

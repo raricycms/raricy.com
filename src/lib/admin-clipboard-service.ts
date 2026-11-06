@@ -14,6 +14,7 @@ import type { Prisma } from '@prisma/client';
 import { isOwner } from './auth';
 import { logAdminAction, type AdminResult } from './admin-user-service';
 import { deleteClip } from './clipboard-service';
+import { parsePage, parsePerPage } from './pagination';
 
 const DEFAULT_PER_PAGE = 20;
 const MAX_PER_PAGE = 100;
@@ -35,8 +36,8 @@ export interface AdminClipListParams {
 }
 
 export async function listAdminClips(params: AdminClipListParams) {
-  const page = Math.max(1, params.page ?? 1);
-  const perPage = Math.min(MAX_PER_PAGE, Math.max(1, params.perPage ?? DEFAULT_PER_PAGE));
+  const page = parsePage(params.page);
+  const perPage = parsePerPage(params.perPage, DEFAULT_PER_PAGE, MAX_PER_PAGE);
 
   const where: Prisma.ClipBoardWhereInput = {};
   if (params.status === 'active') where.ignore = false;

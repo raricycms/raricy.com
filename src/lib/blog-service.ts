@@ -87,6 +87,7 @@ export {
   VISIBILITY_LABEL,
   parseVisibility,
 } from './blog-visibility';
+import { parsePage, parsePerPage } from './pagination';
 export { INDEXABLE_BLOG_WHERE } from './blog-public-scope';
 export type { BlogVisibility } from './blog-visibility';
 
@@ -335,9 +336,9 @@ async function commentedBlogPage(where: Prisma.BlogWhereInput, sort: BlogSort, p
  * internal 文章。tests/service/blog-service.test.ts 钉住站内仍能列出 internal 的契约。
  */
 export async function listBlogs(params: ListParams) {
-  const page = Math.max(1, params.page ?? 1);
+  const page = parsePage(params.page);
   // 每页上限与默认一致（200 篇/页），仍防「?perPage=100000 拖库」
-  const perPage = Math.min(200, Math.max(1, params.perPage ?? DEFAULT_PER_PAGE));
+  const perPage = parsePerPage(params.perPage, DEFAULT_PER_PAGE, 200);
   const where = await blogListWhere(params);
   const q = params.search?.trim() || null;
   const fields = params.searchFields?.length ? params.searchFields : DEFAULT_SEARCH_FIELDS;
@@ -590,11 +591,8 @@ export async function listPublicBlogs(params: PublicListParams = {}): Promise<{
   hasNext: boolean;
   searchAvailability?: SearchAvailability;
 }> {
-  const page = Math.max(1, params.page ?? 1);
-  const perPage = Math.min(
-    PUBLIC_MAX_PER_PAGE,
-    Math.max(1, params.perPage ?? PUBLIC_DEFAULT_PER_PAGE)
-  );
+  const page = parsePage(params.page);
+  const perPage = parsePerPage(params.perPage, PUBLIC_DEFAULT_PER_PAGE, PUBLIC_MAX_PER_PAGE);
 
   const where: Prisma.BlogWhereInput = { ignore: false, ...INDEXABLE_BLOG_WHERE };
 

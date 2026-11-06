@@ -80,7 +80,11 @@ export default function CodeTool() {
           id="code-indent"
           className="form-select devtool-field--select"
           value={indentSize}
-          onChange={(event) => setIndentSize(event.target.value === '4' ? 4 : 2)}
+          onChange={(event) => {
+            setIndentSize(event.target.value === '4' ? 4 : 2);
+            // 缩进影响结果：旧状态（如「已复制」）立即失效（R3-483）。
+            setStatus('');
+          }}
         >
           {INDENT_OPTIONS.map((size) => (
             <option value={size} key={size}>
@@ -124,7 +128,11 @@ export default function CodeTool() {
             className="devtool-input"
             rows={14}
             value={source}
-            onChange={(event) => setSource(event.target.value)}
+            onChange={(event) => {
+              setSource(event.target.value);
+              // 改输入后「已复制 / 复制失败」必须失效（R3-483）。
+              setStatus('');
+            }}
             placeholder="粘贴代码；字符串、模板串、正则与注释里的内容不会被改动"
             spellCheck={false}
           />

@@ -336,6 +336,18 @@ describe('listAdminLogs', () => {
     // 这正是 CLI `--user` 修复前的形状（R3-410）。别把 CLI 改回两个字段。
     expect((await listAdminLogs({ adminUsername: 'alice', targetUsername: 'alice' })).total).toBe(0);
   });
+
+  it('page=NaN / perPage=NaN 归一为第 1 页与默认条数，而不是 skip:NaN 抛错（R3-412）', async () => {
+    const owner = await makeUser({ role: 'owner' });
+    await makeLog({ action: 'x', adminId: owner.id });
+
+    // 修复前：Math.max(1, NaN) → NaN → prisma 客户端校验失败（500）
+    await expect(listAdminLogs({ page: NaN, perPage: NaN })).resolves.toMatchObject({
+      page: 1,
+      perPage: 20,
+      total: 1,
+    });
+  });
 });
 
 // ── 文章搜索范围 ─────────────────────────────────────────────────────────────

@@ -11,6 +11,7 @@
 
 import { prisma } from './db';
 import { nowForDb } from './db-time';
+import { parsePage, parsePerPage } from './pagination';
 
 const CHARSET = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'; // base62 默认表
 
@@ -51,8 +52,8 @@ export interface InviteCodeListParams {
 }
 
 export async function listInviteCodes(params: InviteCodeListParams = {}) {
-  const page = Math.max(1, params.page ?? 1);
-  const perPage = Math.min(100, Math.max(1, params.perPage ?? 20));
+  const page = parsePage(params.page);
+  const perPage = parsePerPage(params.perPage, 20, 100);
 
   // isUsed 可空（历史数据），null 一律视同「未使用」
   const where =

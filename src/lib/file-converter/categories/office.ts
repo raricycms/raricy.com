@@ -38,6 +38,24 @@ function throwIfAborted(signal: AbortSignal): void {
   if (signal.aborted) throw { kind: 'cancelled', message: '已取消' } satisfies ConvertError;
 }
 
+/**
+ * 单文件边的多文件守卫。
+ *
+ * `document` 页的 `maxFilesPerTask` 被 mergeDocument 取成 50（那是给 PDF 合并 /
+ * 图片成 PDF 用的），但本模块的六条边都只读 `ctx.file`。没有这道守卫时，一次选 3 个
+ * .docx 点「Markdown（重排版）」→ 只转第一个、`setPending([])` 把三个一起清掉，
+ * 另外两个凭空消失且无任何提示（R3-460）。口径与 pdf.ts / image.ts / video.ts 一致。
+ */
+const OFFICE_MULTI_FILE_HINT = '多文件请先拆分后再转，或一次只选一个文档';
+function assertSingleFile(ctx: RunContext): void {
+  if (ctx.files.length !== 1) {
+    throw {
+      kind: 'unsupported',
+      message: `该目标一次只处理一个文档（当前选了 ${ctx.files.length} 个）；${OFFICE_MULTI_FILE_HINT}`,
+    } satisfies ConvertError;
+  }
+}
+
 function oversize(message: string): ConvertError {
   return { kind: 'oversize', message };
 }
@@ -72,6 +90,7 @@ async function runDocxTo(
   ctx: RunContext,
   mode: 'md' | 'html' | 'txt'
 ): Promise<ConvertResultData> {
+  assertSingleFile(ctx);
   checkDocumentSize(ctx);
   throwIfAborted(ctx.signal);
   const bytes = await readBytes(ctx);
@@ -133,6 +152,7 @@ async function runDocxTo(
 // ─── 写 DOCX（docx 包）────────────────────────────────────────────────────────
 
 async function runToDocx(ctx: RunContext, source: 'md' | 'html' | 'txt'): Promise<ConvertResultData> {
+  assertSingleFile(ctx);
   checkDocumentSize(ctx);
   throwIfAborted(ctx.signal);
   const text = await ctx.file.text();
@@ -174,6 +194,7 @@ async function runToDocx(ctx: RunContext, source: 'md' | 'html' | 'txt'): Promis
 // ─── DOCX → EPUB（借 ebook 引擎的 epubFromHtml）───────────────────────────────
 
 async function runDocxToEpub(ctx: RunContext): Promise<ConvertResultData> {
+  assertSingleFile(ctx);
   checkDocumentSize(ctx);
   throwIfAborted(ctx.signal);
   const bytes = await readBytes(ctx);
@@ -209,6 +230,7 @@ async function runDocxToEpub(ctx: RunContext): Promise<ConvertResultData> {
 // ─── PDF 页面 → 图片（pdfjs 逐页渲染，需 DOM canvas）───────────────────────────
 
 async function renderPdfPages(ctx: RunContext): Promise<PageImage[]> {
+  assertSingleFile(ctx);
   checkDocumentSize(ctx);
   throwIfAborted(ctx.signal);
   const bytes = await readBytes(ctx);

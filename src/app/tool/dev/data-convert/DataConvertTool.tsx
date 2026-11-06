@@ -99,6 +99,10 @@ export default function DataConvertTool() {
       setError('');
       setStatus('已交换方向，并把上一次的结果带进输入');
     } else {
+      // 没有结果可带进输入时也要清掉旧错误/旧统计：切了方向，旧结果就不再生效（R3-483）。
+      setOutput('');
+      setStats(null);
+      setError('');
       setStatus('已交换方向');
     }
   }
@@ -159,7 +163,14 @@ export default function DataConvertTool() {
                 id="devtool-convert-delimiter"
                 className="form-select devtool-select"
                 value={delimiter}
-                onChange={(event) => setDelimiter(event.target.value as CsvDelimiterOption)}
+                onChange={(event) => {
+                  setDelimiter(event.target.value as CsvDelimiterOption);
+                  // 分隔符参与解析 / 序列化，旧结果立即失效（R3-483）。
+                  setOutput('');
+                  setStats(null);
+                  setError('');
+                  setStatus('');
+                }}
               >
                 {CSV_DELIMITER_OPTIONS.map((option) => (
                   <option key={option.value} value={option.value}>

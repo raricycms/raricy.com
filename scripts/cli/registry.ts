@@ -47,11 +47,6 @@ export const COMMANDS: CommandSpec[] = [
   ...bubbleCommands,
 ];
 
-/** 按名字取命令。命令名可能多段（'oauth create-app'）。 */
-export function findCommand(name: string): CommandSpec | undefined {
-  return COMMANDS.find((c) => c.name === name);
-}
-
 /**
  * 迁移完整性闸：历史 CLI（cli.mjs）支持过的全部命令路径。
  * 注册表必须是它的超集 —— 改注册表时漏掉一条老命令，这里会红。

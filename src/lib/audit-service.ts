@@ -13,6 +13,7 @@ import { prisma } from './db';
 import { nowForDb, dayStart, todayStr } from './db-time';
 import { sendNotification } from './notification-service';
 import { Prisma } from '@prisma/client';
+import { parsePage, parsePerPage } from './pagination';
 
 const PER_PAGE = 20;
 const WINDOW_DAYS = 30; // 仅公示近 30 天（更早的日志仍在库，只是不进公示页）
@@ -174,7 +175,7 @@ export async function getLogDetail(logId: number): Promise<LogDetail | null> {
 
 /** 公示日志分页列表（public + 时间窗内 + 最新在前）。 */
 export async function listPublicLogs(params: ListLogsParams) {
-  const page = Math.max(1, params.page ?? 1);
+  const page = parsePage(params.page);
   // 时间窗：只认 PUBLIC_RANGE_DAYS 里的档，其余（含非法值）一律回落 30 天上限 ——
   // 公示「只列近期」是硬策略，别让一个 query 参数把它撑开。
   const days = (PUBLIC_RANGE_DAYS as readonly number[]).includes(params.rangeDays ?? WINDOW_DAYS)
@@ -317,8 +318,8 @@ export interface ListAdminLogsParams {
  * tsc 与构建都不报。
  */
 export async function listAdminLogs(params: ListAdminLogsParams) {
-  const page = Math.max(1, params.page ?? 1);
-  const perPage = Math.min(100, Math.max(1, params.perPage ?? PER_PAGE));
+  const page = parsePage(params.page);
+  const perPage = parsePerPage(params.perPage, PER_PAGE, 100);
 
   const where: Prisma.AdminActionLogWhereInput = {};
   if (params.visibility === 'public') where.visibility = 'public';

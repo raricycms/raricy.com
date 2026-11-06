@@ -89,6 +89,7 @@ export default function BarcodeTool() {
     });
     const blob = new Blob([svg], { type: 'image/svg+xml;charset=utf-8' });
     downloadBlobUrl(URL.createObjectURL(blob), `${symbol.format}.svg`);
+    setError(''); // 成功必须清掉旧错误，否则「已导出」会被上一条错误压住
     setStatus('已导出 SVG');
   }
 
@@ -111,6 +112,9 @@ export default function BarcodeTool() {
             onChange={(e) => {
               const next = e.target.value as BarcodeFormat;
               setFormat(next);
+              // 预览 / 下载必须跟着格式走：不清 symbol 会继续导出上一个格式的图（R3-483）。
+              setSymbol(null);
+              setError('');
               setStatus('');
             }}
           >
@@ -135,6 +139,9 @@ export default function BarcodeTool() {
             value={value}
             onChange={(e) => {
               setValue(e.target.value);
+              // 内容变了，旧结果（含旧错误）立即失效。
+              setSymbol(null);
+              setError('');
               setStatus('');
             }}
             onKeyDown={(e) => {

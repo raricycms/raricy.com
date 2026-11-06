@@ -290,7 +290,13 @@ export interface EdgeDef {
   label: string;
   /** 这条边接受的输入 kinds（与 match 并用）。 */
   from: FileKind[];
-  /** 输出格式（formats.ts 的键）。 */
+  /**
+   * 该边的**主输出格式**（formats.ts 的键；复合 / 无格式出口用登记过的代表值
+   * 'tar.gz' / 'bin'）。多格式边取代表值，**实际扩展名以 `result.ext` 为准**
+   * （例如 `image:anim-convert` 可选 gif / webp，`archive:unzip` 解出的成员是
+   * 任意格式、主输出才是 zip 包）。它不是运行时判据：`registryProblems` 只校验
+   * 它是 FORMATS 的合法键或上述代表值（R3-461）。
+   */
   to: string;
   /** 六种转换方式之一 —— 结果说明会用它解释「这次转换改变了什么」。 */
   method: ConvertMethod;

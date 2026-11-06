@@ -17,6 +17,7 @@ import { nowForDb } from './db-time';
 import { frameUrlFor } from './frame-service';
 import { hasSubscriber, publishToUser } from './topbar-bus';
 import { CHAT_NOTIFY_OBJECT_TYPE } from './chat-shared';
+import { parsePage, parsePerPage } from './pagination';
 
 const DEFAULT_PER_PAGE = 20;
 
@@ -158,8 +159,8 @@ export interface ListParams {
 
 /** 当前用户的通知列表，倒序分页，携带 actor 用户名。 */
 export async function listNotifications(userId: string, params: ListParams = {}) {
-  const page = Math.max(1, params.page ?? 1);
-  const perPage = Math.min(100, Math.max(1, params.perPage ?? DEFAULT_PER_PAGE));
+  const page = parsePage(params.page);
+  const perPage = parsePerPage(params.perPage, DEFAULT_PER_PAGE, 100);
 
   const where = {
     recipientId: userId,

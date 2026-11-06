@@ -58,7 +58,9 @@ export async function resolveActor(
 
 /** 确认屏上那一行「执行者」。 */
 export function describeActor(actor: SafeUser | null): string {
-  if (!actor) return '（只读操作，无审计主体）';
+  // 没有主体 ≠ 只读：`fish compensate` 这类 danger:'irreversible' 命令不写审计日志
+  // （不需要 actor），确认屏上写「只读操作」会误导操作者（R3-425）。
+  if (!actor) return '（本命令不写审计日志，无审计主体）';
   return `${actor.role} ${actor.username}（审计 admin_id = ${actor.id}）`;
 }
 

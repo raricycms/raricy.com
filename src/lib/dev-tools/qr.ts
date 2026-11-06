@@ -147,7 +147,9 @@ export function renderQr(text: string, options: QrRenderOptions = {}): QrRender 
   try {
     qr.make();
   } catch (e) {
-    const message = e instanceof Error ? e.message : '';
+    // qrcode-generator 内部用 `throw 'code length overflow…'`（**字符串**，不是 Error）。
+    // 只读 e.message 会让容量分支永远不可达、一律落到「未知错误」（R3-496）。
+    const message = e instanceof Error ? e.message : String(e ?? '');
     if (/overflow|too long|length/i.test(message)) {
       throw new Error('内容超出二维码容量：请缩短内容，或把纠错级别调低');
     }

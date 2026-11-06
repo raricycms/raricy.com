@@ -22,7 +22,56 @@ import {
 } from '@/lib/file-converter/engines/office';
 import { CATEGORY, ebookExtraEdges } from '@/lib/file-converter/categories/office';
 import { registryProblems } from '@/lib/file-converter/registry';
-import type { CategoryDef } from '@/lib/file-converter/types';
+import type { CategoryDef, RunContext } from '@/lib/file-converter/types';
+
+// ─── 单文件边的多文件守卫（R3-460）─────────────────────────────────────────────
+//
+// document 页的 maxFilesPerTask=50（给 PDF 合并开的），但本模块的边都只读 ctx.file。
+// 没有守卫时一次选 3 个 .docx 只会转第一个、其余被 setPending([]) 静默清掉。
+
+describe('office 单文件边：多文件必须明确拒绝（R3-460）', () => {
+  const fakeCtx = (files: File[]): RunContext =>
+    ({
+      file: files[0],
+      files,
+      inspect: null,
+      params: {},
+      signal: new AbortController().signal,
+      onProgress: () => {},
+      onPhase: () => {},
+      capabilities: {
+        webpEncode: false,
+        avifEncode: false,
+        avifDecode: false,
+        workerOk: true,
+        ffmpeg: null,
+      },
+    }) as unknown as RunContext;
+
+  it.each(['office:docx-to-md', 'office:md-to-docx', 'office:pdf-to-docx-image'])(
+    '%s：选 2 个文件 → unsupported（不是静默只转第一个）',
+    async (id) => {
+      const edge = CATEGORY.edges.find((e) => e.id === id)!;
+      const files = [
+        new File([new Uint8Array([1, 2, 3])], 'a.docx'),
+        new File([new Uint8Array([4, 5])], 'b.docx'),
+      ];
+      await expect(edge.run!(fakeCtx(files))).rejects.toMatchObject({
+        kind: 'unsupported',
+        message: expect.stringContaining('一次只处理一个文档'),
+      });
+    }
+  );
+
+  it('单文件不触发守卫（落进真实读路径前的其它校验，而不是被单文件守卫拦）', async () => {
+    const edge = CATEGORY.edges.find((e) => e.id === 'office:docx-to-md')!;
+    const one = [new File([new Uint8Array([1, 2, 3])], 'a.docx')];
+    // 假 DOCX 会在 mammoth 里失败，但错误 kind 不应是 unsupported 的单文件守卫文案
+    await expect(edge.run!(fakeCtx(one))).rejects.not.toMatchObject({
+      message: expect.stringContaining('一次只处理一个文档'),
+    });
+  });
+});
 
 // ─── 纯逻辑：纯文本分段 ────────────────────────────────────────────────────────
 

@@ -42,6 +42,13 @@ export default function DiffTool() {
   const leftTooLong = leftLines > DIFF_MAX_LINES;
   const rightTooLong = rightLines > DIFF_MAX_LINES;
 
+  /** 影响对比结果的选项变了 → 旧结果 / 旧错误 / 旧状态立即失效（R3-483）。 */
+  function invalidateResult() {
+    setResult(null);
+    setError('');
+    setStatus('');
+  }
+
   function runCompare() {
     setResult(null);
     setError('');
@@ -114,7 +121,10 @@ export default function DiffTool() {
               type="checkbox"
               id="devtool-diff-ignore-case"
               checked={ignoreCase}
-              onChange={(event) => setIgnoreCase(event.target.checked)}
+              onChange={(event) => {
+                setIgnoreCase(event.target.checked);
+                invalidateResult();
+              }}
             />
             <label className="form-check-label" htmlFor="devtool-diff-ignore-case">
               忽略大小写
@@ -126,7 +136,10 @@ export default function DiffTool() {
               type="checkbox"
               id="devtool-diff-ignore-trailing"
               checked={ignoreTrailingWhitespace}
-              onChange={(event) => setIgnoreTrailingWhitespace(event.target.checked)}
+              onChange={(event) => {
+                setIgnoreTrailingWhitespace(event.target.checked);
+                invalidateResult();
+              }}
             />
             <label className="form-check-label" htmlFor="devtool-diff-ignore-trailing">
               忽略行尾空白
@@ -138,7 +151,10 @@ export default function DiffTool() {
               type="checkbox"
               id="devtool-diff-only"
               checked={onlyDiff}
-              onChange={(event) => setOnlyDiff(event.target.checked)}
+              onChange={(event) => {
+                setOnlyDiff(event.target.checked);
+                invalidateResult();
+              }}
             />
             <label className="form-check-label" htmlFor="devtool-diff-only">
               仅差异行

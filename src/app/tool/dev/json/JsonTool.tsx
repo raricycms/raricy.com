@@ -188,7 +188,12 @@ export default function JsonTool() {
             id="devtool-json-indent"
             className="form-select devtool-select"
             value={indentRaw}
-            onChange={(event) => setIndentRaw(event.target.value)}
+            onChange={(event) => {
+              setIndentRaw(event.target.value);
+              // 缩进影响输出排版：旧结果 / 旧状态立即失效（R3-483）。
+              setOutput({ kind: 'empty' });
+              setStatus('');
+            }}
           >
             {INDENT_OPTIONS.map((option) => (
               <option key={option.value} value={option.value}>
@@ -202,7 +207,12 @@ export default function JsonTool() {
               type="checkbox"
               id="devtool-json-sort"
               checked={sortKeys}
-              onChange={(event) => setSortKeys(event.target.checked)}
+              onChange={(event) => {
+                setSortKeys(event.target.checked);
+                // 排序选项影响格式化输出：与缩进切换同口径，旧结果失效。
+                setOutput({ kind: 'empty' });
+                setStatus('');
+              }}
             />
             <label className="form-check-label" htmlFor="devtool-json-sort">
               按键名排序

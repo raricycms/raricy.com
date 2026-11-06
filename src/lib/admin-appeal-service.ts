@@ -24,6 +24,7 @@ import { isOwner, type SafeUser } from './auth';
 import { sendNotification } from './notification-service';
 import { logAdminAction, unbanUser, type AdminResult } from './admin-user-service';
 import { restoreCommentRow } from './comment-service';
+import { parsePage } from './pagination';
 
 const PER_PAGE = 20;
 
@@ -109,7 +110,7 @@ function mapAppealRow(a: AppealDbRow): AppealRow {
 
 /** 申诉分页列表（带日志 + 申诉人 + 裁决人）。默认最新在前。 */
 export async function listAppeals(params: ListAppealsParams) {
-  const page = Math.max(1, params.page ?? 1);
+  const page = parsePage(params.page);
   const where = params.status ? { status: params.status } : {};
 
   const [total, rows] = await Promise.all([

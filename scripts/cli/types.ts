@@ -109,8 +109,6 @@ export interface ArgSpec {
   validate?: (raw: string, args: Args) => string | null;
   /** 确认屏回显该参数时打码（如 --password）。 */
   secret?: boolean;
-  /** 只进 --help，向导跳过（历史兼容参数）。 */
-  helpOnly?: boolean;
 }
 
 /** 表格列声明。 */
@@ -121,12 +119,6 @@ export interface ColumnSpec {
   /** 显示宽度上限（按显示宽度算，不是 String.length）。超了截断补 '…'。 */
   maxWidth?: number;
 }
-
-/** 命令的人读输出形态。 */
-export type OutputFormat =
-  | { kind: 'text' }
-  | { kind: 'kv' }
-  | { kind: 'table'; columns: ColumnSpec[]; rowsKey: string; emptyText?: string };
 
 /** 命令返回的东西。 */
 export interface CmdOutput {
@@ -234,7 +226,6 @@ export interface CommandSpec {
    * 写库绝不允许发生在这里。抛 CliError 即视为预检失败（先于 --yes 闸报错）。
    */
   describe?: (ctx: Ctx) => Promise<string[]>;
-  output?: OutputFormat;
   /** 交互菜单里的排序权重，小的在前。 */
   order?: number;
   run: (ctx: Ctx) => Promise<CmdOutput>;

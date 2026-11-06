@@ -19,12 +19,12 @@ const CANCEL_TOKEN = ':q';
 const NAV_HINT = '（:b 返回上一步，:q 回主菜单）';
 
 /** 菜单里固定加在最前面的两个导航项。 */
-export const NAV_CHOICES: Choice[] = [
+const NAV_CHOICES: Choice[] = [
   { value: NAV_BACK, label: '← 返回上一步' },
   { value: NAV_CANCEL, label: '✕ 取消本次操作' },
 ];
 
-export function isNav(v: string): boolean {
+function isNav(v: string): boolean {
   return v === NAV_BACK || v === NAV_CANCEL;
 }
 

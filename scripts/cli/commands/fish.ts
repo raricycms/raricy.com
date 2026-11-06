@@ -242,7 +242,9 @@ export const fishCommands: CommandSpec[] = [
 
       // 批次 ID 必须在**第一位用户被发放之前**落到屏幕上：进程被 Ctrl-C / OOM 杀掉时，
       // 屏幕上这一行就是运维唯一的续跑凭据。
-      if (!dryRun) ctx.io.line(`批次 ID：${batchId}${provided ? '（续跑）' : ''}`);
+      // 走 stderr 而不是 stdout：`--json` 下所有 ctx.io.line 都会被丢弃（output.ts），
+      // 中途被杀就既没有批次 ID 也没有 JSON —— 续跑只能靠猜 12 位随机 hex（R3-429）。
+      if (!dryRun) ctx.io.error(`批次 ID：${batchId}${provided ? '（续跑）' : ''}`);
 
       const r = await compensateAllUsers({
         amount,
@@ -290,9 +292,9 @@ export const fishCommands: CommandSpec[] = [
         `  批次 ID：${batchId}`,
       ];
 
-      // 有人没发成 / 有卡住的账目 → 退出码 2（真故障档：每位没发成的都是一次本地事务
-      // 失败），并把续跑命令原样交到运维手里，别让他自己拼批次 ID。
-      if (r.failed.length > 0 || r.blocked.length > 0) {
+      // 有人没发成 → 退出码 2（真故障档：每位没发成的都是一次本地事务失败），
+      // 并把续跑命令原样交到运维手里，别让他自己拼批次 ID。
+      if (r.failed.length > 0) {
         throw new CliError(
           `失败：${r.failed.length} 位未发放` +
             (r.blocked.length > 0
@@ -305,6 +307,24 @@ export const fishCommands: CommandSpec[] = [
             '',
             '  失败者那笔事务整体回滚（余额与流水一起没写入），对他们等价于没发生。',
             '  续跑（已发放的会自动跳过）：',
+            `    npm run cli -- fish compensate ${amount} --batch-id ${batchId} --yes`,
+          ]
+        );
+      }
+
+      // 只有 blocked（迁移前遗留行）、本次 0 位写失败：不属于「本地事务失败」（exit 2），
+      // 而是「需人工查证」的用户错误档 → exit 1。旧实现以 exit 2 +「失败：0 位未发放」
+      // 收场，按非零退出分类告警的脚本会把它当故障（R3-429）。
+      if (r.blocked.length > 0) {
+        throw new CliError(
+          `需人工查证：${r.blocked.length} 位卡在迁移前的遗留账目里（本次 0 位写失败）`,
+          1,
+          [
+            ...r.blocked.slice(0, 10).map((b) => `  ? ${b.username}（${b.status}）`),
+            ...(r.blocked.length > 10 ? [`  …另有 ${r.blocked.length - 10} 位`] : []),
+            '',
+            '  这些行不会自动收敛（重放它们的那条命令已撤销），查清前会一直被跳过；',
+            '  本批已发放的部分可用同一批次 ID 续跑（已发放的自动跳过）：',
             `    npm run cli -- fish compensate ${amount} --batch-id ${batchId} --yes`,
           ]
         );
@@ -488,6 +508,9 @@ export const fishCommands: CommandSpec[] = [
       const { revokeFishToken } = await import('../../../src/lib/fish-token-service');
       const id = Number(ctx.args.id);
       // isOwner：CLI 由站长执行，可以动任何人的凭据（自助接口那边不走这条路）。
+      // ⚠️ 不校验执行者角色是**刻意**的：CLI≈shell 信任边界，--as 普通用户也放行；
+      //    本命令**不写审计日志** —— 这是 docs/cli.md 审计例外清单登记在案的一条
+      //    （R3-415 方案 B：登记例外，不补动作码）。别顺手在这里加 logAdminAction（R3-430）。
       const r = await revokeFishToken(ctx.actor?.id ?? '', id, { isOwner: true });
       if (r === 'not_found') throw new CliError(`错误：凭据 #${id} 不存在`);
 

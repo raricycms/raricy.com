@@ -38,14 +38,20 @@ export const userArchiveCommands: CommandSpec[] = [
       if (!user) throw new CliError('用户不存在');
       if (!ctx.actor || ctx.actor.role !== 'owner' || ctx.actor.archivedAt) throw new CliError('需要有效的站长审计主体');
       if (user.id === ctx.actor.id) throw new CliError('不能归档或恢复自己');
+      // 已经是目标状态 → 本次是幂等空操作（service 会短路、不会重复扣款/恢复）。
+      // 仍照旧打印「扣余额 / 撤销点赞」的后果说明就是在说谎（R3-423）；
+      // 返回空数组让 execute.ts 跳过确认，run 里的 service 自己输出「未重复…」。
+      if (archive && user.archivedAt) return [];
+      if (!archive && !user.archivedAt) return [];
       const { unitsToFish } = await import('../../../src/lib/fish-units');
+      const reason = String(ctx.args.reason).trim();
       return archive ? [
         `归档 ${user.username}；当前余额 ${unitsToFish(user.driedFish)} 条鱼干将全额扣除并记账。`,
         '撤销全部文章/评论点赞；未结清仓位作废且不退款。',
         '所有会话及接口凭据失效；网站（含管理页）不能查看或修改该用户及原文。',
         '文章、评论、讨论和上传内容保留在库内，仅后台 CLI 可查询；原有删除状态保留。',
-        `原因：${ctx.args.reason}`,
-      ] : [`恢复 ${user.username}；原来未删除的内容重新可见。`, '已清空的余额、撤销的点赞、接口凭据和已作废仓位不恢复。', `原因：${ctx.args.reason}`];
+        `原因：${reason}`,
+      ] : [`恢复 ${user.username}；原来未删除的内容重新可见。`, '已清空的余额、撤销的点赞、接口凭据和已作废仓位不恢复。', `原因：${reason}`];
     },
     async run(ctx) {
       const { archiveUser, unarchiveUser } = await import('../../../src/lib/user-archive-service');

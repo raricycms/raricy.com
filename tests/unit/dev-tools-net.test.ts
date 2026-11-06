@@ -97,6 +97,12 @@ describe('qr：生成结果', () => {
     expect(() => renderQr('   ')).toThrow(/请输入/);
     expect(() => renderQr('x'.repeat(2001))).toThrow(/最多/);
   });
+
+  it('未超本工具上限但超二维码容量 → 「超出容量」提示可达（R3-496）', () => {
+    // qrcode-generator 内部 `throw 'code length overflow…'`（字符串，不是 Error）。
+    // 只认 e.message 的话这里永远落到「未知错误」，容量提示不可达。
+    expect(() => renderQr('x'.repeat(1500), { level: 'H' })).toThrow(/超出二维码容量/);
+  });
 });
 
 // ── 条形码 ──────────────────────────────────────────────────────────────────

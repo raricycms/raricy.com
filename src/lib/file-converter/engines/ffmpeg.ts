@@ -53,8 +53,12 @@ export type ProbeStream = ParsedProbeStream;
 export type ProbeResult = ParsedProbeResult;
 
 /**
- * 核心版本目录 —— 必须与 scripts/copy-converter-assets.mjs 拷出的目录名一致
- * （那边读 node_modules/@ffmpeg/core/package.json 的 version；升级核心时两边一起动）。
+ * 核心版本目录 —— 必须与 `scripts/copy-converter-assets.mjs` 按
+ * `node_modules/@ffmpeg/core/package.json` 拷出的目录名一致。
+ *
+ * ⚠️ 这仍是**硬编码**（浏览器包里读不到 package.json），但升级 @ffmpeg/core 后
+ * 不再会静默 404：copy-converter-assets 在拷贝或 `converter:check` 之前会把本常量与
+ * 包版本显式比对，不一致直接失败并指出要改这一行（R3-013）。改包版本时同步改这里。
  */
 export const FFMPEG_CORE_VERSION = '0.12.10';
 
@@ -113,6 +117,35 @@ export function getFFmpegState(): FFmpegState {
   };
 }
 
+// ─── 状态订阅（R3-465：能力报告回填）────────────────────────────────────────────
+//
+// `ConverterApp.probeCapabilities` 在页面加载时只能给 `ffmpeg: null`（核心未加载）。
+// 此前没有任何回填点，于是 `CapabilityReport.ffmpeg` 整个生命周期恒为 null：
+// `requires:['ffmpeg-enc:…']` 的边永远按「可满足」放行、缺编码器的提示永远拿不到。
+// 这里提供最小的订阅口：加载成功 / 失败 / 被终止时通知页面，把真实状态写回 caps。
+
+type FFmpegStateListener = (state: FFmpegState) => void;
+const stateListeners = new Set<FFmpegStateListener>();
+
+/** 订阅引擎状态。返回取消函数。回调异常一律吞掉（订阅不该影响引擎加载）。 */
+export function subscribeFFmpegState(listener: FFmpegStateListener): () => void {
+  stateListeners.add(listener);
+  return () => {
+    stateListeners.delete(listener);
+  };
+}
+
+function notifyFFmpegState(): void {
+  const state = getFFmpegState();
+  for (const listener of stateListeners) {
+    try {
+      listener(state);
+    } catch {
+      /* 订阅者异常不影响引擎 */
+    }
+  }
+}
+
 // ─── 加载 ──────────────────────────────────────────────────────────────────────
 
 export async function ensureFFmpeg(
@@ -134,6 +167,7 @@ async function doLoad(
 ): Promise<void> {
   loading = true;
   loadError = undefined;
+  notifyFFmpegState();
   onProgress?.(null, '正在加载转换组件（约 30MB，仅首次）');
   let logBuf: string[] = [];
   const onLog = (ev: LogEvent) => {
@@ -177,6 +211,7 @@ async function doLoad(
     encoders = enc;
     decoders = dec;
     loaded = true;
+    notifyFFmpegState();
   } catch (e) {
     if (isKind(e, 'cancelled')) throw e; // 上面的「加载期间被终止」分支透传
     const msg = errorMessage(e);
@@ -186,6 +221,7 @@ async function doLoad(
       loaded = false;
       loadError = detail.slice(0, 300);
       ffmpeg = null;
+      notifyFFmpegState(); // 失败也要回填：页面据此把依赖边标为不可用并显示原因
     }
     try {
       instance?.terminate();
@@ -196,6 +232,7 @@ async function doLoad(
   } finally {
     loading = false;
     instance?.off('log', onLog);
+    notifyFFmpegState();
   }
 }
 
@@ -420,6 +457,7 @@ export function terminateFFmpeg(): void {
   } catch {
     /* 已死 */
   }
+  notifyFFmpegState();
 }
 
 // ─── 内部件 ────────────────────────────────────────────────────────────────────

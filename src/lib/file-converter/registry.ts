@@ -4,11 +4,20 @@
 // 【它是什么】roadmap §12.1 的「有方向的图」的读口：识别输入后，只展示满足条件
 // 的目标。不存在的边不靠改后缀补上。
 //
-// 【纪律】零运行时依赖（type import 除外）—— node 单测直接驱动过滤逻辑。
+// 【纪律】零引擎依赖 —— 运行时只依赖零依赖的 formats.ts，node 单测直接驱动过滤逻辑。
 // 边的**定义**住在各 category 模块（它们 import 引擎），这里只做集合运算。
 // ─────────────────────────────────────────────────────────────────────────────
 
 import type { CapabilityReport, CategoryDef, EdgeDef, InspectInfo } from './types';
+import { FORMATS } from './formats';
+
+/**
+ * `to` 允许的、FORMATS 之外的**代表值**：
+ *   · 'bin'    —— 解包 / 解压后原样落盘的成员，没有单一格式；
+ *   · 'tar.gz' —— tar 与 gzip 的复合出口（FORMATS 里只有 tar / gzip 单格式）。
+ * 其余 `to` 必须是 FORMATS 的键（R3-461：登记值不能再悄悄写成不存在的格式）。
+ */
+const EXTRA_OUTPUT_KEYS = new Set(['bin', 'tar.gz']);
 
 /** 登记册完整性校验（单测调用；问题清单为空 = 通过）。 */
 export function registryProblems(categories: CategoryDef[]): string[] {
@@ -27,6 +36,10 @@ export function registryProblems(categories: CategoryDef[]): string[] {
       }
       if (!e.label) problems.push(`${e.id}: 缺 label`);
       if (!e.to) problems.push(`${e.id}: 缺输出格式 to`);
+      // `to` 是「该边的主输出格式」的代表值（多格式边以 result.ext 为准），
+      // 但至少必须是格式词表里的键 —— 否则 roadmap 契约字段会悄悄写成不存在的格式（R3-461）。
+      else if (!(e.to in FORMATS) && !EXTRA_OUTPUT_KEYS.has(e.to))
+        problems.push(`${e.id}: to "${e.to}" 不是 FORMATS 的键`);
       if (e.from.length === 0) problems.push(`${e.id}: from 为空`);
       if (e.status === 'planned') {
         if (e.run) problems.push(`${e.id}: planned 状态不应实现 run（仅登记）`);

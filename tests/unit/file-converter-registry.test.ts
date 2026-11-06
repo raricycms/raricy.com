@@ -29,7 +29,7 @@ function edge(partial: Partial<EdgeDef> & Pick<EdgeDef, 'id'>): EdgeDef {
   return {
     label: 'L',
     from: ['png'],
-    to: 'jpeg',
+    to: 'jpg',
     method: 'reencode',
     notices: [],
     params: [],
@@ -76,6 +76,20 @@ describe('registryProblems（静态体检）', () => {
     expect(
       registryProblems([category('document', [edge({ id: 'pdf:a' }), edge({ id: 'office:b' })])])
     ).toEqual([]);
+  });
+
+  it('to 必须是 FORMATS 的键（或登记过的复合 / 无格式出口），否则报错（R3-461）', () => {
+    const bad = registryProblems([
+      category('image', [edge({ id: 'image:bad-to', to: 'jpeg' as EdgeDef['to'] })]),
+    ]);
+    expect(bad.join('\n')).toContain('不是 FORMATS 的键');
+
+    for (const allowed of ['jpg', 'zip', 'bin', 'tar.gz']) {
+      expect(
+        registryProblems([category('image', [edge({ id: 'image:ok-to', to: allowed })])]),
+        `${allowed} 应是合法代表值`
+      ).toEqual([]);
+    }
   });
 
   it('planned 不应有 run；live 缺 run 报错', () => {

@@ -23,15 +23,21 @@ async function lookup(ctx: Ctx, id: number) {
   return a;
 }
 
-/** 「通过这条申诉会撤销什么」。 */
+/**
+ * 「通过这条申诉会尝试撤销什么」。
+ *
+ * ⚠️ 措辞必须是「尝试」而不是「一定会」：adjudicate 的撤回是**尽力而为**
+ * —— 禁言已自然到期时 unbanUser 返回 ok:false 会被忽略，申诉仍 accepted。
+ * 写「自动解除」会让确认屏承诺一件可能不发生的事（R3-426）。
+ */
 function reversalFor(action: string | null | undefined): string {
   switch (action) {
     case 'ban_user':
-      return '通过后会**自动解除该用户的禁言**。';
+      return '通过后会**尝试解除该用户的禁言**（若禁言已自然到期，则不再处理）。';
     case 'delete_blog':
-      return '通过后会**自动恢复被删的文章**（ignore=false）。';
+      return '通过后会**尝试恢复被删的文章**（ignore=false；文章已恢复或不存在时不再处理）。';
     case 'delete_comment':
-      return '通过后会**自动恢复被删的评论**，并回补文章评论计数。';
+      return '通过后会**尝试恢复被删的评论**并回补文章评论计数（评论已恢复时不再处理）。';
     default:
       return '原操作不在自动撤回范围内 —— 通过只会改变申诉状态，**不会撤销任何数据**。';
   }

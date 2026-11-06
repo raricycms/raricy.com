@@ -45,33 +45,54 @@ export const oauthCommands: CommandSpec[] = [
     readOnly: true,
     args: [],
     async run(ctx) {
-      const { listOAuthApplications } = await import('../../../src/lib/oauth');
+      const { listOAuthApplications, parseRedirectUris } = await import('../../../src/lib/oauth');
       const apps = await listOAuthApplications();
       if (apps.length === 0) return { lines: [ctx.io.yellow('（暂无 OAuth 应用）')], json: { apps: [] } };
+
+      /**
+       * 库里一行 `redirect_uris` 坏成非法 JSON 时，**只该坏那一条**，不能让整个列表
+       * 抛 SyntaxError（否则一个应用都列不出来）。解析失败标出来而不是静默空列表 ——
+       * 那种应用本来就不可用，运维需要知道原因（R3-432）。
+       */
+      const urisOf = (json: string): { uris: string[]; corrupt: boolean } => {
+        try {
+          return { uris: parseRedirectUris(json), corrupt: false };
+        } catch {
+          return { uris: [], corrupt: true };
+        }
+      };
 
       const lines: string[] = [];
       for (const app of apps) {
         const status = app.disabledAt ? ctx.io.yellow('已禁用') : ctx.io.green('启用中');
-        const uris = JSON.parse(app.redirectUris) as string[];
+        const { uris, corrupt } = urisOf(app.redirectUris);
         lines.push(`${app.name}  [${status}]`);
         lines.push(`  id:        ${app.id}`);
         lines.push(`  client_id: ${app.clientId}`);
-        lines.push(`  callback:  ${uris.join(', ')}`);
+        lines.push(
+          corrupt
+            ? ctx.io.yellow('  callback:  ⚠️ redirect_uris 数据损坏（不是合法 JSON），该应用无法使用')
+            : `  callback:  ${uris.join(', ')}`
+        );
         if (app.homepageUrl) lines.push(`  homepage:  ${app.homepageUrl}`);
         if (app.description) lines.push(`  desc:      ${app.description}`);
       }
       return {
         lines,
         json: {
-          apps: apps.map((a) => ({
-            id: a.id,
-            clientId: a.clientId,
-            name: a.name,
-            redirectUris: JSON.parse(a.redirectUris) as string[],
-            homepageUrl: a.homepageUrl,
-            description: a.description,
-            disabled: !!a.disabledAt,
-          })),
+          apps: apps.map((a) => {
+            const { uris, corrupt } = urisOf(a.redirectUris);
+            return {
+              id: a.id,
+              clientId: a.clientId,
+              name: a.name,
+              redirectUris: uris,
+              ...(corrupt ? { redirectUrisCorrupt: true } : {}),
+              homepageUrl: a.homepageUrl,
+              description: a.description,
+              disabled: !!a.disabledAt,
+            };
+          }),
         },
       };
     },
@@ -127,15 +148,23 @@ export const oauthCommands: CommandSpec[] = [
       const owner = await resolveOwner(ctx, ctx.args.owner ? String(ctx.args.owner) : undefined);
       const { createOAuthApplication } = await import('../../../src/lib/oauth');
 
-      const created = await createOAuthApplication(
-        {
-          name: String(ctx.args.name),
-          description: ctx.args.description ? String(ctx.args.description) : null,
-          homepageUrl: ctx.args.homepageUrl ? String(ctx.args.homepageUrl) : null,
-          redirectUris: (ctx.args.redirectUris as string[]) ?? [],
-        },
-        owner.id
-      );
+      // createOAuthApplication 对非法入参抛**普通 Error**（名称空 / URI 空 / 超长）。
+      // 不转 CliError 就会一路冒到 cli.ts 打整段 stack —— 运维看到的是崩溃而不是
+      // 「哪里填错了」；`--json` 下也没有 {ok:false} 对象（R3-432）。
+      let created: Awaited<ReturnType<typeof createOAuthApplication>>;
+      try {
+        created = await createOAuthApplication(
+          {
+            name: String(ctx.args.name),
+            description: ctx.args.description ? String(ctx.args.description) : null,
+            homepageUrl: ctx.args.homepageUrl ? String(ctx.args.homepageUrl) : null,
+            redirectUris: (ctx.args.redirectUris as string[]) ?? [],
+          },
+          owner.id
+        );
+      } catch (e) {
+        throw new CliError(`错误：${e instanceof Error ? e.message : String(e)}`);
+      }
 
       return {
         lines: [

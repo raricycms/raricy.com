@@ -256,11 +256,52 @@ export default function ConverterApp() {
     let cancelled = false;
     void probeCapabilities().then((c) => {
       if (cancelled) return;
-      capsRef.current = c;
-      setCaps(c);
+      // 若引擎已在此期间加载/失败并回填过（见下面的订阅），保留那份真实状态，
+      // 别用初始的 ffmpeg:null 把它盖回去（R3-465）。
+      const merged: CapabilityReport = { ...c, ffmpeg: capsRef.current?.ffmpeg ?? c.ffmpeg };
+      capsRef.current = merged;
+      setCaps(merged);
     });
     return () => {
       cancelled = true;
+    };
+  }, []);
+
+  // FFmpeg 核心加载结果回填能力报告（R3-465）。
+  //
+  // probeCapabilities 只能给 ffmpeg:null（核心未加载）；没有回填点时
+  // CapabilityReport.ffmpeg 整个生命周期恒为 null —— `requires:['ffmpeg-enc:…']`
+  // 的边永远按「可满足」放行，缺编码器的提示也永远拿不到。这里订阅引擎状态，
+  // 把 loaded / encoders / error 写回 caps；失败时给出可见提示（文档承诺的
+  // 「加载失败时把对应目标标为不可用并说明原因」）。
+  useEffect(() => {
+    let cancelled = false;
+    let unsubscribe: (() => void) | undefined;
+    void import('@/lib/file-converter/engines/ffmpeg').then(({ subscribeFFmpegState }) => {
+      if (cancelled) return;
+      unsubscribe = subscribeFFmpegState((state) => {
+        const current = capsRef.current;
+        if (!current) return;
+        const ffmpeg =
+          state.loaded || state.error
+            ? {
+                loaded: state.loaded,
+                encoders: state.encoders,
+                decoders: state.decoders,
+                ...(state.error ? { error: state.error } : {}),
+              }
+            : null;
+        const next = { ...current, ffmpeg };
+        capsRef.current = next;
+        setCaps(next);
+        if (state.error) {
+          setAnnounce('转换组件加载失败（音频 / 视频目标暂不可用），请检查网络后重试');
+        }
+      });
+    });
+    return () => {
+      cancelled = true;
+      unsubscribe?.();
     };
   }, []);
 
@@ -477,18 +518,50 @@ export default function ConverterApp() {
       const out = succeeded[0].result!.outputs[0];
       const data = new Uint8Array(await out.blob.arrayBuffer());
       const gz = gzipSync(data);
-      downloadBlob(new Blob([gz.buffer as ArrayBuffer], { type: 'application/gzip' }), `${out.name}.gz`);
+      const url = downloadBlob(
+        new Blob([gz.buffer as ArrayBuffer], { type: 'application/gzip' }),
+        `${out.name}.gz`
+      );
+      registerUrl('__pack__', url);
       return;
     }
+    if (packaging === 'gzip') {
+      // GZIP 是单流格式，多结果只能退回 ZIP。**必须说出来** —— 配方名写着 GZIP
+      // 却拿到 converted.zip 的静默降级会让人以为下载坏了（R3-480）。
+      setAnnounce('GZIP 只支持单个结果，本次已改为 ZIP 打包');
+    }
+    // 输出文件名按「任务 + 文件名」去重：不同文件转出同名（photo-converted.png）时
+    // 后写的会覆盖先写的，用户会**静默**少拿到一份（R3-480）。
     const entries: Record<string, Uint8Array> = {};
+    const used = new Set<string>();
+    const uniqueName = (name: string): string => {
+      if (!used.has(name)) {
+        used.add(name);
+        return name;
+      }
+      const dot = name.lastIndexOf('.');
+      const base = dot > 0 ? name.slice(0, dot) : name;
+      const ext = dot > 0 ? name.slice(dot) : '';
+      let i = 2;
+      while (used.has(`${base}-${i}${ext}`)) i += 1;
+      const next = `${base}-${i}${ext}`;
+      used.add(next);
+      return next;
+    };
     for (const t of succeeded) {
       for (const out of t.result!.outputs) {
-        entries[out.name] = new Uint8Array(await out.blob.arrayBuffer());
+        entries[uniqueName(out.name)] = new Uint8Array(await out.blob.arrayBuffer());
       }
     }
     const zipped = zipSync(entries, { level: 0 });
-    downloadBlob(new Blob([zipped.buffer as ArrayBuffer], { type: 'application/zip' }), 'converted.zip');
-  }, [snap.tasks, packaging]);
+    const url = downloadBlob(
+      new Blob([zipped.buffer as ArrayBuffer], { type: 'application/zip' }),
+      'converted.zip'
+    );
+    // 打包 URL 也登记进 urlRegistry：此前只有 TaskPreview 登记，打包产生的两个
+    // Blob URL 要等页面卸载才释放（R3-480）。
+    registerUrl('__pack__', url);
+  }, [snap.tasks, packaging, registerUrl]);
 
   const removeTask = useCallback(
     (id: string) => {

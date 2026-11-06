@@ -213,7 +213,7 @@ async function runOne(
  * 「返回上一步」回到前一题（带出原答案当默认值）。
  */
 export async function collectArgs(cmd: CommandSpec, deps: WizardDeps): Promise<Args | null> {
-  const specs = cmd.args.filter((a) => !a.helpOnly);
+  const specs = cmd.args;
   const args: Args = {};
 
   let i = 0;

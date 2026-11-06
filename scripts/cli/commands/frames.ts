@@ -283,7 +283,18 @@ export const frameCommands: CommandSpec[] = [
       const user = await requireUser(ctx.prisma, username);
 
       const { revokeFrame } = await import('../../../src/lib/frame-service');
-      const res = await revokeFrame({ userId: user.id, key });
+      // revokeFrame 自开 $transaction：SQLite 写锁 / 约束失败等**本地事务失败**会抛
+      // 普通 Error，不包就会冒到 cli.ts 打成「未捕获异常」+ exit 1（用户错误档）。
+      // 按 scripts/cli.ts:14 的契约，本地事务失败是 exit 2（R3-427）。
+      let res: Awaited<ReturnType<typeof revokeFrame>>;
+      try {
+        res = await revokeFrame({ userId: user.id, key });
+      } catch (e) {
+        throw new CliError(
+          `错误：收回失败（本地事务）—— ${e instanceof Error ? e.message : String(e)}`,
+          2
+        );
+      }
 
       // 幂等：空操作也写审计吗？**写** —— 账要能回答「谁在什么时候动过这个框」，
       // 而「某人执行了一次没生效的收回」本身也是运维事实（多半是敲错了用户名）。

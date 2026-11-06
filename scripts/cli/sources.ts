@@ -70,8 +70,9 @@ export function blogSource(): SearchSource {
 }
 
 /** 评论。value = commentId。 */
-export function commentSource(opts: { blogId?: string; includeDeleted?: boolean } = {}): SearchSource {
-  const status = opts.includeDeleted === false ? 'active' : 'all';
+// 形参已收敛：唯一调用点（comments.ts）不传 blogId / includeDeleted；需要筛选时再加，
+// 别留一个「看起来能筛、实际没人传」的签名（R3-433）。
+export function commentSource(): SearchSource {
   const toChoices = (
     rows: { id: string; content: string; isDeleted: boolean | null; author: { username: string } | null }[]
   ): Choice[] =>
@@ -85,12 +86,12 @@ export function commentSource(opts: { blogId?: string; includeDeleted?: boolean 
     emptyHint: '评论正文 / 作者 / 文章标题片段',
     async initial() {
       const { listAdminComments } = await import('../../src/lib/admin-comment-service');
-      const r = await listAdminComments({ page: 1, perPage: 20, blogId: opts.blogId, status });
+      const r = await listAdminComments({ page: 1, perPage: 20, status: 'all' });
       return toChoices(r.comments);
     },
     async search(q) {
       const { listAdminComments } = await import('../../src/lib/admin-comment-service');
-      const r = await listAdminComments({ page: 1, perPage: 20, search: q, blogId: opts.blogId, status });
+      const r = await listAdminComments({ page: 1, perPage: 20, search: q, status: 'all' });
       return toChoices(r.comments);
     },
   };
@@ -181,7 +182,9 @@ export function imageSource(): SearchSource {
  */
 const APPEAL_SEARCH_PAGES = 5;
 
-export function appealSource(status = 'pending'): SearchSource {
+export function appealSource(): SearchSource {
+  // 形参已收敛：唯一调用点（appeals.ts 的 `appeal decide`）只处理待处理申诉。
+  const status = 'pending';
   const toChoices = (
     rows: { id: number; status: string; content: string; appellant: { username: string | null } }[]
   ): Choice[] =>

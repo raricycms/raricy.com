@@ -13,6 +13,7 @@
 import { prisma } from './db';
 import type { Prisma } from '@prisma/client';
 import { isBackendOps } from './audit-context';
+import { parsePage, parsePerPage } from './pagination';
 
 const DEFAULT_PER_PAGE = 20;
 const MAX_PER_PAGE = 100;
@@ -35,8 +36,8 @@ export interface AdminCommentListParams {
  * 可接受；真要快了得上 FTS5。
  */
 export async function listAdminComments(params: AdminCommentListParams) {
-  const page = Math.max(1, params.page ?? 1);
-  const perPage = Math.min(MAX_PER_PAGE, Math.max(1, params.perPage ?? DEFAULT_PER_PAGE));
+  const page = parsePage(params.page);
+  const perPage = parsePerPage(params.perPage, DEFAULT_PER_PAGE, MAX_PER_PAGE);
 
   const where: Prisma.BlogCommentWhereInput = isBackendOps() ? {} : { author: { archivedAt: null } };
   if (params.status === 'active') where.isDeleted = false;

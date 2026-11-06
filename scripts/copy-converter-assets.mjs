@@ -55,6 +55,40 @@ const ffmpegCorePkg = JSON.parse(
 );
 const FFMPEG_CORE_VERSION = ffmpegCorePkg.version;
 
+// ── R3-013：核心版本目录名有两个来源，必须在构建期对齐 ─────────────────────────
+//
+// 目录名由本脚本按 `node_modules/@ffmpeg/core/package.json` 的 version 决定；
+// 浏览器请求的 URL 却来自 `src/lib/file-converter/engines/ffmpeg.ts` 里**硬编码**的
+// `FFMPEG_CORE_VERSION`。升级 @ffmpeg/core 后两边不同步时，build/check 全绿而页面
+// 请求到 404（表现为「转换引擎加载失败」）。这里在拷贝/自检之前显式比对一次：
+// 不一致直接失败，并告诉运维改哪一行 —— 宁可装不上，也别装上一个必 404 的包。
+const BROWSER_FFMPEG_SRC = path.join(
+  ROOT, 'src', 'lib', 'file-converter', 'engines', 'ffmpeg.ts'
+);
+function browserFFmpegCoreVersion() {
+  const src = fs.readFileSync(BROWSER_FFMPEG_SRC, 'utf8');
+  const m = /export const FFMPEG_CORE_VERSION\s*=\s*'([^']+)'/.exec(src);
+  if (!m) {
+    console.error(
+      '[copy-converter-assets] 无法在 engines/ffmpeg.ts 里找到 FFMPEG_CORE_VERSION —— ' +
+        '常量改名了？请同步本检查（R3-013）。'
+    );
+    process.exit(1);
+  }
+  return m[1];
+}
+const browserVersion = browserFFmpegCoreVersion();
+if (browserVersion !== FFMPEG_CORE_VERSION) {
+  console.error(
+    `[copy-converter-assets] @ffmpeg/core 版本不一致：\n` +
+      `  node_modules/@ffmpeg/core = ${FFMPEG_CORE_VERSION}\n` +
+      `  src/lib/file-converter/engines/ffmpeg.ts 的 FFMPEG_CORE_VERSION = ${browserVersion}\n` +
+      `  不改的话浏览器会请求 /static/converter/ffmpeg/${browserVersion}/… → 404（R3-013）。\n` +
+      `  请把 ffmpeg.ts 的常量改成 '${FFMPEG_CORE_VERSION}' 后重跑。`
+  );
+  process.exit(1);
+}
+
 // [源（相对 node_modules），目标（相对 DEST），说明]
 const FILES = [
   [

@@ -19,6 +19,7 @@ import type { Prisma } from '@prisma/client';
 import { isOwner } from './auth';
 import { logAdminAction, type AdminResult } from './admin-user-service';
 import { storagePathFor } from './image-upload';
+import { parsePage, parsePerPage } from './pagination';
 
 const DEFAULT_PER_PAGE = 20;
 const MAX_PER_PAGE = 100;
@@ -37,8 +38,8 @@ export interface AdminImageListParams {
 }
 
 export async function listAdminImages(params: AdminImageListParams) {
-  const page = Math.max(1, params.page ?? 1);
-  const perPage = Math.min(MAX_PER_PAGE, Math.max(1, params.perPage ?? DEFAULT_PER_PAGE));
+  const page = parsePage(params.page);
+  const perPage = parsePerPage(params.perPage, DEFAULT_PER_PAGE, MAX_PER_PAGE);
 
   const where: Prisma.ImageHostingWhereInput = {};
   if (params.status === 'active') where.ignore = false;

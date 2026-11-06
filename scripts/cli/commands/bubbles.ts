@@ -18,7 +18,33 @@ export const bubbleCommands: CommandSpec[] = [
       label: '有效天数', help: '省略为永久；指定正整数则从现在起 N 天，只延长不缩短',
       validate: (raw: string) => Number.isSafeInteger(Number(raw)) && Number(raw) > 0 ? null : 'days 必须是正整数',
       prompt: { type: 'number' as const, min: 1, integer: true } }] : []), reason],
-    async describe(ctx) { return [`${action === 'grant' ? '授予' : '撤销'} ${ctx.args.username} 的气泡 ${ctx.args.key}${action === 'revoke' ? '，正在使用时会恢复默认（软删持有行）' : '，用户自行在设置页选择使用'}`]; },
+    async describe(ctx) {
+      // 预检放在确认之前：key 写错 / 用户不存在 / 本来没持有，都该在「确认执行？」之前
+      // 用人话报出来，而不是让操作者确认完再从 run 里吃一个 CliError（R3-424）。
+      const refs = await import('../../../src/lib/bubble-refs');
+      const parsed = refs.parseBubbleKey(String(ctx.args.key));
+      if (!parsed) throw new CliError(`未知的气泡（可选：${refs.BUBBLE_KEYS.join(' / ')}）`);
+      const user = await ctx.prisma.user.findUnique({
+        where: { username: String(ctx.args.username) },
+        select: { id: true, username: true, equippedBubbleKey: true },
+      });
+      if (!user) throw new CliError('用户不存在');
+      if (action === 'grant') {
+        return [`授予 ${user.username} 的气泡 ${refs.BUBBLES[parsed].label}，用户自行在设置页选择使用`];
+      }
+      const row = await ctx.prisma.userBubble.findUnique({
+        where: { uq_user_bubble: { userId: user.id, bubbleKey: parsed } },
+        select: { deleted: true, expiresAt: true },
+      });
+      if (!row || row.deleted) {
+        return [`${user.username} 当前**没有**持有「${refs.BUBBLES[parsed].label}」—— 本次是空操作（仍会写一条审计）`];
+      }
+      return [
+        `收回 ${user.username} 的「${refs.BUBBLES[parsed].label}」，正在使用时会恢复默认（软删持有行）`,
+        `他当前持有到：${row.expiresAt ? row.expiresAt.toISOString() : '永久'}`,
+        ...(user.equippedBubbleKey === parsed ? ['⚠️ 他正戴着它 —— 会顺带恢复默认'] : []),
+      ];
+    },
     async run(ctx) {
       const refs = await import('../../../src/lib/bubble-refs');
       const parsed = refs.parseBubbleKey(ctx.args.key);
@@ -40,7 +66,14 @@ export const bubbleCommands: CommandSpec[] = [
       await logAdminAction({ ...audit, adminId: ctx.actor!.id, targetUserId: user.id,
         objectType: 'user_bubble', objectId: parsed, reason: ctx.args.reason ? String(ctx.args.reason) : null,
       });
-      return { lines: [`已${action === 'grant' ? '授予' : '撤销'}：${ctx.args.username} ← ${refs.BUBBLES[parsed].label}`], json: result };
+      // 回执按「实际有没有撤销」分流：未持有时 revokeBubble 返回 revoked:false，
+      // 仍印「已撤销」会与同一次操作的审计详情（空操作）互相打脸（R3-424）。
+      const receipt = action === 'grant'
+        ? `已授予：${ctx.args.username} ← ${refs.BUBBLES[parsed].label}`
+        : (result as { revoked: boolean }).revoked
+          ? `已撤销：${ctx.args.username} ← ${refs.BUBBLES[parsed].label}`
+          : `${ctx.args.username} 本来就没持有「${refs.BUBBLES[parsed].label}」—— 空操作`;
+      return { lines: [receipt], json: result };
     },
   })),
   { name: 'bubble list', group: 'users', order: 92, summary: '列出气泡定义、租金与持有状态', readOnly: true,

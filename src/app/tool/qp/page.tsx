@@ -49,7 +49,8 @@ export default function QpToolPage() {
     return out.join(eol);
   }
 
-  function qpDecode(input: string): string {
+  type QpDecodeResult = { ok: true; text: string } | { ok: false; error: string };
+  function qpDecode(input: string): QpDecodeResult {
     // Join soft breaks
     const eolNormalized = input.replace(/=\r?\n/g, '');
     const bytes: number[] = [];
@@ -71,9 +72,12 @@ export default function QpToolPage() {
     try {
       // fatal: true —— 非 UTF-8 的 QP 正文（如 ISO-8859-1 的 =E9）应当报错，
       // 而不是静默替换成 U+FFFD。
-      return new TextDecoder('utf-8', { fatal: true }).decode(new Uint8Array(bytes));
+      const text = new TextDecoder('utf-8', { fatal: true }).decode(new Uint8Array(bytes));
+      return { ok: true, text };
     } catch {
-      return '[解码失败] 不是合法的 UTF-8 字节序列';
+      // 失败只进状态栏，**绝不写进左栏原文** —— 与 /tool/url 同口径（R3-484）。
+      // 否则用户原文会被「[解码失败] …」覆盖，再点「编码」还会把这句提示当数据。
+      return { ok: false, error: '不是合法的 UTF-8 字节序列' };
     }
   }
 
@@ -82,7 +86,12 @@ export default function QpToolPage() {
     setStatus('完成');
   };
   const decodeRightToLeft = () => {
-    setLeft(qpDecode(right || ''));
+    const decoded = qpDecode(right || '');
+    if (!decoded.ok) {
+      setStatus(`解码失败：${decoded.error}`);
+      return;
+    }
+    setLeft(decoded.text);
     setStatus('完成');
   };
   const swap = () => {

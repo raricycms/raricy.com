@@ -289,7 +289,20 @@ async function fetchAsset(url: string, label: string): Promise<ArrayBuffer> {
       assetCache.delete(url);
       throw { kind: 'engine-load', message: `${label}加载失败（请求 ${url} 返回 ${res.status}）` } satisfies ConvertError;
     }
-    return res.arrayBuffer();
+    // body 读取也可能失败（下载到一半断流 / OOM）：必须同样清缓存并包成 engine-load。
+    // 否则 assetCache 里会留下一个 rejected Promise —— 整个页面会话里每次 RAR/7Z
+    // 解包都直接拿到同一个 rejection，且错误被归成通用「转换失败」而不是「组件加载
+    // 失败（可重试）」，用户只能刷新页面才能恢复（R3-469）。
+    try {
+      return await res.arrayBuffer();
+    } catch (e) {
+      assetCache.delete(url);
+      throw {
+        kind: 'engine-load',
+        message: `${label}加载失败（下载中断，请检查网络后重试）`,
+        detail: String(e),
+      } satisfies ConvertError;
+    }
   })();
   assetCache.set(url, p);
   return p;
