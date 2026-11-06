@@ -320,6 +320,9 @@ export default function TradePanel({
   }
 
   function openBuy() {
+    // 弹窗已经开着就**不再重建幂等键**：一次确认的身份不能因为重复点击 / 键盘激活
+    // 背景按钮而换掉 —— 换了之后若最初那笔其实已在服务端成交，重试就变成第二笔。
+    if (buyOpen) return;
     idemRef.current =
       typeof crypto !== 'undefined' && 'randomUUID' in crypto
         ? `mrk-${crypto.randomUUID().replace(/-/g, '').slice(0, 20)}`
@@ -412,9 +415,10 @@ export default function TradePanel({
   }
 
   const quoteDown = quotes.length === 0 || quotes.every((q) => q.price == null);
-  // 弹窗开着 / 提交中时冻住一切会改变「这一笔是什么」的输入（标的、金额、杠杆）。
-  // 三个地方共用同一个判据 —— 分成三份写法必然有一天漏掉一处，而漏掉的那一处
-  // 会让弹窗上的数字与实际提交的东西不一致。
+  // 弹窗开着 / 提交中时冻住一切会改变「这一笔是什么」的输入（标的、金额、杠杆），
+  // 以及能**再开一单**的按钮（买入、持仓行的卖出）—— 遮罩只挡指针、不挡键盘焦点，
+  // 不冻结的话 Tab/Enter 仍能聚焦背景金额框并重新触发 openBuy；openBuy 会换掉幂等键，
+  // 弹窗里再确认就是第二笔（R3-325）。几处共用同一个判据 —— 分成几份写法必然漏一处。
   const locked = busy || buyOpen || sellTarget != null;
   // 弹窗里的那一整套估算算一次就好（下面要用到六七个数，逐个 estimate() 是六七次重算，
   // 且两处调用之间行情刷新会让同一个数在弹窗里显示成两个值）
@@ -500,7 +504,7 @@ export default function TradePanel({
                   autoComplete="off"
                   value={amount}
                   onChange={(e) => setAmount(e.target.value)}
-                  disabled={busy}
+                  disabled={locked}
                 />
                 <span className="trade-amount__unit">小鱼干</span>
               </div>
@@ -656,7 +660,7 @@ export default function TradePanel({
             <button
               type="button"
               className="trade-submit"
-              disabled={!canBuy || busy || quoteDown}
+              disabled={!canBuy || locked || quoteDown}
               onClick={openBuy}
             >
               {openWord}
@@ -746,7 +750,7 @@ export default function TradePanel({
                         type="button"
                         className="trade-position__sell"
                         onClick={() => setSellTarget(p)}
-                        disabled={busy}
+                        disabled={locked}
                       >
                         {p.direction === 'short' ? '平空' : '卖出'}
                       </button>

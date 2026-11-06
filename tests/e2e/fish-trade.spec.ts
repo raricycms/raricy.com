@@ -139,6 +139,32 @@ test('买入全链路：定价 → 下单 → 扣款 + 建仓 + 记 market_buy �
   expect((await bal.json()).balance).toBe(start - 1);
 });
 
+test('确认弹窗期间冻结金额与下单按钮（键盘路径不能再开一次、不会重建幂等键）', async ({
+  page,
+  request,
+}) => {
+  await registerFreshUser(page, { core: true });
+  await fundByCheckin(page);
+  await setPrice(request, 'BTCUSDT', 80000);
+  await page.goto('/fish/trade');
+
+  await page.locator('#trade-amount').fill('1');
+  await page.locator('.trade-submit').click();
+  const confirm = page.locator('.trade-confirm');
+  await expect(confirm, '买入必须先过二次确认弹窗').toBeVisible();
+
+  // 遮罩只挡指针、不挡键盘焦点：金额框若不冻结，Tab 回背景改金额/再激活买入会让
+  // openBuy 重建幂等键，弹窗里再确认就是第二笔（R3-325）。冻结后键盘无从触发。
+  await expect(page.locator('#trade-amount')).toBeDisabled();
+  await expect(page.locator('.trade-submit')).toBeDisabled();
+
+  // 取消后必须恢复可用 —— 冻结不能粘住。
+  await confirm.locator('.trade-confirm__cancel').click();
+  await expect(confirm).toHaveCount(0);
+  await expect(page.locator('#trade-amount')).toBeEnabled();
+  await expect(page.locator('.trade-submit')).toBeEnabled();
+});
+
 test('卖出细则：弹窗摊开涨跌 / 毛额 / 手续费 / 盈亏 / 到手，且「预计到手」= 真到账', async ({
   page,
   request,
