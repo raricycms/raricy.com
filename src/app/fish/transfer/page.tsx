@@ -4,7 +4,7 @@ import { getCurrentUser } from '@/lib/auth';
 import { loginUrlWithNext } from '@/lib/safe-url';
 import { getBalance, getTransactions } from '@/lib/fish-service';
 import { fmtFish } from '@/lib/fish-amount';
-import { TRANSFER_NOTE_MAX } from '@/lib/fish-market-service';
+import { TRANSFER_NOTE_MAX } from '@/lib/fish-transfer-service';
 import { RULES } from '@/lib/rate-limit';
 import PageHeader from '@/app/components/PageHeader';
 import TransferPanel from '../market/TransferPanel';

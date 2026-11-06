@@ -319,7 +319,7 @@ export interface PostEntryInput {
   referenceId?: string | null;
   relatedUserId?: string | null;
   /**
-   * 用户间转账的共享单号。**只有 fish-market-service 的转账会传它** ——
+   * 用户间转账的共享单号。**只有 fish-transfer-service 的转账会传它** ——
    * 其余调用方（fish-admin / feed-service / checkin-service / market-service）
    * 没有对手方，留空即 NULL，别为了「统一」给它们编一个
    * （见 prisma/migrations/14_fish_transfer_id）。

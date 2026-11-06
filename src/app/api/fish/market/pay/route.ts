@@ -2,7 +2,7 @@ import { getCurrentUser, isCurrentlyBanned } from '@/lib/auth';
 import { apiOk, apiErr } from '@/lib/format';
 import { verifyCredentials } from '@/lib/credential-auth';
 import { clientIp } from '@/lib/request-ip';
-import { transferFish } from '@/lib/fish-market-service';
+import { transferFish } from '@/lib/fish-transfer-service';
 import { fishToUnits, MAX_FISH_UNITS } from '@/lib/fish-units';
 
 export const runtime = 'nodejs';

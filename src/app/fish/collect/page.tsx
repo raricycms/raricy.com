@@ -3,7 +3,7 @@ import { redirect } from 'next/navigation';
 import { getCurrentUser } from '@/lib/auth';
 import { loginUrlWithNext } from '@/lib/safe-url';
 import { getBalance } from '@/lib/fish-service';
-import { findTransferTargetByUsername } from '@/lib/fish-market-service';
+import { findTransferTargetByUsername } from '@/lib/fish-transfer-service';
 import PayErrorCard from '../PayError';
 import PayForm from '../PayForm';
 

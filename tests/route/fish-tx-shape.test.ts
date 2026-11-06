@@ -33,7 +33,7 @@ import { resetDb } from '../helpers/db';
 import { makeFishUser } from '../helpers/fish-ledger';
 import { hashPassword } from '@/lib/password';
 import { createSessionToken } from '@/lib/session';
-import { transferFish } from '@/lib/fish-market-service';
+import { transferFish } from '@/lib/fish-transfer-service';
 import { postEntry } from '@/lib/fish-service';
 import { prisma } from '../helpers/db';
 import { fishToUnits } from '@/lib/fish-units';

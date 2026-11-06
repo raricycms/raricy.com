@@ -113,7 +113,7 @@ import { SETTLED_STATUSES, type SettledStatus } from './market-stats';
 import { isLiquidationRunning } from './market-liquidator';
 // 客户端幂等键的格式校验复用转账那一条 —— 同一个「调用方给的键」概念，
 // 没有理由长出第二套规则。定义在 fish-idempotency（零业务依赖），
-// 所以这里 import 它不会把 fish-market-service 拖进来。
+// 所以这里 import 它不会把 fish-transfer-service 拖进来。
 import { CLIENT_KEY_RE } from './fish-idempotency';
 import { rateLimit, RULES } from './rate-limit';
 import {

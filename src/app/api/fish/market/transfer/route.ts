@@ -1,5 +1,5 @@
 import { apiOk, apiErr } from '@/lib/format';
-import { transferFish, findTransferTargetByUsername } from '@/lib/fish-market-service';
+import { transferFish, findTransferTargetByUsername } from '@/lib/fish-transfer-service';
 import { requireMarketActor } from '../_auth';
 
 // fernet / node:crypto 需 Node 运行时（非 Edge）。

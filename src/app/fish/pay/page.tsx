@@ -10,7 +10,7 @@ import {
   makeOrderKeyBase,
   ORDER_RE,
   TRANSFER_NOTE_MAX,
-} from '@/lib/fish-market-service';
+} from '@/lib/fish-transfer-service';
 import PayForm from '../PayForm';
 import PayErrorCard from '../PayError';
 

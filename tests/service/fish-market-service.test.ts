@@ -1,4 +1,4 @@
-// fish-market-service.ts —— 鱼干市场转账的**本地语义**。
+// fish-transfer-service.ts —— 鱼干转账的**本地语义**。
 //
 // 【这里没有替身可打】账目与业务数据现在在**同一个 SQLite 文件**里：扣款、两条流水、
 // 幂等记录在**一个事务**里一起提交，因此不存在「本地已提交、账目还没记」的中间态，
@@ -23,7 +23,7 @@ import {
   TRANSFER_OUT_TYPE,
   TRANSFER_IN_TYPE,
   TRANSFER_NOTE_MAX,
-} from '@/lib/fish-market-service';
+} from '@/lib/fish-transfer-service';
 import {
   CLIENT_KEY_RE,
   makeClientIdempotencyKey,

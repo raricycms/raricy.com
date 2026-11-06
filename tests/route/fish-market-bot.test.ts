@@ -33,7 +33,7 @@ import { hashPassword } from '@/lib/password';
 import * as passwordWork from '@/lib/password';
 import { createSessionToken } from '@/lib/session';
 import { __resetRateLimitStore, RULES, isRateLimited, recordRateLimitHit } from '@/lib/rate-limit';
-import { TRANSFER_OUT_TYPE, TRANSFER_IN_TYPE } from '@/lib/fish-market-service';
+import { TRANSFER_OUT_TYPE, TRANSFER_IN_TYPE } from '@/lib/fish-transfer-service';
 import { unitsToFish } from '@/lib/fish-units';
 import { POST as transfer } from '@/app/api/fish/market/transfer/route';
 import { POST as balanceApi } from '@/app/api/fish/market/balance/route';

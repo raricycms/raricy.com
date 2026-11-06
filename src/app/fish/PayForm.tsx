@@ -41,7 +41,7 @@ export type PayFormVariant = 'cashier' | 'collect';
 
 /** 快捷金额（与鱼干市场转账页同一组）。 */
 const QUICK = [1, 5, 10];
-/** 备注长度上限 —— 与 fish-market-service 的 TRANSFER_NOTE_MAX 同值。
+/** 备注长度上限 —— 与 fish-transfer-service 的 TRANSFER_NOTE_MAX 同值。
  *  （那边是服务端模块，客户端组件不能 import，故此处另立一份常量。） */
 const NOTE_MAX = 30;
 

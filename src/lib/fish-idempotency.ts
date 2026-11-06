@@ -24,7 +24,7 @@
 //   现在写入的行**一律是 status='synced'**（登记与业务写入同事务提交 —— 提交成功
 //   就是「已生效」，这个状态字面上就是对的）。
 //   存量里可能残留 status != 'synced' 的行：那是迁移前的遗留，读的时候要当成
-//   「不确定」处理（见 fish-market-service.resolveDuplicate），别当它不存在。
+//   「不确定」处理（见 fish-transfer-service.resolveDuplicate），别当它不存在。
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { createHash } from 'node:crypto';

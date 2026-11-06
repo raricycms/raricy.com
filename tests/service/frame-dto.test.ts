@@ -40,7 +40,7 @@ import { listMessages, searchCoreUsers, listChannelsForUser, sendMessage } from 
 import { getCountLeaderboard } from '@/lib/checkin-service';
 import { getPublicProfile } from '@/lib/user-service';
 import { listUsers } from '@/lib/admin-user-service';
-import { searchTransferTargets, findTransferTargetByUsername } from '@/lib/fish-market-service';
+import { searchTransferTargets, findTransferTargetByUsername } from '@/lib/fish-transfer-service';
 import { listShopItems } from '@/lib/frame-shop-service';
 import { rentableFrameKeys } from '@/lib/frame-refs';
 

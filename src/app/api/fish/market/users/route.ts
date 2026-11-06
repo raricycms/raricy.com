@@ -1,6 +1,6 @@
 import { getCurrentUser } from '@/lib/auth';
 import { apiOk, apiErr } from '@/lib/format';
-import { searchTransferTargets } from '@/lib/fish-market-service';
+import { searchTransferTargets } from '@/lib/fish-transfer-service';
 
 const DEFAULT_LIMIT = 30;
 
