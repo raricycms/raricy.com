@@ -8,11 +8,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-
-function toast(message: string, type: string) {
-  const w = window as unknown as { showToast?: (m: string, t: string) => void };
-  if (w.showToast) w.showToast(message, type);
-}
+import { showToast } from '@/app/components/toast';
 
 export default function SavedMessageRemove({ messageId }: { messageId: number }) {
   const router = useRouter();
@@ -27,13 +23,13 @@ export default function SavedMessageRemove({ messageId }: { messageId: number })
       });
       const data = (await res.json().catch(() => ({}))) as { code?: number; message?: string };
       if (data.code === 200) {
-        toast('已取消保存', 'success');
+        showToast('已取消保存', 'success');
         router.refresh();
       } else {
-        toast(data.message || '操作失败', 'error');
+        showToast(data.message || '操作失败', 'error');
       }
     } catch {
-      toast('网络错误，请稍后重试', 'error');
+      showToast('网络错误，请稍后重试', 'error');
     } finally {
       setBusy(false);
     }

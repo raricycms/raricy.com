@@ -1,6 +1,6 @@
 import { softDeleteMessage } from '@/lib/chat-service';
 import { apiErr, apiOk } from '@/lib/format';
-import { requireChatUser } from '../../_auth';
+import { parsePosInt, requireChatUser } from '../../_auth';
 
 // DELETE /api/chat/messages/:id — 软删消息（本人 / 管理员）
 // body（可选）: { reason?: string }（管理员删他人必填）
@@ -9,8 +9,9 @@ export async function DELETE(req: Request, ctx: { params: Promise<{ id: string }
   if (user instanceof Response) return user;
 
   const { id } = await ctx.params;
-  const messageId = Number(id);
-  if (!Number.isInteger(messageId) || messageId <= 0) return apiErr(400, '无效的消息 id');
+  // 严格十进制（parsePosInt）：`Number('1e3')` = 1000 会删掉与字面 id 不同的消息（R3-262）。
+  const messageId = parsePosInt(id);
+  if (messageId == null) return apiErr(400, '无效的消息 id');
 
   let reason: string | undefined;
   try {

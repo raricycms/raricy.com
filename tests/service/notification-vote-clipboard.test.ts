@@ -649,7 +649,7 @@ describe('notification-service', () => {
       expect(await prisma.notification.findUnique({ where: { id: mine.id } })).toBeNull();
     });
 
-    it('数组里混入非字符串项不会 500（Prisma 类型不符会直接抛）', async () => {
+    it('数组里混入非字符串项 → 400「通知ID必须都是字符串」（不再静默滤掉）', async () => {
       const me = await makeUser();
       mockCurrentUser = me as SafeUser;
       const mine = await makeNotification({ recipientId: me.id });
@@ -657,8 +657,36 @@ describe('notification-service', () => {
       const res = await batchMarkReadPost(
         jsonReq({ notification_ids: [mine.id, 123, null, { x: 1 }] })
       );
+      expect(res.status).toBe(400);
+      expect(await res.json()).toMatchObject({
+        code: 400,
+        message: '通知ID必须都是字符串',
+      });
+      // 整笔拒绝：合法的那条也不能被处理（部分成功却报错 = 状态不明）
+      expect((await prisma.notification.findUnique({ where: { id: mine.id } }))!.read).toBe(false);
+    });
+
+    it('数组超过上限（201 条）→ 400，不落到 Prisma 绑定变量上限的未捕获 500', async () => {
+      const me = await makeUser();
+      mockCurrentUser = me as SafeUser;
+      const ids = Array.from({ length: 201 }, (_, i) => `n-${i}`);
+
+      const res = await batchMarkReadPost(jsonReq({ notification_ids: ids }));
+      expect(res.status).toBe(400);
+      expect(await res.json()).toMatchObject({
+        code: 400,
+        message: '一次最多处理 200 条通知',
+      });
+    });
+
+    it('恰好 200 条 → 200（上限本身是允许的边界）', async () => {
+      const me = await makeUser();
+      mockCurrentUser = me as SafeUser;
+      const ids = Array.from({ length: 200 }, (_, i) => `n-${i}`);
+
+      const res = await batchDeleteDelete(jsonReq({ notification_ids: ids }));
       expect(res.status).toBe(200);
-      expect(await res.json()).toMatchObject({ count: 1 });
+      expect(await res.json()).toMatchObject({ code: 200, count: 0 });
     });
   });
 

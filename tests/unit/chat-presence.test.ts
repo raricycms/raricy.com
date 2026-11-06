@@ -42,6 +42,13 @@ afterEach(() => {
 });
 
 describe('chat-presence：三条判据', () => {
+  it('TTL 至少覆盖两次 60s 续报（客户端节流也可能漏一次）', () => {
+    // 这个 2.5 倍不是随手挑的：ChatApp 每 60s 续报一次，TTL 若缩到 1x/1.5x，
+    // 浏览器对后台定时器的节流会让「在看」频繁判不出来（多打扰）。只是本文件
+    // 用假时钟推进自身永远绿 —— 这里把它钉在与客户端间隔的关系上（R3-277#10）。
+    expect(VIEWING_TTL_MS).toBeGreaterThanOrEqual(2 * 60_000);
+  });
+
   it('报到过 + 没过期 + 连接活着 → 在看', () => {
     const off = connect('u-a');
     reportViewing('u-a', 'lobby');

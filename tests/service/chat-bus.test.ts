@@ -166,7 +166,6 @@ describe('chat-bus：背压与踢连接', () => {
   });
 
   it('write 抛错也当作背压处理（已关闭的 controller）', () => {
-    const chunks: string[] = [];
     const state = { closed: false };
     subscribe({
       userId: 'u-throw',
@@ -180,8 +179,9 @@ describe('chat-bus：背压与踢连接', () => {
     });
 
     expect(() => publishToAll(msgEvent('lobby', 4), 4)).not.toThrow();
+    // 真正咬人的判据：写抛错必须转成 close；旧断言 `chunks` 恒空（write 从没 push 过）
+    // 是条恒真的残骸（R3-277#1）。
     expect(state.closed).toBe(true);
-    expect(chunks).toHaveLength(0);
   });
 
   it('kickUser 关闭该用户全部连接并从注册表移除', () => {

@@ -126,9 +126,11 @@ describe('顶栏流：连接的建立与否', () => {
     delete (window as any).EventSource;
 
     expect(() => loadBaseJs(TOPBAR_HTML)).not.toThrow();
-    // 兜底轮询照常：20s 后仍会拉一次快照
+    // 兜底轮询照常：20s 后**多拉一次**快照。取 before 再比 +1 —— 只断 >=1 时
+    // 首帧同步拉的那一次就让它恒真，删掉心跳/轮询仍绿（R3-277#3）。
+    const before = fetches;
     vi.advanceTimersByTime(20 * 1000);
-    expect(fetches).toBeGreaterThanOrEqual(1);
+    expect(fetches).toBe(before + 1);
   });
 
   it('重复执行 base.js（HMR）→ 关掉旧的再建新的，不叠加连接', () => {

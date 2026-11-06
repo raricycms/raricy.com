@@ -1,6 +1,6 @@
 import { requireCoreUser } from '@/lib/guard';
 import { listNotifications, getUnreadCount } from '@/lib/notification-service';
-import { nowForDb } from '@/lib/db-time';
+import { todayStr } from '@/lib/db-time';
 import NotificationItems from '@/app/components/NotificationItems';
 import SitePager from '@/app/components/SitePager';
 
@@ -54,7 +54,8 @@ export default async function NotificationsPage({
         initialTotal={result.total}
         initialUnread={unread}
         // 分组标题的「今天 / 昨天」按服务端墙钟算，避免 SSR 与客户端跨零点不一致。
-        today={nowForDb().toISOString().slice(0, 10)}
+        // 用 db-time.todayStr()（与库里「今天」同一把尺），别在这里手写 toISOString 切片。
+        today={todayStr()}
       />
 
       <SitePager page={result.page} pages={result.pages} href={qs} />

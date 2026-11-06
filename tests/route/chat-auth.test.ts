@@ -34,8 +34,7 @@ import { createSessionToken } from '@/lib/session';
 import { CHAT_LOBBY_ID } from '@/lib/chat-shared';
 
 import { POST as createChannel } from '@/app/api/chat/channels/route';
-import { GET as listMessages, POST as sendMessage } from '@/app/api/chat/channels/[id]/messages/route';
-import { POST as muteChannel } from '@/app/api/chat/channels/[id]/mute/route';
+import { GET as listMessages, POST as sendMessage } from '@/app/api/chat/channels/[id]/messages/route';import { POST as muteChannel } from '@/app/api/chat/channels/[id]/mute/route';
 import { POST as hideChannel } from '@/app/api/chat/channels/[id]/hide/route';
 import { POST as readChannel } from '@/app/api/chat/channels/[id]/read/route';
 import { GET as searchChannel } from '@/app/api/chat/channels/[id]/search/route';
@@ -50,6 +49,7 @@ import { POST as saveMessageApi } from '@/app/api/chat/saved/route';
 import { DELETE as unsaveMessageApi } from '@/app/api/chat/saved/[messageId]/route';
 import { GET as savedIdsApi } from '@/app/api/chat/saved/ids/route';
 import { POST as revealChannelApi } from '@/app/api/chat/channels/[id]/reveal/route';
+import { parsePosInt } from '@/app/api/chat/_auth';
 
 const login = async (userId: string, sv = 0) => {
   session.token = await createSessionToken({ uid: userId, sv });
@@ -159,4 +159,43 @@ describe('讨论接口的档位（14 个 handler）', () => {
       });
     }
   }
+});
+
+describe('路径 / 查询里的数字 id 只认严格十进制（R3-262）', () => {
+  it('parsePosInt：指数 / 十六进制 / 小数 / 符号 / 空白 / 前导零一律 null', () => {
+    // 旧实现走 Number()：'1e3'→1000、'0x10'→16、' 12 '→12、'+5'→5 全放行，
+    // 于是「路径里的字面 id」和「真正操作的对象」可以不是同一个（R3-262）。
+    for (const bad of ['1e3', '0x10', '2.5', '-1', '+1', ' 12 ', '12 ', '', '007', 'Infinity', 'NaN']) {
+      expect(parsePosInt(bad), `${JSON.stringify(bad)} 不该被当成合法 id`).toBeNull();
+    }
+    expect(parsePosInt(null)).toBeNull();
+    expect(parsePosInt(12)).toBeNull(); // 只接受字符串（query/params 的原始形态）
+    expect(parsePosInt('1')).toBe(1);
+    expect(parsePosInt('100')).toBe(100);
+    // 超出安全整数范围也不能放行（否则 Number 会给出不精确值）
+    expect(parsePosInt('9007199254740993')).toBeNull();
+  });
+
+  it('DELETE /api/chat/messages/:id：非法字面 id → 400，不落到业务层', async () => {
+    const core = await makeUser({ role: 'core' });
+    await login(core.id);
+    for (const raw of ['1e3', '0x10', '2.5', '-1', '+1', ' 1 ', '007']) {
+      const res = await deleteMessage(
+        new Request('http://localhost/x', { method: 'DELETE' }),
+        ctx(raw)
+      );
+      expect(res.status, `${JSON.stringify(raw)} 应 400`).toBe(400);
+      expect(await res.json()).toMatchObject({ code: 400, message: '无效的消息 id' });
+    }
+  });
+
+  it('DELETE /api/chat/messages/:id：合法十进制（不存在）→ 404（解析放行、业务判定）', async () => {
+    const core = await makeUser({ role: 'core' });
+    await login(core.id);
+    const res = await deleteMessage(
+      new Request('http://localhost/x', { method: 'DELETE' }),
+      ctx('999999')
+    );
+    expect(res.status).toBe(404);
+  });
 });

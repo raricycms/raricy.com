@@ -320,6 +320,11 @@ describe('菜单项：按消息语境组合', () => {
     });
     expect(onClose).toHaveBeenCalledTimes(1);
     expect(onToggleSave).toHaveBeenCalledTimes(1);
+    // 顺序是契约（先收菜单再执行，见 ChatMessageMenu 的 run）：只断次数时改成
+    // 「先执行后关」仍绿（R3-277#4）。
+    expect(onClose.mock.invocationCallOrder[0]).toBeLessThan(
+      onToggleSave.mock.invocationCallOrder[0]
+    );
   });
 
   it('点「复制」先收起菜单再交给复制回调', async () => {
@@ -332,6 +337,7 @@ describe('菜单项：按消息语境组合', () => {
     });
     expect(onClose).toHaveBeenCalledTimes(1);
     expect(onCopy).toHaveBeenCalledTimes(1);
+    expect(onClose.mock.invocationCallOrder[0]).toBeLessThan(onCopy.mock.invocationCallOrder[0]);
   });
 
   it('取消只收菜单，不做动作', async () => {

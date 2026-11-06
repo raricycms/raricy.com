@@ -27,8 +27,12 @@ describe('sse：响应头', () => {
   });
 
   it('重连间隔与背压阈值是正整数', () => {
-    expect(SSE_RETRY_MS).toBeGreaterThan(0);
-    expect(SSE_QUEUE_LIMIT).toBeGreaterThan(0);
+    // 区间断言而不是 >0：本值一改（比如 1ms 重连风暴 / 队列 1 帧就断）应当触发这里，
+    // 而 >0 对任何正整数恒真，等于没测（R3-277#5）。
+    expect(SSE_RETRY_MS).toBeGreaterThanOrEqual(1000); // 低于 1s 的重连会打爆服务端
+    expect(SSE_RETRY_MS).toBeLessThanOrEqual(10_000); // 高于 10s 端到端延迟不可接受
+    expect(SSE_QUEUE_LIMIT).toBeGreaterThanOrEqual(64); // 小于 64 帧会把正常突发当成背压
+    expect(SSE_QUEUE_LIMIT).toBeLessThanOrEqual(4096); // 上限太大 = 慢客户端占内存
   });
 });
 

@@ -976,9 +976,11 @@ describe('顶栏「讨论」红点汇总 getChatUnreadSummary', () => {
     await hideChannel(ch.channel.id, b.id);
     expect(await getChatUnreadSummary(b.id)).toEqual({ count: 0, dot: false });
 
-    // 新消息 id 更大 → 会话重新出现（微信语义），未读也随之重新计入
+    // 新消息 id 更大 → 会话重新出现（微信语义），未读也随之重新计入。
     await sendMessage({ channelId: ch.channel.id, authorId: a.id, content: '新消息' });
-    expect((await getChatUnreadSummary(b.id)).count).toBeGreaterThan(0);
+    // 恰好 2 条：b 从未推进过读游标，hideChannel 只记「隐藏到哪条」、不代读，所以旧+新
+    // 都算未读。只写 >0 的话「隐藏标记没清 / 计数加错倍率」这类回归仍会绿（R3-277#2）。
+    expect((await getChatUnreadSummary(b.id)).count).toBe(2);
   });
 });
 
@@ -1028,6 +1030,22 @@ describe('消息软删除', () => {
 
     const noReason = await softDeleteMessage(sent.message.id, { id: admin.id, role: 'admin' });
     expect((noReason as { error: string }).error).toBe('reasonRequired');
+
+    // 原因上限 500：超了必须单独报 reasonTooLong（route 层据此回 400），不能退化成通用错误
+    const tooLong = await softDeleteMessage(
+      sent.message.id,
+      { id: admin.id, role: 'admin' },
+      '字'.repeat(501)
+    );
+    expect(tooLong.ok).toBe(false);
+    expect((tooLong as { error: string }).error).toBe('reasonTooLong');
+    // 超长原因没落审计、消息也还在（整笔拒绝，不是「先删再报错」）
+    expect(
+      await prisma.chatMessage.findUnique({ where: { id: sent.message.id }, select: { isDeleted: true } })
+    ).toMatchObject({ isDeleted: false });
+    expect(
+      await prisma.adminActionLog.count({ where: { action: 'delete_chat_message', adminId: admin.id } })
+    ).toBe(0);
 
     const withReason = await softDeleteMessage(sent.message.id, { id: admin.id, role: 'admin' }, '引战');
     expect(withReason.ok).toBe(true);
@@ -1199,7 +1217,11 @@ describe('专注模式：讨论大区禁用', () => {
 
     const channels = await listChannelsForUser(a.id, isFocusLobbyBlocked(a));
     const lobby = channels.find((c) => c.id === CHAT_LOBBY_ID);
-    expect(lobby?.disabled).not.toBe(true);
+    // 大区行必须存在且**可用**：只写 `?.disabled).not.toBe(true)` 时，整行缺失（undefined）
+    // 也会绿（R3-277#2）。可用行的 disabled 是「没有该字段」，不是 false。
+    expect(lobby, '大区行必须在列表里（disabled 是行内标记，不是删行）').toBeDefined();
+    expect(lobby!.kind).toBe('lobby');
+    expect(lobby!.disabled, '可用的大区行不带 disabled 标记').toBeUndefined();
 
     const sent = await sendMessage({
       channelId: CHAT_LOBBY_ID,
@@ -1650,6 +1672,8 @@ describe('私聊已读回执字段（C7）', () => {
     expect(dm?.peer_last_read_message_id).toBe(sent.message.id);
 
     const lobby = aList.find((c) => c.id === CHAT_LOBBY_ID);
-    expect(lobby?.peer_last_read_message_id ?? null).toBeNull();
+    // 行必须存在：`?? null` 会把「整行缺失」也判成 null（R3-277#2）
+    expect(lobby, '大区行必须在列表里').toBeDefined();
+    expect(lobby!.peer_last_read_message_id).toBeNull();
   });
 });

@@ -48,6 +48,32 @@ function watch(userId: string, lobbyBlocked = false) {
 }
 
 describe('SSE 推送：大区广播', () => {
+  it('推送失败不影响消息本身（坏连接的 write 抛错被当作背压，消息仍落库）', async () => {
+    const author = await makeUser({ role: 'core' });
+    const observer = await makeUser({ role: 'core' });
+    const broken = subscribe({
+      userId: 'u-broken',
+      lobbyBlocked: false,
+      write: () => {
+        throw new Error('stream closed');
+      },
+      close: () => {},
+    });
+    const w = watch(observer.id);
+    try {
+      const res = await sendMessage({
+        channelId: CHAT_LOBBY_ID,
+        authorId: author.id,
+        content: '坏连接不该影响发送',
+      });
+      expect(res.ok).toBe(true);
+      // 正常连接照样收到；坏连接只被断开
+      expect(w.events().some((e) => e.type === 'message')).toBe(true);
+    } finally {
+      broken();
+    }
+  });
+
   it('大区消息推给所有在线连接', async () => {
     const a = await makeUser({ role: 'core' });
     const b = await makeUser({ role: 'core' });

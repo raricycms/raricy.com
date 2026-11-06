@@ -20,16 +20,7 @@ import {
 import type { NotificationDTO } from '@/lib/notification-service';
 import { CHAT_NOTIFY_OBJECT_TYPE } from '@/lib/chat-shared';
 import Avatar from './Avatar';
-
-declare global {
-  interface Window {
-    showToast?: (message: string, type?: string) => void;
-  }
-}
-
-function toast(message: string, type: string) {
-  if (typeof window !== 'undefined' && window.showToast) window.showToast(message, type);
-}
+import { showToast } from './toast';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 通知页的视觉分类
@@ -235,12 +226,12 @@ export default function NotificationItems({
         );
         setUnread((prev) => Math.max(0, prev - 1));
         if (unreadOnly) setTotal((prev) => Math.max(0, prev - 1));
-        toast('已标记为已读', 'success');
+        showToast('已标记为已读', 'success');
       } else {
-        toast('操作失败: ' + (data.message ?? ''), 'error');
+        showToast('操作失败: ' + (data.message ?? ''), 'error');
       }
     } catch {
-      toast('操作失败，请重试', 'error');
+      showToast('操作失败，请重试', 'error');
     } finally {
       setBusy(null);
     }
@@ -260,12 +251,12 @@ export default function NotificationItems({
         setItems((prev) => (unreadOnly ? [] : prev.map((n) => ({ ...n, read: true }))));
         setUnread(0);
         if (unreadOnly) setTotal(0);
-        toast(data.message ?? '已全部标记为已读', 'success');
+        showToast(data.message ?? '已全部标记为已读', 'success');
       } else {
-        toast('操作失败: ' + (data.message ?? ''), 'error');
+        showToast('操作失败: ' + (data.message ?? ''), 'error');
       }
     } catch {
-      toast('操作失败，请重试', 'error');
+      showToast('操作失败，请重试', 'error');
     } finally {
       setBusy(null);
     }
@@ -286,12 +277,12 @@ export default function NotificationItems({
         setItems((prev) => prev.filter((n) => n.id !== id));
         setTotal((prev) => Math.max(0, prev - 1));
         if (target && !target.read) setUnread((prev) => Math.max(0, prev - 1));
-        toast('通知已删除', 'success');
+        showToast('通知已删除', 'success');
       } else {
-        toast('操作失败: ' + (data.message ?? ''), 'error');
+        showToast('操作失败: ' + (data.message ?? ''), 'error');
       }
     } catch {
-      toast('操作失败，请重试', 'error');
+      showToast('操作失败，请重试', 'error');
     } finally {
       setBusy(null);
     }
@@ -312,12 +303,12 @@ export default function NotificationItems({
         // count 是**全站**已读条数，不只本页 —— 总数要按它减，否则翻页后计数会漂。
         const deleted = typeof data.count === 'number' ? data.count : 0;
         setTotal((prev) => Math.max(0, prev - deleted));
-        toast(data.message ?? '已删除已读通知', 'success');
+        showToast(data.message ?? '已删除已读通知', 'success');
       } else {
-        toast('操作失败: ' + (data.message ?? ''), 'error');
+        showToast('操作失败: ' + (data.message ?? ''), 'error');
       }
     } catch {
-      toast('操作失败，请重试', 'error');
+      showToast('操作失败，请重试', 'error');
     } finally {
       setBusy(null);
     }

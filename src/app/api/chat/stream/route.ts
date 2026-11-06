@@ -15,7 +15,7 @@
 // 只要把旧连接踢掉（chat-bus.kickUser），新连接就会重新判定。
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { requireChatUser } from '../_auth';
+import { parsePosInt, requireChatUser } from '../_auth';
 import { subscribe, type ChatSubscriber } from '@/lib/chat-bus';
 import { SSE_HEADERS, SSE_QUEUE_LIMIT, SSE_RETRY_MS, sseFrame } from '@/lib/sse';
 import { listMessagesSince } from '@/lib/chat-service';
@@ -34,8 +34,9 @@ export async function GET(req: Request) {
   if (user instanceof Response) return user;
 
   const encoder = new TextEncoder();
-  const rawLastEventId = Number(req.headers.get('last-event-id'));
-  const lastEventId = Number.isInteger(rawLastEventId) && rawLastEventId > 0 ? rawLastEventId : 0;
+  // Last-Event-ID 只认十进制正整数（与路径 id 同一套严格解析）：`1e3` / `0x10` 这类
+  // 写法若被 Number() 放行，补齐游标会与客户端记录的 id 语义不一致。0 / 非法 = 不补齐。
+  const lastEventId = parsePosInt(req.headers.get('last-event-id')) ?? 0;
 
   // 连接建立时的大区可见性快照：每帧复核拿它比对（见 isChatStreamSessionCurrent）。
   // 大区屏蔽变更会由 user-service 踢掉这条连接，重连时再按新值决定收不收广播。

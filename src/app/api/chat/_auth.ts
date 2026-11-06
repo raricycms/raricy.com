@@ -12,9 +12,16 @@ export async function requireChatUser(): Promise<ChatUserResult> {
   return user;
 }
 
-/** 由 params 解析出正整数，非法返回 null。 */
+/**
+ * 由 params / query 解析出正整数，非法返回 null。
+ *
+ * **必须是严格十进制**：`Number()` 会把 `1e3`（→1000）、`0x10`（→16）、`' 12 '`
+ * （→12）、`'+5'` 全部放行，于是路径里的字面 id 与真正操作的对象可以不是同一个
+ * （R3-262）。这里只认 `[1-9][0-9]*` 且落在安全整数范围内；前导零也拒绝 ——
+ * `007` 与 `7` 是两种写法，放行会让「同一个 id 多种表示」重新出现。
+ */
 export function parsePosInt(raw: unknown): number | null {
-  if (typeof raw !== 'string') return null;
+  if (typeof raw !== 'string' || !/^[1-9][0-9]*$/.test(raw)) return null;
   const n = Number(raw);
-  return Number.isInteger(n) && n > 0 ? n : null;
+  return Number.isSafeInteger(n) ? n : null;
 }

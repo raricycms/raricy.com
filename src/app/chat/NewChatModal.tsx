@@ -3,12 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ChatChannelDTO, ChatUserLite } from '@/lib/chat-shared';
 import Avatar from '@/app/components/Avatar';
-
-declare global {
-  interface Window {
-    showToast?: (message: string, type?: string) => void;
-  }
-}
+import { showToast } from '@/app/components/toast';
 
 const PER_PAGE = 20;
 
@@ -99,10 +94,10 @@ export default function NewChatModal({
       if (data.code === 200 && data.channel) {
         onCreated(data.channel as ChatChannelDTO);
       } else {
-        window.showToast?.(data.message || '发起失败', 'error');
+        showToast(data.message || '发起失败', 'error');
       }
     } catch {
-      if (!closedRef.current) window.showToast?.('网络错误，请重试', 'error');
+      if (!closedRef.current) showToast('网络错误，请重试', 'error');
     } finally {
       if (!closedRef.current) setBusyId(null);
     }
