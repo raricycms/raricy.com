@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import Avatar from '@/app/components/Avatar';
 import {
   AMOUNT_ERROR,
@@ -16,9 +16,12 @@ import RecipientPicker, { type TransferTarget } from './RecipientPicker';
 // 【为什么要二次确认】转账没有撤回入口（钱是即时到账的），误点的代价是真金白银。
 // 确认弹窗把「收款人 / 金额 / 留言 / 手续费 / 转账后余额」摆在一起让人复核一眼。
 //
-// 【重复提交 = 双倍转账】服务端每次提交都是独立的一笔新交易（幂等键带随机后缀），
-// 所以 busy 期间按钮必须 disable 并锁死 —— 这是防重复提交的第一道闸
-// （同 checkin 的签到按钮）。
+// 【重复提交 = 双倍转账】busy 期间按钮 disable 是第一道闸（防连点）。但「响应丢了」
+// 的那一次提交可能已经在服务端成交 —— 所以每次确认还带一个**一次性幂等键**（见
+// idemRef）：同一个键 + 同样的参数重试，服务端回报原单而不是再转一笔。键的生命周期
+// 比按钮锁更细，规则写在 idemRef 的定义处。
+//
+// 同款模式：收银台 PayForm.randomKeyBase（商户没给订单号时）、练手盘 TradePanel.openBuy。
 
 declare global {
   interface Window {
@@ -30,6 +33,21 @@ const NOTE_MAX = 30;
 /** 快捷加额 chips（**没有「全部」**：金额由用户自己决定）。 */
 const QUICK = [1, 5, 10];
 
+/**
+ * 网页转账的一次性幂等键。`web-` 是来源前缀（运维查表时与 bot 的 `wd-…` 区分开），
+ * 后 16 位随机 —— 生成方式照 `PayForm.randomKeyBase`（randomUUID 去横线截断）。
+ *
+ * 长度 20 ≤ 48、字符集满足服务端 `CLIENT_KEY_RE`（1-48 位 `A-Za-z0-9_.:-`）。
+ * 服务端会再派生成 `xfer-{sha256(发起人)[:8]}-{这个键}` 落进账本。
+ */
+function newTransferKey(): string {
+  const rnd =
+    typeof globalThis.crypto !== 'undefined' && 'randomUUID' in globalThis.crypto
+      ? globalThis.crypto.randomUUID().replace(/-/g, '').slice(0, 16)
+      : Math.random().toString(36).slice(2, 18);
+  return `web-${rnd}`;
+}
+
 export default function TransferPanel({ balance: initialBalance }: { balance: number }) {
   const [balance, setBalance] = useState(initialBalance);
   const [recipient, setRecipient] = useState<TransferTarget | null>(null);
@@ -38,6 +56,30 @@ export default function TransferPanel({ balance: initialBalance }: { balance: nu
   const [pickerOpen, setPickerOpen] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [busy, setBusy] = useState(false);
+
+  // ── 幂等键：这一笔转账在服务端的身份 ────────────────────────────────────────
+  //
+  // 生命周期（每一条都对应一种「静默多扣一笔」的错法）：
+  //   · 打开确认弹窗时**仅在还没有键时**生成。取消后重开、参数没变 → **必须复用
+  //     同一个键**：响应丢失时用户很可能点「再想想」再重开一次，这里若每次重开都
+  //     换键，「重试」就真成了第二笔转账。
+  //   · 收款人 / 金额 / 留言一变就作废：服务端对「同键换参数」回 409，改参数是
+  //     用户要发起另一笔，必须换新键（下次确认/提交时生成）。
+  //   · **成功后才清键**：接着要转的下一笔是新交易，必须换新键；失败（含网络错误、
+  //     500）保留，原样重试才是安全的。
+  //   · 提交时若键为空（参数在提交前变过）再兜底生成 —— 网页这条路永远带键，
+  //     服务端对无键请求按「重试 = 再转一笔」处理。
+  const idemRef = useRef<string>('');
+
+  /** 打开确认弹窗前调用：没有键就为「这一笔」生成一个。 */
+  function ensureTransferKey() {
+    if (!idemRef.current) idemRef.current = newTransferKey();
+  }
+
+  /** 参数变了：当前键作废，下一次确认/提交会生成新键（同键异参服务端会 409）。 */
+  function invalidateTransferKey() {
+    idemRef.current = '';
+  }
 
   const trimmed = amount.trim();
   const parsed = parseFishAmount(trimmed) ?? NaN;
@@ -57,11 +99,15 @@ export default function TransferPanel({ balance: initialBalance }: { balance: nu
 
   function addAmount(delta: number) {
     const cur = parseFishAmount(trimmed) ?? 0;
+    invalidateTransferKey();
     setAmount(fmtFishInput(cur + delta));
   }
 
   async function submit() {
     if (!recipient || !amountOk || busy) return;
+    // 兜底：正常路径已由 ensureTransferKey 生成；参数在提交前变过时这里补一个。
+    if (!idemRef.current) idemRef.current = newTransferKey();
+    const idempotencyKey = idemRef.current;
     setBusy(true);
     try {
       const res = await fetch('/api/fish/market/transfer', {
@@ -72,6 +118,9 @@ export default function TransferPanel({ balance: initialBalance }: { balance: nu
           to_user_id: recipient.id,
           amount: parsed,
           note: note.trim() || undefined,
+          // 同一个键 + 同样的收款人/金额/留言 = 同一笔：超时/响应丢失后重试安全。
+          // 服务端据此登记账本行，重放时回报原单而不是再转一笔（docs/bot/fish-bot.md §6.1）。
+          idempotency_key: idempotencyKey,
         }),
       });
       const data = await res.json().catch(() => null);
@@ -82,11 +131,14 @@ export default function TransferPanel({ balance: initialBalance }: { balance: nu
         setAmount('');
         setNote('');
         setConfirmOpen(false);
+        // 成功才清：这一笔已经结束，下一笔必须换新键。
+        idemRef.current = '';
       } else {
-        // 失败保留弹窗与已填内容：503 这类瞬时故障原样重试一次就好
+        // 失败保留弹窗与已填内容：503 这类瞬时故障原样重试一次就好（同键重试是安全的）
         window.showToast?.(data?.message ?? '转账失败，请稍后再试', 'error');
       }
     } catch {
+      // 响应可能已经在服务端落地（弱网 / 反代超时）：保留键，用户再点确认就是重放而非第二笔。
       window.showToast?.('网络错误，请稍后重试', 'error');
     } finally {
       setBusy(false);
@@ -149,7 +201,10 @@ export default function TransferPanel({ balance: initialBalance }: { balance: nu
               placeholder="0.0"
               autoComplete="off"
               value={amount}
-              onChange={(e) => setAmount(e.target.value)}
+              onChange={(e) => {
+                invalidateTransferKey();
+                setAmount(e.target.value);
+              }}
               disabled={busy}
             />
             <span className="market-amount__unit">小鱼干</span>
@@ -182,7 +237,10 @@ export default function TransferPanel({ balance: initialBalance }: { balance: nu
             placeholder="说点什么…"
             autoComplete="off"
             value={note}
-            onChange={(e) => setNote(e.target.value)}
+            onChange={(e) => {
+              invalidateTransferKey();
+              setNote(e.target.value);
+            }}
             disabled={busy}
           />
           <p className="market-field__hint numeric">
@@ -203,7 +261,10 @@ export default function TransferPanel({ balance: initialBalance }: { balance: nu
           type="button"
           className="market-submit"
           disabled={!canSubmit || busy}
-          onClick={() => setConfirmOpen(true)}
+          onClick={() => {
+            ensureTransferKey();
+            setConfirmOpen(true);
+          }}
         >
           转账
         </button>
@@ -212,6 +273,7 @@ export default function TransferPanel({ balance: initialBalance }: { balance: nu
       {pickerOpen && (
         <RecipientPicker
           onPick={(u) => {
+            invalidateTransferKey();
             setRecipient(u);
             setPickerOpen(false);
           }}

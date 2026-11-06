@@ -137,13 +137,23 @@ async function resolveDuplicate(
    */
   transferId: string
 ): Promise<TransferOutcome> {
-  let payload: { toUserId?: string; amount?: number; description?: string } = {};
+  let payload: {
+    fromUserId?: string;
+    toUserId?: string;
+    amount?: number;
+    description?: string;
+  } = {};
   try {
     payload = JSON.parse(row.payload) as typeof payload;
   } catch {
     /* 记录 payload 损坏：当作参数不一致处理，宁可 409 也不冒重复转账的险 */
   }
   if (
+    // ⚠️ 发起人也必须比：幂等键里的身份只有 sha256 前 8 hex（32 bit），仅当两个
+    // 账号在这 8 位相撞、且用了同一个客户端键时，B 派生的键才会命中 A 登记的行。
+    // 只比收款人/金额/留言的话，B 会拿到「A 那笔已成交」的重放回报（静默串单）——
+    // 那笔钱没动，但 B 以为自己转成功了一笔；加这一项后是明确的 409。
+    payload.fromUserId !== expected.fromUserId ||
     payload.toUserId !== expected.toUserId ||
     payload.amount !== expected.amount ||
     payload.description !== expected.description
@@ -240,7 +250,7 @@ export async function findTransferTargetByUsername(
 /**
  * 用户间转账：发送者扣 amount、接收者得 amount，零手续费，**一个事务**。
  *
- * 【幂等键】`opts.clientIdempotencyKey` 由调用方提供（站外脚本 / 收银台）时：
+ * 【幂等键】`opts.clientIdempotencyKey` 由调用方提供（站外脚本 / 收银台 / 网页转账页）时：
  * 同一个键 + **同样的收款人/金额/留言** 重发 = 返回原结果、绝不重复转账；
  * 同一个键配不同的参数 = 409（不静默改单）。
  * 不提供时由服务端生成随机键 —— 此时**重试就是再转一笔**（见 docs/bot/fish-bot.md §6）。

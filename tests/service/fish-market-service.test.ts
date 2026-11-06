@@ -502,6 +502,53 @@ describe('客户端幂等键 —— 对外契约', () => {
     await expectLedgerConsistent('同键换收款人被 409 拒后');
   });
 
+  it('★ 同键跨发起人（身份命名空间相撞）→ 409，不把 A 的原单当成 B 的重放', async () => {
+    // 场景：客户端键派生是 `xfer-{sha256(发起人)[:8]}-{客户端键}`，身份命名空间只有
+    // 32 bit。两个账号在这 8 位十六进制上相撞、又用了同一个客户端键时，B 派生的键
+    // 会命中 A 登记的那一行。修复前 resolveDuplicate 只比收款人/金额/留言 —— 参数
+    // 相同就把 A 的原单当成 B 的重放：回 ok + duplicated（B 以为自己转成功了一笔，
+    // 钱一分没动，A 那笔的单号/金额成了 B 的「成交回报」）。修复后是明确的 409。
+    //
+    // 这里**直接构造**那行账本模拟相撞：键落在 B 的命名空间（makeClientIdempotencyKey
+    // 用 B 的 id 派生），payload 却是 A 的 —— 与相撞后真正查到的那行逐字段同形。
+    const { sender, recipient } = await scene(100, 0);
+    const other = await makeUser();
+    const clientKey = 'wd-collide-1';
+    const description = `转给「${recipient.username}」`;
+    const now = nowForDb();
+    await prisma.accountSyncLedger.create({
+      data: {
+        idempotencyKey: makeClientIdempotencyKey(sender.id, clientKey),
+        operation: 'transfer',
+        payload: JSON.stringify({
+          fromUserId: other.id, // ← A 的原单
+          toUserId: recipient.id,
+          amount: 7,
+          description,
+        }),
+        status: 'synced',
+        attempts: 0,
+        createdAt: now,
+        updatedAt: now,
+      },
+    });
+
+    const res = await transferFish(sender.id, recipient.id, 7, null, {
+      clientIdempotencyKey: clientKey,
+    });
+
+    expect(res.ok).toBe(false);
+    if (res.ok) return;
+    expect(res.code).toBe(409);
+    // 既没有重复扣款，也没有把 A 那笔当 B 的成交回报
+    expect(await balanceOf(sender.id)).toBe(100);
+    expect(await balanceOf(recipient.id)).toBe(0);
+    expect(await txnsOf(sender.id)).toHaveLength(0);
+    expect(await prisma.accountSyncLedger.count(), '不新增行、也不改动 A 的那行').toBe(1);
+
+    await expectLedgerConsistent('跨发起人撞键被 409 拒后');
+  });
+
   it('不带客户端键 → 随机键、**一行账本都不写**（判据：键是确定的才登记）', async () => {
     // 随机键每次都不一样，登记行没有任何去重价值，只会把表撑大、把「表里有什么」
     // 这件事搅浑。判据与理由见 src/lib/fish-idempotency.ts 头部。

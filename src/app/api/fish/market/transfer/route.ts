@@ -42,7 +42,8 @@ export async function POST(req: Request) {
   // 与 feed 路由同款：数字或数字字符串都能收，其余（NaN / 非数字）交给 service 判 400。
   const amount = Number(body.amount);
   const note = typeof body.note === 'string' ? body.note : null;
-  // 可选：调用方自带的幂等键（站外脚本「超时后用同键重试」的唯一安全手段）。
+  // 可选：调用方自带的幂等键（站外脚本「超时后用同键重试」的唯一安全手段；
+  // 网页转账页也会带一个一次性键，见 TransferPanel）。无键时服务端生成随机键。
   const clientIdempotencyKey =
     typeof body.idempotency_key === 'string' ? body.idempotency_key : null;
 

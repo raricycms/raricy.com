@@ -2,7 +2,7 @@
 // fish-idempotency.ts — 鱼干写路径的幂等登记
 //
 // 【为什么需要它】鱼干写路径里有三处**键是确定的**：同一次操作重跑必须等价于没跑。
-//   · 用户间转账（`opts.clientIdempotencyKey` 由站外脚本 / 收银台提供）——
+//   · 用户间转账（`opts.clientIdempotencyKey` 由站外脚本 / 收银台 / 网页转账页提供）——
 //     调用方遇到超时后唯一的自救手段就是「用同一个键重发」；
 //   · 群发补偿（`compensateIdempotencyKey` 由 batchId 派生）—— 批次跑一半被
 //     中断，续跑必须跳过已发放的人。

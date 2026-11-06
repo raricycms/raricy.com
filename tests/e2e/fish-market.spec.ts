@@ -11,10 +11,10 @@
 // 无状态 POST /api/fish/market/{balance,transactions}（收款人只有凭据、没有会话）。
 // 每笔转账都**收付两侧各读一次**，断言余额一减一增、两条流水共享同一个 transfer_id。
 //
-// 【两笔同额凭什么各算各的】服务端自动生成的幂等键**不登记任何记录**（键每次都不一样，
-// 登记没有去重价值，见 src/lib/fish-idempotency.ts 头部）。所以 e2e 手里能证明
-// 「这笔与那笔是两个东西」的凭证是 **transfer_id** —— 它由幂等键派生、写进收付双方
-// 两条流水；两笔同额若被静默吞掉一笔，第二个单号根本不会存在。
+// 【两笔同额凭什么各算各的】证明「这笔与那笔是两个东西」的凭证是 **transfer_id** ——
+// 它由幂等键派生、写进收付双方两条流水；两笔同额若被静默吞掉一笔，第二个单号根本
+// 不会存在。（网页转账现在带一次性客户端键、成功后换新键；服务端对**无键**调用仍
+// 生成随机键且不登记任何记录，见 src/lib/fish-idempotency.ts 头部。）
 //
 // 【为什么用签到给新号发鱼】新注册用户余额为 0，而转账要真金白银。签到是 e2e 里
 // 唯一不绕开业务的造鱼方式（CLI grant 要拉子进程；直接改库等于绕开被测路径）。
@@ -220,6 +220,99 @@ test('连续两笔同额：两笔各自落账（各有一个单号，不被静�
     const theirs = await ledgerOf(api, recipient.username, SEED_PASSWORD, 'transfer_all');
     expect(theirs.transactions, '收款方也收到两笔，一笔都不能少').toHaveLength(2);
     expect(theirs.balance, '两笔 0.1 都要到账').toBe(0.2);
+  } finally {
+    await api.dispose();
+  }
+});
+
+test('响应丢失后重试：两次确认带同一个幂等键，只成交一笔；成功后下一笔换新键', async ({
+  page,
+  playwright,
+}) => {
+  // R3-310：网页转账此前不带 idempotency_key —— 请求已在服务端成交、响应在弱网/
+  // 反代超时里丢了时，前端提示「网络错误，请稍后重试」，用户再点一次就是**第二笔
+  // 真转账**。这条用例把最坏形态摆出来：第一次请求**真的送到服务端**（钱已动），
+  // 但浏览器拿不到响应；第二次确认必须复用同一个键，服务端据此回报原单。
+  const sender = await registerFreshUser(page, { core: true });
+  const balance = await fundByCheckin(page); // 固定 3 条
+  const recipient = await registerFreshUser(page);
+  await loginViaApi(page, sender.username);
+
+  await page.goto('/fish/transfer');
+
+  // 拦下 POST，记录每次的 body.idempotency_key。第一次：先 route.fetch() 让服务端
+  // 真处理（扣款 + 两条流水 + 账本行同事务提交），再 abort 掉响应，模拟「响应丢失」；
+  // 第二次起放行。
+  const sentKeys: string[] = [];
+  let swallowNext = true;
+  await page.route('**/api/fish/market/transfer', async (route) => {
+    const body = JSON.parse(route.request().postData() ?? '{}') as {
+      idempotency_key?: unknown;
+    };
+    sentKeys.push(String(body.idempotency_key ?? ''));
+    if (swallowNext) {
+      swallowNext = false;
+      await route.fetch();
+      await route.abort('failed');
+      return;
+    }
+    await route.continue();
+  });
+
+  // 选收款人 → 填金额 → 确认弹窗 → 第一次确认（响应丢失）
+  await page.locator('.market-recipient-pick').click();
+  await page.locator('.market-picker__search').fill(recipient.username);
+  await page.locator('.market-picker__item', { hasText: recipient.username }).click();
+  await page.locator('#market-amount').fill('0.5');
+  await page.locator('.market-submit').click();
+  await expect(page.locator('.market-confirm')).toBeVisible();
+
+  await page.locator('.market-confirm__ok').click();
+  await expect(page.locator('#toast-container .toast__body').last()).toContainText('网络错误');
+  await expect(
+    page.locator('.market-confirm'),
+    '失败时弹窗与已填内容保留 —— 用户唯一的自救手段就是原样再点一次'
+  ).toBeVisible();
+
+  // 用户再点一次确认：必须复用同一个键 → 服务端认成同一笔（duplicated，不重复扣款）
+  await page.locator('.market-confirm__ok').click();
+  await expect(page.locator('.market-confirm')).toHaveCount(0);
+  await expect(page.locator('#toast-container .toast__body').last()).toContainText('重复请求');
+
+  expect(sentKeys).toHaveLength(2);
+  expect(
+    sentKeys[1],
+    '★ 响应丢失后的重试必须是同一个键，否则「重试」就是第二笔真转账'
+  ).toBe(sentKeys[0]);
+  // 网页键的格式：web- + 随机段，长度 ≤48（服务端 CLIENT_KEY_RE 的口径）
+  expect(sentKeys[0]).toMatch(/^web-[0-9a-z]{8,}$/);
+
+  const afterRetry = await myLedger(page, 'transfer_all');
+  expect(afterRetry, '重放不得产生第二笔流水').toHaveLength(1);
+  expect(afterRetry[0]).toMatchObject({ amount: -0.5, type: 'transfer' });
+  await expect(page.locator('.market-card__balance-number')).toHaveText(
+    (balance - 0.5).toFixed(4)
+  );
+
+  // ── 成功后才清键：紧接着的新转账（同一收款人、同一金额）必须换一个键 ──────────
+  // 不换的话会被服务端当成上一笔的重放而**静默不转** —— 用户以为转了两笔，账上只有一笔。
+  await transferViaUI(page, recipient.username, '0.5');
+  expect(sentKeys, '第三次请求是一次新转账').toHaveLength(3);
+  expect(sentKeys[2], '★ 成功后必须换新键，否则第二笔会被当成重放').not.toBe(sentKeys[0]);
+
+  const finalRows = await myLedger(page, 'transfer_all');
+  expect(finalRows).toHaveLength(2);
+  expect(
+    new Set(finalRows.map((r) => r.transfer_id)).size,
+    '两笔成交必须各有一个单号'
+  ).toBe(2);
+
+  // 收款方侧：两笔都真的到账（0.5 + 0.5），不是一笔
+  const api = await playwright.request.newContext({ baseURL: BASE_URL });
+  try {
+    const theirs = await ledgerOf(api, recipient.username, SEED_PASSWORD, 'transfer_all');
+    expect(theirs.transactions).toHaveLength(2);
+    expect(theirs.balance).toBe(1);
   } finally {
     await api.dispose();
   }
