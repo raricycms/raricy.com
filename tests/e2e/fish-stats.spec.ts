@@ -86,7 +86,7 @@ test('新号：KPI 全是 0、胜率是「—」、不渲染拆解表', async ({
   await expect(kpi(page, 'payout')).toHaveText('0.0000');
   // 一笔没有时不给两张各两行 0 的表 —— 那是噪音
   await expect(page.locator('.tstats-table')).toHaveCount(0);
-  await expect(page.locator('.tstats-empty').first()).toContainText('还没有已结清的战绩');
+  await expect(page.locator('.tstats-empty').first()).toContainText('还没有已结清的交易');
 });
 
 test('买卖一轮：笔数 / 胜率 / 盈亏 / 拆解表与那一笔的结算数对得上', async ({ page, request }) => {
@@ -169,16 +169,18 @@ test('未登录访问统计页 → 跳登录页并带回跳地址', async ({ pag
   await expect(page).toHaveURL('/login?next=%2Ffish%2Ftrade%2Fstats');
 });
 
-test('两处入口都能进统计页', async ({ page }) => {
+test('从 /fish 进练手盘再进统计页，统计页可返回练手盘', async ({ page }) => {
   await registerFreshUser(page, { core: true });
 
-  // ① /fish 卡片的 info 区（**不能**放进那条被用例钉死为 3 颗的行动条）
+  // 入口链（现行实现）：/fish 的「鱼干练手盘」卡片 → 练手盘子导航「统计」。
+  // 旧的 `.fish-card__info-link` / `.trade-stats-link` 已随前端改版删除，别按旧选择器找入口。
   await page.goto('/fish');
-  await page.locator('.fish-card__info-link', { hasText: '练手盘统计' }).click();
+  await page.getByRole('link', { name: /鱼干练手盘/ }).click();
+  await expect(page).toHaveURL('/fish/trade');
+  await page.getByRole('link', { name: '统计', exact: true }).click();
   await expect(page).toHaveURL('/fish/trade/stats');
 
-  // ② 练手盘页头副标题里那条
-  await page.goto('/fish/trade');
-  await page.locator('.trade-stats-link').click();
-  await expect(page).toHaveURL('/fish/trade/stats');
+  // 统计页底部的返回入口
+  await page.getByRole('link', { name: /回到练手盘/ }).click();
+  await expect(page).toHaveURL('/fish/trade');
 });
