@@ -59,3 +59,18 @@ test('旧头像直链 /auth/avatar/<id> 可用（历史版本的 /auth/avatar/<u
   expect(newRes.status()).toBe(200);
   expect(Buffer.compare(await oldRes.body(), await newRes.body())).toBe(0);
 });
+
+// 旧的「获取注册资格」页已退出：保留 307 让旧直链/书签落到注册页，而不是 404。
+test('/valid_user 307 到 /register（保留查询参数，不 404）', async ({ page }) => {
+  const res = await page.request.get('/valid_user?from=old', { maxRedirects: 0 });
+  expect(res.status()).toBe(307);
+  expect(res.headers()['location']).toBe('/register?from=old');
+});
+
+// favicon.ico 是浏览器/书签/外链默认会直连的地址。资产已删（341KB 无引用），
+// 用 rewrite 兜到真正的入口 favicon.png —— 不能 404（否则标签页图标变白）。
+test('已删除的 favicon.ico 由 rewrite 兜到 favicon.png（200 + image/png）', async ({ page }) => {
+  const res = await page.request.get('/favicon.ico');
+  expect(res.status()).toBe(200);
+  expect(res.headers()['content-type']).toBe('image/png');
+});

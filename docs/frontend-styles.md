@@ -718,7 +718,7 @@ ReactiveMD 正文由上游 `reactive-md/screen.css` 提供基础版式，站点�
 
 颜色、字体和安全区读取 `base/_root.scss`；SCSS 尺度读取
 `abstracts/_variables.scss`；断点读取 `abstracts/_breakpoints.scss`。
-使用明暗主题 CSS 变量，不启用已经停用的 `theme-map / themeify` 方案。
+使用明暗主题 CSS 变量，不启用已删除的 `theme-map / themeify` 方案（见 git 历史）。
 原生控件与滚动条随 `color-scheme` 切换；自定义滚动条复用根样式，
 不在局部页面另建亮暗配方。
 

@@ -2,8 +2,6 @@
 
 // base/_root.scss
 
-@use '../abstracts/theme-map' as *;
-
 :root {
   // 字体与主题无关。正文保留原有回退栈；等宽字体由代码块与编辑器共用。
   --font-body: 'Kumbh Sans', 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;

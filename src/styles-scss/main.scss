@@ -1,6 +1,5 @@
 // Entry file: control import order
 @use 'abstracts/variables';
-@use 'abstracts/functions';
 @use 'abstracts/breakpoints';
 @use 'abstracts/mixins';
 
@@ -17,11 +16,9 @@
 @use 'layout/admin-sidebar';
 
 @use 'components/button';
-@use 'components/navbar';
 @use 'components/icons';
 @use 'components/modal';
 @use 'components/card';
-@use 'components/badge';
 @use 'components/table';
 @use 'components/alert';
 @use 'components/form-controls';

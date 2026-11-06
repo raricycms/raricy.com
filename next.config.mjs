@@ -37,6 +37,9 @@ const nextConfig = {
     return [
       { source: '/image/i/:id', destination: '/api/images/:id/raw' },
       { source: '/auth/avatar/:id', destination: '/api/avatar/:id' },
+      // 站点图标入口是 layout.tsx 的 favicon.png（不用 .ico）；浏览器仍会按惯例请求
+      // 根路径 /favicon.ico，这里兜住旧直链/书签/邮件模板，避免 404。
+      { source: '/favicon.ico', destination: '/static/img/favicon.png' },
     ];
   },
   // 部署打包时可开启 output:'standalone'；本地沙箱下其 file-tracing 复制步骤会 ENOENT，
