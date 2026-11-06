@@ -126,13 +126,27 @@ describe('反引号文档路径 → 站内链接', () => {
     // 这条是**锚点闭环**：href 里的 `#sec-K` 与 heading 渲染出的 `id="sec-K"`
     // 是两处算出来的。漂开的表现是点了**落在文档顶部**，不报错、也没人会说。
     const missing: string[] = [];
+    // 下界：`missing` 为空集合时「一条都没扫到」和「全都对」长得一模一样（R3-687）。
+    // 总数下界防正则/钩子整体失效；per-doc 下界防某一篇的段号链接整份丢失。
+    let checked = 0;
+    const perDoc = new Map<string, number>();
     for (const e of DOC_ENTRIES) {
       for (const m of htmlOf(e.slug).matchAll(/href="\/docs\/([^"#]*)#sec-([^"]*)"/g)) {
+        checked++;
+        perDoc.set(e.slug, (perDoc.get(e.slug) ?? 0) + 1);
         const slug = decodeURIComponent(m[1]);
         const id = `sec-${decodeURIComponent(m[2])}`;
         if (!htmlOf(slug).includes(`id="${id}"`)) missing.push(`${e.slug} → /docs/${m[1]}#${m[2]}`);
       }
     }
+    expect(
+      checked,
+      '一条段号链接都没渲染出来 —— 遍历钩子或正则失效时闭环断言会空转'
+    ).toBeGreaterThan(20);
+    expect(
+      ['deploy', 'architecture'].filter((slug) => (perDoc.get(slug) ?? 0) === 0),
+      '这两篇文档里的段号链接整份丢失（其它文档把总数撑住了）'
+    ).toEqual([]);
     expect(
       missing,
       `这些段号链接指向的标题不存在（多半是加/删了一节导致编号位移）：\n  ${missing.join('\n  ')}`

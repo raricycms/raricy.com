@@ -3,7 +3,8 @@ import path from 'node:path';
 import sharp from 'sharp';
 import layout from '../../public/static/games/wand2/sprite-layout.json';
 
-const dir = path.resolve('public/static/games/wand2');
+// 从本文件位置推路径，不依赖 runner 的 cwd（IDE 单文件运行 / 子目录 shell）。
+const dir = path.resolve(import.meta.dirname, '../../public/static/games/wand2');
 const read = (file: string) => sharp(path.join(dir, file)).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
 type Pixels = Awaited<ReturnType<typeof read>>;
 let attack: Pixels, body: Pixels, character: Pixels, original: Pixels, walkDown: Pixels;

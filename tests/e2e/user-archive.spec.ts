@@ -13,8 +13,10 @@ test('CLI 归档在另一个网站进程生效；站长网页也无法查看、�
   // 子进程绝不回落到 .env 的开发库。
   expect(scratch).toContain('/tests/.tmp/e2e-');
   const cli = (action: 'archive' | 'unarchive') => {
+    // 从本 spec 位置推仓库路径，不依赖 Playwright 的 cwd（与 global-setup 的 __dirname 同款）。
     const raw = execFileSync(process.execPath, [
-      path.resolve('node_modules/tsx/dist/cli.mjs'), path.resolve('scripts/cli.ts'),
+      path.resolve(__dirname, '../../node_modules/tsx/dist/cli.mjs'),
+      path.resolve(__dirname, '../../scripts/cli.ts'),
       'user', action, target.username, '--reason', 'e2e 独立进程归档验证',
       '--as', SEED_USERS.owner.username, '--yes', '--json',
     ], { env: { ...process.env, DATABASE_URL: `file:${scratch}`, NODE_ENV: 'test' }, encoding: 'utf8', timeout: 30000 });

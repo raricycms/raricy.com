@@ -250,10 +250,21 @@ function parseLine(
 }
 
 /** 解析全部文档。模块加载时跑一次。 */
-function parseAll(): { docs: string[]; refs: Ref[]; anchors: Anchor[] } {
+function parseAll(): {
+  docs: string[];
+  refs: Ref[];
+  anchors: Anchor[];
+  /** 每个目标文档被引用的次数（路径 refs + 段号 anchors），用于 per-target 下界。 */
+  perTarget: Map<string, number>;
+} {
   const docs = collectDocs();
   const refs: Ref[] = [];
   const anchors: Anchor[] = [];
+  const perTarget = new Map<string, number>();
+  const bump = (target: string) => {
+    const key = target.replace(/\\/g, '/').replace(/^\.\//, '');
+    perTarget.set(key, (perTarget.get(key) ?? 0) + 1);
+  };
 
   for (const file of docs) {
     const lines = stripCodeFences(fs.readFileSync(file, 'utf-8')).split('\n');
@@ -261,18 +272,36 @@ function parseAll(): { docs: string[]; refs: Ref[]; anchors: Anchor[] } {
       const parsed = parseLine(lines[i], file, i + 1, (sec) => indexOf(file).some((h) => h.key === sec));
       refs.push(...parsed.refs);
       anchors.push(...parsed.anchors);
+      for (const r of parsed.refs) bump(r.raw);
+      for (const a of parsed.anchors) bump(a.target);
     }
   }
-  return { docs, refs, anchors };
+  return { docs, refs, anchors, perTarget };
 }
 
-const { docs: DOCS, refs: REFS, anchors: ANCHORS } = parseAll();
+const { docs: DOCS, refs: REFS, anchors: ANCHORS, perTarget: PER_TARGET } = parseAll();
 
 describe('文档交叉引用', () => {
   it('扫到了文档（防止扫描逻辑悄悄失效）', () => {
     expect(DOCS.length).toBeGreaterThan(15);
     expect(REFS.length).toBeGreaterThan(30);
     expect(ANCHORS.length).toBeGreaterThan(10);
+  });
+
+  it('高频目标文档的引用数不低于下界（防单个目标整份解析失效）', () => {
+    // 全局下界只能发现「整体归零」：某一个目标文档的引用规则悄悄失效时，其它目标会把
+    // 总数撑住，闭环断言照绿。对最重的几个交叉引用目标各给一个**低于当前语料**的下界
+    // —— 正常增删一节不会撞线，但目标整份失效（解析规则改坏 / 标题格式换代）会红。
+    const FLOORS: Record<string, number> = {
+      'docs/architecture.md': 40,
+      'docs/deploy.md': 10,
+      'docs/bot/fish-bot.md': 3,
+    };
+    const low = Object.entries(FLOORS).flatMap(([target, floor]) => {
+      const actual = PER_TARGET.get(target) ?? 0;
+      return actual < floor ? [`${target}: 实际 ${actual} < 下界 ${floor}`] : [];
+    });
+    expect(low, `这些目标文档的引用数低于下界：\n  ${low.join('\n  ')}`).toEqual([]);
   });
 
   it('每个引用的路径都解析得到真实文件', () => {
@@ -359,7 +388,10 @@ describe('文档交叉引用', () => {
   });
 
   it('段号索引认得出编号，且不会把 6.4 误配到 6.40', () => {
-    const probe = path.join(os.tmpdir(), 'raricy-xref-probe.md');
+    // 探针必须放**本进程独有的临时目录**：固定文件名在多个工作区并行跑时会互删，
+    // 后跑的那次可能读到不存在的文件（R3-687）。
+    const probeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'raricy-xref-'));
+    const probe = path.join(probeDir, 'probe.md');
     try {
       fs.writeFileSync(probe, '# 探针\n\n## 2.3 真实存在的节\n\n## 6.40 干扰项\n');
       expect(headingLabel(probe, '2.3')).toContain('真实存在的节');
@@ -367,7 +399,7 @@ describe('文档交叉引用', () => {
       expect(headingLabel(probe, '9.9')).toBe('');
       expect(indexOf(probe).map((h) => h.text)).toContain('6.40 干扰项');
     } finally {
-      fs.rmSync(probe, { force: true });
+      fs.rmSync(probeDir, { recursive: true, force: true });
     }
   });
 

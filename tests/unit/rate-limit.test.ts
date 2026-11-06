@@ -467,3 +467,20 @@ describe('快照持久化（重启不丢窗口）', () => {
     expect(mod2.loadSnapshot()).toBe(1);
   });
 });
+
+describe('测试环境的快照隔离（tests/setup.ts）', () => {
+  it('默认路径按进程唯一、落在 tests/.tmp，且不是生产默认落点', () => {
+    const configured = process.env.RATE_LIMIT_SNAPSHOT_PATH ?? '';
+    const normalized = configured.replace(/\\/g, '/');
+
+    // 固定文件名会让同机并行的两个 vitest 进程互相覆盖快照（R3-720）。
+    expect(normalized, '测试快照必须落在 tests/.tmp 下').toContain('/tests/.tmp/');
+    expect(configured, '测试绝不能写生产默认快照').not.toBe(
+      path.resolve(process.cwd(), 'instance', 'rate-limit-snapshot.json')
+    );
+    // 命名里带 pid 与随机段：pid 防同机并行、随机段防 pid 复用。
+    expect(path.basename(configured)).toMatch(
+      new RegExp(`^rate-limit-snapshot-${process.pid}-[0-9a-z]+\\.json$`)
+    );
+  });
+});

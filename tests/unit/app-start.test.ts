@@ -53,11 +53,13 @@ describe('共同启动的环境配置', () => {
 });
 
 async function runningPair(grandchild = false) {
-  const dir = mkdtempSync(path.resolve('tests/.tmp/app-start-'));
+  // 从本文件位置推路径，不依赖 runner 的 cwd（IDE 单文件运行 / 子目录 shell）。
+  const dir = mkdtempSync(path.resolve(import.meta.dirname, '../.tmp/app-start-'));
   const signals = new EventEmitter();
   const files = [path.join(dir, 'first.json'), path.join(dir, 'second.json')];
+  const fixture = path.resolve(import.meta.dirname, '../fixtures/app-child.mjs');
   const done = runAppProcesses(files.map((file, index) => ({
-    name: `fixture-${index}`, args: [path.resolve('tests/fixtures/app-child.mjs')],
+    name: `fixture-${index}`, args: [fixture],
     env: { ...process.env, APP_TEST_READY: file, APP_TEST_GRANDCHILD: grandchild && index === 0 ? '1' : '0' },
   })), { signals, graceMs: 1000 });
   cleanups.push(async () => { signals.emit('SIGTERM'); await done; rmSync(dir, { recursive: true, force: true }); });

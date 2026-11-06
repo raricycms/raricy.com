@@ -17,6 +17,9 @@ import { installTestConstraints } from './db-constraints';
 // readonly database，看起来像被测代码不稳，实为测试基建自伤）。故此处按**前缀**校验。
 const TEST_DB_PREFIX = 'tests/.tmp/test-';
 
+/** 仓库根：本文件被 Vitest（ESM）加载，可以用 import.meta 推导；Playwright 侧不加载本文件。 */
+const REPO_ROOT = path.resolve(import.meta.dirname, '../..');
+
 /** 硬校验（第一道，查**配置**）：连的必须是测试库，否则直接抛错（防止误伤真实数据）。 */
 function assertTestDb() {
   const url = process.env.DATABASE_URL || '';
@@ -91,7 +94,7 @@ export function ensureSchema() {
       stdio: 'pipe',
     });
   }
-  installTestConstraints(dbPath);
+  installTestConstraints(dbPath, REPO_ROOT);
   schemaReady = true;
 }
 
@@ -127,6 +130,59 @@ function sleepSync(ms: number) {
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
 }
 
+/**
+ * resetDb 清空的表（**先子表、后父表**，避免 DELETE 撞外键）。
+ *
+ * ⚠️ 这份清单必须覆盖 `prisma/schema.prisma` 里的所有 `@@map` 表：漏一张不会报错，
+ * 只会表现为「上个用例的数据残留」——症状千奇百怪却不指向基建（R3-721）。
+ * 静态对账见 `tests/unit/db-reset-tables.test.ts`；改 schema 后那张表会红。
+ * （`public_blog_search*` 不是 Prisma model，由 `db-constraints.ts` 安装的手写 SQL 建。）
+ */
+export const RESET_TABLES = [
+  // 迁移标记：漏删会让后续用例误判「已迁移」（历史上某文件只能自己补一道 deleteMany）。
+  'reactive_source_migrations',
+  // 累计共鸣资格表引用 daily_quotes 与 users —— 必须排在两者之前删。
+  'daily_quote_revisions', 'daily_quote_resonance_once',
+  'daily_quote_resonances', 'daily_quote_favorites', 'daily_quote_editions', 'daily_quotes',
+  // 保存箱引用 users 与 chat_messages —— 必须排在两者之前删。
+  'saved_chat_messages',
+  'chat_messages', 'chat_members', 'chat_channels',
+  'comment_likes', 'blog_comments', 'blog_likes', 'blog_feeds',
+  // 匿名化名分配表引用 blogs 与 users —— 必须排在两者之前删。
+  'blog_anon_identities',
+  // 收藏夹引用 favorites 与 blogs，favorites 引用 users —— 都必须先于它们删
+  'favorite_items', 'favorites',
+  // 可见性变更记录引用 blogs 与 users —— 必须排在两者之前删
+  // （见 migrations/19_blog_visibility_logs 头部）
+  'blog_visibility_logs',
+  'blog_contents', 'blogs', 'categories',
+  'vote_records', 'vote_options', 'votes',
+  'clip_text', 'clipboards', 'image_hosting',
+  // 音频床与图床同形，同样只引用 users —— 必须排在 users 之前。
+  'audio_hosting',
+  'daily_checkins', 'fish_transactions', 'notifications',
+  'admin_action_appeals', 'admin_action_logs',
+  'public_blog_search', 'public_blog_search_state',
+  'user_bans', 'invite_codes',
+  // OAuth 三表引用 users / oauth_applications —— 必须排在它们前面删。
+  'oauth_access_tokens', 'oauth_authorization_codes', 'oauth_applications',
+  // 鱼干只读凭据 / 回调都引用 users —— 同样必须先于 users 删。
+  // deliveries 与 endpoints 之间**刻意没有外键**（理由见 migrations/16_fish_webhooks
+  // 头部），所以两者之间的顺序无所谓；它们相对 users 的顺序才是有意义的。
+  'fish_api_tokens',
+  'fish_webhook_deliveries', 'fish_webhook_endpoints',
+  // 练手盘持仓引用 users —— 同样必须排在 users 之前。
+  'market_positions',
+  // 头像框 / 气泡持有账引用 users —— 同样必须排在 users 之前（见 migrations/20_user_frames 头部）。
+  'user_frames',
+  'user_bubbles',
+  // 个人主页积木引用 users（ON DELETE RESTRICT）—— 漏登记时 DELETE users 会撞外键，
+  // 于是**整张 users 都清不掉**，表现为用例之间互相污染。
+  'profile_blocks',
+  'users',
+  'account_sync_ledger',
+] as const;
+
 /** 清空所有业务表（保留结构）。每个用例前调用，保证互不干扰。 */
 export async function resetDb() {
   assertTestDb();
@@ -134,61 +190,10 @@ export async function resetDb() {
   // 查**实际连接**（不是环境变量）—— 见 assertConnectedTestDb 的注释：
   // 配置对而连接错，是清空真实库的那条路径。放在任何 deleteMany 之前。
   await assertConnectedTestDb();
-  // 顺序：先删子表再删父表，避免外键约束
-  const tables = [
-    // 累计共鸣资格表引用 daily_quotes 与 users —— 必须排在两者之前删。
-    // ⚠️ 漏登记**不报错**（下面那条 DELETE 的 catch 会吞掉），表现为「上个用例的
-    // 共鸣资格残留」，症状是某些用例莫名其妙显示「已共鸣」。
-    'daily_quote_revisions', 'daily_quote_resonance_once',
-    'daily_quote_resonances', 'daily_quote_favorites', 'daily_quote_editions', 'daily_quotes',
-    // 保存箱引用 users 与 chat_messages —— 必须排在两者之前删。
-    // ⚠️ 漏登记不报错（下面那条 DELETE 的 catch 会吞掉），表现为数据在用例间残留。
-    'saved_chat_messages',
-    'chat_messages', 'chat_members', 'chat_channels',
-    'comment_likes', 'blog_comments', 'blog_likes', 'blog_feeds',
-    // 匿名化名分配表引用 blogs 与 users —— 必须排在两者之前删。
-    // ⚠️ 漏登记**不报错**（下面那条 DELETE 的 catch 会吞掉），表现为化名序号在用例间残留。
-    'blog_anon_identities',
-    // 收藏夹引用 favorites 与 blogs，favorites 引用 users —— 都必须先于它们删
-    'favorite_items', 'favorites',
-    // 可见性变更记录引用 blogs 与 users —— 必须排在两者之前删
-    // （见 migrations/19_blog_visibility_logs 头部：漏登记不报错，只表现为数据残留）
-    'blog_visibility_logs',
-    'blog_contents', 'blogs', 'categories',
-    'vote_records', 'vote_options', 'votes',
-    'clip_text', 'clipboards', 'image_hosting',
-    // 音频床与图床同形，同样只引用 users —— 必须排在 users 之前。
-    // ⚠️ 漏登记不报错（下面的 catch 会吞掉），表现为数据在用例间残留。
-    'audio_hosting',
-    'daily_checkins', 'fish_transactions', 'notifications',
-    'admin_action_appeals', 'admin_action_logs',
-    'public_blog_search', 'public_blog_search_state',
-    'user_bans', 'invite_codes',
-    // OAuth 三表引用 users / oauth_applications —— 必须排在它们前面删，
-    // 否则 DELETE users 撞外键（被下面的 catch 吞掉，表现为刷屏的 FK 报错）
-    'oauth_access_tokens', 'oauth_authorization_codes', 'oauth_applications',
-    // 鱼干只读凭据 / 回调都引用 users —— 同样必须先于 users 删。
-    // deliveries 与 endpoints 之间**刻意没有外键**（理由见 migrations/16_fish_webhooks
-    // 头部），所以两者之间的顺序无所谓；它们相对 users 的顺序才是有意义的。
-    'fish_api_tokens',
-    'fish_webhook_deliveries', 'fish_webhook_endpoints',
-    // 练手盘持仓引用 users —— 同样必须排在 users 之前。
-    // ⚠️ 漏登记**不报错**（下面那条 DELETE 的 catch 会吞掉），表现为数据在用例间残留。
-    'market_positions',
-    // 头像框持有账引用 users —— 同样必须排在 users 之前（见 migrations/20_user_frames
-    // 头部）。⚠️ 同上：漏登记不报错，只表现为数据残留。
-    'user_frames',
-    'user_bubbles',
-    // 个人主页积木引用 users（ON DELETE RESTRICT）—— 漏登记时 DELETE users 会撞外键、
-    // 被下面的 catch 吞掉，于是**整张 users 都清不掉**，表现为用例之间互相污染。
-    'profile_blocks',
-    'users',
-    'account_sync_ledger',
-  ];
-  for (const t of tables) {
-    await prisma.$executeRawUnsafe(`DELETE FROM ${t}`).catch(() => {
-      /* 表不存在则跳过 */
-    });
+  for (const t of RESET_TABLES) {
+    // **不吞错**：外键顺序错 / 表缺失 / 只读库都必须让当前用例红 —— 静默 catch 会把
+    // 它们变成「上一个用例的数据残留」，症状指向业务而不是基建（R3-721）。
+    await prisma.$executeRawUnsafe(`DELETE FROM ${t}`);
   }
 }
 

@@ -21,15 +21,24 @@ import path from 'node:path';
 import fs from 'node:fs';
 import crypto from 'node:crypto';
 import { TMP_DIR, TEMPLATE_DB, TEMPLATE_HASH, SQLITE_SIDECARS } from './helpers/db-template';
-import { CONSTRAINT_SQL_PATH, SEARCH_SQL_PATH, installTestConstraints } from './helpers/db-constraints';
+import { constraintSqlPaths, installTestConstraints } from './helpers/db-constraints';
+
+/** 仓库根（本文件由 Vitest 以 ESM 加载，可用 import.meta）。 */
+const ROOT = path.resolve(import.meta.dirname, '..');
 
 /** 模板库「建好了」的最小体积。真实结构库 800KB+，空文件是 0 字节。 */
 const MIN_TEMPLATE_BYTES = 4096;
 
 /** schema 与手写约束共同决定模板；SQL 改变也必须使缓存失效。 */
 function schemaHash(): string {
-  const schema = fs.readFileSync(path.resolve(import.meta.dirname, '../prisma/schema.prisma'));
-  return crypto.createHash('sha256').update(schema).update(fs.readFileSync(CONSTRAINT_SQL_PATH)).update(fs.readFileSync(SEARCH_SQL_PATH)).digest('hex');
+  const schema = fs.readFileSync(path.resolve(ROOT, 'prisma/schema.prisma'));
+  const { constraintSql, searchSql } = constraintSqlPaths(ROOT);
+  return crypto
+    .createHash('sha256')
+    .update(schema)
+    .update(fs.readFileSync(constraintSql))
+    .update(fs.readFileSync(searchSql))
+    .digest('hex');
 }
 
 /**
@@ -163,7 +172,7 @@ export default function globalSetup() {
       stdio: 'pipe',
     });
 
-    installTestConstraints(staging);
+    installTestConstraints(staging, ROOT);
     // 伴生文件（-wal/-shm）不能跟着 rename，先落进主库再发布：
     // 直接 rename 主文件时若还有 WAL，副本会缺最新事务。db push 退出后连接已关，
     // 正常没有伴生文件；有的话说明结构已 checkpoint 进主文件，删掉即可。

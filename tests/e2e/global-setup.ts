@@ -261,7 +261,7 @@ export default async function globalSetup() {
   const prisma = new PrismaClient({ datasources: { db: { url } } });
   try {
     // 与 Vitest 模板安装同一份约束及搜索索引 SQL。
-    installTestConstraints(E2E_DB);
+    installTestConstraints(E2E_DB, PROJECT_ROOT);
     await prisma.dailyQuote.createMany({ data: classicQuotes.map((quote) => ({
       id: quote.id, kind: 'builtin', content: quote.content, contentKey: quote.content_key,
       category: quote.category, sourceType: 'quotation', sourceName: quote.source, sourceUrl: quote.source_url,

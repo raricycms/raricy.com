@@ -26,7 +26,21 @@ process.env.DATABASE_URL = `file:${TEST_DB}`;
 // 覆盖成测试桶（实测：rate-limit.test.ts 里走真实 Date.now() 的那条会让 10 分钟节拍
 // 立即满足 → flushSnapshot() 写默认路径）。playwright 侧早有同样做法，见
 // playwright.config.ts 的 RATE_LIMIT_SNAPSHOT_PATH；vitest 侧此前漏了。
-process.env.RATE_LIMIT_SNAPSHOT_PATH = path.join(TMP_DIR, 'rate-limit-snapshot.json');
+//
+// 文件名必须**按进程唯一**（同 TEST_DB 的 pid + 随机串）：固定名会让同机并行的两个
+// vitest 进程互相覆盖快照、退出后还留一个谁也不删的残留文件（R3-720）。
+const RATE_LIMIT_SNAPSHOT = path.join(TMP_DIR, `rate-limit-snapshot-${TAG}.json`);
+// 硬校验：测试快照必须写 tests/.tmp 下的自己的文件，绝不能落到生产默认落点。
+// 配置改错时要当场炸，而不是静默污染 instance/ 下的运行时状态 —— 与 db.ts
+// 「拒绝在非测试库上运行」同一条纪律。
+const PROD_SNAPSHOT = path.resolve(process.cwd(), 'instance', 'rate-limit-snapshot.json');
+if (
+  RATE_LIMIT_SNAPSHOT === PROD_SNAPSHOT ||
+  !RATE_LIMIT_SNAPSHOT.replace(/\\/g, '/').includes('/tests/.tmp/')
+) {
+  throw new Error(`拒绝使用测试目录以外的限频快照路径：${RATE_LIMIT_SNAPSHOT}`);
+}
+process.env.RATE_LIMIT_SNAPSHOT_PATH = RATE_LIMIT_SNAPSHOT;
 
 process.env.SECRET_KEY = 'test-secret-key-do-not-use-in-prod';
 // NODE_ENV 由 vitest 自动置为 'test'，无需（也不能，@types/node 标了 readonly）在此赋值。
@@ -90,11 +104,16 @@ process.env.MARKET_LIQUIDATE_MS = '0';
 // （market-service / market-liquidator / market-trade-api 三处各一行）。显式也正好
 // 说明了那个前提是「这个文件在测杠杆」，而不是一个全进程的隐式放行。
 
-// 进程退出时清掉自己的库文件，避免 .tmp 堆积
+// 进程退出时清掉自己的库文件与限频快照，避免 .tmp 堆积
 process.on('exit', () => {
-  for (const suffix of ['', '-wal', '-shm']) {
+  for (const file of [
+    TEST_DB,
+    `${TEST_DB}-wal`,
+    `${TEST_DB}-shm`,
+    RATE_LIMIT_SNAPSHOT,
+  ]) {
     try {
-      fs.rmSync(TEST_DB + suffix, { force: true });
+      fs.rmSync(file, { force: true });
     } catch {
       /* 清理失败无所谓 */
     }
