@@ -79,6 +79,18 @@ describe('content-refs 纯逻辑', () => {
     expect(firstClipboardRef(`[@ ${CLIP_ID} ]`)?.id).toBe(CLIP_ID);
   });
 
+  it('★ 围栏 / 行内代码里的引用不展开（与图床的 DOM 层排除同口径，R3-135）', () => {
+    const fenced = ['```md', `[@${CLIP_ID}]`, '```', `正文 [@${CLIP_ID}]`].join('\n');
+    // 代码块里那条被跳过，取正文里那条；下标与 match 都必须对得上原文。
+    const ref = firstClipboardRef(fenced);
+    expect(ref?.id).toBe(CLIP_ID);
+    expect(ref?.start).toBe(fenced.lastIndexOf(`[@${CLIP_ID}]`));
+    expect(ref?.match).toBe(`[@${CLIP_ID}]`);
+    // 只有代码块里那一条 → 不展开（要展示语法本身时就这么写）。
+    expect(firstClipboardRef(['```', `[@${CLIP_ID}]`, '```'].join('\n'))).toBeNull();
+    expect(firstClipboardRef(`展示 \`[@${CLIP_ID}]\` 写法`)).toBeNull();
+  });
+
   it('9 位 / 10 位 / 其它长度都不是云剪贴板引用', () => {
     expect(firstClipboardRef(`[@${VOTE_ID}]`)).toBeNull();
     expect(firstClipboardRef(`[@${IMG_ID}]`)).toBeNull();

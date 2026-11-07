@@ -87,6 +87,14 @@ import * as cmd from '@/lib/md-editor/commands';
 import { applyReactiveTemplate, getComponentAncestors } from '@/lib/md-editor/reactive-authoring';
 import { ReactiveComponentPicker } from './ReactiveAuthoringPanel';
 
+/**
+ * 菜单里「可操作项」的选择器：可切换格式项是 `menuitemcheckbox`、标题档是
+ * `menuitemradio`（aria-checked 需要），纯动作项才是 `menuitem`。焦点落位与
+ * ↑↓/Home/End 导航必须把三种都算进来，否则格式菜单里键盘走不动（R3-119 回归）。
+ */
+const MENU_ITEM_SELECTOR =
+  '[role="menuitem"]:not([disabled]), [role="menuitemcheckbox"]:not([disabled]), [role="menuitemradio"]:not([disabled])';
+
 /** 表情面板里的完整表情：保留变体选择符，按码点拆开会产生不可见的空白按钮。 */
 const EMOJI = [
   '😀', '😄', '😁', '😆', '😅', '😂', '🙂', '😉',
@@ -133,9 +141,9 @@ export interface ToolbarProps {
   /** 成功插入一个组件后通知外壳：这份正文从此按增强语法保存（不要求先选格式）。 */
   onComponentInserted?: () => void;
   /**
-   * 当前正文是否已按 Reactive 呈现。**不再用来隐藏任何入口**（Components 永远
-   * 可点：插一个组件就是把这份正文变成增强语法）；只用于把「补全 / 格式化」
-   * 标成更显眼的那一档。
+   * 当前正文是否已按 Reactive 呈现。**不隐藏任何入口**（Components 永远可点：
+   * 插一个组件就是把这份正文变成增强语法）；只用于给「格式化」菜单项加上
+   * 「Reactive 标签」后缀 —— 有标签时格式化只动标签内空白，没标签时不动。
    */
   reactive?: boolean;
 }
@@ -272,9 +280,7 @@ export default function Toolbar({
   // 执行顺序里父级在后，抢过去会让「打开就能打字搜索」失效）。
   useEffect(() => {
     if (!openMenu || openMenu === 'components') return;
-    const first = menuRef.current?.querySelector<HTMLElement>(
-      '[role="menuitem"]:not([disabled])'
-    );
+    const first = menuRef.current?.querySelector<HTMLElement>(MENU_ITEM_SELECTOR);
     first?.focus();
   }, [openMenu]);
 
@@ -310,7 +316,7 @@ export default function Toolbar({
     const root = menuRef.current;
     if (!root) return;
     const items = Array.from(
-      root.querySelectorAll<HTMLElement>('[role="menuitem"]:not([disabled])')
+      root.querySelectorAll<HTMLElement>(MENU_ITEM_SELECTOR)
     );
     if (items.length === 0) return;
     const index = items.indexOf(document.activeElement as HTMLElement);
@@ -340,10 +346,12 @@ export default function Toolbar({
   ) => (
     <MenuButton
       key={label}
-      role="menuitem"
+      // 可切换的格式项用 menuitemcheckbox + aria-checked：`menuitem` 不支持 aria-pressed，
+      // 读屏会把「粗体」当成一条普通命令，念不出当前是否生效（R3-119）。
+      role={opts.active === undefined ? 'menuitem' : 'menuitemcheckbox'}
+      aria-checked={opts.active}
       onRun={action}
       disabled={disabled || opts.disabled}
-      aria-pressed={opts.active === undefined ? undefined : opts.active}
       // 快捷键走 aria-keyshortcuts，不再混进可访问名：否则读屏会把菜单项念成
       // 「粗体 Ctrl+B」，按名字定位/朗读都对不上真正的命令名。
       aria-keyshortcuts={opts.shortcut?.replace(/Ctrl\+/g, 'Control+')}
@@ -377,7 +385,9 @@ export default function Toolbar({
       className={`md-toolbar__btn md-toolbar__btn--entry${openMenu === menu ? ' is-open' : ''}`}
       title={label}
       aria-label={label}
-      aria-haspopup="menu"
+      // 「组件」弹的是 dialog（ReactiveComponentPicker），不是 menu：
+      // 声明成 menu 会让读屏按菜单的键盘约定播报，与真实浮层不一致（R3-119）。
+      aria-haspopup={menu === 'components' ? 'dialog' : 'menu'}
       aria-expanded={openMenu === menu}
       disabled={disabled}
       onMouseDown={(event) => event.preventDefault()}
@@ -419,10 +429,10 @@ export default function Toolbar({
             <button
               key={heading.level}
               type="button"
-              role="menuitem"
+              role="menuitemradio"
               aria-label={heading.label}
+              aria-checked={headingActive(heading.level)}
               className={`md-toolbar__chip${headingActive(heading.level) ? ' is-active' : ''}`}
-              aria-pressed={headingActive(heading.level)}
               onMouseDown={(event) => event.preventDefault()}
               onClick={() => runAndClose(cmd.setHeading(heading.level))}
             >

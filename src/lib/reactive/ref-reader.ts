@@ -41,7 +41,9 @@ export function createServiceReferenceReader(
         return {
           status: 'ready', title: clip.title, format, content: clip.content,
           version: clip.version,
-          payload: { href: `/clipboard/${slot.ref}`, title: clip.title },
+          // payload 只放渲染方真读的字段（标题另由 title 带，链接按 ref 现拼）：
+          // 原先的 `href` 全仓零读者（R3-140）。
+          payload: { title: clip.title },
         };
       }
       if (slot.kind === 'vote') {
@@ -51,7 +53,8 @@ export function createServiceReferenceReader(
         return {
           status: 'ready', title: vote.title,
           payload: {
-            id: vote.id, title: vote.title, is_locked: vote.isLocked,
+            // 不写 `id`：parseVoteData 只读下面这些展示字段，投票 id 由宿主 ref 决定（R3-140）。
+            title: vote.title, is_locked: vote.isLocked,
             total_votes: vote.totalVotes, user_voted: vote.userVoted,
             options: vote.options.map(({ id, label, count, percentage }) => ({ id, label, count, percentage })),
           },
@@ -68,7 +71,7 @@ export function createServiceReferenceReader(
         status: 'ready', title: result.favorite.title,
         payload: {
           title: result.favorite.title, authorName: result.favorite.authorName,
-          href: `/favorite/${slot.ref}`, count: result.favorite.items.length,
+          count: result.favorite.items.length,
           items: result.favorite.items.slice(0, MAX_CARD_ITEMS),
         },
       };

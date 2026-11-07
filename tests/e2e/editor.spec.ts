@@ -21,10 +21,10 @@ const BLOG_EDITOR = '#editor';
 const CLIP_EDITOR = '#clipboard-editor';
 
 /**
- * 移动端顶栏是折叠的（`layout/_header.scss` 里 808px 以下 `.site-navbar-collapse`
- * 是 `max-height: 0; overflow: hidden`）：`#themeToggle` 与导航链接虽然**仍有**
- * bounding box（Playwright 据此判「visible」），但整个盒子被父级裁掉、压在页面内容
- * 下面，点击点会落在 hero 上 → 被拦截。真机上用户也是先点汉堡才看得到这些入口。
+ * 移动端顶栏是折叠的（`layout/_header.scss` 808px 以下的 `.site-navbar-collapse`
+ * 用 `grid-template-rows: 0fr` + `visibility` 收起）：`#themeToggle` 与导航链接虽然
+ * **仍有** bounding box（Playwright 据此判「visible」），但整块被 0fr 行裁掉、压在
+ * 页面内容下面，点击点会落在 hero 上 → 被拦截。真机上用户也是先点汉堡才看得到这些入口。
  */
 async function openNavIfMobile(page: Page, isMobile: boolean) {
   if (!isMobile) return;
@@ -152,7 +152,13 @@ async function runInsertAction(page: Page, editor: string, name: string) {
   await scope.getByRole('button', { name: '格式', exact: true }).click();
   const menu = scope.locator('.md-toolbar__menu--insert');
   await expect(menu).toBeVisible();
-  await menu.getByRole('menuitem', { name, exact: true }).click();
+  // 可切换的格式项是 menuitemcheckbox、标题档是 menuitemradio（aria-checked 需要），
+  // 纯动作项仍是 menuitem —— 按名字取，不锁死具体 role（R3-119）。
+  const item = menu
+    .getByRole('menuitem', { name, exact: true })
+    .or(menu.getByRole('menuitemcheckbox', { name, exact: true }))
+    .or(menu.getByRole('menuitemradio', { name, exact: true }));
+  await item.click();
   await expect(menu).toHaveCount(0);
 }
 

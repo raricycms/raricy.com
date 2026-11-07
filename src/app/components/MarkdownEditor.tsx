@@ -773,7 +773,9 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(
          * 而编辑器默认吃掉 Tab（indentWithTab 拿它缩进），盖掉的后果是键盘用户
          * 被关在正文里出不来。所以要做的只是**把它说出来**（下面那句提示）。
          */
-        EditorView.contentAttributes.of({ 'aria-describedby': kbHintId }),
+        // 可编辑区必须自己有名字：表单的 <label> 指向的是包裹 div，CM 生成的可编辑
+        // 元素拿不到那个 label，读屏进正文只会念「编辑区」+ 描述（R3-117）。
+        EditorView.contentAttributes.of({ 'aria-describedby': kbHintId, 'aria-label': '正文' }),
         EditorView.lineWrapping,
         markdown(),
         // Reactive 作者工具（高亮 / 分析 / Ctrl+Space 补全 / 诊断）由下面那条

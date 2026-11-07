@@ -118,7 +118,7 @@ describe('离页兜底', () => {
     store.dispose();
   });
 
-  it('dispose 之后不再响应离页（避免卸载后还写）', () => {
+  it('dispose 之后不再响应离页（摘掉 pagehide 监听）', () => {
     vi.useFakeTimers();
     const store = createDraftStore(KEY, { debounceMs: 60000 });
     store.dispose();

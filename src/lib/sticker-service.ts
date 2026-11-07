@@ -33,7 +33,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { AUDIO_REF_COLLECTION } from './audio-refs';
 import { detectImageMime } from './image-upload';
-import { stickerKey, stickerUrl } from './sticker-refs';
+import { stickerKey, stickerUrl, isStickerSegment } from './sticker-refs';
 import { USER_CARD_COLLECTION } from './user-refs';
 
 /** 素材目录：优先环境变量，否则回落到 ./instance/stickers（对齐 STORIES_DIR 的约定）。 */
@@ -193,8 +193,14 @@ function fullScan(root: string): Manifest {
     dirNames = []; // 根目录不存在 = 没有素材，不是错误
   }
 
-  for (const collection of dirNames) {
-    const dir = path.join(root, collection);
+  for (const dirName of dirNames) {
+    // 合集名与 token 白名单同一口径（R3-164）：名字里带 `_` / `.` / 空白 / 纯 emoji
+    // 的合集渲染器永远认不出，列进面板只会「挑得出、插入变字面量」。
+    // 输出名一律 NFC：磁盘上的 NFD 名字归一化后才能被 token 正则匹配（R3-165），
+    // 真实路径仍用 readdir 拿到的原始名（见 stickerKey 的注释）。
+    const collection = dirName.normalize('NFC');
+    if (!isStickerSegment(collection)) continue;
+    const dir = path.join(root, dirName);
     const info = readInfoJson(dir);
     const ignored = bool(info['ignore']);
     const title = str(info['title']) || collection;
@@ -221,6 +227,8 @@ function fullScan(root: string): Manifest {
 
     const stickers: { name: string; url: string }[] = [];
     for (const [base, files] of byBase) {
+      const name = base.normalize('NFC');
+      if (!isStickerSegment(name)) continue;
       const rank = (f: string) =>
         (EXT_PRIORITY as readonly string[]).indexOf(path.extname(f).slice(1).toLowerCase());
       const file = files.sort((a, b) => rank(a) - rank(b))[0];
@@ -231,7 +239,7 @@ function fullScan(root: string): Manifest {
       const entry: InternalEntry = {
         collection,
         collectionTitle: title,
-        name: base,
+        name,
         file,
         absPath: path.join(dir, file),
         dir,
@@ -240,10 +248,10 @@ function fullScan(root: string): Manifest {
       };
       // 键做 NFC 归一化（见 sticker-refs.ts 的 stickerKey）；同键碰撞时先到先得 ——
       // 只在「两个文件仅差归一化形式」时发生，属于站长的命名失误，不覆盖已注册的。
-      const key = stickerKey(collection, base);
+      const key = stickerKey(collection, name);
       if (!byKey.has(key)) byKey.set(key, entry);
       // 走 stickerUrl()，不自己拼 —— 前端拼 token、后端拼 URL 必须只有一处口径
-      if (!ignored) stickers.push({ name: base, url: stickerUrl(collection, base) });
+      if (!ignored) stickers.push({ name, url: stickerUrl(collection, name) });
     }
 
     if (!ignored && stickers.length > 0) {
@@ -331,4 +339,7 @@ export function __resetStickerCacheForTests(): void {
   warnedEmpty = true; // 测试里不要刷日志
 }
 
+// raw 路由（api/stickers/[collection]/[name]/route.ts）从这里取字节嗅探函数；
+// 转发自 image-upload，保留这个出口免得路由多 import 一处（R3-127 原建议删除，
+// 但该路由确实在用，删了会断类型检查 —— 改为保留并注明唯一消费者）。
 export { detectImageMime };

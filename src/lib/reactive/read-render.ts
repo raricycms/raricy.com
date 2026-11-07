@@ -51,6 +51,8 @@ export async function resolveReadRender(input: ReadRenderInput): Promise<ReadRen
   let bundle: ReactiveCompileOutcome | undefined;
   let choice: ReadRendererChoice;
   let failure: ReadRenderResult['failure'];
+  /** 编译**抛错**（不是返回 !ok）。两者都落到 unavailable，日志里必须能分开（R3-132）。 */
+  let compileThrew = false;
 
   if (!format) {
     // 认不出格式 → 绝不猜 markdown（历史脏数据 / 未知 format 一律明确不可用）。
@@ -64,7 +66,9 @@ export async function resolveReadRender(input: ReadRenderInput): Promise<ReadRen
         viewer: input.viewer, clientIp: input.clientIp, syntaxVersion: input.syntaxVersion,
       })).outcome;
     } catch {
-      /* 编译抛错按失败处理 */
+      // 不再用空 catch 吞掉：抛错时 bundle 是 undefined，日志 codes 原本恒空，
+      // 排障分不清「编译器抛了」还是「编译返回 !ok」（R3-132）。
+      compileThrew = true;
     }
     if (bundle?.result.ok) {
       choice = { renderer: 'reactive', reason: 'format' };
@@ -76,7 +80,8 @@ export async function resolveReadRender(input: ReadRenderInput): Promise<ReadRen
 
   const log = {
     renderer: choice.renderer, reason: choice.reason, format,
-    codes: bundle?.result.diagnostics.map(d => d.code) ?? [],
+    // 抛错用一条合成码标出来；正常失败仍列真实诊断码。
+    codes: bundle?.result.diagnostics.map(d => d.code) ?? (compileThrew ? ['compile.threw'] : []),
     compileMs: bundle?.compileMs ?? 0, cacheHit: bundle?.cacheHit ?? false,
   };
   console.info('[reactive-read]', JSON.stringify(log));

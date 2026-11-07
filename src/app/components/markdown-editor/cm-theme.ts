@@ -41,6 +41,10 @@ export const editorTheme = EditorView.theme({
     overflowWrap: 'break-word',
   },
   '.cm-line': { padding: '0' },
+  // ⚠️ 行号 / 活动行 / 括号匹配这几个扩展当前没装（见 MarkdownEditor 的 extensions 列表，
+  // 只有 history / 多选区 / 折行 / markdown / 主题 / 上传装饰）。下面 `.cm-gutters`、
+  // `.cm-activeLine*`、`.cm-matchingBracket` 几条选择器**当前不会命中**，留着是给以后接上
+  // 这些扩展时不用再翻一遍主题 —— 不是「已经生效的样式」，别拿它们当现状依据（R3-121）。
   '.cm-gutters': {
     backgroundColor: 'var(--color-background-subtle)',
     color: 'var(--color-text-secondary)',

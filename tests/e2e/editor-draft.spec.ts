@@ -210,13 +210,14 @@ test.describe('云剪贴板保存与草稿', () => {
     // 用一个「前端自己就拦得下」的失败：标题超长。**不要用「标题留空」**——
     // 那个 input 带 `required`，浏览器会在 submit 之前就拦下，React 的 onSubmit
     // 根本不会跑，于是既没有提示、也没有请求，用例只会看起来「什么都没发生」。
-    await page.fill('#title', 'x'.repeat(31));
+    // 上限以 src/lib/clipboard-limits.ts 的 CLIP_TITLE_MAX 为准（当前 40）：这里给 41。
+    await page.fill('#title', 'x'.repeat(41));
     let posted = 0;
     page.on('request', (r) => {
       if (r.url().includes('/api/clipboard') && r.method() === 'POST') posted += 1;
     });
     await page.locator('#uploadForm button[type=submit]').click();
-    await expect(page.locator('#toast-container .toast__body')).toContainText('不能超过30个字符');
+    await expect(page.locator('#toast-container .toast__body')).toContainText('不能超过40个字符');
     expect(posted).toBe(0);
 
     // 失败之后草稿必须还在 —— 这时它正是「内容没丢」的唯一凭据

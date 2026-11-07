@@ -5,8 +5,8 @@
 // 【为什么单测】导出件是**一份死文件**，出问题的时候页面那边一切正常：
 //   · 正文里的 `/api/images/<id>/raw` 在文件里按**文件自己的位置**解析 →
 //     `file:///api/images/…`，双击打开图片全裂、站内链接全废；
-//   · head 里的样式同理，还多一层：MathJax 的 CHTML 字体表写的是
-//     `url("/static/mathjax/…")`，不补成绝对地址公式就退回字体（字形与间距都不对）；
+//   · head 里的样式同理，还多一层：站内 `@font-face` 的 `url("/static/…")`，
+//     不补成绝对地址字体就加载不到（字形与间距都不对）；
 //   · 但**不能加 `<base>`** —— 那会把导出件内部该在自己身上跳的 `#锚点`
 //     也一并带回原站；
 //   · 代码块的「复制」按钮是**站内页面才成立的空壳**（行为由 JS 挂），留在死文件里
@@ -187,15 +187,15 @@ describe('导出文件本身', () => {
     expect(html).toContain('<p>hello</p>');
   });
 
-  it('★ `<style>` 里站内相对的 url(/…) 也补成绝对地址（MathJax 的字体表就是这种形态）★', () => {
+  it('★ `<style>` 里站内相对的 url(/…) 也补成绝对地址（站内字体表就是这种形态）★', () => {
     const style = document.createElement('style');
     style.setAttribute('data-test', '1');
-    style.textContent = '@font-face{src:url("/static/mathjax/woff-v2/MathJax_Main-Regular.woff")}'
+    style.textContent = '@font-face{src:url("/static/fonts/raricy-numeric/RaricyNumeric-Regular.woff2")}'
       + '.x{background:url(/static/bg.png)}';
     document.head.appendChild(style);
 
     const html = buildExportHtml({ title: 't', bodyHtml: '', base: ORIGIN });
-    expect(html).toContain(`url("${ORIGIN}/static/mathjax/woff-v2/MathJax_Main-Regular.woff")`);
+    expect(html).toContain(`url("${ORIGIN}/static/fonts/raricy-numeric/RaricyNumeric-Regular.woff2")`);
     expect(html).toContain(`url(${ORIGIN}/static/bg.png)`);
     // data: / https: / //cdn 一概不碰
     expect(html).not.toContain(`url("${ORIGIN}/https:`);

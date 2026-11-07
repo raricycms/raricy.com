@@ -161,7 +161,7 @@ export default function ReactivePreview({
     const timer = window.setTimeout(() => {
       void (async () => {
         try {
-          const adapted = await adaptReactivePreview(source, reader, referenceMode, format);
+          const adapted = await adaptReactivePreview(source, reader, referenceMode);
           if (generation !== generationRef.current) return;
           const store = hostDataBySourceRef.current;
           store.set(adapted.adaptedSource, adapted.hostData);

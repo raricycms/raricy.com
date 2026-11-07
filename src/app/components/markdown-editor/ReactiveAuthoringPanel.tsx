@@ -67,7 +67,7 @@ export interface ReactiveAuthoringPanelProps {
   diagnostics: readonly PanelDiagnostic[];
   /** true = message 已由格式分析本地化，直接显示（不要再按 code 模板重排）。 */
   localized?: boolean;
-  /** true = 分析在飞（正文刚变、结果未到）；计数照旧显示上一版。 */
+  /** true = 分析在飞（正文刚变、结果未到）；此时状态串显示「检查中…」，计数与明细都先不画。 */
   pending?: boolean;
   /** null = 没有打开补全；[] = 打开但没有候选。 */
   completions: AuthorCompletion[] | null;
@@ -90,8 +90,9 @@ export interface ReactiveAuthoringPanelProps {
 /**
  * 分析摘要 + 可收起的诊断列表 + 补全候选。
  *
- * 计数始终显示（0 也显示）：它是「现在这份正文有没有问题」的明确答复，
- * 而不是一块时有时无的横幅让用户猜。
+ * 计数在结果到达后始终显示（0 也显示）：它是「现在这份正文有没有问题」的明确答复，
+ * 而不是一块时有时无的横幅让用户猜。分析在飞时状态串换成「检查中…」、明细先不画 ——
+ * 上一份结果的偏移对不上新正文，点进去会定位错。
  */
 export default function ReactiveAuthoringPanel({
   diagnostics,
@@ -281,6 +282,12 @@ export function ReactiveComponentPicker({
   const [activeKey, setActiveKey] = useState<string | null>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
+  /**
+   * 输入法是否正在组字。与 ResourcePanel 用同一判据：只判原生 `isComposing` 不够 ——
+   * compositionend 与那一下 keydown 挨得太近，需要本地标志兜住这一帧，
+   * 否则中文用户回车选词会被当成「插入高亮组件」（R3-118）。
+   */
+  const composingRef = useRef(false);
 
   // 目录来自站点当前编译配置；祖先上下文每次打开时由调用方算好传入。
   const catalog = useMemo(() => getSiteComponentCatalog(), []);
@@ -356,7 +363,7 @@ export function ReactiveComponentPicker({
   }
 
   function onSearchKeyDown(event: ReactKeyboardEvent<HTMLInputElement>) {
-    if (event.nativeEvent.isComposing) return;
+    if (event.nativeEvent.isComposing || composingRef.current) return;
     if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
       if (flat.length === 0) return;
       event.preventDefault();
@@ -429,6 +436,8 @@ export function ReactiveComponentPicker({
           autoComplete="off"
           spellCheck={false}
           onChange={(event) => setQuery(event.target.value)}
+          onCompositionStart={() => { composingRef.current = true; }}
+          onCompositionEnd={() => { composingRef.current = false; }}
           onKeyDown={onSearchKeyDown}
         />
       </label>

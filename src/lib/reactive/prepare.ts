@@ -1,4 +1,4 @@
-import { adaptReactiveReferences, ADAPTER_VERSION, compatMediaSources } from './ref-adapter';
+import { adaptReactiveReferences, ADAPTER_VERSION } from './ref-adapter';
 import { createServiceReferenceReader } from './ref-reader';
 import { applyLegacyHtmlCompat } from './legacy-compat';
 import type { ReferenceMode } from './ref-types';
@@ -19,10 +19,9 @@ export async function prepareReactiveDocument(
   const compat = applyLegacyHtmlCompat(source);
   const result = await adaptReactiveReferences(compat.source, {
     mode: context.mode,
-    parentFormat: context.format,
     dataImages: compat.dataImages,
-    // 前向兼容桥：主后端在 media 接线后给 compat 返回值加 mediaSources。
-    mediaSources: compatMediaSources(compat),
+    // compat 的返回类型里 mediaSources 是必填字段，直接读（R3-130）。
+    mediaSources: compat.mediaSources,
     resolve: context.mode === 'expand'
       ? createServiceReferenceReader('expand', context.viewer, context.clientIp)
       : undefined,

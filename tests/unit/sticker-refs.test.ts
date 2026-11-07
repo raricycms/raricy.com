@@ -28,6 +28,7 @@ import {
   STICKER_REF_CLASS,
   STICKER_REF_RE,
   STICKER_REF_PROBE,
+  isStickerSegment,
   markSoloEmojiFaces,
   stickerKey,
   stickerUrl,
@@ -194,6 +195,30 @@ describe('sticker-refs 键与 URL', () => {
     const nfd = 'café'; // e + 组合尖音符
     expect(nfc).not.toBe(nfd); // 确认这俩确实不同码点，否则下面的断言是空的
     expect(stickerKey(nfd, nfd)).toBe(stickerKey(nfc, nfc));
+  });
+
+  it('★ NFD token 在识别层就能匹配（不只查表键归一化，R3-165）', () => {
+    // 组合符必须进 SEG 白名单，否则 iOS 键盘产出的 NFD token 在正则层就掉了，
+    // stickerKey 的 NFC 归一化根本没机会生效。
+    const nfd = 'cafe\u0301';
+    expect(STICKER_REF_PROBE.test(`[@${nfd}/微笑]`)).toBe(true);
+    const m = `[@${nfd}/微笑]`.match(new RegExp(STICKER_REF_RE.source, 'u'));
+    expect(m?.[1]).toBe(nfd);
+    expect(stickerKey(m![1], m![2])).toBe(stickerKey('café', '微笑'));
+  });
+
+  it('isStickerSegment：面板数据源与 token 白名单同口径（R3-164）', () => {
+    expect(isStickerSegment('猫猫')).toBe(true);
+    expect(isStickerSegment('café')).toBe(true);
+    expect(isStickerSegment('cafe\u0301')).toBe(true); // NFD 归一化后合法
+    expect(isStickerSegment('a+b·c-d')).toBe(true);
+    // 渲染器永远认不出的名字：列进面板只会「挑得出、插入变字面量」。
+    expect(isStickerSegment('猫_猫')).toBe(false);
+    expect(isStickerSegment('a.b')).toBe(false);
+    expect(isStickerSegment('猫 猫')).toBe(false);
+    expect(isStickerSegment('🎉')).toBe(false);
+    expect(isStickerSegment('x'.repeat(33))).toBe(false);
+    expect(isStickerSegment('')).toBe(false);
   });
 
   it('URL 以站内路由为前缀，且能解回原名', () => {

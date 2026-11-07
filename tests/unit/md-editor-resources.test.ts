@@ -77,7 +77,8 @@ const PAYLOADS = {
     code: 200,
     favorites: [
       {
-        id: 12,
+        // 生产：Favorite.id 是 UUID 字符串（public_id 才是 6 位对外把手）。
+        id: '0f7f0c3e-3f0e-4c1f-9c1b-7a4c2f7e5d10',
         public_id: '123456',
         title: '公开的',
         is_public: true,
@@ -85,7 +86,7 @@ const PAYLOADS = {
         created_at: '2026-10-07T21:04:05.000Z',
       },
       {
-        id: 13,
+        id: '6b2d1a44-8e0d-4b71-a4a7-2c9b8d0e13f2',
         public_id: null,
         title: '私有的',
         is_public: false,
@@ -154,7 +155,7 @@ describe('资源面板：五类读口的解析', () => {
 
   it('public_id 形态不对（不是 6 位数字）也按不可插入处理', () => {
     const items = resourceKind('favorite').parse({
-      favorites: [{ id: 1, public_id: '12', title: '坏 id', is_public: true }],
+      favorites: [{ id: '0f7f0c3e-3f0e-4c1f-9c1b-7a4c2f7e5d10', public_id: '12', title: '坏 id', is_public: true }],
     });
     expect(items[0].insert).toBeNull();
   });

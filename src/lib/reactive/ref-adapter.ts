@@ -100,7 +100,6 @@ import type {
   SiteMediaPayload,
   SiteMediaSources,
 } from './ref-types';
-import type { ContentFormat } from '../content-format';
 
 /**
  * 适配器版本。进缓存键（见 docs/plan/reactive-md-migration-plan.md §5.3）。
@@ -136,8 +135,6 @@ const FORGED_EMBED_PATTERN = /<site-embed(?=[\s/>])/gi;
 
 export interface ReactiveAdaptOptions {
   mode: ReferenceMode;
-  /** 父文档格式：只有 Markdown 父文档才内联 Markdown 剪贴板的一层正文。 */
-  parentFormat?: ContentFormat;
   /** 兼容层提取的受限 data 位图；只由 token 引用，不自行扫描。 */
   dataImages?: Readonly<Record<string, DataImageSource>>;
   /**
@@ -145,6 +142,8 @@ export interface ReactiveAdaptOptions {
    *
    * **external 也要带上**：URL 已在 compat 里过策略，不含成员私有载荷；
    * 渲染权限仍由原资源路由判。缺键时 token 保留字面量。
+   * 直接读 `compat.mediaSources`（`LegacyCompatResult` 的必填字段）——
+   * 原先的 `compatMediaSources` 前向桥已无必要（R3-130）。
    */
   mediaSources?: SiteMediaSources;
   /** `expand` 模式下的取数函数。`external` 模式**绝不调用**它。 */
@@ -158,17 +157,6 @@ export interface ReactiveAdaptOptions {
    * 退化成 2×4。共享的那一个由调用方持有（client-compile.ts 的模块级闸门）。
    */
   scheduler?: ReturnType<typeof createConcurrencyLimiter>;
-}
-
-/**
- * 前向兼容桥：`applyLegacyHtmlCompat` 的返回类型在媒体接线完成前还没有
- * `mediaSources`。主后端加上该字段后这里照常工作；不要因为类型缺失就把
- * 媒体数据丢掉。
- */
-export function compatMediaSources(compat: unknown): SiteMediaSources | undefined {
-  if (!compat || typeof compat !== 'object') return undefined;
-  const value = (compat as { mediaSources?: unknown }).mediaSources;
-  return value && typeof value === 'object' ? (value as SiteMediaSources) : undefined;
 }
 
 export interface ReactiveAdaptResult {
@@ -372,8 +360,7 @@ function planReplacement(
   mode: ReferenceMode,
   resolvedByKey: ReadonlyMap<string, ResolvedReference | undefined>,
   dataImages: Readonly<Record<string, DataImageSource>>,
-  mediaSources: SiteMediaSources,
-  parentFormat: ContentFormat | undefined
+  mediaSources: SiteMediaSources
 ): PlannedReplacement | null {
   if (slot.kind === 'image') {
     const image = dataImages[slot.ref];
@@ -534,9 +521,8 @@ async function buildInlineMarkdown(source: string): Promise<{
   // 不递归取私有资源；图床 / 音频 / 历史媒体只拼地址或 id，权限仍由原路由判。
   const adapted = await adaptReactiveReferences(compat.source, {
     mode: 'external',
-    parentFormat: 'markdown',
     dataImages: compat.dataImages,
-    mediaSources: compatMediaSources(compat),
+    mediaSources: compat.mediaSources,
   });
   return {
     result: compileLocal(adapted.adaptedSource, reactiveCompileOptions('markdown')),
@@ -684,8 +670,7 @@ export async function adaptReactiveReferences(
       mode,
       resolvedByKey,
       options.dataImages ?? {},
-      options.mediaSources ?? {},
-      options.parentFormat
+      options.mediaSources ?? {}
     );
     if (!planned) continue;
 

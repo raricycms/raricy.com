@@ -17,7 +17,7 @@
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createElement, act } from 'react';
-import { createRoot } from 'react-dom/client';
+import { createRoot, type Root } from 'react-dom/client';
 import ResourcePanel from '@/app/components/markdown-editor/ResourcePanel';
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -80,10 +80,14 @@ async function settle(): Promise<void> {
   }
 }
 
+/** 挂过的 root 都记下来，afterEach 统一卸载（否则 document 级 keydown 跨用例残留）。 */
+const mountedRoots: Root[] = [];
+
 async function mount() {
   const container = document.createElement('div');
   document.body.appendChild(container);
   const root = createRoot(container);
+  mountedRoots.push(root);
   const onInsert = vi.fn();
   const onClose = vi.fn();
   await act(async () => {
@@ -144,6 +148,13 @@ function composition(el: Element, type: 'compositionstart' | 'compositionend'): 
 }
 
 afterEach(() => {
+  // 卸载 root：面板的 document 级 keydown 监听挂在 effect 里，不 unmount 会跨用例残留，
+  // 后面的用例按 Esc 可能被上一条的旧面板先吃掉（测试卫生，R3-154）。
+  for (const root of mountedRoots.splice(0)) {
+    act(() => {
+      root.unmount();
+    });
+  }
   vi.unstubAllGlobals();
   document.body.innerHTML = '';
 });

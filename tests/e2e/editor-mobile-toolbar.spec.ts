@@ -376,14 +376,18 @@ test.describe('编辑器工具条：窄屏五个主入口 + 「更多」', () =>
     await page.locator(`${BLOG_EDITOR} .cm-content`).click();
     await page.keyboard.press(`${mod}+a`);
     const insert = await openInsert(page, BLOG_EDITOR);
-    const headingLines = await insert.getByRole('menuitem', { name: '正文', exact: true })
-      .evaluate((button) => {
+    // 标题档是 menuitemradio（R3-119 起用 aria-checked 表达当前档位）。
+    const headingItem = (label: string) =>
+      insert
+        .getByRole('menuitemradio', { name: label, exact: true })
+        .or(insert.getByRole('menuitem', { name: label, exact: true }));
+    const headingLines = await headingItem('正文').evaluate((button) => {
         const range = document.createRange();
         range.selectNodeContents(button);
         return range.getClientRects().length;
       });
     expect(headingLines, '标题选项不应把「正文」挤成两行').toBe(1);
-    await insert.getByRole('menuitem', { name: '标题 2', exact: true }).click();
+    await headingItem('标题 2').click();
     await expect(insert).toHaveCount(0);
 
     const preview = await showPreview(page, BLOG_EDITOR);

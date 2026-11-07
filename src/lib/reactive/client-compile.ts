@@ -39,7 +39,7 @@ import { parseContentFormat } from '../content-format';
 import { MAX_CARD_ITEMS, isFavoriteId } from '../favorite-refs';
 import { MAX_REF_CONCURRENCY, createConcurrencyLimiter } from '../content-refs';
 import { reactiveCompileOptions } from './host-components';
-import { adaptReactiveReferences, compatMediaSources } from './ref-adapter';
+import { adaptReactiveReferences } from './ref-adapter';
 import { applyLegacyHtmlCompat } from './legacy-compat';
 import { sourceForCurrentCompiler } from './source-migration';
 import type { ReferenceReader, ResolvedReference, SiteHostData } from './ref-types';
@@ -103,7 +103,9 @@ async function readClipboard(
     format,
     version: asString(clip.version),
     content: clip.content,
-    payload: { href: `/clipboard/${id}`, title },
+    // payload 只放渲染方真读的字段：标题由 `title` 带，链接按 ref 现拼。
+    // 这里曾多写一个 `href`，全仓没有任何读者（R3-140）。
+    payload: { title },
   };
 }
 
@@ -156,7 +158,8 @@ function readVote(id: string, doFetch: typeof fetch): Promise<ResolvedReference 
       status: 'ready',
       title: data.title,
       payload: {
-        id: asString(data.id) ?? id,
+        // 不写 `id`：渲染方（parseVoteData）只认下面这些展示字段，
+        // 投票 id 由宿主的 ref 决定，payload.id 全仓零读者（R3-140）。
         title: data.title,
         is_locked: data.is_locked,
         total_votes: data.total_votes,
@@ -260,16 +263,15 @@ export function createClientReferenceReader(
 export async function adaptReactivePreview(
   source: string,
   reader: ReferenceReader,
-  mode: 'expand' | 'external' = 'expand',
-  parentFormat: 'markdown' | 'reactive' = 'reactive'
+  mode: 'expand' | 'external' = 'expand'
 ): Promise<AdaptedReactivePreview> {
   // 与阅读页同一条兼容规则（等长改写，预览与终稿逐字一致）。
   const compat = applyLegacyHtmlCompat(sourceForCurrentCompiler(source));
   const adapted = await adaptReactiveReferences(compat.source, {
     mode,
-    parentFormat,
     dataImages: compat.dataImages,
-    mediaSources: compatMediaSources(compat),
+    // compat 的返回类型里 mediaSources 是必填字段，直接读（R3-130）。
+    mediaSources: compat.mediaSources,
     resolve: mode === 'expand' ? reader : undefined,
     scheduler: previewFetchGate,
   });
@@ -282,10 +284,9 @@ export async function adaptReactivePreview(
  */
 export async function compileReactivePreview(
   source: string,
-  reader: ReferenceReader,
-  parentFormat: 'markdown' | 'reactive' = 'reactive'
+  reader: ReferenceReader
 ): Promise<ReactivePreviewCompile> {
-  const adapted = await adaptReactivePreview(source, reader, 'expand', parentFormat);
+  const adapted = await adaptReactivePreview(source, reader, 'expand');
   return {
     ...adapted,
     result: compileLocal(adapted.adaptedSource, reactiveCompileOptions('reactive')),

@@ -389,13 +389,12 @@ describe('适配产物：替换落点精确、同输入稳定', () => {
 
 // ═══ 剪贴板内联语义 ═══════════════════════════════════════════════════════════
 
-describe('剪贴板引用：Markdown 父文档内联一层，Reactive 父文档仍链接卡片', () => {
+describe('剪贴板引用：Markdown 子剪贴板内联一层（与父文档格式无关）', () => {
   const content = '# 子标题\n\n子正文';
 
-  async function adapt(parentFormat: 'markdown' | 'reactive', mode: 'expand' | 'external') {
+  async function adapt(mode: 'expand' | 'external') {
     return adaptReactiveReferences(`前 [@${CLIP_ID}] 后`, {
       mode,
-      parentFormat,
       resolve: async () => ({
         status: 'ready',
         title: '子剪贴板',
@@ -406,8 +405,8 @@ describe('剪贴板引用：Markdown 父文档内联一层，Reactive 父文档�
     });
   }
 
-  it('★ Markdown 父文档 + Markdown 子剪贴板 → hostData 携带同版本静态子文档 ★', async () => {
-    const result = await adapt('markdown', 'expand');
+  it('★ Markdown 子剪贴板 → hostData 携带同版本静态子文档 ★', async () => {
+    const result = await adapt('expand');
     const data = result.hostData[`clipboard:${CLIP_ID}`];
     expect(data).toMatchObject({ kind: 'clipboard', status: 'ready', title: '子剪贴板' });
     // 原始正文不再下发：消费者只有编译后的子文档。
@@ -419,7 +418,6 @@ describe('剪贴板引用：Markdown 父文档内联一层，Reactive 父文档�
     const compat = applyLegacyHtmlCompat(content);
     const direct = await adaptReactiveReferences(compat.source, {
       mode: 'external',
-      parentFormat: 'markdown',
       dataImages: compat.dataImages,
     });
     const compiled = compileLocal(direct.adaptedSource, reactiveCompileOptions('markdown'));
@@ -430,7 +428,7 @@ describe('剪贴板引用：Markdown 父文档内联一层，Reactive 父文档�
   });
 
   it('Markdown 子剪贴板即使父文档是 Reactive 也内联（format 升级后阅读不变）', async () => {
-    const result = await adapt('reactive', 'expand');
+    const result = await adapt('expand');
     const data = result.hostData[`clipboard:${CLIP_ID}`];
     expect(data.kind).toBe('clipboard');
     expect(data.document).toBeDefined();
@@ -438,7 +436,7 @@ describe('剪贴板引用：Markdown 父文档内联一层，Reactive 父文档�
   });
 
   it('external 视图不取数、不携带正文（全部保留字面量）', async () => {
-    const result = await adapt('markdown', 'external');
+    const result = await adapt('external');
     expect(result.hostData[`clipboard:${CLIP_ID}`]).toBeUndefined();
     expect(result.adaptedSource).toContain(`[@${CLIP_ID}]`);
   });
@@ -446,7 +444,6 @@ describe('剪贴板引用：Markdown 父文档内联一层，Reactive 父文档�
   it('Reactive 子剪贴板不内联（不嵌套 Reactive 运行时）', async () => {
     const result = await adaptReactiveReferences(`[@${CLIP_ID}]`, {
       mode: 'expand',
-      parentFormat: 'markdown',
       resolve: async () => ({
         status: 'ready',
         title: 'reactive 子剪贴板',
@@ -463,7 +460,6 @@ describe('剪贴板引用：Markdown 父文档内联一层，Reactive 父文档�
       '<video src="https://third-party.example/a.mp4"></video>\n\n公式 $x^2$ 与 **粗体**。\n\n[@AbCd5678]';
     const result = await adaptReactiveReferences(`前 [@${CLIP_ID}] 后`, {
       mode: 'expand',
-      parentFormat: 'markdown',
       resolve: async () => ({
         status: 'ready',
         title: '媒体子剪贴板',
@@ -505,7 +501,6 @@ describe('剪贴板引用：Markdown 父文档内联一层，Reactive 父文档�
     const compat = applyLegacyHtmlCompat(media);
     const direct = await adaptReactiveReferences(compat.source, {
       mode: 'external',
-      parentFormat: 'markdown',
       dataImages: compat.dataImages,
       mediaSources: compat.mediaSources,
     });

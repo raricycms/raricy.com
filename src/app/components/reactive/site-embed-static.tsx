@@ -574,6 +574,10 @@ function isLocalDocument(value: unknown): value is LocalDocument {
  * Markdown 子剪贴板在成员 expand 视图里带同一版本编译的 `document` + 子 `hostData`：
  * 用静态子文档渲染（不嵌套交互运行时、不读原始 `content`）。Reactive 子剪贴板、
  * external 快照、或子编译失败时都没有子产物 —— 此时是链接卡片。
+ *
+ * 内联前必须复核 `format === 'markdown'`，与生产端同一条判据（ref-adapter 的
+ * attachInlineMarkdownDocuments 只给 markdown 补子产物）：渲染端不看 format 的话，
+ * 一份伪造的 reactive 快照带上 document / hostData 就能内联本不该内联的文档（R3-125）。
  */
 function ClipboardEmbed({
   clipboardId,
@@ -584,7 +588,7 @@ function ClipboardEmbed({
 }): ReactNode {
   const document = isLocalDocument(data.document) ? data.document : null;
   const childHostData = isRecord(data.hostData) ? data.hostData : null;
-  if (document && childHostData) {
+  if (data.format === 'markdown' && document && childHostData) {
     return (
       <ReactiveSubDocument
         document={document}

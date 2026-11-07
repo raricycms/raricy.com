@@ -1,19 +1,20 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// diagnostics.ts — 「这篇文档能不能交给新渲染器」的**回退判据**
+// diagnostics.ts — 「这篇文档能不能按 Reactive 发布/渲染」的**拒绝判据**
 //
 // 【为什么不能只看 `ok`】ReactiveMD 对一批「内容解释不了」的情况仍然返回
 // `ok: true`，只给 warning。两类最危险：
 //   · `local.html.fallback` —— 原生 HTML 标签/属性降级成源码文本；
 //   · `local.component.unknown` —— 未知标签被当成未知组件；
 // 它们会**静默改变可见内容**。数学显示降级（`local.math.display`）同理：公式按
-// 字面量显示，编译却成功。计划 D4 因此把 warning 白名单也作为回退条件。
+// 字面量显示，编译却成功。计划 D4 因此把 warning 白名单也作为拒绝条件。
 //
 // 【码 vs messageKey】上游的 `diagnostic.code` 是粗分类（`local.math.display`），
 // 具体降级种类在 `diagnostic.messageKey`（`local.math.display.unsupported-command`
 // 等）。两处都查，升级上游时不会因为只改其中一处而静默漏判。
 //
-// 【格式差异】Markdown 遇到 HTML 降级须回退旧渲染器以保留原有显示；Reactive
-// 则保留安全的局部源码回退，未知组件及数学降级仍须拒绝。
+// 【格式差异】旧 Markdown 渲染器已退役，**不再有「回退到旧渲染器」这条路**：
+// 白名单只决定 detect-format / publish 放不放行。Reactive 接受惰性 HTML 源码
+// （`local.html.fallback` 不算拒绝），未知组件及数学降级仍须拒绝。
 //
 // 本模块零运行时依赖（只 import 类型），服务端与客户端都能用。
 // ─────────────────────────────────────────────────────────────────────────────
@@ -21,7 +22,7 @@
 import type { LocalCompileResult } from 'reactive-md';
 
 /**
- * 命中任一码即整篇回退。
+ * 命中任一码即拒绝发布/渲染。
  *
  * 契约要求至少包含 `local.html`、`local.component.unknown`、
  * `local.options.invalid`、`local.budget` 与全部数学显示降级码。粗分类
@@ -63,21 +64,15 @@ export function reactiveFallbackReasons(result: LocalCompileResult): string[] {
 }
 
 /**
- * 整篇回退判据：编译失败，或任一诊断命中白名单。
+ * 整篇拒绝判据：编译失败，或任一诊断命中白名单（`local.html.fallback` 除外 ——
+ * Reactive 原生接受惰性 HTML 源码，只把它当局部源码回退）。
  *
  * 单个引用取数失败**不**走这里（适配器保留字面量，组件自己显示失败态）——
- * 回退只用于「内容解释不了」，见计划 §6。
+ * 这里只用于「内容解释不了」。
+ *
+ * 注：旧管线退役后不再存在「回退到旧渲染器」这条路；这些码现在只决定
+ * detect-format / publish 是否放行，不再有第二个渲染器可退。
  */
-export function shouldFallbackToLegacy(result: LocalCompileResult): boolean {
-  if (!result.ok) return true;
-  for (const diagnostic of result.diagnostics) {
-    if (FALLBACK_CODE_SET.has(diagnostic.code)) return true;
-    if (diagnostic.messageKey && FALLBACK_CODE_SET.has(diagnostic.messageKey)) return true;
-  }
-  return false;
-}
-
-/** Reactive 接受惰性 HTML 源码，但不放过同篇文档中的其他降级。 */
 export function shouldRejectReactive(result: LocalCompileResult): boolean {
   if (!result.ok) return true;
   return reactiveFallbackReasons(result).some((reason) => reason !== 'local.html.fallback');

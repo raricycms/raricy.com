@@ -14,7 +14,7 @@
 //
 // 【样式怎么带过去】把当前文档 head 里的样式表**原样抄一份绝对地址**进去：
 //   · `<link rel=stylesheet>` → 用 `.href`（浏览器已经解析成绝对地址）；
-//   · `<style>`（Next 注入的、hljs 双主题、公式字体表）→ outerHTML，
+//   · `<style>`（Next 注入的、代码高亮主题、站点字体表）→ outerHTML，
 //     并且把里面**站内相对**的 `url(/…)` 补成绝对地址（见 absolutizeCssUrls）。
 // 比在客户端重新内联一遍 CSS 可靠：那份 CSS 里带 hashed 文件名与 `@font-face`
 // 相对路径，自己拼必然漏。代价是导出的文件**需要联网**才能取到样式 ——
@@ -528,8 +528,7 @@ export async function renderStaticMarkup(input: ReactiveStaticMarkupInput): Prom
         await adaptReactivePreview(
           input.source,
           createClientReferenceReader(),
-          input.referenceMode ?? 'expand',
-          input.format
+          input.referenceMode ?? 'expand'
         );
   if (checkSyntaxBudget(adapted.adaptedSource)) {
     throw new Error(`正文超过语法复杂度预算（${SYNTAX_BUDGET_CODE}），已拒绝导出`);

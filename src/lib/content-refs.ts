@@ -8,7 +8,7 @@
 //     与 10 位图床（见下）；9 位投票刻意不认，原样保留字面量。
 //   · reactive 引用适配：数字 id 按长度分流 + 音频 token，展开成宿主组件。
 //
-//   8 位  → 云剪贴板，正文内联；**一条消息最多展开 1 条**（见 MAX_CLIPBOARD_REFS）
+//   8 位  → 云剪贴板，正文内联；**一条消息最多展开 1 条**（见 firstClipboardRef）
 //   10 位 → 图床图片，内联成 <img>；**不请求 API**，只拼 /api/images/<id>/raw
 //   9 位  → 投票，评论 / 讨论里**刻意不认**，原样保留字面量（2026-09 定的口径：
 //           投票箱是交互组件，塞进讨论气泡 / 楼中楼里没有意义）；reactive 正文里走
@@ -25,12 +25,15 @@
 // （`MAX_REF_FETCHES` / `MAX_REF_CONCURRENCY` /
 // `MAX_REF_EXPAND_CHARS`），以及那个并发闸门（`createConcurrencyLimiter`）。
 // **收藏夹与音频各有自己的显示上限**（不在 `MAX_BLOG_REF_ITEMS` 之列，见各自的
-// `MAX_FAVORITE_REFS` / `MAX_AUDIO_REFS`）。本文件零依赖，客户端渲染器与服务端
+// `MAX_FAVORITE_REFS` / `MAX_AUDIO_REFS`）。本文件只 import 同样零依赖的
+// favorite-refs（借用它的代码盖码 `maskMarkdownCode`），客户端渲染器与服务端
 // 解析都 import 得起。
 //
-// 本文件零依赖、不碰 DOM 也不碰 React，故可直接单测
+// 本文件不碰 DOM 也不碰 React，故可直接单测
 // （tests/unit/content-refs.test.ts）。
 // ─────────────────────────────────────────────────────────────────────────────
+
+import { maskMarkdownCode } from './favorite-refs';
 
 /** 云剪贴板 ID 长度（`generateShortId(8)`，见 src/lib/short-id.ts）。 */
 export const CLIPBOARD_ID_LEN = 8;
@@ -211,15 +214,6 @@ export function collectClipboardRefIds(text: string): string[] {
 }
 
 /**
- * 一条消息里最多展开几条云剪贴板。
- *
- * 【为什么是 1】剪贴板正文上限 50000 字（CLIP_CONTENT_MAX），而一条消息正文上限
- * 5000 字 —— 放开数量等于给「一条 10 字的短消息」变成几十万字 DOM 的机会，而且
- * 每条引用都是一次额外请求。1 条既够用（引用一段材料），又把最坏情况钉死。
- */
-export const MAX_CLIPBOARD_REFS = 1;
-
-/**
  * 一条消息里最多展开几张图床图片（超出部分保留 `[@id]` 字面量）。
  *
  * 【为什么必须封顶】5000 字正文理论上能塞下 ~450 个引用 = 450 次
@@ -272,13 +266,19 @@ export interface ClipboardRef {
 /**
  * 找出**第一条**要展开的云剪贴板引用（没有就 null）。
  *
- * 只认第一条 = MAX_CLIPBOARD_REFS 的落地点：后面的 `[@8位]` 既不请求也不替换，
+ * 只认第一条 = 「一条消息最多展开 1 条剪贴板」的落地点：后面的 `[@8位]` 既不请求也不替换，
  * 原样留在正文里（与博客超出 50 处时的行为一致 —— 静默保留字面量，不报错）。
+ *
+ * 【围栏 / 行内代码里的引用不展开】10 位图床是在 DOM 层靠「父节点是 CODE/PRE 就跳过」
+ * 排除的；剪贴板展开发生在**源码层**，不先盖码就会把代码块里想展示的语法本身替换掉
+ * （与「代码里的引用不展开」的对外口径冲突，R3-135）。盖码副本等长，下标可直接复用。
  */
 export function firstClipboardRef(text: string): ClipboardRef | null {
-  const m = CLIPBOARD_REF_PROBE.exec(text);
+  const masked = maskMarkdownCode(text);
+  const m = CLIPBOARD_REF_PROBE.exec(masked);
   if (!m || m.index === undefined) return null;
-  return { id: m[1], match: m[0], start: m.index };
+  // match 从**原文**切：盖码副本里那一段是 `xxxxxxx`，不能拿去替换。
+  return { id: m[1], match: text.slice(m.index, m.index + m[0].length), start: m.index };
 }
 
 /**

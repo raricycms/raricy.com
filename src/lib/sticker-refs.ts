@@ -36,7 +36,7 @@ import { EMOJI_COLLECTION, emojiFileFor, emojiUrl } from './emoji-faces';
 import { USER_CARD_COLLECTION } from './user-refs';
 
 /**
- * 单段（合集名 / 表情名）允许的字符：Unicode 字母、数字、`+`、`·`、`-`。
+ * 单段（合集名 / 表情名）允许的字符：Unicode 字母、**组合符**、数字、`+`、`·`、`-`。
  *
  * 【为什么是白名单，而不是「排除掉 / 和 ]」】
  * 否定式字符集（`[^\]/\s]+`）看着宽容，实际会把 `` ` `` `*` `~` `_` 等
@@ -47,11 +47,29 @@ import { USER_CARD_COLLECTION } from './user-refs';
  * token 就此被拆进三个文本节点，TreeWalker 永远匹配不到 —— **静默退回字面量**，
  * 没有报错、没有日志，用户只看到「表情没出来」。白名单让这类 token 从不匹配，
  * 行为至少是可解释的。
+ *
+ * 【为什么允许组合符 `\p{M}`】iOS/macOS 键盘与部分输入法产出 NFD（分解形）：
+ * `é` = `e` + U+0301。只认 `\p{L}` 会让这类 token 在正则层就不匹配（查表键的
+ * NFC 归一化根本没机会生效）。放进来之后 NFD token 能匹配、再按 NFC 查表（R3-165）。
  */
-const SEG_CHAR = '\\p{L}\\p{N}+·-';
+const SEG_CHAR = '\\p{L}\\p{M}\\p{N}+·-';
 
 /** 单段长度上限。两端都封顶 → 量词有界，无 ReDoS 风险。 */
 const SEG_LEN = 32;
+
+/**
+ * 这一段（合集名 / 表情名）是否**可能**被 token 正则接受。
+ *
+ * 面板数据源与 token 白名单必须同一口径（R3-164）：`_` / `.` / 空白 / 纯 emoji
+ * 这类名字渲染器永远认不出，列进面板只会「挑得出、插入变字面量」。
+ * 内部先做 NFC：磁盘上是 NFD 的名字归一化后合法，就照常可用。
+ */
+export function isStickerSegment(value: string): boolean {
+  if (typeof value !== 'string' || value.length === 0) return false;
+  const normalized = value.normalize('NFC');
+  if (normalized.length > SEG_LEN) return false;
+  return new RegExp(`^[${SEG_CHAR}]+$`, 'u').test(normalized);
+}
 
 const SEG = `[${SEG_CHAR}]{1,${SEG_LEN}}`;
 

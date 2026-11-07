@@ -84,7 +84,10 @@ export default function ResourcePanel({ onClose, onInsert }: ResourcePanelProps)
     const seq = (reqSeqRef.current += 1);
 
     const cached = cacheRef.current.get(target);
-    if (cached && cached.status === 'ready' && !force) {
+    // ready 与 unavailable 都是「重取也一样」的终态：命中就瞬开。
+    // 只认 ready 会让「这一档你用不了」（401/403）每次切回来都重新请求、并先闪一帧
+    // 「加载中…」—— 面板数据没变，闪这一下纯属白等（R3-153 / R3-120）。
+    if (cached && !force) {
       setState(cached);
       return;
     }

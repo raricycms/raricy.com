@@ -227,10 +227,12 @@ describe('applyLegacyHtmlCompat', () => {
     const source = '😀前缀 <font style="x">表情🙂</font> 后文';
     const compat = applyLegacyHtmlCompat(source);
     expect(compat.source).toHaveLength(source.length);
-    // 每个 UTF-16 code unit 的位置不变（emoji 是两个 code unit）
-    for (let index = 0; index < source.length; index += 1) {
-      expect(compat.source.charCodeAt(index), `index ${index}`).not.toBe(0);
-    }
+    // 等长改写的填充必须是空格，不能是 NUL —— NUL 会让后续按 UTF-16 切片的
+    // 调用方拿到「看不见但占位」的字符（原先这里是 charCodeAt !== 0 的恒真断言）。
+    expect(compat.source).not.toMatch(/\u0000/);
+    // emoji 是两个 code unit：它们在两边的**位置**必须一致，否则 range 全错。
+    expect(compat.source.indexOf('😀')).toBe(source.indexOf('😀'));
+    expect(compat.source.indexOf('🙂')).toBe(source.indexOf('🙂'));
     expect(compat.source.slice(0, 4)).toBe(source.slice(0, 4));
     expect(compat.source.slice(-3)).toBe(source.slice(-3));
     // 诊断 range 也必须落在原始源码的同一位置
@@ -239,8 +241,11 @@ describe('applyLegacyHtmlCompat', () => {
     expect(result.ok).toBe(false);
     const range = result.diagnostics[0]?.range;
     expect(range).toBeTruthy();
-    expect(invalid.slice(range!.start, range!.end).length).toBeGreaterThanOrEqual(0);
+    // range 必须是原文里一段**非空且有序**的区间（原先 `length >= 0` 恒真）。
+    expect(range!.start).toBeGreaterThanOrEqual(0);
+    expect(range!.end).toBeGreaterThan(range!.start);
     expect(range!.end).toBeLessThanOrEqual(invalid.length);
+    expect(invalid.slice(range!.start, range!.end)).not.toBe('');
   });
 
   it('缩进代码块逐字保留（含 font / script / $）', () => {
@@ -603,7 +608,6 @@ describe('历史 HTML 音视频 → 受限 media host', () => {
 
     const adapted = await adaptReactiveReferences(compat.source, {
       mode: 'external',
-      parentFormat: 'markdown',
       mediaSources: compat.mediaSources,
     });
     expect(adapted.adaptedSource).toContain(`<site-embed kind="media" ref="${token![1]}" />`);

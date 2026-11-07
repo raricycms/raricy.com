@@ -4,7 +4,7 @@
 // 钉的是四类「错了也不报错」的事：
 //   · 宿主 schema 没生效（`<site-embed>` 变成未知组件 / 诊断满屏）；
 //   · 作者伪造的 `<site-embed>` 被当成真宿主节点（安全边界）；
-//   · 回退判据只看 `ok`（HTML / 未知组件 / 数学降级会静默改内容）；
+//   · 拒绝判据只看 `ok`（HTML / 未知组件 / 数学降级会静默改内容）；
 //   · 缓存键少一段（换个 format 仍命中旧编译）。
 //
 // 不读源码字符串、不碰数据库：用例里的正文都没有 `[@…]` 引用。
@@ -23,7 +23,6 @@ import {
   reactiveDiagnosticCodes,
   reactiveFallbackReasons,
   shouldRejectReactive,
-  shouldFallbackToLegacy,
 } from '@/lib/reactive/diagnostics';
 import {
   compileReactiveSource,
@@ -91,15 +90,14 @@ describe('作者伪造的 <site-embed>', () => {
   });
 });
 
-// ═══ 三、回退判据 ════════════════════════════════════════════════════════════
+// ═══ 三、拒绝判据 ════════════════════════════════════════════════════════════
 
-describe('回退判据', () => {
+describe('拒绝判据', () => {
   const options = reactiveCompileOptions('reactive');
 
-  it('干净编译不回退', () => {
+  it('干净编译不拒绝', () => {
     const result = compileLocal('普通正文，没有特殊语法。', options);
     expect(result.ok).toBe(true);
-    expect(shouldFallbackToLegacy(result)).toBe(false);
     expect(reactiveFallbackReasons(result)).toEqual([]);
   });
 
@@ -107,11 +105,10 @@ describe('回退判据', () => {
     '<div class="x">hi</div>',
     '<table><tr><td colspan="bad">x</td></tr></table>',
     '<div style="color:red">{{ missing }}',
-  ])('原生 HTML 局部降级：Markdown 回退，Reactive 可发布 %s', (source) => {
+  ])('原生 HTML 局部降级：Reactive 接受局部源码回退，不拒绝 %s', (source) => {
     const result = compileLocal(`${source}\n\n<counter bind="n" label="N" initial="2">`, options);
     expect(result.ok).toBe(true);
     expect(reactiveDiagnosticCodes(result)).toContain('local.html.fallback');
-    expect(shouldFallbackToLegacy(result)).toBe(true);
     expect(shouldRejectReactive(result)).toBe(false);
     if (result.ok) {
       expect(collectNodes(result.document.nodes, 'fallback')[0]?.value).toBe(source);
@@ -119,10 +116,9 @@ describe('回退判据', () => {
     }
   });
 
-  it('local.component.unknown（未知标签）会回退', () => {
+  it('local.component.unknown（未知标签）会拒绝', () => {
     const result = compileLocal('<audio controls></audio>', options);
     expect(reactiveDiagnosticCodes(result)).toContain('local.component.unknown');
-    expect(shouldFallbackToLegacy(result)).toBe(true);
     expect(shouldRejectReactive(result)).toBe(true);
   });
 
@@ -133,12 +129,11 @@ describe('回退判据', () => {
     expect(shouldRejectReactive(result)).toBe(true);
   });
 
-  it('数学显示降级（粗码与细分 messageKey）都会回退', () => {
+  it('数学显示降级（粗码与细分 messageKey）都会拒绝', () => {
     const command = compileLocal(String.raw`$\foo{x}$`, options);
     expect(command.ok).toBe(true);
     expect(reactiveDiagnosticCodes(command)).toContain('local.math.display');
     expect(reactiveFallbackReasons(command)).toContain('local.math.display.unsupported-command');
-    expect(shouldFallbackToLegacy(command)).toBe(true);
     expect(shouldRejectReactive(command)).toBe(true);
 
     const environment = compileLocal(
@@ -148,23 +143,23 @@ describe('回退判据', () => {
     expect(reactiveFallbackReasons(environment)).toContain(
       'local.math.display.unsupported-environment'
     );
-    expect(shouldFallbackToLegacy(environment)).toBe(true);
+    expect(shouldRejectReactive(environment)).toBe(true);
   });
 
   it('反斜线行内和块级公式能编译为数学节点', () => {
     const result = compileLocal(String.raw`行内 \(x^2\)` + '\n\n' + String.raw`\[y^2\]`, reactiveCompileOptions('markdown'));
     expect(result.ok).toBe(true);
-    expect(shouldFallbackToLegacy(result)).toBe(false);
+    expect(reactiveFallbackReasons(result)).toEqual([]);
     if (result.ok) {
       expect(collectNodes(result.document.nodes, 'inlineMath')).toHaveLength(1);
       expect(collectNodes(result.document.nodes, 'math')).toHaveLength(1);
     }
   });
 
-  it('ok:false 一定回退，即使没有命中白名单', () => {
+  it('ok:false 一定拒绝，即使没有命中白名单', () => {
     const result = compileLocal('<panel title="x">', options);
     expect(result.ok).toBe(false);
-    expect(shouldFallbackToLegacy(result)).toBe(true);
+    expect(shouldRejectReactive(result)).toBe(true);
   });
 
   it('白名单包含契约要求的全部码', () => {
