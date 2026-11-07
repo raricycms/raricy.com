@@ -8,6 +8,7 @@ import { unitsToFish } from '@/lib/fish-units';
 import {
   getTodayQuote, quoteContentKey, quoteView, resonateQuote as resonateActual, submitQuote,
   reviewQuote, saveQuote, listSavedQuotes, listQuoteHistory, listSubmissions, editQuoteSubmission,
+  ensureEditionForDay, __resetDailyQuoteIssuanceState,
 } from '@/lib/daily-quote-service';
 
 async function makeUser(opts: Parameters<typeof makeBareUser>[0] = {}) {
@@ -18,7 +19,7 @@ async function makeUser(opts: Parameters<typeof makeBareUser>[0] = {}) {
 const resonateQuote = (id: string, userId: string, maxFish = 1) => resonateActual(id, userId, maxFish);
 
 beforeEach(async () => {
-  await resetDb(); __resetRateLimitStore();
+  await resetDb(); __resetRateLimitStore(); __resetDailyQuoteIssuanceState();
   // 冻结在 UTC+8 的 2026-10-21 07:00，todayStr() = '2026-10-21'：
   // 「今天 / 过去的期」判定在整套用例里是确定的，不随真实日期漂移。
   vi.useFakeTimers({ toFake: ['Date'] });
@@ -57,12 +58,17 @@ function daysBefore(endDay: string, n: number): string[] {
 }
 
 describe('全站每日选取与90天去重', () => {
-  it('必须先完成当天签到，读取一言不会代签或发鱼', async () => {
+  it('不签到也能读今日一言（P02 解耦）；读取不会代签或发鱼', async () => {
     const user = await makeUser({ role: 'core' });
     await builtin();
-    await expect(getTodayQuote(user.id)).rejects.toMatchObject({ status: 403 });
+    // 尚未发行：读口只读，返回 pending，不选句、不建 edition。
+    expect(await getTodayQuote(user.id)).toMatchObject({ state: 'pending', quote: null });
     expect(await prisma.dailyCheckIn.count()).toBe(0);
     expect(await prisma.dailyQuoteEdition.count()).toBe(0);
+    // 发行后可读；签到状态与鱼干都不因读取而改变。
+    await ensureEditionForDay(todayStr());
+    expect(await getTodayQuote(user.id)).toMatchObject({ state: 'published' });
+    expect(await prisma.dailyCheckIn.count()).toBe(0);
   });
   it('社区优先；多个用户并发打开得到同一句，刷新不会换句', async () => {
     const author = await makeUser({ role: 'core' });
@@ -73,8 +79,11 @@ describe('全站每日选取与90天去重', () => {
     const admin = await makeUser({ role: 'admin' });
     await reviewQuote(quote.id, admin.id, 'approve', '');
     await checkIn(a.id); await checkIn(b.id);
+    // P03：选句由后台发行完成，读口不再惰性选句 —— 先模拟启动钩子发今天的期。
+    await ensureEditionForDay(todayStr());
     const results = await Promise.all([getTodayQuote(a.id), getTodayQuote(b.id), getTodayQuote(a.id)]);
     expect(results.map((r) => r.quote?.id)).toEqual([quote.id, quote.id, quote.id]);
+    expect(results.every((r) => r.state === 'published')).toBe(true);
     expect(results[0].quote?.author).toBe('匿名');
     expect(JSON.stringify(results[0])).not.toContain(author.id);
     expect(JSON.stringify(results[0])).not.toContain(author.username);
@@ -86,9 +95,11 @@ describe('全站每日选取与90天去重', () => {
     const fresh = await builtin('新的经典');
     await prisma.dailyQuoteEdition.create({ data: { day: '2026-07-23', quoteId: old.id, createdAt: nowForDb() } });
     await checkIn(user.id);
+    await ensureEditionForDay(todayStr());
     expect((await getTodayQuote(user.id)).quote?.id).toBe(fresh.id);
     vi.setSystemTime(new Date('2026-10-21T16:00:00Z'));
     await checkIn(user.id);
+    await ensureEditionForDay(todayStr());
     const next = await getTodayQuote(user.id);
     expect(next.day).toBe('2026-10-22');
     expect(next.quote?.id).toBe(old.id);
@@ -98,13 +109,17 @@ describe('全站每日选取与90天去重', () => {
     const reader = await makeUser({ role: 'core' });
     const quote = await community(author.id);
     await builtin(); await checkIn(reader.id);
+    await ensureEditionForDay(todayStr());
     expect((await getTodayQuote(reader.id)).quote?.id).toBe(quote.id);
     await prisma.dailyQuote.update({ where: { id: quote.id }, data: { status: 'retired' } });
-    expect((await getTodayQuote(reader.id)).quote).toBeNull();
+    const retired = await getTodayQuote(reader.id);
+    expect(retired.quote).toBeNull();
+    expect(retired.state).toBe('unavailable');
     expect(await prisma.dailyQuoteEdition.count()).toBe(1);
     await prisma.dailyQuote.update({ where: { id: quote.id }, data: { status: 'approved' } });
     await prisma.user.update({ where: { id: author.id }, data: { archivedAt: nowForDb() } });
     expect((await getTodayQuote(reader.id)).quote).toBeNull();
+    expect((await getTodayQuote(reader.id)).state).toBe('unavailable');
   });
 });
 
@@ -209,6 +224,7 @@ describe('共鸣：每人每句一生一次、全额投喂、匿名与回滚', (
     vi.setSystemTime(new Date('2027-01-20T02:00:00Z')); // 第 91 天（UTC+8 的 2027-01-20）
     expect(todayStr()).toBe('2027-01-20');
     await checkIn(reader.id);
+    await ensureEditionForDay(todayStr());
     const again = await getTodayQuote(reader.id);
     expect(again.day).toBe('2027-01-20');
     expect(again.quote).toMatchObject({ id: quote.id, resonated: true, can_resonate: false, resonance_count: 1 });

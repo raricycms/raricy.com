@@ -235,23 +235,35 @@ async function expectNoHorizontalScroll(page: Page) {
   ).toBeLessThanOrEqual(metrics.client);
 }
 
-test('无博客时各一言页面统一引导，发文后恢复，删光后再次受限', async ({ page }) => {
+test('零博客 core 可直接查看与投稿（P02 取消发文门槛），删光博客后资格不变', async ({ page }) => {
   const user = await registerCoreUser(page, false);
-  for (const url of ['/checkin', '/checkin/quotes', '/favorite/quotes', '/checkin/submissions']) {
+  // 2026-11-07 P02：阅读/参与/投稿/审核都不再要求「发过文章」——四个入口直接可用，
+  // 不再出现「先发表一篇博客」引导。
+  for (const url of ['/quotes', '/quotes/history', '/quotes/saved', '/quotes/submissions']) {
     await page.goto(url);
-    await expect(page.getByText(url === '/checkin' ? '请先发表一篇博客，再签到。' : '请先发表一篇博客，再使用每日一言。不妨从自我介绍开始。')).toBeVisible();
-    await expect(page.getByRole('link', { name: '发表博客', exact: true })).toBeVisible();
-    await expect(page.locator('.daily-quote-list')).toHaveCount(0);
+    await expect(page.getByText('请先发表一篇博客，再使用每日一言。不妨从自我介绍开始。')).toHaveCount(0);
+    await expect(page.getByRole('link', { name: '发表博客', exact: true })).toHaveCount(0);
     await expectNoHorizontalScroll(page);
   }
-  expect(await (await page.request.get('/api/daily-quotes/history')).json()).toMatchObject({ code: 403, reason: 'BLOG_REQUIRED' });
-  await publishBlog(page);
-  await page.goto('/checkin/submissions');
+  // 读接口同权限：零博客 core 的往期列表 200（不再 403 BLOG_REQUIRED）
+  const history = await (await page.request.get('/api/daily-quotes/history')).json();
+  expect(history.code, '零博客 core 应可读往期').toBe(200);
+
+  // 投稿表单可用且真的能提交（内容上限 50，用短样本）
+  await page.goto('/quotes/submissions');
   await expect(page.getByRole('form', { name: '提交一言' })).toBeVisible();
+  const submitted = await page.request.post('/api/daily-quotes/submissions', {
+    data: { content: '零博客投稿' + uniqueTag().slice(0, 4) },
+  });
+  expect(submitted.status(), await submitted.text()).toBe(200);
+  expect((await submitted.json()).code).toBe(200);
+
+  // 发过再全部删光：资格不变（P02 后文章数与资格完全解耦）
+  await publishBlog(page);
   await e2eDb().blog.updateMany({ where: { authorId: user.id }, data: { ignore: true } });
-  await page.reload();
-  await expect(page.getByRole('link', { name: '发表博客', exact: true })).toBeVisible();
-  expect((await page.request.post('/api/daily-quotes/submissions', { data: { content: '不能绕过发文门槛' } })).status()).toBe(403);
+  await page.goto('/quotes/submissions');
+  await expect(page.getByRole('form', { name: '提交一言' })).toBeVisible();
+  expect((await (await page.request.get('/api/daily-quotes/history')).json()).code).toBe(200);
 });
 
 test('投稿人降级后可以免费共鸣；恢复资格不补扣、不重复计数', async ({ page }) => {
@@ -512,12 +524,12 @@ test('签到粒子动画期间整页不出现横向滚动', async ({ page }) => 
 // daily_quote_editions；正文与审核状态只看 daily_quotes。下面每条都从真实浏览器入口
 // 进去操作，而不是只断言按钮存在。
 
-test('未签到也能回看往期，今日接口仍 403（H1）', async ({ page }) => {
+test('未签到也能回看往期，今日接口不再要求签到（H1 / P02）', async ({ page }) => {
   const classic = classics[1];
   const community = `往期站友投稿${uniqueTag()}`;
   const { day: day1 } = await seedPastEdition({ daysAgo: 1, classicIndex: 1 });
   const { day: day2 } = await seedPastEdition({ daysAgo: 2, content: community, submitterId: SEED_USERS.core.id });
-  // 这个 core 已有博客，但没有当天签到
+  // 这个 core 没有当天签到（P02 起也不再需要签到才能读今日）
   await registerCoreUser(page);
 
   await page.goto('/checkin');
@@ -526,8 +538,10 @@ test('未签到也能回看往期，今日接口仍 403（H1）', async ({ page 
   const nav = page.getByRole('navigation', { name: '每日一言', exact: true });
   await expect(nav).toBeVisible();
   await expect(nav.locator('a, [aria-current]')).toHaveCount(4);
-  // 今日内容仍要签到后才给看 —— 往期不是绕过签到的旁路
-  expect((await page.request.get('/api/daily-quotes/today')).status()).toBe(403);
+  // P02（2026-11-07）：今日内容不再要求签到 —— 未签到也直接可读（状态由发行记录决定）
+  const today = await page.request.get('/api/daily-quotes/today');
+  expect(today.status()).toBe(200);
+  expect((await today.json()).code).toBe(200);
 
   await nav.getByRole('link', { name: '往期一言', exact: true }).click();
   await expect(page.getByRole('heading', { name: '往期一言', exact: true })).toBeVisible();

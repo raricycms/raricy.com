@@ -3,7 +3,6 @@
 import { useState } from 'react';
 import { Heart, LoaderCircle, Star } from 'lucide-react';
 import type { DailyQuoteResonanceResult, DailyQuoteView } from '@/lib/daily-quote';
-import QuoteBlogRequired from './QuoteBlogRequired';
 
 /**
  * 一条一言的展示与互动。
@@ -41,7 +40,6 @@ export default function DailyQuoteCard({
   const [pending, setPending] = useState<'resonance' | 'favorite' | null>(null);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
-  const [blogRequired, setBlogRequired] = useState(false);
 
   const listMode = mode === 'list';
 
@@ -58,7 +56,6 @@ export default function DailyQuoteCard({
       });
       const data = await response.json();
       if (!response.ok) {
-        if (data.reason === 'BLOG_REQUIRED') setBlogRequired(true);
         if (data.reason === 'FEE_CHANGED') onChange?.({ ...quote, resonance_fish: data.resonance_fish });
         throw new Error(data.message || '操作失败，请稍后重试');
       }
@@ -176,8 +173,6 @@ export default function DailyQuoteCard({
       {note && <span key={note}>{note}</span>}
     </p>
   );
-
-  if (blogRequired) return <QuoteBlogRequired embedded />;
   if (listMode) {
     return (
       <article className="daily-quote-card daily-quote-card--list">

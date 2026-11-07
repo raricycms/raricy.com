@@ -2,8 +2,9 @@
 // instrumentation.ts — Next 的进程启动钩子（本站**唯一**的后台任务入口）
 //
 // register() 在服务进程启动时被 Next 调一次，是本站第一个「不在请求里跑的」代码。
-// 目前做四件事：起回调投递的定时器、起练手盘的行情轮询、起练手盘的行情流、
-// 起练手盘的**强平引擎**（唯一会自己动手动钱的那一个）。
+// 目前做五件事：起回调投递的定时器、起练手盘的行情轮询、起练手盘的行情流、
+// 起练手盘的**强平引擎**（唯一会自己动手动钱的那一个）、起**每日一言发行器**
+// （每天一次选句 + 跨日定时检查，见 src/lib/daily-quote-service.ts 的 P03 说明）。
 //
 // ⚠️ 三条纪律
 //   1. **只在这里启动**，不要在某个模块里「被 import 时自动启动」—— vitest 会直接
@@ -66,6 +67,14 @@ export async function register(): Promise<void> {
       startMarketLiquidator();
     } catch (e) {
       console.error('[instrumentation] 强平引擎启动失败（杠杆开仓将一并暂停）:', e);
+    }
+    try {
+      // 每日一言的**每日独立发行**（P03）：启动时确保当天有发行，之后每分钟检查
+      // 北京日期、跨日发行新一天。发行失败只记录状态并重试，绝不抛到这里。
+      const { startDailyQuotePublisher } = await import('./lib/daily-quote-service');
+      startDailyQuotePublisher();
+    } catch (e) {
+      console.error('[instrumentation] 每日一言发行启动失败（站点继续运行）:', e);
     }
   }
 }

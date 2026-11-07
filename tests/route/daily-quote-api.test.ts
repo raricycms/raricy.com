@@ -5,8 +5,7 @@ vi.mock('next/headers', () => ({ cookies: async () => ({ get: (name: string) =>
 
 import { resetDb, makeUser as makeBareUser, makeBlog, prisma } from '../helpers/db';
 import { createSessionToken } from '@/lib/session';
-import { checkIn } from '@/lib/checkin-service';
-import { submitQuote, quoteContentKey, quoteReviewVersion } from '@/lib/daily-quote-service';
+import { submitQuote, quoteContentKey, quoteReviewVersion, ensureEditionForDay } from '@/lib/daily-quote-service';
 import { __resetRateLimitStore } from '@/lib/rate-limit';
 import { dayStart, nowForDb, todayStr } from '@/lib/db-time';
 import { GET as today } from '@/app/api/daily-quotes/today/route';
@@ -39,17 +38,22 @@ const pastDay = (n: number) => new Date(dayStart(todayStr()).getTime() - n * 864
 beforeEach(async () => { await resetDb(); __resetRateLimitStore(); session.token = undefined; });
 
 describe('每日一言的HTTP权限、隐私与输入', () => {
-  it('没有博客的 core 与管理员无法绕过页面直接使用各接口', async () => {
+  it('没有博客的 core 仍可使用各接口（P02 取消发文条件）', async () => {
     const user = await makeBareUser({ role: 'core' }); await login(user.id);
-    const handlers = [() => today(), () => history(historyRequest()), () => mine(), () => submit(body(input)),
-      () => edit(body({ ...input, version: 1 }, 'PATCH'), ctx('missing')), () => resonate(body({ max_fish: 0 }), ctx('missing')),
-      () => favorite(body({}), ctx('missing')), () => unfavorite(body({}, 'DELETE'), ctx('missing'))];
-    for (const handler of handlers) {
-      const response = await handler(); expect(response.status).toBe(403);
-      expect(await response.json()).toMatchObject({ reason: 'BLOG_REQUIRED' });
-    }
+    // 阅读 / 投稿不再要求「名下有未删除博客」。
+    const todayResponse = await today();
+    expect(todayResponse.status).toBe(200);
+    expect(await todayResponse.json()).toMatchObject({ state: 'pending', quote: null });
+    expect((await history(historyRequest())).status).toBe(200);
+    expect((await mine()).status).toBe(200);
+    expect((await submit(body({ ...input, content: '无博客也能投稿' }))).status).toBe(200);
+    expect((await edit(body({ ...input, version: 1 }, 'PATCH'), ctx('missing'))).status).toBe(404);
+    expect((await resonate(body({ max_fish: 0 }), ctx('missing'))).status).toBe(404);
+    expect((await favorite(body({}), ctx('missing'))).status).toBe(404);
+    expect((await unfavorite(body({}, 'DELETE'), ctx('missing'))).status).toBe(200);
+    // 审核只要求 admin+（无博客不影响），不存在的稿件按状态冲突处理。
     const admin = await makeBareUser({ role: 'admin' }); await login(admin.id);
-    expect(await (await review(body({ action: 'approve', version: 'old' }, 'PATCH'), ctx('missing'))).json()).toMatchObject({ reason: 'BLOG_REQUIRED' });
+    expect((await review(body({ action: 'approve', version: 'old' }, 'PATCH'), ctx('missing'))).status).toBe(409);
   });
 
   it('共鸣接口必须确认金额；不能收款的社区稿返回零扣款，恢复资格后不补扣', async () => {
@@ -111,19 +115,20 @@ describe('每日一言的HTTP权限、隐私与输入', () => {
     await login(author.id);
     expect((await edit(body(changed, 'PATCH'), ctx(quote.id))).status).toBe(409);
   });
-  it('未签到不可取一言；响应不含匿名身份、待审内容或其他人的投稿', async () => {
+  it('不签到也能取一言（P02 解耦）；响应不含匿名身份、待审内容或其他人的投稿', async () => {
     const author = await makeUser({ role: 'core' });
     await submitQuote(author.id, input);
     const user = await makeUser({ role: 'core' }); await login(user.id);
-    expect((await today()).status).toBe(403);
     await prisma.dailyQuote.create({ data: {
       id: 'classic', kind: 'builtin', content: '内置的原文', contentKey: quoteContentKey('内置的原文'), category: '哲思',
       sourceType: 'quotation', sourceName: '典籍', authorName: '古人', status: 'approved', createdAt: nowForDb(),
     } });
-    await checkIn(user.id);
+    // P03：今天那一期由后台发行；P02：读取不再要求当天签到。
+    await ensureEditionForDay(todayStr());
     const response = await today();
     expect(response.headers.get('Cache-Control')).toContain('no-store');
     const data = await response.json();
+    expect(data).toMatchObject({ state: 'published' });
     expect(data.quote.content).toBe('内置的原文');
     expect(data.quote).not.toHaveProperty('submitterId');
     expect((await (await mine()).json()).submissions).toEqual([]);
@@ -145,7 +150,7 @@ describe('每日一言的HTTP权限、隐私与输入', () => {
     await prisma.dailyQuoteEdition.create({ data: { day: pastDay(1), quoteId: classic.id, createdAt: nowForDb() } });
     await prisma.dailyQuoteEdition.create({ data: { day: pastDay(2), quoteId: named.id, createdAt: nowForDb() } });
     await prisma.dailyQuoteEdition.create({ data: { day: pastDay(3), quoteId: anon.id, createdAt: nowForDb() } });
-    // 今天的期不属于往期（否则它就是绕过签到的今日读口）。
+    // 今天的期不属于往期（否则它就成为今日的第二个读口）。
     await prisma.dailyQuoteEdition.create({ data: { day: todayStr(), quoteId: classic.id, createdAt: nowForDb() } });
 
     const reader = await makeUser({ role: 'core' }); await login(reader.id);

@@ -5,20 +5,18 @@ import { ymdhms } from '@/lib/format';
 import DailyQuoteForm from '@/app/components/DailyQuoteForm';
 import QuotePageShell from '../QuotePageShell';
 import DailyQuoteSubmissionEditor from '@/app/components/DailyQuoteSubmissionEditor';
-import { hasPublishedBlog } from '@/lib/checkin-service';
 import { isCurrentlyBanned } from '@/lib/auth';
-import QuoteBlogRequired from '@/app/components/QuoteBlogRequired';
 import QuoteRevisionHistory from '@/app/components/QuoteRevisionHistory';
 
 export const dynamic = 'force-dynamic';
 
+// P02（2026-11-07）：投稿资格不再要求「发布过文章」；未归档 core+ 即可。
+// 禁言只限写（readOnly），列表照常可读。
 export default async function QuoteSubmissionsPage() {
   const user = await requireCoreUser('/quotes/submissions');
-  const allowed = await hasPublishedBlog(user.id);
   const readOnly = isCurrentlyBanned(user);
-  const submissions = allowed ? await listSubmissions(user.id) : [];
+  const submissions = await listSubmissions(user.id);
   return <QuotePageShell title="我的投稿" current="submissions">
-    {!allowed ? <QuoteBlogRequired embedded /> : <>
     {!readOnly && <section className="daily-quote-panel" aria-labelledby="new-quote-heading"><h2 id="new-quote-heading">提交一言</h2><DailyQuoteForm /></section>}
     {readOnly && <p>禁言期间只能查看投稿。</p>}
     <section className="daily-quote-list" aria-labelledby="my-quotes-heading"><h2 id="my-quotes-heading">最近投稿</h2>
@@ -38,6 +36,5 @@ export default async function QuoteSubmissionsPage() {
         <QuoteRevisionHistory revisions={quote.revisions} />
       </article>)}
     </section>
-    </>}
   </QuotePageShell>;
 }

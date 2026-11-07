@@ -5,16 +5,15 @@ import { QUOTE_STATUSES, QUOTE_STATUS_LABELS } from '@/lib/daily-quote';
 import { ymdhms } from '@/lib/format';
 import AdminPageHeader from '@/app/components/AdminPageHeader';
 import AdminDailyQuoteReview from '@/app/components/AdminDailyQuoteReview';
-import { hasPublishedBlog } from '@/lib/checkin-service';
 import { isCurrentlyBanned } from '@/lib/auth';
-import QuoteBlogRequired from '@/app/components/QuoteBlogRequired';
 import QuoteRevisionHistory from '@/app/components/QuoteRevisionHistory';
 
 export const dynamic = 'force-dynamic';
 
+// P02（2026-11-07）：管理员按管理权限审核，不再要求「发布过文章」。
+// 档位由 requireAdmin + listReviewQuotes 内的 requireQuoteParticipant({admin:true}) 判。
 export default async function DailyQuoteAdminPage({ searchParams }: { searchParams: Promise<{ status?: string; page?: string }> }) {
   const user = await requireAdmin();
-  if (!(await hasPublishedBlog(user.id))) return <QuoteBlogRequired />;
   const params = await searchParams;
   const result = await listReviewQuotes(params.status ?? 'pending', Number(params.page ?? 1), user.id);
   return <>

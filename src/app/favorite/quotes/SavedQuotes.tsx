@@ -4,7 +4,6 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import type { DailyQuoteView, SavedQuoteEntry } from '@/lib/daily-quote';
 import DailyQuoteCard from '@/app/components/DailyQuoteCard';
-import QuoteBlogRequired from '@/app/components/QuoteBlogRequired';
 
 /**
  * 一言集按收藏时间排序，首次选登日仅作辅助；经典重播不改变收藏日期。
@@ -18,7 +17,6 @@ export default function SavedQuotes({ rows }: { rows: SavedQuoteEntry[] }) {
   const [states, setStates] = useState<Record<string, DailyQuoteView>>({});
   const [error, setError] = useState('');
   const [busy, setBusy] = useState<string | null>(null);
-  const [blogRequired, setBlogRequired] = useState(false);
 
   async function remove(id: string) {
     setBusy(id);
@@ -29,7 +27,6 @@ export default function SavedQuotes({ rows }: { rows: SavedQuoteEntry[] }) {
       });
       if (!response.ok) {
         const data = await response.json();
-        if (data.reason === 'BLOG_REQUIRED') setBlogRequired(true);
         throw new Error(data.message || '移出失败');
       }
       router.refresh();
@@ -39,8 +36,6 @@ export default function SavedQuotes({ rows }: { rows: SavedQuoteEntry[] }) {
       setBusy(null);
     }
   }
-
-  if (blogRequired) return <QuoteBlogRequired embedded />;
   return (
     <div className="daily-quote-list">
       {error && (

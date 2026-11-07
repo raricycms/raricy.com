@@ -14,8 +14,8 @@ export function quoteDisplayStatus(quote: { status: string; firstSelectedDay: st
     quote.status === 'approved' && quote.firstSelectedDay ? 'selected' : quote.status;
 }
 
-export const QUOTE_BLOG_REQUIRED = '请先发表一篇博客，再使用每日一言。不妨从自我介绍开始。';
-export const QUOTE_INTRO_HREF = `/blog?search=${encodeURIComponent('自我介绍')}`;
+// 2026-11-07 P02：一言资格不再要求「发布过博客」，QUOTE_BLOG_REQUIRED/QUOTE_INTRO_HREF
+// 与 QuoteBlogRequired 组件一并退役（零消费者），别再按「先发文章」设计入口。
 
 export function canEditQuoteSubmission(status: string): boolean {
   return status === 'pending' || status === 'rejected';
@@ -58,6 +58,9 @@ export interface DailyQuoteView {
   can_favorite: boolean;
   resonance_unavailable: string | null;
 }
+
+/** 今日入口的四态（P03 发行与阅读分离）：页面 / 弹窗 / API 共用。 */
+export type TodayQuoteState = 'published' | 'pending' | 'failed' | 'unavailable';
 
 /**
  * 往期一言的一条 = 某个 UTC+8 日历日实际选用过的一期。

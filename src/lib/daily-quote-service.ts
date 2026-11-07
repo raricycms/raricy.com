@@ -2,6 +2,18 @@
 // 每日一言：全站 UTC+8 每日固定一句。社区只选登一次，经典在社区候选耗尽后循环。
 // 签到到账与一言读取独立：展示失败不能回滚签到，也不能改变当天已选定的一句。
 //
+// 【发行与阅读分离（2026-11 P03）】每日一期的选取是**后台发行**，不是读者触发的：
+//   · `ensureEditionForDay(day)` 幂等发行当天一期（已有记录直接用；选句认领与落库
+//     在同一个事务里，靠 `DailyQuoteEdition.day` 主键与条件 UPDATE 防并发重复）；
+//   · `startDailyQuotePublisher()` 由 `src/instrumentation.ts` 在服务启动后调用：
+//     启动时确保**当天**有发行，之后每分钟检查一次北京日期，跨日即发行新一天；
+//   · `getTodayQuote()` **只读**发行记录，绝不选句 —— 读者访问不能凭空造出「那天
+//     选中过」的记录（停机漏掉的旧期因此保持缺期，只补当天）。
+//
+// 【状态区分】读口返回 `state`：`published`（有正文）/ `pending`（当天尚未发行）/
+// `failed`（当天发行失败，进程内记录，重启会重试）/ `unavailable`（有发行记录但
+// 内容已下架或投稿人归档）。失败不写库也不阻塞签到，只影响今日入口的显示。
+//
 // 【共鸣资格 = 每人每句一生一次，不按日】2026-10 起资格由
 // `daily_quote_resonance_once` 的联合主键 (quote_id, user_id) 决定：换日、取消再收藏、
 // 经典再次入选都不会重置。`daily_quote_resonances` 退化成**明细 / 审计**（哪天共鸣
@@ -32,11 +44,10 @@ import { hasAdminRights, isCoreUser, isCurrentlyBanned } from './auth';
 import { postEntry, InsufficientFishError } from './fish-service';
 import { fishToUnits, unitsToFish } from './fish-units';
 import { rateLimit, RULES } from './rate-limit';
-import { hasPublishedBlog } from './checkin-service';
 import {
-  QUOTE_BLOG_REQUIRED, QUOTE_CATEGORIES, QUOTE_CONTENT_MAX, QUOTE_HISTORY_PAGE_SIZE,
+  QUOTE_CATEGORIES, QUOTE_CONTENT_MAX, QUOTE_HISTORY_PAGE_SIZE,
   QUOTE_RESONANCE_FISH, QUOTE_SAVED_PAGE_SIZE, QUOTE_STATUSES, canEditQuoteSubmission, normalizeQuotePage, quoteLength,
-  type DailyQuoteHistoryEntry, type DailyQuoteResonanceResult, type DailyQuoteView,
+  type DailyQuoteHistoryEntry, type DailyQuoteResonanceResult, type DailyQuoteView, type TodayQuoteState,
   quoteDisplayStatus, type SavedQuoteEntry,
 } from './daily-quote';
 
@@ -57,8 +68,19 @@ const activeSubmitter = {
 } satisfies Prisma.DailyQuoteWhereInput;
 
 // 模块可能在热更新或不同 Next 编译图里实例化，合并在途选取要放到 globalThis。
-const state = globalThis as unknown as { __dailyQuotePending: Map<string, Promise<string>> };
+const state = globalThis as unknown as {
+  __dailyQuotePending: Map<string, Promise<string>>;
+  __dailyQuoteIssuance?: {
+    /** 当天发行失败（进程内；重启后由启动钩子重试）。 */
+    failures: Map<string, { at: number; error: string }>;
+    /** 定时器最近一次确认已发行的日期 —— 同一天内不重复扫。 */
+    lastDay: string | null;
+    timer: NodeJS.Timeout | null;
+    started: boolean;
+  };
+};
 state.__dailyQuotePending ??= new Map();
+state.__dailyQuoteIssuance ??= { failures: new Map(), lastDay: null, timer: null, started: false };
 
 async function selectEdition(day: string): Promise<string> {
   for (let attempt = 0; attempt < 3; attempt++) {
@@ -67,8 +89,11 @@ async function selectEdition(day: string): Promise<string> {
     try {
       return await prisma.$transaction(async (tx) => {
         const rows = await tx.dailyQuote.findMany({
+          // P03：不再要求「投稿人名下有未删除的博客」—— 资格只看账号角色 / 归档 /
+          // 禁言（见下一行 where 与 rows.filter）。博客要求只留在参与门槛
+          // （requireQuoteParticipant），不参与「这一句能不能被选登」。
           where: { status: 'approved', kind: 'community', firstSelectedDay: null, editions: { none: {} },
-            submitter: { archivedAt: null, role: { in: ['core', 'admin', 'owner'] }, blogs: { some: { ignore: false } } } },
+            submitter: { archivedAt: null, role: { in: ['core', 'admin', 'owner'] } } },
           select: { id: true, submitterId: true, submitter: { select: { isBanned: true, banUntil: true } } },
           orderBy: [{ reviewedAt: 'asc' }, { id: 'asc' }],
         });
@@ -120,10 +145,95 @@ async function editionQuoteId(day: string): Promise<string> {
   finally { state.__dailyQuotePending.delete(day); }
 }
 
-async function checkedIn(userId: string, day: string, tx: Prisma.TransactionClient = prisma) {
-  return Boolean(await tx.dailyCheckIn.findUnique({
-    where: { uq_user_checkin_date: { userId, checkinDate: dayStart(day) } }, select: { id: true },
-  }));
+/** 今日入口的四种状态（页面与 API 共用；客户端按它决定文案）。 */
+export interface TodayQuoteResult {
+  day: string;
+  state: TodayQuoteState;
+  /** 只有 `published` 非空；其余状态用页面文案说明（下架/未发行/发行失败）。 */
+  quote: DailyQuoteView | null;
+  can_submit: boolean;
+}
+
+export interface EditionIssueResult {
+  day: string;
+  status: 'published' | 'failed';
+  quoteId?: string;
+  error?: string;
+}
+
+/** 当天发行失败记录（进程内）；无记录返回 null。 */
+export function dailyQuoteIssuanceFailure(day: string): { at: number; error: string } | null {
+  return state.__dailyQuoteIssuance!.failures.get(day) ?? null;
+}
+
+/** 仅供测试：清空进程内发行状态（失败记录 / 定时器标记），避免用例互相影响。 */
+export function __resetDailyQuoteIssuanceState(): void {
+  const store = state.__dailyQuoteIssuance!;
+  store.failures.clear();
+  store.lastDay = null;
+}
+
+/**
+ * 幂等发行某一天的每日一言。
+ *
+ * 生产调用方只有启动钩子与跨日定时器，且**只传当天**（`todayStr()`）：停机漏掉的
+ * 旧期不会在这里被回填 —— 非当天请求直接拒绝，不产生任何 edition。
+ * 已有记录直接复用（重复调度 / 当天重启 / 多进程并发都得到同一天同一句）。
+ * 选句失败只记录失败态并返回，不抛给启动钩子（进程不能因为附加功能起不来）。
+ */
+export async function ensureEditionForDay(day: string): Promise<EditionIssueResult> {
+  const store = state.__dailyQuoteIssuance!;
+  const today = todayStr();
+  if (day !== today) {
+    const error = `只允许发行当天（请求 ${day}，当天 ${today}）`;
+    console.warn('[daily-quote]', error);
+    return { day, status: 'failed', error };
+  }
+  try {
+    const quoteId = await editionQuoteId(day);
+    store.failures.delete(day);
+    store.lastDay = day;
+    return { day, status: 'published', quoteId };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    store.failures.set(day, { at: Date.now(), error: message });
+    // 只记诊断，不打印正文；失败态由 getTodayQuote 转成 `failed`。
+    console.error('[daily-quote] 当天发行失败（下一次调度会重试）:', day, message);
+    return { day, status: 'failed', error: message };
+  }
+}
+
+/**
+ * 启动每日发行：启动时确保当天有发行；之后每分钟检查一次北京日期，跨日发行新一天。
+ *
+ * 只由 `src/instrumentation.ts` 在 nodejs runtime 调用。以下情况直接不启动：
+ * 构建期、测试环境（vitest 会 import 本模块，绝不能起后台循环）、显式关闭。
+ * 热更新可能重复调用 register()，用 globalThis 标记保证同进程只起一个定时器。
+ */
+export function startDailyQuotePublisher(): void {
+  if (
+    process.env.NEXT_RUNTIME !== 'nodejs' ||
+    process.env.NEXT_PHASE === 'phase-production-build' ||
+    process.env.NODE_ENV === 'test' ||
+    process.env.VITEST ||
+    process.env.DAILY_QUOTE_PUBLISHER === 'off'
+  ) {
+    return;
+  }
+  const store = state.__dailyQuoteIssuance!;
+  if (store.started) return;
+  store.started = true;
+
+  const tick = async (): Promise<void> => {
+    const today = todayStr();
+    // 同一天已确认发行则跳过；失败的日子每个 tick 都会重试（幂等）。
+    if (store.lastDay === today && !store.failures.has(today)) return;
+    await ensureEditionForDay(today);
+  };
+  void tick();
+  store.timer = setInterval(() => void tick(), 60_000);
+  // 不影响脚本/测试进程退出（服务进程本来常驻，这里只是好习惯）。
+  store.timer.unref?.();
 }
 
 /** 组装展示状态时要读的投稿人列（角色、归档、禁言决定「能不能收投喂」）。 */
@@ -203,34 +313,60 @@ export async function quoteView(quote: DailyQuote, userId: string): Promise<Dail
   return view;
 }
 
-export async function getTodayQuote(userId: string): Promise<{ day: string; quote: DailyQuoteView | null; can_submit: boolean }> {
+/**
+ * 今日一言：**纯读**当天已发行的记录，绝不在这里选句（P03）。
+ *
+ * 状态区分（页面 / API 共用）：
+ *   · `published`   有发行记录且有可展示正文；
+ *   · `pending`     当天还没有发行记录（服务刚恢复、定时器还没跑到）；
+ *   · `failed`      当天发行失败（进程内记录；重启 / 下一次调度会重试）；
+ *   · `unavailable` 有发行记录但内容已下架 / 投稿人归档 / 审核状态变化。
+ * 后三种 `quote` 为 null —— 历史记录与当天占位都保留，不会重新抽取。
+ */
+export async function getTodayQuote(userId: string): Promise<TodayQuoteResult> {
   const actor = await requireQuoteParticipant(userId);
   const day = todayStr();
-  if (!(await checkedIn(userId, day))) throw new QuoteError(403, '完成今日签到后可查看每日一言');
-  const id = await editionQuoteId(day);
-  const quote = await prisma.dailyQuote.findFirst({ where: { id, status: 'approved', ...activeSubmitter } });
-  // 下架不重新抽取，避免同一天不同人看到两句；保留当天占位及历史选择记录。
-  return { day, quote: quote ? await quoteView(quote, userId) : null, can_submit: !isCurrentlyBanned(actor) };
+  // P02（2026-11-07）：查看今日一言**不再要求当天已签到** —— 未归档 core+ 直接可读；
+  // 状态仍由发行记录决定（pending / failed / unavailable / published，P03 层）。
+  const can_submit = !isCurrentlyBanned(actor);
+
+  const edition = await prisma.dailyQuoteEdition.findUnique({ where: { day }, select: { quoteId: true } });
+  if (!edition) {
+    const failed = dailyQuoteIssuanceFailure(day);
+    return { day, state: failed ? 'failed' : 'pending', quote: null, can_submit };
+  }
+  const quote = await prisma.dailyQuote.findFirst({
+    where: { id: edition.quoteId, status: 'approved', ...activeSubmitter },
+  });
+  if (!quote) return { day, state: 'unavailable', quote: null, can_submit };
+  return { day, state: 'published', quote: await quoteView(quote, userId), can_submit };
 }
 
 async function publishedQuote(quoteId: string, userId: string, tx: Prisma.TransactionClient = prisma) {
   const day = todayStr();
-  const hasTodayAccess = await checkedIn(userId, day, tx);
+  // P02：历史与今日的已发行一言都直接可读（原实现用「今天签到过没有」在 lte/lt 之间
+  // 切换，等于把签到当成今日可见性的门；签到与一言阅读已解耦）。
   const quote = await tx.dailyQuote.findFirst({
-    where: { id: quoteId, status: 'approved', editions: { some: { day: { [hasTodayAccess ? 'lte' : 'lt']: day } } }, ...activeSubmitter },
+    where: { id: quoteId, status: 'approved', editions: { some: { day: { lte: day } } }, ...activeSubmitter },
   });
   if (!quote) throw new QuoteError(404, '一言不存在或已下架');
   return quote;
 }
 
+/**
+ * 参与资格（P02 起）：**未归档 core+**；写了就按禁言拦，审批还要求管理权限。
+ *
+ * 2026-11-07 产品决定取消了「名下有未删除博客」这条门（读者/投稿人/候选池都不再
+ * 因没发过文章受限）。别再把它加回来 —— 这条门曾让零博客成员连今日一言都读不了。
+ */
 export async function requireQuoteParticipant(userId: string, options: { write?: boolean; admin?: boolean } = {}, tx: Prisma.TransactionClient = prisma) {
   const user = await tx.user.findUnique({ where: { id: userId }, select: {
     id: true, role: true, archivedAt: true, isBanned: true, banUntil: true, driedFish: true,
   } });
   if (!user || !isCoreUser(user)) throw new QuoteError(403, '需要核心用户权限');
+  // 管理操作按「管理权限」判（hasAdminRights 含 owner/admin 且排除归档），别自造角色表。
   if (options.admin && !hasAdminRights(user)) throw new QuoteError(403, '需要管理员权限');
   if (options.write && isCurrentlyBanned(user)) throw new QuoteError(403, '禁言期间暂时无法操作', 'BANNED');
-  if (!(await hasPublishedBlog(userId, tx))) throw new QuoteError(403, QUOTE_BLOG_REQUIRED, 'BLOG_REQUIRED');
   return user;
 }
 
@@ -540,15 +676,16 @@ export async function listReviewQuotes(status: string, page: number, adminId: st
     prisma.dailyQuote.count({ where }),
     prisma.dailyQuote.findMany({
       where, orderBy: { createdAt: 'desc' }, skip: (current - 1) * 30, take: 30,
-      include: { submitter: { select: { username: true, role: true, isBanned: true, banUntil: true,
-        _count: { select: { blogs: { where: { ignore: false } } } } } },
+      include: { submitter: { select: { username: true, role: true, isBanned: true, banUntil: true } },
         revisions: { orderBy: { revision: 'desc' } } },
     }),
   ]);
   return { total, page: current, pages: Math.ceil(total / 30), status: selected, quotes: quotes.map((quote) => ({ ...quote,
-    display_status: quoteDisplayStatus(quote), candidate_unavailable: quote.kind !== 'community' || quote.status !== 'approved' || quote.firstSelectedDay ? null :
-      !isCoreUser(quote.submitter) ? '投稿人当前不是核心用户，暂停候选' : isCurrentlyBanned(quote.submitter) ? '投稿人当前被禁言，暂停候选' :
-        !quote.submitter?._count.blogs ? '投稿人当前没有未删除的博客，暂停候选' : null })) };
+    display_status: quoteDisplayStatus(quote),
+    // P02（2026-11-07）：候选池不再看「投稿人名下有几篇未删除博客」；只剩账号状态两条
+    // （降权 / 禁言），管理员按权限照常可审。
+    candidate_unavailable: quote.kind !== 'community' || quote.status !== 'approved' || quote.firstSelectedDay ? null :
+      !isCoreUser(quote.submitter) ? '投稿人当前不是核心用户，暂停候选' : isCurrentlyBanned(quote.submitter) ? '投稿人当前被禁言，暂停候选' : null })) };
 }
 
 /** 审核页面所见的可编辑字段快照；署名与来源变化同样需要重新确认。 */

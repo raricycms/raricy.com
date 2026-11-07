@@ -5,7 +5,6 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { CircleCheck, LoaderCircle } from 'lucide-react';
 import { QUOTE_CATEGORIES, QUOTE_CONTENT_MAX, quoteLength, type QuoteSubmissionDraft } from '@/lib/daily-quote';
-import QuoteBlogRequired from './QuoteBlogRequired';
 import ExpandSelect from './ExpandSelect';
 
 export default function DailyQuoteForm({ submission, onSaved, onCancel }: {
@@ -23,7 +22,6 @@ export default function DailyQuoteForm({ submission, onSaved, onCancel }: {
   const [sourceType, setSourceType] = useState(submission?.source_type ?? 'original');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  const [blogRequired, setBlogRequired] = useState(false);
   const [done, setDone] = useState(false);
 
   useEffect(() => {
@@ -48,7 +46,6 @@ export default function DailyQuoteForm({ submission, onSaved, onCancel }: {
       });
       const data = await response.json();
       if (!response.ok) {
-        if (data.reason === 'BLOG_REQUIRED') setBlogRequired(true);
         throw new Error(data.message || '保存失败，请稍后重试');
       }
       if (submission) onSaved?.();
@@ -66,8 +63,6 @@ export default function DailyQuoteForm({ submission, onSaved, onCancel }: {
     setError('');
     setDone(false);
   }
-
-  if (blogRequired) return <QuoteBlogRequired embedded />;
   if (done) return <div className="daily-quote-form">
     <div ref={doneBox} tabIndex={-1} className="daily-quote-form__done">
       <CircleCheck size={30} aria-hidden="true" />
