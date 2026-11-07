@@ -265,7 +265,13 @@ export default function RichComposer({
             onMouseDown={() => {
               cardCaretRef.current = captureCaret(textareaRef.current);
             }}
-            onClick={() => setCardOpen(true)}
+            // 键盘激活（Enter / Space）**不会**触发 mousedown：这里必须补一次捕获，
+            // 否则会沿用上一次鼠标路径留下的旧区间，token 插到旧光标处（R3-124，
+            // 真浏览器复现：先鼠标插一次、移动光标、再用键盘打开 → 插回旧位置）。
+            onClick={() => {
+              if (!cardCaretRef.current) cardCaretRef.current = captureCaret(textareaRef.current);
+              setCardOpen(true);
+            }}
             title="插入用户名片"
             aria-label="插入用户名片"
           >
@@ -404,7 +410,12 @@ export default function RichComposer({
 
       {cardOpen && (
         <UserPicker
-          onClose={() => setCardOpen(false)}
+          onClose={() => {
+            // 关掉面板就丢掉这次捕获：不丢的话，下一次键盘打开会拿它当「当前选区」，
+            // 又把 token 插回上一次的位置（见 onClick 的说明）。
+            cardCaretRef.current = null;
+            setCardOpen(false);
+          }}
           onPick={(user) => {
             // 插入由本组件直接做（讨论与评论对名片的语义完全一样：插进输入框、不发送），
             // 所以不像表情那样把决定权交回调用方。
@@ -412,6 +423,7 @@ export default function RichComposer({
             onTextChange(
               insertAtRange(textareaRef.current, text, `[@用户/${user.username}]`, cardCaretRef.current)
             );
+            cardCaretRef.current = null; // 用完即弃，避免下一次键盘打开复用旧区间
             setCardOpen(false);
           }}
         />

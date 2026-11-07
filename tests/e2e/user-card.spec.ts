@@ -175,6 +175,41 @@ test.describe('用户名片：输入区入口', () => {
     await expect(panel).toHaveCount(0);
     await expect(composer.locator('.chat-composer__input')).toHaveValue(CARD_TOKEN);
   });
+
+  test('★ 键盘打开选人面板：插入点跟随当前光标，不复用上一次的旧捕获（R3-124）', async ({ page }) => {
+    // 真浏览器复现过：先鼠标插一次（捕获区间 A），把光标移到别处，再**用键盘**打开面板 ——
+    // 旧实现只在 mousedown 捕获，键盘激活不触发 mousedown，于是沿用 A，token 插回旧位置。
+    await loginViaApi(page, FRAMED.username);
+    await page.goto(`/chat?channel=${LOBBY}`);
+
+    const composer = page.locator('.chat-composer');
+    const input = composer.locator('.chat-composer__input');
+    const button = composer.getByRole('button', { name: '插入用户名片' });
+    const panel = page.locator('.user-picker');
+
+    // ① 鼠标路径：光标在 "AB" 后 → 捕获 {start:2,end:2}，插成 AB<token>CD
+    await input.fill('ABCD');
+    await input.press('Home');
+    await input.press('ArrowRight');
+    await input.press('ArrowRight');
+    await button.click();
+    await expect(panel).toBeVisible();
+    await panel.getByPlaceholder('搜索用户名…').fill(FRAMED.username);
+    await panel.getByRole('button', { name: FRAMED.username, exact: true }).click();
+    const afterFirst = `AB${CARD_TOKEN}CD`;
+    await expect(input).toHaveValue(afterFirst);
+    await expect(panel).toHaveCount(0);
+
+    // ② 光标移到末尾，键盘（Enter）打开面板；插入点必须是**当前**光标（末尾）
+    await input.focus();
+    await input.press('End');
+    await button.focus();
+    await page.keyboard.press('Enter');
+    await expect(panel).toBeVisible();
+    await panel.getByPlaceholder('搜索用户名…').fill(FRAMED.username);
+    await panel.getByRole('button', { name: FRAMED.username, exact: true }).click();
+    await expect(input).toHaveValue(`${afterFirst}${CARD_TOKEN}`);
+  });
 });
 
 test.describe('用户名片：接口契约', () => {
