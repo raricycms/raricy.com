@@ -1,6 +1,8 @@
 import { requireCoreUser } from '@/lib/guard';
 import { forbidden, notFound } from 'next/navigation';
+import { headers } from 'next/headers';
 import { getCurrentUser, isOwner } from '@/lib/auth';
+import { clientIp } from '@/lib/request-ip';
 import { getClip } from '@/lib/clipboard-query';
 import { resolveReadRender } from '@/lib/reactive/read-render';
 import { ClipIdCopyButton, ClipActions, ClipContent } from './ClipDetailClient';
@@ -32,6 +34,8 @@ export default async function ClipDetailPage({ params }: { params: Promise<{ id:
     format: clip.format,
     viewer: user ? { id: user.id, role: user.role, archivedAt: user.archivedAt } : null,
     mode: 'expand',
+    // 与博客正文同一入口：公开收藏夹引用的按 IP 限频需要真实来源 IP（R3-131）。
+    clientIp: clientIp({ headers: await headers() }),
     syntaxVersion: clip.syntaxVersion,
   });
   const reactiveDocument =
