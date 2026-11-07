@@ -298,7 +298,8 @@ https://raricy.com/fish/pay
 
 1. 你在自己站内给他一串一次性验证码；
 2. 让他在 raricy 里**转 0.1 给你**，备注里带上那串码；
-3. 你从流水里按**备注**找到那笔 0.1，把 `related_user_id` 记成他的 raricy id：
+3. 你从流水里按**备注**找到那笔 0.1（转账备注落在流水行的 **`description`** 字段，
+   不是独立字段），把 `related_user_id` 记成他的 raricy id：
 
 ```js
 db.claimed[tx.related_user_id] = '你自己站内的客户 id';

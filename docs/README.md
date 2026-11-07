@@ -78,6 +78,8 @@ GitHub 上仍是原来的反引号，两边不冲突。
 | `frontend-styles.md` | 全站设计标准：视觉基础 / 布局 / 组件 / 动效 / 场景组合 / 实现与验收 |
 | `design-philosophy.md` | **可整份转发**的设计哲学：相信什么 / 拒绝什么 / 怎么判断，附一页实现参照（不引用源码） |
 | `known-red.md` | 测试与构建排障：核对当前前提，再按日志确认原因与修法，不凭历史记录跳过失败 |
+| `testing.md` | 测试基建口径：两层 runner 的库隔离、e2e 单库双 project、retries 语义与顺序依赖规避 |
+| `assets-licenses.md` | 素材来源与许可：四类静态素材的生成脚本与许可、第三方图标清单、再分发规则 |
 | `agent-domain-rules.md` | 子系统修改约定：按功能查询业务边界、实现注意事项与源码入口，无需每次任务通读 |
 | `instance-restore.md` | 从 `instance.zip` 还原数据目录与数据库（灾备） |
 | `legacy-constraints.md` | 历史遗留约束：哪些不能删、为什么（含「不是框架痕迹」的辨析）；注释清理口径与已解决问题记录 |

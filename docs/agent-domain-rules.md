@@ -100,8 +100,9 @@
   专注模式里只有**大区可见性**变化（总开关或 `focusBlockLobby`）才额外踢讨论 SSE
   （重连按新值决定收不收大区广播）并推顶栏红点；改玩具 / 练手盘 / 博客栏目不踢流。
   顶栏流一律不踢（会话没废，铃铛照常收推送）。
-- **改 `RULES` 的数值要同步对外文档** —— `docs/bot/` 三份与 `docs/guide/` 的投票 / 图床指南
-  刻意复述了配额（站外读者要自包含），不同步就是下一次 drift。
+- **改 `RULES` 的数值要同步对外文档** —— `docs/bot/` **十四份**都是自包含的（站外读者要能独立
+  对接），其中每一份都复述了限频 / 配额数值；`docs/guide/` 的图床 / 收藏夹 / 每日一言 /
+  聊天气泡 / 表情包指南同样复述。清单与口径见 `docs/README.md`「bot/」节，不同步就是下一次 drift。
 
 ## 关键约定
 
@@ -200,8 +201,9 @@ SQL 入口。`status` / `verify` 仍只读。
 又没有条目」那个缺口。同样是**只读 `market_positions`、绝不从账本求和**；
 `payout_units` 为 null 的异常行照 null 显示（页面「—」），**别 `?? 0`**。
 
-- **入口只能进 `/fish` 卡片的 `.fish-card__info`** —— 上面那条行动条被
-  `tests/e2e/fish-layout.spec.ts` 钉死为「恰好 3 颗」，`.fish-card__link-label` 钉死为 2 个。
+- **`/fish` 账户卡片的入口只在 `.fish-card__actions` 里**（转账 / 流水 / 收款码三颗）——
+  `tests/e2e/fish-layout.spec.ts` 钉的是「每颗 ≥44px 高、宽窄屏不溢出」，不是固定颗数；
+  练手盘入口在下方 `.fish-service` 列表，且 `a[href="/fish/trade"]` 只出现一次。
 - **加一个标的要改四处**：`MARKET_SYMBOLS`（`market-price.ts`，单一真相源）+
   `prisma/schema.prisma` 的 `symbol` 注释 + 页面文案（`fish/page.tsx`、`fish/market/page.tsx`、
   `fish/trade/page.tsx` 的副标题）+ **`tests/e2e/mock-market-price.ts` 的 `prices` / `changes`

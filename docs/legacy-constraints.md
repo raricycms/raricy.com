@@ -36,7 +36,7 @@
 | 项 | 位置 | 真正的理由（与框架无关） |
 |---|---|---|
 | identicon 算法 | `src/lib/identicon.ts` | md5 前 6 位取色、8×8 镜像网格、底色 (240,240,240)。**改则老用户头像图案全变** |
-| 字数统计正则 | `src/lib/blog-service.ts` 的 `countMarkdownWords` | 5 条正则（**只有代码块那条跨行**）。改则存量文章字数集体变化 |
+| 字数统计正则 | `src/lib/blog-service.ts` 的 `countMarkdownWords` | 6 条清洗正则（代码块 / 行内代码 / 图片 / 链接 / HTML 标签 / Markdown 特殊字符；**只有代码块那条跨行**）。改则存量文章字数集体变化 |
 | 短 ID / 邀请码字符集 | `src/lib/short-id.ts`、`src/lib/invite-code.ts` | 要能继续校验**存量已发出的**码（12 位 base62，注册侧按 `length===12` 校验） |
 | 幂等键格式 | `src/lib/fish-idempotency.ts`、`fish-compensate.ts` | 客户端幂等键「1–48 位、`[A-Za-z0-9_.:-]`」是**对外契约**（`docs/bot/fish-bot.md` §6 按它写）。群发补偿的批次 ID 逐字节稳定是**刻意的**，为了让迁移前跑了一半的批次能续跑。**注意**：键之所以长这样（含 `xfer-{8位哈希}` 前缀、48 字上限）是因为当年要发往账户微服务、对方限 64 字符 —— 那边界没了，但格式不能改：存量 `account_sync_ledger` 里的键与新键共用一个命名空间 |
 | API JSON snake_case 形状 | `src/lib/blog-service.ts` 等 | **对外契约**：站外机器人按这个形状写死了。对外文档见 `docs/bot/` |
@@ -63,15 +63,16 @@ CLI 退出码与 `LEGACY_COMMANDS` 旧命令名。
 |---|---|---|
 | `instance/` | 项目根 | §1.1 的目录约定。**整套数据全在里面，不动** |
 | `public/static/**` | `public/static/{img,js}` | 「Next 的 `public/` + 旧站的 `static/`」两层叠。全站 30+ 处引用 `/static/...`，4 个 e2e 用例盯着 —— **改造成本远大于收益，不建议动** |
-| `static/js/core/base.js`、`static/js/cattca.js` | `public/static/js/` | 沿用的手写 JS，`src/app/layout.tsx` 用 `<Script>` 加载。是**在跑的代码**，不是残留 |
+| `static/js/core/base.js`、`static/js/cattca.js` | `public/static/js/` | 沿用的手写 JS：`base.js` 由 `src/app/layout.tsx` 用 `<Script>` 全站加载；`cattca.js` 是故事阅读器（`CattcaPlayer`）在浏览器里按需 `import` 的引擎。都是**在跑的代码**，不是残留 |
 | `instance/blogs/` | `instance/blogs/` | 6195 个**空目录**。`scripts/check-instance.mjs` 仍会创建它「以兼容老路径」 |
 | 环境变量名 | `IMAGE_UPLOAD_FOLDER` / `AVATARS_DIR` / `STORIES_DIR` / `STICKERS_DIR` | 全大写 + `_FOLDER` 后缀是旧站风格。**改名会打断生产 `.env.production`**，别动 |
 | `css:probe` 的产物名 | `src/styles-scss/compiled/probe.css` | 2026-09 由 `flask.css` 改名而来（唯一「名字里带 flask」的产物）。gitignored 的离线调试产物，消费方是 `tests/.tmp/*.html` 的探针 |
 
 ## 4. Python 源码本体：HEAD 已清零，git 历史仍可检出
 
-- **HEAD 里 `.py` = 0**（`git ls-tree -r HEAD` 实测）。`requirements.txt` / `Pipfile` /
-  `pyproject.toml` / `setup.py` / `__pycache__` / `venv` **一条都没有**。
+- **HEAD 里 `.py` 只剩 1 个**：`scripts/make-numeric-fonts.py`（数字字体子集化工具，与旧站无关；
+  `git ls-tree -r HEAD` 实测）。`requirements.txt` / `Pipfile` / `pyproject.toml` / `setup.py` /
+  `__pycache__` / `venv` **一条都没有**。
 - 删除发生在 **`7d7be1c`（2026-07-18）**，一次提交干掉 **436 个文件**
   （其中 174 个 `.py`、79 个 `.html` 模板）。同一次还把 `web-next/` 摊平到了项目根。
 - 这些源码**仍在 git 历史里**（`.git` 约 31 MB），随时可检出：
@@ -104,6 +105,19 @@ git ls-tree -r 7d7be1c^ --name-only app/ # 列出旧 app/ 全树
 > 背景：切到 Next 之后的提交数是 **520**，整个 Flask 时期是 **353** —— Next 侧早就不是
 > 「新版本」，而是这个项目的标准版本。继续把已删除的实现当参照物，对读者是悬空引用
 > （那些文件不在工作区），对决策是错误归因。现行约定见 `../CLAUDE.md`「项目概述」。
+
+### 5.1 已应用迁移头部注释漂移（迁移不可改写，下列为现行口径）
+
+已应用的迁移文件**不重写**（改写会让 `_raricy_migrations` 的 checksum 与生产库对不上）。
+下列迁移头部注释与现行实现已经不符，**以本节为现行口径**，迁移文件保持原样不改：
+
+- `1_oauth` —— 头部写「`redirect_uris` / `scopes` 是 JSON 字符串」。现行：`redirect_uris` 仍是 JSON；**`scopes` 是空格分隔字符串**（`scopesToString` = `join(' ')`，读侧 `parseStoredScopes`）。
+- `2_account_sync_ledger` —— 头部描述「本地事务 → 登记 pending → 提交后调远端 → synced / compensated / failed」的远端状态机。现行：账户服务已搬进站内、远端 HTTP 路径退役，这张表只做**站内幂等登记**（转账 / 补偿的幂等键唯一存储，见 `src/lib/fish-idempotency.ts`）。
+- `9_chat_prefs` —— 头部列了 `users.notify_chat`（聊天通知总开关）。现行：该列已被**迁移 10**（`10_drop_notify_chat`）删除，站内不再有账号级聊天通知开关（会话级静音 / 隐藏仍在 `chat_members`）。
+- `18_market_positions` —— 头部说系统账户「只存在于远端账户服务」、并把「远端同步失败的补偿事务删掉一行」列为唯一例外。现行：账户服务退役后练手盘在站内结算，**没有补偿删行**；仓位行仍绝不物理删除。
+- `23_market_leverage` —— 头部把白名单指向 `src/lib/market-service.ts` 的 `LEVERAGE_OPTIONS`。现行：杠杆词表已搬到 **`src/lib/market-leverage.ts`**（`MIN_LEVERAGE` / `MAX_LEVERAGE` / `LEVERAGE_PRESETS`；服务端只校验上下界，档位是纯 UI 快捷）。
+- `32_profile_block_sort` —— 头部说手机顺序单独存 `sort` 列。现行：**`sort` 列已被迁移 42 删除**；手机顺序改为桌面坐标的投影（`projectMobile`，按 (y, x) 排序），读路径不再读该列。
+- `35_reactive_md_format` —— 头部写「reactive 的写入闸门当前关闭」。现行：**写入已开放**（`resolveContentWriteFormat` 接受 reactive；语法 / 格式校验在 service 层，编不过的正文不落库）。
 
 ## 6. 假阳性清单（搜索时会误伤）
 

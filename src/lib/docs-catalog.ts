@@ -297,6 +297,18 @@ export const DOC_ENTRIES: readonly DocEntry[] = [
   },
   {
     group: 'dev',
+    slug: 'testing',
+    title: '测试基建与 e2e 口径',
+    summary: '两层 runner 的库隔离、e2e 单库双 project、retries 语义与顺序依赖的规避方式。',
+  },
+  {
+    group: 'dev',
+    slug: 'assets-licenses',
+    title: '素材来源与许可',
+    summary: '四类静态素材的生成脚本、入库与否与许可，第三方图标清单与再分发规则。',
+  },
+  {
+    group: 'dev',
     slug: 'agent-domain-rules',
     title: '子系统修改约定',
     summary: '按任务查询权限、账目、渲染、通知和各业务模块的修改边界与实现入口。',
@@ -532,10 +544,10 @@ function decodeSegment(raw: string): string | null {
  *   · 其余（源码、脚本、配置、素材）→ 仓库里的那一份
  *
  * 【为什么必须有这一步】`docs/` 里有两种真链接：`docs/guide/内容引用语法指南.md`
- * 里的 `[表情包使用指南](表情包使用指南.md)`（5 处）与 `docs/frontend-styles.md` 里的
- * `[src/app/layout.tsx](../src/app/layout.tsx)`（4 处）。原样渲染时前者会落到
- * `/docs/guide/表情包使用指南.md`（404，多一个 `.md`）、后者会落到
- * `/docs/src/app/layout.tsx`（404）—— **九个死链，页面上没有任何报错**，
+ * 里的相对 `.md` 链接（实测 4 处：音频床 / 表情包 ×2 / 收藏夹）与
+ * `docs/frontend-styles.md` 里的 `[src/app/layout.tsx](../src/app/layout.tsx)`（1 处）。
+ * 原样渲染时前者会落到 `/docs/guide/表情包使用指南.md`（404，多一个 `.md`）、后者会落到
+ * `/docs/src/app/layout.tsx`（404）—— **不改写共 5 个死链，页面上没有任何报错**，
  * 只有点的人知道。GitHub 上它们是好的，所以这层改写也是「站内与仓库读同一份文档」的
  * 前提。新增文档时照旧写相对链接即可，不必迁就站内路由。
  *

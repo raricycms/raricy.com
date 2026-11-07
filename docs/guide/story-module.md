@@ -44,7 +44,8 @@ instance/stories/
   "description": "简介",
   "author": "默认作者",
   "priority": 100,
-  "ignore": false
+  "ignore": false,
+  "ai_assisted": false
 }
 ```
 
@@ -55,6 +56,7 @@ instance/stories/
 | `author` | string | `"未知作者"` | 默认作者（子故事未指定时使用） |
 | `priority` | int | `0` | 排序优先级，越大越靠前 |
 | `ignore` | bool | `false` | 设为 `true` 隐藏此合集 |
+| `ai_assisted` | bool | `false` | 合集级默认值；子故事未写 `ai_assisted` 时**继承这里**（合集也没写才是 `false`） |
 
 ### 故事 (Story)
 
@@ -88,8 +90,8 @@ ignore: false
 标准 Markdown 文件，文件开头使用 YAML frontmatter。正文由**服务端**渲染
 （`src/lib/story-service.ts` 的 `marked` + `stripScripts`），支持 GFM 表格、任务列表等。
 
-> ⚠️ 与博客正文不同，故事正文**不走 DOMPurify、也没有 highlight.js**：故事文件由站长
-> 直接写在 `instance/stories/` 下，按可信内容处理（详见 `docs/architecture.md` §6.7）。
+> ⚠️ 与博客正文不同，故事正文**不走 DOMPurify、也不做语法高亮**（`highlight.js` 已不是依赖）：
+> 故事文件由站长直接写在 `instance/stories/` 下，按可信内容处理（详见 `docs/architecture.md` §6.7）。
 
 #### 排版规则
 

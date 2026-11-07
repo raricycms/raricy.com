@@ -19,7 +19,8 @@ Next.js 15 + Prisma + SQLite 主站，自有 `instance/` 数据目录；实时�
   独立实时进程，承载「测试」合集中的 Wand demo；主站签发一次性票据并复核账号权限。
   共用主站 `.env*`，内部凭据自动生成；`npm run dev` / `npm start` 同时管理两个进程。
   ATÅMAS 不依赖它。部署反代见 `docs/realtime.md`。
-- **前端**：服务端 / 客户端组件混用；评论 / 讨论 / 故事仍用 marked + DOMPurify + highlight.js
+- **前端**：服务端 / 客户端组件混用；评论 / 讨论走 marked → DOMPurify，故事走服务端
+  marked + `stripScripts`（按可信输入处理）；**不做语法高亮**（`highlight.js` 已不是依赖）
 - **ReactiveMD**：精确依赖 `reactive-md@0.7.0`（`local-draft-3`）。博客与云剪贴板
   **全部**走统一引擎，Markdown 与 ReactiveMD 都编译为同一份 `LocalDocument`；
   正常阅读 SSR 静态首屏 + 水合交互。**reactive 是唯一正文渲染路径**（Markdown / Reactive 同引擎），
@@ -44,7 +45,7 @@ Next.js 15 + Prisma + SQLite 主站，自有 `instance/` 数据目录；实时�
 | `reports/`     | 本地过程材料（gitignored）：`research/` 放调研与评审，`announcements/` 放公告草稿 |
 | `.cache/typescript/` | TypeScript 增量缓存（gitignored）；开发、生产构建与源码检查分别使用独立文件 |
 | `instance/`    | 运行时数据（gitignored）：avatars / database / images / audio / stories / stickers / blogs（与 `scripts/check-instance.mjs` 的 `SUBDIRS` 同一份清单） |
-| `public/`      | 静态资源（图标 / CSS / favicon）；`static/{mathjax,emoji,converter}/` 是**生成的**（`npm ci` 的 postinstall 拷，见下方「工具脚本」） |
+| `public/`      | 静态资源（图标 / CSS / favicon）；`static/{emoji,converter}/` 是**生成的**（`npm ci` 的 postinstall 拷，见下方「工具脚本」） |
 
 根目录保留项目入口、工具配置与环境模板；一次性报告和公告草稿归入 `reports/`。
 临时日志、截图和探针仍写系统临时目录。

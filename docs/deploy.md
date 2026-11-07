@@ -343,12 +343,11 @@ npm ci --include=dev
 npx prisma generate
 ```
 
-`npm ci` 会跑 `postinstall`，把三个静态素材目录从 npm 包里**生成**出来
+`npm ci` 会跑 `postinstall`，把两个静态素材目录从 npm 包里**生成**出来
 （它们都是包的派生产物、不入库，见 `.gitignore`）：
 
 | 目录 | 来源包 | 少了会怎样 |
 |---|---|---|
-| `public/static/mathjax/` | `mathjax-full` | 公式仍显示，但用回退字体，字形与间距都不对 |
 | `public/static/emoji/` | `@twemoji/svg` | 正文里的 `[@黄脸/…]` **静默降级成字面量**（不是裂图） |
 | `public/static/converter/` | `@ffmpeg/core`、`pdfjs-dist`、`tesseract.js` 等 | 格式转换器（`/tool/convert`）的音视频 / PDF / OCR 功能报「引擎加载失败」（约 65MB，含 ffmpeg 核心与 OCR 语言包） |
 
@@ -361,9 +360,21 @@ npx prisma generate
 手工补一次：
 
 ```bash
-npm run prepare:mathjax && npm run prepare:emoji && npm run prepare:converter
+npm run prepare:emoji && npm run prepare:converter
 # 只想核对转换器资产是否齐（CI 用）：npm run converter:check
 ```
+
+**字体资产**（`public/static/fonts/`）不一样：它们是**随代码入库的二进制**（OFL-1.1，
+其中 `raricy-numeric/` 由 `scripts/make-numeric-fonts.py` 从 JetBrains Mono 生成），
+不是 postinstall 派生物。校验入口：
+
+```bash
+npm run fonts:check          # 纯 Node 守卫：逐个核对入库 WOFF2 的 sha256（默认）
+npm run fonts:check:regen    # 需 Python + fonttools：重新生成并校验可复现性
+```
+
+改了字体或生成脚本后跑一次 `fonts:check`；换字体是**有意动作**，届时同步更新
+`scripts/check-font-assets.mjs` 里的哈希。完整来源与许可见 `docs/assets-licenses.md`。
 
 ### 构建
 
@@ -371,14 +382,19 @@ npm run prepare:mathjax && npm run prepare:emoji && npm run prepare:converter
 npm run build
 ```
 
-`build` = `prisma generate && node scripts/copy-converter-assets.mjs && next build`，会先按当前 `schema.prisma` 重新生成 Prisma Client，并确保转换器引擎资产就位。
+`build` = `node scripts/build.mjs`：依次 `prisma generate` → `copy-converter-assets`（转换器引擎资产）
+→ `next build` → **`realtime:build`**（`tsc -p services/realtime/tsconfig.json`，实时服务单独编译）。
+先按当前 `schema.prisma` 重新生成 Prisma Client，并确保转换器引擎资产与实时服务产物就位。
 **不要跳过它直接 `next build`**——否则 `node_modules/.prisma/client` 还是上次生成的旧类型，
-schema 新增字段（如 `focusMode`）会报 `Property 'x' does not exist on type 'SafeUser'`。
+schema 新增字段（如 `focusMode`）会报 `Property 'x' does not exist on type 'SafeUser'`；
+实时服务也会漏编译。
 
-生产构建使用 `tsconfig.build.json`：继承现有严格检查选项，检查全部 `src/`、
-`next-env.d.ts` 与 `.next/types/` 中的路由类型。测试、运维脚本与测试框架配置
-由原有 `tsconfig.json` 覆盖，在开发机器上用 `npx tsc --noEmit --project tsconfig.json`
-做完整检查。这样避免在部署时把测试代码也加载进类型检查进程，降低构建内存需求。
+生产构建的类型检查用 `tsconfig.build.json`（`next.config.mjs` 在 `NODE_ENV=production` 时切换）：
+继承根 `tsconfig.json` 的严格选项，只检查 `next-env.d.ts`、`src/**/*.ts(x)` 与 `.next/types/**/*.ts`
+（应用与路由类型），把测试、脚本与实时服务排除在部署类型检查之外，降低构建内存需求。
+开发机上的**完整**检查走 `npm run typecheck`（`tsc -p tsconfig.typecheck.json --noEmit`）：
+覆盖 `src/`、`tests/`、`scripts/`（含根目录 4 个 `.mts`）与 `services/`，且**不读 `.next/types`**
+（构建产物陈旧时会报出指向已删除路由的幻影错误，见 `tsconfig.typecheck.json` 文件头）。
 
 预期：`✓ Generated Prisma Client` + `✓ Compiled successfully` + 70+ 页全列。
 
@@ -634,7 +650,7 @@ journalctl -u raricy-next -f      # 观察启动日志
 | 症状 | 原因 / 兜底 |
 |------|------------|
 | 登录接口返 200 但刷新没登录 | cookie 没 `Secure` 但走 HTTP;或反代未透传 `X-Forwarded-Proto` |
-| **练手盘 / 玩具区在 https 下也 403**（文案「练手盘仅支持 HTTPS 访问」/「玩具仅支持 HTTPS 访问」） | 反代未透传 `X-Forwarded-Proto`:此时 Next 会把「nginx→本站」那段**明文**连接当成对外协议,于是连 https 用户也被判成明文。补上 `proxy_set_header X-Forwarded-Proto $scheme`,见 §6。⚠️ 别拿旧文档里「缺失即放行」的说法去推断——没有那回事,详见 `src/lib/https-guard.ts` 文件头 |
+| **练手盘 / 玩具区在 https 下也 403**（文案「练手盘仅支持 HTTPS 访问」/「玩具仅支持 HTTPS 访问」） | 反代未透传 `X-Forwarded-Proto`:此时 Next 会把「nginx→本站」那段**明文**连接当成对外协议,于是连 https 用户也被判成明文。补上 `proxy_set_header X-Forwarded-Proto $scheme`,见 §6。⚠️ **缺失头时判据是「未确认 http → 放行」**（`isConfirmedHttp` 只在头明确为 `http` 时否决；Next 通常会按 socket 协议自动补这个头，所以「缺失」只在被人为剥头时出现，那一档照实放行、不猜），详见 `src/lib/https-guard.ts` 文件头 |
 | **练手盘 / 玩具区跳到 `https://127.0.0.1:3000`** | 反代未透传 `Host` / `X-Forwarded-Host`,于是 308 拿了上游地址。⚠️ 308 是**永久**重定向、已被浏览器缓存,改完 nginx 还要清缓存(或换浏览器验证) |
 | 全站 POST 403 | `X-Forwarded-Host` 未透传;设 `ALLOWED_ORIGINS` 兜底 |
 | 图床 413 | nginx `client_max_body_size` ≤ 1MB;改成 12m |

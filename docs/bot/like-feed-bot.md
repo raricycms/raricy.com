@@ -117,7 +117,9 @@ Cookie: raricy_session=<JWT>
 
 - **自己赞自己不发**；
 - **取消再点亮也不发第二条** —— 服务端记着一个「这条点赞记录发过通知没有」的标记，
-  取消点赞不碰它。所以「反复点赞取消」刷不出通知，只会烧配额；
+  取消点赞不碰它。所以「反复点赞取消」刷不出通知，只会烧配额。
+  例外：**通知发送抛异常时标记会被放回去**，下次重新点亮仍会补发（只有发送成功、
+  或作者主动关掉 `notifyLike`，标记才保持「已发」）；
 - 通知失败**不会**回滚点赞（钱与状态优先）。
 
 > ⚠️ 机器人**被禁言时仍然点得动赞**（点赞不判禁言）。但别拿它当绕过手段 ——
@@ -271,7 +273,7 @@ Cookie: raricy_session=<JWT>
   "code": 200,
   "message": "获取成功",
   "users": [
-    { "id": "u_xxx", "username": "alice", "avatar_url": "/api/avatar/u_xxx", "liked_at": "2026-09-19 20:31:05" }
+    { "id": "u_xxx", "username": "alice", "avatar_url": "/api/avatar/u_xxx", "frame_url": null, "liked_at": "2026-09-19 20:31:05" }
   ],
   "total": 13, "offset": 0, "limit": 50
 }
@@ -284,7 +286,7 @@ Cookie: raricy_session=<JWT>
   "code": 200,
   "message": "ok",
   "feeders": [
-    { "user_id": "u_xxx", "username": "alice", "avatar_path": null, "amount": 3 }
+    { "user_id": "u_xxx", "username": "alice", "avatar_path": null, "frame_url": null, "amount": 3 }
   ],
   "total": 5, "offset": 0, "limit": 50
 }
@@ -295,6 +297,7 @@ Cookie: raricy_session=<JWT>
 | 数组键 | `users` | `feeders` |
 | 用户 id 字段 | `id` | `user_id` |
 | 头像字段 | `avatar_url`（**永远是** `/api/avatar/<id>`） | `avatar_path`（**可能是 `null`**） |
+| 头像框字段 | `frame_url`（`null` = 没戴 / 已过期） | `frame_url`（同上） |
 | 时间 | `liked_at`（`"YYYY-MM-DD HH:MM:SS"`，UTC+8 墙上时间） | 无 |
 | 排序 | 点赞时间**倒序**（新的在前） | 投喂量**倒序**（多的在前） |
 

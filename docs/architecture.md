@@ -450,7 +450,7 @@ GET/HEAD/OPTIONS 视为安全方法，不校验（协议闸不受这条影响，
 |------|---------|------|
 | 博客正文 / 剪贴板正文 | **统一 ReactiveMD 管线**（服务端静态首屏 + 客户端水合，见 §6.23） | `reactive/read-render.ts` 决策 → `compile-content.ts`；Markdown 与 Reactive 同引擎，**没有 legacy 分支** |
 | 讨论正文 / 评论正文 | **客户端**渲染，同一套管线 | `rich-text.ts`（marked → DOMPurify → 后处理），白名单与链接类名见 `chat-markdown.ts` / `comment-markdown.ts` |
-| 故事正文 | **服务端**渲染 | `src/lib/story-service.ts` 的 `marked` + `stripScripts`。内容由站长直接写在 `instance/stories/`，按可信输入处理，**不走 DOMPurify / highlight.js** |
+| 故事正文 | **服务端**渲染 | `src/lib/story-service.ts` 的 `marked` + `stripScripts`。内容由站长直接写在 `instance/stories/`，按可信输入处理，**不走 DOMPurify、也不做语法高亮** |
 | 内容引用 `[@…]`（评论 / 讨论） | 浏览器渲染时正则替换为剪贴板/投票/图床/收藏夹组件 | `rich-text.ts` 的 `content-refs` 管线（按 id 长度分流：6 位收藏夹 / 8 位剪贴板 / 9 位投票 / 10 位图床）。**表情包不在这条管道上**。两次替换都**按区间切片**、不按内容 `replace`；分流扫的是**盖过码**的副本，所以代码块里的引用一律不展开（指南对读者的承诺）。博客 / 剪贴板正文里的引用改由 reactive 的 ref-adapter / hostData 处理（见 §6.23） |
 | 表情包 `[@合集/表情]` | 浏览器渲染时替换为内联 `<img>`（**仅评论 / 讨论**）。两个来源共用这条管道：站长放的图片（`/api/stickers/` 字节路由）与**内置黄脸**（`/static/emoji/` 静态素材）—— 后者多叠一个 `rich-emoji-ref` 类把自己压成文字大小；**整条正文只有这一张黄脸时**再叠 `rich-emoji-solo`，尺寸退回表情包那一档（判据是「最终 DOM 里只有这一张」） | `src/lib/sticker-refs.ts` 的 `embedStickerRefs`，在 `rich-text.ts` 里紧跟 `embedUserRefs` 之后调用；单发那一档是 `markSoloEmojiFaces`（同一文件），在 `render()` 里**最后**跑（任何新的 `embed*` 都必须排在它上面）；黄脸清单在 `src/lib/emoji-faces.ts` |
 | 音频 `[@音频/<ID>]`（评论 / 讨论） | 浏览器渲染时替换为内联 `<audio controls>`：在**净化后**建 DOM（白名单里没有 audio），一条正文最多展开 3 个；博客 / 剪贴板正文的音频引用走 reactive hostData | `src/lib/audio-refs.ts` 的 `embedAudioRefs`（DOM）。`音频` 是**保留合集名**（表情那条正则带 `(?!用户/)(?!音频/)` 让开），见 §6.15 |
@@ -679,7 +679,8 @@ Promise** —— 拿它当「等到了字体」，MathJax 的公式会用回退�
 
 | 路径 | 档位 | 说明 |
 |------|------|------|
-| `/favorite` · `/favorite/mine/[uuid]` · `/favorite/[publicId]` · `/favorite/guide` | core+ | 后者是公开分享页，解析走 `getPublicFavorite` |
+| `/favorite` · `/favorite/mine/[uuid]` · `/favorite/[publicId]` | core+ | 前者是管理页；`/favorite/[publicId]` 是公开分享页，解析走 `getPublicFavorite` |
+| `/favorite/guide` | **公开（与 `/docs` 同源）** | 收藏夹使用指南；匿名可读，`/docs` 索引与 `docs-catalog.ts` 的 permanentRedirect 都指向它 —— ⚠️ 别照「其余收藏夹页」给它补 core 闸，否则游客从公开文档索引点进来会被送登录页/403 |
 | `/api/favorites`（GET/POST）· `/api/favorites/[id]`（GET/PATCH/DELETE）· `…/items` · `…/copy` · `…/export` · `/api/favorites/import` | core+ | 每条各自判档（§8 的档位阶梯）；`PATCH` **只接受 `title`**，改 `isPublic` 明确报 400 |
 | `/api/poster/favorite/[id]` | core+ | 分享二维码 PNG，复用 `RULES.posterMinute`；**只按公开句柄查**，所以私密收藏夹结构性不可达 |
 | `/api/spider/favorites/[id]` | core+ | 站外机器人的入口，只返回公开且未软删的；spider 系列里**唯一有限频**的一条（鉴权不替代限频） |
@@ -784,6 +785,14 @@ Promise** —— 拿它当「等到了字体」，MathJax 的公式会用回退�
 disallow（断掉「internal 文章 → 307 → next 参数里带 UUID」那条链）、`/api/og/` 开口。
 逐页 / 逐张的粒度由页面 `robots` 元数据与 `X-Robots-Tag` 收 ——
 与 `/api/images/[id]/raw` 按张发头是同一个手法。
+
+**`/static/` 的对外口径（登记，不改行为；R3-607）**：`public/` 下的静态资源（随代码入库的
+素材 + `postinstall` 生成的 `static/{emoji,converter}/`）**匿名可读、无 CSP、无缓存头** ——
+`next.config.mjs` 没有 `headers()`；本站刻意不加 `X-Frame-Options` / CSP `frame-ancestors`
+（允许第三方 iframe，见 `CLAUDE.md`「关键约定」）。`robots.txt` 只靠 `allow: '/'` 覆盖
+`/static/`、**没有**为它写专门规则，`sitemap` 也**不列**这些资源 —— 口径是「可抓、不列举」。
+生成资产在 gitignore 里，`git pull` 不会带来它们；缺了是功能降级（如转换器「引擎加载失败」），
+不是安全闸门。以上是现状，不是待修项。
 
 **可见性变更记账**（`blog_visibility_logs`，迁移 19）：
 `public` 是不可逆的，所以「这篇什么时候被放出去的、改过几次」值得有账。**只记变更、不记创建**
@@ -1870,7 +1879,7 @@ bot 接口，私密夹也能**复制成公开**、能导出 JSON —— 它的�
 | 路径 | 说明 |
 |------|------|
 | `/u/[id]` | **匿名可达**（主页画报二维码把站外人引到这里）。`generateMetadata` 给 `robots: noindex, nofollow` —— `link` 档的语义是「可读、不列举、不索引」，主页可被二维码传播，不能顺带把它挂的文章带进索引 |
-| `PUT /api/profile/blocks` | 整页保存（body `{ blocks }`）。只认会话、只对 core+ 开（产品决定：2026-10 先只开核心用户）；限频 `RULES.profileSave`（30/分）—— 整页替换一个事务里最多 16 次写。**成功响应 `{ count, blocks, isDefault }`**（`apiOk` 把 data 摊平，所以字段在**顶层**，不是 `data.blocks`）：`blocks` 是刚写进库那份经 `resolveViews` 解析后的形状（含 view / 含高卡片 excerpt），客户端拿它**保存后立刻重画**、不必等路由缓存；`isDefault` 同一响应回传，避免「块是新的、isDefault 是旧的」；catalog 不回传（编辑器打开时那一份足够） |
+| `PUT /api/profile/blocks` | 整页保存（body `{ blocks }`）。只认会话、只对 core+ 开（产品决定：2026-10 先只开核心用户）；**不判禁言** —— 改的是自己的展示数据，与剪贴板 / 投票同族（禁言是「不能说话」，不该连自己的主页都改不了）；限频 `RULES.profileSave`（30/分）—— 整页替换一个事务里最多 16 次写。**成功响应 `{ count, blocks, isDefault }`**（`apiOk` 把 data 摊平，所以字段在**顶层**，不是 `data.blocks`）：`blocks` 是刚写进库那份经 `resolveViews` 解析后的形状（含 view / 含高卡片 excerpt），客户端拿它**保存后立刻重画**、不必等路由缓存；`isDefault` 同一响应回传，避免「块是新的、isDefault 是旧的」；catalog 不回传（编辑器打开时那一份足够） |
 
 **词汇表 `src/lib/profile-blocks.ts` 是零依赖的**：块类型 / 四档尺寸 / 单块与整页校验 /
 网格找空位 / 手机投影与换位（`projectMobile` / `mobileColumn` / `mobileOrder` /
@@ -2130,7 +2139,7 @@ Quoted-printable / 哈希 / AES）`legacy: true`，仍指向 `/tool/<slug>` —�
 
 ### 7.3 浏览一篇文章（读路径）
 
-文章时间在详情页、站内/公开列表与个人主页共用 `BlogTimestamps`：发布时间读
+文章时间在文章详情页与两个列表（站内 `/blog`、对外 `/explore`）共用 `BlogTimestamps`：发布时间读
 `Blog.createdAt`，更新时间读 `BlogContent.updatedAt`。详情默认显示完整日期，用原生
 `<details>` 展开到秒的完整北京时间（鼠标、触屏和键盘都可用）。列表仅显示一枚短日期：
 今年如「10月11日」，其他年份如「2025年10月11日」，今年按 `nowForDb().getUTCFullYear()`

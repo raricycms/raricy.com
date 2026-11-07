@@ -126,7 +126,7 @@ Content-Type: application/json
 | `focusBlockLobby` | boolean | 专注模式里是否屏蔽讨论大区（默认 `true`） |
 | `focusBlockGames` | boolean | 专注模式里是否屏蔽玩具区（默认 `true`） |
 | `focusBlockFishTrade` | boolean | 专注模式里是否屏蔽鱼干练手盘（默认 `true`） |
-| `focusHideCategories` | number[] \| null | 专注模式要屏蔽的博客栏目 id；`null` = 站长默认集合，`[]` = 一个都不屏蔽 |
+| `focusHideCategories` | number[] \| null | 专注模式要屏蔽的博客栏目 id；`null` = 站长默认集合，`[]` = 一个都不屏蔽。**形状不对（非数组 / 含非正整数）整包 400 `请求体格式错误`**，不是静默忽略 |
 
 成功：
 
@@ -185,7 +185,7 @@ Content-Type: application/json
 |------|------|----------|
 | 讨论大区 | `focusBlockLobby` | 大区对你不进未读、不推 SSE、顶栏「讨论」红点不计大区；私聊照常 |
 | 玩具区 | `focusBlockGames` | `/game` 与游戏直达页换成设置提示，四个 `launch` 接口 403 |
-| 鱼干练手盘 | `focusBlockFishTrade` | 两页 403、四个接口一律 403（含只读的 `quote` / `candles`）；鱼干商城与转账不受影响 |
+| 鱼干练手盘 | `focusBlockFishTrade` | 三页 403（`/fish/trade`、`/fish/trade/stats`、`/fish/trade/history`）、四个接口一律 403（含只读的 `quote` / `candles`）；鱼干商城与转账不受影响 |
 | 博客栏目 | `focusHideCategories` | 博客列表 / 侧栏 / 搜索隐藏所选栏目及其子栏目的文章 |
 
 三个布尔子项的默认值都是 `true`，`focusHideCategories` 默认 `null` ——
@@ -294,7 +294,9 @@ Cookie: raricy_session=<JWT>
 }
 ```
 
-> ⚠️ **`actor` 里没有头像字段**；actor 已注销时为 `{ "id": null, "username": "system" }`。
+> ⚠️ **`actor` 里没有「头像 URL」之外的图片字段**：`frameUrl` 是服务端按当前装备算出的
+> 头像框贴图地址（未装备 / 过期 / 素材缺失时为 `null`），不是「头像本身」；actor 已注销时为
+> `{ "id": null, "username": "system", "frameUrl": null }`。
 >
 > ⚠️ `object` 是**嵌套对象**（`{type, id}`），不是两个平铺字段。
 >
@@ -340,27 +342,32 @@ POST /api/notifications/read-all
 |------|------|
 | body 缺 `notification_ids` / 不是对象 | `400 缺少必要的参数` |
 | `notification_ids` 不是数组 | `400 通知ID必须是数组` |
+| 数组超过 200 条 | `400 一次最多处理 200 条通知` |
+| 数组里有非字符串项 | `400 通知ID必须都是字符串` |
 | 单条不存在 / 不是你的 | `404 删除失败，通知不存在或无权限` |
 
-> ⚠️ **通知是全站唯一「删就是真删」的表** —— 没有软删标记，删掉不留痕、不可恢复。
+> ⚠️ **通知的删除是「真删」** —— 用户删掉就不可恢复，没有面向用户的软删恢复入口。
+> 表里另有一个 `hidden_at`，但它只由**归档流程**写（归档期间把通知藏起来），不对用户暴露；
+> 别把两者混成「通知有软删」。
 > 这与博客 / 评论 / 图片的软删语义**相反**，别按那边的直觉写机器人。
 >
 > ✅ **越权是安全的**：别人的 id 混进来只会「匹配不到」（按收件人过滤），
 > 不会被删掉，也不会报错。返回的 `count` 永远是**真的删掉了几条**。
 >
-> 📌 数组里的**非字符串项会被静默丢掉**（不会 500）。所以
-> `count` 可能小于你传的条数 —— 那是正常的。
+> 📌 非字符串项是 **400 拒绝**（历史文档写的「静默丢掉」已不成立）：静默过滤会让调用方
+> 以为那些 id 也被处理了。单次上限 200 条 —— 超过不会 500，而是明确回 400。
 
 ### 5.5 批量的两条共用规则
 
-`batch-delete` 与 `batch-mark-read`（`POST`，同样的请求体）共用同一套入参解析与文案（§5.4 的表）。
-`batch-mark-read` 的成功响应是：
+`batch-delete`（**DELETE**）与 `batch-mark-read`（**POST**）共用同一套请求体与入参解析、
+文案（§5.4 的表）。`batch-mark-read` 的成功响应是：
 
 ```json
 { "code": 200, "message": "已标记 3 个通知为已读", "count": 3 }
 ```
 
-> ⚠️ **没有条数上限** —— 但别拿几千个 id 打它，那是无意义的负载。
+> ⚠️ **单次最多 200 条**（两条端点同一个上限）—— 超过回 `400 一次最多处理 200 条通知`，
+> 不是 500，也不是静默截断。
 
 ### 5.6 最轻的一次探测（**免登录**）
 
@@ -617,6 +624,9 @@ Cookie: raricy_session=<JWT>
 
 - **按需要设置通知偏好。** `notifyLike` 等开关控制互动通知，`notifyAdmin` 控制站务通知。
   可分别开启或关闭，需要接收时也可随时重新开启；强制通知不受这些开关影响。
+  ⚠️ 站长定向发通知（`POST /api/admin/notify-user`）受 `notifyAdmin` 管辖：关掉它的用户
+  不会收到，接口回 **200 `{ "suppressed": true }`**（不是失败）。群发 `/api/admin/broadcast`
+  走强制通知，不受开关影响。
 - **别轮询通知列表。** 要实时就开 SSE（§5.7），要对账就先用 `count`（§5.6）当筛子；
   直接 `/api/notifications` 循环拉是本站最没必要的负载之一。
 - **禁言历史是公开信息（对 core+）。** 拿它做「这个用户被禁过几次」的画像不违法，
@@ -637,7 +647,8 @@ Cookie: raricy_session=<JWT>
 | `403 需要认证用户权限` | 禁言历史要 core+（这条文案与别处的「核心用户」不同） |
 | `role` 是 `null` | 你没资格看（你不是本人也不是 core+），**不是**「他是普通用户」（§6） |
 | 通知删了找不回来 | 通知是**硬删**，全站唯一（§5.4） |
-| 批量删的 `count` 小于传入条数 | 数组里的非字符串项被丢掉，或有些 id 不是你的（§5.4） |
+| 批量删的 `count` 小于传入条数 | 有些 id 不是你的（越权项匹配不到，静默跳过）。**非字符串项不是这个原因**，它会 400 |
+| 批量删/批量已读回 `400 通知ID必须都是字符串` | 数组里混了数字 / null / 对象 —— 逐元素校验后拒绝，不再静默丢掉 |
 | `count` 路由解构不到 `message` | 它**没有** `message` 字段，且 `chatUnread` 是布尔（§5.6） |
 | 开了专注模式后 SSE 断了 | 刻意的：改 `focusMode` 会踢讨论流，重连即可（§4） |
 | 改密后所有请求 `401` | 正常的：`session_version` +1 作废了所有旧 cookie —— 重新登录（§9） |

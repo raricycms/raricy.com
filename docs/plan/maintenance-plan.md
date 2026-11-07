@@ -13,7 +13,7 @@
 
 | 事项 | 当前状态 | 处理范围与验收 |
 |------|----------|----------------|
-| 剪贴板表单的页面外壳 | 待修：组件与页面都带 `clipboard-page`；新建页重复主标题 | `UploadForm.tsx` 的外壳责任交还新建 / 编辑页面；验收两页仅一层容器、各有一个主标题，宽度与内距不重复 |
+| 剪贴板表单的页面外壳 | 已修：外壳只在页面（`clipboard/upload`、`clipboard/[id]`、`/[id]/edit`、列表页 `ClipboardMenu`），`UploadForm.tsx` 不再带 `clipboard-page` 与主标题 | 再改时保持「页面一层容器、页面一个主标题」，组件不持页面外壳 |
 | 后台文章管理容器 | 结构性待办：当前由 `AdminArticlesManager.tsx` 提供 `admin-container`，尚未双重嵌套 | 将整页容器责任上提至 `admin/blogs/page.tsx`；当前几何不变，组件复用时不再带页面外壳 |
 | 收款错误组件的外壳责任 | 可选整理：`PayError.tsx` 带整页 `content-wrapper`，当前 early-return 分支不冲突 | 有复用需求再分离外壳与内容；先核对 `/fish/pay` 与 `/fish/collect` 错误分支，遵守收银台 DOM 契约 |
 | `.current-category` 死规则 | 待清理：当前没有渲染消费方，博客样式仍保留 `.current-category .badge` | 删除前核对模板和脚本；避免重新启用半透明白底白字的过时配方 |

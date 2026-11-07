@@ -554,7 +554,7 @@ curl -s -b "$JAR" -X POST "$BASE/api/fish/trade/sell" \
 curl -s -b "$JAR" "$BASE/api/fish/balance?type=market_all"
 ```
 
-> 📌 **本站的时间戳格式**：`opened_at` 等字段是标准 ISO-8601（真 UTC）。
-> 而 `fish` 流水里的 `created_at` 是「UTC+8 墙上时间贴 `Z` 标签」的**假 Z**，
-> 比标准 UTC 快 8 小时 —— 两者别混用。完整说明见 `docs/bot/fish-bot.md` §3.3。
-> K 线的 `openTime` 又是第三把钟（交易所给的真 UTC 毫秒），见 §3.1。
+> 📌 **本站的时间戳格式**：`opened_at` 等字段来自 `nowForDb()`，与 `fish` 流水里的
+> `created_at` 一样是「UTC+8 墙上时间贴 `Z` 标签」的**假 Z**，比标准 UTC 快 8 小时 ——
+> 别当标准 UTC 用。完整说明见 `docs/bot/fish-bot.md` §3.3。
+> K 线的 `openTime` 是另一把钟（交易所给的真 UTC 毫秒），见 §3.1。三把钟别混用。

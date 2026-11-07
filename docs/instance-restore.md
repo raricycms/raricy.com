@@ -68,17 +68,17 @@ npm run db:normalize
 
 ```bash
 npm run migrate -- mark 0_init   # 表已存在 → 只登记，不执行 SQL
-npm run migrate -- up            # 应用基线之后的全部迁移（现为 1_oauth … 11_comment_attachments）
+npm run migrate -- up            # 应用基线之后的全部迁移（现为 1_oauth … 42_retire_residual，共 42 个）
 ```
 
 `0_init` 是从历史库反向生成的建表 SQL。**跳过 `mark` 直接 `up` 会在第一条 `CREATE TABLE "users"` 上失败**（表已存在）；失败不会留下半截 —— 第一条就炸，跟踪表也无记录。
 
-实测约 23 秒（撰写时为 9 个迁移；现已增至 11 个，耗时会略增）。
+实测约 23 秒（撰写时为 9 个迁移）；现为 42 个后续迁移，耗时会相应增加（未重新实测）。
 
 ## 4. 验证
 
 ```bash
-npm run migrate -- status   # Pending 空；Applied = 迁移总数（当前 12 条 = 0_init + 11 个后续迁移）
+npm run migrate -- status   # Pending 空；Applied = 迁移总数（当前 43 条 = 0_init + 42 个后续迁移）
 npm run migrate -- verify   # checksum 一致
 npm run diagnose            # 段 2/3 绿；段 4 需生产 SECRET_KEY
 ```

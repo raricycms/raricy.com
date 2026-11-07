@@ -4,6 +4,10 @@
 > 持久快照、回填与「正文 / 快照同事务」的要求已由
 > `docs/plan/reactive-md-simplification-plan.md` 撤销。远端 PR #20 合并、生产发布与发布
 > 范围确认尚未执行，仓库内无法核实。逐阶段过程记录（P0–P6 各轮收口、终审）见 Git 历史。
+>
+> **2026-11 校订（R3-703）**：§1 把 effective format 的推导归给 `format-mode.ts` 不成立 ——
+> 该文件只导出 `mightContainReactiveSyntax` 与类型，真正判定在 `format-observer` /
+> `detect-format`；工具条第一入口现名「格式」。
 
 ## 1. 当前事实与入口
 

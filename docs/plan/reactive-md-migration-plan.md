@@ -4,6 +4,12 @@
 > `docs/plan/reactive-md-simplification-plan.md` 与 `src/lib/reactive/read-render.ts` 定义；
 > 旧 `src/lib/renderer-select.ts` 已随 legacy 渲染整条退役删除（`3f2508c6`）。
 > 当前依赖 `reactive-md@0.7.0`，0.5.x 协议细节与分阶段记录见 Git 历史。
+>
+> **2026-11 校订（R3-703）**：§10 的「Node ≥22.12 但 engines 写 ≥20」「print.css 由总样式
+> 间接导入」已过时 —— `package.json` 的 `engines` 现为 `>=22.12.0`；print.css **明确不 import**
+> （见 `ReactiveDocument.tsx` 与 `export.ts` 注释），站点打印规则在 `_reactive-md.scss` 的
+> `@media print`。D1 的「五类引用都改写成宿主标签」也不成立：图床输出行内 `![](…/raw)`，
+> 宿主 kind 枚举是 6 项（`host-components.ts`）。
 
 ## 1. 当前事实与入口
 

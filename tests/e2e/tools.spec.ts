@@ -47,8 +47,9 @@ test('工具菜单不含指向外部站的工具链接（绝对 URL 会 404）',
   );
   expect(hrefs.length).toBeGreaterThan(0);
 
-  // 工具卡片一律走站内相对路径。绝对 URL（http://…）意味着指向了外部站。
-  const external = hrefs.filter((h) => /^https?:\/\//.test(h));
+  // 工具卡片一律走站内相对路径。绝对 URL（http://…）、协议相对（//host/…）与其它
+  // scheme（mailto: 等）都意味着指向了站外 —— 判据不能只挡 `http(s)://`。
+  const external = hrefs.filter((h) => /^(?:[a-z][a-z0-9+.-]*:|\/\/)/i.test(h));
   expect(external, `这些工具链接指向站外：${external.join(', ')}`).toEqual([]);
 
   // 2026-10 起「编码 / 解码」与「加密 / 安全」不再平铺在工具箱主页，而是和新增的

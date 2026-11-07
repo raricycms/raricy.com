@@ -232,7 +232,8 @@ IntersectionObserver + 30ms stagger（最多 5 张卡），reduced-motion 下关
 
 验证：
 
-- `npx tsc --noEmit`、`npm run lint`、`npm run test`；
+- `npm run typecheck`、`npm test`（**`npm run lint` 不存在**，仓库不把它当门禁；
+  `npx tsc --noEmit` 是已弃用的旧入口，会读到陈旧的 `.next/types`）；
 - `npm run build && npm run e2e`（注意 `npm run e2e` 不自动 build，读的是旧 `.next`）；
   重点盯 `tests/e2e/page-gutter.spec.ts`、`tests/e2e/favorite-layout.spec.ts`、
   `tests/e2e/comment-layout.spec.ts`、`tests/e2e/clipboard-layout.spec.ts`、

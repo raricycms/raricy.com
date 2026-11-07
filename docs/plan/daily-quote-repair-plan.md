@@ -2,6 +2,12 @@
 
 > 状态：已实施（2026-10-29）；往期回看、累计一次共鸣与旧记录保留均已上线，参与门槛与部分
 > 细则此后调整过。当前行为以 `docs/architecture.md` §6.22 与服务实现为准，经过见 Git 历史。
+>
+> **2026-11 校订（R3-705）**：①「同一句 90 天后再次入选」是**本修复方案当时**的口径，现行
+> 候选池对社区稿只选登一次（`daily-quote-service.ts` 的 `firstSelectedDay: null` +
+> `editions: { none: {} }`）；②不变量 4「社区稿由付款者付 1 条并全额交给投稿人」现行是
+> 三元式 —— `kind === 'community' && canReceive(recipient) ? QUOTE_RESONANCE_FISH : 0`，
+> 收款人失格 / 禁言时**双方都不动鱼干**。
 
 ## 1. 当前事实与入口
 

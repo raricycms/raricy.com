@@ -98,11 +98,15 @@ Content-Type: application/json
 { "code": 200, "message": "ok", ...其他数据字段 }
 ```
 
-出错时 `code` 与 HTTP 状态码一致，且**只有** `code` 和 `message`：
+出错时 `code` 与 HTTP 状态码一致，通常只有 `code` 和 `message`：
 
 ```json
 { "code": 400, "message": "未知字段 \"category\"，……" }
 ```
+
+> ⚠️ **一个例外**：正文格式写入闸门失败时（400）会多一个 `error_code` ——
+> `invalid_content_format` / `content_format_mismatch` / `content_unrenderable`。
+> 站外按错误码分支比匹配中文 `message` 稳（文案会变，码是契约）。
 
 | 状态码 | 含义 | 常见 message |
 |--------|------|--------------|

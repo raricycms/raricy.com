@@ -356,6 +356,14 @@ M1 清理 Vditor 前保存实际编辑页的资源 / 体积基线，并核对字
 
 ### 7.1 实施记录（2026-10）
 
+> **2026-11 校订（R3-702）**：本节与 §7.1.1 / §7.1.2 里提到的 `content-ref-processor.ts` /
+> `content-ref-resolver.ts` / `blog-renderer.ts` / `blog-content-dom.ts` / `MarkdownRenderer.tsx` /
+> `useHljsThemeStyles.ts` / `preprocessRound`，均已在 `3f2508c6` 随 legacy Markdown 渲染整条退役
+> **删除**；当前完整预览与正文共用 ReactiveMD 管线（`compileLocal` → `LocalDocumentView`）。
+> §7.1.1 的「样式表与媒体仍要联网、没有 data: 内联」也已过时：`markdown-editor/export.ts`
+> 会把同源样式抄成 `<style>`、把允许的图片转成 `data:`（单图 12MiB / 合计 32MiB / 20s 预算）；
+> 私有媒体仍按站内读口判权、**不**内联。
+
 **M0 交付**：`content-ref-resolver.ts`（取数与缓存：类型化键、同键在飞去重、代际切换的
 `invalidate()`、容量上限；`'expand'` 与 `'external'` 的分档判据也搬到了这里）、
 `content-ref-processor.ts`（整篇扫描 / 按区间切片 / 盖码顺序 / 引用预算）、
