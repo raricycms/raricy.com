@@ -4,7 +4,6 @@ import { requireCoreUser } from '@/lib/guard';
 import { getTodayStatus, getCountLeaderboard } from '@/lib/checkin-service';
 import CheckinCard, { CheckinLeaderboards } from '@/app/components/CheckinCard';
 import Link from 'next/link';
-import QuoteBlogRequired from '@/app/components/QuoteBlogRequired';
 import PageHeader from '@/app/components/PageHeader';
 
 // 签到 = 每日领鱼干，档位是 **core+**（与投喂、点赞、剪贴板同档）。
@@ -30,27 +29,16 @@ export default async function CheckinPage() {
         title="每日签到"
         actions={<Link href="/quotes" className="page-header__action">每日一言</Link>}
       />
-      {status.canCheckIn ? (
-        <CheckinCard
-          checkedIn={status.checkedIn}
-          totalCount={status.totalCount}
-          todayFish={status.todayFish}
-          rewardFish={status.rewardFish}
-          today={status.today}
-          username={user.username}
-        />
-      ) : (
-        // 前置条件未满足（没发过未软删的文章）：渲染引导而不是签到按钮 ——
-        // 留一个点了 403 的按钮比不给更糟（判据与档位入口相反：这里不是「档位不够、
-        // 入口照给」，而是「这一步现在做不了、先去做另一件他能做的事」）。
-        <div className="checkin-card checkin-card--guidance">
-          <div className="checkin-card__header">
-            <span className="checkin-card__greeting">你好，{user.username}</span>
-            <span className="checkin-card__date numeric">{status.today}</span>
-          </div>
-          <QuoteBlogRequired embedded purpose="checkin" />
-        </div>
-      )}
+      {/* 资格已在服务端统一判过：未归档 core+、当前未禁言。2026-11-07 P01 起不再要求
+          发过文章，所以这里不再有「先发文章」引导态（原 QuoteBlogRequired 分支已删）。 */}
+      <CheckinCard
+        checkedIn={status.checkedIn}
+        totalCount={status.totalCount}
+        todayFish={status.todayFish}
+        rewardFish={status.rewardFish}
+        today={status.today}
+        username={user.username}
+      />
 
       <CheckinLeaderboards countEntries={countLb} currentUserId={user.id} />
     </div>

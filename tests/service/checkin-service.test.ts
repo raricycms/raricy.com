@@ -23,7 +23,6 @@ import {
   checkIn,
   getTodayStatus,
   getCountLeaderboard,
-  hasPublishedBlog,
   CHECKIN_REWARD_FISH,
 } from '@/lib/checkin-service';
 import { getTodayCheckinFish } from '@/lib/fish-service';
@@ -403,7 +402,7 @@ describe('getTodayStatus', () => {
 
     expect(await getTodayStatus(u.id)).toEqual({
       checkedIn: false,
-      canCheckIn: false, // 这个号没发过文章（见下方 hasPublishedBlog 一组）
+      canCheckIn: false, // role=user（P01 起资格只看 core+/归档/禁言，与发文无关）
       totalCount: 0,
       today: '2026-07-16',
       rewardFish: CHECKIN_REWARD_FISH,
@@ -482,41 +481,53 @@ describe('getTodayStatus', () => {
   });
 });
 
-// ── 签到的内容前置条件（发布过文章） ─────────────────────────────────────────
+// ── 签到资格（P01：未归档 core+ 且当前未禁言；与「发过文章」无关） ──────────────
 //
-// 【为什么在服务层测】这道门**不在 checkIn() 里**（与档位同款：页面与两个方法各自判，
-// checkIn 是纯发鱼内核）。服务层能测的是判据 hasPublishedBlog 与 getTodayStatus 回传的
-// canCheckIn —— 路由那一层的 403 由 e2e 钉（tests/e2e/checkin.spec.ts）。
-describe('hasPublishedBlog（签到的内容前置条件）', () => {
-  it('没发过 → false；发了一篇未软删的 → true', async () => {
-    const u = await makeUser();
-    expect(await hasPublishedBlog(u.id)).toBe(false);
-    await makeBlog({ authorId: u.id });
-    expect(await hasPublishedBlog(u.id)).toBe(true);
-  });
-
-  it('★ 软删（ignore=true）不算 —— 全删光等于没发过', async () => {
-    const u = await makeUser();
-    await makeBlog({ authorId: u.id });
-    await prisma.blog.updateMany({ where: { authorId: u.id }, data: { ignore: true } });
-    expect(await hasPublishedBlog(u.id), '发过又全删 = 没发过').toBe(false);
-  });
-
-  it('只数自己的：别人的文章不算我的产出', async () => {
-    const a = await makeUser();
-    const b = await makeUser();
-    await makeBlog({ authorId: b.id });
-    expect(await hasPublishedBlog(a.id)).toBe(false);
-  });
-
-  it('getTodayStatus.canCheckIn 跟着文章走（发 / 删都反映出来）', async () => {
+// 【为什么在服务层测】资格判据只有一处：`getTodayStatus().canCheckIn`（页面与两个 API
+// 方法共用）。checkIn() 仍是纯发鱼内核，路由层的 403 由 e2e 钉。
+// 【2026-11-07 起】不再有「名下有未删除博客」这道门：零博客成员可签，发过又全删也仍可签。
+describe('getTodayStatus.canCheckIn（签到资格）', () => {
+  it('普通账号（role=user）不够格；core 够格', async () => {
     freezeUtc('2026-07-15T04:00:00.000Z');
-    const u = await makeUser();
-    expect((await getTodayStatus(u.id)).canCheckIn).toBe(false);
+    const plain = await makeUser();
+    expect((await getTodayStatus(plain.id)).canCheckIn).toBe(false);
+    const core = await makeUser({ role: 'core' });
+    expect((await getTodayStatus(core.id)).canCheckIn).toBe(true);
+  });
+
+  it('★ 与发文解耦：零博客 core 可签；发过又全删也仍可签', async () => {
+    freezeUtc('2026-07-15T04:00:00.000Z');
+    const u = await makeUser({ role: 'core' });
+    expect((await getTodayStatus(u.id)).canCheckIn, '零博客不再受限').toBe(true);
     await makeBlog({ authorId: u.id });
-    expect((await getTodayStatus(u.id)).canCheckIn).toBe(true);
+    expect((await getTodayStatus(u.id)).canCheckIn, '发一篇也不改变资格').toBe(true);
     await prisma.blog.updateMany({ where: { authorId: u.id }, data: { ignore: true } });
-    expect((await getTodayStatus(u.id)).canCheckIn, '删光后又不能签了').toBe(false);
+    expect((await getTodayStatus(u.id)).canCheckIn, '删光最后一篇也不改变资格').toBe(true);
+    // 而且真的签得进去（资格与发鱼一致，不只是状态字段对）
+    const r = await checkIn(u.id);
+    expect(r.alreadyChecked).toBe(false);
+  });
+
+  it('禁言中的 core 不能签；解除后恢复', async () => {
+    freezeUtc('2026-07-15T04:00:00.000Z');
+    const u = await makeUser({ role: 'core', isBanned: true, banUntil: null });
+    expect((await getTodayStatus(u.id)).canCheckIn, '永久禁言').toBe(false);
+    await prisma.user.update({ where: { id: u.id }, data: { isBanned: false } });
+    expect((await getTodayStatus(u.id)).canCheckIn).toBe(true);
+
+    // 限时禁言：banUntil 在未来 → 仍不能签
+    const temp = await makeUser({ role: 'core', isBanned: true, banUntil: new Date('2026-07-16T00:00:00.000Z') });
+    expect((await getTodayStatus(temp.id)).canCheckIn, '禁言到 07-16，07-15 不能签').toBe(false);
+    // banUntil 已过 → 恢复（isBanned 列不再拦，见 isCurrentlyBanned 的到期语义）
+    await prisma.user.update({ where: { id: temp.id }, data: { banUntil: new Date('2026-07-14T00:00:00.000Z') } });
+    expect((await getTodayStatus(temp.id)).canCheckIn).toBe(true);
+  });
+
+  it('归档的 core 不能签', async () => {
+    freezeUtc('2026-07-15T04:00:00.000Z');
+    const u = await makeUser({ role: 'core' });
+    await prisma.user.update({ where: { id: u.id }, data: { archivedAt: new Date() } });
+    expect((await getTodayStatus(u.id)).canCheckIn).toBe(false);
   });
 });
 

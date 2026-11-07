@@ -275,10 +275,10 @@ function updateCheckinIndicator() {
         .then(data => {
             const badge = document.getElementById('checkinBadge');
             if (!badge) return;
-            // 亮徽标 = 「今天还没签 **且** 够格签」。can_check_in 为 false（名下没有未删
-            // 文章）时不亮 —— 否则会点亮一个点进去必然 403 的假徽标，正是 §8 那条
-            // 「门禁收紧、入口照给，但别给『你能用』的假信号」要防的。字段缺失（旧响应）
-            // 同样按不亮处理，宁可少提示也别骗人。
+            // 亮徽标 = 「今天还没签 **且** 够格签」。can_check_in 为 false 只出现在
+            // 「未归档 core+ 之外 / 当前禁言」这类明确没资格的情形（2026-11-07 P01 起
+            // 不再与「发过文章」挂钩）—— 不亮是为了避免点亮一个点进去必然 403 的假徽标。
+            // 字段缺失（旧响应）同样按不亮处理，宁可少提示也别骗人。
             if (data.can_check_in === true && !data.checked_in) {
                 badge.style.display = 'flex';
             } else {

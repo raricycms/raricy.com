@@ -1,4 +1,6 @@
-import { expect, request, type Page, type APIRequestContext } from '@playwright/test';
+import { expect, type APIRequestContext, type Page } from '@playwright/test';
+import { PrismaClient } from '@prisma/client';
+import { randomBytes } from 'node:crypto';
 import { SEED_PASSWORD, SEED_USERS } from './seed';
 
 /** 唯一后缀：注册类用例每次都要新用户名，且 desktop / mobile 两个 project 会把同一个
@@ -152,22 +154,53 @@ export async function loginViaApi(page: Page, username: string) {
  *   光注册是用不了的，得先过邀请码认证。用例若忘了提权，会拿到 403，
  *   看起来像鉴权坏了，其实是没认证。
  */
-/** 邀请注册使用真实一次性邀请码；只由本地 e2e 种子站长签发。 */
-let inviteIssuer: { origin: string; state: Awaited<ReturnType<APIRequestContext['storageState']>> } | null = null;
-export async function freshInvite(page: Page): Promise<string> {
-  // 只复用种子签发者会话，不反复消耗同一账号的密码计算预算；被测注册仍走真实接口。
-  const origin = inviteIssuer?.origin ?? new URL((await page.request.get('/login')).url()).origin;
-  const issuer = await request.newContext({ baseURL: origin, storageState: inviteIssuer?.state });
-  try {
-    if (!inviteIssuer) {
-      const login = await issuer.post('/api/auth/login', { data: { username: SEED_USERS.owner.username, password: SEED_PASSWORD } });
-      expect(login.status()).toBe(200);
-      inviteIssuer = { origin, state: await issuer.storageState() };
+/**
+ * 邀请注册使用一次性邀请码。
+ *
+ * 【2026-11-07 P01 起不再走网页 /zhh】网页发码入口已关闭（410），邀请码只由运维 CLI
+ * 签发。e2e 作为测试夹具需要真实的一次性码，因此**直连本轮 E2E 库**插一枚：
+ * 码的形状与 `src/lib/invite-code.ts` 完全一致（64 位随机 → base62 右填到 12 位），
+ * 注册接口仍走真实 HTTP（这才是被测链路）。生产路径不经过这里。
+ * 注意：**不能 import `src/lib/invite-code`** —— 它拖着 `@/lib/db`，而在 Playwright
+ * worker 里那个单例会连到 .env 指向的真实库，绝不能为了发一枚测试码去碰它。
+ */
+const INVITE_CHARSET = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
+let inviteDb: PrismaClient | null = null;
+
+function inviteClient(): PrismaClient {
+  const file = process.env.E2E_DB;
+  if (!file) throw new Error('缺少 E2E_DB —— 无法为 e2e 生成邀请码夹具');
+  inviteDb ??= new PrismaClient({ datasources: { db: { url: `file:${file}` } } });
+  return inviteDb;
+}
+
+function newInviteCodeValue(): string {
+  const buf = randomBytes(8); // 64 位，与 invite-code.ts 的取数方式一致
+  let raw = 0n;
+  for (const b of buf) raw = (raw << 8n) | BigInt(b);
+  let out = '';
+  while (raw > 0n) {
+    out = INVITE_CHARSET[Number(raw % 62n)] + out;
+    raw /= 62n;
+  }
+  return out.padEnd(12, '0').slice(0, 12);
+}
+
+/** `page` 参数保留仅为旧调用点兼容：取码不再依赖任何浏览器会话。 */
+export async function freshInvite(page?: Page): Promise<string> {
+  void page;
+  const db = inviteClient();
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const code = newInviteCodeValue();
+    try {
+      await db.inviteCode.create({ data: { code, isUsed: false, createdAt: new Date() } });
+      return code;
+    } catch (e) {
+      // 12 位 base62 撞码概率极低，但 @unique 仍是最终防线：重试一次即可。
+      if ((e as { code?: string }).code !== 'P2002') throw e;
     }
-    const response = await issuer.get('/zhh');
-    expect(response.status()).toBe(200);
-    return (await response.text()).trim();
-  } finally { await issuer.dispose(); }
+  }
+  throw new Error('生成 e2e 邀请码失败（连续 5 次唯一约束冲突）');
 }
 
 export async function registerFreshUser(

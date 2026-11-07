@@ -47,8 +47,7 @@ async function myBalance(page: Page): Promise<number> {
 }
 
 test('点击签到 → 固定 +3 条鱼干；同日再签被拒且不再发鱼', async ({ page }) => {
-  await registerFreshUser(page, { core: true });
-  await publishBlog(page); // 签到的前置条件：名下至少一篇未软删的文章
+  await registerFreshUser(page, { core: true }); // P01：零博客也可签，无需先发文章
 
   await page.goto('/checkin');
   const btn = page.locator('.checkin-button');
@@ -99,13 +98,12 @@ test('点击签到 → 固定 +3 条鱼干；同日再签被拒且不再发鱼',
 
 test('状态接口的形状：签到前后各一次（机器人按它决定要不要签）', async ({ page }) => {
   await registerFreshUser(page, { core: true });
-  await publishBlog(page); // 同上：得先跨过内容前置条件
 
   const before = await page.request.get('/api/checkin');
   expect(before.status()).toBe(200);
   expect(await before.json()).toMatchObject({
     checked_in: false,
-    can_check_in: true, // 有文章 → 够格签
+    can_check_in: true, // core+ 且未禁言 → 够格签（P01 起与文章无关）
     total_count: 0,
     today_fish: 0,
     dried_fish: 0,
@@ -125,51 +123,53 @@ test('状态接口的形状：签到前后各一次（机器人按它决定要�
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 内容前置条件：没发过文章不能签到（2026-10）
+// 资格口径（2026-11-07 P01）：**未归档 core+ 且当前未禁言**即可签到；与「发过文章」无关。
 //
-// 【为什么要有】它是抬高批量空号成本的那道门（见 checkin-service.ts 头部）。三条边界
-// 只有真发 HTTP 才验得到：状态接口**不拒**（回 can_check_in:false —— 状态读不是签发
-// 动作，且客户端要靠显式的 false 把「没资格」与「请求失败」分开）、写接口**拒**、
-// 页面给引导态而不是一个点了必 403 的按钮。
+// 【为什么要有】旧规则（2026-10）要求名下至少一篇未软删文章，现已被产品决定取消。
+// 三条边界只有真发 HTTP 才验得到：零博客 core 状态接口回 can_check_in:true（不拒）、
+// 写接口放行并真发鱼、页面直接给签到按钮而不是「先发文章」引导。
 // ─────────────────────────────────────────────────────────────────────────────
-test('没发过文章：状态接口回 can_check_in=false（不 403），写接口 403，页面给引导', async ({ page }) => {
+test('零博客 core：状态回 can_check_in=true，签到成功发 3 条鱼，重复请求不重复记账', async ({ page }) => {
   await registerFreshUser(page, { core: true }); // 有 core 但一篇文章都没有
 
   const st = await page.request.get('/api/checkin');
-  expect(st.status(), '状态读不该拒 —— 要用 200 + 显式 can_check_in:false 表达「没资格」').toBe(200);
-  expect(await st.json()).toMatchObject({ checked_in: false, can_check_in: false });
+  expect(st.status(), '状态读是 200').toBe(200);
+  expect(await st.json()).toMatchObject({ checked_in: false, can_check_in: true });
+
+  // 页面直接给签到按钮（不再有「先发文章」引导态）
+  await page.goto('/checkin');
+  const btn = page.locator('.checkin-button');
+  await expect(btn).toBeVisible();
+  await expect(btn).toContainText('每日签到');
 
   const ci = await page.request.post('/api/checkin', { data: {} });
-  expect(ci.status(), '写接口必须挡死').toBe(403);
-  const body = await ci.json();
-  expect(body.message).toContain('发布过文章');
-  expect(body.can_check_in).toBe(false);
+  expect(ci.status(), '零博客 core 必须签得进去').toBe(200);
+  expect(await myBalance(page)).toBe(REWARD);
+  expect(await myLedger(page, 'checkin')).toHaveLength(1);
 
-  // 一分鱼干都没发
-  expect(await myLedger(page, 'checkin')).toHaveLength(0);
-  expect(await myBalance(page)).toBe(0);
-
-  // 页面给的是引导态（没有签到按钮），引导链落在博客目录、且搜索框预填「自我介绍」
-  await page.goto('/checkin');
-  await expect(page.locator('.checkin-button')).toHaveCount(0);
-  await page.locator('a[href*="/blog?search="]').click();
-  await expect(page.locator('.search-input')).toHaveValue('自我介绍');
+  // 重复请求：400 already_checked，不重复发鱼
+  const again = await page.request.post('/api/checkin', { data: {} });
+  expect(again.status()).toBe(400);
+  expect((await again.json()).already_checked).toBe(true);
+  expect(await myBalance(page)).toBe(REWARD);
+  expect(await myLedger(page, 'checkin')).toHaveLength(1);
 });
 
-test('★ 发过又全部删除 = 没发过：文章软删后回到不能签', async ({ page }) => {
+test('★ 发过又全部删除不改变签到资格（P01 回归：文章数与资格解耦）', async ({ page }) => {
   await registerFreshUser(page, { core: true });
   const blogId = await publishBlog(page);
 
-  // 有文章时够格签
+  // 有文章时够格
   expect((await (await page.request.get('/api/checkin')).json()).can_check_in).toBe(true);
 
-  // 删掉那篇（走真实的删除接口，而不是直连库改 ignore）
+  // 删掉那篇（走真实删除接口）
   const del = await page.request.delete(`/api/blogs/${blogId}`);
   expect(del.status(), `删文失败：${await del.text()}`).toBe(200);
 
-  // 名下已无未删文章 → 又不能签了
-  expect((await (await page.request.get('/api/checkin')).json()).can_check_in).toBe(false);
-  expect((await page.request.post('/api/checkin', { data: {} })).status()).toBe(403);
+  // 名下已无未删文章 → 仍够格，而且真的签得进去
+  expect((await (await page.request.get('/api/checkin')).json()).can_check_in).toBe(true);
+  expect((await page.request.post('/api/checkin', { data: {} })).status()).toBe(200);
+  expect(await myBalance(page)).toBe(REWARD);
 });
 
 test('未登录调用签到接口返回 401', async ({ request }) => {

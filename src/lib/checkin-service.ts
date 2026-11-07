@@ -10,10 +10,12 @@
 //   幂等键**：幂等记录是给「键由调用方给定、重放必须回报原结果」的操作用的（判据见
 //   fish-idempotency.ts 头部）。日期语义与范围见 db-time.ts。
 //
-// 【前置条件：本人名下有未软删文章】soft delete 即 `Blog.ignore = true`，所以判据是
-//   「此刻有没有活着的文章」，不看历史。**这条门不在服务层**：签到页面与
-//   POST /api/checkin 各自校验，一言服务在事务内复核；checkIn() 是纯发鱼内核
-//   （与 core 档位同理，见 docs/architecture.md §8）。
+// 【前置条件：未归档、当前未禁言的 core 成员及以上】2026-11-07 产品决定（P01）：
+//   签到不再要求「本人名下有未软删文章」—— 首发博客 / 删光博客都不改变签到资格。
+//   资格判据收在 `getTodayStatus` 的 `canCheckIn`（页面与 API 共用），checkIn() 仍是
+//   纯发鱼内核，不再复核发文条件；角色/禁言/归档由调用方先判（页面 requireCoreUser +
+//   forbidden、路由 GET/POST 各自判），这里只把结果映射成 `can_check_in` 供客户端与
+//   机器人程序化判别（见 docs/architecture.md §8 的档位纪律）。
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { prisma } from './db';
@@ -21,6 +23,7 @@ import { dayStart, nowForDb, todayStr } from './db-time';
 import { addFish, getTodayCheckinFish } from './fish-service';
 import { unitsToFish } from './fish-units';
 import { frameUrlFor } from './frame-service';
+import { isCoreUser, isCurrentlyBanned } from './auth';
 import type { Prisma } from '@prisma/client';
 
 /** 每日签到的固定奖励（鱼干）。页面文案与流水描述都跟着它走。 */
@@ -43,8 +46,8 @@ export const todayUtc8 = todayStr;
 export interface CheckinStatus {
   checkedIn: boolean;
   /**
-   * 前置条件是否满足：本人名下有没有**未软删**的文章（见文件头）。
-   * false 时签到会被拒（POST 403 / 页面渲染引导态）—— 它与 checkedIn 是两件事：
+   * 是否具备签到资格：**core+ 且未归档且当前未禁言**（P01；不再看有没有发过文章）。
+   * false 时签到会被拒（POST 403），它与 checkedIn 是两件事：
    * checkedIn 说「今天签过没」，canCheckIn 说「够不够格签」。
    */
   canCheckIn: boolean;
@@ -58,36 +61,32 @@ export interface CheckinStatus {
 }
 
 /**
- * 签到的前置条件：本人名下有没有**至少一篇未软删的文章**。
- * 软删 = `Blog.ignore = true`（schema 里叫 ignore，是文章域的软删标志，见 blog-service
- * 头部）—— 删掉的不算，所以「全删光」等于「没发过」。
+ * 今日签到状态 + 累计天数 + 余额。
  *
- * 签到页面与路由校验它，一言服务也在事务内复核；checkIn() 不调用它（理由见文件头）。
+ * `canCheckIn` 是资格判据的唯一出口：core+、未归档、当前未禁言（P01 起不再要求发文）。
+ * 页面与 /api/checkin 都读它，别再各自复制一套角色判断。
  */
-export async function hasPublishedBlog(userId: string, client: Pick<Prisma.TransactionClient, 'blog'> = prisma): Promise<boolean> {
-  const n = await client.blog.count({ where: { authorId: userId, ignore: false } });
-  return n > 0;
-}
-
-/** 今日签到状态 + 累计天数 + 余额。 */
 export async function getTodayStatus(userId: string): Promise<CheckinStatus> {
   const today = todayUtc8();
 
-  const [record, totalCount, user, todayFish, canCheckIn] = await Promise.all([
+  const [record, totalCount, user, todayFish] = await Promise.all([
     prisma.dailyCheckIn.findUnique({
       where: { uq_user_checkin_date: { userId, checkinDate: dayStart(today) } },
       select: { id: true },
     }),
     prisma.dailyCheckIn.count({ where: { userId } }),
-    prisma.user.findUnique({ where: { id: userId }, select: { driedFish: true } }),
+    prisma.user.findUnique({
+      where: { id: userId },
+      select: { driedFish: true, role: true, archivedAt: true, isBanned: true, banUntil: true },
+    }),
     // 今日到手多少**读流水**，不按常量推算：奖励将来若改，今天已签的人仍显示真实数目。
     getTodayCheckinFish(userId),
-    hasPublishedBlog(userId),
   ]);
 
   return {
     checkedIn: record !== null,
-    canCheckIn,
+    // isCoreUser 已含「未归档」；禁言单独判（禁言不改变角色，但暂停签到）。
+    canCheckIn: isCoreUser(user) && !isCurrentlyBanned(user),
     totalCount,
     today,
     rewardFish: CHECKIN_REWARD_FISH,

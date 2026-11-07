@@ -1,6 +1,6 @@
 import { getCurrentUser, isCoreUser, isCurrentlyBanned } from '@/lib/auth';
 import { apiOk, apiErr } from '@/lib/format';
-import { getTodayStatus, checkIn, hasPublishedBlog } from '@/lib/checkin-service';
+import { getTodayStatus, checkIn } from '@/lib/checkin-service';
 
 // 签到档位：core+（与投喂、点赞同档）。页面挡了 core，接口也必须自检 ——
 // 否则未认证账号 curl 得动签到，等于绕过 core 拿鱼干（见 checkin/page.tsx 的说明）。
@@ -8,15 +8,13 @@ import { getTodayStatus, checkIn, hasPublishedBlog } from '@/lib/checkin-service
 // **发鱼的就是这一个接口**（2026-09 起签到一起步式）：所以这道 403 是钱的门，
 // 不是「入场券」的门。别在任何一层漏判。
 //
-// 【第二道门：发布过文章】2026-10 起，除档位外还要求本人名下有一篇未软删的文章
-// （见 checkin-service 头部）。它与档位是**两道独立的门**，两个方法都要过：
-//   · GET —— 不拒，回 200 + `can_check_in: false`。它是**状态读**，不是签发动作；
-//     客户端要靠这个**显式的 false** 才能把「没资格 / 被禁言」与「请求失败」分开
-//     （base.js:282 的徽标判据是 `data.can_check_in === true && !data.checked_in`，
-//     403 信封里没有这两个字段，本来也不会点亮假徽标 —— 别把 403 说成会点亮它）。
-//   · POST —— 拒，回 403。它就是发鱼那一步，绝不能放行。
+// 【资格口径｜2026-11-07 P01】core+ 且未归档、当前未禁言即可签到；**不再要求发过文章**。
+// 资格判据只有一处：`getTodayStatus().canCheckIn`。两个方法的分工：
+//   · GET —— 不拒，回 200 + `can_check_in`。它是**状态读**，不是签发动作；
+//     客户端靠这个显式值把「没资格 / 被禁言」与「请求失败」分开
+//     （base.js 的徽标判据是 `data.can_check_in === true && !data.checked_in`）。
+//   · POST —— 禁言时拒 403；其余资格由档位门 + checkIn 落库去重兜住。
 const CORE_ONLY = '需要核心用户权限';
-const NEED_BLOG = '发布过文章后才能签到';
 
 // GET /api/checkin — 今日签到状态 + 累计天数 + 余额（需登录 + core）
 export async function GET() {
@@ -27,7 +25,8 @@ export async function GET() {
   const s = await getTodayStatus(user.id);
   return apiOk({
     checked_in: s.checkedIn,
-    can_check_in: s.canCheckIn && !isCurrentlyBanned(user),
+    // canCheckIn 已含归档/禁言口径；这里不再叠一次角色判断。
+    can_check_in: s.canCheckIn,
     total_count: s.totalCount,
     today: s.today,
     reward_fish: s.rewardFish,
@@ -42,10 +41,6 @@ export async function POST() {
   if (!user) return apiErr(401, '请先登录');
   if (!isCoreUser(user)) return apiErr(403, CORE_ONLY);
   if (isCurrentlyBanned(user)) return apiErr(403, '你已被禁言，暂时无法签到', { can_check_in: false });
-  // 前置条件：没发过文章就不给签。带上 can_check_in 让机器人能程序化判别。
-  if (!(await hasPublishedBlog(user.id))) {
-    return apiErr(403, NEED_BLOG, { can_check_in: false });
-  }
 
   try {
     const result = await checkIn(user.id);
