@@ -145,7 +145,7 @@ test('账户最近流水与实际账本一致，查看全部指向流水页', as
   await expect(page.locator('.fish-recent__all')).toHaveAttribute('href', '/fish/transactions');
 });
 
-test('签到：整宽概览在上、排行榜在下；完成态主操作；未发文时引导主次分明', async ({ page }) => {
+test('签到：整宽概览在上、排行榜在下；完成态主操作；零博客成员可直接签到（P01）', async ({ page }) => {
   await desktop(page);
 
   // ① 已签到：概览卡与排行榜都是整宽，排行榜在下方；签到按钮退成状态，
@@ -192,15 +192,15 @@ test('签到：整宽概览在上、排行榜在下；完成态主操作；未�
   expect(stat!.x + stat!.width).toBeLessThanOrEqual(summary!.x + summary!.width + 1);
   expect(greeting!.y + greeting!.height).toBeLessThanOrEqual(stat!.y);
 
-  // ② 未发文：没有签到按钮；「发表博客」是主操作，「自我介绍」是次级入口。
+  // ② 未发文：**不再有**「先发文章」引导（P01 取消发文门槛）——零博客 core 直接可签。
   await page.context().clearCookies();
   await registerFreshUser(page, { core: true });
   await page.goto('/checkin');
-  await expect(page.locator('.checkin-button')).toHaveCount(0);
-  const write = page.getByRole('link', { name: '发表博客', exact: true });
-  const intro = page.getByRole('link', { name: '看看大家的「自我介绍」', exact: true });
-  await expect(write).toHaveClass(/daily-quote-primary/);
-  await expect(intro).toHaveClass(/daily-quote-secondary/);
+  const checkinButton = page.locator('.checkin-button');
+  await expect(checkinButton).toBeVisible();
+  await expect(checkinButton).toContainText('签到');
+  await expect(page.getByRole('link', { name: '发表博客', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('link', { name: '看看大家的「自我介绍」', exact: true })).toHaveCount(0);
 });
 
 test('签到排行榜：前十折叠、展开全部，自己排名保留', async ({ page }) => {
