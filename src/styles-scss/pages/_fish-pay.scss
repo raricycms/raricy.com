@@ -116,7 +116,11 @@
   color: var(--color-brand-primary);
   font-variant-numeric: tabular-nums;
 
-  span {
+  /* 只压**单位**（行内最后一个 span），别再写 `span {…}`：金额本身也是 span（.numeric），
+     后代选择器会把 2.25rem/800/品牌色一起吃掉，等于金额永远显示成 0.9rem 次级灰。
+     用 `:last-child` 而不给 JSX 加类 —— 收银台面板被 /fish/pay 与 /fish/collect 复用，
+     改标记要两个页面一起回归，这一处结构固定（金额 + 单位）用结构选择器足够。 */
+  > span:last-child {
     font-size: 0.9rem;
     font-weight: 600;
     color: var(--color-text-secondary);

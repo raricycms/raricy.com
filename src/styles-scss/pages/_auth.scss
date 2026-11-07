@@ -1,7 +1,10 @@
 .auth-page {
   background: var(--color-background-page);
-  background-attachment: fixed;
-  min-height: 100vh;
+  /* body 已有 `padding-top: var(--navbar-height)`（base/_header.scss）—— 这里若再用
+     100vh 就是「整屏高度 + 顶栏」≈ 稳定多出一条 62px 纵向滚动。占满可见高度必须
+     扣掉顶栏；dvh 处理移动端地址栏伸缩，100vh 作为旧浏览器兜底。 */
+  min-height: calc(100vh - var(--navbar-height));
+  min-height: calc(100dvh - var(--navbar-height));
   padding-top: 2rem;
   padding-bottom: 2rem;
 }

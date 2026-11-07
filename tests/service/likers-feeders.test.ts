@@ -89,8 +89,30 @@ describe('getLikers', () => {
     const r = await getLikers(blog.id, 1, 2);
     expect(r!.total).toBe(5); // 全量
     expect(r!.users).toHaveLength(2); // 当页
+    // 断具体是谁，不只断条数：把 skip 删掉（offset 恒 0）时长度仍是 2，只断长度的
+    // 旧用例会绿（R3-188）。
+    expect(r!.users.map((x) => x.username)).toEqual(['u3', 'u2']);
     expect(r!.offset).toBe(1);
     expect(r!.limit).toBe(2);
+  });
+
+  it('同一时刻的赞按 id 升序稳定（翻页不会重复/漏行）', async () => {
+    const blog = await makeBlog();
+    const same = new Date('2026-02-01T00:00:00.000Z');
+    const users = [];
+    for (let i = 0; i < 3; i++) {
+      const u = await makeUser({ username: `same${i}` });
+      users.push(u);
+      await like(blog.id, u.id, { at: same });
+    }
+    const all = await getLikers(blog.id);
+    expect(all!.users.map((x) => x.id)).toEqual([...users.map((u) => u.id)].sort());
+    // 逐页拼接 = 全量，无重复
+    const p1 = await getLikers(blog.id, 0, 2);
+    const p2 = await getLikers(blog.id, 2, 2);
+    const filled = [...p1!.users, ...p2!.users].map((x) => x.id);
+    expect(filled).toEqual(all!.users.map((x) => x.id));
+    expect(new Set(filled).size).toBe(3);
   });
 
   it('limit 被夹在 1..200，offset 不接受负数（防一次拉爆整表）', async () => {
@@ -158,5 +180,24 @@ describe('getFeeders', () => {
     const r = await getFeeders(blog.id, 1, 2);
     expect(r.total).toBe(4);
     expect(r.feeders).toHaveLength(2);
+    // 断具体是谁：删掉 skip 后长度仍为 2，只断条数抓不到（R3-188）
+    expect(r.feeders.map((f) => f.username)).toEqual(['f2', 'f1']);
+  });
+
+  it('同额投喂按 id 升序稳定（分页不重复/不漏行）', async () => {
+    const blog = await makeBlog();
+    const users = [];
+    for (let i = 0; i < 3; i++) {
+      const u = await makeUser({ username: `tie${i}` });
+      users.push(u);
+      await feed(blog.id, u.id, 2); // 同额
+    }
+    const all = await getFeeders(blog.id);
+    expect(all.feeders.map((f) => f.user_id)).toEqual([...users.map((u) => u.id)].sort());
+    const p1 = await getFeeders(blog.id, 0, 2);
+    const p2 = await getFeeders(blog.id, 2, 2);
+    const filled = [...p1.feeders, ...p2.feeders].map((f) => f.user_id);
+    expect(filled).toEqual(all.feeders.map((f) => f.user_id));
+    expect(new Set(filled).size).toBe(3);
   });
 });

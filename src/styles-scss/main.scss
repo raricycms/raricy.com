@@ -1,4 +1,24 @@
 // Entry file: control import order
+//
+// ⚠️ 顺序即行为。下面这些同权（或同特异性）规则不靠选择器决胜，只靠「谁后 @use」：
+//   ① components/modal（:20）早于 pages/admin/common（:106）—— 后台页的 .modal 覆写
+//      必须晚于 components/modal 的基态；
+//   ② components/card（:21）早于 pages/audit-logs（:115）—— .audit-detail-card 同权覆盖；
+//   ③ components/table（:22）早于 pages/audit-logs（:115）—— 同上；
+//   ④ components/markdown-editor（:37）早于 pages/chat（:124）—— 聊天里 `.md-body` 的
+//      覆写要晚于编辑器基态（见 _chat.scss 的注释）；
+//   ⑤ components/avatar（:42）与 pages/blog/blog（:74）声明不相交，不争，别误并；
+//   ⑥ pages/blog/menu（:79）必须在 pages/blog/blog（:74）之后（侧栏覆写列表）；
+//   ⑦ layout/header（:14）早于所有 pages —— 顶栏是外壳，页面只补自身留白；
+//   ⑧ base/root（:8）最早：CSS 变量是其余一切规则的前置；
+//   ⑨ pages/home（:52）只写 .home-* / .hero-*，与外壳不重叠，无顺序依赖（列在此只为
+//      说明「页面段内部顺序」不是决胜来源）；
+//   ⑩ utilities（:46-50）在 components 之后、pages 之前：工具类是给标记用的，
+//      页面段允许覆写它。
+// 改动本文件顺序前，请对照上述清单逐条确认，并在 390/768/1440 三档目视受影响页。
+//
+// 其余 @use 按「base → layout → components → utilities → pages → admin」分组，
+// 组件先于页面、共享先后于页内覆写。
 @use 'abstracts/variables';
 @use 'abstracts/breakpoints';
 @use 'abstracts/mixins';

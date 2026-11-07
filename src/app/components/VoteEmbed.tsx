@@ -22,7 +22,6 @@ interface OptionData {
 interface Props {
   voteId: string;
   isLocked: boolean;
-  loggedIn: boolean;
   initialUserVoted: number | null;
   initialTotal: number;
   initialOptions: OptionData[];

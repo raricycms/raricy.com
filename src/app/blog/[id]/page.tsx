@@ -27,6 +27,8 @@ import { isBlogFavorited } from '@/lib/favorite-service';
 import { jsonLdScript } from '@/lib/json-ld';
 import { isoWithOffset } from '@/lib/db-time';
 import { siteBaseUrl } from '@/lib/site-url';
+import { headers } from 'next/headers';
+import { clientIp } from '@/lib/request-ip';
 
 export const dynamic = 'force-dynamic';
 
@@ -150,6 +152,9 @@ export default async function BlogDetailPage({ params }: { params: Promise<{ id:
       ? { id: member.id, role: member.role, archivedAt: member.archivedAt }
       : null,
     mode: member ? 'expand' : 'external',
+    // 公开收藏夹引用的按 IP 限频（ref-reader.ts）需要真实来源 IP；
+    // 不传时那条分支永不可达（R3-131）。页面本就动态渲染，读一次 headers 无额外代价。
+    clientIp: clientIp({ headers: await headers() }),
     syntaxVersion: blog.content?.syntaxVersion,
   });
 

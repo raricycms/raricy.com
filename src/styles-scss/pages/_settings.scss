@@ -268,6 +268,13 @@
     opacity: 0;
     width: 0;
     height: 0;
+
+    /* 原生 input 是透明覆盖层，键盘焦点环只能画在容器上：键盘 Tab 到开关必须
+       看得见（docs frontend-styles §6.1/§8.3；同文件 _file-picker.scss 是正确样本）。 */
+    &:focus-visible + .settings-toggle__slider {
+      outline: 2px solid var(--color-brand-secondary);
+      outline-offset: 2px;
+    }
   }
 
   &__slider {

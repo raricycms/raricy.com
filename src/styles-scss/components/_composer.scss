@@ -223,6 +223,9 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
+    /* 30px 是桌面视觉盒；触屏下用伪元素把**命中区**外扩到 44px（不放大视觉盒，
+       避免工具条被撑高）。 */
+    position: relative;
     width: 30px;
     height: 30px;
     padding: 0;
@@ -236,6 +239,15 @@
     &:focus-visible {
       outline: 2px solid var(--color-brand-primary);
       outline-offset: 2px;
+    }
+  }
+
+  /* 触屏命中区 ≥44px：30px 视觉盒 + 7px 外扩（44 = 30 + 2×7），不放大视觉盒。 */
+  @media (hover: none) and (pointer: coarse) {
+    .#{$p}__dismiss::after {
+      content: '';
+      position: absolute;
+      inset: -7px;
     }
   }
 

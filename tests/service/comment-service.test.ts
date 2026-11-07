@@ -429,15 +429,22 @@ describe('软删除：权限与落库', () => {
     const c = await makeComment({ blogId: blog.id, authorId: author.id });
     const admin = await makeUser({ role });
 
+    const attempted: string[] = [];
     for (const bad of [undefined, '', '   ']) {
       const c2 = await makeComment({ blogId: blog.id, authorId: author.id });
+      attempted.push(c2.id);
       const r = await softDeleteComment(c2.id, { id: admin.id, role }, bad);
       expect(r.ok, `reason=${JSON.stringify(bad)} 应被拒绝`).toBe(false);
       if (!r.ok) expect(r.error).toBe('reasonRequired');
     }
-    // 评论未被删掉
-    const row = await prisma.blogComment.findUnique({ where: { id: c.id } });
-    expect(row!.isDeleted).toBe(false);
+    // 每一条被尝试删除的评论都不能被删掉。只查 c 的话，实现若「先删后校验」，
+    // 被操作的是 c2、c 一直没动，断言仍绿（R3-189 ⑤）。
+    for (const id of attempted) {
+      const row = await prisma.blogComment.findUnique({ where: { id } });
+      expect(row!.isDeleted, `评论 ${id} 在原因校验失败前就被删了`).toBe(false);
+    }
+    const untouched = await prisma.blogComment.findUnique({ where: { id: c.id } });
+    expect(untouched!.isDeleted).toBe(false);
   });
 
   it.each(['admin', 'owner'] as const)('%s 删他人评论：原因超 500 字 → 拒绝', async (role) => {

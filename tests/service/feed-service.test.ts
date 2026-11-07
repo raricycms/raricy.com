@@ -486,6 +486,9 @@ describe('作者全额收入与金额守恒', () => {
 
   it('投喂成功给作者发一条通知（钱记完之后才发，失败也不回退投喂）', async () => {
     const { author, blog, feeder } = await scene({ feederFish: 10 });
+    const before = unitsToFish(
+      (await prisma.user.findUniqueOrThrow({ where: { id: feeder.id } })).driedFish
+    );
 
     await feedBlog(blog.id, feeder.id, 2);
 
@@ -494,7 +497,37 @@ describe('作者全额收入与金额守恒', () => {
     });
     expect(notes).toHaveLength(1);
     expect(notes[0]).toMatchObject({ actorId: feeder.id, objectType: 'blog', objectId: blog.id });
+    // 「钱已记完」必须能被看见：扣款与入账都发生了，而不是只发通知/只落 feed 行。
+    const feederAfter = unitsToFish(
+      (await prisma.user.findUniqueOrThrow({ where: { id: feeder.id } })).driedFish
+    );
+    expect(feederAfter, '扣款没发生').toBe(before - 2);
     await expectLedgerConsistent('发过通知之后');
+  });
+
+  it('★ 通知写失败不回退投喂：账已记完、feed 行在、只是没有通知', async () => {
+    const { author, blog, feeder } = await scene({ feederFish: 10 });
+    const before = unitsToFish(
+      (await prisma.user.findUniqueOrThrow({ where: { id: feeder.id } })).driedFish
+    );
+    // 真实注入一次通知写失败（触发器 ABORT），而不是 mock 模块：走的是与线上同构的
+    // 「事务已提交、通知随后失败」路径（R3-189 ③）。
+    await prisma.$executeRawUnsafe(
+      `CREATE TRIGGER test_fail_notification BEFORE INSERT ON notifications BEGIN SELECT RAISE(ABORT, 'inject'); END`
+    );
+    try {
+      const r = await feedBlog(blog.id, feeder.id, 2);
+      expect(r, '通知失败不能变成「投喂失败」').toMatchObject({ ok: true });
+      expect(await prisma.blogFeed.count({ where: { blogId: blog.id } })).toBe(1);
+      const after = unitsToFish(
+        (await prisma.user.findUniqueOrThrow({ where: { id: feeder.id } })).driedFish
+      );
+      expect(after, '通知失败不能回退扣款').toBe(before - 2);
+      expect(await prisma.notification.count({ where: { recipientId: author.id } })).toBe(0);
+    } finally {
+      await prisma.$executeRawUnsafe('DROP TRIGGER IF EXISTS test_fail_notification');
+    }
+    await expectLedgerConsistent('通知失败之后');
   });
 });
 

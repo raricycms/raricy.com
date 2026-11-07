@@ -8,6 +8,9 @@ test('快速切回主题时从当前颜色续接，减少动态效果偏好下�
   await page.goto('/blog?scope=mine');
   await expect(page.locator('.blog-item').first()).toBeVisible();
   await expect.poll(() => page.evaluate(() => typeof (window as unknown as { switchTheme?: unknown }).switchTheme)).toBe('function');
+  // 起点固定为浅色：初始主题跟随系统偏好，深色机器上 switchTheme('dark') 会直接
+  // 早退（base.js 的「目标=当前就 return」），animations 为空、续接一次都没跑却绿。
+  await page.evaluate(() => document.documentElement.setAttribute('data-theme', 'light'));
   const result = await page.evaluate(() => {
     const change = (window as unknown as { switchTheme: (theme: string) => void }).switchTheme;
     const element = document.querySelector('.site-navbar')!;

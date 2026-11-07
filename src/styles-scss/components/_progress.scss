@@ -67,3 +67,12 @@
     transform: rotate(360deg);
   }
 }
+
+// 「减少动态效果」：进度条条纹与转圈都停下。spinner 当前无生产消费者，但样式留着
+// 就要守同一条纪律（全站动画都要有不播动画的分支）。
+@media (prefers-reduced-motion: reduce) {
+  .progress-bar-animated,
+  .spinner-border {
+    animation: none;
+  }
+}

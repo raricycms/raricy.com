@@ -14,7 +14,10 @@ function asDate(value: Props['createdAt']): Date | null {
   return Number.isNaN(date.getTime()) ? null : date;
 }
 
-/** 服务端页面与个人主页的客户端列表共用；传入的字符串仍是库内墙上时间。 */
+/**
+ * 文章详情页与两个列表（站内 `/blog`、对外 `/explore`）共用；服务端直传、无客户端
+ * 列表消费者（个人主页不渲染它）。传入的字符串仍是库内墙上时间。
+ */
 export default function BlogTimestamps({ createdAt, updatedAt, detail = false, sort = 'created' }: Props) {
   const published = asDate(createdAt);
   const modified = asDate(updatedAt);

@@ -822,4 +822,12 @@ body {
   .site-navbar.open .site-navbar-collapse-inner {
     animation: none;
   }
+
+  // 三个「呼吸点」都挂在 `@keyframes pulse` 上（.site-link__dot / .notification-badge /
+  // .checkin-badge）。reduce 名单漏一个只会压住一部分，剩下的还在闪 —— 必须整族列。
+  .site-link__dot,
+  .notification-badge,
+  .checkin-badge {
+    animation: none;
+  }
 }

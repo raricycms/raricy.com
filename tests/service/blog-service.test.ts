@@ -359,14 +359,13 @@ describe('发文日限额 / countBlogsToday + BLOG_DAILY_LIMIT', () => {
     for (let i = 0; i < 19; i++) {
       await makeBlog({ authorId: u.id, createdAt: todayAt(i * 60_000) });
     }
-    const n19 = await countBlogsToday(u.id);
-    expect(n19).toBe(19);
-    expect(n19 >= BLOG_DAILY_LIMIT, '第 20 篇必须还能发').toBe(false);
+    expect(await countBlogsToday(u.id), '第 20 篇必须还能发').toBe(19);
 
     await makeBlog({ authorId: u.id, createdAt: todayAt(20 * 60_000) });
-    const n20 = await countBlogsToday(u.id);
-    expect(n20).toBe(20);
-    expect(n20 >= BLOG_DAILY_LIMIT, '已发满 20 篇，第 21 篇必须被拒').toBe(true);
+    // 精确计数本身就是判据：`n19 >= LIMIT` 这类布尔断言由上面的精确值可推出，
+    // 留着只会让「放宽/收紧阈值」的回归看起来仍绿（R3-189 ⑤）。
+    expect(await countBlogsToday(u.id), '已发满 20 篇，第 21 篇必须被拒').toBe(20);
+    expect(BLOG_DAILY_LIMIT).toBe(20);
   });
 
   it('边界：今天零点整计入；昨天 23:59:59.999 不计入（gte 本地零点）', async () => {
@@ -1581,9 +1580,9 @@ describe('回归：日期比较必须按数值而非存储类型', () => {
 
   it('今天发的仍能被正确计入', async () => {
     const u = await makeUser({ role: 'core' });
-    const todayNoon = new Date();
-    todayNoon.setHours(12, 0, 0, 0);
-    await insertBlogRaw('today-1', u.id, todayNoon.getTime());
+    // 必须用库钟（UTC+8 墙上时间）构造「今天正午」：`new Date().setHours(12)` 用本机
+    // 时区，CI runner 非 UTC+8 时会算出昨天/明天，断言随机器漂移（R3-189 ⑤）。
+    await insertBlogRaw('today-1', u.id, todayAt(12 * HOUR).getTime());
     expect(await countBlogsToday(u.id)).toBe(1);
   });
 

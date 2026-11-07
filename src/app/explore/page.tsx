@@ -64,7 +64,10 @@ export async function generateMetadata({
   let indexable = !search;
   if (indexable) {
     const { total } = await listPublicBlogs({ page: 1, perPage: 1, categorySlug: category });
-    indexable = total > 0;
+    const pages = Math.max(1, Math.ceil(total / PER_PAGE));
+    // 越界页（page > pages）同样是 200 + 空态：不能只判「集合非空」，否则
+    // /explore?page=99 会被 index,follow 收录成空页面。
+    indexable = total > 0 && page <= pages;
   }
 
   // canonical 恒指向**自身**（带 page 与 category）。⚠️ 别把分页 canonical 到第 1 页：
@@ -196,7 +199,10 @@ export default async function ExplorePage({
             sort={null}
           />
 
-          <main className="blog-content">
+          {/* 不能是 <main>：根 layout 已经有一个 <main>，嵌套 main 会让读屏读出两个
+              主内容地标（AdminShell 文件头有同一禁令）。版面靠 .blog-content 的
+              `flex: 1`（_menu.scss），不依赖 main 的全局 flex 声明。 */}
+          <div className="blog-content">
             {result === null ? (
               <SearchRateLimited />
             ) : (
@@ -204,7 +210,7 @@ export default async function ExplorePage({
                 <ExploreListSection result={result} qs={qs} searching={!!search} query={search || ''} />
               </Suspense>
             )}
-          </main>
+          </div>
         </div>
       </div>
     </>

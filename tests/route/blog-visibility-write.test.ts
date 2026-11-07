@@ -139,6 +139,30 @@ describe('PUT /api/blogs/:id —— 缺 visibility = 不改动这一列', () => 
   });
 });
 
+describe('PUT /api/blogs/:id —— 缺 allow_anonymous_comments = 不改动这一列（R3-178）', () => {
+  it('★ 关匿名后只改标题，匿名开关仍为关（删掉回填分支必须变红）', async () => {
+    const author = await makeUser({ role: 'core' });
+    const blog = await makeBlog({ authorId: author.id, title: '旧标题' });
+    await prisma.blog.update({
+      where: { id: blog.id },
+      data: { allowAnonymousComments: false },
+    });
+    await login(author.id);
+
+    const res = await updateBlog(put({ ...base, title: '新标题' }), ctx(blog.id));
+    expect(res.status).toBe(200);
+
+    const row = await prisma.blog.findUnique({
+      where: { id: blog.id },
+      select: { allowAnonymousComments: true, title: true },
+    });
+    // 缺键被 validateBlogData 回成默认 true 的话，一个只认识旧键的调用方改一次标题
+    // 就静默重开了匿名评论（与缺 visibility 打回 internal 是同一类事故）。
+    expect(row?.allowAnonymousComments, '缺键被当成 true —— 匿名开关被静默重开').toBe(false);
+    expect(row?.title, '标题照常改').toBe('新标题');
+  });
+});
+
 describe('POST /api/blogs —— 缺 visibility = 默认档 internal（与 PUT 相反，别一起改）', () => {
   it('不传 visibility 建出来的文章是 internal', async () => {
     const author = await makeUser({ role: 'core' });

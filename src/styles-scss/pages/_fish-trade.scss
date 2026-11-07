@@ -998,12 +998,12 @@
 .trade-position__entry {
   width: 100%;
   font-size: 0.75rem;
-  color: var(--color-text-tertiary);
+  color: var(--color-text-secondary);
   font-variant-numeric: tabular-nums;
 }
 
 .trade-position__time {
-  color: var(--color-text-tertiary);
+  color: var(--color-text-secondary);
 }
 
 /* 「现价 x · 较开仓 y%」—— 与 __entry 同样是整行（width: 100%）。
@@ -1015,7 +1015,7 @@
   gap: $space-2;
   width: 100%;
   font-size: 0.75rem;
-  color: var(--color-text-tertiary);
+  color: var(--color-text-secondary);
   font-variant-numeric: tabular-nums;
 }
 
@@ -1381,7 +1381,7 @@
 
 .trade-settled__meta {
   font-size: 0.75rem;
-  color: var(--color-text-tertiary);
+  color: var(--color-text-secondary);
   font-variant-numeric: tabular-nums;
 }
 

@@ -1,3 +1,5 @@
+// 断点唯一来源：新代码走 up()/down()，不写裸 @media 数值（历史文件里三套家族并存，
+// 见 R3-667 的清单；收敛按文件逐步做，别一把改）。
 $bp-sm: 576px;
 $bp-md: 768px;
 $bp-lg: 992px;
@@ -7,6 +9,11 @@ $bp-xl: 1200px;
   @media (min-width: $size) { @content; }
 }
 
+// ⚠️ `down()` 是**含端点**的 max-width：与 `up(同值)` 在恰好等于断点的那 1px 上
+// 同时命中（768px 时 `game/_motion.scss` 的 up 与 down 都成立），谁赢由源码顺序决定。
+// 这不是可以随手改成 `$size - 0.02px` 的小修：全站 18 个调用点在 768/992 整点上的
+// 视觉已经按当前语义排过，改公式要逐点目视（且需产品/视觉确认）。新代码若需要
+// 「严格小于断点」请自写 `max-width: ($size - 0.02px)`，别改这里。
 @mixin down($size) {
   @media (max-width: $size) { @content; }
 }

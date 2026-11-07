@@ -81,7 +81,8 @@ export async function getFeeders(
     prisma.blogFeed.count({ where: { blogId } }),
     prisma.blogFeed.findMany({
       where: { blogId },
-      orderBy: { amount: 'desc' },
+      // 次键 id：同额投喂（很常见）时保证分页稳定，否则 skip/take 会重复或漏行（R3-188）
+      orderBy: [{ amount: 'desc' }, { id: 'asc' }],
       skip: off,
       take: lim,
       select: { userId: true, amount: true },

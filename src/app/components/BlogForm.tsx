@@ -20,6 +20,8 @@ import type { CategoryHierarchy } from '@/lib/blog-service';
 // 它拖着 prisma，值导出会把服务端依赖拉进客户端包。理由见该文件头。
 import { BLOG_VISIBILITIES, VISIBILITY_LABEL, VISIBILITY_DESCRIPTION } from '@/lib/blog-visibility';
 import type { BlogVisibility } from '@/lib/blog-visibility';
+// 长度上限与 blog-service 共用同一份零依赖常量（此前前端手抄 30/100/250000）
+import { BLOG_TITLE_MAX, BLOG_DESCRIPTION_MAX, BLOG_CONTENT_MAX } from '@/lib/blog-limits';
 import { DEFAULT_CONTENT_FORMAT, type ContentFormat } from '@/lib/content-format';
 
 function toast(msg: string, type: string) {
@@ -87,7 +89,9 @@ const FIELD_LABELS: ReadonlyArray<readonly [keyof FormFields, string]> = [
 export default function BlogForm({ categories, blog = null, banInfo = null }: BlogFormProps) {
   const isEdit = !!blog;
   const initialMarkdown = blog?.contentMarkdown ?? '';
-  const categoryValue = String(blog?.categoryId ?? '');
+  // 栏目改成**受控**：ariaLabel 由当前选中值派生，非受控时改选后视觉变了、读屏仍读旧栏目。
+  // 提交仍走隐藏 input（name="category"），readFields 取的是它与渲染值一致的那一个。
+  const [categoryValue, setCategoryValue] = useState(String(blog?.categoryId ?? ''));
   const [visibilityValue, setVisibilityValue] = useState<BlogVisibility>(blog?.visibility ?? 'internal');
   const [previewAsVisitor, setPreviewAsVisitor] = useState(true);
   // 编辑态从**库里的**格式起步；新建态默认 markdown。显式写回请求体 ——
@@ -286,16 +290,16 @@ export default function BlogForm({ categories, blog = null, banInfo = null }: Bl
         toast('请填写完整信息', 'warning');
         return;
       }
-      if (title.length > 30) {
-        toast('标题不能超过30个字符', 'warning');
+      if (title.length > BLOG_TITLE_MAX) {
+        toast(`标题不能超过${BLOG_TITLE_MAX}个字符`, 'warning');
         return;
       }
-      if (description.length > 100) {
-        toast('描述不能超过100个字符', 'warning');
+      if (description.length > BLOG_DESCRIPTION_MAX) {
+        toast(`描述不能超过${BLOG_DESCRIPTION_MAX}个字符`, 'warning');
         return;
       }
-      if (content.length > 250000) {
-        toast('内容不能超过250000个字符', 'warning');
+      if (content.length > BLOG_CONTENT_MAX) {
+        toast(`内容不能超过${BLOG_CONTENT_MAX}个字符`, 'warning');
         return;
       }
       // 这一笔要写的是**哪一篇**：编辑态是服务端给的那篇；新建态若是「提交过一次、
@@ -491,7 +495,8 @@ export default function BlogForm({ categories, blog = null, banInfo = null }: Bl
           <ExpandSelect
             id="category"
             name="category"
-            defaultValue={categoryValue}
+            value={categoryValue}
+            onChange={setCategoryValue}
             groups={categoryGroups}
             ariaLabel={`栏目：${categoryLabel}`}
           />

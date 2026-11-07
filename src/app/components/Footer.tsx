@@ -44,7 +44,12 @@ export default function Footer({ children }: { children?: ReactNode }) {
                 <span className="icon icon-envelope" aria-hidden="true"></span>
               </a>
             </div>
-            <p style={{ marginTop: '0.5rem' }}>© 2026 聪明山. All rights reserved.</p>
+            {/* 类名是 FooterCopyOverride 的契约：文章 / 剪贴板详情页用它把这一行改成
+                「版权归原作者」。**别把链接/图标放进这个 p** —— 覆写是整段 textContent
+                替换（会拍平子结构），恢复时也只还原纯文本。 */}
+            <p className="footer-copy" style={{ marginTop: '0.5rem' }}>
+              © 2026 聪明山. All rights reserved.
+            </p>
           </div>
         </div>
       </div>

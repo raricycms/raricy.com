@@ -80,7 +80,7 @@
   justify-content: center;
   min-height: 180px;
   font-size: var(--fd-text-sm);
-  color: var(--color-text-tertiary);
+  color: var(--color-text-secondary);
 }
 
 // ---- 滑轨 ----
@@ -266,7 +266,7 @@
 }
 
 .cdm__flag-detail {
-  color: var(--color-text-tertiary);
+  color: var(--color-text-secondary);
 }
 
 .cdm__signals {
@@ -290,7 +290,7 @@
   display: contents;
 
   dt {
-    color: var(--color-text-tertiary);
+    color: var(--color-text-secondary);
   }
 
   dd {
@@ -325,7 +325,7 @@
 }
 
 .cdm__nav-current {
-  color: var(--color-text-tertiary);
+  color: var(--color-text-secondary);
   font-weight: 600;
 }
 
@@ -341,7 +341,7 @@
 }
 
 .cdm__prompt-label {
-  color: var(--color-text-tertiary);
+  color: var(--color-text-secondary);
 }
 
 .cdm__prompt-char {
@@ -361,7 +361,7 @@
 .cdm__prompt-progress {
   margin-left: auto;
   font-variant-numeric: tabular-nums;
-  color: var(--color-text-tertiary);
+  color: var(--color-text-secondary);
 }
 
 // ---- 点选：画布 ----
@@ -462,7 +462,7 @@
   font-weight: 700;
   background: var(--color-background-subtle);
   border: 1px solid var(--color-border);
-  color: var(--color-text-tertiary);
+  color: var(--color-text-secondary);
 }
 
 .vdm__dot--now {
@@ -546,6 +546,9 @@
   font-weight: 700;
   color: #fff;
   pointer-events: none;
+  /* 居中不依赖动画终态：vdmPop 的 translate(-50%,-50%) 原本只在 keyframes 里，
+     减少动态效果关掉动画后对勾会跳位。基态先写死，动画只负责缩放/淡入。 */
+  transform: translate(-50%, -50%);
   animation: vdmPop $motion-expand-duration $motion-expand-easing both;
 }
 
@@ -584,7 +587,7 @@
 .vdm__hint {
   margin: 0;
   font-size: var(--fd-text-sm);
-  color: var(--color-text-tertiary);
+  color: var(--color-text-secondary);
 }
 
 .vdm__hint--ok {
@@ -636,5 +639,15 @@
 }
 
 .vdm__result-line--dim {
-  color: var(--color-text-tertiary);
+  color: var(--color-text-secondary);
+}
+
+// 「减少动态效果」：三处视觉空间任务动画（对勾弹出 / 答错抖动 / 结果上浮）全部静止。
+// .vdm__mark 的居中已移到基态，关掉动画不会跳位。
+@media (prefers-reduced-motion: reduce) {
+  .vdm__mark,
+  .vdm__scene-wrap--shake,
+  .vdm__result {
+    animation: none;
+  }
 }

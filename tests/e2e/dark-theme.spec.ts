@@ -24,12 +24,17 @@ async function useDarkTheme(page: Page) {
   });
 }
 
-/** 计算样式的亮度（0–255）；透明色视为 0。 */
+/**
+ * 计算样式的亮度（0–255）。**透明 / 解析不出颜色返回 NaN**，而不是 0：
+ * 旧实现把 `rgba(0,0,0,0)` 记成「最暗」，于是「背景用了无 fallback 的主题变量 →
+ * 计算值透明」这一正好要防的回归会以「底色很暗」通过（R3-641 ③）。NaN 参与比较
+ * 恒假，断言会带着原始颜色字符串变红，人一眼能看出是「没解析到颜色」。
+ */
 function luminance(color: string): number {
   const nums = color.match(/[\d.]+/g)?.map(Number) ?? [];
-  if (nums.length === 0) return NaN;
+  if (nums.length < 3) return NaN;
+  if (nums.length > 3 && nums[3] === 0) return NaN;
   const [r, g, b] = nums;
-  if (nums.length > 3 && nums[3] === 0) return 0;
   return 0.299 * r + 0.587 * g + 0.114 * b;
 }
 

@@ -12,7 +12,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { describe, expect, it } from 'vitest';
-import { safeNextPath, loginUrlWithNext } from '@/lib/safe-url';
+import { safeNextPath, loginUrlWithNext, safeExternalReturnUrl } from '@/lib/safe-url';
 
 describe('safeNextPath：只放行站内绝对路径', () => {
   it('站内路径原样放行', () => {
@@ -88,5 +88,74 @@ describe('loginUrlWithNext', () => {
   it('★ 不安全的路径不会被拼进登录链接', () => {
     expect(loginUrlWithNext('https://evil.com')).toBe('/login');
     expect(loginUrlWithNext('//evil.com')).toBe('/login');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// safeExternalReturnUrl —— 唯一允许跨站的地址校验（收银台 / 资料卡 link 块）
+//
+// 【为什么单独一组】它与 safeNextPath 的策略**相反**（这里必须允许跨站），所以
+// 上面 12 条用例一条都覆盖不到它；而它一旦退化成「随便放行」，收银台就是一个
+// 由不可信商户参数驱动的钓鱼入口（页面会显示主机名，但地址栏仍是本站域名）。
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('safeExternalReturnUrl：跨站回跳的地址校验', () => {
+  it('正常 http / https 地址放行并规范化', () => {
+    expect(safeExternalReturnUrl('https://merchant.example/pay/done?id=1')).toBe(
+      'https://merchant.example/pay/done?id=1'
+    );
+    expect(safeExternalReturnUrl('http://merchant.example/back')).toBe(
+      'http://merchant.example/back'
+    );
+    // 规范化：补结尾斜杠由 URL 决定，调用方只把它渲染成链接
+    expect(safeExternalReturnUrl('https://merchant.example')).toBe('https://merchant.example/');
+    // 前后空白先 trim 再判
+    expect(safeExternalReturnUrl('  https://merchant.example/ok  ')).toBe(
+      'https://merchant.example/ok'
+    );
+  });
+
+  it('空值 / 纯空白 → null（页面不显示返回按钮）', () => {
+    expect(safeExternalReturnUrl(null)).toBeNull();
+    expect(safeExternalReturnUrl(undefined)).toBeNull();
+    expect(safeExternalReturnUrl('')).toBeNull();
+    expect(safeExternalReturnUrl('   ')).toBeNull();
+  });
+
+  it('★ 超过 300 字符 → null（防超长参数打爆渲染/日志）', () => {
+    expect(safeExternalReturnUrl('https://merchant.example/' + 'a'.repeat(280))).toBeNull();
+    // 恰好 300 仍可
+    const ok = 'https://merchant.example/' + 'a'.repeat(300 - 'https://merchant.example/'.length);
+    expect(safeExternalReturnUrl(ok)).not.toBeNull();
+  });
+
+  it('★ 控制字符（含 TAB/LF/CR 变形）→ null', () => {
+    expect(safeExternalReturnUrl('https://merchant.example/\tpath')).toBeNull();
+    expect(safeExternalReturnUrl('https://merchant.example/\nevil')).toBeNull();
+    // 内部的 CR 会被控制字符闸门拦下；**行尾** CR 只是被 trim 掉（与「前后空白先 trim」
+    // 同一条规则），规范化后仍是原地址，不当作攻击。
+    expect(safeExternalReturnUrl('https://merchant.example/a\rb')).toBeNull();
+    expect(safeExternalReturnUrl('https://merchant.example/\r')).toBe(
+      'https://merchant.example/'
+    );
+  });
+
+  it('★ 非 http(s) 协议 → null（javascript: / data: / ftp:）', () => {
+    expect(safeExternalReturnUrl('javascript:alert(1)')).toBeNull();
+    expect(safeExternalReturnUrl('data:text/html,<script>alert(1)</script>')).toBeNull();
+    expect(safeExternalReturnUrl('ftp://merchant.example/file')).toBeNull();
+    // `http:/x` 会被 URL 规范化为 http://x —— 仍是 http 协议，放行是规范化的正常结果
+    expect(safeExternalReturnUrl('http:/merchant.example')).toBe('http://merchant.example/');
+  });
+
+  it('★ 带用户名 / 密码的地址 → null（地址栏伪装成可信域名的钓鱼惯用法）', () => {
+    expect(safeExternalReturnUrl('https://raricy.com@evil.com/')).toBeNull();
+    expect(safeExternalReturnUrl('https://user:pass@merchant.example/')).toBeNull();
+  });
+
+  it('★ new URL 解析失败 → null（不抛给调用方）', () => {
+    expect(safeExternalReturnUrl('not a url')).toBeNull();
+    expect(() => safeExternalReturnUrl('http://[')).not.toThrow();
+    expect(safeExternalReturnUrl('http://[')).toBeNull();
   });
 });

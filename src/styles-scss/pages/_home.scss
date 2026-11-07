@@ -66,8 +66,10 @@
   --hero-forest-light: color-mix(in srgb, var(--color-accent-cyan) 30%, var(--color-text-primary));
   background: radial-gradient(ellipse at 85% 15%, var(--hero-sky-blue), transparent 65%), var(--hero-sky);
   color: var(--hero-ink);
-  min-height: clamp(620px, calc(88vh - 62px), 820px);
-  min-height: clamp(620px, calc(88dvh - 62px), 820px);
+  /* 顶栏是全局固定条（body 有 padding-top: var(--navbar-height)），hero 的 88vh 里
+     要扣掉它；写死 62px 会在 --navbar-height 改档（安全区/字号）时错位。 */
+  min-height: clamp(620px, calc(88vh - var(--navbar-height)), 820px);
+  min-height: clamp(620px, calc(88dvh - var(--navbar-height)), 820px);
   display: flex;
   align-items: center;
   position: relative;
@@ -209,6 +211,8 @@
   outline-offset: 5px;
 }
 
+/* 锚点留白 78px：站内 78/90/96 三档并存属视觉决定（见 R3-654 的待定档），
+   本行只保证「点 #features 不被固定顶栏盖住」；若统一档位，按 --navbar-height 重算。 */
 #features { scroll-margin-top: 78px; }
 
 @media (min-width: 768px) and (max-width: 1199px) {

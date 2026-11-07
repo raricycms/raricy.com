@@ -22,7 +22,7 @@ a {
     @include m.site-width-ladder;
     text-align: center;
     font-size: 0.82rem;
-    color: var(--color-text-tertiary);
+    color: var(--color-text-secondary);
 
     a {
         color: var(--color-text-secondary);
@@ -289,10 +289,17 @@ a {
     font-size: 0.9rem;
     font-weight: 500;
     position: relative;
-    .collapsible {
+    /* JSX 里 `category-link` 与 `collapsible` 是**同一元素上的两个类**（BlogSidebar.tsx），
+       所以必须是 `&.collapsible` 而不是后代选择器 —— 旧写法 `.collapsible` 嵌在
+       `.category-link` 里编译成 `.category-link .collapsible`，永远命中不到。 */
+    &.collapsible {
         cursor: pointer;
         user-select: none;
-        .catogory-toggle {
+
+        /* 折叠态由同一元素上的 `.collapsed` 承载（`.sub-category-list` 用的是同一个状态类，
+           两者同源同步切换）。箭头：展开朝下、折叠朝右。旧规则把 rotate 写在拼错的
+           `.catogory-toggle` 上，箭头从不旋转。 */
+        &.collapsed .category-toggle {
             transform: rotate(-90deg);
         }
     }
@@ -312,7 +319,6 @@ a {
     transition: transform 0.3s ease;
     color: var(--color-text-secondary);
 }
-
 
 
 /* .category-link.active 的规则已并入上面的 @include m.btn-tab */

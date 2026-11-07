@@ -1,7 +1,6 @@
 import { notFound } from 'next/navigation';
 import { requireCoreUser } from '@/lib/guard';
 import { getVoteDetail } from '@/lib/vote-service';
-import { getCurrentUser } from '@/lib/auth';
 import { prisma } from '@/lib/db';
 import { ymd } from '@/lib/format';
 import VoteEmbed, { VoteIdCopy, VoteDetailControls } from '@/app/components/VoteEmbed';
@@ -9,10 +8,11 @@ import VoteEmbed, { VoteIdCopy, VoteDetailControls } from '@/app/components/Vote
 export const dynamic = 'force-dynamic';
 
 export default async function VoteDetailPage({ params }: { params: Promise<{ id: string }> }) {
-  await requireCoreUser();
+  // 档位与当前用户是同一份东西：requireCoreUser 已经解析过会话，别再调一次
+  // getCurrentUser（同一请求两次会话解析，R3-185）。
+  const user = await requireCoreUser();
   const { id } = await params;
-  const user = await getCurrentUser();
-  const vote = await getVoteDetail(id, user?.id ?? null);
+  const vote = await getVoteDetail(id, user.id);
   if (!vote) notFound();
 
   // 创建者才拉取每个选项的投票者名单（voters 只对创建者下发）
@@ -70,7 +70,6 @@ export default async function VoteDetailPage({ params }: { params: Promise<{ id:
       <VoteEmbed
         voteId={vote.id}
         isLocked={vote.isLocked}
-        loggedIn={!!user}
         initialUserVoted={vote.userVoted}
         initialTotal={vote.totalVotes}
         initialOptions={vote.options}

@@ -298,6 +298,16 @@
   animation: admin-rise v.$motion-expand-duration v.$motion-expand-easing backwards;
 }
 
+// 筛选面板的入场动画与内部勾选过渡都要有不播动画的分支。
+@media (prefers-reduced-motion: reduce) {
+  .admin-filter-bar,
+  .admin-pick__box,
+  .admin-pick__box svg {
+    animation: none;
+    transition: none;
+  }
+}
+
 // ---- 选择控件（方形勾选点）----
 // 原生 input 只在可访问性树里（视觉隐藏、仍可聚焦），可见的是一枚**方角勾选块**：
 // 未选中为内容底色，选中转品牌实底 + 白色对勾，勾的缩放/淡入与卡片底色同步。

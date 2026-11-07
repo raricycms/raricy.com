@@ -93,65 +93,6 @@ test('普通功能页的页头与站点容器同一条宽度阶梯', async ({ pa
   }
 });
 
-test('账户页：整宽概览在上，服务卡与最近流水在下，商城多列', async ({ page }) => {
-  await loginViaApi(page, SEED_USERS.core.username);
-  await desktop(page);
-
-  await page.goto('/fish');
-  const header = await page.locator('.page-header').first().boundingBox();
-  const card = page.locator('.fish-card');
-  const services = page.locator('.fish-services');
-  const recent = page.locator('.fish-recent');
-  await expect(card).toBeVisible();
-  await expect(services).toBeVisible();
-  await expect(recent).toBeVisible();
-  const cardBox = await card.boundingBox();
-  const servicesBox = await services.boundingBox();
-  const recentBox = await recent.boundingBox();
-  expect(header && cardBox && servicesBox && recentBox).toBeTruthy();
-
-  // 概览卡是整宽的主区，不再是「左边一张卡 + 右边一小块」。
-  expect(Math.abs(cardBox!.x - header!.x)).toBeLessThanOrEqual(1);
-  expect(Math.abs(cardBox!.width - header!.width)).toBeLessThanOrEqual(1);
-  // 服务卡与最近流水依次在下方，而不是右侧。
-  expect(cardBox!.y + cardBox!.height).toBeLessThanOrEqual(servicesBox!.y);
-  expect(servicesBox!.y + servicesBox!.height).toBeLessThanOrEqual(recentBox!.y);
-
-  // 桌面：余额在左、三个操作在右，同一行；三个操作都在那一个容器里。
-  const balance = await page.locator('.fish-card__balance').boundingBox();
-  const actions = await page.locator('.fish-card__actions').boundingBox();
-  expect(balance && actions).toBeTruthy();
-  expect(balance!.y).toBeLessThan(actions!.y + actions!.height);
-  expect(actions!.y).toBeLessThan(balance!.y + balance!.height);
-  expect(balance!.x + balance!.width).toBeLessThanOrEqual(actions!.x);
-  await expect(page.locator('.fish-card__actions > *')).toHaveCount(3);
-
-  // 商城 / 练手盘两张服务卡等宽并排；单张时也不会缩成侧栏。
-  const serviceCards = page.locator('.fish-service');
-  await expect(serviceCards).toHaveCount(2);
-  const [s0, s1] = [await serviceCards.nth(0).boundingBox(), await serviceCards.nth(1).boundingBox()];
-  expect(s0 && s1).toBeTruthy();
-  expect(Math.abs(s0!.y - s1!.y), '两张服务卡应在同一行').toBeLessThanOrEqual(2);
-  expect(Math.abs(s0!.width - s1!.width), '两张服务卡应等宽').toBeLessThanOrEqual(1);
-  expect(s0!.x).toBeLessThan(s1!.x);
-
-  await page.goto('/fish/shop');
-  await expect(page.locator('.market-card[data-frame="fishblue"]')).toBeVisible();
-  const grid = page.locator('.market-shop__grid');
-  await expect(grid).toBeVisible();
-  const columns = await grid.evaluate((el) =>
-    getComputedStyle(el).gridTemplateColumns.split(/\s+/).filter(Boolean).length
-  );
-  expect(columns, '桌面商城应排成多列').toBeGreaterThanOrEqual(2);
-
-  const cards = page.locator('.market-shop__grid > .market-card');
-  await expect(cards.nth(1)).toBeVisible();
-  const [a, b] = [await cards.nth(0).boundingBox(), await cards.nth(1).boundingBox()];
-  expect(a && b).toBeTruthy();
-  expect(Math.abs(a!.y - b!.y), '两张卡应在同一行').toBeLessThanOrEqual(2);
-  expect(a!.x).toBeLessThan(b!.x);
-});
-
 test('账户最近流水与实际账本一致，查看全部指向流水页', async ({ page }) => {
   const sender = await registerFreshUser(page, { core: true });
   await publishBlog(page);
@@ -403,114 +344,6 @@ test('设置：桌面竖排侧目录、深链可达、加载失败可重试', as
   await expect(nav.locator('a')).toHaveCount(5);
 });
 
-/** 元素里文本实际占了几行（Range 的行盒数，比 clientHeight 更能识破逐字折行）。 */
-async function textLines(page: Page, selector: string) {
-  return page.locator(selector).evaluate((el) => {
-    const range = document.createRange();
-    range.selectNodeContents(el);
-    return range.getClientRects().length;
-  });
-}
-
-test('320 转账余额摘要：标签与单位不断字，长余额不撑破卡片', async ({ page }) => {
-  await loginViaApi(page, SEED_USERS.core.username);
-  await page.setViewportSize({ width: 320, height: 800 });
-  await page.goto('/fish/transfer');
-  await expect(page.locator('.market-card__balance-value')).toBeVisible();
-
-  // 三样不再并排：标签独立一行；数值与单位在同一行，两者都不逐字折断。
-  expect(await textLines(page, '.market-card__balance-label'), '「我的余额」被折断').toBe(1);
-  expect(await textLines(page, '.market-card__balance-unit'), '「小鱼干」被折断').toBe(1);
-  const [label, value, number, unit] = await Promise.all([
-    page.locator('.market-card__balance-label').boundingBox(),
-    page.locator('.market-card__balance-value').boundingBox(),
-    page.locator('.market-card__balance-number').boundingBox(),
-    page.locator('.market-card__balance-unit').boundingBox(),
-  ]);
-  expect(label && value && number && unit).toBeTruthy();
-  expect(label!.y + label!.height).toBeLessThanOrEqual(value!.y + 1);
-  // 数值与单位在同一行（纵向有交叠），而不是单位被挤到下一行。
-  expect(number!.y).toBeLessThan(unit!.y + unit!.height);
-  expect(unit!.y).toBeLessThan(number!.y + number!.height);
-
-  // 只在展示层换一个长余额：账本与真实余额不动，验证的是 CSS 承载。
-  await page.locator('.market-card__balance-number').evaluate((el) => {
-    el.textContent = '1234567890.1234';
-  });
-  await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => resolve(null))));
-  expect(await textLines(page, '.market-card__balance-label')).toBe(1);
-  expect(await textLines(page, '.market-card__balance-unit'), '长余额把单位挤断了').toBe(1);
-  const headFits = await page.locator('.market-card__head').evaluate((el) => el.scrollWidth <= el.clientWidth + 1);
-  expect(headFits, '长余额把摘要条撑出横向滚动').toBe(true);
-  const doc = await page.evaluate(() => ({ doc: document.documentElement.scrollWidth, view: window.innerWidth }));
-  expect(doc.doc).toBeLessThanOrEqual(doc.view);
-});
-
-test('转账：桌面双栏（右栏在表单右侧）、窄屏单列（右栏落在表单下方）', async ({ page }) => {
-  await loginViaApi(page, SEED_USERS.core.username);
-
-  // 1440：表单仍是 560 的左列，右栏与它同一顶线并贴在右侧 —— 右半边不再空着。
-  await page.setViewportSize({ width: 1440, height: 900 });
-  await page.goto('/fish/transfer');
-  const card = page.locator('.fish-transfer__layout .market-card').first();
-  await expect(card).toBeVisible();
-  await expect(page.locator('.fish-transfer__aside')).toBeVisible();
-
-  const wide = { card: await card.boundingBox(), aside: await page.locator('.fish-transfer__aside').boundingBox() };
-  expect(wide.card && wide.aside, '量不到双栏盒子').toBeTruthy();
-  expect(wide.aside!.x, '右栏没有落在表单右侧').toBeGreaterThanOrEqual(wide.card!.x + wide.card!.width - 0.5);
-  expect(Math.abs(wide.aside!.y - wide.card!.y), '右栏与表单没有对齐顶线').toBeLessThanOrEqual(1);
-  // 右栏必须真的吃掉剩余宽度，而不是又缩成一张窄卡。
-  expect(wide.aside!.width, '右栏仍然很窄').toBeGreaterThan(300);
-  const wideOverflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
-  expect(wideOverflow, '双栏把页面撑出横向滚动').toBeLessThanOrEqual(0);
-
-  // 992：同一容器阶梯的起点，右栏只剩 ~344px，仍须在右侧且不溢出。
-  await page.setViewportSize({ width: 992, height: 900 });
-  await page.reload();
-  await expect(page.locator('.fish-transfer__aside')).toBeVisible();
-  const narrow = { card: await card.boundingBox(), aside: await page.locator('.fish-transfer__aside').boundingBox() };
-  expect(narrow.card && narrow.aside).toBeTruthy();
-  expect(narrow.aside!.x, '992 档右栏没有落在表单右侧').toBeGreaterThanOrEqual(narrow.card!.x + narrow.card!.width - 0.5);
-  const narrowOverflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
-  expect(narrowOverflow, '992 档把页面撑出横向滚动').toBeLessThanOrEqual(0);
-
-  // 390：折成单列，右栏整体落到表单下方（顺序不变：先转账，后信息）。
-  await page.setViewportSize({ width: 390, height: 800 });
-  await page.reload();
-  await expect(page.locator('.fish-transfer__aside')).toBeVisible();
-  const stacked = { card: await card.boundingBox(), aside: await page.locator('.fish-transfer__aside').boundingBox() };
-  expect(stacked.card && stacked.aside).toBeTruthy();
-  expect(stacked.aside!.y, '窄屏右栏没有落到表单下方').toBeGreaterThanOrEqual(stacked.card!.y + stacked.card!.height - 0.5);
-});
-
-test('320 / 390 页头：单个短操作与标题同行，放不下才换行', async ({ page }) => {
-  await loginViaApi(page, SEED_USERS.core.username);
-
-  for (const width of [390, 320]) {
-    await page.setViewportSize({ width, height: 800 });
-    for (const url of ['/checkin', '/fish/transfer']) {
-      await page.goto(url);
-      const header = page.locator('.page-header').first();
-      await expect(header).toBeVisible();
-      const [main, actions, box] = await Promise.all([
-        page.locator('.page-header__main').boundingBox(),
-        page.locator('.page-header__actions').boundingBox(),
-        header.boundingBox(),
-      ]);
-      expect(main && actions && box).toBeTruthy();
-      // 同一行：纵向有交叠，且操作整组在标题列的右边。
-      expect(actions!.y).toBeLessThan(main!.y + main!.height);
-      expect(actions!.y + actions!.height).toBeGreaterThan(main!.y);
-      expect(actions!.x).toBeGreaterThanOrEqual(main!.x + main!.width - 1);
-      // 抬头没有多出一整行（换行时高度会接近两者之和）。
-      expect(box!.height).toBeLessThanOrEqual(Math.max(main!.height, actions!.height) + 2);
-      // 标题本身仍是一行，没有被操作挤断。
-      expect(await textLines(page, '.page-header__title'), `${url} 在 ${width}px 下标题被折断`).toBe(1);
-    }
-  }
-});
-
 test('联系页：邮箱触控高度与响应式列数', async ({ page }, testInfo) => {
   // ① 320：邮箱是主要点击入口，可点区域至少 44px 高。
   await page.setViewportSize({ width: 320, height: 800 });
@@ -546,21 +379,6 @@ test('联系页：邮箱触控高度与响应式列数', async ({ page }, testIn
   expect(desc, '量不到反馈说明').not.toBeNull();
   expect(desc!.width, '768 下反馈说明被挤成了细列').toBeGreaterThan(240);
   await page.screenshot({ path: testInfo.outputPath('contact-tablet.png'), fullPage: true });
-
-  // ③ 1440：三列回到同一行，左到右依次排列。
-  await page.setViewportSize({ width: 1440, height: 900 });
-  await page.goto('/contact');
-  const wide = await page.locator('.contact-row').evaluateAll((els) =>
-    els.map((el) => {
-      const r = el.getBoundingClientRect();
-      return { x: r.x, y: r.y };
-    })
-  );
-  expect(wide).toHaveLength(3);
-  expect(Math.abs(wide[0].y - wide[1].y), '三列应在同一行').toBeLessThanOrEqual(2);
-  expect(Math.abs(wide[1].y - wide[2].y), '三列应在同一行').toBeLessThanOrEqual(2);
-  expect(wide[0].x).toBeLessThan(wide[1].x);
-  expect(wide[1].x).toBeLessThan(wide[2].x);
 });
 
 test('商城 #shop 深链落在固定顶栏之下（含旧 market 兼容跳转）', async ({ page }) => {

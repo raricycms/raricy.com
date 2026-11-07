@@ -125,12 +125,9 @@ test('对外文章默认访客预览，切换后可以展开成员引用，再�
   await mode.check();
   await expect(preview).not.toContainText(secret);
   await expect(preview).toContainText('[@' + clip.id + ']');
-  await expect(preview).toContainText('[@' + clip.id + ']');
-  await expect(preview).not.toContainText(secret);
-  await mode.uncheck();
-  await expect(preview).toContainText(secret);
-  await mode.check();
-  await expect(preview).not.toContainText(secret);
+  // 一轮「切回访客 → 成员」已经覆盖「再切回不残留」这条主张；旧实现又重复两轮
+  // 逐字相同的断言，不覆盖任何新状态，只让 RESPONSIVE_SPECS 里 desktop+mobile
+  // 各跑一遍的成本翻倍（R3-641 ④）。
   await noOverflow(page);
   await preview.scrollIntoViewIfNeeded();
   await page.screenshot({ path: testInfo.outputPath('visitor-preview.png') });

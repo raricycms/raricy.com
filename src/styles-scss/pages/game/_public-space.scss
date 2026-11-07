@@ -23,7 +23,17 @@
   min-width: 0; min-height: 0; aspect-ratio: 1; padding: 0; border-radius: 10px; background: var(--color-background-content);
   .public-space-avatar { width: 54%; max-width: 36px; height: auto; aspect-ratio: 1; margin-bottom: 10px; }
   .public-space-name { position: absolute; bottom: 3px; left: 3px; width: calc(100% - 6px); }
-  &:disabled { opacity: 1; }
+  /* 禁用态承担三种语义，不能压成同一种观感：
+     · 有人的座位（内有头像）：只改 cursor，保持头像清晰可读；
+     · 空位未连接：弱化到「当前不可点」；
+     · 空位在请求在途（grid[aria-busy]）：再压一点并给 progress，和「已占」区分。
+     不用统一 opacity —— 那会把有人的整格一起变淡（头像看起来像加载中）。 */
+  &:disabled { opacity: 1; cursor: not-allowed; }
+  &:disabled:not(:has(.public-space-avatar)) { opacity: .5; }
+  .public-space-grid[aria-busy='true'] &:disabled:not(:has(.public-space-avatar)) {
+    opacity: .4;
+    cursor: progress;
+  }
   &:focus-visible { outline: 2px solid var(--color-brand-primary); outline-offset: 2px; }
   &--mine { background: var(--color-brand-secondary); color: var(--color-brand-primary); }
 }

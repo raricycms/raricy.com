@@ -177,8 +177,13 @@ test('五个范围使用同一列表，空状态清掉筛选后保留当前范�
   await expect(page.locator('.blog-item')).toHaveCount(1);
   await openPersonal(page);
   await page.getByRole('link', { name: /^全部文章 / }).click();
-  await expect(page.locator('.blog-directory__scope')).toHaveCount(0);
   await expect(page).toHaveURL((url) => !url.searchParams.has('scope'));
+  // 旧断言查 `.blog-directory__scope` —— 该类名在 src 里零命中，恒真（R3-187 ②）。
+  // 改为真实可观察状态：范围导航的 aria-current 回到「全部文章」。
+  await expect(
+    page.locator('.blog-personal__range[aria-current="page"]'),
+    '点「全部文章」后范围导航没有回到 all'
+  ).toHaveText(/全部文章/);
   if (isMobile) await expect(page.locator('.blog-personal__panel')).toHaveAttribute('inert', '');
 });
 

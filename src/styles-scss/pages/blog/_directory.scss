@@ -293,7 +293,8 @@
     // （docs/frontend-styles.md §3.6：写死的 rgba 只允许作遮罩底色。）
     // 它挂在 aside 里面而不是 portal：移动端 aside 自己就是 fixed，蒙版跟着它一起
     // 显隐即可。代价是「点外部收起」那个监听判不出它（它就在 aside 内），收起由
-    // 组件自己的 onPointerDown 接（见 BlogPersonalSidebar）。
+    // 组件自己的 **onClick** 接（BlogPersonalSidebar.tsx；不能挂 onPointerDown ——
+    // 按下那一刻就收起会让「按下在蒙版、抬起在面板」的手势丢掉）。
     // 尺寸是整块可视区，但**层级留在固定顶栏之下**（见 .is-open 的说明）：顶栏是
     // 不透明的固定条，蒙版压到它下面，于是只暗页面、不暗顶栏。
     &__backdrop {

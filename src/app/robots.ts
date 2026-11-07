@@ -51,7 +51,8 @@ export default function robots(): MetadataRoute.Robots {
         // ——这里是按路径放行，粒度不到单个文件，私有档得自己挡。
         allow: ['/', '/api/images/', '/api/audio/', '/api/og/', '/blog/'],
         // /auth/ 是鉴权回跳路径，/admin 与 /chat 是登录后的内部工作台，一律不索引。
-        disallow: ['/api/', '/auth/', '/admin/', '/chat', '/login', '/blog'],
+        // /zhh 是站长邀请码的 GET 视图（非站长 403、也不在 sitemap），不列入任何索引清单。
+        disallow: ['/api/', '/auth/', '/admin/', '/chat', '/login', '/zhh', '/blog'],
       },
     ],
     sitemap: `${base}/sitemap.xml`,

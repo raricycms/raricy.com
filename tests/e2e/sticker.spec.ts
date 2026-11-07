@@ -202,8 +202,14 @@ test.describe('表情包：输入区', () => {
       await composer.getByRole('button', { name: '表情', exact: true }).click();
       const panel = composer.locator('.sticker-picker');
       await panel.getByRole('tab', { name: collection, exact: true }).click();
-      await expect.poll(() => thumbnailRequests).toBe(2);
-      expect(await panel.locator('img[src]').count()).toBe(2);
+      // 条目列在 DOM 里是全量 120 条，缩略图按可见性懒加载；可见张数随面板高度/
+      // 触控尺寸档位变化（R3-666 把输入区命中区抬到 44px 后可见数从 2 变成 4），
+      // 所以断「确实开始取缩略图 + 没有把 120 张全拉」而不是写死 2。
+      await expect.poll(() => thumbnailRequests).toBeGreaterThanOrEqual(2);
+      const stickerThumbs = await panel.locator('.sticker-picker__item img[src]').count();
+      expect(stickerThumbs).toBeGreaterThanOrEqual(2);
+      expect(stickerThumbs).toBeLessThan(20);
+      expect(thumbnailRequests).toBeLessThan(20);
 
       const sent = page.waitForResponse((res) =>
         res.url().endsWith(`/api/chat/channels/${LOBBY}/messages`) && res.request().method() === 'POST'

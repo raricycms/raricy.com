@@ -5,6 +5,9 @@ import { ExternalLink } from 'lucide-react';
 
 // FrameBuster —— 页面被**跨站** <iframe> 嵌入时，弹一个居中模态框，给用户「跳出」入口。
 //
+// ⚠️ **与头像框（avatar frame / frame-service）无关，只是同名不同义**：这里的 frame 是
+// iframe，那边的 frame 是挂件。两者没有 import 关系，别把它们当同一子系统合并。
+//
 // 【只跨站弹】同站嵌入（hostname 相同或互为子域）与正常访问一律不渲染任何东西。
 // 跨站嵌入时会话 cookie 是 SameSite=Lax（src/lib/session.ts），iframe 子请求根本带不上
 // 它 —— 用户明明登录着，嵌进来的页面却显示未登录，且不报任何错，所以这里值得用最强的

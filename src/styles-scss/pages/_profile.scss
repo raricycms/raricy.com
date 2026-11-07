@@ -845,7 +845,9 @@
 
 .bento-toolbar {
   position: sticky;
-  top: 74px;
+  /* 吸顶位置 = 顶栏高度 + 间距。写死 74/68 会在顶栏高度或安全区变化时错位（唯一真相
+     源是 base/_root.scss 的 --navbar-height）。桌面 12px、窄屏 6px。 */
+  top: calc(var(--navbar-height) + 12px);
   z-index: 15;
   display: flex;
   align-items: center;
@@ -1200,12 +1202,17 @@
 }
 
 // --- 弹窗 ---
+//
+// z-index 与 `.modal` / `.bento-detail` 同档（1050）：必须盖住固定顶栏（1030），
+// 否则遮罩缺一条、顶栏还能点。曾写成 60（一个不属于本站层级表的数）→ 顶栏压住遮罩。
+// 「选择要添加的内容」与 `.bento-detail` 由 ProfileBoard 的互斥条件保证不同时开，
+// 同层不会打架。
 
 .bento-modal {
   position: fixed;
   animation: bento-fade 0.18s ease;
   inset: 0;
-  z-index: 60;
+  z-index: 1050;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1389,7 +1396,7 @@
   }
 
   .bento-toolbar {
-    top: 68px;
+    top: calc(var(--navbar-height) + 6px);
   }
 }
 

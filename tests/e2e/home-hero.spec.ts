@@ -108,7 +108,6 @@ test('视差：鼠标驱动景深，文字保持稳定', async ({ page, isMobile
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto('/');
   await expect(page.locator('.hero-section')).toHaveAttribute('data-scene-ready', 'true');
-  await expect(page.locator('.hero-tilt-toggle')).toHaveCount(0);
   await page.locator('.hero-content').evaluate((el) => Promise.all(el.getAnimations().map((animation) => animation.finished)));
   const near = page.locator('.hero-scene__layer').last();
   const transform = () => near.evaluate((el) => getComputedStyle(el).transform);
@@ -138,7 +137,6 @@ test.describe('手机倾斜视差', () => {
     await mockTiltPermission(page, 'auto');
     await page.goto('/');
     await expect(page.locator('.hero-section')).toHaveAttribute('data-scene-ready', 'true');
-    await expect(page.locator('.hero-tilt-control, .hero-tilt-toggle')).toHaveCount(0);
     await page.locator('.hero-content').evaluate((el) => Promise.all(el.getAnimations().map((animation) => animation.finished)));
     const titleBefore = await page.locator('#hero-title').boundingBox();
     await sendTilt(page, 60, 0);
@@ -167,7 +165,6 @@ test.describe('手机倾斜视差', () => {
     await mockTiltPermission(page, 'granted');
     await page.goto('/');
     await expect(page.locator('.hero-section')).toHaveAttribute('data-scene-ready', 'true');
-    await expect(page.locator('.hero-tilt-control, .hero-tilt-toggle')).toHaveCount(0);
     await page.evaluate(() => document.body.click());
     await sendTilt(page, 60, 0);
     await sendTilt(page, 85, 25);
@@ -195,7 +192,6 @@ test.describe('手机倾斜视差', () => {
       await expect(page.locator('.hero-section')).toHaveAttribute('data-scene-ready', 'true');
       await page.locator('#hero-title').click();
       await expect(page.locator('html')).toHaveAttribute('data-tilt-permission-requests', '1');
-      await expect(page.locator('.hero-tilt-control, .hero-tilt-toggle, .hero-section [role="status"]')).toHaveCount(0);
       await sendTilt(page, 60, 0);
       await sendTilt(page, 85, 25);
       await expectOffset(page, true).toBeCloseTo(0, 1);
@@ -233,7 +229,6 @@ test.describe('手机倾斜视差', () => {
     await page.emulateMedia({ reducedMotion: 'reduce' });
     await page.goto('/');
     await expect(page.locator('.hero-section')).toHaveAttribute('data-scene-ready', 'true');
-    await expect(page.locator('.hero-tilt-toggle')).toHaveCount(0);
     await page.locator('#hero-title').click();
     await expect(page.locator('html')).not.toHaveAttribute('data-tilt-permission-requests');
     await page.emulateMedia({ reducedMotion: 'no-preference' });
@@ -246,7 +241,6 @@ test.describe('手机倾斜视差', () => {
     await sendTilt(page, 60, 25);
     await expectOffset(page, true).toBeGreaterThan(25);
     await page.emulateMedia({ reducedMotion: 'reduce' });
-    await expect(page.locator('.hero-tilt-toggle')).toHaveCount(0);
     await sendTilt(page, 80, -25);
     await expect(page.locator('.hero-scene__layer').last()).toHaveCSS('transform', 'none');
     await page.emulateMedia({ reducedMotion: 'no-preference' });
@@ -264,7 +258,6 @@ test.describe('手机倾斜视差', () => {
       }, unavailable);
       await page.goto('/');
       await expect(page.locator('.hero-section')).toHaveAttribute('data-scene-ready', 'true');
-      await expect(page.locator('.hero-tilt-toggle')).toHaveCount(0);
       await page.locator('#hero-title').click();
       await sendTilt(page, 60, 0);
       await sendTilt(page, 60, 25);

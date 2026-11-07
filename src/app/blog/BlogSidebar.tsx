@@ -5,7 +5,7 @@ import { useEffect, useState } from 'react';
 import { ChevronDown, Home, Star } from 'lucide-react';
 
 // 分类侧栏 — 折叠目录的一套类名（category-item / category-toggle / category-content）
-// 服务端注入 props；客户端仅做折叠交互（≤820px 自动收拢）。
+// 服务端注入 props；客户端仅做折叠交互（≤992px 自动收拢，与 _menu.scss 的单列断点一致）。
 interface SidebarChild {
   id: number;
   name: string;
@@ -71,6 +71,9 @@ export default function BlogSidebar({
         setCollapsedLinks(new Set(parentIds));
       } else {
         setCollapsedSubs(new Set());
+        // 两个 Set 是「子列表视觉态」与「箭头的 aria/类名」的同一份真相，必须一起复位：
+        // 只清一个时，窄屏→桌面 resize 后 aria-expanded=false 而子列表已展开。
+        setCollapsedLinks(new Set());
       }
     }
 
@@ -118,6 +121,17 @@ export default function BlogSidebar({
       <h3
         className={`sidebar-title${mainCollapsed ? ' collapsed' : ''}`}
         onClick={toggleMainCategories}
+        role="button"
+        tabIndex={0}
+        aria-expanded={!mainCollapsed}
+        onKeyDown={(e) => {
+          // role="button" 必须能被键盘激活（Enter / Space）；否则 Tab 进不去，
+          // 辅助技术却被告知这里是个按钮。
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            toggleMainCategories();
+          }
+        }}
       >
         <span>分类</span>
         <span className="toggle-icon" aria-hidden="true">
@@ -163,7 +177,14 @@ export default function BlogSidebar({
                 className={`category-link collapsible${collapsedLinks.has(category.id) ? ' collapsed' : ''}`}
                 onClick={() => toggleCategory(category.id)}
                 role="button"
+                tabIndex={0}
                 aria-expanded={!collapsedLinks.has(category.id)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    toggleCategory(category.id);
+                  }
+                }}
               >
                 <div className="category-content">
                   {category.icon && <span className="icon" aria-hidden="true">{category.icon}</span>}

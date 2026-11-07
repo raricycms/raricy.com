@@ -80,6 +80,14 @@ describe('spider 评论契约：键集合', () => {
     const out = await getSpiderComment(c.id);
     expect(out).not.toBeNull();
     expect(Object.keys(out!).sort()).toEqual(CONTRACT_KEYS);
+    // 嵌套 author 也是对外契约：只比顶层键会放过「author 里多塞 station 字段」
+    expect(Object.keys(out!.author).sort(), 'author 嵌套字段变了就是改对外契约').toEqual([
+      'avatar_url',
+      'frame_url',
+      'id',
+      'is_admin',
+      'username',
+    ]);
     // 站内 DTO 的字段一个都不许出现在这里
     for (const leaked of ['content', 'image', 'image_missing', 'blog', 'blog_missing']) {
       expect(out, `站内字段 ${leaked} 漏进了 spider 契约`).not.toHaveProperty(leaked);
@@ -95,6 +103,13 @@ describe('spider 评论契约：键集合', () => {
     expect(list).toHaveLength(2);
     for (const item of list) {
       expect(Object.keys(item).sort()).toEqual(CONTRACT_KEYS);
+      expect(Object.keys(item.author).sort()).toEqual([
+        'avatar_url',
+        'frame_url',
+        'id',
+        'is_admin',
+        'username',
+      ]);
     }
   });
 

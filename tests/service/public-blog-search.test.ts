@@ -74,6 +74,21 @@ describe('公开正文索引', () => {
     expect(old.searchAvailability).toBe('metadata-only');
     expect(old.total).toBe(1); expect(old.blogs[0].snippet).toBeNull();
   });
+  it('部分索引缺失（body_status=missing）→ searchAvailability=partial，仍可按标题搜到', async () => {
+    // 正文编译失败（未知格式）时 sync 会落 body_status='missing'：该篇仍在公开集合里，
+    // 但正文不可查 —— 这正是 UI 需要显示「部分文章只能按标题搜」的降级态（R3-189 ②）。
+    const b = await makeBlog({ visibility: 'public', title: '部分索引哨兵', content: '不可编译正文' });
+    await prisma.blogContent.update({ where: { blogId: b.id }, data: { format: 'weird-format' } });
+    await syncPublicBlogSearch(b.id);
+
+    const r = await listPublicBlogs({ search: '部分索引哨兵' });
+    expect(r.searchAvailability).toBe('partial');
+    expect(r.total).toBe(1);
+    expect(r.blogs[0].snippet, '正文不可查 → 没有片段').toBeNull();
+    // 但正文词确实搜不到（没有被当成 ready 去 MATCH）
+    expect((await listPublicBlogs({ search: '不可编译正文' })).total).toBe(0);
+  });
+
   it('排序按标题/简介/作者/正文相关性及日期和 ID 稳定分页', async () => {
     const b=await makeBlog({visibility:'public',title:'正文项',content:'关键词山风'});
     const a=await makeBlog({visibility:'public',title:'关键词山风',content:'其他'});

@@ -19,10 +19,9 @@ export default function VoteCreate() {
   }
 
   function addOption() {
-    if (options.length >= MAX_OPTIONS) {
-      alert('最多只能添加10个选项');
-      return;
-    }
+    // 上限分支不可达：按钮在 options.length >= MAX_OPTIONS 时已 disabled，
+    // 这也正是旧 alert 永远不会出现的原因（R3-185）。保留计数守卫以免将来去掉 disabled。
+    if (options.length >= MAX_OPTIONS) return;
     setOptions((prev) => {
       const next = [...prev, ''];
       // 新增选项后自动聚焦到新生成的输入框（省得再点一下）
@@ -84,7 +83,7 @@ export default function VoteCreate() {
       <h1 className="vote-title">创建投票</h1>
 
       <div className="vote-form">
-        <form id="createForm" onSubmit={submit}>
+        <form onSubmit={submit}>
           <div className="vote-form__group">
             <label htmlFor="title">
               投票标题
@@ -103,11 +102,11 @@ export default function VoteCreate() {
             {title.length >= MAX_TEXT * 0.9 && <p id="vote-title-limit" className="form-hint" role="status">{title.length} / {MAX_TEXT} 字</p>}
           </div>
 
-          <div className="vote-form__group">
-            <label>
+          <div className="vote-form__group" role="group" aria-labelledby="vote-options-label">
+            <span className="form-label" id="vote-options-label">
               投票选项
-            </label>
-            <div className="vote-form__options" id="optionsContainer">
+            </span>
+            <div className="vote-form__options">
               {options.map((opt, i) => (
                 <div className="vote-form__option-row" key={i}>
                   <input

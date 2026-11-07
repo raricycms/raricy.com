@@ -44,6 +44,18 @@ for (const ep of ENDPOINTS) {
     expect(res.status()).toBe(403);
   });
 
+  // ⚠️ 上一条用的是 role=user，403 来自**档位闸门**，归属判定（"作者 or 管理员"）一次都
+  // 没跑到 —— 把归属判断删掉，它仍然绿（R3-188）。这里补 core+ 非作者：档位放行后
+  // 必须由归属闸门回 403「无权查看」，两条一起才钉住「两层都在」。
+  test(`/api/blogs/:id/${ep} core+ 非作者 → 403「无权查看」（归属判定真的跑到了）`, async ({
+    page,
+  }) => {
+    await loginViaApi(page, SEED_USERS.directory.username);
+    const res = await page.request.get(`/api/blogs/${SEED_BLOG.id}/${ep}`);
+    expect(res.status()).toBe(403);
+    expect((await res.json()).message).toBe('无权查看');
+  });
+
   test(`/api/blogs/:id/${ep} 文章不存在 → 404`, async ({ page }) => {
     await loginViaApi(page, SEED_USERS.admin.username);
     const res = await page.request.get(`/api/blogs/no-such-blog/${ep}`);

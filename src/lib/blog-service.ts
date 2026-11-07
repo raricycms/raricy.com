@@ -501,9 +501,12 @@ export async function getBlogDetail(id: string, viewer: BlogViewer | null) {
 /**
  * **对外读一篇的唯一出口**：viewer 恒为游客。
  *
- * 对外页面与 OG 图都走它，别各自去写 `getBlogDetail(id, null)` —— 具名出口是静态
- * 守卫（tests/unit/anonymous-read-guard.test.ts 的 GUARD_SYMBOLS）能认得的形状，
- * 也说明「这个调用点确实做了可见性判定」。
+ * OG 图走它；文章详情页则因为要按会话分档（core+ 可读 internal）直接调
+ * `getBlogDetail(id, user ? {id, isCore} : null)` —— 那条路对匿名等价于本函数
+ * （同一个 EXTERNAL_VISIBLE_BLOG_WHERE），**别**把页面写成
+ * `getExternallyVisibleBlog(id)`（core+ 会看不到自己的 internal 文章）。
+ * 具名出口是静态守卫（tests/unit/anonymous-read-guard.test.ts 的 GUARD_SYMBOLS）
+ * 能认得的形状，也说明「这个调用点确实做了可见性判定」。
  */
 export async function getExternallyVisibleBlog(id: string) {
   return getBlogDetail(id, null);
@@ -732,7 +735,8 @@ export async function getLikers(
     prisma.blogLike.count({ where: { blogId, deleted: false } }),
     prisma.blogLike.findMany({
       where: { blogId, deleted: false },
-      orderBy: { createdAt: 'desc' },
+      // 次键 id 保证同秒点赞的稳定分页（否则翻页可能重复/漏行，R3-188）
+      orderBy: [{ createdAt: 'desc' }, { id: 'asc' }],
       skip: off,
       take: lim,
       select: {
@@ -762,7 +766,8 @@ export async function getLikers(
 
 /**
  * 点赞切换：唯一约束 (blog_id,user_id) + 软删除 deleted 字段，
- * 计数在事务内原子增减。附带内存限频（100/时、500/天）。
+ * 计数在事务内原子增减。附带内存限频（额度以 `RULES.likeHourly` / `RULES.likeDaily`
+ * 为准，别在注释里手抄数字 —— 曾写成 100/500，与 RULES 的实际值 300/1500 脱钩）。
  *
  * 点赞生效时给作者发一条『文章点赞』，
  * 用 BlogLike.notificationSent 保证「一人对一篇文章最多一条通知」。
@@ -802,8 +807,19 @@ export async function toggleLike(blogId: string, userId: string) {
 
     let liked: boolean;
     if (!existing) {
-      await tx.blogLike.create({ data: { blogId, userId, deleted: false } });
-      liked = true;
+      try {
+        await tx.blogLike.create({ data: { blogId, userId, deleted: false } });
+        liked = true;
+      } catch (e) {
+        // 并发双击：两个事务都读到「没有行」，后建者撞唯一约束。这与「已经点过赞」
+        // 是同一份最终态，不能冒成 500（R3-182）。以库里现状为准，这次不再翻转 ——
+        // 通知抢占随后仍会跑：另一侧已抢过时 count=0，不会重复发。
+        if ((e as { code?: string } | null)?.code !== 'P2002') throw e;
+        const raced = await tx.blogLike.findUnique({
+          where: { uq_blog_like_blog_user: { blogId, userId } },
+        });
+        liked = !!raced && !raced.deleted;
+      }
     } else {
       liked = existing.deleted; // 之前是删除态 → 现在点亮
       await tx.blogLike.update({
@@ -865,10 +881,14 @@ export async function toggleLike(blogId: string, userId: string) {
 // 写路径（发文 / 改文：校验 + 日限额 + 栏目管理员专属 + 通知逻辑）。
 // ─────────────────────────────────────────────────────────────────────────────
 
-// 校验上限：前端 BlogForm.tsx 手抄了同一组数字（30 / 100 / 250000），改这里要同步改前端
-export const BLOG_TITLE_MAX = 30;
-export const BLOG_DESCRIPTION_MAX = 100;
-export const BLOG_CONTENT_MAX = 250000; // 正文上限（放宽自 200000）
+// 校验上限：标题/描述/正文的数值住在零依赖的 blog-limits.ts（客户端发布表单也要用），
+// 这里转出保持既有 import 路径不变；只给服务端用的上限（每日发文数）留在本文件。
+export {
+  BLOG_TITLE_MAX,
+  BLOG_DESCRIPTION_MAX,
+  BLOG_CONTENT_MAX,
+} from './blog-limits';
+import { BLOG_TITLE_MAX, BLOG_DESCRIPTION_MAX, BLOG_CONTENT_MAX } from './blog-limits';
 export const BLOG_DAILY_LIMIT = 20; // 每日发文上限
 
 /** 发文 / 改文**唯一接受**的键。多一个都会被 400 顶回去，理由见 validateBlogData 里那段。 */

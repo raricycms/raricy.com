@@ -152,6 +152,9 @@ describe('as / onClick / size', () => {
     const el = box.firstElementChild as HTMLElement;
     expect(el.style.width).toBe('32px');
     expect(el.style.height).toBe('32px');
+    // 8% 是小尺寸头像的圆角约定（与站点 .avatar 的 CSS 圆角互补）；这一条此前没有
+    // 断言，删掉/改成 50% 不会有测试红（R3-644 ①）。
+    expect(el.style.borderRadius).toBe('8%');
   });
 
   it('不给 size 时盒子不带内联尺寸（尺寸交给站点的类）', () => {
