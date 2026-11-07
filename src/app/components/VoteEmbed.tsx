@@ -40,12 +40,15 @@ export default function VoteEmbed({
   const [userVoted, setUserVoted] = useState<number | null>(initialUserVoted);
   const [selected, setSelected] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
+  /** 投票已提交、但重新拉取服务端结果失败时的提示（与「投票失败」区分，R3-123）。 */
+  const [resultError, setResultError] = useState<string | null>(null);
 
   const showResults = userVoted !== null || isLocked;
 
   async function submit() {
     if (selected == null) return;
     setLoading(true);
+    setResultError(null);
     try {
       const res = await fetch(`/api/votes/${voteId}/vote`, {
         method: 'POST',
@@ -55,19 +58,29 @@ export default function VoteEmbed({
       });
       const data = await res.json();
       if (data.code === 200) {
-        // 乐观更新本地结果并切到结果视图（不整页重载，等价切换）
-        const nextOptions = options.map((o) =>
-          o.id === selected ? { ...o, count: o.count + 1 } : o
-        );
-        const nextTotal = total + 1;
-        setOptions(
-          nextOptions.map((o) => ({
-            ...o,
-            percentage: nextTotal > 0 ? Math.round((o.count / nextTotal) * 1000) / 10 : 0,
-          }))
-        );
-        setTotal(nextTotal);
+        // 口径与正文里的嵌入投票（SiteEmbedView.InteractiveVote）一致：**以服务端为准**
+        // 重新拉一次结果，不做本地乐观累加（本地累加会与并发投票的真实票数漂开）。
         setUserVoted(selected);
+        setSelected(null);
+        try {
+          const refreshed = await fetch(`/api/votes/${voteId}`, { credentials: 'same-origin' });
+          const json = (await refreshed.json().catch(() => null)) as {
+            code?: number;
+            data?: { options?: OptionData[]; total_votes?: number; user_voted?: number | null };
+          } | null;
+          const next = json?.code === 200 ? json.data : null;
+          if (next?.options && typeof next.total_votes === 'number') {
+            setOptions(next.options);
+            setTotal(next.total_votes);
+            setUserVoted(next.user_voted ?? selected);
+          } else {
+            // 已提交成功但结果拉不到：保留结果视图（用提交前那份计数）并明确提示，
+            // 不吞错、也不把「已提交」说成「投票失败」。
+            setResultError('投票已提交，但结果加载失败');
+          }
+        } catch {
+          setResultError('投票已提交，但结果加载失败');
+        }
         // 刷新服务端组件，让顶部 meta"已投票"绿色徽章出现
         router.refresh();
       } else {
@@ -87,6 +100,11 @@ export default function VoteEmbed({
           两边都写就会并排出现两个一模一样的徽章 —— 徽章属于页面元信息，不属于组件本身。
           （正文里的嵌入由 reactive/site-embed-static.tsx 的 VoteWidget 渲染自己的徽章。） */}
       {showResults && <p className="vote-embed-total numeric">共 {total} 票</p>}
+      {resultError && (
+        <p className="vote-embed-total" role="alert">
+          {resultError}
+        </p>
+      )}
 
       {options.map((o) => {
         const isMine = userVoted === o.id;
