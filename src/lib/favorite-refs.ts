@@ -25,6 +25,17 @@
 export const FAVORITE_ID_LEN = 6;
 
 /**
+ * 收藏夹标题上限（与 vote / clipboard 的标题口径一致）。
+ *
+ * 【为什么这个常量住在这里】服务层的 `normalizeTitle` 校验它，客户端两个输入框
+ * （`FavoriteButton` / `FavoriteMenu` 的 `maxLength`）也要用它 —— 而
+ * `favorite-service` 拖着 prisma、进不了客户端包，客户端再写一遍字面量就会在
+ * 「服务端调小上限」时静默漂移（UI 还能输 60 字，提交后回 400「请求参数有误」）。
+ * 本文件零依赖，两端都能 import。
+ */
+export const FAVORITE_TITLE_MAX = 60;
+
+/**
  * 收藏夹 ID 的形态：**恰好 6 位数字**。全程按字符串处理 ——
  * 绝不能 `Number(publicId)`（"000123" 会被压成 "123"，于是「收藏夹不存在」）。
  */

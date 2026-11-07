@@ -13,6 +13,7 @@ import { prisma } from './db';
 import { nowForDb, dayStart, todayStr } from './db-time';
 import { sendNotification } from './notification-service';
 import { Prisma } from '@prisma/client';
+import { readLogExtra } from './admin-log-extra';
 import { parsePage, parsePerPage } from './pagination';
 
 const PER_PAGE = 20;
@@ -240,14 +241,8 @@ export async function listPublicLogs(params: ListLogsParams) {
   // 待处理申诉标记：一次查询，映射 logId -> true
   const logIds = rows.map((r) => r.id);
 
-  // 单独取 extra（用 CAST 绕过 JSON 列的驱动层转换问题）；生产库同样适用
-  const extraMap = new Map<number, string | null>();
-  if (logIds.length) {
-    const extraRows = await prisma.$queryRaw<Array<{ id: number; extra: string | null }>>(Prisma.sql`
-      SELECT id, CAST(extra AS TEXT) AS extra FROM admin_action_logs WHERE id IN (${Prisma.join(logIds)})
-    `);
-    for (const er of extraRows) extraMap.set(Number(er.id), er.extra);
-  }
+  // 单独取 extra（raw CAST 的绕行集中在 admin-log-extra.ts，生产库同样适用）
+  const extraMap = await readLogExtra(prisma, logIds);
   const pending = logIds.length
     ? await prisma.adminActionAppeal.findMany({
         where: { logId: { in: logIds }, status: 'pending' },
@@ -373,13 +368,8 @@ export async function listAdminLogs(params: ListAdminLogsParams) {
   ]);
 
   const logIds = rows.map((r) => r.id);
-  const extraMap = new Map<number, string | null>();
-  if (logIds.length) {
-    const extraRows = await prisma.$queryRaw<Array<{ id: number; extra: string | null }>>(Prisma.sql`
-      SELECT id, CAST(extra AS TEXT) AS extra FROM admin_action_logs WHERE id IN (${Prisma.join(logIds)})
-    `);
-    for (const er of extraRows) extraMap.set(Number(er.id), er.extra);
-  }
+  // 同 listPublicLogs：raw CAST 绕行收敛在 admin-log-extra.ts
+  const extraMap = await readLogExtra(prisma, logIds);
 
   const pending = logIds.length
     ? await prisma.adminActionAppeal.findMany({

@@ -17,6 +17,7 @@ import {
   stripAnsi,
   truncateTo,
 } from '../../scripts/cli/output';
+import { preview } from '../../scripts/cli/sources';
 
 const RED = (s: string): string => `\x1b[31m${s}\x1b[0m`;
 
@@ -139,6 +140,27 @@ describe('renderTable', () => {
       { t: '这是一个非常长的中文标题' },
     ]);
     expect(lines[2]).toBe('这是…');
+  });
+});
+
+describe('preview（sources.ts 的一行预览）', () => {
+  it('按显示列宽截断，不按 UTF-16 码元', () => {
+    // 纯中文每字 2 列：max=10 只能放 4 个字 + '…'（4×2+1=9 ≤ 10）
+    expect(displayWidth(preview('这是一个非常长的中文标题', 10))).toBeLessThanOrEqual(10);
+    expect(preview('这是一个非常长的中文标题', 10)).toBe('这是一个…');
+  });
+
+  it('emoji 不会被切出孤立代理项', () => {
+    const out = preview('🐟'.repeat(30), 10);
+    expect(out).toBe(Array.from(out).join('')); // 可无损往返 = 没有孤立代理
+    expect(out).not.toContain('\uFFFD');
+    expect(displayWidth(out)).toBeLessThanOrEqual(10);
+  });
+
+  it('空值给 —，多行压成一行', () => {
+    expect(preview(null)).toBe('—');
+    expect(preview('   ')).toBe('—');
+    expect(preview('a\n\nb\tc')).toBe('a b c');
   });
 });
 

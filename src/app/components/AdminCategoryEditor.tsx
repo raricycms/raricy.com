@@ -284,7 +284,12 @@ export default function AdminCategoryEditor({ initialCategories, initialParents 
               type="button"
               className="admin-category-row__btn"
               disabled={busy}
-              onClick={() => setForm(toForm(c))}
+              onClick={() => {
+                // 打开弹窗必须清掉上一次的错误：error 是组件级 state，不清就会让
+                // 用户在新弹窗里看到「上一次保存失败」的文案，而这次还没提交过。
+                setError('');
+                setForm(toForm(c));
+              }}
             >
               编辑
             </button>
@@ -348,7 +353,11 @@ export default function AdminCategoryEditor({ initialCategories, initialParents 
             type="button"
             className="btn btn-primary"
             disabled={busy}
-            onClick={() => setForm(emptyForm())}
+            onClick={() => {
+              // 同「编辑」：新建弹窗不能继承上一个弹窗的错误文案。
+              setError('');
+              setForm(emptyForm());
+            }}
           >
             + 新建栏目
           </button>

@@ -12,16 +12,14 @@
 //   • **一篇可以进多个收藏夹** —— 所以选择器是多选（复选框），不是点赞那种开关。
 //   • **不推通知** —— 作者不会收到任何提示，这是需求明确要求的。
 //
-// 按钮**对所有人渲染**（未登录 → 跳登录，非 core → 就地提示），不跟着档位藏 ——
-// 与点赞/投喂一致，符合 CLAUDE.md 的「入口不跟着藏」。
+// 按钮由 `BlogReactions` 渲染，而它只出现在 `member` 分支（`isCore && user`）——
+// 所以这里不再自带「未登录 → 跳登录 / 非 core → 提示」两道分支（恒真，见 Props 处说明）。
+// 「入口不跟着藏」那条红线由壳层负责：访客看到的是「收藏」不可用，而不是按钮消失。
 
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Lock, Globe, Star } from 'lucide-react';
-
-function toast(msg: string, type: string) {
-  const w = window as unknown as { showToast?: (m: string, t: string) => void };
-  if (w.showToast) w.showToast(msg, type);
-}
+import { showToast } from './toast';
+import { FAVORITE_TITLE_MAX } from '@/lib/favorite-refs';
 
 interface FavoriteRow {
   id: string;
@@ -34,13 +32,14 @@ interface FavoriteRow {
 
 interface Props {
   blogId: string;
-  isAuth: boolean;
-  isCore: boolean;
   /** 当前用户的任一收藏夹是否含本文（服务端查好传来，避免首帧抖动）。 */
   initialFavorited: boolean;
 }
 
-export default function FavoriteButton({ blogId, isAuth, isCore, initialFavorited }: Props) {
+// 按钮只渲染在 `member` 分支里（blog/[id]/page.tsx：`member = isCore && user`），
+// 所以「未登录 / 非 core」两条分支在这里永远走不到 —— 不再传 isAuth / isCore 两个
+// 恒真 props。访客可见属于产品变更，真要做时连同调用点一起改，别只在这加回分支。
+export default function FavoriteButton({ blogId, initialFavorited }: Props) {
   const [favorited, setFavorited] = useState(initialFavorited);
   const [open, setOpen] = useState(false);
   const [rows, setRows] = useState<FavoriteRow[]>([]);
@@ -50,6 +49,26 @@ export default function FavoriteButton({ blogId, isAuth, isCore, initialFavorite
   const [busyId, setBusyId] = useState<string | null>(null);
   const [newTitle, setNewTitle] = useState('');
   const [creating, setCreating] = useState(false);
+  /** 选择器关闭后把焦点还给星标；打开时把焦点送进弹窗 —— 见下面的 effect。 */
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const closeRef = useRef<HTMLButtonElement>(null);
+
+  // 选择器是站内 dialog，必须与兄弟弹窗（FeedButton / DailyQuoteModal）同一套键盘契约：
+  // Esc 关闭、打开时焦点进弹窗、关闭时归还给触发按钮。`.modal` 关闭态是 display:none，
+  // 不加这段时 Tab 会继续在背景内容里走，读屏也读不出「这是个弹窗」。
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOpen(false);
+    };
+    document.addEventListener('keydown', onKey);
+    // 焦点送进关闭按钮（第一个可聚焦元素）：既宣布了弹窗，也不会让 Tab 越界第一步就跑到背景。
+    requestAnimationFrame(() => closeRef.current?.focus());
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      triggerRef.current?.focus();
+    };
+  }, [open]);
 
   /** 拉我的收藏夹 + 本文的归属（一次请求拿全）。 */
   const load = useCallback(async () => {
@@ -68,26 +87,17 @@ export default function FavoriteButton({ blogId, isAuth, isCore, initialFavorite
         // 用户照着提示去新建，反而可能建出重复的同名夹。
         const message = data.message || '加载收藏夹失败';
         setLoadError(message);
-        toast(message, 'error');
+        showToast(message, 'error');
       }
     } catch {
       setLoadError('网络错误，请稍后重试');
-      toast('网络错误，请稍后重试', 'error');
+      showToast('网络错误，请稍后重试', 'error');
     } finally {
       setLoading(false);
     }
   }, [blogId]);
 
   function openPicker() {
-    if (!isAuth) {
-      toast('请先登录后再收藏', 'info');
-      window.location.href = '/login';
-      return;
-    }
-    if (!isCore) {
-      toast('需要成员资格', 'error');
-      return;
-    }
     setOpen(true);
     void load();
   }
@@ -119,12 +129,12 @@ export default function FavoriteButton({ blogId, isAuth, isCore, initialFavorite
           setFavorited(after.some((r) => r.contains));
           return after;
         });
-        toast(next ? '已收藏' : '已取消收藏', 'success');
+        showToast(next ? '已收藏' : '已取消收藏', 'success');
       } else {
-        toast(data.message || '操作失败', 'error');
+        showToast(data.message || '操作失败', 'error');
       }
     } catch {
-      toast('网络错误，请稍后重试', 'error');
+      showToast('网络错误，请稍后重试', 'error');
     } finally {
       setBusyId(null);
     }
@@ -134,7 +144,7 @@ export default function FavoriteButton({ blogId, isAuth, isCore, initialFavorite
   async function create(isPublic: boolean) {
     const title = newTitle.trim();
     if (!title) {
-      toast('请先填写收藏夹名称', 'info');
+      showToast('请先填写收藏夹名称', 'info');
       return;
     }
     setCreating(true);
@@ -147,7 +157,7 @@ export default function FavoriteButton({ blogId, isAuth, isCore, initialFavorite
       });
       const data = await res.json();
       if (data.code !== 200) {
-        toast(data.message || '创建失败', 'error');
+        showToast(data.message || '创建失败', 'error');
         return;
       }
       const created = data.favorite as FavoriteRow;
@@ -162,13 +172,13 @@ export default function FavoriteButton({ blogId, isAuth, isCore, initialFavorite
       if (addData.code === 200) {
         setNewTitle('');
         setFavorited(true);
-        toast(isPublic ? '已创建站内共享收藏夹并收藏' : '已创建私密收藏夹并收藏', 'success');
+        showToast(isPublic ? '已创建站内共享收藏夹并收藏' : '已创建私密收藏夹并收藏', 'success');
         await load();
       } else {
-        toast(addData.message || '收藏失败', 'error');
+        showToast(addData.message || '收藏失败', 'error');
       }
     } catch {
-      toast('网络错误，请稍后重试', 'error');
+      showToast('网络错误，请稍后重试', 'error');
     } finally {
       setCreating(false);
     }
@@ -177,6 +187,7 @@ export default function FavoriteButton({ blogId, isAuth, isCore, initialFavorite
   return (
     <>
       <button
+        ref={triggerRef}
         id="favorite-btn"
         type="button"
         className={`favorite-btn${favorited ? ' favorited' : ''}`}
@@ -192,20 +203,23 @@ export default function FavoriteButton({ blogId, isAuth, isCore, initialFavorite
         className={`modal${open ? ' is-open' : ''}`}
         id="favoritePickerModal"
         role="dialog"
+        aria-modal={open}
+        aria-labelledby="favorite-picker-title"
         aria-hidden={!open}
         onClick={(e) => e.target === e.currentTarget && setOpen(false)}
       >
         <div className="modal-dialog modal-dialog-centered">
           <div className="modal-content">
             <div className="modal-header">
-              <h5 className="modal-title">
+              <h5 className="modal-title" id="favorite-picker-title">
                 <Star aria-hidden="true" style={{ marginRight: '0.5rem' }} />
                 收藏到收藏夹
               </h5>
               <button
+                ref={closeRef}
                 type="button"
                 className="btn-close"
-                aria-label="Close"
+                aria-label="关闭"
                 onClick={() => setOpen(false)}
               />
             </div>
@@ -254,7 +268,7 @@ export default function FavoriteButton({ blogId, isAuth, isCore, initialFavorite
                   className="favorite-picker__input"
                   type="text"
                   value={newTitle}
-                  maxLength={60}
+                  maxLength={FAVORITE_TITLE_MAX}
                   placeholder="新收藏夹名称"
                   onChange={(e) => setNewTitle(e.target.value)}
                 />

@@ -15,6 +15,8 @@ import {
   normalizeConfig,
   projectMobile,
   rectsOverlap,
+  sanitizeInline,
+  sanitizeText,
   swapBlockPositions,
 } from '@/lib/profile-blocks';
 
@@ -90,6 +92,16 @@ describe('normalizeConfig', () => {
     expect(c).toBeTruthy();
     expect(String(c?.text).length).toBeLessThanOrEqual(200);
     expect(String(c?.text)).not.toContain('\u0000');
+  });
+
+  it('截断按码点，不切出孤立代理项（emoji 占两个 UTF-16 码元）', () => {
+    // 旧实现用 slice(0, max)（码元）：max=5、三个 emoji 共 6 码元，会切在第三个
+    // emoji 的代理对中间、产出孤立高位代理。按码点截断后只可能得到完整字符。
+    const out = sanitizeInline('🐟🐟🐟', 5);
+    expect(out).toBe('🐟🐟🐟'); // 3 个码点 ≤ 5，一个都不该丢
+    expect(out).toBe(Array.from(out).join('')); // 无孤立代理
+    expect(sanitizeInline('🐟🐟🐟🐟', 3)).toBe('🐟🐟🐟');
+    expect(sanitizeText('a🐟b🐟c', 3)).toBe('a🐟b'); // 多行版同一判据
   });
 
   it('空的文字 / 图片 / 音频 / 文章一律不合法', () => {

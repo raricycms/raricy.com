@@ -205,13 +205,8 @@ export default function BlogReactions({
         </button>
 
         {/* 收藏夹（黄色五角星）。刻意**不带计数徽标** —— 站内不显示被收藏数。
-            组件自带选择器弹窗；对所有人渲染，档位判断在组件内做。 */}
-        <FavoriteButton
-          blogId={blogId}
-          isAuth={isAuth}
-          isCore={isCore}
-          initialFavorited={initialFavorited}
-        />
+            组件自带选择器弹窗；只在这个 member 分支里渲染（见 FavoriteButton 的说明）。 */}
+        <FavoriteButton blogId={blogId} initialFavorited={initialFavorited} />
       </div>
 
       {/* 小鱼干投喂弹窗（两步式：选数量 → 确认）*/}

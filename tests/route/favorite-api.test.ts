@@ -25,7 +25,7 @@ vi.mock('next/headers', () => ({
 
 import { resetDb, makeUser, makeBlog } from '../helpers/db';
 import { createSessionToken } from '@/lib/session';
-import { __resetRateLimitStore, RULES } from '@/lib/rate-limit';
+import { __resetRateLimitStore, rateLimit, RULES } from '@/lib/rate-limit';
 import { GET as listApi, POST as createApi } from '@/app/api/favorites/route';
 import {
   GET as detailApi,
@@ -39,6 +39,7 @@ import { GET as exportApi } from '@/app/api/favorites/[id]/export/route';
 import { POST as importApi } from '@/app/api/favorites/import/route';
 import { GET as spiderApi } from '@/app/api/spider/favorites/[id]/route';
 import { GET as posterApi } from '@/app/api/poster/favorite/[id]/route';
+import { GET as collectApi } from '@/app/api/poster/collect/route';
 
 function jsonReq(path: string, method: string, body?: unknown) {
   return new Request(`http://localhost${path}`, {
@@ -172,8 +173,24 @@ describe('PATCH：只接受 title', () => {
     expect(after.favorite.public_id).toBeNull();
   });
 
-  it('他人改不动 → 404（不是 403，不确认存在性）', async () => {
-    const owner = await makeUser({ role: 'core' });
+  it('★ snake_case 的 is_public 也明确报错（响应字段风格不是可忽略的理由）', async () => {
+    const u = await makeUser({ role: 'core' });
+    await login(u.id);
+    const fav = (await (
+      await createApi(jsonReq('/api/favorites', 'POST', { title: '私', isPublic: false }))
+    ).json()).favorite;
+
+    const res = await patchApi(
+      jsonReq(`/api/favorites/${fav.id}`, 'PATCH', { title: '私', is_public: true }),
+      ctx({ id: fav.id })
+    );
+    expect(res.status).toBe(400);
+    const after = await (await detailApi(jsonReq('', 'GET'), ctx({ id: fav.id }))).json();
+    expect(after.favorite.is_public).toBe(false);
+    expect(after.favorite.title).toBe('私');
+  });
+
+  it('他人改不动 → 404（不是 403，不确认存在性）', async () => {    const owner = await makeUser({ role: 'core' });
     await login(owner.id);
     const fav = (await (
       await createApi(jsonReq('/api/favorites', 'POST', { title: '夹', isPublic: false }))
@@ -323,6 +340,27 @@ describe('导入', () => {
     expect(body.skipped).toBe(1);
     expect(body.favorite.public_id).toBeNull();
   });
+
+  it('★ 一篇都导不进来 → 200 + created:0/skipped:N，不建空夹、不报 400', async () => {
+    const u = await makeUser({ role: 'core' });
+    await login(u.id);
+    const dead = await makeBlog({ authorId: u.id, ignore: true });
+
+    const res = await importApi(
+      jsonReq('/api/favorites/import', 'POST', {
+        isPublic: false,
+        data: { version: 1, title: '导不进来', blogs: [{ id: dead.id }, { id: 'nope' }] },
+      })
+    );
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.created).toBe(0);
+    expect(body.skipped).toBe(2);
+    expect(body.favorite).toBeNull();
+    // 没有偷偷建一个 0 篇的空夹子
+    const list = await (await listApi(jsonReq('/api/favorites', 'GET'))).json();
+    expect(list.favorites).toHaveLength(0);
+  });
 });
 
 // ── 分享二维码（画报）────────────────────────────────────────────────────────
@@ -394,19 +432,30 @@ describe('GET /api/poster/favorite/:publicId', () => {
     expect([...bytes.slice(0, 4)]).toEqual([0x89, 0x50, 0x4e, 0x47]);
   });
 
-  it('限频：超过 30 次/分被拒（与另两张海报共桶）', async () => {
+  it('限频：按 RULES.posterMinute 计，桶满后 429', async () => {
     const { fav, userId } = await seeded();
     process.env.SITE_URL = 'https://raricy.com';
     await login(userId);
-    let limited = false;
-    for (let i = 0; i < 35; i++) {
-      const res = await posterApi(jsonReq('', 'GET'), ctx({ id: fav.public_id }));
-      if (res.status === 429) {
-        limited = true;
-        break;
-      }
+    // 直接按路由使用的同一个桶键填满 —— 每次出 PNG 约 1s，真打 30 次会撞 30s 用例超时。
+    // 这里验证的是「路由用的键/额度来自 RULES.posterMinute」，不是 PNG 渲染速度。
+    for (let i = 0; i < RULES.posterMinute.limit; i++) {
+      rateLimit(`poster:${userId}`, RULES.posterMinute);
     }
-    expect(limited).toBe(true);
+    const res = await posterApi(jsonReq('', 'GET'), ctx({ id: fav.public_id }));
+    expect(res.status, `桶满（${RULES.posterMinute.limit} 次/分）后必须 429`).toBe(429);
+  });
+
+  it('★ 与收款码海报**共桶**：poster:<userId> 满后 collect 也 429', async () => {
+    const { userId } = await seeded();
+    process.env.SITE_URL = 'https://raricy.com';
+    await login(userId);
+    // 三条海报路由的桶键都是 `poster:${user.id}`（见各 route.ts）——共桶是刻意的：
+    // 它们都在烤 CPU 出 PNG，分开计数等于把配额放大三倍。
+    for (let i = 0; i < RULES.posterMinute.limit; i++) {
+      rateLimit(`poster:${userId}`, RULES.posterMinute);
+    }
+    const res = await collectApi();
+    expect(res.status, '换一条海报路由不能绕过同一个桶').toBe(429);
   });
 });
 

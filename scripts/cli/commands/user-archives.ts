@@ -50,8 +50,9 @@ export const userArchiveCommands: CommandSpec[] = [
         '撤销全部文章/评论点赞；未结清仓位作废且不退款。',
         '所有会话及接口凭据失效；网站（含管理页）不能查看或修改该用户及原文。',
         '文章、评论、讨论和上传内容保留在库内，仅后台 CLI 可查询；原有删除状态保留。',
+        '归档期间与本人相关的通知会被隐藏；恢复时不回滚（系统没有反隐藏路径）。',
         `原因：${reason}`,
-      ] : [`恢复 ${user.username}；原来未删除的内容重新可见。`, '已清空的余额、撤销的点赞、接口凭据和已作废仓位不恢复。', `原因：${reason}`];
+      ] : [`恢复 ${user.username}；原来未删除的内容重新可见。`, '已清空的余额、撤销的点赞、接口凭据和已作废仓位不恢复。', '归档期间被隐藏的通知不会恢复（系统没有反隐藏路径）。', `原因：${reason}`];
     },
     async run(ctx) {
       const { archiveUser, unarchiveUser } = await import('../../../src/lib/user-archive-service');

@@ -38,8 +38,13 @@ import {
 // onChange），这里没有交互层可用；样式由 _audit-logs.scss 的 .admin-filter-check
 // 用 appearance:none 画成圆形指示器，但仍随 GET 表单一起提交（name="mine"）。
 //
-// 窄屏时表格按 data-label 折成卡片；行内「已撤回」只由状态 chip 表达，行本身
-// 用 .log-row--reverted 压暗文字（revertedSet 是服务端按 accepted 申诉算出来的）。
+// 窄屏时表格按 data-label 折成卡片；行内状态只由 chip 表达，行本身用
+// .log-row--reverted 压暗文字（revertedSet 是服务端按 accepted 申诉算出来的）。
+//
+// ⚠️ chip 文案是「申诉已通过」而**不是**「已撤回」：accepted 申诉只推导出「这条申诉
+// 通过了」，具体撤回动作是否成功要看裁决结果通知（`restoreCommentRow` 等分支可能失败，
+// 见 admin-appeal-service.ts 的裁决尾部）。写「已撤回」是在替系统承诺一个没做到的
+// 事实 —— 判定逻辑不变，只改文案。
 
 export const dynamic = 'force-dynamic';
 
@@ -328,7 +333,7 @@ export default async function AuditPage({
                         <td data-label="状态">
                           <span className="admin-log-table__cell">
                             {reverted ? (
-                              <span className="admin-chip admin-chip--success">已撤回</span>
+                              <span className="admin-chip admin-chip--success">申诉已通过</span>
                             ) : log.hasPendingAppeal ? (
                               <span className="admin-chip admin-chip--warning">申诉中</span>
                             ) : (

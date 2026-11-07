@@ -36,6 +36,8 @@ export default function ApplicationCreateForm() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [created, setCreated] = useState<CreatedResult | null>(null);
+  /** 剪贴板被拒时的降级提示（见 copy）。 */
+  const [copyError, setCopyError] = useState<string | null>(null);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -83,8 +85,13 @@ export default function ApplicationCreateForm() {
   const copy = async (text: string) => {
     try {
       await navigator.clipboard.writeText(text);
+      setCopyError(null);
     } catch {
-      /* fallback */
+      // 剪贴板会被拒（非安全上下文 / 无用户手势 / 权限拒绝）。**不能静默吞掉**：
+      // client_secret 只在这里显示一次，用户以为复制成功→点「我已保存」→ 关窗即永失，
+      // 只能删除重建应用。所以失败时必须明说，并引导手动选中复制（内容是可选中的
+      // `<code>`，见渲染处）。
+      setCopyError('无法自动复制：浏览器拒绝了剪贴板权限。请手动选中上面的内容复制（Ctrl/⌘+C）。');
     }
   };
 
@@ -212,6 +219,12 @@ export default function ApplicationCreateForm() {
                 </button>
               </div>
             </div>
+
+            {copyError && (
+              <p className="settings-alert settings-alert--danger admin-oauth-modal__copy-error" role="alert">
+                {copyError}
+              </p>
+            )}
 
             <div className="admin-oauth-modal__actions">
               <button type="button" className="btn btn-primary" onClick={closeModal}>

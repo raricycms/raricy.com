@@ -160,6 +160,15 @@ export default function AdminArticlesManager({
 
   async function batchUpdate() {
     if (selectedOnPage.length === 0 || busy) return;
+    // 「设为未分类」是**批量移除归属**，不是一次普通改栏目：它会把这批文章从现栏目里
+    // 全部移出（/blog 与栏目页的列表都会变动），且没有任何一篇文章会提示。多一步确认，
+    // 文案写清影响条数——用户是在底部浮层里误触下拉时就该被拦住。
+    if (batchCategory === 'none') {
+      const n = selectedOnPage.length;
+      if (!window.confirm(
+        `确认把选中的 ${n} 篇文章设为未分类？\n它们会从当前栏目移出；文章本身不会被删除。`
+      )) return;
+    }
     setBusy(true);
     try {
       const categoryId = batchCategory === 'none' ? null : Number(batchCategory);

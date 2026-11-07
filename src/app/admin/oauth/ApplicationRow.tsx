@@ -36,8 +36,10 @@ export default function ApplicationRow({ app }: Props) {
   const copy = async (text: string) => {
     try {
       await navigator.clipboard.writeText(text);
+      setError(null);
     } catch {
-      /* fallback */
+      // 剪贴板被拒不是「无事发生」：要明确告诉用户去手动选中（client_id 可选中）。
+      setError('无法自动复制：浏览器拒绝了剪贴板权限，请手动选中 client_id 复制。');
     }
   };
 

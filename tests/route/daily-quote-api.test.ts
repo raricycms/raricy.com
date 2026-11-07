@@ -168,6 +168,25 @@ describe('每日一言的HTTP权限、隐私与输入', () => {
     expect((await (await history(historyRequest('?page=-2'))).json()).page).toBe(1);
   });
 
+  it('★ 越界页码收敛到**末页**而不是回第 1 页（需要 >1 页的数据量）', async () => {
+    // 只有 3 期、页大小 20 时 pages=1，「收敛末页」与「回落第 1 页」都能通过 ——
+    // 那条断言钉不住 normalizeQuotePage 的语义。造 21 期（pages=2）才能区分。
+    const author = await makeUser({ role: 'core' });
+    const quote = { id: 'many-pages', kind: 'builtin', content: '多页往期', contentKey: quoteContentKey('多页往期'),
+      category: '哲思', sourceType: 'quotation', sourceName: '典籍', authorName: '古人' };
+    await prisma.dailyQuote.create({ data: { ...quote, status: 'approved', createdAt: nowForDb() } });
+    for (let i = 1; i <= 21; i++) {
+      await prisma.dailyQuoteEdition.create({ data: { day: pastDay(i), quoteId: quote.id, createdAt: nowForDb() } });
+    }
+    await login(author.id);
+
+    const first = await (await history(historyRequest())).json();
+    expect(first).toMatchObject({ page: 1, pages: 2, total: 21 });
+    const clamped = await (await history(historyRequest('?page=999'))).json();
+    expect(clamped.page, '越界页码应收敛到末页（不是回落第 1 页）').toBe(2);
+    expect(clamped.editions).toHaveLength(1);
+  });
+
   // 审核的三条成功路径。**这里的价值在「真的写了一条审计日志」**：早先只测了 401/403/400，
   // 一条都没走到 adminActionLog.create，于是「create 没带 select、真库回读 JSON 列抛 P2023、
   // 整个事务回滚」这个线上故障在测试里全程是绿的（见 tests/unit/audit-json-column-guard.test.ts）。

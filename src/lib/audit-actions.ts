@@ -9,10 +9,11 @@
 // 每次新增一个动作，上面每一份副本都**静默漏一个** —— 不报错，只是那一类从此在界面上
 // 显示成英文机器码，或者在筛选器里根本选不到。这正是「日志页面分类不全」的根。
 //
-// 为什么不把表放进 `audit-service.ts`（它才是这套东西的自然归宿）：那个文件拖着 prisma，
-// **不能进客户端包**；而筛选下拉是构建在页面里的（今天是服务端表单，但动作码同样要被
-// 客户端组件用到处引用）。`import type` 帮不上忙 —— 它只擦类型，擦不掉运行时数组。
-// 所以词汇必须住在一个零依赖模块里：本文件只 `import` 零依赖的 `./format`。
+// 为什么不把表放进 `audit-service.ts`（它才是这套东西的自然归宿）：那个文件拖着 prisma。
+// 本文件是**零依赖词汇表**，服务端组件与 CLI 都能直接 import（CLI 不经过 Next 构建，
+// 拖 prisma 的表进不去）。当前 4 个消费者（`/audit`、`/audit/[id]`、`/admin/logs`、
+// `/admin/appeals`）全是服务端组件 —— 所以「不能被客户端组件用」不是当下的硬约束，
+// 保留零依赖是为了 CLI 与将来可能的客户端筛选器。
 //
 // 表一律用 `Record<AuditAction, …>`（穷尽类型）：加新码时，凡是忘了登记的表
 // **当场 tsc 报错**，而不是界面上少一枚 chip。
@@ -201,24 +202,32 @@ export const AUDIT_OBJECT_TYPE_LABEL: Record<AuditObjectType, string> = {
 };
 
 /**
- * **只有 CLI 会写**的装扮动作码（`scripts/cli/commands/frames.ts` 与 `bubbles.ts`）。
+ * **只有 CLI 会写**的动作码（装扮：`scripts/cli/commands/frames.ts` / `bubbles.ts`；
+ * 归档：`archive_user` / `unarchive_user`，CLI 用户管理命令）。
  * 走 `runAsBackendOps()` 写下的日志缺省 `visibility='internal'`（见 `audit-context.ts`），
  * 因此它们**永远不会出现在对外公示的 `/audit` 页**上。
  * 公开页的筛选下拉据此把它们滤掉 —— 留着的话，选中永远得到空结果、看着像页面坏了。
+ * （两类里不全是「装扮」：归档码只是同样只由 CLI 写，别把数组名理解窄了。）
  */
 export const CLI_ONLY_ACTIONS = ['frame_grant', 'frame_revoke', 'bubble_grant', 'bubble_revoke', 'archive_user', 'unarchive_user'] as const;
 
 // 投稿审核不公开尚未发布的稿件与审核原因；网页管理日志仍可检索。
 const PRIVATE_QUOTE_ACTIONS = ['daily_quote_approve', 'daily_quote_reject', 'daily_quote_retire'] as const;
 
-/** 归档操作连网页管理日志也不展示，查看历史仅限 CLI。 */
+/**
+ * `/admin/logs` 动作下拉的选项集 = 全部 − 归档两码。
+ *
+ * ⚠️ 它**只作用于筛选下拉**：`/admin/logs` 的表格用 `visibility='all'` 且不按 action
+ * 过滤，所以归档行照常出现在表格里（带「内部」chip），只是下拉里没有这两个选项、
+ * 无法按动作筛。别以为「不进这个数组 = 页面看不到」。
+ */
 export const WEB_AUDIT_ACTIONS: AuditAction[] = AUDIT_ACTIONS.filter(a => a !== 'archive_user' && a !== 'unarchive_user');
 
 /** `/audit` 公示页可选的动作（= 全部 − CLI-only）。 */
 export const PUBLIC_AUDIT_ACTIONS: AuditAction[] = AUDIT_ACTIONS.filter(
   (a) => !(CLI_ONLY_ACTIONS as readonly string[]).includes(a) && !(PRIVATE_QUOTE_ACTIONS as readonly string[]).includes(a)
 );
-/** `/audit` 公示页可选的对象类型（两类装扮同上，只由 CLI 写）。 */
+/** `/audit` 公示页可选的对象类型：两类装扮（只由 CLI 写）与 daily_quote（审核不公开）。 */
 export const PUBLIC_AUDIT_OBJECT_TYPES: AuditObjectType[] = AUDIT_OBJECT_TYPES.filter(
   (t) => t !== 'user_frame' && t !== 'user_bubble' && t !== 'daily_quote'
 );

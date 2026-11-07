@@ -8,11 +8,8 @@
 
 import { useRef, useState } from 'react';
 import { Lock, Globe, Download, Trash2, Upload } from 'lucide-react';
-
-function toast(msg: string, type: string) {
-  const w = window as unknown as { showToast?: (m: string, t: string) => void };
-  if (w.showToast) w.showToast(msg, type);
-}
+import { showToast } from '@/app/components/toast';
+import { FAVORITE_TITLE_MAX } from '@/lib/favorite-refs';
 
 interface Row {
   id: string;
@@ -32,7 +29,7 @@ export default function FavoriteMenu({ favorites }: { favorites: Row[] }) {
   async function create(isPublic: boolean) {
     const name = title.trim();
     if (!name) {
-      toast('请先填写收藏夹名称', 'info');
+      showToast('请先填写收藏夹名称', 'info');
       return;
     }
     setBusy(true);
@@ -56,12 +53,12 @@ export default function FavoriteMenu({ favorites }: { favorites: Row[] }) {
           ...prev,
         ]);
         setTitle('');
-        toast(isPublic ? '已创建站内共享收藏夹' : '已创建私密收藏夹', 'success');
+        showToast(isPublic ? '已创建站内共享收藏夹' : '已创建私密收藏夹', 'success');
       } else {
-        toast(data.message || '创建失败', 'error');
+        showToast(data.message || '创建失败', 'error');
       }
     } catch {
-      toast('网络错误，请稍后重试', 'error');
+      showToast('网络错误，请稍后重试', 'error');
     } finally {
       setBusy(false);
     }
@@ -73,16 +70,16 @@ export default function FavoriteMenu({ favorites }: { favorites: Row[] }) {
     try {
       const text = await file.text();
       setPendingFile({ name: file.name, data: JSON.parse(text) });
-      toast(`已选择 ${file.name}，请选择导入成哪种收藏夹`, 'info');
+      showToast(`已选择 ${file.name}，请选择导入成哪种收藏夹`, 'info');
     } catch {
       setPendingFile(null);
-      toast('这个文件不是合法的 JSON', 'error');
+      showToast('这个文件不是合法的 JSON', 'error');
     }
   }
 
   async function doImport(isPublic: boolean) {
     if (!pendingFile) {
-      toast('请先选择一个 JSON 文件', 'info');
+      showToast('请先选择一个 JSON 文件', 'info');
       return;
     }
     setBusy(true);
@@ -96,24 +93,32 @@ export default function FavoriteMenu({ favorites }: { favorites: Row[] }) {
       });
       const data = await res.json();
       if (data.code === 200) {
-        setRows((prev) => [
-          {
-            id: data.favorite.id,
-            publicId: data.favorite.public_id,
-            title: data.favorite.title,
-            isPublic: data.favorite.is_public,
-            itemCount: data.created,
-          },
-          ...prev,
-        ]);
-        toast(`导入成功：新增 ${data.created} 篇，跳过 ${data.skipped} 篇`, 'success');
+        // 全部跳过时不建空收藏夹（服务端回 favorite: null）—— 别往列表塞一行 undefined。
+        if (data.favorite) {
+          setRows((prev) => [
+            {
+              id: data.favorite.id,
+              publicId: data.favorite.public_id,
+              title: data.favorite.title,
+              isPublic: data.favorite.is_public,
+              itemCount: data.created,
+            },
+            ...prev,
+          ]);
+          showToast(`导入成功：新增 ${data.created} 篇，跳过 ${data.skipped} 篇`, 'success');
+        } else {
+          showToast(
+            `文件里没有可导入的文章：跳过 ${data.skipped} 篇（可能都已删除或链接无效）`,
+            'info'
+          );
+        }
         setPendingFile(null);
         if (fileRef.current) fileRef.current.value = '';
       } else {
-        toast(data.message || '导入失败', 'error');
+        showToast(data.message || '导入失败', 'error');
       }
     } catch {
-      toast('网络错误，请稍后重试', 'error');
+      showToast('网络错误，请稍后重试', 'error');
     } finally {
       setBusy(false);
     }
@@ -130,12 +135,12 @@ export default function FavoriteMenu({ favorites }: { favorites: Row[] }) {
       const data = await res.json();
       if (data.code === 200) {
         setRows((prev) => prev.filter((r) => r.id !== row.id));
-        toast('已删除', 'success');
+        showToast('已删除', 'success');
       } else {
-        toast(data.message || '删除失败', 'error');
+        showToast(data.message || '删除失败', 'error');
       }
     } catch {
-      toast('网络错误，请稍后重试', 'error');
+      showToast('网络错误，请稍后重试', 'error');
     } finally {
       setBusy(false);
     }
@@ -148,7 +153,7 @@ export default function FavoriteMenu({ favorites }: { favorites: Row[] }) {
           className="favorite-picker__input"
           type="text"
           value={title}
-          maxLength={60}
+          maxLength={FAVORITE_TITLE_MAX}
           placeholder="新收藏夹名称"
           onChange={(e) => setTitle(e.target.value)}
         />

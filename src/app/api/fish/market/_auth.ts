@@ -12,7 +12,10 @@
 // 【②的路由白名单是靠 opts 默认关门实现的】`allowReadToken` 缺省 false ——
 // 新写的路由忘了传，令牌在它上面**不生效**，而不是悄悄多开一扇门。只有
 // balance 与 transactions 传 true；transfer / pay / users 一律不传。
-// 带着令牌打写接口会拿到明确的 403（「该凭据只能读取」），不是含糊的 401。
+// ⚠️ 「带着令牌打写接口会拿到明确 403」只对**走了本门**的路由成立（今天是 transfer：
+// 它传了 body 凭据却没有 allowReadToken，令牌在它上面被明确拒成 403「该凭据只能读取」）。
+// `pay` / `users` 两条**根本不调 requireMarketActor**（它们的鉴权在各自路由头部），
+// 带 Bearer 打过去是**401**而不是 403 —— 对外口径以 docs/bot/fish-bot.md 为准。
 //
 // 【③为什么允许凭据进 body】站外脚本 / 机器人要「一次发包完成一笔转账」——
 // 很多运行环境存不住 cookie，分两步（先 /api/auth/login 再带 cookie 打业务接口）

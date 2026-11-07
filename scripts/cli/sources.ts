@@ -12,12 +12,21 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import type { Choice, SearchSource } from './types';
+import { displayWidth, truncateTo } from './output';
 
-/** 把可能很长的正文压成一行预览（表格与候选列表都用得上）。 */
+/**
+ * 把可能很长的正文压成一行预览（表格与候选列表都用得上）。
+ *
+ * ⚠️ 截断按**显示列宽**而不是 UTF-16 码元：纯中文每字占 2 列，按 `.length` 截 40 字
+ * 实际输出约 80 列，进 `renderTable` 的列宽裁剪还要再砍一刀；emoji 占两个码元，码元
+ * slice 会切在代理对中间产出替换字符。此处复用 output.ts 的 truncateTo（剥 ANSI、
+ * 按码点、按列宽），和表格共用同一把尺子。
+ */
 export function preview(text: string | null | undefined, max = 40): string {
   if (!text) return '—';
   const oneLine = text.replace(/\s+/g, ' ').trim();
-  return oneLine.length > max ? oneLine.slice(0, max) + '…' : oneLine;
+  if (!oneLine) return '—';
+  return displayWidth(oneLine) > max ? truncateTo(oneLine, max) : oneLine;
 }
 
 /** 用户。value = 用户名（CLI 各命令收的都是用户名）。 */

@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
 import { requireCoreUser } from '@/lib/guard';
 import { listOwnFavorites } from '@/lib/favorite-service';
+import { GuidePill } from '@/app/components/MarkdownGuide';
 import FavoriteMenu from './FavoriteMenu';
 
 // 我的收藏夹 —— 公开与私密**并列**展示（这是所有者视角，两者都是他自己的）。
@@ -20,7 +21,11 @@ export default async function FavoritePage() {
         我的收藏夹
       </h1>
 
-      <p style={{ marginBottom: '1.25rem' }}>
+      {/* 指南入口与另五个功能区一致（音频 / 图床 / 剪贴板 / 投票 / cattca 都用 GuidePill）：
+          指南页本身匿名可读，但站内**没有任何入口**指向它 = 发现成本归零。
+          位置照同族：标题下方、主操作旁，不加装饰性文案。 */}
+      <p style={{ marginBottom: '1.25rem', display: 'flex', gap: 'var(--fd-space-3)', alignItems: 'center', flexWrap: 'wrap' }}>
+        <GuidePill href="/favorite/guide" />
         <Link href="/quotes/saved" className="read-btn">一言收藏 →</Link>
       </p>
 

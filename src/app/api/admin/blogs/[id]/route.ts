@@ -8,8 +8,13 @@ import {
 } from '@/lib/admin-blog-service';
 
 // PATCH /api/admin/blogs/:id — 精选切换 / 软删除·恢复 / 改栏目
-// body 支持任意组合（互斥字段各自处理）：
-//   { isFeatured: boolean }             → 设置精选
+//
+// ⚠️ **一次只处理一个字段**（不是「任意组合」）：body 里出现两个及以上可更新字段就回
+// 400，而不是静默只执行第一个。历史实现按 if 顺序短路，`{isFeatured:true, categoryId:3}`
+// 会只改精选、把 categoryId 悄悄丢掉却回 200「已设为精选」—— 调用方以为两件事都成了。
+// 多字段的原子语义没有产品需求，所以选择「明确拒绝」而不是「依次全做 + 部分失败语义」。
+//
+//   { isFeatured: boolean }             → 设置精选（严格布尔，`"false"` 不再被 Boolean() 当 true）
 //   { ignore: true, reason: string }    → 软删除（reason 必填，写审计 + 通知作者）
 //   { ignore: false, reason?: string }  → 恢复（写 restore_blog 审计；reason 可选）
 //   { categoryId: number | null }       → 改栏目（null=未分类）
@@ -32,16 +37,25 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
     return apiErr(400, '请求体格式错误');
   }
 
+  // 可更新字段互斥：见函数头。categoryId / category_id 是同一个字段的两种拼写。
+  const present = ['isFeatured', 'ignore', 'categoryId', 'category_id'].filter((k) => k in body);
+  if (present.length === 0) return apiErr(400, '无可更新的字段');
+  if (present.length > 1) {
+    return apiErr(400, '一次只能更新一个字段（isFeatured / ignore / categoryId 请分开发）');
+  }
+
   if ('isFeatured' in body) {
-    const result = await setBlogFeatured(id, Boolean(body.isFeatured));
+    if (typeof body.isFeatured !== 'boolean') return apiErr(400, 'isFeatured 必须是布尔值');
+    const result = await setBlogFeatured(id, body.isFeatured);
     if (!result.ok) return apiErr(404, result.message);
     return apiOk({ blog: result.data }, result.data.isFeatured ? '已设为精选' : '已取消精选');
   }
 
   if ('ignore' in body) {
-    // reason 只由 ignore 分支消费；isFeatured / categoryId 的 body 组合语义不变。
+    if (typeof body.ignore !== 'boolean') return apiErr(400, 'ignore 必须是布尔值');
+    // reason 只由 ignore 分支消费。
     const reason = typeof body.reason === 'string' ? body.reason : '';
-    if (Boolean(body.ignore)) {
+    if (body.ignore) {
       const result = await deleteBlogForAdmin(id, user!, reason);
       if (!result.ok) return apiErr(result.code, result.message);
       return apiOk({ blog: { id: result.id, ignore: result.ignore } }, '文章已删除');
@@ -65,6 +79,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
     return apiOk({ blog: result.data }, `文章栏目已更改为 "${result.data.categoryName}"`);
   }
 
+  // present.length === 1 且字段名都在上面的分支里 —— 理论上不可达，保留给类型收窄。
   return apiErr(400, '无可更新的字段');
 }
 

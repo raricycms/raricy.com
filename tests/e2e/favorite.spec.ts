@@ -85,9 +85,11 @@ test('私密收藏夹：页面上**一个 ID 都不出现**，也没有二维码
   await expect(body).toContainText('私密夹子');
   await expect(body).toContainText('私密');
 
-  // ★ 需求核心：整个页面的文本里不许出现任何 6 位数字句柄
-  const text = (await body.innerText()).replace(/\s+/g, '');
-  expect(text, '私密收藏夹的页面上出现了 6 位 ID').not.toMatch(/\d{6}/);
+  // ★ 需求核心：页面里不许出现 6 位数字句柄。
+  // 断言下在**句柄元素**上，而不是整页 innerText 的 /\d{6}/ —— 整页文本里有用户自取的
+  // 标题（`私密用例 ${uniqueTag()}`，base36 可能连出 6 个数字）与日期，整页正则会产生
+  // 约 1e-3 的假红；句柄只可能渲染在 `.favorite-handle` 里。
+  await expect(page.locator('.favorite-handle')).toHaveCount(0);
   // 也没有二维码入口（二维码只对公开收藏夹生成）
   await expect(page.getByRole('button', { name: /分享二维码/ })).toHaveCount(0);
 
@@ -168,9 +170,8 @@ test('复制公开收藏夹 → 自己得到一份**私密**副本（且是快�
   await expect(body).toContainText('别人的合辑');
   await expect(body).toContainText('私密');
   await expect(body).toContainText('被复制的文章');
-  // 副本归复制者，且没有句柄
-  const text = (await body.innerText()).replace(/\s+/g, '');
-  expect(text, '复制出来的私密副本页面上出现了 6 位 ID').not.toMatch(/\d{6}/);
+  // 副本归复制者，且没有句柄（同 §上：只看句柄元素，别扫整页数字）
+  await expect(page.locator('.favorite-handle')).toHaveCount(0);
 
   // 源收藏夹仍然属于原作者（复制不会把原的搬走）
   await loginViaApi(page, copier.username);
@@ -281,11 +282,14 @@ test('非 core 用户：页面与接口同档，两边都挡（档位阶梯）',
   expect(post.status()).toBe(403);
 });
 
-test('未登录访客：/favorite 跳到登录页并带 next 回跳', async ({ page }) => {
+test('未登录访客：/favorite 跳到登录页，next 落在**根路径**（页面没传具体目标）', async ({ page }) => {
   const fresh = await page.context().browser()!.newContext();
   const guest = await fresh.newPage();
   await guest.goto('/favorite');
-  await expect(guest).toHaveURL(/\/login\?next=/);
+  // /favorite 走 `requireCoreUser()`（没传 next），且地址栏直入没有同源 referer →
+  // getSafeNextPath() 回落 '/'。原先只断言 `/\/login\?next=/`：把 next 写成任何值都绿，
+  // 而 next 是登录后回跳的目标，写错就是把用户送到别处。
+  await expect(guest).toHaveURL(/\/login\?next=(%2F|\/)$/);
   await fresh.close();
   void SEED_PASSWORD;
 });

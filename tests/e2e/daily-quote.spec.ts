@@ -104,16 +104,17 @@ async function seedPastEdition(spec: PastEditionSpec): Promise<{ day: string; qu
 /**
  * 注册一个 core 新号：注册走真实接口（顺带验注册链路），**提权直写库**。
  *
- * 【为什么不用 registerFreshUser({ core: true })】那个 helper 借管理员 PATCH 提权，
- * 于是每条用例都多一次 `e2e_admin` 登录；而密码校验是**按用户** 20 次/分限频的
- * （RULES.passwordPerUser，见 src/lib/password-budget.ts，成功也计数）。e2e_admin 是
- * 全套用例共用的种子号：desktop + mobile 两遍放在**同一轮**里跑时，本文件的注册次数
- * 就能把它顶满 —— 实测两遍连跑时第 21 次 admin 登录直接 429，从那条起所有往期用例
- * 都挂在「注册失败」上（看起来像注册坏了，实际是同一个桶）。角色是夹具要构造的状态，
- * 不值得为它反复登录共用账号。
+ * 【为什么传 `{ core: true }`】注册出来的号本来就是 core；不传这个 opts 会走
+ * registerFreshUser 的「降权成历史账号」分支 —— 那条分支要**登录一次共用种子管理员**
+ * （`e2e_admin`）再 PATCH，而密码校验是**按用户** 20 次/分限频的（RULES.passwordPerUser，
+ * 见 src/lib/password-budget.ts，成功也计数）。desktop + mobile 两遍同一轮里跑时，本文件
+ * 的注册次数就能把 admin 的桶顶满 —— 实测两遍连跑时第 21 次 admin 登录直接 429，从那条起
+ * 所有往期用例都挂在「注册失败」上（看起来像注册坏了，实际是同一个桶）。角色是夹具要构造
+ * 的状态，不值得为它反复登录共用账号：core:true 让 helper 跳过那次管理员 PATCH，角色由
+ * 下面一行直写库。
  */
 async function registerCoreUser(page: Page, withBlog = true) {
-  const user = await registerFreshUser(page);
+  const user = await registerFreshUser(page, { core: true });
   await e2eDb().user.update({ where: { id: user.id }, data: { role: 'core' } });
   if (withBlog) await publishBlog(page);
   return user;

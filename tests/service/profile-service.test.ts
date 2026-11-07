@@ -22,6 +22,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { resetDb, makeUser, makeBlog, prisma } from '../helpers/db';
 import { nowForDb } from '@/lib/db-time';
 import { getProfilePageData, saveProfileBlocks } from '@/lib/profile-service';
+import { MAX_BLOCKS } from '@/lib/profile-blocks';
 
 beforeEach(async () => {
   await resetDb();
@@ -368,7 +369,7 @@ describe('保存', () => {
 });
 
 describe('校验', () => {
-  it('重叠 / 超界 / 超量一律拒绝并给出第几块', async () => {
+  it('重叠与超界分别拒绝，并给出对应原因', async () => {
     const u = await makeUser({ role: 'core' });
     const overlap = await saveProfileBlocks(u.id, [
       block('text', { text: 'a' }, { x: 0, y: 0, w: 2, h: 1 }),
@@ -382,5 +383,14 @@ describe('校验', () => {
     ]);
     expect(outside.ok).toBe(false);
     if (!outside.ok) expect(outside.message).toContain('右边界');
+
+    // 超量：标题承诺的「超量」原先没有断言 —— 删掉 MAX_BLOCKS 判断也不会红。
+    // 尺寸取 1×1 均匀铺开，避免先撞「重叠」而测不到数量上限。
+    const tooMany = Array.from({ length: MAX_BLOCKS + 1 }, (_, i) =>
+      block('text', { text: `块 ${i}` }, { x: (i % 4) * 1, y: Math.floor(i / 4), w: 1, h: 1 })
+    );
+    const over = await saveProfileBlocks(u.id, tooMany);
+    expect(over.ok).toBe(false);
+    if (!over.ok) expect(over.message).toContain('块');
   });
 });

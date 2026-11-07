@@ -54,5 +54,11 @@ export async function POST(req: Request) {
   if (notification) {
     return apiOk({ notification_id: notification.id }, `通知已发送给 ${recipient.username}`);
   }
-  return apiErr(400, '发送失败');
+  // 走到这里只可能是「被接收者的 notifyAdmin 偏好拦截」——接收者已经查过存在。
+  // 偏好拦截不是发送失败：200 + `suppressed:true`（原先回 400「发送失败」会让站长
+  // 以为系统坏了、反复重发）。调用方按 suppressed 给出「对方关了管理员通知」的准确提示。
+  return apiOk(
+    { suppressed: true },
+    `${recipient.username} 已关闭「管理员通知」，本次未发送`
+  );
 }

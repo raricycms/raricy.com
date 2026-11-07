@@ -33,6 +33,9 @@ export interface ListAppealsParams {
   status?: string | null; // 'pending' | 'accepted' | 'rejected'
 }
 
+/** 申诉状态白名单。页面与 API 都把 `?status=` 原样传进来，非法值必须回落「不筛」。 */
+const APPEAL_STATUSES = ['pending', 'accepted', 'rejected'] as const;
+
 export type AppealRow = {
   id: number;
   content: string;
@@ -111,7 +114,12 @@ function mapAppealRow(a: AppealDbRow): AppealRow {
 /** 申诉分页列表（带日志 + 申诉人 + 裁决人）。默认最新在前。 */
 export async function listAppeals(params: ListAppealsParams) {
   const page = parsePage(params.page);
-  const where = params.status ? { status: params.status } : {};
+  // `?status=` 是外部输入（页面 `appeals/page.tsx` 与 GET /api/admin/appeals 都原样转传）。
+  // 不做白名单的话，拼错的值会变成 `where.status='accepted1'` → 0 行 + 「暂无申诉」，
+  // 与「该状态确实没有数据」不可区分。非法值回落「不筛」（筛选器失效比报错温和，
+  // 与 parseAction 的口径一致）；合法值才进 where。
+  const status = APPEAL_STATUSES.find((s) => s === params.status);
+  const where = status ? { status } : {};
 
   const [total, rows] = await Promise.all([
     prisma.adminActionAppeal.count({ where }),

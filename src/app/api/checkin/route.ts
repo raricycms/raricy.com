@@ -11,8 +11,9 @@ import { getTodayStatus, checkIn, hasPublishedBlog } from '@/lib/checkin-service
 // 【第二道门：发布过文章】2026-10 起，除档位外还要求本人名下有一篇未软删的文章
 // （见 checkin-service 头部）。它与档位是**两道独立的门**，两个方法都要过：
 //   · GET —— 不拒，回 200 + `can_check_in: false`。它是**状态读**，不是签发动作；
-//     回 403 会让 base.js 把「拿不到 checked_in」当成「可签到」点亮顶栏徽标
-//     （见 updateCheckinIndicator）。
+//     客户端要靠这个**显式的 false** 才能把「没资格 / 被禁言」与「请求失败」分开
+//     （base.js:282 的徽标判据是 `data.can_check_in === true && !data.checked_in`，
+//     403 信封里没有这两个字段，本来也不会点亮假徽标 —— 别把 403 说成会点亮它）。
 //   · POST —— 拒，回 403。它就是发鱼那一步，绝不能放行。
 const CORE_ONLY = '需要核心用户权限';
 const NEED_BLOG = '发布过文章后才能签到';

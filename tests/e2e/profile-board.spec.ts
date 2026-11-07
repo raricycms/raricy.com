@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { loginViaApi, publishBlog, registerFreshUser } from './helpers';
+import { publishBlog, registerFreshUser } from './helpers';
 
 // 个人主页「积木墙」的端到端契约。
 //
@@ -352,8 +352,8 @@ test('手机：dock 左移 / 右移 / 同列上下移，改的是桌面坐标并
   const jiaFinal = await boxOf(textCard(page, '甲'));
   expect(yiFinal.x).toBeGreaterThan(jiaFinal.x); // 乙在右列
   expect(Math.abs(yiFinal.y - jiaFinal.y)).toBeLessThan(2); // 同一行
-  // 与桌面阅读顺序一致：甲（左半 / y0）仍是第一块
-  expect(jiaFinal.x).toBeLessThan(yiFinal.x);
+  // 注意：换位后**甲在 y2**（乙原来的位置）—— 这里不再断言「甲仍是第一块」，
+  // 那与事实相反（原先 353/356 两行等价，把同一件事说了两遍）。
 });
 
 test('手机：按住左上角把手拖到另一张卡上即与它换位', async ({ page, isMobile }) => {

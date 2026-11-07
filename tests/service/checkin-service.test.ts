@@ -48,7 +48,7 @@ function freezeUtc(iso: string) {
   vi.setSystemTime(new Date(iso));
 }
 
-/** 该 UTC+8 墙上日期的零点（贴 Z 标签）—— 与被测 dateAtDay 同口径。 */
+/** 该 UTC+8 墙上日期的零点（贴 Z 标签）—— 与被测 db-time 的 dayStart 同口径。 */
 const dayAt = (ymd: string) => new Date(`${ymd}T00:00:00.000Z`);
 
 /**
@@ -66,7 +66,7 @@ async function makeLegacyCheckin(userId: string, ymd: string) {
   );
 }
 
-// ── todayUtc8 / dateAtDay：UTC+8 跨日边界 ────────────────────────────────────
+// ── todayUtc8 / dayStart：UTC+8 跨日边界 ─────────────────────────────────────
 //
 // UTC+8 的一天在 UTC 时间轴上是 [前一日 16:00Z, 当日 16:00Z)。
 // 因此 UTC 15:59:59 = UTC+8 23:59:59（今天），UTC 16:00:00 = UTC+8 次日 00:00（明天）。
@@ -567,27 +567,37 @@ describe('getCountLeaderboard（签到天数榜）', () => {
     });
   });
 
-  it('⚠️ 天数并列时无第二排序键 —— 取舍由 SQLite 决定，结果不稳定', async () => {
-    // 正确的 order_by 是 (count desc, max(created_at) asc)：
-    // 并列时「更早签到的人」排前面。当前实现丢了这个次级排序键。
-    // 【修复后删掉本块，改为回归用例】
-    for (const n of ['tieA', 'tieB', 'tieC']) {
-      const u = await makeUser({ username: n });
-      await makeLegacyCheckin(u.id, '2026-07-01');
+  it('天数并列时按「更早签到」升序（max(created_at) 次级排序键）', async () => {
+    // 实现是 ORDER BY count(id) DESC, max(created_at) ASC（见 checkin-service.ts 注释）。
+    // 三人各签 1 天、created_at 依次靠后 → 期望早签的人排前面。夹具必须给出**不同**的
+    // created_at，否则这条断言在「次级排序键被删掉」时仍会绿（SQLite 恰好按插入序返回）。
+    const early = await makeUser({ username: 'tieEarly' });
+    const mid = await makeUser({ username: 'tieMid' });
+    const late = await makeUser({ username: 'tieLate' });
+    for (const [u, hour] of [
+      [early, 9],
+      [mid, 10],
+      [late, 11],
+    ] as const) {
+      await prisma.$executeRawUnsafe(
+        `INSERT INTO daily_checkins (user_id, checkin_date, created_at) VALUES (?, ?, ?)`,
+        u.id,
+        dayAt('2026-07-01').getTime(),
+        new Date(`2026-07-01T${String(hour).padStart(2, '0')}:30:00.000Z`).getTime()
+      );
     }
     const lb = await getCountLeaderboard();
     expect(lb, '并列者一个都不能少').toHaveLength(3);
-    expect(new Set(lb.map((e) => e.username))).toEqual(new Set(['tieA', 'tieB', 'tieC']));
+    expect(lb.map((e) => e.username)).toEqual(['tieEarly', 'tieMid', 'tieLate']);
     expect(lb.map((e) => e.rank), 'rank 按位次连续赋值（非竞赛式并列）').toEqual([1, 2, 3]);
   });
 });
 
 // ── 回归：DailyCheckIn.created_at ───────────────────────────────────────────
 //
-// created_at 在历史库里恒有值（建行时由默认值写入），
-// 且 get_leaderboard 用 max(created_at) 做并列次级排序键。
-// Next 侧 schema 是 `createdAt DateTime?` 且**无 @default(now())** —— 签到建行时
-// 不显式写就会落 NULL，让排行榜的次级排序键 max(created_at) asc 失效。
+// created_at 必须显式写入：排行榜的并列次级排序键是 max(created_at)（见
+// getCountLeaderboard 的注释）。Next 侧 schema 是 `createdAt DateTime?` 且**无
+// @default(now())** —— 建行时不显式写就会落 NULL，次级排序键随之失效。
 
 describe('DailyCheckIn.createdAt 落库', () => {
   it('checkIn 必须写入 createdAt', async () => {

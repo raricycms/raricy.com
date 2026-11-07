@@ -17,7 +17,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { prisma } from './db';
-import { nowForDb, todayStr } from './db-time';
+import { dayStart, nowForDb, todayStr } from './db-time';
 import { addFish, getTodayCheckinFish } from './fish-service';
 import { unitsToFish } from './fish-units';
 import { frameUrlFor } from './frame-service';
@@ -35,16 +35,10 @@ const CHECKIN_DESCRIPTION = '每日签到';
 
 /**
  * UTC+8 当天的 YYYY-MM-DD。
- * 直接委托 db-time 的 todayStr()：同一个「本站时钟」只有一处实现，别再手写 Date.now()+8h。
+ * 直接再导出 db-time 的 todayStr()：同一个「本站时钟」只有一处实现，别再手写
+ * Date.now()+8h。（历史调用方/测试从本文件 import 这个名字，保留导出不断链。）
  */
-export function todayUtc8(): string {
-  return todayStr();
-}
-
-/** 把 YYYY-MM-DD 转成存库用的 Date（零点 UTC）。 */
-function dateAtDay(ymd: string): Date {
-  return new Date(`${ymd}T00:00:00.000Z`);
-}
+export const todayUtc8 = todayStr;
 
 export interface CheckinStatus {
   checkedIn: boolean;
@@ -81,7 +75,7 @@ export async function getTodayStatus(userId: string): Promise<CheckinStatus> {
 
   const [record, totalCount, user, todayFish, canCheckIn] = await Promise.all([
     prisma.dailyCheckIn.findUnique({
-      where: { uq_user_checkin_date: { userId, checkinDate: dateAtDay(today) } },
+      where: { uq_user_checkin_date: { userId, checkinDate: dayStart(today) } },
       select: { id: true },
     }),
     prisma.dailyCheckIn.count({ where: { userId } }),
@@ -140,7 +134,7 @@ const checkinState = globalThis as unknown as { __checkinPending: Map<string, Pr
 checkinState.__checkinPending ??= new Map();
 
 async function commitCheckin(userId: string, today: string): Promise<CheckinResult> {
-  const checkinDate = dateAtDay(today);
+  const checkinDate = dayStart(today);
 
   try {
     await prisma.$transaction(async (tx) => {

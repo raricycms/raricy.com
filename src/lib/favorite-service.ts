@@ -7,12 +7,13 @@
 // 条目的增删则复用 likeHourly / likeDaily 的数值、另起键前缀）。
 //
 // ═══════════════════════════════════════════════════════════════════════════
-// 六条不变量 —— 本文件的正确性核心，改动前先读完
+// 七条不变量 —— 本文件的正确性核心，改动前先读完
 // ═══════════════════════════════════════════════════════════════════════════
 //
 // 【1】publicId 非空 ⟺ isPublic 为真。
-//   只有 createFavorite / copyFavorite 两条写路径能造出收藏夹，两处都只在公开时
-//   生成 publicId，且复制时显式重建（公开→私密必须置 NULL，私密→公开必须新生成）。
+//   只有 createFavorite / copyFavorite / importFavorite 三条写路径能造出收藏夹，
+//   三处都只在公开时生成 publicId，且复制时显式重建（公开→私密必须置 NULL，
+//   私密→公开必须新生成）。
 //   ⚠️ 反向不成立：判「对外可见」**永远用 isPublic，绝不用 publicId != null** ——
 //   只判句柄非空会给「isPublic=0 但 publicId 还在」的活口放行。
 //
@@ -30,7 +31,8 @@
 // 【6】复制与导入都用**显式字段白名单**构造新行，绝不 `{...source}` 展开
 //   （展开会把 id / publicId 一起搬过去，轻则撞唯一约束、重则公开了私密的内容）。
 //
-// 另：attachItems 用 upsert 而**不是** createMany({ skipDuplicates: true }) ——
+// 【7】重新挂上一条**已移出**的博客必须复活墓碑，不能静默变成 no-op。
+//   attachItems 因此用 upsert 而**不是** createMany({ skipDuplicates: true }) ——
 //   后者会在撞上墓碑行时静默变成 no-op 却返回成功，于是「移出后再加入」和
 //   「复制一个我移除过条目的收藏夹」都变成「点了没反应」。唯一约束
 //   (favorite_id, blog_id) 是物理的、包含墓碑行，所以复活必须翻转 deleted。
@@ -39,7 +41,11 @@
 import { prisma } from './db';
 import { nowForDb } from './db-time';
 import { rateLimit, RULES } from './rate-limit';
-import { FAVORITE_ID_LEN, isFavoriteId } from './favorite-refs';
+import { FAVORITE_ID_LEN, isFavoriteId, FAVORITE_TITLE_MAX } from './favorite-refs';
+
+// 标题上限住在 favorite-refs（零依赖），这里只再导出 —— 客户端组件要 import 它，
+// 而本文件拖着 prisma。历史调用方（tests 等）仍从 favorite-service 取，别断。
+export { FAVORITE_TITLE_MAX } from './favorite-refs';
 
 /**
  * 每个用户可创建的收藏夹总数上限。
@@ -53,9 +59,6 @@ export const FAVORITE_PER_USER_MAX = 200;
 
 /** 单个收藏夹的条目上限。导入与逐个加入共用这一个数。 */
 export const FAVORITE_ITEMS_MAX = 1000;
-
-/** 收藏夹标题上限（与 vote / clipboard 的标题口径一致）。 */
-export const FAVORITE_TITLE_MAX = 60;
 
 /** 公开收藏夹的查询条件 —— 对外读取只允许用这个（不变量 2）。 */
 export const PUBLIC_FAVORITE_WHERE = { isPublic: true, deleted: false } as const;
@@ -404,7 +407,7 @@ async function countItems(favoriteId: string): Promise<number> {
  * ★ upsert 而不是 createMany({ skipDuplicates: true }) ★
  * 唯一约束 (favorite_id, blog_id) 是**物理**的、包含墓碑行。createMany 撞上墓碑时
  * 会静默跳过并返回成功 —— 表现为「移出过的博客再也加不回来」，或「复制出来的收藏夹
- * 少了几条，但接口说成功」。upsert 才会复活旧行（不变量 8 那条注释的落地）。
+ * 少了几条，但接口说成功」。upsert 才会复活旧行（不变量 7 的落地）。
  */
 async function attachItems(favoriteId: string, blogIds: string[]): Promise<void> {
   if (blogIds.length === 0) return;
@@ -604,12 +607,18 @@ function pickBlogId(entry: unknown): string | null {
  *   · 文件里的 `isPublic` / `publicId` / 收藏夹 `id` 一律**忽略**（不变量 6）——
  *     否则一个手改的文件就能指定新行的对外句柄或可见性；
  *   · 不存在的 / 已软删的博客跳过并计数，不因此整单失败。
+ *
+ * 【全部跳过 = 200 + `favorite: null`，不是 400】文件里每一篇都已经软删 / id 全无效，
+ * 是**文件内容过期**而不是请求参数有误 —— 回 400「请求参数有误」会把「没有可导入的
+ * 文章」说成「你发的请求不合法」，与「导入完会告诉你新增几篇、跳过几篇」的承诺相反。
+ * 此时**不建空收藏夹**（建一个 0 篇的夹子既无用又占用户配额），由调用方按
+ * `created: 0 / skipped: N` 给出准确提示。
  */
 export async function importFavorite(
   userId: string,
   isPublic: boolean,
   payload: unknown
-): Promise<FavoriteResult<{ favorite: FavoriteRow; created: number; skipped: number }>> {
+): Promise<FavoriteResult<{ favorite: FavoriteRow | null; created: number; skipped: number }>> {
   const gate = rateLimit(`fav:import:${userId}`, RULES.favoriteImportHourly);
   if (!gate.allowed) return { ok: false, reason: 'rateLimited' };
 
@@ -628,6 +637,9 @@ export async function importFavorite(
     const id = pickBlogId(entry);
     if (id && !candidates.includes(id)) candidates.push(id);
   }
+  // 一个可解析的 id 都没有 = 文件本身不合法（空数组 / 全是无 id 无 url 的条目）；
+  // 而「有候选但全部无效」是内容过期，下面的 created:0 分支处理。两者别混。
+  if (candidates.length === 0) return { ok: false, reason: 'badinput' };
 
   // 一次查全部，避免 N 次往返
   const existing = new Set(
@@ -640,7 +652,8 @@ export async function importFavorite(
   );
   const blogIds = candidates.filter((id) => existing.has(id)).slice(0, FAVORITE_ITEMS_MAX);
   const skipped = candidates.length - blogIds.length;
-  if (blogIds.length === 0) return { ok: false, reason: 'badinput' };
+  // 全部跳过：不建空夹、不报 400（详见函数头）。
+  if (blogIds.length === 0) return { ok: true, favorite: null, created: 0, skipped };
 
   if ((await countOwnFavorites(userId)) >= FAVORITE_PER_USER_MAX) {
     return { ok: false, reason: 'limit' };

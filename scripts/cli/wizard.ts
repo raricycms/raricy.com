@@ -121,13 +121,30 @@ export async function wizardLoop(deps: WizardDeps): Promise<number> {
       deps.io.line(generateHelp(COMMANDS));
       continue;
     }
+    // 下面两处 pick（切换身份 / 二级菜单）都在 try 之外，Ctrl-C 会一路抛到 cli.ts
+    // 变成「已取消，未做任何改动」+ 进程退出 —— 而 docs/cli.md 承诺的是「Ctrl-C 只取消
+    // 当前操作、回主菜单」。两处都就地接住 ExitPromptError：
+    //   · 切身份处 Ctrl-C = **放弃这次切换**（保留原身份），回主菜单；
+    //   · 组内二级菜单 Ctrl-C = **放弃选命令**，回主菜单。
+    // 参数收集那一步（runOne 内部）本来就自己接住并回菜单，口径一致。
     if (picked === 'actor') {
-      state.name = await pickActor(deps, state.name);
+      try {
+        state.name = await pickActor(deps, state.name);
+      } catch (e) {
+        if (!isExitPromptError(e)) throw e;
+        continue; // 取消切换：state.name 保持原值，不 reset actor
+      }
       state.actor = null; // 换人后重新解析
       continue;
     }
 
-    const cmd = await pickCommand(picked.slice(2) as GroupId, deps);
+    let cmd: CommandSpec | null = null;
+    try {
+      cmd = await pickCommand(picked.slice(2) as GroupId, deps);
+    } catch (e) {
+      if (!isExitPromptError(e)) throw e;
+      continue; // 取消选命令 → 回主菜单
+    }
     if (cmd) await runOne(cmd, deps, ensureActor);
   }
 }

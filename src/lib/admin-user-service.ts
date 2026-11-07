@@ -21,6 +21,7 @@ import { sendNotification } from './notification-service';
 import { kickUser } from './chat-bus';
 import { kickTopbarUser, publishToUser } from './topbar-bus';
 import { defaultLogVisibility } from './audit-context';
+import { writeLogExtra } from './admin-log-extra';
 // 建号复用公开注册那条 fail-closed 链路的内核（已查证两边不成环：account-service 不反向依赖本文件）
 import {
   buildPlaceholderEmail,
@@ -31,6 +32,7 @@ import {
   PLACEHOLDER_EMAIL_DOMAIN,
 } from './account-service';
 import { parsePage, parsePerPage } from './pagination';
+import type { Prisma } from '@prisma/client';
 
 const DEFAULT_PER_PAGE = 50;
 const MAX_PER_PAGE = 100;
@@ -68,9 +70,9 @@ export interface LogAdminActionInput {
   hideTarget?: boolean;
 }
 
-/** 写一条管理操作日志，返回日志 id。extra 走参数化 raw UPDATE，避免驱动层 JSON 读写坑。 */
-export async function logAdminAction(input: LogAdminActionInput): Promise<number> {
-  const log = await prisma.adminActionLog.create({
+/** 写一条管理操作日志（事务内/外通用），返回日志 id。extra 走参数化 raw UPDATE，避免驱动层 JSON 读写坑。 */
+export async function logAdminActionTx(db: Prisma.TransactionClient, input: LogAdminActionInput): Promise<number> {
+  const log = await db.adminActionLog.create({
     data: {
       action: input.action,
       adminId: input.adminId,
@@ -88,14 +90,18 @@ export async function logAdminAction(input: LogAdminActionInput): Promise<number
   });
 
   if (input.metadata && Object.keys(input.metadata).length) {
-    // 参数化：? 占位符由驱动绑定，不存在注入
-    await prisma.$executeRawUnsafe(
-      'UPDATE admin_action_logs SET extra = ? WHERE id = ?',
-      JSON.stringify(input.metadata),
-      log.id
-    );
+    // extra 列的 raw 绕行收敛在 admin-log-extra.ts（JSON 列驱动层拒读写，见那里）
+    await writeLogExtra(db, log.id, input.metadata);
   }
   return log.id;
+}
+
+/**
+ * 写一条管理操作日志，返回日志 id。
+ * 归档/恢复事务必须与业务同一次提交，那里走 logAdminActionTx(tx, ...)；网页端走这份。
+ */
+export function logAdminAction(input: LogAdminActionInput): Promise<number> {
+  return logAdminActionTx(prisma, input);
 }
 
 // ── 结果类型 ─────────────────────────────────────────────────────────────────

@@ -316,15 +316,15 @@ describe('renameFavorite', () => {
     const res = await renameFavorite(pub.id, u.id, '新名');
     expect(res.ok).toBe(true);
     expect(res.ok && res.favorite.title).toBe('新名');
-    expect(res.ok && res.favorite.isPublic).toBe(true);
-    expect(res.ok && res.favorite.publicId).toBe(pub.publicId); // 句柄不因改名而变
+    expect(res.ok && res.favorite!.isPublic).toBe(true);
+    expect(res.ok && res.favorite!.publicId).toBe(pub.publicId); // 句柄不因改名而变
   });
 
   it('私密收藏夹改名后仍然没有句柄', async () => {
     const u = await makeUser();
     const priv = await mk(u.id, '旧名', false);
     const res = await renameFavorite(priv.id, u.id, '新名');
-    expect(res.ok && res.favorite.publicId).toBeNull();
+    expect(res.ok && res.favorite!.publicId).toBeNull();
   });
 
   it('他人改不动；空标题被拒', async () => {
@@ -437,8 +437,8 @@ describe('copyFavorite', () => {
 
     const res = await copyFavorite(priv.id, u.id, true);
     expect(res.ok).toBe(true);
-    expect(res.ok && res.favorite.publicId).toMatch(FAVORITE_ID_RE);
-    expect(res.ok && res.favorite.isPublic).toBe(true);
+    expect(res.ok && res.favorite!.publicId).toMatch(FAVORITE_ID_RE);
+    expect(res.ok && res.favorite!.isPublic).toBe(true);
     expect(res.ok && res.itemCount).toBe(1);
     // 源行不受影响
     expect((await getOwnFavorite(priv.id, u.id)).ok).toBe(true);
@@ -448,8 +448,8 @@ describe('copyFavorite', () => {
     const u = await makeUser();
     const pub = await mk(u.id, '分享', true);
     const res = await copyFavorite(pub.id, u.id, false);
-    expect(res.ok && res.favorite.publicId).toBeNull();
-    expect(res.ok && res.favorite.isPublic).toBe(false);
+    expect(res.ok && res.favorite!.publicId).toBeNull();
+    expect(res.ok && res.favorite!.isPublic).toBe(false);
   });
 
   it('★ 快照：复制之后两边各走各的', async () => {
@@ -485,7 +485,7 @@ describe('copyFavorite', () => {
     // 用 6 位句柄（分享页上拿得到的那个）
     const res = await copyFavorite(pub.publicId!, other.id, false);
     expect(res.ok).toBe(true);
-    expect(res.ok && res.favorite.isPublic).toBe(false);
+    expect(res.ok && res.favorite!.isPublic).toBe(false);
     // 复制出来的归复制者
     expect((await getOwnFavorite(res.ok ? res.favorite.id : '', other.id)).ok).toBe(true);
   });
@@ -514,8 +514,8 @@ describe('copyFavorite', () => {
     const u = await makeUser();
     const src = await mk(u.id, '源', true);
     const res = await copyFavorite(src.id, u.id, true);
-    expect(res.ok && res.favorite.id).not.toBe(src.id);
-    expect(res.ok && res.favorite.publicId).not.toBe(src.publicId);
+    expect(res.ok && res.favorite!.id).not.toBe(src.id);
+    expect(res.ok && res.favorite!.publicId).not.toBe(src.publicId);
   });
 
   it('复制占用创建配额（第 201 个复制被拒 —— 否则是绕过上限的后门）', async () => {
@@ -583,14 +583,14 @@ describe('importFavorite', () => {
     expect(res.ok).toBe(true);
     expect(res.ok && res.created).toBe(2);
     expect(res.ok && res.skipped).toBe(1);
-    expect(res.ok && res.favorite.publicId).toBeNull();
+    expect(res.ok && res.favorite!.publicId).toBeNull();
   });
 
   it('导入成公开时才有 6 位句柄', async () => {
     const u = await makeUser();
     const a = await makeBlog({ authorId: u.id });
     const res = await importFavorite(u.id, true, payloadOf([a.id]));
-    expect(res.ok && res.favorite.publicId).toMatch(FAVORITE_ID_RE);
+    expect(res.ok && res.favorite!.publicId).toMatch(FAVORITE_ID_RE);
   });
 
   it('★ 文件里的 isPublic / publicId / 收藏夹 id 一律被忽略', async () => {
@@ -606,9 +606,9 @@ describe('importFavorite', () => {
     });
     expect(res.ok).toBe(true);
     // 请求说私密 → 就是私密；句柄不能由文件指定
-    expect(res.ok && res.favorite.isPublic).toBe(false);
-    expect(res.ok && res.favorite.publicId).toBeNull();
-    expect(res.ok && res.favorite.id).not.toBe('attacker-chosen-id');
+    expect(res.ok && res.favorite!.isPublic).toBe(false);
+    expect(res.ok && res.favorite!.publicId).toBeNull();
+    expect(res.ok && res.favorite!.id).not.toBe('attacker-chosen-id');
     // 999999 不能被它占用
     expect((await getPublicFavorite('999999')).ok).toBe(false);
   });
@@ -627,13 +627,17 @@ describe('importFavorite', () => {
     expect(res.ok && res.created).toBe(1);
   });
 
-  it('软删的博客不导入（计入 skipped）', async () => {
+  it('软删的博客不导入（计入 skipped）；一篇都不剩时回 created:0 且不建空夹', async () => {
     const u = await makeUser();
     const dead = await makeBlog({ authorId: u.id, ignore: true });
     const res = await importFavorite(u.id, false, payloadOf([dead.id]));
-    // 一条都没导入成功 —— 视为无效输入而不是建个空夹
-    expect(res.ok).toBe(false);
-    expect(!res.ok && res.reason).toBe('badinput');
+    // 「文件里的文章都已删除」是内容过期，不是请求参数有误 —— 见 importFavorite 函数头。
+    expect(res.ok).toBe(true);
+    expect(res.ok && res.created).toBe(0);
+    expect(res.ok && res.skipped).toBe(1);
+    expect(res.ok && res.favorite).toBeNull();
+    // 空夹不落库（否则白占一个 FAVORITE_PER_USER_MAX 配额）
+    expect(await prisma.favorite.count({ where: { userId: u.id, deleted: false } })).toBe(0);
   });
 
   it('坏输入一律 badinput', async () => {
@@ -649,7 +653,7 @@ describe('importFavorite', () => {
     const u = await makeUser();
     const a = await makeBlog({ authorId: u.id });
     const noTitle = await importFavorite(u.id, false, { blogs: [{ id: a.id }] });
-    expect(noTitle.ok && noTitle.favorite.title).toBe('导入的收藏夹');
+    expect(noTitle.ok && noTitle.favorite!.title).toBe('导入的收藏夹');
     const badTitle = await importFavorite(u.id, false, {
       title: 'x'.repeat(FAVORITE_TITLE_MAX + 1),
       blogs: [{ id: a.id }],

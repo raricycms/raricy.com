@@ -128,14 +128,15 @@ test('状态接口的形状：签到前后各一次（机器人按它决定要�
 // 内容前置条件：没发过文章不能签到（2026-10）
 //
 // 【为什么要有】它是抬高批量空号成本的那道门（见 checkin-service.ts 头部）。三条边界
-// 只有真发 HTTP 才验得到：状态接口**不拒**（回 can_check_in:false，不 403 —— 否则
-// base.js 会点亮假徽标）、写接口**拒**、页面给引导态而不是一个点了必 403 的按钮。
+// 只有真发 HTTP 才验得到：状态接口**不拒**（回 can_check_in:false —— 状态读不是签发
+// 动作，且客户端要靠显式的 false 把「没资格」与「请求失败」分开）、写接口**拒**、
+// 页面给引导态而不是一个点了必 403 的按钮。
 // ─────────────────────────────────────────────────────────────────────────────
 test('没发过文章：状态接口回 can_check_in=false（不 403），写接口 403，页面给引导', async ({ page }) => {
   await registerFreshUser(page, { core: true }); // 有 core 但一篇文章都没有
 
   const st = await page.request.get('/api/checkin');
-  expect(st.status(), '状态读不该拒 —— 拒了 base.js 会点亮假徽标').toBe(200);
+  expect(st.status(), '状态读不该拒 —— 要用 200 + 显式 can_check_in:false 表达「没资格」').toBe(200);
   expect(await st.json()).toMatchObject({ checked_in: false, can_check_in: false });
 
   const ci = await page.request.post('/api/checkin', { data: {} });

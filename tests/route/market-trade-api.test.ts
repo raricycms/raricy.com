@@ -1,10 +1,11 @@
 // 练手盘四个接口的**鉴权分叉与档位**。
 //
 // 【为什么单独一个文件】这里打的是真实 route handler，重点在「页面与接口必须同档」：
-// core+ 这一档在**两个**页面（/fish/trade 与 /fish/trade/stats）、buy、sell、quote、
-// candles **六处**各判一次，任何一处漏判都是一扇绕开档位的门 —— 而功能照常工作、
-// 测试照常绿。service 层的钱怎么走由 tests/service/market-*.test.ts 负责，
-// 这个文件不重复测那些。
+// core+ 这一档在**两个**页面（/fish/trade 与 /fish/trade/stats）、buy、quote、
+// candles **五处**各判一次 —— **sell 是刻意的例外**（不判 core+，只要求登录 + 未归档：
+// 已开的仓位必须能出，见 sell 路由头部）。任何一处漏判都是一扇绕开档位的门 ——
+// 而功能照常工作、测试照常绿。service 层的钱怎么走由 tests/service/market-*.test.ts
+// 负责，这个文件不重复测那些。
 //
 // 【专注模式也在这六处判，但它的**对称性与禁言相反**】专注模式下**四个接口一律 403**
 // （含只读的 quote / candles）—— 别照着下面那张禁言表把它也「对号入座」地放过。

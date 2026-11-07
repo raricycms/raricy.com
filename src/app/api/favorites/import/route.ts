@@ -33,14 +33,18 @@ export async function POST(req: Request) {
   const res = await importFavorite(auth.user.id, body.isPublic, body.data);
   if (!res.ok) return favoriteFail(res.reason);
 
+  // 一篇都没导进来时 favorite 为 null（不建空收藏夹），仍回 200 + 计数：
+  // 「文件里的文章都已删除 / 链接全无效」是内容过期，不是请求参数有误。
   return apiOk({
-    favorite: {
-      id: res.favorite.id,
-      public_id: res.favorite.publicId,
-      title: res.favorite.title,
-      is_public: res.favorite.isPublic,
-      created_at: res.favorite.createdAt?.toISOString() ?? null,
-    },
+    favorite: res.favorite
+      ? {
+          id: res.favorite.id,
+          public_id: res.favorite.publicId,
+          title: res.favorite.title,
+          is_public: res.favorite.isPublic,
+          created_at: res.favorite.createdAt?.toISOString() ?? null,
+        }
+      : null,
     created: res.created,
     skipped: res.skipped,
   });

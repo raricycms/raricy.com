@@ -211,3 +211,39 @@ describe('PATCH {ignore:false} —— 恢复必须写 restore_blog 审计', () =
     expect(log.reason, '没给理由就记 null，不编造').toBeNull();
   });
 });
+
+describe('PATCH 的字段口径 —— 多字段 / 字符串布尔', () => {
+  it('★ 同时带两个可更新字段 → 400，且一个都不执行（不静默只做第一个）', async () => {
+    const { admin, blog } = await seed();
+    await login(admin.id);
+
+    const res = await patchAdminBlog(
+      patch({ isFeatured: true, categoryId: 1 }),
+      ctx(blog.id)
+    );
+    expect(res.status).toBe(400);
+    const data = (await res.json()) as { message?: string };
+    expect(data.message).toContain('一次只能更新一个字段');
+
+    // 两个字段都必须**没生效**：精选没开、栏目没动
+    const after = await prisma.blog.findUniqueOrThrow({
+      where: { id: blog.id },
+      select: { isFeatured: true, categoryId: true },
+    });
+    expect(after.isFeatured).toBe(false);
+    expect(after.categoryId).toBeNull();
+    expect(await prisma.adminActionLog.count()).toBe(0);
+  });
+
+  it('★ 字符串布尔 `"false"` → 400（Boolean("false") 是 true，会真的软删）', async () => {
+    const { admin, blog } = await seed();
+    await login(admin.id);
+
+    for (const body of [{ ignore: 'false' }, { isFeatured: 'true' }]) {
+      const res = await patchAdminBlog(patch(body), ctx(blog.id));
+      expect(res.status, `${JSON.stringify(body)} 必须是 400`).toBe(400);
+    }
+    expect(await isIgnored(blog.id)).toBe(false);
+    expect(await prisma.adminActionLog.count(), '被拒的请求不该留审计').toBe(0);
+  });
+});

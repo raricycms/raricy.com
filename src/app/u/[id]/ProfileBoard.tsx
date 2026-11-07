@@ -687,9 +687,31 @@ export default function ProfileBoard({
     if (isFieldEditable(b.kind)) startEditField(b);
   }
 
-  /** 把「换一个」挑中的指针写到既有块上（位置 / 尺寸不变）。 */
+  /**
+   * 把「换一个」挑中的指针写到既有块上（位置 / 尺寸不变）。
+   *
+   * 【必须合并、不能整体替换 config】挑中项的 config 带着固定的空文本（图片给的
+   * `{imageId, caption:''}`、音频给的 `{audioId, title:''}`），而这里原先 `{...b, config}`
+   * 整体覆盖 —— 用户填过的说明 / 标题被静默清空，保存后不可恢复。偏偏「换一个」正是
+   * 目标被删 / 降档 / 归档时唯一会走的修复路径，等于惩罚了最该被照顾的人。
+   * 语义：只换**来源指针**；挑中项给出非空文本时以新的为准（用户在挑的弹窗里改了），
+   * 否则沿用那一块原有的文本。
+   */
   function replacePointer(id: string, config: Record<string, unknown>) {
-    setDraft((prev) => prev.map((b) => (b.id === id ? { ...b, config } : b)));
+    const TEXT_KEYS = ['caption', 'title'] as const;
+    setDraft((prev) =>
+      prev.map((b) => {
+        if (b.id !== id) return b;
+        const merged: Record<string, unknown> = { ...b.config, ...config };
+        for (const key of TEXT_KEYS) {
+          const next = config[key];
+          if ((typeof next !== 'string' || next.trim() === '') && key in b.config) {
+            merged[key] = b.config[key];
+          }
+        }
+        return { ...b, config: merged };
+      })
+    );
   }
 
   function startEditField(b: Draft) {

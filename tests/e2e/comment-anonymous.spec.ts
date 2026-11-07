@@ -69,8 +69,10 @@ test.describe('匿名评论', () => {
     const src = await row.locator('.comment-author-avatar').getAttribute('src');
     expect(src ?? '').toContain('/api/avatar/anon~');
 
-    // 同一个人再发一条匿名 → 化名必须一模一样
-    const first = (await row.locator('.comment-meta span').first().textContent()) ?? '';
+    // 同一个人再发一条匿名 → 化名必须一模一样。
+    // 取 `.comment-author-name`（化名文本）：旧写法取 `.comment-meta span` 的第一个，
+    // 那是 Avatar 外层 span、textContent 恒为 ''，于是 '' === '' 永远通过（R3-187 ①）。
+    const first = (await row.locator('.comment-author-name').textContent()) ?? '';
     const marker2 = `${marker}-b`;
     await composer.locator('.comment-composer__input').fill(marker2);
     // 勾选状态是**黏**的（提交后不重置），这里再确认一次，防止实现改成重置
@@ -78,7 +80,8 @@ test.describe('匿名评论', () => {
     await composer.locator('.comment-composer__send').click();
     const row2 = commentRow(page, marker2);
     await expect(row2.locator('.comment-author-anon')).toBeVisible();
-    const second = (await row2.locator('.comment-meta span').first().textContent()) ?? '';
+    const second = (await row2.locator('.comment-author-name').textContent()) ?? '';
+    expect(first, '化名不该是空串 —— 否则下面的相等断言恒真').not.toBe('');
     expect(second, '同一个人在同一篇文章下必须始终同一个化名').toBe(first);
   });
 

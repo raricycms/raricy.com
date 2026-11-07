@@ -1698,6 +1698,31 @@ describe('listAppeals（申诉列表）', () => {
     expect(after.items[0].decider!.username).toBe('the_owner');
     expect(after.items[0].decidedAt).not.toBeNull();
   });
+
+  it('★ 非法 status 回落「不筛」，而不是 0 行的「暂无申诉」', async () => {
+    // 页面与 GET /api/admin/appeals 都把 `?status=` 原样传进来。不做白名单时
+    // `status=accepted1` 会变成 where.status='accepted1' → 0 行，与「确实没有数据」
+    // 不可区分。合法值仍要生效。
+    const owner = await makeUser({ role: 'owner' });
+    const user = await makeUser({ role: 'core' });
+    const admin = await makeUser({ role: 'admin' });
+    const logId = await logAdminAction({
+      action: 'delete_blog',
+      adminId: admin.id,
+      targetUserId: user.id,
+      objectType: 'blog',
+      objectId: 'b1',
+      reason: '违规',
+    });
+    await prisma.adminActionAppeal.create({
+      data: { logId, appellantId: user.id, content: '求恢复', status: 'pending', createdAt: new Date(), updatedAt: new Date() },
+    });
+    void owner;
+
+    expect((await listAppeals({ status: 'pending' })).total).toBe(1);
+    expect((await listAppeals({ status: 'accepted1' })).total, '非法值当成「不筛」').toBe(1);
+    expect((await listAppeals({ status: null })).total).toBe(1);
+  });
 });
 
 // ── 站长建号（跳过人机验证与邀请码，直接 core）────────────────────────────────

@@ -45,8 +45,10 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
   const body = await readJsonBody(req);
   if (!body) return apiErr(400, '请求体格式错误');
 
-  // 显式挡一下：改性质的请求不是「被忽略」而是**明确报错**，否则调用方会以为改成功了
-  if ('isPublic' in body) {
+  // 显式挡一下：改性质的请求不是「被忽略」而是**明确报错**，否则调用方会以为改成功了。
+  // 两种拼写都认：响应里这个字段叫 `is_public`，只看 camelCase 会让照响应字段风格
+  // 构造 PATCH 的调用方拿到 200 + 「没改」的静默结果。
+  if ('isPublic' in body || 'is_public' in body) {
     return apiErr(400, '收藏夹的公开/私密性质创建后不可修改');
   }
 

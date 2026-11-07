@@ -139,14 +139,25 @@ export function isBlockId(v: unknown): v is string {
   return typeof v === 'string' && BLOCK_ID_RE.test(v);
 }
 
+/**
+ * 按**码点**截断。
+ *
+ * `.slice(0, max)` 数的是 UTF-16 码元：上限恰好落在一枚增补平面字符（emoji 等，
+ * 占两个码元）中间时，会切出**孤立的高位代理**，那串东西原样写库、再原样渲染，
+ * 最坏显示成一个乱码方块。`Array.from` 按码点迭代，切点永远落在完整字符之间。
+ * 上限本身不变（24/40/200 仍是「多少个字符」，只是不再可能切坏）。
+ */
+function truncateCodePoints(v: string, max: number): string {
+  return Array.from(v).slice(0, max).join('');
+}
+
 /** 单行文本：控制字符换空格、压缩空白、截断。 */
 export function sanitizeInline(v: unknown, max: number): string {
   if (typeof v !== 'string') return '';
-  return v
-    .replace(/[\u0000-\u001f\u007f]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .slice(0, max);
+  return truncateCodePoints(
+    v.replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim(),
+    max
+  );
 }
 
 /**
@@ -156,13 +167,15 @@ export function sanitizeInline(v: unknown, max: number): string {
  */
 export function sanitizeText(v: unknown, max: number): string {
   if (typeof v !== 'string') return '';
-  return v
-    .replace(/\r\n?/g, '\n')
-    .replace(/[\u0000-\u0009\u000b-\u001f\u007f]/g, ' ')
-    .replace(/[ \t]+/g, ' ')
-    .replace(/\n{3,}/g, '\n\n')
-    .trim()
-    .slice(0, max);
+  return truncateCodePoints(
+    v
+      .replace(/\r\n?/g, '\n')
+      .replace(/[\u0000-\u0009\u000b-\u001f\u007f]/g, ' ')
+      .replace(/[ \t]+/g, ' ')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim(),
+    max
+  );
 }
 
 export interface StoredBlock {

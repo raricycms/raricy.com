@@ -10,7 +10,7 @@ import { postEntry } from './fish-service';
 import { kickUser } from './chat-bus';
 import { kickTopbarUser } from './topbar-bus';
 import type { SafeUser } from './auth';
-import type { AdminResult } from './admin-user-service';
+import { logAdminActionTx, type AdminResult } from './admin-user-service';
 import type { Prisma } from '@prisma/client';
 
 type Input = { actor: SafeUser; username: string; reason: string };
@@ -87,11 +87,12 @@ async function changeArchive(input: Input, archive: boolean): Promise<AdminResul
     }
     await refreshCommentCounts(tx, comments.map(c => c.blogId));
     const action = archive ? { action: 'archive_user' } : { action: 'unarchive_user' };
-    const log = await tx.adminActionLog.create({ data: {
+    // 与业务同事务写审计（logAdminActionTx 的 extra 写入只在 metadata 非空时执行，
+    // 因此 unarchive 不再白跑一条 UPDATE ... extra='{}'）。
+    await logAdminActionTx(tx, {
       ...action, adminId: input.actor.id, targetUserId: target.id,
-      objectType: 'user', objectId: target.id, reason, visibility: 'internal', createdAt: now,
-    }, select: { id: true } });
-    await tx.$executeRawUnsafe('UPDATE admin_action_logs SET extra = ? WHERE id = ?', JSON.stringify(metadata), log.id);
+      objectType: 'user', objectId: target.id, reason, visibility: 'internal', metadata,
+    });
     return { ok: true, message: archive ? `已归档 ${target.username}` : `已恢复 ${target.username}（余额、点赞、凭据和仓位不恢复）` };
   }, { timeout: 30000 });
   if (result.ok) {

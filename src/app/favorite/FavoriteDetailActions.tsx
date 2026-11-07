@@ -13,17 +13,25 @@
 import { useRef, useState } from 'react';
 import { Lock, Globe, Download, Trash2, QrCode, Pencil } from 'lucide-react';
 import PosterModal from '@/app/components/PosterModal';
-
-function toast(msg: string, type: string) {
-  const w = window as unknown as { showToast?: (m: string, t: string) => void };
-  if (w.showToast) w.showToast(msg, type);
-}
+import { showToast } from '@/app/components/toast';
+import { FAVORITE_TITLE_MAX } from '@/lib/favorite-refs';
 
 interface Props {
   mode: 'mine' | 'public';
-  /** 内部 UUID —— 复制/改名/删除都用它（公开视图下也拿得到，但只用于自己的副本）。 */
+  /**
+   * 收藏夹的**内部 UUID**（不是 6 位公开句柄）—— 复制/改名/删除都用它。
+   *
+   * ⚠️ 公开视图（`/favorite/[publicId]`）也把它传进来，但只用于「复制成我的」：请求体
+   * 是 `POST /api/favorites/<内部 id>/copy`。别照着地址栏的 6 位句柄改成传 `publicId` ——
+   * 服务层的 copy 以「所有者」收口，传句柄会 404，公开页的复制入口就静默失效。
+   * 二维码（唯一需要 6 位句柄的地方）走下面的 `src={/api/poster/favorite/${publicId}}`。
+   */
   id: string;
   isPublic: boolean;
+  /**
+   * 6 位公开句柄；私密收藏夹恒为 null（没有句柄，而不是藏起来）。
+   * 只用于二维码与「分享」类呈现，**不用于任何写请求**。
+   */
   publicId: string | null;
   title: string;
   /** 复制/删除成功后去哪儿。 */
@@ -55,17 +63,17 @@ export default function FavoriteDetailActions({
       });
       const data = await res.json();
       if (data.code === 200) {
-        toast(
+        showToast(
           `已复制为${target ? '站内共享' : '私密'}收藏夹`,
           'success'
         );
         // 复制出来的那份归我 —— 直接带用户去管理它的页面
         window.location.href = `/favorite/mine/${data.favorite.id}`;
       } else {
-        toast(data.message || '复制失败', 'error');
+        showToast(data.message || '复制失败', 'error');
       }
     } catch {
-      toast('网络错误，请稍后重试', 'error');
+      showToast('网络错误，请稍后重试', 'error');
     } finally {
       setBusy(false);
     }
@@ -82,14 +90,14 @@ export default function FavoriteDetailActions({
       });
       const data = await res.json();
       if (data.code === 200) {
-        toast('已改名', 'success');
+        showToast('已改名', 'success');
         setRenaming(false);
         window.location.reload();
       } else {
-        toast(data.message || '改名失败', 'error');
+        showToast(data.message || '改名失败', 'error');
       }
     } catch {
-      toast('网络错误，请稍后重试', 'error');
+      showToast('网络错误，请稍后重试', 'error');
     } finally {
       setBusy(false);
     }
@@ -105,13 +113,13 @@ export default function FavoriteDetailActions({
       });
       const data = await res.json();
       if (data.code === 200) {
-        toast('已删除', 'success');
+        showToast('已删除', 'success');
         window.location.href = redirectTo ?? '/favorite';
       } else {
-        toast(data.message || '删除失败', 'error');
+        showToast(data.message || '删除失败', 'error');
       }
     } catch {
-      toast('网络错误，请稍后重试', 'error');
+      showToast('网络错误，请稍后重试', 'error');
     } finally {
       setBusy(false);
     }
@@ -182,7 +190,7 @@ export default function FavoriteDetailActions({
             className="favorite-picker__input"
             type="text"
             value={name}
-            maxLength={60}
+            maxLength={FAVORITE_TITLE_MAX}
             onChange={(e) => setName(e.target.value)}
           />
           <button type="button" className="read-btn" disabled={busy} onClick={() => void rename()}>
