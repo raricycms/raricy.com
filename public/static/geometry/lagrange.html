@@ -290,6 +290,27 @@
             );
           }
         }
+
+        // 分式 / 根式同样不能留空：空分母或空根指数会被引擎的默认值补成 1/2/0，
+        // 结果看起来正常但其实换了题目（R3-590）。结构类见 document/formula-editor.js。
+        const required = [
+          ['.fraction', '.numerator', '分式的分子'],
+          ['.fraction', '.denominator', '分式的分母'],
+          ['.sqrt', '.radicand', '根号下的表达式'],
+          ['.root', '.root-index', '根指数'],
+          ['.root', '.radicand', '根号下的表达式'],
+        ];
+        for (const [structure, slot, name] of required) {
+          for (const node of editor.querySelectorAll(structure)) {
+            const part = node.querySelector(slot);
+            const text = part ? part.textContent.trim() : '';
+            if (!text) {
+              throw new Error(
+                label + ' 中有未填写完整的' + name + '：请补全后再计算（也可以直接输入 x^(1/2)、x^2 这类写法）。'
+              );
+            }
+          }
+        }
       }
 
       // 校验表达式：非空、不含等号/λ、变量只能是 x、y

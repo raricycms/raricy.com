@@ -369,9 +369,13 @@
           const qExact = evaluateNumeric(Q);   // 精确判据（输入不含参数时）
           const qSign = evaluateSign(Q);       // 含参数时退化为探针判据，只用来挑分支
           if (Number.isFinite(qSign) && qSign < 0) {
-            // Δ < 0：直线与椭圆没有交点，两个交点都留空
+            // Δ < 0：直线与椭圆没有交点，两个交点都留空。
+            // 含参数时 qSign 只是探针取值：不能把「某个参数取值下 Δ<0」说成对全部取值都成立。
             addPoint('交点 P₁ =', '', '');
             addPoint('交点 P₂ =', '', '');
+            if (!Number.isFinite(qExact)) {
+              addNote('当前参数取值下 Δ < 0（无交点）；含参数时交点存在性随参数变化，请代入具体值判断。');
+            }
             return;
           }
 

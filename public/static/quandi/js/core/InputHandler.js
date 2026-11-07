@@ -30,7 +30,11 @@ class InputHandler {
         this.updatePlayerMovement();
     }
     updatePlayerMovement() {
-        if (this.gameEngine.gameState !== 'playing') return;
+        // 菜单 / 结算不进操作状态；但**暂停**要照常计算方向 —— 否则暂停期间松开方向键
+        // 事件会被丢掉，恢复后坦克沿旧航向继续走（R3-599）。暂停时写入方向不影响
+        // 物理：Player.fixedUpdate 在 paused 下直接 return。
+        const state = this.gameEngine.gameState;
+        if (state === 'menu' || state === 'gameOver') return;
         const direction = (bindings) => ({
             x: Number(this.keyStates.has(bindings.right)) - Number(this.keyStates.has(bindings.left)),
             y: Number(this.keyStates.has(bindings.down)) - Number(this.keyStates.has(bindings.up)),

@@ -69,6 +69,8 @@
       border: 1px solid #e5e9f0; border-radius: 10px; font-size: 24px; overflow-x: auto;
     }
     .power { display: inline-flex; align-items: baseline; flex: 0 0 auto; }
+    /* flex 里 <sup> 的 vertical-align 失效：指数必须手动上移（math-page.css 同款）。 */
+    .power > .exponent { position: relative; top: -0.55em; }
     .render-power { display: inline-flex; align-items: baseline; flex: 0 0 auto; }
     .render-exp {
       font-size: 0.7em; line-height: 1;

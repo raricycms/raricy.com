@@ -116,6 +116,7 @@ function showColorSelection() {
 }
 
 function saveColorSelection() {
+    if (typeof colorManager !== 'undefined') colorManager.saveColors();
     showMainMenu();
 }
 
@@ -147,8 +148,16 @@ function startGame() {
 
 // 游戏控制函数
 function pauseGame() {
-    if (gameEngine && gameEngine.gameState === 'playing') {
-        gameEngine.pause();
+    if (!gameEngine || gameEngine.gameState !== 'playing') return;
+    // 联机对局由服务端权威推进，暂停没有意义：不弹遮罩，只给一句提示。
+    // （GameEngine.pause() 在联机模式也直接 return；旧代码无条件弹遮罩，
+    //   gameState 仍是 playing → resumeGame 永远不成立，遮罩关不掉，R3-599。）
+    if (gameEngine.networkMode === 'online' || gameEngine.networkMode === 'online-remote') {
+        siteNotice('联机对局不能暂停');
+        return;
+    }
+    gameEngine.pause();
+    if (gameEngine.gameState === 'paused') {
         document.getElementById('pauseMenu').classList.add('active');
     }
 }
@@ -248,13 +257,8 @@ function setupNetworkCallbacks() {
     });
 
     networkManager.on('roomLeft', () => { currentRoom = null; if (!document.getElementById('mainMenu').classList.contains('active')) showPage('onlineLobby'); });
-    networkManager.on('playerJoin', (player) => {
-        console.log('玩家加入:', player);
-    });
-
-    networkManager.on('playerLeave', (data) => {
-        console.log('玩家离开:', data);
-    });
+    // 协议里没有 S2C_PLAYER_JOIN/LEAVE：成员变化只由 S2C_ROOM_UPDATE 下发。
+    // 旧代码注册了两个永远不派发的回调（只 console.log），删掉以免误导（R3-601）。
 
     networkManager.on('gameStart', (data) => {
         startOnlineGameSession(data);
@@ -290,9 +294,10 @@ function createOnlineRoom() {
 
     const mode = document.getElementById('onlineModeSelect').value;
     const difficulty = document.getElementById('onlineDifficultySelect').value;
-    const maxPlayers = parseInt(document.getElementById('onlineMaxPlayers').value);
 
-    networkManager.createRoom({ mode, difficulty, maxPlayers, isPrivate: true });
+    // 协议只接受 mode/difficulty（shared/quandi/protocol.ts 的键集是封闭的）：
+    // 旧代码多传的 maxPlayers/isPrivate 会被整条命令判非法，R3-602。
+    networkManager.createRoom({ mode, difficulty });
     isReady = false;
     _updateReadyButtonUI();
     document.getElementById('readyBtn').style.display = 'inline-block';
@@ -309,8 +314,10 @@ function joinOnlineRoom() {
 
     const codeInput = document.getElementById('roomCodeInput');
     const code = codeInput.value.trim().toUpperCase();
-    if (!code || code.length < 4) {
-        siteNotice('请输入有效的房间码');
+    // 与协议同一判据：6 位、去掉了易混的 I/O/0/1（shared/quandi/protocol.ts:34）。
+    // 旧代码只查长度 ≥4，错一位的码会被服务端判非法（R3-535 的触发面之一）。
+    if (!/^[A-HJ-NP-Z2-9]{6}$/.test(code)) {
+        siteNotice('房间码应为 6 位（不含 I/O/0/1）');
         return;
     }
 

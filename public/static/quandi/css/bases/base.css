@@ -44,7 +44,6 @@ body {
 
 .page.active .menu-container,
 .page.active .rules-container,
-.page.active .color-selection-container,
-.page.active #gamePage {
+.page.active .color-selection-container {
     animation: fadeInUp 0.6s ease-out;
 }

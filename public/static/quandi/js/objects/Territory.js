@@ -139,7 +139,10 @@ class Territory {
         const imageData = ctx.getImageData(0, 0, canvasWidth, canvasHeight);
         const data = imageData.data;
         let totalArea = 0;
-        const step = 2; // 采样精度
+        // 4px 采样：与服务端权威网格（shared/quandi/territory-grid.ts 的 4px 单元）同粒度。
+        // maxArea 已按 0.95 画布归一，和服务端「count / (450*0.95) 且封顶 100」同一口径，
+        // 因此联机时本地预测百分比与服务端分数只差边缘取整（R3-597）。
+        const step = 4;
 
         for (let y = 0; y < this.canvasHeight; y += step) {
             for (let x = 0; x < this.canvasWidth; x += step) {

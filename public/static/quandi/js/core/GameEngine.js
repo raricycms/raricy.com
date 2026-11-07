@@ -172,7 +172,7 @@ class GameEngine {
             const spawnX = myData.slotIndex === 0 ? this.P1_startX :
                            myData.slotIndex === 1 ? this.P2_startX :
                            myData.slotIndex === 2 ? 0.5 * this.width :
-                           0.5 * this.height;
+                           0.5 * this.width; // 3/4 号位也用画布宽度（旧代码误用 height，R3-602）
             const spawnY = myData.slotIndex === 0 ? this.P1_startY :
                            myData.slotIndex === 1 ? this.P2_startY :
                            myData.slotIndex === 2 ? 0.15 * this.height :
@@ -191,6 +191,7 @@ class GameEngine {
             this.localPlayer.speed = diffSettings.speed;
             this.localPlayer.trailLength = diffSettings.Length;
             this.localPlayer.id = myData.id; // Override id with server id
+            this.localPlayer.slotIndex = myData.slotIndex; // 夺旗展示/计数按槽位映射（R3-600）
             this.localPlayer.lives = Config.GAME_MODES[gameConfig.mode].lives;
             this.localPlayer.playerName = myData.name;
 
@@ -642,6 +643,10 @@ class GameEngine {
                     continue;
                 }
             }
+
+            // 增量昵称：服务器改名后 delta 会带 name，旧代码只在新建/全量时写，
+            // 于是改名只对后来加入的人生效（R3-601）。
+            if (!isLocal && dp.name) player.name = dp.name;
 
             // 本地玩家：服务器权威位置（柔和校正，避免客户端预测抖动）
             if (isLocal) {

@@ -8,6 +8,8 @@ class Config {
     };
 
     // 玩家默认设置
+    // ⚠️ 与服务端同源的规则数值在 shared/quandi/rules.ts（唯一来源）；客户端不能 import，
+    //    改那边的数必须同步这里与 modes/DayNight.js / modes/Survive.js（R3-596/598）。
     static PLAYER_DEFAULTS = {
         size: 8,
         locktime: 5000, // 无限模式封锁时间
@@ -45,12 +47,29 @@ class Config {
     }
 
     static DAYNIGHT = {
+        // 与 shared/quandi/rules.ts 的 QUANDI_DAYNIGHT 逐项同值；
+        // 相位模型（开局白天 10s → 5s 渐暗 → 10s 全黑 → 5s 渐亮，此后 20s 循环）
+        // 见 modes/DayNight.js（R3-596）。
         darkness: 0.98,
         fadeTime: 5000,
         darkTime: 10000,
         cycleTime: 20000,
         initialTime: 10000
     }
+
+    // 生存模式 AI 规则（与 shared/quandi/rules.ts 的 QUANDI_AI 同值）。
+    // 公式也必须按其中 dtMs / hitRadiusExtra / chaseTurnLerp 改写，见 modes/Survive.js。
+    static AI_RULES = {
+        speed: 1.5,
+        detectionRadius: 150,
+        pushDistance: 6,
+        hitRadiusExtra: 2,
+        dtMs: 16,
+        chaseTurnLerp: 0.1,
+        relaxAfterHitMs: 5000,
+        shieldAfterHitMs: 3000,
+        size: 8
+    };
 
 
 

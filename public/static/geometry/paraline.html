@@ -290,10 +290,15 @@
           const qSign = evaluateSign(Q);
           const qExact = evaluateNumeric(Q);   // 精确判据（输入不含参数时）
           if (Number.isFinite(qSign) && qSign < 0) {
-            // Δ < 0：直线与抛物线没有交点，两个交点都留空
+            // Δ < 0：直线与抛物线没有交点，两个交点都留空。
+            // 含参数时 qSign 是探针取值，不能说成「对所有参数取值都无交点」（R3-576）。
             addPoint('交点 P₁ =', '', '');
             addPoint('交点 P₂ =', '', '');
-            addNote('Δ < 0，直线与抛物线没有交点');
+            addNote(
+              Number.isFinite(qExact)
+                ? 'Δ < 0，直线与抛物线没有交点'
+                : '当前参数取值下 Δ < 0（无交点）；含参数时交点存在性随参数变化，请代入具体值判断。'
+            );
             return;
           }
 

@@ -234,11 +234,14 @@ class FlagManager {
 
             // 如果被占领，显示玩家标识（在圆形 clip 之外绘制，避免被裁剪）
             if (flag.capturedBy) {
-                cacheCtx.fillStyle = flag.getDisplayColor(players);
-                cacheCtx.font = 'bold 10px Arial';
-                cacheCtx.textAlign = 'center';
-                cacheCtx.textBaseline = 'middle';
-                cacheCtx.fillText(`P${flag.capturedBy}`, centerX, centerY + baseSize + 12);
+                const slot = this.displaySlot(flag.capturedBy);
+                if (slot) {
+                    cacheCtx.fillStyle = flag.getDisplayColor(players);
+                    cacheCtx.font = 'bold 10px Arial';
+                    cacheCtx.textAlign = 'center';
+                    cacheCtx.textBaseline = 'middle';
+                    cacheCtx.fillText(`P${slot}`, centerX, centerY + baseSize + 12);
+                }
             }
             cacheCtx.restore();
             return {
@@ -276,9 +279,12 @@ class FlagManager {
 
         // 如果被占领，显示玩家标识
         if (flag.capturedBy) {
-            cacheCtx.fillStyle = flag.getDisplayColor(players);
-            cacheCtx.font = 'bold 10px Arial';
-            cacheCtx.fillText(`P${flag.capturedBy}`, centerX, centerY + baseSize + 12);
+            const slot = this.displaySlot(flag.capturedBy);
+            if (slot) {
+                cacheCtx.fillStyle = flag.getDisplayColor(players);
+                cacheCtx.font = 'bold 10px Arial';
+                cacheCtx.fillText(`P${slot}`, centerX, centerY + baseSize + 12);
+            }
         }
 
         cacheCtx.restore();
@@ -313,19 +319,40 @@ class FlagManager {
     getFlagCounts() {
         const counts = {};
 
-        // 初始化所有玩家的计数为0
+        // 初始化两个玩家的计数为0
         for (let i = 1; i <= 2; i++) {
             counts[i] = 0;
         }
 
         // 统计每个玩家占领的旗帜数量
         this.flags.forEach(flag => {
-            if (flag.capturedBy) {
-                counts[flag.capturedBy]++;
-            }
+            if (!flag.capturedBy) return;
+            // capturedBy 在本地是数字槽位（1/2），联机是服务端 UUID：统一映射到 1/2。
+            // 旧代码直接 counts[flag.capturedBy]++，联机时 P1/P2 恒为 0、UI 显示 P<uuid>（R3-600）。
+            const slot = this.displaySlot(flag.capturedBy);
+            if (slot) counts[slot]++;
         });
 
         return counts;
+    }
+
+    /**
+     * 把 capturedBy 归一成 1/2 槽位。
+     * 本地模式：Player.id 就是槽位号；联机模式：服务端 UUID，需要查本地/远程玩家的 slotIndex。
+     * 未知归属返回 null（不冒充任何玩家的旗）。
+     */
+    displaySlot(capturedBy) {
+        if (capturedBy === null || capturedBy === undefined) return null;
+        const numeric = Number(capturedBy);
+        if (Number.isInteger(numeric) && numeric >= 1 && numeric <= 2) return numeric;
+        const engine = window.gameEngine;
+        if (!engine) return null;
+        if (engine.localPlayer && engine.localPlayer.id === capturedBy) {
+            return (engine.localPlayer.slotIndex ?? 0) + 1;
+        }
+        const remote = engine.remotePlayers && engine.remotePlayers.get(capturedBy);
+        if (remote) return (remote.slotIndex ?? 0) + 1;
+        return null;
     }
 
     getFlags() {
@@ -403,12 +430,15 @@ class FlagManager {
     // 检查胜利条件
     checkVictoryCondition(players, territory) {
         const flagCounts = this.getFlagCounts();
-        const scores = players.map(player => ({
-            id: player.id,
-            score: territory.calculateScore(player.id, this.gameWidth, this.gameHeight),
-            flags: flagCounts[player.id] || 0,
-            isAlive: player.isAlive
-        }));
+        const scores = players.map(player => {
+            const slot = this.displaySlot(player.id);
+            return {
+                id: player.id,
+                score: territory.calculateScore(player.id, this.gameWidth, this.gameHeight),
+                flags: slot ? (flagCounts[slot] || 0) : 0,
+                isAlive: player.isAlive
+            };
+        });
 
         const alivePlayers = scores.filter(p => p.isAlive);
         const potentialWinners = alivePlayers.length > 0 ? alivePlayers : scores;

@@ -413,7 +413,12 @@
           if (Number.isFinite(qValue) && qValue < -1e-12) {
             addPoint('交点 P₁ =', '', '');
             addPoint('交点 P₂ =', '', '');
-            addNote('Δ < 0，直线与双曲线没有交点');
+            // 含参数时 qValue 是探针取值：只能说明「当前取值下无交点」（R3-576）。
+            addNote(
+              Number.isFinite(qExact)
+                ? 'Δ < 0，直线与双曲线没有交点'
+                : '当前参数取值下 Δ < 0（无交点）；含参数时交点存在性随参数变化，请代入具体值判断。'
+            );
             return;
           }
 

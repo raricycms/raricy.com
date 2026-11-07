@@ -31,17 +31,10 @@
 (function (root, factory) {
   'use strict';
 
-  if (typeof module !== 'undefined' && module.exports) {
-    const Monomial = require('./document/monomial.js');
-    // polynomial.js 内部直接引用全局 Monomial，先挂到全局再加载。
-    if (typeof globalThis !== 'undefined') {
-      globalThis.Monomial = Monomial;
-    }
-    const Polynomial = require('./document/polynomial.js');
-    module.exports = factory(Monomial, Polynomial);
-  } else {
-    root.Derivative = factory(root.Monomial, root.Polynomial);
-  }
+  // 浏览器全局脚本：本仓只有 <script src="./document/derivative.js"> 一种消费方式。
+  // 旧代码还留着一个 CJS 分支（require('./document/monomial.js')）—— 在 document/
+  // 目录内会解析成 document/document/…，全仓也无 Node 消费者（R3-588），已删除。
+  root.Derivative = factory(root.Monomial, root.Polynomial);
 })(
   typeof window !== 'undefined'
     ? window

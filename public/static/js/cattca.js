@@ -1,10 +1,20 @@
 export class CattcaInterpreter {
-  constructor(outputCb, logCb, inputCb, choiceCb, delimiters = { open: '</', close: '/>' }) {
+  /**
+   * @param outputCb  正文输出
+   * @param logCb     日志（含 `执行错误：…` 的可读日志行，给阅读器的日志面板用）
+   * @param inputCb   文本输入
+   * @param choiceCb  选项
+   * @param delimiters 指令块分隔符
+   * @param hooks     `{ onError(message) }`：**独立的错误通道**。宿主不该再从 logCb 的
+   *                  文案前缀里猜「这是不是一条错误」——那样一旦改文案，错误态就静默丢失。
+   */
+  constructor(outputCb, logCb, inputCb, choiceCb, delimiters = { open: '</', close: '/>' }, hooks = {}) {
     this.outputCb = outputCb || (() => {});
     this.logCb = logCb || (() => {});
     this.inputCb = inputCb || (async () => "");
     this.choiceCb = choiceCb || (async (opts) => opts[0] );
     this.delimiters = delimiters;
+    this.onError = typeof hooks.onError === 'function' ? hooks.onError : null;
     this.reset();
   }
 
@@ -27,6 +37,9 @@ export class CattcaInterpreter {
   // =========================================================================
   //  Static helpers
   // =========================================================================
+
+  /** Cattca 指令关键字：只有 `</` 后面跟这些词才当成指令块开始（R3-593）。 */
+  static COMMAND_KEYWORDS = new Set(['let', 'set', 'label', 'goto', 'exit', 'if', 'log', 'apply', 'input', 'random']);
 
   static escapeRegExp(str) {
     return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -171,10 +184,6 @@ export class CattcaInterpreter {
   parse() {
     const sourceWithoutComments = CattcaInterpreter.removeComments(this.source);
     const { open, close } = this.delimiters;
-    const regex = new RegExp(
-      CattcaInterpreter.escapeRegExp(open) + "([\\s\\S]*?)" + CattcaInterpreter.escapeRegExp(close),
-      "g"
-    );
 
     const pushText = (raw) => {
       const cleaned = raw.replace(/^[\r\n]+/, '');
@@ -182,18 +191,31 @@ export class CattcaInterpreter {
     };
 
     let lastIndex = 0;
-    let m;
-    while ((m = regex.exec(sourceWithoutComments)) !== null) {
-      if (m.index > lastIndex) {
-        pushText(sourceWithoutComments.slice(lastIndex, m.index));
+    let searchFrom = 0;
+    while (searchFrom <= sourceWithoutComments.length) {
+      const openIdx = sourceWithoutComments.indexOf(open, searchFrom);
+      if (openIdx === -1) break;
+      const afterOpenStart = openIdx + open.length;
+      // 开标记后面必须紧跟（可留空白）一个已知指令关键字。正文里的 HTML 结束标签
+      // `</div>` 与真正的 `</let …/>` 前缀相同，旧实现用无差别正则会把 `</div>`
+      // 当成块开始、吞掉它到下一个 `/>` 之间的正文（R3-593）。
+      const head = sourceWithoutComments.slice(afterOpenStart).match(/^\s*([A-Za-z_][A-Za-z0-9_]*)/);
+      const keyword = head ? head[1].toLowerCase() : '';
+      if (!head || !CattcaInterpreter.COMMAND_KEYWORDS.has(keyword)) {
+        searchFrom = afterOpenStart;
+        continue;
       }
-      const inside = m[1] || "";
+      const closeIdx = sourceWithoutComments.indexOf(close, afterOpenStart);
+      if (closeIdx === -1) break;
+      if (openIdx > lastIndex) pushText(sourceWithoutComments.slice(lastIndex, openIdx));
+      const inside = sourceWithoutComments.slice(afterOpenStart, closeIdx);
       const cmds = CattcaInterpreter.splitTopLevelSemicolons(inside);
       for (let cc of cmds) {
         cc = CattcaInterpreter.normCmd(cc);
         if (cc.length) this.lines.push({ type: "command", content: cc });
       }
-      lastIndex = regex.lastIndex;
+      lastIndex = closeIdx + close.length;
+      searchFrom = lastIndex;
     }
     if (lastIndex < sourceWithoutComments.length) {
       pushText(sourceWithoutComments.slice(lastIndex));
@@ -289,12 +311,17 @@ export class CattcaInterpreter {
       // ---- let ----
       case 'let': {
         const eqIdx = CattcaInterpreter.findTopLevelChar(after, '=');
+        // 变量名必须是合法标识符：否则 new Function 编译失败会静默回退原文，
+        // 后续 if 条件拿到非空字符串就恒真（R3-591）。
+        const rawName = (eqIdx === -1 ? after : after.slice(0, eqIdx)).trim();
+        if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(rawName)) {
+          throw new Error('变量名只能用字母、数字、下划线，且不能以数字开头：' + rawName);
+        }
         if (eqIdx === -1) {
-          this.vars[after.trim()] = null;
+          this.vars[rawName] = null;
         } else {
-          const name = after.slice(0, eqIdx).trim();
           const expr = after.slice(eqIdx + 1).trim();
-          this.vars[name] = this.evalExpr(expr);
+          this.vars[rawName] = this.evalExpr(expr);
           // 变量集合变了，清缓存
           this._exprCache.clear();
         }
@@ -338,7 +365,11 @@ export class CattcaInterpreter {
         if (!parts) throw new Error('if 语句缺少 ->');
         const condStr = parts[0].trim();
         const actionStr = CattcaInterpreter.normCmd(parts[1] || '');
-        if (this.evalExpr(condStr) && actionStr) {
+        const cond = this.evalExpr(condStr);
+        // evalExpr 的最终回退是「原样返回表达式字符串」；字符串恒真，会让写错的条件
+        // 永远走 then 分支（R3-591）。条件位只接受能求出数值/布尔的结果。
+        if (typeof cond === 'string') throw new Error('if 条件无法求值：' + condStr);
+        if (cond && actionStr) {
           await this.execute({ type: 'command', content: actionStr });
         }
         return;
@@ -418,12 +449,27 @@ export class CattcaInterpreter {
         const rangeStr = after.slice(eqIdx + 1).trim();
         if (!this.vars.hasOwnProperty(varName)) throw new Error('变量未声明：' + varName);
 
-        const spaceIdx = CattcaInterpreter.findTopLevelChar(rangeStr, ' ');
-        if (spaceIdx === -1) throw new Error('random 需要两个参数：最小值和最大值');
-
-        const min = Number(this.evalExpr(rangeStr.slice(0, spaceIdx).trim()));
-        const max = Number(this.evalExpr(rangeStr.slice(spaceIdx + 1).trim()));
-        if (isNaN(min) || isNaN(max)) throw new Error('random 参数必须是数字');
+        // 在顶层空格处切成两段 min/max。表达式本身可以含空格（如 `1 + 2`），
+        // 旧实现只按第一个顶层空格切，遇空格即失败（R3-592）。这里逐个候选切点
+        // 试求值，取第一组两边都能求出有限数值的切法。
+        const cuts = [];
+        let inS = false, inD = false;
+        for (let i = 0; i < rangeStr.length; i++) {
+          const ch = rangeStr[i];
+          if (ch === '\\') { i++; continue; }
+          if (ch === "'" && !inD) { inS = !inS; continue; }
+          if (ch === '"' && !inS) { inD = !inD; continue; }
+          if (ch === ' ' && !inS && !inD) cuts.push(i);
+        }
+        let min = NaN, max = NaN;
+        for (const cut of cuts) {
+          const left = Number(this.evalExpr(rangeStr.slice(0, cut).trim()));
+          const right = Number(this.evalExpr(rangeStr.slice(cut + 1).trim()));
+          if (Number.isFinite(left) && Number.isFinite(right)) { min = left; max = right; break; }
+        }
+        if (!Number.isFinite(min) || !Number.isFinite(max)) {
+          throw new Error('random 需要两个可求值的参数：最小值和最大值');
+        }
         if (min > max) throw new Error('random 最小值不能大于最大值');
 
         this.vars[varName] = Math.floor(Math.random() * (max - min + 1)) + min;
@@ -440,6 +486,15 @@ export class CattcaInterpreter {
   //  Run loop
   // =========================================================================
 
+  /**
+   * 跑到结束。返回**结构化结果**，调用方不必再猜「有没有出错」：
+   *   · `{ ok: true }`            跑到最后一行 / 命中 `exit`
+   *   · `{ ok: false, error }`    某一行执行抛错
+   *
+   * 出错时同时走两条通道：`hooks.onError(message)`（结构化，宿主用它置错误态）与
+   * `logCb('执行错误：…')`（人可读日志，保留给日志面板）。`running` 被宿主置 false
+   * 取消时同样返回 ok:true —— 取消不是错误，宿主用 run token 丢弃这个结果。
+   */
   async run() {
     this.running = true;
     while (this.running && this.pointer < this.lines.length) {
@@ -447,11 +502,14 @@ export class CattcaInterpreter {
       try {
         await this.execute(cur);
       } catch (err) {
-        this.logCb('执行错误：' + (err && err.message ? err.message : String(err)));
+        const message = err && err.message ? err.message : String(err);
+        this.logCb('执行错误：' + message);
         this.running = false;
-        break;
+        if (this.onError) this.onError(message);
+        return { ok: false, error: message };
       }
       this.pointer++;
     }
+    return { ok: true };
   }
 }

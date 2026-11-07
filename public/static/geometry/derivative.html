@@ -152,6 +152,25 @@
 
       try {
         const vars = Derivative.variables(expr);
+        // 下拉按表达式里**真实出现的参数**重建（R3-587）：旧实现写死 a/b/h，
+        // 输入 x/y 等多变量后没有对应选项，求导对象成断头路。
+        const previous = targetSelect.value;
+        const wanted = ['', ...vars];
+        const current = [...targetSelect.options].map(o => o.value);
+        if (wanted.join('|') !== current.join('|')) {
+          targetSelect.replaceChildren();
+          const auto = document.createElement('option');
+          auto.value = '';
+          auto.textContent = '自动（唯一参数）';
+          targetSelect.appendChild(auto);
+          for (const name of vars) {
+            const option = document.createElement('option');
+            option.value = name;
+            option.textContent = '对参数 ' + name + ' 求偏导';
+            targetSelect.appendChild(option);
+          }
+          targetSelect.value = wanted.includes(previous) ? previous : '';
+        }
         const target = targetSelect.value;
 
         let text = vars.length

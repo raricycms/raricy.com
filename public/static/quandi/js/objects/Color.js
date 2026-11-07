@@ -9,6 +9,35 @@ class ColorManager {
             player2: []
         };
         this.MAX_HISTORY = 6;
+        // 「保存颜色」的落点：localStorage（同源、无账号数据；联机配色由服务端分配，
+        // 这份只影响本地双人模式）。读写失败（隐私模式/脏数据）一律退回默认色。
+        this.STORAGE_KEY = 'quandi.colors';
+        this.loadSavedColors();
+    }
+
+    loadSavedColors() {
+        try {
+            const raw = localStorage.getItem(this.STORAGE_KEY);
+            if (!raw) return;
+            const saved = JSON.parse(raw);
+            [1, 2].forEach(playerId => {
+                const color = saved && saved[`player${playerId}`];
+                if (typeof color === 'string' && /^#[0-9a-f]{6}$/i.test(color)) {
+                    this.selectedColors[`player${playerId}`] = color;
+                }
+            });
+        } catch {
+            /* 读不到就用默认色，不影响开始游戏 */
+        }
+    }
+
+    saveColors() {
+        try {
+            localStorage.setItem(this.STORAGE_KEY, JSON.stringify(this.selectedColors));
+            return true;
+        } catch {
+            return false;
+        }
     }
 
     setupColorSelection() {
@@ -65,6 +94,18 @@ class ColorManager {
 
         // 只更新颜色和谐度显示
         this.updateColorHarmony();
+
+        // 把已保存的颜色回填到选择器（R3-536：旧「保存颜色」按钮只回主菜单、什么都没存）
+        [1, 2].forEach(playerId => {
+            const color = this.getPlayerColor(playerId);
+            const playerSection = document.querySelector(`.player-color-section[data-player="${playerId}"]`);
+            if (!playerSection) return;
+            playerSection.querySelectorAll('.color-option').forEach(opt => opt.classList.remove('selected'));
+            const preset = playerSection.querySelector(`.color-option[data-color="${color}"]`);
+            if (preset) preset.classList.add('selected');
+            const customInput = document.getElementById(`player${playerId}CustomColor`);
+            if (customInput) customInput.value = color;
+        });
     }
 
     selectColor(playerId, color, element = null) {

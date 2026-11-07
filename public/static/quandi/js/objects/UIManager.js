@@ -106,7 +106,9 @@ class UIManager {
             if (shieldElement) {
                 const hasShield = typeof player.hasShield === 'function'
                     ? player.hasShield()
-                    : (player.shield && player.shield.active);
+                    // RemotePlayer.hasShield 是**布尔字段**（不是 shield 对象）：
+                    // 旧代码只查 player.shield.active，远端护盾因此永远不显示（R3-601）。
+                    : player.hasShield === true || !!(player.shield && player.shield.active);
                 if (hasShield) {
                     let remaining;
                     if (typeof player.getShieldTimeRemaining === 'function') {

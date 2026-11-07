@@ -157,7 +157,9 @@ class DayNightManager {
                 this.moons.forEach(moon => {
                     const moonImg = window.imageLoader && window.imageLoader.get('moon');
                     if (moonImg) {
-                        // 精灵图内容（月亮盘+辉光）铺满，辉光外径对应原 2*size，绘制尺寸 = 2*size
+                        // 精灵图含「月盘 + 外圈辉光」：绘制尺寸取 2*size（= 辉光外径），
+                        // 图内月盘本身约占 80%，所以看起来比程序化版本的 r=size 月盘小、
+                        // 辉光半径也约为程序化 r=2*size 的一半 —— 这是精灵图的既定比例（R3-606）。
                         const drawSize = moon.size * 2;
                         ctx.save();
                         ctx.globalAlpha = moonOpacity;
@@ -213,53 +215,43 @@ class DayNightManager {
         this.currentTime = dayNightData.totalElapsed;
     }
 
+    // 相位模型与服务端 ServerDayNightManager 同一套（shared/quandi/rules.ts 的
+    // QUANDI_DAYNIGHT）：开局白天 initialTime → 渐暗 fadeTime → 全黑 darkTime →
+    // 渐亮 fadeTime，之后按 cycleTime 循环（R3-596）。旧实现用 `%2` 交替白天/黑夜，
+    // 永远不再回到整轮白天，与服务端不一致。
     getCurrentPhase() {
-
-        const cyclingTime = this.currentTime - this.initialtime;
-        const cyclingPosition = Math.floor(cyclingTime / this.cycleTime);
-        const cyclingDarkPosition = cyclingTime % this.cycleTime;
-        if (cyclingPosition % 2 === 1 || cyclingTime < 0) {
-            return 'day';
-        } else if (cyclingDarkPosition < this.fadeTime) {
-            return 'fadeToNight';
-        } else if (cyclingDarkPosition < this.fadeTime + this.darkTime){
-            return 'night'
-        } else {
-            return 'fadeToDay';
-        }
+        const t = this.currentTime;
+        if (t < this.initialtime) return 'day';
+        const cycleT = (t - this.initialtime) % this.cycleTime;
+        if (cycleT < this.fadeTime) return 'fadeToNight';
+        if (cycleT < this.fadeTime + this.darkTime) return 'night';
+        return 'fadeToDay';
     }
 
-    getFadeProgress(gameMode) {
-        const cyclingTime = this.currentTime - this.initialtime;
-        const cyclingDarkPosition = cyclingTime % this.cycleTime;
-        if (gameMode === 'fadeToNight') {
-            return (cyclingDarkPosition) / this.fadeTime;
-        } else if (gameMode === 'fadeToDay') {
-            return (cyclingDarkPosition - this.fadeTime - this.darkTime) / this.fadeTime;
+    getFadeProgress(phase) {
+        const t = this.currentTime;
+        if (t < this.initialtime) return 0;
+        const cycleT = (t - this.initialtime) % this.cycleTime;
+        if (phase === 'fadeToNight') return Math.min(1, cycleT / this.fadeTime);
+        if (phase === 'fadeToDay') {
+            return Math.max(0, Math.min(1, (cycleT - this.fadeTime - this.darkTime) / this.fadeTime));
         }
+        return 0;
     }
 
     getDayTimeRemaining() {
-        const cyclingTime = this.currentTime - this.initialtime;
-        const cyclingPosition = Math.floor(cyclingTime / this.cycleTime);
-        if (cyclingTime < 0) {
-            return Math.floor((this.initialtime - this.currentTime) / 1000);
-        } else if (cyclingPosition % 2 === 1) {
-            return Math.floor(((cyclingPosition + 1) * this.cycleTime - cyclingTime) / 1000);
-        } else {
-            return -1;
-        }
+        // 新相位模型下只有开局 initialTime 是白天；之后不再回到白天（服务端同款）。
+        const t = this.currentTime;
+        if (t < this.initialtime) return Math.max(0, Math.floor((this.initialtime - t) / 1000));
+        return -1;
     }
 
     getNightTimeRemaining() {
-        const cyclingTime = this.currentTime - this.initialtime;
-        const cyclingPosition = Math.floor(cyclingTime / this.cycleTime);
-
-        if (cyclingPosition % 2 === 0) {
-            return Math.floor(((cyclingPosition + 1) * this.cycleTime - cyclingTime) / 1000);
-        } else {
-            return -1;
-        }
+        const t = this.currentTime;
+        if (t < this.initialtime) return -1;
+        const cycleT = (t - this.initialtime) % this.cycleTime;
+        // 夜晚段 = 渐暗 + 全黑 + 渐亮；展示到本轮结束还剩多久。
+        return Math.max(0, Math.floor((this.cycleTime - cycleT) / 1000));
     }
 
     // 生成流星

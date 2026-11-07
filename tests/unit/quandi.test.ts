@@ -111,13 +111,15 @@ describe('圈地运动权威引擎', () => {
     game.close(); expect(vi.getTimerCount()).toBe(0);
   });
 
-  it('增量计分区分形状，重叠只算一次，不同玩家互不污染', () => {
+  it('增量计分区分形状，重叠只算一次，不同玩家互不污染；分母是 0.95 画布且封顶 100', () => {
+    // 服务端百分制分母与客户端 Territory.js 同源：画布面积 × 0.95（maxArea）。
+    const percent = (area: number) => (area / (1200 * 600 * 0.95)) * 100;
     const grid = new TerritoryGrid();
     const rectangle = (x: number, y: number, w: number, h: number) => [{ x, y }, { x: x + w, y }, { x: x + w, y: y + h }, { x, y: y + h }];
-    grid.add('a', rectangle(0, 0, 600, 600)); expect(grid.score('a')).toBe(50);
-    grid.add('a', rectangle(0, 0, 600, 600).reverse()); expect(grid.score('a')).toBe(50);
+    grid.add('a', rectangle(0, 0, 600, 600)); expect(grid.score('a')).toBeCloseTo(percent(600 * 600), 6);
+    grid.add('a', rectangle(0, 0, 600, 600).reverse()); expect(grid.score('a')).toBeCloseTo(percent(600 * 600), 6);
     grid.add('a', rectangle(600, 0, 600, 600)); expect(grid.score('a')).toBe(100);
-    grid.add('b', rectangle(0, 0, 300, 300)); expect(grid.score('b')).toBe(12.5);
+    grid.add('b', rectangle(0, 0, 300, 300)); expect(grid.score('b')).toBeCloseTo(percent(300 * 300), 6);
     grid.clear(); expect(grid.score('a')).toBe(0);
   });
 
@@ -142,7 +144,8 @@ describe('圈地运动权威引擎', () => {
       let count = 0;
       for (let y = 0; y < 600; y += 4) for (let x = 0; x < 1200; x += 4) if (inside(x, y, polygon)) count++;
       grid.add(String(index), polygon); grid.add(String(index), [...polygon].reverse());
-      expect(grid.score(String(index))).toBe(count / 450);
+      // 4px 网格 + 0.95 画布分母：count 除以 (300×150×0.95) 再乘 100。
+      expect(grid.score(String(index))).toBeCloseTo((count / (300 * 150 * 0.95)) * 100, 6);
     }
   });
 
@@ -172,7 +175,7 @@ describe('圈地运动权威引擎', () => {
     engine.players[0].addLength(100000); expect(engine.players[0].trailLength).toBe(1000);
     engine.territory.addTerritory('closed', [{ x: 0, y: 0 }, { x: 300, y: 0 }, { x: 300, y: 300 }, { x: 0, y: 300 }, { x: 0, y: 0 }]);
     expect(engine.territory.getPlayerTerritories('closed')[0]).toHaveLength(4);
-    expect(engine.territory.calculateScore('closed')).toBe(12.5);
+    expect(engine.territory.calculateScore('closed')).toBeCloseTo((300 * 300) / (1200 * 600 * 0.95) * 100, 6);
     const polygon = [{ x: 0, y: 0 }, { x: 20, y: 0 }, { x: 20, y: 20 }, { x: 0, y: 20 }];
     for (let i = 0; i < 128; i++) engine.territory.addTerritory('a', polygon);
     expect(() => engine.territory.addTerritory('a', polygon)).toThrow('territory_limit');

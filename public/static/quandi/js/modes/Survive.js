@@ -4,17 +4,17 @@ class AIEnemy {
         this.y = y;
         this.gameWidth = gameWidth;
         this.gameHeight = gameHeight;
-        this.speed = 1.5;
+        this.speed = Config.AI_RULES.speed;
         this.direction = Math.random() * Math.PI * 2;
-        this.size = 8;
+        this.size = Config.AI_RULES.size;
         this.color = '#FF0000';
         this.targetPlayer = null;
-        this.detectionRadius = Config.PLAYER_DEFAULTS.detectionRadius; // 检测玩家的半径
+        this.detectionRadius = Config.AI_RULES.detectionRadius; // 检测玩家的半径
         this.state = 'wander'; // wander, chase
         this.stateChangeTime = 0;
         this.relaxMode = false;
         this.relaxTimer = 0;
-        this.shieldtime = Config.PLAYER_DEFAULTS.deathshieldtime;
+        this.shieldtime = Config.AI_RULES.shieldAfterHitMs;
     }
 
     update(deltaTime, players) {
@@ -23,7 +23,7 @@ class AIEnemy {
         // 更新relax模式计时器
         if (this.relaxMode) {
             this.relaxTimer += deltaTime;
-            if (this.relaxTimer >= 5000) { // 5秒后退出relax模式
+            if (this.relaxTimer >= Config.AI_RULES.relaxAfterHitMs) { // 与服务端同一冷却（R3-598）
                 this.relaxMode = false;
                 this.relaxTimer = 0;
             }
@@ -37,7 +37,7 @@ class AIEnemy {
                 this.stateChangeTime = 0;
             } else {
                 // 在avoiding状态下保持当前方向移动，速度与物理帧频率无关
-                const normalizedSpeed = this.speed * (deltaTime / 20); // 基于20ms的标准帧时间
+                const normalizedSpeed = this.speed * (deltaTime / Config.AI_RULES.dtMs);
                 this.x += Math.cos(this.direction) * normalizedSpeed;
                 this.y += Math.sin(this.direction) * normalizedSpeed;
             }
@@ -88,32 +88,31 @@ class AIEnemy {
     chasePlayer(deltaTime) {
         if (!this.targetPlayer) return;
 
-        const dx = this.targetPlayer.x - this.x;
-        const dy = this.targetPlayer.y - this.y;
-        const distance = Math.sqrt(dx * dx + dy * dy);
+        // 与服务端 ServerSurvivalManager._chase 同一公式（shared/quandi/rules.ts）：
+        // 平滑转向 chaseTurnLerp，速度倍率 1 + max(0, 1 - d/detectionRadius)（R3-598）。
+        const toTarget = Math.atan2(this.targetPlayer.y - this.y, this.targetPlayer.x - this.x);
+        let diff = toTarget - this.direction;
+        while (diff > Math.PI) diff -= Math.PI * 2;
+        while (diff < -Math.PI) diff += Math.PI * 2;
+        this.direction += diff * Config.AI_RULES.chaseTurnLerp;
 
-        if (distance > 0) {
-            // 动态调整速度，距离越近速度越快
-            const speedMultiplier = Math.min(2.0, Math.max(1.0, this.detectionRadius / distance));
-            const currentSpeed = this.speed * speedMultiplier;
+        const distance = this.getDistanceToPlayer(this.targetPlayer);
+        const speedMultiplier = 1 + Math.max(0, 1 - distance / this.detectionRadius);
+        // 位移基准 dtMs 与服务端一致（客户端按真实 deltaTime 归一）
+        const normalizedSpeed = this.speed * (deltaTime / Config.AI_RULES.dtMs) * speedMultiplier;
 
-            // 使移动速度与物理帧频率无关，保持恒定
-            const normalizedSpeed = currentSpeed * (deltaTime / 20); // 基于20ms的标准帧时间
-
-            this.x += (dx / distance) * normalizedSpeed;
-            this.y += (dy / distance) * normalizedSpeed;
-        }
+        this.x += Math.cos(this.direction) * normalizedSpeed;
+        this.y += Math.sin(this.direction) * normalizedSpeed;
     }
 
     wander(deltaTime) {
-        // 简单的漫游行为
-        if (this.stateChangeTime > 1000) { // 每2秒改变一次方向
+        // 与服务端 _wander 同款：每 tick 2% 概率微调方向；漫游速度不折半（R3-598）。
+        if (Math.random() < 0.02) {
             this.direction += (Math.random() - 0.5) * Math.PI / 2;
-            this.stateChangeTime = 0;
         }
 
         // 使移动速度与物理帧频率无关，保持恒定
-        const normalizedSpeed = this.speed * 0.5 * (deltaTime / 20); // 基于20ms的标准帧时间
+        const normalizedSpeed = this.speed * (deltaTime / Config.AI_RULES.dtMs);
         this.x += Math.cos(this.direction) * normalizedSpeed;
         this.y += Math.sin(this.direction) * normalizedSpeed;
     }
@@ -141,8 +140,10 @@ class AIEnemy {
     checkCollisionWithPlayer(player) {
         if (!player.isAlive) return false;
 
+        // 与服务端同一条判据：player.size + enemy.size + hitRadiusExtra（R3-598）。
         const distance = this.getDistanceToPlayer(player);
-        return distance < (this.size + 5); // 5是玩家的大致半径
+        const playerRadius = typeof player.size === 'number' ? player.size : Config.PLAYER_DEFAULTS.size;
+        return distance < playerRadius + this.size + Config.AI_RULES.hitRadiusExtra;
     }
 
     // 新增：进入relax模式
@@ -509,8 +510,8 @@ class SurvivalManager {
         this.enemyCount = setting.count;
         this.maxEnemies = setting.maxEnemies;
         this.spawnInterval = setting.interval;
-        this.AIspeed = Config.PLAYER_DEFAULTS.AIspeed;
-        this.shieldtime = Config.PLAYER_DEFAULTS.deathshieldtime;
+        this.AIspeed = Config.AI_RULES.speed;
+        this.shieldtime = Config.AI_RULES.shieldAfterHitMs;
         // 更新现有敌人的速度
         this.aiEnemies.forEach(enemy => {
             enemy.speed = this.AIspeed * this.difficultyMultiplier;

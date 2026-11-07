@@ -405,11 +405,6 @@ document.addEventListener('click', function(e) {
     }
 });
 
-// 全局函数：刷新通知计数（可在其他页面调用）
-window.refreshNotificationCount = function() {
-    updateNotificationCount();
-};
-
 // ── 顶栏实时流（SSE）+ 兜底轮询 ─────────────────────────────────────────────
 //
 // 为什么还需要轮询：SSE 只在**能收到帧**时才有用。反代掐掉连接、NAT 超时之后，
