@@ -23,6 +23,9 @@ export default function RegisterPage() {
   const passwordRef = useRef<HTMLInputElement>(null);
   const confirmPasswordRef = useRef<HTMLInputElement>(null);
   const inviteCodeRef = useRef<HTMLInputElement>(null);
+  // 与 TurnstileWidget 同一判据：启用后没有 token 就不该让表单提交（R3-639 / D 桶已批准）。
+  const turnstileRequired =
+    process.env.NEXT_PUBLIC_TURNSTILE_AVAILABLE === 'True' && !!process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY;
 
   function validatePassword() {
     if (!confirmPasswordRef.current) return;
@@ -36,6 +39,11 @@ export default function RegisterPage() {
     const form = formRef.current;
     if (form && !form.checkValidity()) {
       form.reportValidity();
+      return;
+    }
+    // Turnstile 启用时必须有 token：按钮已经禁用，但回车/程序化 submit 仍会走到这里。
+    if (turnstileRequired && !turnstileToken) {
+      showToast('请先完成人机验证', 'error');
       return;
     }
     setLoading(true);
@@ -205,7 +213,7 @@ export default function RegisterPage() {
               className="button button-primary"
               style={{ width: '100%', marginTop: 20 }}
               id="submitBtn"
-              disabled={loading}
+              disabled={loading || (turnstileRequired && !turnstileToken)}
             >
               {loading ? (
                 <span>注册中…</span>
