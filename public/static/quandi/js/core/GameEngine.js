@@ -439,7 +439,9 @@ class GameEngine {
         // 玩家更新后，标记动态元素需要更新
         this.dynamicNeedsUpdate = true;
 
-        // 碰撞检测
+        // 碰撞检测。生存模式走 SurvivalManager 自己的规则（人类互撞不致死，见
+        // modes/Survive.js 的 checkPlayerCollisions），不在这里判；联机模式下整个
+        // fixedUpdate 早已提前 return（只做预测/显示），生命与死亡由服务端权威下发。
         if (this.gameMode !== "survival") {
             this.checkCollisions();
         }
@@ -955,6 +957,12 @@ class GameEngine {
         this.staticNeedsUpdate = true;
     }
 
+    // 人类互撞的致死规则：**按模式分开**，且必须与服务端 ServerEngine.checkCollisions()
+    // 同源（联机时这个函数根本不跑，但单机会直接暴露差异）：
+    //   · explore / capture：头撞双方死亡、碰轨迹者死亡；
+    //   · fight / infinite / daynight：头撞双方死亡、被碰的一方（轨迹主人）死亡；
+    //   · survival：**不在这里判**（`fixedUpdate` 跳过本函数）—— 生存是协作口径，
+    //     玩家互撞不致死，只保留敌人碰撞与进入敌方领土两类致死。
     checkCollisions() {
         for (let i = 0; i < this.players.length; i++) {
             const player = this.players[i];

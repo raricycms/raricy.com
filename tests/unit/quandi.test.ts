@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+﻿import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { performance } from 'node:perf_hooks';
 import { parseQuandiCommand, QUANDI_MAX_ROOMS, QUANDI_ROUND_MAX_MS } from '../../shared/quandi/protocol';
 import { TerritoryGrid } from '../../shared/quandi/territory-grid';
@@ -185,4 +185,40 @@ describe('圈地运动权威引擎', () => {
     expect(() => vi.advanceTimersByTime(16)).not.toThrow();
     expect(failed).toHaveBeenCalledOnce(); expect(vi.getTimerCount()).toBe(0);
   });
+
+  it('生存模式权威口径：人类互撞不扣命，只有 AI 撞人才扣命并发 PLAYER_DIED（P05）', () => {
+    const engine = new ServerEngine({ gameConfig: { mode: 'survival', difficulty: 'medium' }, getPlayers: () => [
+      { playerId: 'a', name: 'a', color: '#E6194B' }, { playerId: 'b', name: 'b', color: '#0047AB' },
+    ] });
+    const [a, b] = engine.players;
+    const events: { type: string; playerId?: string; reason?: string }[] = [];
+    engine.onGameEvent = (event: { type: string }) => events.push(event as (typeof events)[number]);
+
+    // ① 头部相撞（两人同格）：协作口径 → 都不掉命、都不死。
+    a.x = 300; a.y = 300; b.x = 300; b.y = 300;
+    a.trail = [{ x: 300, y: 300 }]; b.trail = [{ x: 300, y: 300 }];
+    engine.checkCollisions();
+    expect([a.isAlive, b.isAlive]).toEqual([true, true]);
+    expect([a.lives, b.lives]).toEqual([3, 3]);
+
+    // ② 穿过对方轨迹：同样不致死（服务端 survival 不判人类轨迹碰撞）。
+    b.x = 600; b.y = 300;
+    b.trail = [{ x: 301, y: 300 }];
+    engine.checkCollisions();
+    expect([a.isAlive, b.isAlive]).toEqual([true, true]);
+    expect(events).toEqual([]);
+
+    // ③ AI 撞人仍扣命 + 给护盾 + 发 PLAYER_DIED（敌人这名现有致死机制保持不变）。
+    const enemy = {
+      id: 'ai_test', x: a.x, y: a.y, size: 8, relaxMode: false,
+      update() {}, hitPlayer() { /* 只是为了本次碰撞，relax 不影响断言 */ }, _constrainToBounds() {},
+    };
+    (engine.survivalManager as unknown as { enemies: (typeof enemy)[] }).enemies = [enemy];
+    engine.fixedUpdate(16);
+    expect(a.lives).toBe(2);
+    expect(a.hasShield()).toBe(true);
+    expect(events).toContainEqual({ type: 'PLAYER_DIED', playerId: 'a', reason: '被AI敌人碰撞' });
+  });
 });
+
+

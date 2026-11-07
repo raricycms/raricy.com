@@ -437,40 +437,21 @@ class SurvivalManager {
         });
     }
 
-    // 检查玩家之间的碰撞
+    // 生存模式的人类互撞：**不致死**（协作口径）。服务端 ServerEngine.checkCollisions()
+    // 在 survival 下根本不判人类头部 / 轨迹碰撞；客户端联机时只做预测与显示（不跑本地
+    // 碰撞），本地双人模式也按同一口径，否则同一模式在单机与联机之间会「一边死一边不死」。
+    // 致死只剩两类，且两侧一致：敌人碰撞（checkAICollisions，扣命 + 护盾不变）与
+    // 「进入敌方领土」（下面是它与服务端共有的规则，不属于玩家互撞）。
     checkPlayerCollisions(players, territory) {
         for (let i = 0; i < players.length; i++) {
             const player = players[i];
             if (!player.isAlive) continue;
 
-            // 检查与其他玩家轨迹的碰撞
+            // 检查与其他玩家领土的碰撞
             for (let j = 0; j < players.length; j++) {
                 if (i === j) continue;
                 const otherPlayer = players[j];
 
-                const collisionType = player.checkCollisionWithTrail(otherPlayer.trail, otherPlayer);
-
-                if (collisionType === 'head-collision') {
-                    // 头部碰撞：两人同时死亡
-                    player.die('与玩家头部碰撞');
-                    otherPlayer.die('与玩家头部碰撞');
-                    // 在生存模式下，玩家死亡后自动获得3秒护盾
-                    if (window.gameEngine && window.gameEngine.gameMode === 'survival') {
-                        player.activateShield(this.shieldtime);
-                        otherPlayer.activateShield(this.shieldtime);
-                    }
-                    break;
-                } else if (collisionType === 'trail-collision') {
-                    // 轨迹碰撞：碰撞者死亡，被碰撞者杀死对手
-                    otherPlayer.die('碰撞到玩家轨迹');
-                    // 在生存模式下，玩家死亡后自动获得3秒护盾
-                    if (window.gameEngine && window.gameEngine.gameMode === 'survival') {
-                        otherPlayer.activateShield(this.shieldtime);
-                    }
-                    break;
-                }
-
-                // 检查与其他玩家领土的碰撞
                 const otherTerritories = territory.getPlayerTerritories(otherPlayer.id);
                 if (!player.canEnterEnemyTerritory()) {
                     if (player.checkCollisionWithTerritory(otherTerritories)) {

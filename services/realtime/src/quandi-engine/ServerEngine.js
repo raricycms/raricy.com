@@ -994,6 +994,14 @@ class ServerEngine {
         }
     }
 
+    // 人类互撞的致死规则：**按模式分开**，客户端 GameEngine.checkCollisions /
+    // Survive.checkPlayerCollisions 必须与此同源（联机时客户端不跑本地碰撞，但它仍要
+    // 显示「谁死了」，所以规则必须一致）：
+    //   · explore / capture：头撞双方死亡、碰轨迹者死亡；
+    //   · fight / infinite / daynight：头撞双方死亡、被碰的一方（轨迹主人）死亡；
+    //   · survival：**不在这里判** —— 生存是协作口径，玩家互撞不致死；本模式致死只剩
+    //     「AI 撞人」（ServerSurvivalManager.checkPlayerCollisions，扣命 + 护盾）与
+    //     「进入敌方领土」（下面 territory 分支，两侧共有）。
     checkCollisions() {
         for (let i = 0; i < this.players.length; i++) {
             const player = this.players[i];
