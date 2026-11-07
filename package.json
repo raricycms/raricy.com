@@ -36,14 +36,14 @@
     "check:secrets": "node scripts/check-secrets.mjs",
     "instance:check": "node scripts/check-instance.mjs",
     "css:probe": "sass src/styles-scss/main.scss:src/styles-scss/compiled/probe.css --style=expanded --load-path=src/styles-scss --no-source-map",
-    "prepare:mathjax": "node scripts/copy-mathjax-fonts.mjs",
-    "mathjax:check": "node scripts/copy-mathjax-fonts.mjs --check",
     "prepare:emoji": "node scripts/copy-emoji-assets.mjs",
     "emoji:check": "node scripts/copy-emoji-assets.mjs --check",
     "prepare:converter": "node scripts/copy-converter-assets.mjs",
     "converter:check": "node scripts/copy-converter-assets.mjs --check",
     "pwa:icons:check": "node scripts/make-pwa-icons.mjs --check",
-    "postinstall": "node scripts/copy-mathjax-fonts.mjs && node scripts/copy-emoji-assets.mjs && node scripts/copy-converter-assets.mjs",
+    "fonts:check": "node scripts/check-font-assets.mjs",
+    "fonts:check:regen": "python scripts/make-numeric-fonts.py --check",
+    "postinstall": "node scripts/copy-emoji-assets.mjs && node scripts/copy-converter-assets.mjs",
     "realtime:build": "tsc -p services/realtime/tsconfig.json",
     "search:rebuild": "vite-node --config scripts/reactive-vite.config.ts scripts/rebuild-public-search.mts",
     "search:benchmark": "vite-node --config scripts/reactive-vite.config.ts scripts/benchmark-public-search.mts",
@@ -70,7 +70,6 @@
     "fernet": "^0.3.3",
     "fflate": "0.8.2",
     "heic2any": "0.0.4",
-    "highlight.js": "^11.11.1",
     "iconv-lite": "0.6.3",
     "jose": "^5.9.6",
     "js-yaml": "4.1.0",
@@ -78,7 +77,6 @@
     "lucide-react": "^1.42.0",
     "mammoth": "1.13.0",
     "marked": "^18.0.6",
-    "mathjax-full": "^3.2.2",
     "next": "^15.5.27",
     "node-unrar-js": "2.0.2",
     "pdf-lib": "1.17.1",
@@ -91,8 +89,8 @@
     "sharp": "^0.35.3",
     "tesseract.js": "5.1.1",
     "utif": "3.1.0",
-    "xlsx": "0.18.5",
-    "ws": "8.22.0"
+    "ws": "8.22.0",
+    "xlsx": "0.18.5"
   },
   "devDependencies": {
     "@inquirer/prompts": "^7.10.1",
@@ -101,13 +99,13 @@
     "@types/node": "^22.10.5",
     "@types/react": "^19.0.4",
     "@types/react-dom": "^19.0.2",
+    "@types/ws": "8.18.2",
     "@vitest/coverage-v8": "^2.1.9",
     "jsdom": "^25.0.1",
     "prisma": "^6.2.1",
     "sass": "^1.99.0",
     "tsx": "^4.23.1",
     "typescript": "^5.7.3",
-    "vitest": "^2.1.9",
-    "@types/ws": "8.18.2"
+    "vitest": "^2.1.9"
   }
 }

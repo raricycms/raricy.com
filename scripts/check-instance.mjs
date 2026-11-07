@@ -39,7 +39,6 @@ const instanceRoot = path.join(ROOT, 'instance');
 
 const SUBDIRS = ['avatars', 'database', 'images', 'audio', 'stories', 'stickers', 'blogs'];
 
-let created = 0;
 for (const sub of SUBDIRS) {
   const full = path.join(instanceRoot, sub);
   try {
@@ -48,7 +47,6 @@ for (const sub of SUBDIRS) {
     console.error(`✗ 创建失败 ${full}: ${e.message}`);
     process.exit(1);
   }
-  created++;
 }
 
 console.log(`✓ instance/ 骨架已就绪（${instanceRoot}）`);

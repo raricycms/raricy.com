@@ -12,8 +12,6 @@
 // 本文件的用例守住这个约定；`grep new Date()` 那条更是防止有人无意间写回去。
 
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import fs from 'node:fs';
-import path from 'node:path';
 import { nowForDb, todayStr, dayStart, hoursUntil, isoWithOffset, SITE_TZ_OFFSET_MS } from '@/lib/db-time';
 import { ymd } from '@/lib/format';
 
@@ -145,28 +143,7 @@ describe('isoWithOffset：库内时间戳给机器读的唯一出口', () => {
   });
 });
 
-describe('约定的护栏：service 层不得用 new Date() 直接写库', () => {
-  it('src/lib 下没有「写入 DateTime 列时用 new Date()」的写法', () => {
-    const libDir = path.resolve(import.meta.dirname, '../../src/lib');
-    const offenders: string[] = [];
-    // 形如 createdAt: new Date() / updatedAt: new Date() / const now = new Date()
-    const bad =
-      /(?:createdAt|updatedAt|deletedAt|lastCommentAt|liftedAt|decidedAt|timestamp|lastLogin)\s*:\s*new Date\(\)|const now = new Date\(\)/;
-
-    for (const f of fs.readdirSync(libDir)) {
-      if (!f.endsWith('.ts') || f === 'db-time.ts') continue;
-      const src = fs.readFileSync(path.join(libDir, f), 'utf-8');
-      src.split('\n').forEach((line, i) => {
-        if (line.trimStart().startsWith('//') || line.trimStart().startsWith('*')) return;
-        if (bad.test(line)) offenders.push(`${f}:${i + 1}  ${line.trim()}`);
-      });
-    }
-
-    expect(
-      offenders,
-      '这些地方用 new Date()（真实 UTC）写库，会与「UTC+8 墙上时间」的既有数据差 8 小时。\n' +
-        '请改用 db-time.ts 的 nowForDb()。命中行：\n' +
-        offenders.join('\n')
-    ).toEqual([]);
-  });
-});
+// 静态护栏统一住在 tests/unit/db-time-guard.test.ts：它的规则 1 递归扫
+// src/lib + src/app/api + tests/helpers + scripts 下的全部 new Date()，
+// 覆盖了这里原先手写的 src/lib 顶层窄正则（那只是它的真子集）。
+// 本文件只保留行为断言，不再重复一份源码扫描。

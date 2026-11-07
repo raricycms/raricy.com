@@ -52,14 +52,18 @@ application. Keep each family's `OFL.txt` alongside the font files.
 
 ```sh
 python -m pip install 'fonttools[woff]==4.60.1' 'brotli==1.1.0'
-python scripts/make-numeric-fonts.py
-python scripts/make-numeric-fonts.py --check
+python scripts/make-numeric-fonts.py          # 重新生成
+npm run fonts:check:regen                     # 可复现性校验（需要 Python）
+npm run fonts:check                           # 默认守卫：存在性/魔数/哈希/OFL（仅 Node）
 ```
 
 The generator verifies character coverage, original outlines and widths, the `O`
 replacement, and the serialized assets. `--check` also verifies reproducible bytes
 and the bundled license without rewriting files.
 
+`npm run fonts:check` is the dependency-free guard: it pins the SHA-256 of every
+committed WOFF2 (update it deliberately when regenerating), checks the WOFF2 magic
+and that each numeric subset stays small, and requires an `OFL.txt` per family.
+
 The CSS uses `font-display: swap`. Font loading requires no third-party network
-requests. Chinese text continues to use system fallback fonts; math typography
-continues to use the separate MathJax fonts.
+requests. Chinese text continues to use system fallback fonts.

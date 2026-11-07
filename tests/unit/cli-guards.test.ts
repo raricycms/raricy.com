@@ -12,11 +12,10 @@
 // 正确写法是在 run() 里 `await import(...)`（或者只 `import type`）。
 //
 // 【约定二：时间戳只用同一把钟】
-// 与 tests/unit/db-time-guard.test.ts 同样的理由，但那个守卫的扫描范围是
-// src/lib、src/app/api、middleware、tests/helpers（规则 3–5 还会扫整个 src/）
-// —— **都不含 scripts/**。
-// CLI 会写库、会比对库内时间（比如审计日志的时间窗），所以这里补上。
-// 取「当前时刻」一律 nowForDb()；展示一律 ymd/ymdhms 或 getUTC*。
+// 与 tests/unit/db-time-guard.test.ts 同一个理由：取「当前时刻」一律 nowForDb()，
+// 展示一律 ymd/ymdhms 或 getUTC*。db-time-guard 的规则 1 现已扫到 scripts/，
+// 但这里仍保留**比较式**检查（`.getTime() <= Date.now()` 这类）：guard 只抓相减式，
+// 比较式同样会差 8 小时却不会被它命中（R3-428 的原形）。
 //
 // 【约定三：不许顶层 await】
 // 本仓库根 package.json 没有 "type": "module"，scripts/ 下的 .ts 按 CJS 语义执行，

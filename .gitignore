@@ -51,10 +51,6 @@ coverage/
 # instance 的本地打包归档（app.db + stories 等真实数据，备份用）—— 不入库
 /instance.zip
 
-# MathJax CHTML 的 woff 字体 —— 从 mathjax-full 拷贝，
-# 由 `npm run prepare:mathjax` 重建（MarkdownRenderer 的 fontURL 指向这里）
-/public/static/mathjax/
-
 # 内置「黄脸表情」的 SVG —— 同上，从 @twemoji/svg 按 src/lib/emoji-faces.json
 # 挑着拷贝，由 `npm run prepare:emoji` 重建。素材是 Twemoji（CC BY 4.0，需署名），
 # 复制脚本会连 LICENSE.txt 一起生成。
