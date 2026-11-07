@@ -43,8 +43,10 @@
   --tw-goal: #7dd3fc;
   --tw-body: #ffc861;
   --tw-body-soft: rgba(255, 200, 97, .18);
+  --tw-body-core: #fff4d6;
   --tw-shade: #a78bfa;
   --tw-shade-soft: rgba(167, 139, 250, .18);
+  --tw-shade-core: #f1ebff;
   --tw-danger: #ff6b6b;
 }
 
@@ -429,11 +431,12 @@
   }
 }
 
-// 滑行拖尾：画上去就开始淡出（Board 用 serial 换 key 重播，所以不需要 JS 计时）。
+// 滑行拖尾：画上去就开始淡出（Board 用 moves 换 key 重播，所以不需要 JS 计时）。
 // 淡的是 `fill-opacity` 而不是 `opacity` —— Board 给每个圆的行内 opacity 编了
 // 「起点暗、末端亮」的渐变，动画若动 opacity 会把那层渐变一起盖掉。
+// 颜色按 a/b 从 --tw-trail-color 取（Board 只给这个变量，角色色仍只在下面两处定义）。
 .tw-trail:not([fill]) {
-  fill: var(--tw-goal);
+  fill: var(--tw-trail-color, var(--tw-goal));
 }
 
 .tw-trail {
@@ -491,23 +494,27 @@
 .tw-token--a {
   --tw-token-color: var(--tw-body);
   --tw-token-soft: var(--tw-body-soft);
+  --tw-token-core: var(--tw-body-core);
 }
 
 .tw-token--b {
   --tw-token-color: var(--tw-shade);
   --tw-token-soft: var(--tw-shade-soft);
+  --tw-token-core: var(--tw-shade-core);
 }
 
 .tw-token__glow:not([fill]) {
   fill: var(--tw-token-soft, var(--tw-body-soft));
 }
 
+/* core / ring 不再由 Board 写 fill / stroke：角色色只在这份样式表的 --tw-token-* 里定义。
+   以前 Board 直接写十六进制值，于是这两条兜底永远不命中，改色要改两处。 */
 .tw-token__core:not([fill]) {
-  fill: var(--tw-token-color, var(--tw-body));
+  fill: var(--tw-token-core, var(--tw-token-color, var(--tw-body)));
 }
 
 .tw-token__ring:not([stroke]) {
-  stroke: rgba(11, 18, 32, .55);
+  stroke: var(--tw-token-color, var(--tw-body));
 }
 
 .tw-token__ring {

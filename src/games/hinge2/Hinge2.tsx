@@ -30,7 +30,6 @@ export default function Hinge2() {
   const [view, setView] = useState<View>(() => ({ pose: poseOf(initialState(LEVELS[0])), pawn: position(LEVELS[0].nodes[0], initialState(LEVELS[0])) }));
   const frame = useRef(0);
   const locked = useRef(false);
-  const stage = useRef<HTMLElement>(null);
   const won = isWon(level, state);
   const future = redos[level.id] ?? EMPTY;
   const seals = level.nodes.filter((node) => node.seal);
@@ -147,16 +146,16 @@ export default function Hinge2() {
   return <div className="container h2-game" data-ready={ready}>
     <header className="h2-header">
       <div className="h2-brand"><Link href="/game/collections/test" className="h2-icon-button" aria-label="返回测试合集"><ArrowLeft size={19} /></Link><h1>合页 <span>II</span></h1><span className="h2-demo">Demo 2</span></div>
-      <div className="h2-header-end"><span className="h2-completion">已完成 <span className="numeric">{completed.length} / 4</span></span><Link className="h2-text-link" href="/game/hinge">初版<MoveUpRight size={13} /></Link></div>
+      <div className="h2-header-end"><span className="h2-completion">已完成 <span className="numeric">{completed.length} / {LEVELS.length}</span></span><Link className="h2-text-link" href="/game/hinge">初版<MoveUpRight size={13} /></Link></div>
     </header>
     <div className="h2-layout">
       <nav className="h2-chapters" aria-label="选择章节">
         {LEVELS.map((item, i) => <button key={item.id} className={`h2-chapter${item.id === level.id ? ' is-active' : ''}`} aria-pressed={item.id === level.id} onClick={() => choose(item.id)} disabled={!ready}>
           <span className="h2-chapter-number numeric">0{i + 1}</span><span className="h2-chapter-title">{item.title}<small>{item.subtitle}</small></span>{completed.includes(item) ? <Check size={15} /> : <ArrowRight size={15} />}
         </button>)}
-        <p className="h2-chapter-note">四张纸页可自由尝试</p>
+        <p className="h2-chapter-note">共 {LEVELS.length} 张纸页，可自由尝试</p>
       </nav>
-      <section className="h2-workspace" ref={stage} tabIndex={0} onKeyDown={onKey} aria-label="合页第二版纸景" data-level={level.id} data-player={state.player} data-turn={((state.turn % 4) + 4) % 4} data-mirror={state.mirror} data-folded={state.folded} data-won={won} data-busy={busy}>
+      <section className="h2-workspace" tabIndex={0} onKeyDown={onKey} aria-label="合页第二版纸景" data-level={level.id} data-player={state.player} data-turn={((state.turn % 4) + 4) % 4} data-mirror={state.mirror} data-folded={state.folded} data-won={won} data-busy={busy}>
         <div className="h2-scene-heading"><div><p>第 <span className="numeric">0{LEVELS.indexOf(level) + 1}</span> 页</p><h2>{level.title}</h2></div><div className="h2-seal-count" aria-label={`已拾取${state.seals.length}枚印记，共${seals.length}枚`}><span aria-hidden="true">◇</span><span className="numeric">{state.seals.length} / {seals.length}</span><span>印记</span></div></div>
         <Scene level={level} state={state} pose={view.pose} pawn={view.pawn} busy={!ready || busy} onWalk={(to) => perform({ type: 'walk', to })} onMechanism={(type) => perform(type === 'turn' ? { type, amount: 1 } : { type })} />
         <div className="h2-scene-caption"><span><i />点击路面圆点行走</span><span>菱形印记 → 拱门</span></div>
@@ -166,7 +165,7 @@ export default function Hinge2() {
           {level.mechanics.includes('fold') && <button className="h2-primary" onClick={() => perform({ type: 'fold' })} disabled={!ready || busy} aria-label={state.folded ? '展开右半页' : '对折右半页'}><svg width="19" height="19" viewBox="0 0 24 24" aria-hidden="true"><path d="m3 5 9 4 9-6v16l-9 4-9-4Zm9 4v14" fill="none" stroke="currentColor" strokeWidth="1.5" /></svg>{state.folded ? '展开右页' : '对折右页'}<span className="h2-key">F</span></button>}
         </div>
         <div className={`h2-feedback${won ? ' is-won' : ''}`} role="status" aria-live="polite">
-          {won && !busy ? <><span><Check size={18} />这一页已完成</span>{nextLevel ? <button className="h2-primary" onClick={() => choose(nextLevel.id)}>下一页<ArrowRight size={16} /></button> : <span>四页机关已全部呈现，可切换章节重玩。</span>}</> : <span>{notice || (busy ? '纸景变化中…' : level.instruction)}</span>}
+          {won && !busy ? <><span><Check size={18} />这一页已完成</span>{nextLevel ? <button className="h2-primary" onClick={() => choose(nextLevel.id)}>下一页<ArrowRight size={16} /></button> : <span>全部 {LEVELS.length} 页机关已呈现，可切换章节重玩。</span>}</> : <span>{notice || (busy ? '纸景变化中…' : level.instruction)}</span>}
         </div>
         <div className="h2-utilities"><div><button className="h2-icon-button" onClick={undo} disabled={!ready || busy || !actions.length} aria-label="撤销" title="撤销 Z"><Undo2 size={18} /></button><button className="h2-icon-button" onClick={redo} disabled={!ready || busy || !future.length} aria-label="重做" title="重做 Shift+Z"><Redo2 size={18} /></button><button className="h2-secondary" onClick={reset} disabled={!ready || busy || !actions.length}><RotateCcw size={16} />重置</button></div><div><button className="h2-secondary" onClick={() => setDestinations(!destinations)} aria-expanded={destinations}><MoveUpRight size={16} />可达位置<ChevronDown size={13} /></button><button className="h2-secondary" onClick={() => setHint((h) => h >= level.hints.length ? 0 : h + 1)} aria-expanded={hint > 0}><Lightbulb size={17} />提示</button></div></div>
         {destinations && <div className="h2-destinations" aria-label="可达位置列表">{reachable.length ? reachable.map((node) => <button className="h2-secondary" key={node.id} onClick={() => perform({ type: 'walk', to: node.id })} disabled={busy}>{node.name}{node.surface === 'reflection' ? ' · 倒影' : node.surface === 'wing' ? ' · 右页' : ''}<ArrowRight size={14} /></button>) : <p>暂时没有相连的落点，请操作纸页机关。</p>}</div>}
@@ -177,3 +176,4 @@ export default function Hinge2() {
     {rules && <div className="h2-rules"><p>点击圆点即可沿相连道路走到那里；细线交叉处不能换路，只有圆点重合时才接通。白色的外侧平台固定，纸页、镜中道路和右半页会带着站在上面的人一起移动。</p><p>触屏可用「可达位置」选择落点。键盘：方向键走路，Q / E 转页，M 转镜，F 折纸，Z 撤销，Shift + Z 重做。所有操作都可撤销；重置后也可逐步重做。</p></div>}
   </div>;
 }
+

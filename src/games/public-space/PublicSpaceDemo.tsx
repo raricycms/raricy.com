@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Grid2X2, Users } from 'lucide-react';
 import Avatar from '@/app/components/Avatar';
-import { REALTIME_PROTOCOL_VERSION } from '../../../shared/realtime/protocol';
+import { REALTIME_PROTOCOL_VERSION, realtimeErrorText } from '../../../shared/realtime/protocol';
 import { PUBLIC_SPACE_SIZE, PUBLIC_SPACE_CELLS, PUBLIC_SPACE_HEARTBEAT_MS, PUBLIC_SPACE_TIMEOUT_MS,
   parsePublicSpaceSnapshot, type PublicSpaceSnapshot } from '../../../shared/public-space/protocol';
 
@@ -85,7 +85,7 @@ export default function PublicSpaceDemo({ userId }: { userId: string }) {
               }
             }, PUBLIC_SPACE_HEARTBEAT_MS);
           } else if (value.type === 'realtime.error') {
-            errorMessage = value.code === 'permission_revoked' ? '账号状态已变化，连接已关闭。' : '连接失败，请稍后重试。';
+            errorMessage = realtimeErrorText(value.code);
             finish('error', errorMessage);
           } else if (value.type === 'public-space.full') {
             finish('error', '公共空间已满，请稍后重试。');

@@ -12,10 +12,12 @@
 
 'use client';
 
+import { useRef } from 'react';
 import { Star, X } from 'lucide-react';
 import type { LevelDef } from './types';
 import type { LevelSelectProps } from './ui-types';
 import { starsFor } from './progress';
+import { useDialogFocus } from './use-dialog-focus';
 
 /** 章节名用汉字数词（关卡作者就是按「第一章」这个说法组织的）。超过六章退回阿拉伯数字。 */
 const ACT_NUMERALS = ['一', '二', '三', '四', '五', '六'];
@@ -50,6 +52,9 @@ export default function LevelSelect({
   onSelect,
   onClose,
 }: LevelSelectProps) {
+  const panelRef = useRef<HTMLDivElement | null>(null);
+  // aria-modal 只声明「有模态」；焦点陷阱与关闭后的焦点归还要靠这个 hook。
+  useDialogFocus(open, panelRef);
   if (!open) return null;
 
   // 按出现顺序分组（不按 act 排序）：关卡数组本身就是章节顺序，重排只会让
@@ -74,7 +79,7 @@ export default function LevelSelect({
         if (event.target === event.currentTarget) onClose();
       }}
     >
-      <div className="tw-levels__panel">
+      <div className="tw-levels__panel" ref={panelRef}>
         <div className="tw-levels__head">
           <h2>关卡选择</h2>
           <button

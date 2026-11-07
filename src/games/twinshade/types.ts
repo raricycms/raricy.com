@@ -17,7 +17,9 @@
 //
 // 【为什么坐标用线性下标而不是 {x,y}】
 // 引擎要频繁做「格子占用」查表与状态去重（solver 的 BFS 键），线性下标直接当
-// Set / Map 的键，别在热路径里造对象。渲染层要 x/y 时用 cellXY() 现算。
+// Set / Map 的键，别在热路径里造对象。渲染层要 x/y 时会自己算 —— Board.tsx 还要
+// 对坏数据做夹取（越界下标画在边角上而不是抛异常），所以它用的是自己那份 clamp，
+// engine.ts 的 cellXY() 只给调试 / solver 用。
 //
 // 【刻意不做的机制】钥匙门 / 传送 / 敌人 / 计时。四条规则已经能撑起三章关卡，
 // 而且每一条都能用一句话讲清 —— 「讲不清的机制」是这个品类最常见的劝退点。
@@ -33,22 +35,6 @@ export const DIR_DELTA: Readonly<Record<Dir, { readonly dx: number; readonly dy:
   down: { dx: 0, dy: 1 },
   left: { dx: -1, dy: 0 },
   right: { dx: 1, dy: 0 },
-};
-
-/** 该方向的反方向（撤销的方向提示、气泡文案用得到）。 */
-export const OPPOSITE: Readonly<Record<Dir, Dir>> = {
-  up: 'down',
-  down: 'up',
-  left: 'right',
-  right: 'left',
-};
-
-/** 中文方向名（提示气泡 / 状态行文案的唯一来源，别在组件里另抄一份）。 */
-export const DIR_LABEL: Readonly<Record<Dir, string>> = {
-  up: '上',
-  down: '下',
-  left: '左',
-  right: '右',
 };
 
 /** 地形。目标格不算地形 —— 它叠在地板上，单独用 goals 集合表示。 */
@@ -136,7 +122,10 @@ export interface GameState {
 }
 
 /** 一步走不成立的原因。UI 直接按这个表说人话，**别在组件里另写一套判定**。 */
-export type BlockReason = 'wall' | 'block' | 'self';
+// 只有两种成因：撞墙 / 撞到另一个身体。曾经还有 'block'，但引擎从来没有产出它
+// （推不动的石头一路归因到「墙」或「身体」），留着一个永不出现的枚举值只会让
+// 读代码的人以为还有第三种判定。
+export type BlockReason = 'wall' | 'self';
 
 /** 走不成立时的结果。两侧分别为 null 表示那一侧本来就走得动。 */
 export interface MoveBlocked {
@@ -170,9 +159,14 @@ export type MoveOutcome = MoveBlocked | MoveAccepted;
 
 /** 结果里那句人话：谁被什么挡住了。文案的唯一来源。 */
 export function blockedText(blocked: MoveBlocked['blocked']): string {
-  const side = (reason: BlockReason) =>
-    reason === 'wall' ? '墙' : reason === 'block' ? '石头' : '另一个身体';
-  if (blocked.a && blocked.b) return `两边都被${side(blocked.a)}挡住了`;
+  const side = (reason: BlockReason) => (reason === 'wall' ? '墙' : '另一个身体');
+  if (blocked.a && blocked.b) {
+    // 两侧异因时分别说清：套用 a 侧会念成「两边都被墙挡住了」，而影子其实是被
+    // 另一个身体挡的。归因错会让玩家朝错的方向想。
+    return blocked.a === blocked.b
+      ? `两边都被${side(blocked.a)}挡住了`
+      : `本体被${side(blocked.a)}挡住、影子被${side(blocked.b)}挡住了`;
+  }
   const who = blocked.a ? '本体' : '影子';
   return `${who}被${side((blocked.a ?? blocked.b)!)}挡住了`;
 }

@@ -193,7 +193,7 @@
                 <ul>
                     <li>地图上会生成旗帜区域</li>
                     <li>旗帜属于最后一个圈到旗帜的玩家</li>
-                    <li>每隔玩家离开出生点后15秒内需要回到出生点</li>
+                    <li>每个玩家离开出生点后15秒内需要回到出生点</li>
                     <li>未及时回到出生点的玩家会直接死亡</li>
                     <li>需要圈住并守住旗帜，先比较旗帜数量再比较领土面积</li>
                     <li>规定时间内占领更多旗帜的玩家获胜</li>
@@ -201,8 +201,7 @@
 
                 <h4>6. 昼夜模式</h4>
                 <ul>
-                    <li>每30秒进行一次昼夜循环</li>
-                    <li>前5秒渐变变黑，中间20秒完全黑暗，后5秒渐变变亮</li>
+                    <li>开局白天10秒，之后每20秒一轮：5秒渐暗、10秒全黑、5秒渐亮</li>
                     <li>夜晚时画布变黑，左上角和右下角会出现月亮</li>
                     <li>玩家在夜晚时可以继续移动和游戏</li>
                     <li>碰撞机制与对战模式相同，碰到对手轨迹会杀死对手</li>
@@ -290,7 +289,7 @@
                 </div>
             </div>
             <div class="color-selection-buttons">
-                <button class="btn primary" onclick="saveColorSelection()">保存颜色</button>
+                <button class="btn primary" onclick="saveColorSelection()">保存并返回</button>
                 <button class="btn secondary" onclick="showMainMenu()">返回主菜单</button>
             </div>
         </div>

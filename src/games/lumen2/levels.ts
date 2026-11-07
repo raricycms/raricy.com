@@ -1,5 +1,8 @@
 import type { Color, Direction, Level, Port } from './engine';
 
+/** 端口声明：`'E4'`（按位置推颜色）或 `['E4', 'gold']`（显式颜色，两束光的关卡必须用这种）。 */
+export type PortSpec = string | readonly [name: string, color: Color];
+
 export const CHAPTERS = [
   { title: '放下与留空', concept: '先学会决定在哪里转弯' },
   { title: '两束光，一盘镜', concept: '一个选择，同时改变两条路线' },
@@ -8,16 +11,20 @@ export const CHAPTERS = [
 
 /** Ports sit just outside the board. N/S use column numbers, W/E row numbers.
  * All levels start empty; the notation records sockets, never the solution. */
-export function makeLevel(id: string, title: string, chapter: number, stock: number, rows: string[], sourceNames: string[], targetNames: string[], intro: string, hints: readonly string[], insight: string): Level {
+export function makeLevel(id: string, title: string, chapter: number, stock: number, rows: string[], sourceNames: readonly PortSpec[], targetNames: readonly PortSpec[], intro: string, hints: readonly string[], insight: string): Level {
   const size = rows.length;
   if (rows.some((r) => r.length !== size || /[^o.]/.test(r))) throw new Error(`${id}: invalid board`);
-  function port(name: string, i: number): Port {
+  function port(spec: PortSpec, i: number): Port {
+    // 颜色要么写在数据里（[名字, 颜色]），要么沿用「第一个金、第二个蓝」的旧约定。
+    // 两束光的关卡必须显式写：只按数组下标决定颜色时，把两个端口写反顺序会**静默**
+    // 把金光与蓝光的角色对调，而所有单测仍然全绿（它们按颜色反查端口）。
+    const [name, explicit] = typeof spec === 'string' ? [spec, undefined] as const : spec;
     const side = name[0], n = Number(name.slice(1)) - 1;
     if (!'NESW'.includes(side) || n < 0 || n >= size) throw new Error(`${id}: invalid port`);
     return { x: side === 'W' ? -1 : side === 'E' ? size : n,
       y: side === 'N' ? -1 : side === 'S' ? size : n,
       direction: ({ N: 2, E: 3, S: 0, W: 1 }[side] ?? 0) as Direction,
-      color: (i === 0 ? 'gold' : 'blue') as Color };
+      color: (explicit ?? (i === 0 ? 'gold' : 'blue')) as Color };
   }
   return { id, title, chapter, stock, size, intro, hints, insight,
     sockets: rows.flatMap((r, y) => [...r].flatMap((c, x) => c === 'o' ? [{ x, y }] : [])),
@@ -40,40 +47,42 @@ export const LEVELS: Level[] = [
     '不必填满安装点。让光穿过该留空的地方，再转弯。',
     ['离光源最近的安装点，未必适合放镜片。', 'A 列没有第二个安装点，过早转弯会直接出界。', 'A3 留空。路线经过 B3、B1、D1；注意三次反射的方向。'],
     '安装点只是可能性。留空才能把光送到真正有用的转弯处。'),
-  makeLevel('04', '一镜两用', 0, 3, ['oo...', '..oo.', '..o..', '...o.', '.....'], ['E4', 'S3'], ['E2', 'N4'],
+  makeLevel('04', '一镜两用', 0, 3, ['oo...', '..oo.', '..o..', '...o.', '.....'], [['E4', 'gold'], ['S3', 'blue']], [['E2', 'gold'], ['N4', 'blue']],
     '两束光都要到达同色圆环。它们共用三面镜片。',
     ['分别为两束光安排两面镜片，会超过库存。', '同一面镜片可以从两侧接住两束光，并把它们送往不同方向。', 'D2 是共用的位置。金光从下方到达，蓝光从左侧到达。'],
     'D2 的一面镜片同时完成两次反射，四次转弯只用了三面镜。'),
-  makeLevel('05', '不能各走各的', 1, 4, ['..o..', '.....', '.oo.o', 'oo...', '..o..'], ['W3', 'E1'], ['E4', 'N2'],
+  makeLevel('05', '不能各走各的', 1, 4, ['..o..', '.....', '.oo.o', 'oo...', '..o..'], [['W3', 'gold'], ['E1', 'blue']], [['E4', 'gold'], ['N2', 'blue']],
     '给一束光找到的好路线，必须也给另一束光留下位置。',
     ['先别急着把金光送到最近的安装点，看看蓝光要怎样离开第 1 行。', '通向蓝色出口的最后一面镜片，也要接住金光。', 'B3 共用。金光从这里向下，蓝光从右边到达这里后向上。'],
     'B3 既是金光的起点转弯，也是蓝光的最后一次转弯。'),
-  makeLevel('06', '正前方的错觉', 1, 4, ['..o..', 'o.o.o', 'o...o', '....o', '..o..'], ['E3', 'S3'], ['N3', 'N1'],
+  makeLevel('06', '正前方的错觉', 1, 4, ['..o..', 'o.o.o', 'o...o', '....o', '..o..'], [['E3', 'gold'], ['S3', 'blue']], [['N3', 'gold'], ['N1', 'blue']],
     '蓝光正对着一个圆环。先辨认它该去的出口。',
     ['亮着的光路不一定正确：蓝光不能进入金色圆环。', '金光必须借道 C 列，蓝光却要从 C 列转到 A 列。', 'C2 的反射镜由两束光共用；C1 必须留空，让金光直达上方。'],
     '蓝光让出正前方的出口，C2 的同一次摆放同时替两束光转弯。'),
-  makeLevel('07', '出口的约束', 1, 5, ['..oo.', '.o.o.', '...o.', 'oo...', 'o..o.'], ['E3', 'N1'], ['N2', 'W2'],
+  makeLevel('07', '出口的约束', 1, 5, ['..oo.', '.o.o.', '...o.', 'oo...', 'o..o.'], [['E3', 'gold'], ['N1', 'blue']], [['N2', 'gold'], ['W2', 'blue']],
     '从两个出口同时倒推，寻找路线必须相遇的地方。',
     ['左侧蓝色出口需要横向来光，上方金色出口需要纵向来光。', '蓝光从 A 列向下走，必须在到达边界之前转向 B 列。', '共用镜片在 B2。两条路线各转三次弯，但五面镜片就够。'],
     '先确定两个出口需要的方向，B2 就成为两条路线共同的转弯处。'),
-  makeLevel('08', '空位串起的路', 1, 5, ['..o.o.', '...o..', '.o.oo.', 'o.oo..', '..o...', 'o...o.'], ['N4', 'E1'], ['W5', 'S1'],
+  makeLevel('08', '空位串起的路', 1, 5, ['..o.o.', '...o..', '.o.oo.', 'o.oo..', '..o...', 'o...o.'], [['N4', 'gold'], ['E1', 'blue']], [['W5', 'gold'], ['S1', 'blue']],
     '这次安装点更多，镜片仍只有五面。先排除会让光过早转弯的位置。',
     ['光源附近的安装点很多，但从出口倒推时，选择会少得多。', '两束光都需要经过第 4 行；共用的转弯处不在边缘。', 'C4 共用。D2、D3 留空，金光要一直走到 D4 才转弯。'],
     '空位把分散的镜片连起来。少放一面，比多转一次更关键。'),
-  makeLevel('09', '连锁反应', 2, 6, ['oo..o', '..o.o', '..ooo', 'oo...', '...o.'], ['E2', 'W1'], ['N4', 'E5'],
+  makeLevel('09', '连锁反应', 2, 6, ['oo..o', '..o.o', '..ooo', 'oo...', '...o.'], [['E2', 'gold'], ['W1', 'blue']], [['N4', 'gold'], ['E5', 'blue']],
     '六面镜片同时照顾两条路线。改动中间一处，就会牵动两端。',
     ['先看右下方的蓝色出口：哪一面镜片能把光横向送过去？', '蓝光必须从 D5 出发向右，金光最后沿 D 列向上。', 'D3 是共用镜片；蓝光由右而来向下走，金光由左而来向上走。'],
     'D3 把来自左右的两束光分别送往上下，两个出口因此被一起满足。'),
-  makeLevel('10', '暂时熄灭', 2, 6, ['..o...', '.o....', '.....o', '.o.o..', '.ooooo', '.....o'], ['E5', 'S2'], ['W5', 'W1'],
+  makeLevel('10', '暂时熄灭', 2, 6, ['..o...', '.o....', '.....o', '.o.o..', '.ooooo', '.....o'], [['E5', 'gold'], ['S2', 'blue']], [['W5', 'gold'], ['W1', 'blue']],
     '金色圆环已经亮了。但要同时完成两条路线，可能得先打断它。',
     ['已点亮的圆环不需要一直保持亮着。撤销和试验都没有惩罚。', '蓝光必须经过 B5。这里放上镜片后，金光就不能再沿第 5 行直走。', '先让金光经 D5、D4、B4 绕回来，再由共用的 B5 送入原来的出口。'],
     '局部完成会妨碍整体完成。先熄灭金环，再绕回它，才给蓝光腾出了路。'),
-  makeLevel('11', '远路的理由', 2, 7, ['...o...', '.......', 'o.o...o', '...o.o.', 'o.oo.oo', 'o...oo.', '.......'], ['N7', 'E1'], ['S5', 'E3'],
+  makeLevel('11', '远路的理由', 2, 7, ['...o...', '.......', 'o.o...o', '...o.o.', 'o.oo.oo', 'o...oo.', '.......'], [['N7', 'gold'], ['E1', 'blue']], [['S5', 'gold'], ['E3', 'blue']],
     '两个出口看起来都不远，七面镜片却各有用途。',
     ['先看 E 列下方的金色出口：沿途没有安装点，最后一次反射只能更早发生。', '金光要经 E6 向下，它必须先到达棋盘左侧，再沿第 6 行回来。', 'G3 由两束光共用。金光向左绕行，蓝光从下方到达后向右出界。'],
     '出口决定了最后一段直线，而最后一段又反过来决定整条远路。'),
-  makeLevel('12', '同一盘棋', 2, 8, ['..o..o.', 'o......', '.....o.', '....oo.', 'o.o..o.', 'o.o....', '.o...oo'], ['S2', 'W5'], ['E6', 'W4'],
+  makeLevel('12', '同一盘棋', 2, 8, ['..o..o.', 'o......', '.....o.', '....oo.', 'o.o..o.', 'o.o....', '.o...oo'], [['S2', 'gold'], ['W5', 'blue']], [['E6', 'gold'], ['W4', 'blue']],
     '八面镜片，两个出口。把前面学会的留空、倒推与共用放到一起。',
     ['分别接好一条路还不够。寻找两条路线都无法绕开的那一面镜片。', '金光要从 C6 向右进入出口；蓝光要从 F4 向左进入出口。', 'C5 共用。金光从右侧到这里后向下，蓝光从左侧到这里后向上；F3 留空。'],
     'C5 是整盘棋的交点。八面镜片承担九次反射，空位则把所有转弯接成两条完整路线。'),
 ];
+
+

@@ -90,10 +90,31 @@ describe('存档恢复', () => {
     expect(readProgress(JSON.stringify(saved), LEVELS).current.id).toBe('01');
   });
   it('拒绝数组长度不符、非二进制朝向与不可能的步数', () => {
-    const saved = freshProgress(LEVELS);
-    saved.current.rotations = [NaN];
-    expect(readProgress(JSON.stringify(saved), LEVELS).current).toEqual(freshProgress(LEVELS).current);
-    saved.current.rotations = solutions(LEVELS[0])[0];
-    expect(readProgress(JSON.stringify(saved), LEVELS).current).toEqual(freshProgress(LEVELS).current);
+    const baseline = freshProgress(LEVELS);
+    const rawWith = (current: Record<string, unknown>) =>
+      JSON.stringify({ ...baseline, current: { ...baseline.current, ...current } });
+    const initial = baseline.current.rotations;
+    // 形状不对：NaN、多一段、少一段、非 0/1、字符串。
+    for (const rotations of [
+      [NaN],
+      [...initial, 0],
+      initial.slice(1),
+      initial.map(() => 2),
+      initial.map((r) => (r === 0 ? '1' : 0)),
+    ]) {
+      expect(readProgress(rawWith({ rotations }), LEVELS).current, JSON.stringify(rotations)).toEqual(baseline.current);
+    }
+    // 步数必须是「真走过这么多步」：负数 / 小数 / 比到该局面的最短距离还少都拒收。
+    // （以前这里只喂了一个 NaN 朝向 + 一个已解棋盘，没钉住 moves 与最短距离的关系。）
+    const level = LEVELS[0];
+    const solution = solutions(level)[0];
+    const distance = solution.filter((r, i) => r !== (level.pieces[i].rotation ?? 0)).length;
+    expect(distance).toBeGreaterThan(0);
+    for (const moves of [distance - 1, -1, distance + 0.5]) {
+      expect(readProgress(rawWith({ rotations: solution, moves }), LEVELS).current, `moves=${moves}`).toEqual(baseline.current);
+    }
+    // 合法存档：正好走过最短距离 → 收下。
+    expect(readProgress(rawWith({ rotations: solution, moves: distance }), LEVELS).current)
+      .toMatchObject({ id: level.id, moves: distance });
   });
 });

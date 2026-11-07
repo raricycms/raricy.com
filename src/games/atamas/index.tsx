@@ -142,6 +142,9 @@ export default function Atamas({
     if (!TRANSLATIONS[code]) return;
     setCurrentLang(code);
     setLang(code);
+    // 引擎里已经显示着的消息 / 回合提示是按旧语言翻译好的字符串：切语言后要它们
+    // 用新语言重新求值，否则消息条会停在上一门语言直到下一次操作。
+    engineRef.current?.relocalize();
     engineRef.current?.requestRedraw();
     setLangOpen(false);
   }, []);
@@ -221,11 +224,19 @@ export default function Atamas({
                 type="button"
                 className="atamas-preview-toggle-btn"
                 title={previewHidden ? t('showPreview') : t('hidePreview')}
+                // 按钮正文只有 < / > 两个符号：读屏读不出任何信息，必须给可访问名；
+                // aria-expanded 让它在读屏里也是一个「开关」而不是无名按钮。
+                aria-label={previewHidden ? t('showPreview') : t('hidePreview')}
+                aria-expanded={!previewHidden}
+                aria-controls="atamas-pending-preview"
                 onClick={() => setPreviewHidden((v) => !v)}
               >
                 {previewHidden ? '<' : '>'}
               </button>
-              <div className={`atamas-pending-preview${previewHidden ? ' hidden' : ''}`}>
+              <div
+                id="atamas-pending-preview"
+                className={`atamas-pending-preview${previewHidden ? ' hidden' : ''}`}
+              >
                 <div className="atamas-pending-preview__label">{t('next')}</div>
                 {snap.preview.map((el, i) => {
                   let cls = 'atamas-pending-ball empty';

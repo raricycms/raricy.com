@@ -18,9 +18,6 @@ export interface ReaderPage {
   html: string;
   /** 全书页码（0 基）。 */
   globalIndex: number;
-  segmentIndex: number;
-  pageIndex: number;
-  segmentId: number;
 }
 
 export interface ChoicePending {

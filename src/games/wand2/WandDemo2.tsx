@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useCallback, useEffect, useRef, useState, type PointerEvent } from 'react';
 import { ArrowUp, ArrowDown, ArrowLeft, ArrowRight, Swords, Leaf, Trophy, Users, Maximize } from 'lucide-react';
 import { INPUT, TICK_MS, encodeInput, parseSnapshot, type Snapshot } from '../../../shared/wand2/protocol';
+import { REALTIME_PROTOCOL_VERSION, realtimeErrorText } from '../../../shared/realtime/protocol';
 import { makeGround, render, type Assets, type FloatText, type Frame } from './render';
 
 type Status = 'idle' | 'connecting' | 'connected' | 'disconnected' | 'error';
@@ -108,12 +109,12 @@ export default function WandDemo2() {
       const url = new URL(result.wsUrl);
       if (!['ws:', 'wss:'].includes(url.protocol) || url.pathname !== '/realtime/wand2') throw new Error('invalid_url');
       socket = new WebSocket(url);
-      socket.onopen = () => socket?.send(JSON.stringify({ type: 'realtime.authenticate', version: 1, ticket: result.ticket }));
+      socket.onopen = () => socket?.send(JSON.stringify({ type: 'realtime.authenticate', version: REALTIME_PROTOCOL_VERSION, ticket: result.ticket }));
       socket.onmessage = (event: MessageEvent) => {
         let packet: Record<string, unknown>;
         try { if (typeof event.data !== 'string') throw new Error('binary'); packet = JSON.parse(event.data); if (!packet || typeof packet !== 'object') throw new Error('packet'); }
         catch { finish('error', '收到无效的游戏消息。'); return; }
-        if (packet.type === 'realtime.ready' && packet.version === 1 && packet.gameId === 'wand2' && typeof packet.connectionId === 'string') {
+        if (packet.type === 'realtime.ready' && packet.version === REALTIME_PROTOCOL_VERSION && packet.gameId === 'wand2' && typeof packet.connectionId === 'string') {
           if (ready.current) { finish('error', '连接状态异常，请重新连接。'); return; }
           ownId.current = packet.connectionId; setMyId(packet.connectionId); ready.current = true; clearTimeout(startupTimer); setStatus('connected');
           current.sendInput = () => {
@@ -124,7 +125,7 @@ export default function WandDemo2() {
           };
           inputTimer = setInterval(current.sendInput, TICK_MS); return;
         }
-        if (packet.type === 'realtime.error') { finish('error', packet.code === 'permission_revoked' ? '账号状态已变化，连接已关闭。' : '身份验证失败，请重新登录或稍后重试。'); return; }
+        if (packet.type === 'realtime.error') { finish('error', realtimeErrorText(packet.code)); return; }
         if (packet.type === 'wand2.full') { finish('error', '草地已满，请稍后重试。'); return; }
         const next = parseSnapshot(packet);
         if (!ready.current || !next) { finish('error', '收到无效的游戏消息。'); return; }

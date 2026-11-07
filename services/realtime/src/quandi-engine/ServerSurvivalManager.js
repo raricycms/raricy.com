@@ -1,27 +1,32 @@
-// Adapted from yao1145/quandiyundong @ b1050bd177fa9764afd039f2ec6e68af55137436.
+﻿// Adapted from yao1145/quandiyundong @ b1050bd177fa9764afd039f2ec6e68af55137436.
 // 原作者授权及本地修改说明见 public/static/quandi/NOTICE.txt。
 /**
  * ServerSurvivalManager — 服务端 AI 敌人管理器
  * 从客户端 Survive.js 移植，去除 Canvas/DOM 依赖
  */
 
-// AI 配置（与客户端 Config.js 保持一致）
+// AI 配置：数值全部来自 shared/quandi/rules.ts（服务端与客户端单机共用同一份权威值），
+// 出生点从引擎配置派生（比例 → 像素），别在这里再抄一份 180/1020/300 的字面量。
+import { SPAWN_POINTS } from './config.js';
+import { QUANDI_AI } from '../../../../shared/quandi/rules';
+
 const CONFIG = {
     CANVAS_WIDTH: 1200,
     CANVAS_HEIGHT: 600,
-    AI_DEFAULTS: {
-        slow: { multiplier: 0.9, count: 2, maxEnemies: 6, interval: 30000 },
-        medium: { multiplier: 1.2, count: 3, maxEnemies: 7, interval: 20000 },
-        fast: { multiplier: 1.4, count: 4, maxEnemies: 8, interval: 15000 },
-        ultra: { multiplier: 2.0, count: 5, maxEnemies: 10, interval: 10000 }
-    },
+    AI_DEFAULTS: QUANDI_AI.difficulty,
     PLAYER_DEFAULTS: {
-        size: 8,
-        deathshieldtime: 3000,
-        detectionRadius: 150,
-        pushdistance: 6
+        size: QUANDI_AI.size,
+        deathshieldtime: QUANDI_AI.shieldAfterHitMs,
+        detectionRadius: QUANDI_AI.detectionRadius,
+        pushdistance: QUANDI_AI.pushDistance
     }
 };
+
+// 生成 AI 时避开的玩家出生点（只取两位玩家，与原先 distP1/distP2 两条判断一致）。
+const SPAWN_PIXELS = SPAWN_POINTS.slice(0, 2).map((point) => ({
+    x: point.x * CONFIG.CANVAS_WIDTH,
+    y: point.y * CONFIG.CANVAS_HEIGHT
+}));
 
 class ServerAIEnemy {
     constructor(id, x, y, gameWidth, gameHeight, difficulty) {
@@ -30,7 +35,7 @@ class ServerAIEnemy {
         this.y = y;
         this.gameWidth = gameWidth;
         this.gameHeight = gameHeight;
-        this.speed = 1.5 * (CONFIG.AI_DEFAULTS[difficulty]?.multiplier || 1.2);
+        this.speed = QUANDI_AI.speed * ((CONFIG.AI_DEFAULTS[difficulty]?.multiplier) ?? 1.2);
         this.direction = Math.random() * Math.PI * 2;
         this.size = CONFIG.PLAYER_DEFAULTS.size;
         this.state = 'wander'; // wander | chase | avoiding
@@ -48,7 +53,7 @@ class ServerAIEnemy {
         // relax 模式计时
         if (this.relaxMode) {
             this.relaxTimer += deltaTime;
-            if (this.relaxTimer >= 5000) {
+            if (this.relaxTimer >= QUANDI_AI.relaxAfterHitMs) {
                 this.relaxMode = false;
                 this.relaxTimer = 0;
             }
@@ -60,7 +65,7 @@ class ServerAIEnemy {
                 this.state = 'wander';
                 this.stateChangeTime = 0;
             } else {
-                const normalizedSpeed = this.speed * (deltaTime / 16);
+                const normalizedSpeed = this.speed * (deltaTime / QUANDI_AI.dtMs);
                 this.x += Math.cos(this.direction) * normalizedSpeed;
                 this.y += Math.sin(this.direction) * normalizedSpeed;
             }
@@ -89,7 +94,7 @@ class ServerAIEnemy {
     }
 
     _wander(deltaTime) {
-        const normalizedSpeed = this.speed * (deltaTime / 16);
+        const normalizedSpeed = this.speed * (deltaTime / QUANDI_AI.dtMs);
         // 偶尔随机改变方向
         if (Math.random() < 0.02) {
             this.direction += (Math.random() - 0.5) * Math.PI * 0.5;
@@ -99,13 +104,13 @@ class ServerAIEnemy {
     }
 
     _chase(deltaTime, target) {
-        const normalizedSpeed = this.speed * (deltaTime / 16);
+        const normalizedSpeed = this.speed * (deltaTime / QUANDI_AI.dtMs);
         const toTarget = Math.atan2(target.y - this.y, target.x - this.x);
         // 平滑转向
         let diff = toTarget - this.direction;
         while (diff > Math.PI) diff -= Math.PI * 2;
         while (diff < -Math.PI) diff += Math.PI * 2;
-        this.direction += diff * 0.1;
+        this.direction += diff * QUANDI_AI.chaseTurnLerp;
         // 距离越近速度越快
         const dist = Math.sqrt((target.x - this.x) ** 2 + (target.y - this.y) ** 2);
         const speedMultiplier = 1 + Math.max(0, 1 - dist / this.detectionRadius);
@@ -210,7 +215,7 @@ class ServerSurvivalManager {
             for (const enemy of this.enemies) {
                 if (enemy.relaxMode) continue;
                 const dist = Math.sqrt((player.x - enemy.x) ** 2 + (player.y - enemy.y) ** 2);
-                if (dist < player.size + enemy.size + 2) {
+                if (dist < player.size + enemy.size + QUANDI_AI.hitRadiusExtra) {
                     // 玩家死亡
                     if (!player.hasShield()) {
                         player.lives--;
@@ -253,10 +258,8 @@ class ServerSurvivalManager {
         while (attempts < 50) {
             const x = 50 + Math.random() * (this.width - 100);
             const y = 50 + Math.random() * (this.height - 100);
-            // 避免离中心生成点太近
-            const distP1 = Math.sqrt((180 - x) ** 2 + (300 - y) ** 2);
-            const distP2 = Math.sqrt((1020 - x) ** 2 + (300 - y) ** 2);
-            if (distP1 < 150 || distP2 < 150) { attempts++; continue; }
+            // 避免离出生点太近
+            if (SPAWN_PIXELS.some((point) => Math.hypot(point.x - x, point.y - y) < QUANDI_AI.detectionRadius)) { attempts++; continue; }
             // 避免与已有敌人重叠
             const tooClose = this.enemies.some(e => Math.sqrt((e.x - x) ** 2 + (e.y - y) ** 2) < 30);
             if (tooClose) { attempts++; continue; }
@@ -283,3 +286,5 @@ class ServerSurvivalManager {
 }
 
 export { ServerSurvivalManager, ServerAIEnemy };
+
+

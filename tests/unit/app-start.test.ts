@@ -4,7 +4,7 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import path from 'node:path';
 import { appEnvironment, realtimeEnvironment } from '../../scripts/app-env.mjs';
 import { runAppProcesses } from '../../scripts/app-processes.mjs';
-import { realtimeWebSocketUrl, wandWebSocketUrl } from '@/lib/realtime-url';
+import { realtimeWebSocketUrl } from '@/lib/realtime-url';
 
 const cleanups: (() => unknown | Promise<unknown>)[] = [];
 afterEach(async () => {
@@ -43,11 +43,11 @@ describe('共同启动的环境配置', () => {
     vi.stubEnv('REALTIME_PORT', '3333');
     vi.stubEnv('SITE_URL', 'https://example.com');
     vi.stubEnv('NODE_ENV', 'development');
-    expect(wandWebSocketUrl('http://localhost:3000/api/game/wand/launch')).toBe('ws://localhost:3333/realtime/wand');
+    expect(realtimeWebSocketUrl('http://localhost:3000/api/game/wand/launch', 'wand')).toBe('ws://localhost:3333/realtime/wand');
     vi.stubEnv('NODE_ENV', 'production');
-    expect(wandWebSocketUrl('http://127.0.0.1:3000/api/game/wand/launch')).toBe('wss://example.com/realtime/wand');
+    expect(realtimeWebSocketUrl('http://127.0.0.1:3000/api/game/wand/launch', 'wand')).toBe('wss://example.com/realtime/wand');
     vi.stubEnv('REALTIME_PUBLIC_ORIGIN', 'wss://games.example');
-    expect(wandWebSocketUrl('http://localhost:3000')).toBe('wss://games.example/realtime/wand');
+    expect(realtimeWebSocketUrl('http://localhost:3000', 'wand')).toBe('wss://games.example/realtime/wand');
     expect(realtimeWebSocketUrl('http://localhost:3000', 'public-space')).toBe('wss://games.example/realtime/public-space');
   });
 });

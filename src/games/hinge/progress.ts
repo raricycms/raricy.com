@@ -2,6 +2,8 @@ import { replay, type Action } from './engine';
 import { LEVELS } from './levels';
 
 export const SAVE_KEY = 'hinge-demo-v1';
+/** 单关可存的动作上限。写入端与读档端必须用同一个数，否则会出现「存得进、读不回」。 */
+export const MAX_RUN_ACTIONS = 3000;
 export interface Progress { version: 1; selected: string; runs: Record<string, Action[]>; completed: string[] }
 export function freshProgress(): Progress { return { version: 1, selected: '01', runs: {}, completed: [] }; }
 
@@ -25,7 +27,7 @@ export function readProgress(raw: string | null): Progress {
     for (const level of LEVELS) {
       const actions = data.runs?.[level.id];
       // 只接纳能从初始图真实重放的动作，不信任外部写入的人物位置。
-      if (Array.isArray(actions) && actions.length <= 3000 && actions.every(isAction) && replay(level, actions)) result.runs[level.id] = actions;
+      if (Array.isArray(actions) && actions.length <= MAX_RUN_ACTIONS && actions.every(isAction) && replay(level, actions)) result.runs[level.id] = actions;
     }
   } catch { /* 损坏的存档不阻止试玩。 */ }
   return result;

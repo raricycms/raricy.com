@@ -16,6 +16,11 @@ export interface Slime { id: number; x: number; y: number; kind: number; hp: num
 export interface Ranking { id: string; name: string; catnip: number; connections: number }
 export interface Snapshot { type: 'wand2.snapshot'; tick: number; players: Player[]; slimes: Slime[]; leaderboard: Ranking[] }
 
+// 史莱姆的击杀得分与最大血量：服务端计分 / 生成血量要用，客户端画「+1/+3/+5」与
+// 血点也要用。两边各抄一份时，一改数值就会「显示的加分和实际加分不一样」，而且不报错。
+export const SLIME_KILL_SCORE = [1, 3, 5] as const;
+export const SLIME_MAX_HP = [2, 2, 3] as const;
+
 // 0 草地 / 1 碎石 / 2 小径。碰撞与画面共用同一张地图。
 export const TILES = Array.from({ length: WORLD_HEIGHT / TILE }, (_, y) => Array.from({ length: WORLD_WIDTH / TILE }, (_, x) => {
   if ((x === 5 && y >= 3 && y <= 5) || (y === 11 && x >= 6 && x <= 8)

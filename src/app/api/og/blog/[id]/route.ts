@@ -52,7 +52,6 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
   }
 
   const png = await renderBlogOg({
-    id: blog.id,
     title: blog.title,
     description: blog.description,
     author: blog.author?.username ?? '',

@@ -171,6 +171,12 @@ export default function TwinShade({ backHref = '/game', backLabel = '返回玩�
       setCoach(target.def.coach);
     }
     // 只在挂载时跑一次；levels 是稳定引用。
+    // 卸载时释放 AudioContext：反复进入 / 离开这一页会累积上下文，浏览器限额用满后
+    // 音效会静默失效（每次挂载都新建一个，却从来没有关过）。
+    return () => {
+      soundRef.current?.dispose();
+      soundRef.current = null;
+    };
   }, [levels]);
 
   // 存档：挂在 progress 变化上统一写，避免每个改档点各写一次（漏一处就丢一次进度）。
@@ -271,11 +277,13 @@ export default function TwinShade({ backHref = '/game', backLabel = '返回玩�
   }, [clearHint, hydrated]);
 
   const hint = useCallback(() => {
-    if (!hydrated || !level || !def || showResult) return;
+    // 已通关就不再给「下一步」：结算浮层弹出前有 560ms 的空档，H 能钻进去算出
+    // 一个已经不存在的下一步，甚至念「这个局面已经走不通了」。
+    if (!hydrated || !level || !def || showResult || session.solved) return;
     const dir = nextBestMove(level, session.state);
     dispatch({ type: 'hint', text: def.hint, dir });
     if (dir) showHintArrow(dir);
-  }, [def, hydrated, level, session.state, showHintArrow, showResult]);
+  }, [def, hydrated, level, session.state, showHintArrow, session.solved, showResult]);
 
   const toggleSound = useCallback(() => {
     setProgress((prev) => applyMuted(prev, !prev.muted));
@@ -319,12 +327,15 @@ export default function TwinShade({ backHref = '/game', backLabel = '返回玩�
       if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target?.isContentEditable) return;
 
       if (event.key === 'Escape') {
+        // 通关结算**不响应 Esc**：它没有「关闭」这条出路（见 Result.tsx 的头注释），
+        // 关掉之后棋盘已经通关、下一个能点的只剩重来，玩家会以为游戏卡死。
         if (showLevels) setShowLevels(false);
-        if (showResult) setShowResult(false);
         if (showOnboard) finishOnboard();
         return;
       }
-      if (showLevels || showResult) return;
+      // 浮层期间只允许 Esc 这一条键盘出路：方向键 / Z / R / H 都留给浮层下面的棋盘
+      // 就是「看不见的棋盘在动」，尤其引导层（新玩家还不知道这些键是什么）。
+      if (showLevels || showOnboard || showResult) return;
 
       const dir = KEY_DIRS[event.key];
       if (dir) {
@@ -380,7 +391,9 @@ export default function TwinShade({ backHref = '/game', backLabel = '返回玩�
 
   return (
     <div className="tw-page">
-      <div className="tw-shell">
+      {/* 浮层打开时把背景移出焦点顺序：aria-modal 只是声明，背景仍可被 Tab 到
+          「重来 / 关卡选择」，读屏也不会跳过它。inert 才是浏览器层面的「关掉」。 */}
+      <div className="tw-shell" inert={overlayOpen}>
         <Hud
           backHref={backHref}
           backLabel={backLabel}

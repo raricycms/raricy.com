@@ -29,6 +29,8 @@ $space-8: 32px;
 // 移动导航与 docs/frontend-styles.md §6.2）。形变（伸缩、位移、旋转、网格展开）
 // 一律引用这两个值，不再各写一条 cubic-bezier；颜色/阴影/透明度的短反馈仍用
 // 各组件自己的 150–250ms ease。
+// 注意：动效试验台（/game/motion）里的交互动画 540ms 是**对照结论**，不是这两个值
+// 的替代 —— 全站形变节奏就是下面这两条，改这里要同步那个页面的说明。
 $motion-expand-duration: 480ms;
 $motion-expand-easing: cubic-bezier(0.16, 1, 0.3, 1);
 $motion-collapse-duration: 220ms;

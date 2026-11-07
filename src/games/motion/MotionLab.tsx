@@ -562,10 +562,12 @@ export default function MotionLab() {
           不代表全站已经定稿 —— 真正落地的取值以 <code>curves.ts</code> 与规范文档为准。
         </p>
         <p className="mo-lab__lead">
-          同一个场景、同一段动画，每列只换速度曲线和时长。已定：交互产生的反馈动画统一走
+          同一个场景、同一段动画，每列只换速度曲线和时长。试验台结论：「交互产生的反馈动画」统一走
           「交互动画」（<span className="numeric">{curveCss(curveById(INTERACTION_CURVE_ID))}</span>，
-          默认 {INTERACTION_DURATION}ms），所以每个场景的第一列就是它。其余列留着对照 ——
-          用来发现哪些场景其实不该跟这条统一取值。
+          默认 {INTERACTION_DURATION}ms），所以除了**进度条**与**切页淡入**这两处刻意例外
+          （匀速 / 只动 opacity，见各自说明），每个场景的第一列就是它。全站已落地的形变节奏
+          仍是 <code>_variables.scss</code> 里的展开 480 / 收起 220ms —— 这两个数不是同一套取值，
+          这里的 540 是试验台的对照结论。其余列留着比较 —— 用来发现哪些场景其实不该跟这条统一取值。
         </p>
         <div className="mo-lab__toolbar">
           <button type="button" className="btn btn-secondary" onClick={() => setEpoch((value) => value + 1)}>

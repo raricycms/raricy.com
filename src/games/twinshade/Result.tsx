@@ -12,8 +12,10 @@
 
 'use client';
 
+import { useRef } from 'react';
 import { Star } from 'lucide-react';
 import type { ResultProps } from './ui-types';
+import { useDialogFocus } from './use-dialog-focus';
 
 export default function Result({
   open,
@@ -26,6 +28,9 @@ export default function Result({
   onReplay,
   onLevels,
 }: ResultProps) {
+  const panelRef = useRef<HTMLDivElement | null>(null);
+  // aria-modal 只声明「有模态」；焦点陷阱与关闭后的焦点归还要靠这个 hook。
+  useDialogFocus(open, panelRef);
   if (!open) return null;
 
   return (
@@ -36,7 +41,7 @@ export default function Result({
       aria-modal="true"
       aria-label={isLast ? '全部通关' : `通关：${def.name}`}
     >
-      <div className="tw-result__panel">
+      <div className="tw-result__panel" ref={panelRef}>
         <h2>{isLast ? '全部通关' : `通关 · ${def.name}`}</h2>
 
         <div className="tw-result__stars" role="img" aria-label={`${stars} 星`}>

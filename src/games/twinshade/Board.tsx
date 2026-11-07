@@ -206,6 +206,11 @@ export default function Board({ level, state, events, serial, hintDir, blocked, 
   const midX = (aPos.cx + bPos.cx) / 2;
   const midY = (aPos.cy + bPos.cy) / 2;
 
+  // 拖尾的 key 只能跟「真正走了一步」变。以前用 serial：被挡住 / 提示 / 撤销都会让
+  // serial+1，而 events 还停在上一次走成的那一笔上 —— 于是整组拖尾重新挂载、把上一笔
+  // 又播一遍。moves 只在走成一步时 +1，正好是「这一笔」的身份。
+  const trailKey = typeof state?.moves === 'number' && Number.isFinite(state.moves) ? state.moves : serial;
+
   // 位移时长：普通一步 170ms；滑行 n 格 = 170 + 55n（走得越远越慢，拖尾才跟得上）。
   // 没有 events（刚进关 / 撤销 / 重置 / 换关）就 0ms：那几种情况棋盘是「瞬移」的，
   // 让身体从上一关的位置滑到新位置反而像卡顿。减少动效时一律 0ms。
@@ -377,8 +382,9 @@ export default function Board({ level, state, events, serial, hintDir, blocked, 
         })}
       </g>
 
-      {/* 拖尾：key 挂 serial，原地重复同一步时坐标一模一样，只有换 key 才能重播动画。 */}
-      <g className="tw-trails" key={`trails-${serial}`}>
+      {/* 拖尾：key 跟 moves（这一笔的身份）走，同一笔里被挡住 / 提示 / 撤销都不重播。
+          颜色由 scss 的 `--tw-trail-color` 按 a/b 取（角色色只在那份样式表里定义）。 */}
+      <g className="tw-trails" key={`trails-${trailKey}`}>
         {events
           ? TOKEN_SIDES.flatMap((side) => {
               const cells = asCellList(events?.trail?.[side]).slice(0, total);
@@ -393,11 +399,11 @@ export default function Board({ level, state, events, serial, hintDir, blocked, 
                     cx={position.cx}
                     cy={position.cy}
                     r={10 + 9 * head}
-                    fill={side === 'a' ? '#FFC861' : '#A78BFA'}
                     style={{
+                      '--tw-trail-color': side === 'a' ? 'var(--tw-body)' : 'var(--tw-shade)',
                       opacity: 0.1 + 0.4 * head,
                       animationDelay: `${index * 28}ms`,
-                    }}
+                    } as CSSProperties}
                   />
                 );
               });
@@ -455,8 +461,8 @@ export default function Board({ level, state, events, serial, hintDir, blocked, 
       </g>
 
       {/* 两个身体：暖金 = 本体（实线细环），冷紫 = 影子（虚线环）。
-          core 是浅色实心，ring / 光晕取 --tw-body / --tw-shade 的同一个值；
-          scss 负责描边粗细与过渡曲线，这里负责「a 是暖的、b 是冷的」这件事。 */}
+          core / ring / 光晕的颜色全部由 scss 的 `--tw-token-*` 变量给（见 _twinshade.scss
+          的 .tw-token--a / --b）：这里只给几何与 `--tw-token-ms`。 */}
       <g className="tw-tokens">
         {TOKEN_SIDES.map((side) => {
           const position = side === 'a' ? aPos : bPos;
@@ -480,12 +486,11 @@ export default function Board({ level, state, events, serial, hintDir, blocked, 
                 // 通关时把光晕提亮（scss 的 fill 是半透明软色，这里只调整体不透明度）。
                 opacity={solved ? 1 : 0.65}
               />
-              <circle className="tw-token__core" r={CELL * 0.27} fill={warm ? '#FFF4D6' : '#F1EBFF'} />
+              <circle className="tw-token__core" r={CELL * 0.27} />
               <circle
                 className="tw-token__ring"
                 r={CELL * 0.35}
                 fill="none"
-                stroke={warm ? '#FFC861' : '#A78BFA'}
                 strokeDasharray={warm ? undefined : '7 8'}
               />
             </g>

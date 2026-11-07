@@ -314,6 +314,31 @@ describe('M4 冰面：滑到墙 / 石头 / 非冰面才停，整段只算 1 步'
     expect(outcome.state.moves).toBe(1);
     expect(outcome.state.a).not.toBe(outcome.state.b);
   });
+
+  // 两个身体一前一后挤在同一条冰道上：前面那个滑走时，后面那个能不能跟着挪进它
+  // 刚腾出的格子？这条以前按 0→1 的循环顺序边算边读对方位置，于是「谁被挡」取决
+  // 于哪一侧叫本体；而 stateKey 把 (a,b) 与 (b,a) 当同一局面，solver 会在去重后的
+  // 图上走错一条边。现在两侧都对着「移动前」的落点判，结果必须对交换 a/b 不变。
+  const trainOnIce = makeLevel([
+    '##########',
+    '#A~~~#B..#',
+    '#o.....o.#',
+    '##########',
+  ]);
+
+  it('滑行互挡与身体身份无关：交换本体/影子后仍是同一局面（且前者让开时后者可以跟上）', () => {
+    // 两格相邻的冰面：本体在 x2、影子在 x3。
+    const state: GameState = { a: xyCell(trainOnIce, 2, 1), b: xyCell(trainOnIce, 3, 1), blocks: [], moves: 0 };
+    const forward = accepted(resolveMove(trainOnIce, state, 'right'));
+    // 影子先让开（滑到 x4），本体跟着进 x3 —— 「一列同时移动的车」，不算撞身体。
+    expect(forward.state.a).toBe(xyCell(trainOnIce, 3, 1));
+    expect(forward.state.b).toBe(xyCell(trainOnIce, 4, 1));
+
+    // 同一局面交换两侧身份：把结果换回来必须与上面完全一致。
+    const swapped: GameState = { ...state, a: state.b, b: state.a };
+    const mirrored = accepted(resolveMove(trainOnIce, swapped, 'right'));
+    expect({ ...mirrored.state, a: mirrored.state.b, b: mirrored.state.a }).toEqual(forward.state);
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

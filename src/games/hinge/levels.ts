@@ -51,5 +51,7 @@ export const LEVELS: readonly Level[] = [
   },
 ];
 
-export const MAIN_LEVEL = LEVELS[5];
+// 主谜题按 id 取，不按数组下标：练习关加一关就会把 `LEVELS[5]` 指到别处，
+// 而且首页预览与「主谜题」按钮会静默换成另一张图。
+export const MAIN_LEVEL = LEVELS.find((level) => level.id === 'main') ?? LEVELS[LEVELS.length - 1];
 export function levelById(id: string): Level { return LEVELS.find((level) => level.id === id) ?? LEVELS[0]; }

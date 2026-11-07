@@ -861,10 +861,6 @@ export const TRANSLATIONS: Record<string, LangPack> = {
 
 let currentLang = 'en';
 
-export function getCurrentLang(): string {
-  return currentLang;
-}
-
 export function setCurrentLang(code: string): void {
   if (TRANSLATIONS[code]) {
     currentLang = code;
@@ -906,7 +902,7 @@ export function sortedLanguageCodes(): string[] {
   );
 }
 
-/** 读取保存的语言；否则用浏览器语言前两位；再否则英文。 */
+/** 读取保存的语言；否则用浏览器语言；再否则英文。 */
 export function detectInitialLang(): string {
   if (typeof window !== 'undefined') {
     try {
@@ -915,8 +911,17 @@ export function detectInitialLang(): string {
     } catch {
       /* ignore */
     }
-    const browser = (navigator.language || 'en').substring(0, 2);
-    if (TRANSLATIONS[browser]) return browser;
+    const browser = (navigator.language || 'en').toLowerCase();
+    // 表里的码是 zh_CN / zh_TW 这种带下划线的形式，而 navigator.language 给的是
+    // zh-CN / zh-TW。以前直接截前两位得到 'zh'，查表落空 → 所有中文用户默认英文。
+    // 先按大小写不敏感的全码匹配，再单独兜中文（按地区判简繁），最后才退到主语言。
+    const normalized = browser.replace('-', '_');
+    const exact = Object.keys(TRANSLATIONS).find((code) => code.toLowerCase() === normalized);
+    if (exact) return exact;
+    if (browser.startsWith('zh')) return /hant|tw|hk|mo/.test(browser) ? 'zh_TW' : 'zh_CN';
+    const primary = browser.substring(0, 2);
+    const fallback = Object.keys(TRANSLATIONS).find((code) => code.toLowerCase() === primary);
+    if (fallback) return fallback;
   }
   return 'en';
 }

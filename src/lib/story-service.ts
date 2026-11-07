@@ -350,15 +350,35 @@ function buildStoryChild(
   };
 }
 
-/** 统计目录内条目数（.md/.cattca 文件 + 子目录，排除 __pycache__）。 */
+/**
+ * 统计目录内**会被列出**的条目数（合集卡片上的「N 篇」）。
+ *
+ * 必须复述 getCollection 的过滤规则，否则卡片上的数字会比点进去看到的多：
+ *   · 子目录：info.json 里 `ignore: true` 的整目录不列（与 292 行一致）；
+ *   · 文件：`.md` / `.cattca` 头部 frontmatter 里 `ignore: true` 的不列（与 337 行一致）；
+ *   · `__pycache__` 与不安全的路径一律不算。
+ */
 function countItems(dir: string): number {
   let count = 0;
   for (const name of readdirSafe(dir)) {
-    if (name.endsWith('.md') || name.endsWith('.cattca')) {
+    if (name === '__pycache__') continue;
+    const full = path.join(dir, name);
+    if (isDirSafe(full)) {
+      if (bool(readJsonSafe(path.join(full, 'info.json'))['ignore'])) continue;
       count += 1;
-    } else if (name !== '__pycache__' && isDirSafe(path.join(dir, name))) {
-      count += 1;
+      continue;
     }
+    if (!name.endsWith('.md') && !name.endsWith('.cattca')) continue;
+    if (!isFileSafe(full)) continue;
+    const raw = readTextSafe(full);
+    if (raw !== null) {
+      try {
+        if (bool(parseFrontmatter(raw).meta['ignore'])) continue;
+      } catch {
+        /* 解析失败按「没写 ignore」处理，与 buildStoryChild 的失败路径一致 */
+      }
+    }
+    count += 1;
   }
   return count;
 }

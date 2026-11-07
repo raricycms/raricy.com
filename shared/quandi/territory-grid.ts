@@ -1,10 +1,16 @@
 // 与原引擎相同的 4px 网格、非零环绕规则。只扫描新多边形，避免每帧重算全部领地。
 export interface QuandiPoint { x: number; y: number }
+const WIDTH = 300, HEIGHT = 150;
+// 百分制分母与客户端 `Territory.js` 同一把尺：客户端把「画布面积 × 0.95」当满分 100
+// （maxArea，见 public/static/quandi/js/objects/Territory.js），因此服务端分母也取
+// 0.95 × 画布面积，并把结果封顶 100。两侧标尺不同源时，无限模式的 60% 胜线在联机与
+// 单机之间会差约 5.3%（服务端 60% 全画布 vs 客户端 60% 的 0.95 画布）。
+const MAX_SCORE_CELLS = WIDTH * HEIGHT * 0.95;
 export class TerritoryGrid {
   private masks = new Map<string, Uint8Array>();
   private counts = new Map<string, number>();
   add(id: string, polygon: readonly QuandiPoint[]) {
-    const width = 300, height = 150;
+    const width = WIDTH, height = HEIGHT;
     let mask = this.masks.get(id);
     if (!mask) { mask = new Uint8Array(width * height); this.masks.set(id, mask); }
     let count = this.counts.get(id) ?? 0;
@@ -32,6 +38,7 @@ export class TerritoryGrid {
     }
     this.counts.set(id, count);
   }
-  score(id: string) { return (this.counts.get(id) ?? 0) / 450; }
+  /** 领地百分比：分母 = 画布格数 × 0.95（与客户端同一把尺），封顶 100。 */
+  score(id: string) { return Math.min(100, ((this.counts.get(id) ?? 0) / MAX_SCORE_CELLS) * 100); }
   clear() { this.masks.clear(); this.counts.clear(); }
 }

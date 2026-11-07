@@ -25,6 +25,15 @@ describe('stripFrontmatter', () => {
     expect(stripFrontmatter(source)).toBe('你好。');
   });
 
+  it('开口行带行尾空白也剥离（与 src/lib/story-service.ts 的 parseFrontmatter 同一条正则）', () => {
+    // 手写的 .cattca 里 `--- ` 后面留一个空格很常见：故事页会剥、阅读器却把头部
+    // 当正文渲染，同一份文件两套标准且不报错（R3-517）。
+    for (const opening of ['--- ', '---\t', '---  \t ']) {
+      const source = `${opening}\ntitle: 测试\n---\n你好。`;
+      expect(stripFrontmatter(source), JSON.stringify(opening)).toBe('你好。');
+    }
+  });
+
   it('只有开头 --- 没有闭合时不剥离', () => {
     const source = '---\n不是 frontmatter 的正文';
     expect(stripFrontmatter(source)).toBe(source);

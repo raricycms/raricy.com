@@ -72,8 +72,7 @@ describe('Wand 2 精灵资源', () => {
     }
   });
 
-  it('步态与鞋子修补只改变登记区域，其余可见像素和透明度保持原样', () => {
-    let outsideChanges = 0;
+  it('步态与鞋子修补只改变登记区域，其余可见像素和透明度保持原样', () => {    let outsideChanges = 0;
     const patchChanges = layout.characterPatches.map(() => 0);
     for (let y = 0; y < 1024; y++) for (let x = 0; x < 1024; x++) {
       const a = pixel(character, x, y), b = pixel(original, x, y);
@@ -88,5 +87,22 @@ describe('Wand 2 精灵资源', () => {
     }
     expect(outsideChanges).toBe(0);
     for (const changed of patchChanges) expect(changed).toBeGreaterThan(100);
+  });
+
+  it('world 图集存在、按 4×4 均分，且被引用的三格真有像素', async () => {
+    // render.ts 的 sprite() 用 naturalWidth/4、naturalHeight/4 现算格子；world 没有生成脚本，
+    // 换图 / 裁图后尺寸一旦不是 4 的整数倍，切格就会错位，而画面上只是"草长得怪"——不报错。
+    const world = await read('world.webp');
+    expect([world.info.width, world.info.height]).toEqual([1024, 1024]);
+    expect([world.info.width % 4, world.info.height % 4]).toEqual([0, 0]);
+    const cell = world.info.width / 4;
+    // makeGround() 只引用第 4 行（row 3）的 col 0（碎石）、1（灌木）、2（小花）。
+    for (const col of [0, 1, 2]) {
+      let visible = 0;
+      for (let y = 0; y < cell; y++) for (let x = 0; x < cell; x++) {
+        if (pixel(world, col * cell + x, 3 * cell + y)[3] > 0) visible++;
+      }
+      expect(visible, `world.webp 第 4 行第 ${col + 1} 格是空的：sprite() 会画出一个透明块`).toBeGreaterThan(100);
+    }
   });
 });

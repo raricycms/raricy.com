@@ -1,4 +1,4 @@
-import { ATTACK_COOLDOWN, ATTACK_MS, DIRECTIONS, INPUT, MAX_SLIMES, SPEED, TILE, TILES, WORLD_HEIGHT, WORLD_WIDTH,
+﻿import { ATTACK_COOLDOWN, ATTACK_MS, DIRECTIONS, INPUT, MAX_SLIMES, SLIME_KILL_SCORE, SLIME_MAX_HP, SPEED, TILE, TILES, WORLD_HEIGHT, WORLD_WIDTH,
   type Facing, type Player, type Slime, type Snapshot } from './protocol.js';
 
 interface Actor extends Player { userId: string; buttons: number; queuedAttack: boolean; cooldown: number; struck: boolean }
@@ -72,7 +72,7 @@ export class Meadow {
         || [...this.players.values()].some(p => Math.hypot(p.x - x, p.y - y) < 100)) continue;
       const roll = this.random(), kind = roll > .94 ? 2 : roll > .72 ? 1 : 0;
       const id = ++this.nextSlime;
-      this.slimes.set(id, { id, x, y, kind, hp: kind === 2 ? 3 : 2, mood: 'wander', phase: 500, dx: 0, dy: 0 });
+      this.slimes.set(id, { id, x, y, kind, hp: SLIME_MAX_HP[kind], mood: 'wander', phase: 500, dx: 0, dy: 0 });
       return;
     }
   }
@@ -103,7 +103,7 @@ export class Meadow {
             if (m.mood === 'dying' || dist > 80 || (dist > 20 && (sx * facing.x + sy * facing.y) / dist < .15) || !visible(p, m)) continue;
             m.hp--; m.mood = m.hp <= 0 ? 'dying' : 'stunned'; m.phase = m.hp <= 0 ? 400 : 450;
             move(m, sx / (dist || 1) * 18, sy / (dist || 1) * 18);
-            if (m.hp <= 0) this.scores.set(p.userId, (this.scores.get(p.userId) ?? 0) + [1, 3, 5][m.kind]);
+            if (m.hp <= 0) this.scores.set(p.userId, (this.scores.get(p.userId) ?? 0) + SLIME_KILL_SCORE[m.kind]);
           }
         }
       }
@@ -158,3 +158,4 @@ export class Meadow {
   }
 }
 function round(n: number) { return Math.round(n * 100) / 100; }
+

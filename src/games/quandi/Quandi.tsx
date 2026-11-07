@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { parseQuandiCommand } from '../../../shared/quandi/protocol';
-import { REALTIME_PROTOCOL_VERSION } from '../../../shared/realtime/protocol';
+import { MAX_REALTIME_TICKET_LENGTH, REALTIME_PROTOCOL_VERSION, realtimeErrorText } from '../../../shared/realtime/protocol';
 
 export default function Quandi() {
   const iframe = useRef<HTMLIFrameElement>(null);
@@ -52,7 +52,7 @@ export default function Quandi() {
         const url = new URL(result.wsUrl);
         if (!['ws:', 'wss:'].includes(url.protocol) || url.pathname !== '/realtime/quandi'
             || url.username || url.password || url.search || url.hash
-            || typeof result.ticket !== 'string' || result.ticket.length > 2048) throw new Error('invalid_launch');
+            || typeof result.ticket !== 'string' || result.ticket.length > MAX_REALTIME_TICKET_LENGTH) throw new Error('invalid_launch');
         const current = new WebSocket(url);
         socket = current;
         current.onopen = () => current.send(JSON.stringify({ type: 'realtime.authenticate', version: REALTIME_PROTOCOL_VERSION, ticket: result.ticket }));
@@ -63,7 +63,7 @@ export default function Quandi() {
           if (!packet || typeof packet !== 'object') { stop('收到无效的游戏消息。'); return; }
           lastReceived = performance.now();
           if (packet.type === 'realtime.error') {
-            stop(packet.code === 'permission_revoked' ? '账号状态已变化，连接已关闭。' : '连接已关闭，请重新连接。'); return;
+            stop(realtimeErrorText(packet.code)); return;
           }
           if (packet.type === 'realtime.ready') {
             if (ready || packet.version !== REALTIME_PROTOCOL_VERSION || packet.gameId !== 'quandi') { stop('游戏协议不匹配。'); return; }
@@ -91,7 +91,12 @@ export default function Quandi() {
       if (message.type === 'disconnect') { stop(); return; }
       if (message.type === 'send') {
         const command = parseQuandiCommand(message.command);
-        if (!command) { stop('游戏操作无效。'); return; }
+        if (!command) {
+          // 非法操作只回给游戏层一条错误，不断开整条连接（R3-535）：错一位的房间码
+          // 等一次输入错误不该让玩家重连重进。协议白名单在 shared/quandi/protocol。
+          post({ type: 'packet', packet: { type: 'S2C_ERROR', data: { code: 'INVALID_COMMAND', message: '游戏操作无效。' } } });
+          return;
+        }
         if (ready && socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify(command));
       }
     };

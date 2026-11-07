@@ -9,7 +9,7 @@
 import { MAX_ELEMENTS } from './constants';
 import type { RingElement, PendingElement, AtamasUiSnapshot, MessageKind } from './constants';
 import { getTranslation, formatTranslation } from './i18n';
-import { drawAtamas } from './render';
+import { drawAtamas, RING_HIT_INNER, RING_HIT_OUTER, RING_RADIUS_RATIO } from './render';
 
 interface PreviousState {
   elements: RingElement[];
@@ -51,6 +51,12 @@ export interface EngineCallbacks {
 
 const TAU = 2 * Math.PI;
 
+/** 把 i18n 的 key（或带参数的求值器）包成「每次调用才翻译」的闭包。 */
+const i18nText =
+  (key: string, params?: () => Record<string, string | number>) =>
+  () =>
+    params ? formatTranslation(key, params()) : getTranslation(key);
+
 export class AtamasEngine {
   private canvas: HTMLCanvasElement;
   private ctx: CanvasRenderingContext2D;
@@ -60,6 +66,10 @@ export class AtamasEngine {
   private message = '';
   private messageKind: MessageKind = 'plain';
   private currentAction = '';
+  // 文案存的是「怎么翻译」（一个闭包），不是翻译好的字符串：切语言时重新求值即可。
+  // 只存结果的话，语言一换，消息条与回合提示会一直停在上一门语言，直到下一次操作。
+  private messageSource: (() => string) | null = null;
+  private actionSource: (() => string) | null = null;
   private gameOverAnimProgress = 0;
   private gameOverAnimationId: number | null = null;
   private loopId: number | null = null;
@@ -119,14 +129,27 @@ export class AtamasEngine {
   }
 
   // ── 消息 / 当前动作 / 快照 ─────────────────────────────────────────────────
-  private setMessage(text: string, kind: MessageKind = 'plain'): void {
-    this.message = text;
+  /** 记一段可重新翻译的文案（不 emit）：message 与 messageKind 一起换。 */
+  private assignMessage(source: () => string, kind: MessageKind = 'plain'): void {
+    this.messageSource = source;
+    this.message = source();
     this.messageKind = kind;
+  }
+
+  private assignAction(source: () => string): void {
+    this.actionSource = source;
+    this.currentAction = source();
+  }
+
+  private setMessage(source: () => string, kind: MessageKind = 'plain'): void {
+    this.assignMessage(source, kind);
     this.emit();
   }
 
-  private setAction(text: string): void {
-    this.currentAction = text;
+  /** 切语言后重新翻译「已经显示着的」消息与动作提示，并重画。 */
+  relocalize(): void {
+    if (this.messageSource) this.message = this.messageSource();
+    if (this.actionSource) this.currentAction = this.actionSource();
     this.emit();
   }
 
@@ -142,9 +165,10 @@ export class AtamasEngine {
 
     let recall: AtamasUiSnapshot['recall'];
     if (cooldownComplete && hasStateToRecall) {
-      recall = { disabled: false, text: getTranslation('recall') || 'Undo', title: 'Recall last move' };
+      // title 也走 i18n 表：这两处曾写死英文，切到中文后按钮的悬停提示仍是英文。
+      recall = { disabled: false, text: getTranslation('recall'), title: getTranslation('recall') };
     } else if (cooldownComplete) {
-      recall = { disabled: true, text: String(roundsLeft), title: 'Place an element first' };
+      recall = { disabled: true, text: String(roundsLeft), title: getTranslation('noMoveToRecall') };
     } else {
       recall = { disabled: true, text: String(roundsLeft), title: formatTranslation('recallCooldown', { n: roundsLeft }) };
     }
@@ -170,15 +194,23 @@ export class AtamasEngine {
   /** 对齐 updateUI：根据 pendingElement 刷新 currentAction 文案后 emit。 */
   private updateUI(): void {
     const s = this.state;
+    // 结束局不许被改回「等待中 / 放置数字」：放满第 21 个元素后仍会有延迟回调走
+    // 到 updateUI，回合提示会在「游戏结束」与「等待中」之间来回跳。
+    if (s.gameOver) {
+      this.assignAction(i18nText('gameOver'));
+      this.emit();
+      return;
+    }
     if (s.pendingElement) {
-      this.currentAction =
+      this.assignAction(
         s.pendingElement.type === 'plus'
           ? s.pendingElement.isBlackGolden
-            ? getTranslation('placeBlackPlus')
-            : getTranslation('placePlus')
-          : getTranslation('placeNumber');
+            ? i18nText('placeBlackPlus')
+            : i18nText('placePlus')
+          : i18nText('placeNumber')
+      );
     } else {
-      this.currentAction = getTranslation('waiting');
+      this.assignAction(i18nText('waiting'));
     }
     this.emit();
   }
@@ -186,12 +218,13 @@ export class AtamasEngine {
   private updateCurrentActionText(): void {
     const s = this.state;
     if (s.pendingElement) {
-      this.currentAction =
+      this.assignAction(
         s.pendingElement.type === 'number'
-          ? getTranslation('placeNumber')
+          ? i18nText('placeNumber')
           : s.pendingElement.isBlackGolden
-            ? getTranslation('placeBlackPlus')
-            : getTranslation('placePlus');
+            ? i18nText('placeBlackPlus')
+            : i18nText('placePlus')
+      );
       this.emit();
     }
   }
@@ -228,9 +261,8 @@ export class AtamasEngine {
 
     this.updateUI();
     s.needsRedraw = true;
-    this.message = getTranslation('clickRingArea');
-    this.messageKind = 'plain';
-    this.currentAction = getTranslation('placeNumber');
+    this.assignMessage(i18nText('clickRingArea'));
+    this.assignAction(i18nText('placeNumber'));
     this.emit();
   }
 
@@ -363,9 +395,11 @@ export class AtamasEngine {
       if (!hasPlusMerge) {
         s.gameOver = true;
         s.pendingElement = null;
-        this.message = `${getTranslation('gameOver')}! ${getTranslation('diskFull')} · ${getTranslation('score')}: ${s.totalScore} | ${getTranslation('maxPlate')}: ${s.maxPlate}`;
-        this.messageKind = 'gameOver';
-        this.currentAction = getTranslation('gameOver');
+        this.assignMessage(() =>
+          `${getTranslation('gameOver')}! ${getTranslation('diskFull')} · ${getTranslation('score')}: ${s.totalScore} | ${getTranslation('maxPlate')}: ${s.maxPlate}`,
+          'gameOver'
+        );
+        this.assignAction(i18nText('gameOver'));
         this.startGameOverAnimation();
         this.emit();
         return true;
@@ -482,7 +516,7 @@ export class AtamasEngine {
           s.animating = false;
           this.updateUI();
           s.needsRedraw = true;
-          this.setMessage(formatTranslation('mergeComplete', { round: s.round - 1 }), 'merge');
+          this.setMessage(() => formatTranslation('mergeComplete', { round: s.round - 1 }), 'merge');
         }
       }, 300);
       return;
@@ -498,7 +532,7 @@ export class AtamasEngine {
           s.animating = false;
           this.updateUI();
           s.needsRedraw = true;
-          this.setMessage(formatTranslation('mergeComplete', { round: s.round - 1 }), 'merge');
+          this.setMessage(() => formatTranslation('mergeComplete', { round: s.round - 1 }), 'merge');
           if (s.elements.length < MAX_ELEMENTS) this.getNextFromQueue();
         }
       }, 300);
@@ -577,7 +611,7 @@ export class AtamasEngine {
           s.animating = false;
           this.updateUI();
           s.needsRedraw = true;
-          this.setMessage(formatTranslation('mergeComplete', { round: s.round - 1 }), 'merge');
+          this.setMessage(() => formatTranslation('mergeComplete', { round: s.round - 1 }), 'merge');
           if (s.elements.length < MAX_ELEMENTS) this.getNextFromQueue();
         }
       }, 300);
@@ -589,7 +623,7 @@ export class AtamasEngine {
     const s = this.state;
     if (s.gameOver || s.animating) return false;
     if (!s.pendingElement) {
-      this.setMessage(getTranslation('noElementWaiting'), 'warn');
+      this.setMessage(i18nText('noElementWaiting'), 'warn');
       return false;
     }
 
@@ -660,13 +694,13 @@ export class AtamasEngine {
         s.needsRedraw = true;
 
         if (newElement.type === 'number') {
-          this.setMessage(
+          this.setMessage(() =>
             formatTranslation('numberPlaced', { pos: insertPos + 1, round: s.round - 1 })
           );
           if (s.elements.length < MAX_ELEMENTS) this.getNextFromQueue();
         } else {
           const plusType = newElement.isBlackGolden ? 'Black+' : 'Plus';
-          this.setMessage(formatTranslation('plusPlaced', { type: plusType }));
+          this.setMessage(() => formatTranslation('plusPlaced', { type: plusType }));
           if (!this.checkPlusMerge()) {
             this.later(() => {
               if (s.elements.length < MAX_ELEMENTS) this.getNextFromQueue();
@@ -685,19 +719,19 @@ export class AtamasEngine {
   recall(): void {
     const s = this.state;
     if (!s.canRecall) {
-      this.setMessage(getTranslation('recallNotAvailableYet'), 'warn');
+      this.setMessage(i18nText('recallNotAvailableYet'), 'warn');
       return;
     }
     if (!s.previousState) {
-      this.setMessage(getTranslation('noMoveToRecall'), 'warn');
+      this.setMessage(i18nText('noMoveToRecall'), 'warn');
       return;
     }
     if (s.animating || this.timers.size > 0) {
-      this.setMessage(getTranslation('cannotRecallDuringAnimation'), 'warn');
+      this.setMessage(i18nText('cannotRecallDuringAnimation'), 'warn');
       return;
     }
     if (s.gameOver) {
-      this.setMessage(getTranslation('gameOver'), 'gameOver');
+      this.setMessage(i18nText('gameOver'), 'gameOver');
       return;
     }
 
@@ -716,15 +750,15 @@ export class AtamasEngine {
 
     this.updateUI();
     s.needsRedraw = true;
-    this.message = getTranslation('moveRecalled');
-    this.messageKind = 'recall';
+    this.assignMessage(i18nText('moveRecalled'), 'recall');
     if (s.pendingElement) {
-      this.currentAction =
+      this.assignAction(
         s.pendingElement.type === 'number'
-          ? getTranslation('placeNumber')
+          ? i18nText('placeNumber')
           : s.pendingElement.isBlackGolden
-            ? getTranslation('placeBlackPlus')
-            : getTranslation('placePlus');
+            ? i18nText('placeBlackPlus')
+            : i18nText('placePlus')
+      );
     }
     this.emit();
   }
@@ -742,7 +776,9 @@ export class AtamasEngine {
     const dx = canvasX - cx;
     const dy = canvasY - cy;
     const dist = Math.sqrt(dx * dx + dy * dy);
-    const radius = canvas.width * 0.38;
+    // 与 drawAtamas 同一个半径比例：以前判定用 0.38、绘制用 0.35，外侧判定带比画出来的
+    // 指示环宽 26px（500px 画布）—— 点在外环外面也算落子，玩家看不到任何反馈差异。
+    const radius = canvas.width * RING_RADIUS_RATIO;
     return { dx, dy, dist, radius };
   }
 
@@ -750,19 +786,19 @@ export class AtamasEngine {
     const s = this.state;
     if (s.gameOver || s.animating) {
       if (s.gameOver)
-        this.setMessage(`${getTranslation('gameOver')}, ${getTranslation('clickRingArea')}`, 'warn');
+        this.setMessage(() => `${getTranslation('gameOver')}, ${getTranslation('clickRingArea')}`, 'warn');
       return;
     }
     if (!s.pendingElement) {
-      this.setMessage(getTranslation('waiting'), 'plain');
+      this.setMessage(i18nText('waiting'), 'plain');
       return;
     }
 
     const { dx, dy, dist, radius } = this.toCanvasPoint(clientX, clientY);
-    const innerRadius = radius * 0.6;
-    const outerRadius = radius * 1.15;
+    const innerRadius = radius * RING_HIT_INNER;
+    const outerRadius = radius * RING_HIT_OUTER;
     if (dist < innerRadius || dist > outerRadius) {
-      this.setMessage(getTranslation('clickOnRing'), 'warn');
+      this.setMessage(i18nText('clickOnRing'), 'warn');
       return;
     }
 
@@ -786,8 +822,7 @@ export class AtamasEngine {
       s.roundsSinceRecall++;
       this.updateUI();
       s.needsRedraw = true;
-      this.message = getTranslation('firstElementPlaced');
-      this.messageKind = 'plain';
+      this.assignMessage(i18nText('firstElementPlaced'));
       this.getNextFromQueue();
       return;
     }
@@ -804,8 +839,8 @@ export class AtamasEngine {
     }
 
     const { dx, dy, dist, radius } = this.toCanvasPoint(clientX, clientY);
-    const innerRadius = radius * 0.6;
-    const outerRadius = radius * 1.15;
+    const innerRadius = radius * RING_HIT_INNER;
+    const outerRadius = radius * RING_HIT_OUTER;
     if (dist < innerRadius || dist > outerRadius) {
       s.hoverGapIndex = -1;
       s.needsRedraw = true;
@@ -900,9 +935,8 @@ export class AtamasEngine {
     this.initGame();
     s.needsRedraw = true;
     this.updateUI();
-    this.message = getTranslation('gameReset');
-    this.messageKind = 'reset';
-    this.currentAction = getTranslation('placeNumber');
+    this.assignMessage(i18nText('gameReset'), 'reset');
+    this.assignAction(i18nText('placeNumber'));
     this.emit();
   }
 
@@ -933,3 +967,5 @@ export class AtamasEngine {
     this.updateCurrentActionText();
   }
 }
+
+

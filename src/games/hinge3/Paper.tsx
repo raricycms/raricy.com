@@ -1,9 +1,9 @@
-'use client';
+﻿'use client';
 
 import { useId, useRef, type KeyboardEvent, type PointerEvent } from 'react';
 import { clippedHalf, flapMatrix, goalStatus, markKey, otherFace, reflected, signedDistance, type Crease, type Face, type Goal, type Level, type Mark, type Matrix, type Point, type State } from './engine';
 
-export const INK_SHAPE = 'M-.32-.45H.34V-.23H-.08V-.05H.23V.17H-.08V.45H-.32Z';
+const INK_SHAPE = 'M-.32-.45H.34V-.23H-.08V-.05H.23V.17H-.08V.45H-.32Z';
 const polygon = (points: Point[]) => points.map((p) => `${p.x},${p.y}`).join(' ');
 const matrixString = (matrix: Matrix) => `${matrix[0]} ${matrix[2]} ${matrix[1]} ${matrix[3]} 0 0`;
 export function Glyph({ matrix, color = 'red', outline = false }: { matrix: Matrix; color?: string; outline?: boolean }) {
@@ -117,3 +117,4 @@ export default function Paper({ level, state, face, crease, progress, busy, onSe
     </g>
   </svg>;
 }
+

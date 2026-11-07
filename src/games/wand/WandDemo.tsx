@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useCallback, useEffect, useRef, useState, type PointerEvent } from 'react';
 import { ArrowUp, ArrowDown, ArrowLeft, ArrowRight } from 'lucide-react';
 import { WAND_HEIGHT, WAND_WIDTH, WAND_TILES, WAND_RADIUS, WAND_INPUT, WAND_TICK_MS, encodeWandInput, parseWandSnapshot, type WandSnapshot } from '../../../shared/wand/protocol';
+import { REALTIME_PROTOCOL_VERSION, realtimeErrorText } from '../../../shared/realtime/protocol';
 
 type Status = 'idle' | 'connecting' | 'connected' | 'disconnected' | 'error';
 type Connection = { dispose(): void; sendInput?(): void };
@@ -134,14 +135,14 @@ export default function WandDemo() {
       const url = new URL(result.wsUrl);
       if (!['ws:', 'wss:'].includes(url.protocol) || url.pathname !== '/realtime/wand') throw new Error('invalid_url');
       socket = new WebSocket(url);
-      socket.onopen = () => socket?.send(JSON.stringify({ type: 'realtime.authenticate', version: 1, ticket: result.ticket }));
+      socket.onopen = () => socket?.send(JSON.stringify({ type: 'realtime.authenticate', version: REALTIME_PROTOCOL_VERSION, ticket: result.ticket }));
       socket.onmessage = (event: MessageEvent) => {
         if (typeof event.data !== 'string') { finish('error', '收到无效的游戏消息。'); return; }
         let message: unknown;
         try { message = JSON.parse(event.data); } catch { finish('error', '收到无效的游戏消息。'); return; }
         if (!message || typeof message !== 'object') return;
         const packet = message as Record<string, unknown>;
-        if (packet.type === 'realtime.ready' && packet.version === 1 && packet.gameId === 'wand' && typeof packet.connectionId === 'string') {
+        if (packet.type === 'realtime.ready' && packet.version === REALTIME_PROTOCOL_VERSION && packet.gameId === 'wand' && typeof packet.connectionId === 'string') {
           if (ready.current) { finish('error', '连接状态异常，请重新连接。'); return; }
           ownId.current = packet.connectionId;
           ready.current = true;
@@ -158,7 +159,7 @@ export default function WandDemo() {
           return;
         }
         if (packet.type === 'realtime.error') {
-          finish('error', packet.code === 'permission_revoked' ? '账号状态已变化，连接已关闭。' : '身份验证失败，请重新登录或稍后重试。');
+          finish('error', realtimeErrorText(packet.code));
           return;
         }
         if (packet.type === 'wand.full') { finish('error', '测试房间已满，请稍后重试。'); return; }

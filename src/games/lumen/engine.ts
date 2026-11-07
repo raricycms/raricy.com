@@ -100,6 +100,13 @@ export function nextHint(level: Level, rotations: readonly number[]): number | n
   }
   return closest?.[0] ?? null;
 }
+/**
+ * 从当前局面到最近一个解所需的最少转动次数。
+ *
+ * **无解关卡返回 Infinity**（`Math.min(...[])` 的结果）：这不是「需要转无穷多次」，
+ * 而是「没有任何解」。调用方（星级 / 提示）必须先判 `Number.isFinite`，否则会拿它
+ * 当 par 去比大小 —— 比较永远是 false，界面上看起来像「怎么转都拿不到三星」。
+ */
 export function minimumMoves(level: Level): number {
   const start = initialRotations(level);
   return Math.min(...solutions(level).map((s) => s.reduce((n, r, i) => n + Number(r !== start[i]), 0)));

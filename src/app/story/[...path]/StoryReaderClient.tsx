@@ -3,12 +3,14 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // StoryReaderClient — Markdown 阅读页的客户端增强。
 //
-// 两件事：
-//   1. 顶部阅读进度条：随滚动填充 width，并让渐隐区域随进度动态缩小
-//      （0% 时右端 15% 渐隐，100% 时全填满无渐隐）。
-//   2. 键盘翻页：← 点上一章、→ 点下一章（查 .story-reader__nav 内带 title 的锚点）。
-//      服务端从不提供 prev/next 章 URL，故导航项恒为 ghost <span>，
-//      此监听是等价的空操作机制，不臆造章节接口。
+// 只有一件事：顶部阅读进度条：随滚动填充 width，并让渐隐区域随进度动态缩小
+// （0% 时右端 15% 渐隐，100% 时全填满无渐隐）。
+//
+// **刻意不做键盘翻页**：服务端渲染的 `.story-reader__nav` 里只有「目录」一个链接，
+// 「上一章 / 下一章」是 aria-hidden 的占位 <span>（没有 prev/next 章数据、也不该
+// 臆造章节接口）。以前这里挂着一个 `querySelector('.story-reader__nav a[title*="上一章"]')`
+// 的监听——选择器恒为 null，等于一段永远不生效的代码，却让读代码的人以为 ←/→ 能用。
+// 将来真的补了上一章/下一章链接，再按 `[title*="上一章"]` 把监听加回来。
 //
 // hljs 主题同步不在此实现：Next 侧 Markdown 为服务端渲染、highlight 已固化，
 // 无客户端 marked+hljs 的运行期主题切换需求（看不见的差异，忽略）。
@@ -34,29 +36,12 @@ export default function StoryReaderClient() {
         'linear-gradient(to right, var(--color-brand-primary) ' + fadeStart + '%, transparent 100%)';
     };
 
-    // 键盘导航。
-    const onKeyDown = (e: KeyboardEvent) => {
-      const target = e.target as HTMLElement | null;
-      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA')) return;
-      if (e.key === 'ArrowLeft') {
-        const prev = document.querySelector<HTMLAnchorElement>(
-          '.story-reader__nav a[title*="上一章"]',
-        );
-        if (prev) prev.click();
-      } else if (e.key === 'ArrowRight') {
-        const next = document.querySelector<HTMLAnchorElement>(
-          '.story-reader__nav a[title*="下一章"]',
-        );
-        if (next) next.click();
-      }
-    };
+    // 键盘导航见文件头：故意没有 —— 导航区只有「目录」，没有上一章/下一章链接。
 
     window.addEventListener('scroll', onScroll);
-    document.addEventListener('keydown', onKeyDown);
     onScroll(); // 首帧同步一次（进入页面即反映当前滚动位置）。
     return () => {
       window.removeEventListener('scroll', onScroll);
-      document.removeEventListener('keydown', onKeyDown);
     };
   }, []);
 

@@ -9,7 +9,9 @@
 
 'use client';
 
+import { useRef } from 'react';
 import type { OnboardingProps } from './ui-types';
+import { useDialogFocus } from './use-dialog-focus';
 
 /** 共同的画布尺寸。三张图同宽同高，列表左侧才对得齐。 */
 const VIEW = '0 0 64 32';
@@ -103,11 +105,14 @@ function GoalIcon() {
 }
 
 export default function Onboarding({ open, onStart, onDismiss }: OnboardingProps) {
+  const panelRef = useRef<HTMLDivElement | null>(null);
+  // aria-modal 只声明「有模态」；焦点陷阱与关闭后的焦点归还要靠这个 hook。
+  useDialogFocus(open, panelRef);
   if (!open) return null;
 
   return (
     <div className="tw-onboard" role="dialog" aria-modal="true" aria-label="玩法说明">
-      <div className="tw-onboard__panel">
+      <div className="tw-onboard__panel" ref={panelRef}>
         <h2>一次操作，两个身体</h2>
         <p>方向键同时驱动本体与影子；两侧都走得通，这一步才成立。</p>
 

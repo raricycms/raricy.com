@@ -1,10 +1,6 @@
 import { siteOrigin } from './site-url';
 import type { RealtimeGameId } from '../../shared/realtime/protocol';
 
-export function wandWebSocketUrl(requestUrl: string): string {
-  return realtimeWebSocketUrl(requestUrl, 'wand');
-}
-
 export function realtimeWebSocketUrl(requestUrl: string, gameId: RealtimeGameId): string {
   const configured = process.env.REALTIME_PUBLIC_ORIGIN?.trim();
   // 本地开发的 SITE_URL 往往仍是正式站；连接应跟随当前开发页面的主机。

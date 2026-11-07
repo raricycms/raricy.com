@@ -113,6 +113,9 @@ export function sessionReducer(levels: readonly CompiledLevel[], session: Sessio
 
     case 'hint': {
       // 提示只改文案，不动棋盘。箭头（hintDir）是短命的展示态，住在组件里。
+      // 已通关就没有「下一步」可提示：此时 solver 会给 null，文案会变成
+      // 「这个局面已经走不通了」，对刚通关的人是纯粹的误导。
+      if (session.solved) return session;
       return {
         ...session,
         serial: session.serial + 1,

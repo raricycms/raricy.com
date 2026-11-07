@@ -1,9 +1,11 @@
-// Adapted from yao1145/quandiyundong @ b1050bd177fa9764afd039f2ec6e68af55137436.
+﻿// Adapted from yao1145/quandiyundong @ b1050bd177fa9764afd039f2ec6e68af55137436.
 // 原作者授权及本地修改说明见 public/static/quandi/NOTICE.txt。
 /**
  * ServerDayNightManager — 服务端昼夜循环管理器
- * 维护周期计时 + 随机种子，广播给客户端做本地渲染
+ * 维护一个权威相位计时，广播给客户端做本地渲染
  */
+
+import { QUANDI_DAYNIGHT } from '../../../../shared/quandi/rules';
 
 class ServerDayNightManager {
     constructor() {
@@ -13,13 +15,14 @@ class ServerDayNightManager {
             NIGHT: 'night',
             FADE_TO_DAY: 'fadeToDay'
         };
-        this.FADE_TIME = 5000;
-        this.DARK_TIME = 10000;
-        this.CYCLE_TIME = 20000;
-        this.INITIAL_DAY_TIME = 10000;
+        // 昼夜时序是「规则」不是实现细节：五个值全部来自 shared/quandi/rules.ts，
+        // 客户端 Config.js 的 DAYNIGHT 必须与它同值（R3-596）。
+        this.FADE_TIME = QUANDI_DAYNIGHT.fadeTime;
+        this.DARK_TIME = QUANDI_DAYNIGHT.darkTime;
+        this.CYCLE_TIME = QUANDI_DAYNIGHT.cycleTime;
+        this.INITIAL_DAY_TIME = QUANDI_DAYNIGHT.initialTime;
 
         this.elapsed = 0;
-        this.seed = Math.floor(Math.random() * 1000000);
     }
 
     update(deltaTime) {
@@ -50,9 +53,9 @@ class ServerDayNightManager {
         const phase = this.getCurrentPhase();
         const elapsed = this.getElapsedInPhase();
         if (phase === this.PHASES.DAY) return 0;
-        if (phase === this.PHASES.NIGHT) return 0.98;
-        if (phase === this.PHASES.FADE_TO_NIGHT) return 0.98 * Math.min(1, elapsed / this.FADE_TIME);
-        if (phase === this.PHASES.FADE_TO_DAY) return 0.98 * Math.max(0, 1 - elapsed / this.FADE_TIME);
+        if (phase === this.PHASES.NIGHT) return QUANDI_DAYNIGHT.darkness;
+        if (phase === this.PHASES.FADE_TO_NIGHT) return QUANDI_DAYNIGHT.darkness * Math.min(1, elapsed / this.FADE_TIME);
+        if (phase === this.PHASES.FADE_TO_DAY) return QUANDI_DAYNIGHT.darkness * Math.max(0, 1 - elapsed / this.FADE_TIME);
         return 0;
     }
 
@@ -61,15 +64,10 @@ class ServerDayNightManager {
             phase: this.getCurrentPhase(),
             elapsedInPhase: Math.round(this.getElapsedInPhase()),
             totalElapsed: Math.round(this.elapsed),
-            darkness: Math.round(this.getDarkness() * 100) / 100,
-            seed: this.seed
+            darkness: Math.round(this.getDarkness() * 100) / 100
         };
-    }
-
-    reset() {
-        this.elapsed = 0;
-        this.seed = Math.floor(Math.random() * 1000000);
     }
 }
 
 export default ServerDayNightManager;
+

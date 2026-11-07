@@ -36,17 +36,26 @@ import type {
 
 // ── 解释器类型（cattca.js 是纯 JS，这里给出最小构造签名） ──────────────────────
 
+/** 引擎 run() 的结构化结束信号：ok=false 时 error 一定有值。 */
+interface CattcaRunResult {
+  ok: boolean;
+  error?: string;
+}
+
 interface CattcaInterpreterInstance {
   load(source: string): void;
-  run(): Promise<void>;
+  run(): Promise<CattcaRunResult>;
   running: boolean;
 }
 
+/** 第 6 个参数是引擎的钩子对象：`onError` 是独立错误通道（不再靠日志文案前缀判错）。 */
 type CattcaCtor = new (
   outputCb: (txt: string) => void,
   logCb: (txt: string) => void,
   inputCb: (prompt: string) => Promise<string>,
   choiceCb: (options: string[]) => Promise<string>,
+  delimiters?: { open: string; close: string },
+  hooks?: { onError?: (message: string) => void },
 ) => CattcaInterpreterInstance;
 
 // ── 解释器加载：注入一次 module script，挂到 window，模块内静态 import 完成后回读 ──
@@ -202,21 +211,19 @@ const CattcaPlayer = forwardRef<CattcaPlayerHandle, CattcaPlayerProps>(function 
   const engineRef = useRef<CattcaInterpreterInstance | null>(null);
   const runTokenRef = useRef(0);
   const segmentIdRef = useRef(0);
-  const errorRef = useRef<string | null>(null);
   const modeLoadedRef = useRef(false);
 
   const pages = useMemo<ReaderPage[]>(() => {
     const out: ReaderPage[] = [];
     let globalIndex = 0;
-    segments.forEach((segment, segmentIndex) => {
+    // ReaderPage 只留真正被读的字段：key / html / globalIndex。
+    // 以前还带 segmentIndex / pageIndex / segmentId，全仓零读取，改动分页时却要跟着维护。
+    segments.forEach((segment) => {
       segment.pages.forEach((html, pageInSegment) => {
         out.push({
           key: `${segment.id}:${pageInSegment}`,
           html,
           globalIndex: globalIndex++,
-          segmentIndex,
-          pageIndex: pageInSegment,
-          segmentId: segment.id,
         });
       });
     });
@@ -513,7 +520,6 @@ const CattcaPlayer = forwardRef<CattcaPlayerHandle, CattcaPlayerProps>(function 
     const empty = new Set<string>();
     revealedRef.current = empty;
     setRevealed(empty);
-    errorRef.current = null;
     setError(null);
     setLogs([]);
     setStatus('running');
@@ -531,12 +537,8 @@ const CattcaPlayer = forwardRef<CattcaPlayerHandle, CattcaPlayerProps>(function 
           },
           (text) => {
             if (token !== runTokenRef.current) return;
+            // 日志只当日志用：错误态由下面 hooks.onError 的独立通道置，别再按文案前缀猜。
             setLogs((previous) => [...previous.slice(-199), text]);
-            if (text.startsWith('执行错误')) {
-              errorRef.current = text;
-              setError(text);
-              setStatus('error');
-            }
           },
           () =>
             new Promise<string>((resolve) => {
@@ -562,6 +564,18 @@ const CattcaPlayer = forwardRef<CattcaPlayerHandle, CattcaPlayerProps>(function 
               setPending(next);
               setStatus('running');
             }),
+          // 第 5 个参数是分隔符（用默认值）；第 6 个是错误通道钩子。
+          undefined,
+          {
+            // 独立错误通道：引擎执行某一行抛错时立刻回调，宿主直接落错误态，
+            // 不必等 run() 结束，更不必从 logCb 的「执行错误：」文案前缀里猜。
+            onError: (message: string) => {
+              if (token !== runTokenRef.current) return;
+              setError(message);
+              setStatus('error');
+              onStatus?.('运行出错', 'error');
+            },
+          },
         );
 
         engineRef.current = interpreter;
@@ -570,12 +584,19 @@ const CattcaPlayer = forwardRef<CattcaPlayerHandle, CattcaPlayerProps>(function 
         interpreter.load(isTool ? stripFrontmatter(script ?? '') : (script ?? ''));
         interpreter
           .run()
-          .then(() => {
+          .then((result) => {
             if (token !== runTokenRef.current) return;
             flushSegment();
-            if (errorRef.current) {
+            // 结构化结束信号：ok=false 时 error 一定有值。
+            if (!result.ok) {
+              const message = result.error ?? '脚本执行出错';
+              setError(message);
               setStatus('error');
               onStatus?.('运行出错', 'error');
+              // onError 通道已经把错误报过；日志面板里补一条可读行（去重）。
+              setLogs((previous) =>
+                previous.some((line) => line.includes(message)) ? previous : [...previous, '错误: ' + message],
+              );
             } else {
               setStatus('ended');
               onStatus?.('运行完成', 'ready');
@@ -584,7 +605,6 @@ const CattcaPlayer = forwardRef<CattcaPlayerHandle, CattcaPlayerProps>(function 
           .catch((reason: unknown) => {
             if (token !== runTokenRef.current) return;
             const message = reason instanceof Error ? reason.message : String(reason);
-            errorRef.current = message;
             setError(message);
             setLogs((previous) => [...previous, '错误: ' + message]);
             setStatus('error');
@@ -594,7 +614,6 @@ const CattcaPlayer = forwardRef<CattcaPlayerHandle, CattcaPlayerProps>(function 
       .catch((reason: unknown) => {
         if (token !== runTokenRef.current) return;
         const message = reason instanceof Error ? reason.message : String(reason);
-        errorRef.current = message;
         setError(message);
         setLogs((previous) => [...previous, '错误: ' + message]);
         setStatus('error');

@@ -4,8 +4,9 @@ import type { AddressInfo } from 'node:net';
 import { WebSocket } from 'ws';
 import { createRealtimeServer } from '../../services/realtime/src/server';
 import { readRealtimeConfig } from '../../services/realtime/src/config';
+import { createRealtimeGames } from '../../services/realtime/src/games';
 import type { RealtimeGame, RealtimeIdentity } from '../../services/realtime/src/game';
-import { MAX_REALTIME_MESSAGE_BYTES, parseRealtimeAuthentication } from '../../shared/realtime/protocol';
+import { MAX_REALTIME_MESSAGE_BYTES, REALTIME_GAME_IDS, isRealtimeGameId, parseRealtimeAuthentication } from '../../shared/realtime/protocol';
 
 const ORIGIN = 'http://localhost:3000';
 const cleanups: (() => Promise<unknown>)[] = [];
@@ -237,5 +238,14 @@ describe('实时服务边界', () => {
     expect(JSON.parse(String(message)).code).toBe('permission_revoked');
     expect((await closed)[0]).toBe(1008);
     await vi.waitFor(() => expect(cleanup).toHaveBeenCalledTimes(1));
+  });
+
+  it('注册表的游戏 id 与共享契约清单一致（新增游戏漏登记会在这里红）', () => {
+    // 路由（/api/game/<id>/launch、/realtime/<id>）与共享清单是两份名单：
+    // 注册表多一个 → 认证通过的连接连不到游戏；清单多一个 → 签了票据却打不开 ws。
+    const authority = { consume: async () => null, validate: async () => false };
+    const registered = createRealtimeGames(authority).map((entry) => entry.id);
+    expect(registered).toEqual([...REALTIME_GAME_IDS]);
+    for (const id of registered) expect(isRealtimeGameId(id)).toBe(true);
   });
 });

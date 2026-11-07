@@ -149,6 +149,13 @@ for (const def of LEVELS) {
             continue;
           }
           const result = analyzeLevel(probe);
+          // truncated 不是「无解」：BFS 撞上限时 solved=false 也可能只是搜索没走完。
+          // 少了这条，一关只要状态空间一大，这条「石头是工具」的断言就会**空过**。
+          expect(
+            result.truncated,
+            `${name}：${what}之后 BFS 撞上节点上限（visited=${result.visited}），` +
+              '无法据此判断石头是否参与解法 —— 测试判据在这里已经失效，请缩小关卡或降低石头数量。',
+          ).toBe(false);
           const stillSolvable = result.solved && (result.optimal as number) <= def.par;
           expect(
             stillSolvable,

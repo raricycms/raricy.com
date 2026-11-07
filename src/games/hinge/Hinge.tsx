@@ -6,7 +6,7 @@ import { ArrowLeft, ArrowUp, ArrowRight, ArrowDown, Check, CornerUpLeft, CornerU
 import { attempt, DIRECTIONS, DIRECTION_NAMES, doors, initialState, isWon, KINDS, replay, roomAt, type Action, type Direction, type Room } from './engine';
 import { LEVELS, MAIN_LEVEL, levelById } from './levels';
 import { Arch, HingeIcon, MainPreview, Pawn, RoomDrawing } from './art';
-import { freshProgress, readProgress, SAVE_KEY, type Progress } from './progress';
+import { freshProgress, MAX_RUN_ACTIONS, readProgress, SAVE_KEY, type Progress } from './progress';
 
 const Arrows = [ArrowUp, ArrowRight, ArrowDown, ArrowLeft];
 const emptyActions: Action[] = [];
@@ -37,8 +37,13 @@ export default function Hinge() {
   }, []);
   useEffect(() => {
     if (!ready) return;
-    if (Object.values(progress.runs).some((run) => run.length > 3000)) { setSaveFailed(true); return; }
-    try { localStorage.setItem(SAVE_KEY, JSON.stringify(progress)); } catch { setSaveFailed(true); }
+    // 超上限的 run 读档时本来就会被丢掉（progress.ts 的 MAX_RUN_ACTIONS），所以这里
+    // 只是不写它，而不是整份存档都不写 —— 否则某一题的动作变长会连带别的题的进度
+    // 一起停写，界面上只留一句「暂时无法保存」而且再也不会消失。
+    const runs = Object.fromEntries(
+      Object.entries(progress.runs).filter(([, run]) => run.length <= MAX_RUN_ACTIONS)
+    );
+    try { localStorage.setItem(SAVE_KEY, JSON.stringify({ ...progress, runs })); } catch { setSaveFailed(true); }
   }, [progress, ready]);
 
   function choose(id: string) {
@@ -100,6 +105,7 @@ export default function Hinge() {
     const direction: Direction = Math.abs(dx) > Math.abs(dy) ? dx > 0 ? 1 : 3 : dy > 0 ? 2 : 0;
     perform({ type: 'slide', room: start.id, direction });
   }
+  const practiceLevels = LEVELS.filter((item) => item.id !== 'main');
   const nextLevel = LEVELS[LEVELS.indexOf(level) + 1];
   const boardStyle = { '--hy-columns': level.columns, '--hy-rows': level.rows, aspectRatio: `${level.columns} / ${level.rows}` } as CSSProperties;
   const connections = level.rooms.flatMap((room) => {
@@ -116,11 +122,11 @@ export default function Hinge() {
   return <div className="container hy-game" data-ready={ready}>
     <header className="hy-header">
       <div className="hy-title"><Link className="hy-icon-button" href="/game/collections/test" aria-label="返回测试合集"><ArrowLeft size={20} /></Link><span className="hy-logo"><HingeIcon /></span><h1>合页 <small>Demo</small></h1></div>
-      <span className="hy-progress">练习 <span className="numeric">{completeCount} / 5</span>{progress.completed.includes('main') && ' · 主谜题已完成'}</span>
+      <span className="hy-progress">练习 <span className="numeric">{completeCount} / {practiceLevels.length}</span>{progress.completed.includes('main') && ' · 主谜题已完成'}</span>
     </header>
 
     <nav className="hy-levels" aria-label="选择纸页">
-      {LEVELS.slice(0, 5).map((item) => <button key={item.id} className={`hy-tab${level.id === item.id ? ' is-active' : ''}`} aria-pressed={level.id === item.id} onClick={() => choose(item.id)} disabled={!ready}>
+      {practiceLevels.map((item) => <button key={item.id} className={`hy-tab${level.id === item.id ? ' is-active' : ''}`} aria-pressed={level.id === item.id} onClick={() => choose(item.id)} disabled={!ready}>
         <span className="numeric">{item.id}</span> {item.title}{progress.completed.includes(item.id) && <Check size={14} aria-label="已完成" />}
       </button>)}
       <button className={`hy-tab${level.id === 'main' ? ' is-active' : ''}`} aria-pressed={level.id === 'main'} onClick={() => choose('main')} disabled={!ready}>主谜题<ArrowRight size={15} /></button>
@@ -176,3 +182,4 @@ export default function Hinge() {
     </div>
   </div>;
 }
+

@@ -20,14 +20,6 @@ class ServerFlag {
         }
         return false;
     }
-
-    release() {
-        if (this.capturedBy !== null) {
-            this.capturedBy = null;
-            return true;
-        }
-        return false;
-    }
 }
 
 class ServerFlagManager {
@@ -188,10 +180,6 @@ class ServerFlagManager {
             }
         }
         return counts;
-    }
-
-    getFlagCount(playerId) {
-        return this.flags.filter(f => f.capturedBy === playerId).length;
     }
 
     serialize() {

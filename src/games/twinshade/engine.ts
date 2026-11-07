@@ -55,7 +55,7 @@ function stepCell(level: CompiledLevel, cell: number, dir: Dir): number | null {
   return y * level.width + x;
 }
 
-/** 渲染层与调试器共用的「下标 → 坐标」。 */
+/** 下标 → 坐标（solver / 调试用；渲染层自己那份还要夹取坏数据，见 Board.tsx）。 */
 export function cellXY(level: Pick<CompiledLevel, 'width'>, cell: number): { x: number; y: number } {
   return { x: cell % level.width, y: Math.floor(cell / level.width) };
 }
@@ -277,32 +277,41 @@ export function resolveMove(level: CompiledLevel, state: GameState, dir: Dir): M
     level.terrain[posB] === TERRAIN.ice,
   ];
   while (sliding[0] || sliding[1]) {
-    let movedAny = false;
+    // 两侧先各自算落点，再一起裁决。**不能按 0→1 边算边读对方的新位置**：
+    // stateKey 把 (a,b) 与 (b,a) 当成同一个局面，若引擎的裁决依赖「哪一侧先算」，
+    // 同一个局面会因身体互换给出不同结果，solver 就会在去重后的图上走错边。
+    // 规则本身是「同时移动」：两侧的落点都对着**移动前**的位置判。
+    const before: [number, number] = [posA, posB];
+    const want: [number | null, number | null] = [null, null];
+    const advance: [boolean, boolean] = [false, false];
     for (let side = 0; side < 2; side++) {
       if (!sliding[side]) continue;
-      const from = side === 0 ? posA : posB;
-      const target = stepCell(level, from, dir);
-      const blockedByWall = target === null || level.terrain[target] === TERRAIN.wall;
-      const blockedByBlock = target !== null && occupied.has(target);
-      if (blockedByWall || blockedByBlock || target === (side === 0 ? posB : posA)) {
-        sliding[side] = false;
-        continue;
-      }
-      if (side === 0) {
-        posA = target as number;
-        slideA++;
-        trailA.push(posA);
-      } else {
-        posB = target as number;
-        slideB++;
-        trailB.push(posB);
-      }
+      const target = stepCell(level, before[side], dir);
+      want[side] = target;
+      if (target === null || level.terrain[target] === TERRAIN.wall || occupied.has(target)) continue;
+      advance[side] = true;
+    }
+    if (advance[0] && advance[1] && want[0] === before[1] && want[1] === before[0]) {
+      // 两人挤在相邻两格、朝对方的位置滑 ⇒ 会穿过彼此，两侧都停下。
+      advance[0] = false;
+      advance[1] = false;
+    } else {
+      // 目标格是对方**这一轮不动**的位置 ⇒ 被身体挡住；对方同时也往前滑，
+      // 那一格就腾出来了（一列同时移动的车），允许跟上去。
+      if (advance[0] && want[0] === before[1] && !advance[1]) advance[0] = false;
+      if (advance[1] && want[1] === before[0] && !advance[0]) advance[1] = false;
+    }
+    let movedAny = false;
+    for (let side = 0; side < 2; side++) {
+      if (!advance[side]) { sliding[side] = false; continue; }
+      const target = want[side] as number;
+      if (side === 0) { posA = target; slideA++; trailA.push(posA); }
+      else { posB = target; slideB++; trailB.push(posB); }
       movedAny = true;
-      if (level.terrain[target as number] !== TERRAIN.ice) sliding[side] = false;
+      if (level.terrain[target] !== TERRAIN.ice) sliding[side] = false;
     }
     if (!movedAny) break;
   }
-
   const nextState: GameState = { a: posA, b: posB, blocks, moves: state.moves + 1 };
   return {
     ok: true,
@@ -352,3 +361,4 @@ export function stateKey(level: CompiledLevel, state: GameState): string {
 
 /** 引擎可枚举的方向（顺序固定，solver 结果与提示因此可复现）。 */
 export const ENGINE_DIRS = DIRS;
+

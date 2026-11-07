@@ -193,5 +193,23 @@ export function createSound(muted: boolean): SoundHandle {
     setMuted(next: boolean): void {
       mutedFlag = next;
     },
+
+    /**
+     * 关掉 AudioContext 并回到「没建过」的状态。
+     * 容器卸载时调用；之后再发声会重新懒建一个新的。close() 是异步的，这里不 await，
+     * 失败也吞掉 —— 音效是锦上添花，不该让卸载路径抛异常。
+     */
+    dispose(): void {
+      const current = ctx;
+      ctx = null;
+      master = null;
+      noise = null;
+      if (!current) return;
+      try {
+        void current.close().catch(() => {});
+      } catch {
+        /* 已经 close 过的上下文再关会抛，忽略 */
+      }
+    },
   };
 }

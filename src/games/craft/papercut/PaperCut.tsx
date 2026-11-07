@@ -10,6 +10,7 @@ import { useCraftSound } from '../sound';
 import {
   FOLD_OPTIONS,
   KERF_WIDTH,
+  MAX_POINTS,
   PAPER_COLORS,
   PAPER_RADIUS,
   PAPER_SAVE_KEY,
@@ -146,6 +147,9 @@ export default function PaperCut() {
     const raw = { x: dx * cos - dy * sin, y: dx * sin + dy * cos };
     const paper = clampToWedge(raw.x, raw.y, folds);
     setStroke((current) => {
+      // 预览笔画同样要受 MAX_POINTS 约束：一笔长按会攒出几千个点，紧接着 addCut
+      // 会按同一条上限截断，于是「预览里剪到的」和「提交后剪到的」不是同一个形状。
+      if (current.length >= MAX_POINTS) return current;
       const last = current[current.length - 1];
       if (last && Math.hypot(paper.x - last.x, paper.y - last.y) < 2.4) return current;
       return [...current, paper];
@@ -175,11 +179,11 @@ export default function PaperCut() {
     setStroke([]);
     try { event.currentTarget.releasePointerCapture(event.pointerId); } catch { /* 已释放 */ }
     if (points.length < 2) return;
-    setDraft((current) => {
-      const next = addCut(current, points);
-      if (next.cuts.length > current.cuts.length) sound.play('snip');
-      return next;
-    });
+    // 音效放在 updater 外面：setState 的 updater 必须是纯函数（StrictMode 下会被
+    // 调两次），写进去会让同一刀响两声，甚至在与渲染时序有关时一次都不响。
+    const next = addCut(draft, points);
+    setDraft(next);
+    if (next.cuts.length > draft.cuts.length) sound.play('snip');
   };
 
   const handleExport = async () => {

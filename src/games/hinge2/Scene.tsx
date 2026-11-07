@@ -1,9 +1,9 @@
-'use client';
+﻿'use client';
 
 import { useId, type KeyboardEvent } from 'react';
 import { graph, transform, type Level, type Node, type Point, type Pose, type State, type Surface } from './engine';
 
-export type ScreenPoint = { x: number; y: number };
+type ScreenPoint = { x: number; y: number };
 export function project(p: Point): ScreenPoint { return { x: 480 + (p.x - p.y) * 57, y: 338 + (p.x + p.y) * 28.5 - (p.z ?? 0) * 57 }; }
 const pts = (points: Point[]) => points.map((p) => { const q = project(p); return `${q.x},${q.y}`; }).join(' ');
 const lift = (p: Point, z: number): Point => ({ ...p, z: (p.z ?? 0) + z });
@@ -53,7 +53,7 @@ function Tree({ p }: { p: Point }) {
   const q = project(p);
   return <g transform={`translate(${q.x} ${q.y})`}><ellipse cy="5" rx="15" ry="6" fill="#3d6d69" opacity=".1" /><path d="M0 2v-39" stroke="#718179" strokeWidth="3" /><path d="M0-68C-19-42-18-12 0-10 18-12 19-42 0-68" fill="#72968b" /><path d="M0-68v58C18-12 19-42 0-68" fill="#5e817a" /></g>;
 }
-export function Pawn({ p }: { p: Point }) {
+function Pawn({ p }: { p: Point }) {
   const q = project(lift(p, .4));
   return <g className="h2-pawn" transform={`translate(${q.x} ${q.y})`} pointerEvents="none">
     <ellipse cy="4" rx="10" ry="4" fill="#574b51" opacity=".18" />
@@ -145,3 +145,4 @@ export default function Scene({ level, state, pose, pawn, busy, onWalk, onMechan
     <g aria-hidden="true" className="h2-compass" transform="translate(846 590)"><path d="M0-24 8 0 0-5-8 0Z" fill="currentColor" /><path d="M0 24 8 0 0 5-8 0Z" fill="currentColor" opacity=".3" /><text y="-34">N</text></g>
   </svg>;
 }
+

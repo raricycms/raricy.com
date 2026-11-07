@@ -6,8 +6,9 @@
  * 通过 setInterval 驱动，接收网络输入，输出状态快照
  */
 
-import SERVER_CONFIG from './config.js';
+import SERVER_CONFIG, { CANVAS_HEIGHT, CANVAS_WIDTH, SPAWN_POINTS } from './config.js';
 import { TerritoryGrid } from '../../../../shared/quandi/territory-grid';
+import { QUANDI_INPUT_TIMEOUT_MS } from '../../../../shared/quandi/protocol';
 import { ServerSurvivalManager } from './ServerSurvivalManager.js';
 import { ServerFlagManager } from './ServerFlagManager.js';
 import ServerDayNightManager from './ServerDayNightManager.js';
@@ -15,8 +16,8 @@ import ServerDayNightManager from './ServerDayNightManager.js';
 const ANTI_CHEAT = SERVER_CONFIG.ANTI_CHEAT;
 
 const CONFIG = {
-    CANVAS_WIDTH: 1200,
-    CANVAS_HEIGHT: 600,
+    CANVAS_WIDTH,
+    CANVAS_HEIGHT,
 
     DIFFICULTY: {
         slow: { speed: 2.5, maxTime: 120000, Length: 400 },
@@ -35,16 +36,10 @@ const CONFIG = {
         addlocktime: 2000,
         homeTimeLimit: 15000,
         standarddistance: 2,
-        pushdistance: 6,
-        deathshieldtime: 3000
+        pushdistance: 6
     },
 
-    SPAWN_POINTS: [
-        { x: 0.15, y: 0.5 },
-        { x: 0.85, y: 0.5 },
-        { x: 0.5, y: 0.15 },
-        { x: 0.5, y: 0.85 }
-    ],
+    SPAWN_POINTS,
 
     ITEM: {
         itemSpawnInterval: 2000,
@@ -54,13 +49,26 @@ const CONFIG = {
         maxObstacles: 30,
         powerUp: {
             radius: 15,
-            speed: { color: '#00ff00', duration: 5000, weight: 40 },
-            length: { color: '#ffff00', duration: 8000, addLength: 100, weight: 30 },
-            shield: { color: '#00ffff', duration: 10000, weight: 30 }
+            speed: { duration: 5000, weight: 40 },
+            length: { duration: 8000, addLength: 100, weight: 30 },
+            shield: { duration: 10000, weight: 30 }
         },
         barrier: { width: 40, height: 40 }
     }
 };
+
+// ─── 配置派生（只算一次）────────────────────────────────────
+// 出生点配置存的是画布比例；道具 / 障碍只避开**两位玩家**的出生点（一局最多两人），
+// 与原先写死 180/1020/300 三处像素字面量的行为一致。
+const SPAWN_PIXELS = CONFIG.SPAWN_POINTS.slice(0, 2).map((point) => ({
+    x: point.x * CONFIG.CANVAS_WIDTH,
+    y: point.y * CONFIG.CANVAS_HEIGHT
+}));
+function isNearSpawn(x, y, minDistance) {
+    return SPAWN_PIXELS.some((point) => Math.hypot(point.x - x, point.y - y) < minDistance);
+}
+const ITEM_TYPES = ['speed', 'length', 'shield'];
+const ITEM_WEIGHTS = ITEM_TYPES.map((type) => CONFIG.ITEM.powerUp[type].weight);
 
 // ─── ServerPlayer ────────────────────────────────────────────
 class ServerPlayer {
@@ -353,7 +361,6 @@ class ServerTerritory {
         this.areas = new Map();
         this.scoreGrid = new TerritoryGrid();
         this.vertexCount = 0; // playerId → polygon[]
-        this.maxArea = CONFIG.CANVAS_WIDTH * CONFIG.CANVAS_HEIGHT * 0.95;
     }
 
     calculateSignedArea(polygon) {
@@ -475,7 +482,7 @@ class ServerItemManager {
 
     _createInitialBarriers() {
         if (this.initialBarriersCreated) return;
-        const barrierWidth = 40, barrierHeight = 40;
+        const { width: barrierWidth, height: barrierHeight } = CONFIG.ITEM.barrier;
         const centerX1 = this.width * 0.35;
         const centerX2 = this.width * 0.65;
 
@@ -517,10 +524,8 @@ class ServerItemManager {
             const x = Math.random() * (this.width - 40) + 20;
             const y = Math.random() * (this.height - 40) + 20;
 
-            // Check distance from spawn points
-            const distP1 = Math.sqrt(Math.pow(180 - x, 2) + Math.pow(300 - y, 2));
-            const distP2 = Math.sqrt(Math.pow(1020 - x, 2) + Math.pow(300 - y, 2));
-            if (distP1 < 150 || distP2 < 150) { attempts++; continue; }
+            // 避开两位玩家的出生点（出生点单源在 config.js，别在这里再写像素字面量）。
+            if (isNearSpawn(x, y, 150)) { attempts++; continue; }
 
             // Check barrier overlap
             const blocked = this.initialBarriers.some(b =>
@@ -528,13 +533,12 @@ class ServerItemManager {
             );
             if (blocked) { attempts++; continue; }
 
-            const types = ['speed', 'length', 'shield'];
-            const weights = [40, 30, 30];
+            const weights = ITEM_WEIGHTS;
             const totalW = weights.reduce((a, b) => a + b, 0);
             let r = Math.random() * totalW;
-            let type = types[0];
-            for (let i = 0; i < types.length; i++) {
-                if (r < weights[i]) { type = types[i]; break; }
+            let type = ITEM_TYPES[0];
+            for (let i = 0; i < ITEM_TYPES.length; i++) {
+                if (r < weights[i]) { type = ITEM_TYPES[i]; break; }
                 r -= weights[i];
             }
 
@@ -550,7 +554,7 @@ class ServerItemManager {
 
     _spawnRandomObstacle() {
         const clusterSize = Math.floor(Math.random() * 3) + 2;
-        const barrierWidth = 40, barrierHeight = 40;
+        const { width: barrierWidth, height: barrierHeight } = CONFIG.ITEM.barrier;
         let attempts = 0;
         while (attempts < 30) {
             const startX = Math.random() * (this.width - 200) + 30;
@@ -563,9 +567,7 @@ class ServerItemManager {
                 const bx = orientation === 'horizontal' ? startX + i * (barrierWidth + 1) : startX;
                 const by = orientation === 'vertical' ? startY + i * (barrierHeight + 1) : startY;
 
-                const distP1 = Math.sqrt(Math.pow(180 - bx, 2) + Math.pow(300 - by, 2));
-                const distP2 = Math.sqrt(Math.pow(1020 - bx, 2) + Math.pow(300 - by, 2));
-                if (distP1 < 100 || distP2 < 100) { valid = false; break; }
+                if (isNearSpawn(bx, by, 100)) { valid = false; break; }
 
                 const blocked = this.initialBarriers.some(b =>
                     bx < b.x + b.width + 25 && bx + barrierWidth + 25 > b.x &&
@@ -858,8 +860,9 @@ class ServerEngine {
         this.inputQueue.clear();
 
         // 没收到持续输入就停止，切后台、失焦与网络静默都不会持续跑动。
+        // 阈值来自共享契约（shared/quandi/protocol.ts），与客户端「输入静默」的承诺同一处。
         for (const player of this.players) {
-            if (Date.now() - player.lastInputAt > 300) {
+            if (Date.now() - player.lastInputAt > QUANDI_INPUT_TIMEOUT_MS) {
                 player.direction = { x: 0, y: 0 };
                 player.isMoving = false;
             }
@@ -972,7 +975,12 @@ class ServerEngine {
 
         // Survival mode: collision checks
         if (this.gameMode === 'survival' && this.survivalManager) {
-            this.survivalManager.checkPlayerCollisions(this.players);
+            // AI 撞死玩家也要发 PLAYER_DIED：这是客户端唯一能拿到「为什么掉了一条命」的
+            // 事件通道。以前只扣命不发事件，与其它致死路径（撞墙 / 撞轨迹）语义不一致。
+            const hit = this.survivalManager.checkPlayerCollisions(this.players);
+            if (hit) {
+                this.onGameEvent?.({ type: 'PLAYER_DIED', playerId: hit.playerId, reason: '被AI敌人碰撞' });
+            }
             this.survivalManager.checkAICollisions();
         }
 
@@ -1058,6 +1066,10 @@ class ServerEngine {
     }
 
     endGame(forfeitPlayerId = null) {
+        // 结算必须幂等：踢人路径在 fixedUpdate 里先 endGame（带 forfeit），同一 tick 末尾的
+        // 「存活玩家 <= 1」还会再调一次；上层虽用 room.engine !== engine 兜住了重复广播，
+        // 但重复结算本身会二次 stop / 二次 onGameEnd，别把正确性压在调用方的判空上。
+        if (this.gameState === 'finished') return;
         this.gameState = 'finished';
         this.stop();
 
@@ -1230,12 +1242,7 @@ class ServerEngine {
                 dp.trailReset = true;
             }
 
-            // 始终包含 (slotIndex 不变但客户端需要)
-            if (!prev) {
-                dp.color = p.color;
-                dp.slotIndex = p.slotIndex;
-            }
-
+            // 颜色 / 槽位在首帧全量里已给过；增量里玩家数组与首帧等长，这里不重复。
             return dp;
         });
 
@@ -1268,47 +1275,6 @@ class ServerEngine {
         return delta;
     }
 
-    _buildTrailDelta(prevTrail, currTrail) {
-        if (!prevTrail || prevTrail.length === 0) {
-            return { trail: currTrail, trailReset: true };
-        }
-
-        // 差异太大或围地后清空 → 全量
-        if (Math.abs(prevTrail.length - currTrail.length) > 50 || currTrail.length === 0) {
-            if (currTrail.length === 0 && prevTrail.length === 0) return null;
-            return { trail: currTrail, trailReset: true };
-        }
-
-        let newPoints = [];
-        if (currTrail.length > prevTrail.length) {
-            newPoints = currTrail.slice(prevTrail.length);
-        } else if (currTrail.length < prevTrail.length) {
-            return { trail: currTrail, trailReset: true };
-        } else {
-            // 寻找尾部变化点
-            let diffStart = prevTrail.length;
-            for (let i = prevTrail.length - 1; i >= 0; i--) {
-                if (!prevTrail[i] || !currTrail[i] ||
-                    prevTrail[i].x !== currTrail[i].x || prevTrail[i].y !== currTrail[i].y) {
-                    diffStart = i;
-                } else {
-                    break;
-                }
-            }
-            if (diffStart < prevTrail.length) {
-                newPoints = currTrail.slice(diffStart);
-            }
-        }
-
-        if (newPoints.length === 0) return null;
-
-        const totalRemoved = Math.max(0, prevTrail.length + newPoints.length - currTrail.length);
-        return {
-            trailAppend: newPoints,
-            trailTrimCount: totalRemoved
-        };
-    }
-
     _simpleHash(str) {
         let hash = 0;
         for (let i = 0; i < str.length; i++) {
@@ -1317,20 +1283,6 @@ class ServerEngine {
             hash = hash & hash;
         }
         return hash.toString();
-    }
-
-    getFullState() {
-        return {
-            frame: this.frameCount,
-            gameTime: this.gameTime,
-            gameState: this.gameState,
-            players: this.players.map(p => p.serialize()),
-            territories: this.territory.serialize(),
-            items: this.itemManager.serialize(),
-            gameMode: this.gameMode,
-            difficulty: this.difficulty,
-            maxGameTime: this.maxGameTime
-        };
     }
 }
 

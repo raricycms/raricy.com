@@ -1,4 +1,4 @@
-// ─────────────────────────────────────────────────────────────────────────────
+﻿// ─────────────────────────────────────────────────────────────────────────────
 // ATÅMAS — 画布渲染
 //
 // 绘制：圆环、点击区指示环、连线、圆盘元素（数字 / 普通加号 / 黑金加号）、
@@ -16,6 +16,14 @@ interface DrawOptions {
 
 const TAU = 2 * Math.PI;
 
+// 圆盘的几何比例：绘制与点击判定必须引用同一组数，否则会出现「点在没有画出来的环上」
+// 或者「看着在环里却点不动」。engine.toCanvasPoint 也 import 这几个值。
+/** 圆盘半径 / 画布宽度。 */
+export const RING_RADIUS_RATIO = 0.35;
+/** 可点击环形带（相对圆盘半径）：内界 = 中心区边界，外界 = 外侧指示环外沿。 */
+export const RING_HIT_INNER = 0.65;
+export const RING_HIT_OUTER = 1.1;
+
 export function drawAtamas(
   ctx: CanvasRenderingContext2D,
   canvas: HTMLCanvasElement,
@@ -28,7 +36,7 @@ export function drawAtamas(
   ctx.clearRect(0, 0, w, h);
   const cx = w / 2;
   const cy = h / 2;
-  const radius = w * 0.35;
+  const radius = w * RING_RADIUS_RATIO;
   const dotRadius = w * 0.045;
 
   // 圆环
@@ -39,8 +47,8 @@ export function drawAtamas(
   ctx.stroke();
 
   // 可点击区指示环
-  const innerRadius = radius * 0.65;
-  const outerRadius = radius * 1.1;
+  const innerRadius = radius * RING_HIT_INNER;
+  const outerRadius = radius * RING_HIT_OUTER;
   ctx.beginPath();
   ctx.arc(cx, cy, outerRadius, 0, TAU);
   ctx.strokeStyle = 'rgba(60, 96, 128, 0.15)';
@@ -215,7 +223,9 @@ export function drawAtamas(
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.globalAlpha = easeProgress;
-    ctx.fillText('GAME OVER', cx, cy);
+    // 文案走 i18n 表（与状态栏同一把 key），别在画布里写死英文 —— 切语言时遮罩
+    // 会跟着变，而写死的 'GAME OVER' 永远不会。
+    ctx.fillText(getTranslation('gameOver'), cx, cy);
     ctx.globalAlpha = 1;
   }
 }
@@ -306,3 +316,4 @@ function drawCenter(
     ctx.fill();
   }
 }
+

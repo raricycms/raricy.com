@@ -19,7 +19,10 @@ describe('Wand demo 2 权威战斗', () => {
   it('校验二进制按键和完整快照，拒绝越界/伪造形状', () => {
     expect(decodeInput(encodeInput(INPUT.attack | INPUT.right, 65535))).toEqual({ buttons: 24, sequence: 65535 });
     for (const input of [new Uint8Array(), new Uint8Array([1, 0, 0, 1]), new Uint8Array([2, 32, 0, 1])]) expect(decodeInput(input)).toBeNull();
-    const w = arena(), snapshot = w.snapshot(); expect(parseSnapshot(snapshot)).toEqual(snapshot);
+    // 走一遍真实的线上形状（JSON 序列化再解析）：以前拿同一个对象直接比对，测的是
+    // 「snapshot() 等于它自己」，parseSnapshot 的字段校验根本没被走到。
+    const w = arena(), snapshot = JSON.parse(JSON.stringify(w.snapshot()));
+    expect(parseSnapshot(snapshot)).toEqual(snapshot);
     for (const changes of [{ x: Infinity }, { facing: 4 }, { catnip: -1 }, { attack: ATTACK_MS + 1 }]) {
       expect(parseSnapshot({ ...snapshot, players: [{ ...snapshot.players[0], ...changes }] })).toBeNull();
     }

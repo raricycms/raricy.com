@@ -1,4 +1,4 @@
-import { ATTACK_MS, DIRECTIONS, TILE, TILES, TICK_MS, WORLD_HEIGHT, WORLD_WIDTH, type Player, type Slime, type Snapshot } from '../../../shared/wand2/protocol';
+import { ATTACK_MS, DIRECTIONS, SLIME_KILL_SCORE, SLIME_MAX_HP, TILE, TILES, TICK_MS, WORLD_HEIGHT, WORLD_WIDTH, type Player, type Slime, type Snapshot } from '../../../shared/wand2/protocol';
 import spriteLayout from '../../../public/static/games/wand2/sprite-layout.json';
 
 export interface Assets { character: HTMLImageElement; attack: HTMLImageElement; world: HTMLImageElement; walkDown: HTMLImageElement }
@@ -12,6 +12,9 @@ function playerPosition(player: Player, frame: Frame | null, progress: number) {
   return { x: previous.x + (player.x - previous.x) * progress, y: previous.y + (player.y - previous.y) * progress };
 }
 
+// `world.webp` 是按 **4 列 × 4 行** 均分的图集（1024×1024 → 每格 256×256）；本文件只用到
+// 第 4 行（碎石 / 灌木 / 小花，col 0–2）。规格由 tests/unit/wand2-assets.test.ts 的
+// 「world 图集」用例守：文件存在、尺寸是 4 的整数倍、被引用的三格真有像素。
 function sprite(ctx: CanvasRenderingContext2D, sheet: HTMLImageElement, col: number, row: number, x: number, y: number, size: number, rows = 4) {
   if (!sheet.complete || !sheet.naturalWidth) return;
   const sw = sheet.naturalWidth / 4, sh = sheet.naturalHeight / rows;
@@ -103,11 +106,11 @@ export function render(ctx: CanvasRenderingContext2D, assets: Assets, ground: HT
       if (m.mood === 'dying') {
         ctx.globalAlpha = Math.max(0, m.phase / 400);
         sprite(ctx, assets.world, 3, 3, x, y - (400 - m.phase) / 25, 42);
-        ctx.fillStyle = '#36563b'; ctx.font = 'bold 13px sans-serif'; ctx.textAlign = 'center'; ctx.fillText(`+${[1, 3, 5][m.kind]}`, x, y - 37);
+        ctx.fillStyle = '#36563b'; ctx.font = 'bold 13px sans-serif'; ctx.textAlign = 'center'; ctx.fillText(`+${SLIME_KILL_SCORE[m.kind]}`, x, y - 37);
       } else {
         const col = m.mood === 'stunned' ? 3 : m.mood === 'windup' ? 1 : m.mood === 'lunge' ? 2 : [0, 1, 2, 0][Math.floor((now + m.id * 91) / 180) % 4];
         sprite(ctx, assets.world, col, m.kind, x, y + 5, 51);
-        if (m.hp < (m.kind === 2 ? 3 : 2)) for (let k = 0; k < m.hp; k++) ellipse(ctx, x - (m.hp - 1) * 3 + k * 6, y - 39, 2, 2, '#4d6350');
+        if (m.hp < SLIME_MAX_HP[m.kind]) for (let k = 0; k < m.hp; k++) ellipse(ctx, x - (m.hp - 1) * 3 + k * 6, y - 39, 2, 2, '#4d6350');
       }
       ctx.restore();
     }
@@ -125,3 +128,4 @@ export function render(ctx: CanvasRenderingContext2D, assets: Assets, ground: HT
     for (const p of players) ellipse(ctx, x + p.x / WORLD_WIDTH * 95, y + p.y / WORLD_HEIGHT * 64, p.id === ownId ? 3 : 2, p.id === ownId ? 3 : 2, p.id === ownId ? '#fff5ce' : '#a9e1c5');
   }
 }
+

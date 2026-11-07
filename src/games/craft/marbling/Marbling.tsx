@@ -40,10 +40,12 @@ const VIEW_H = 560;
 /** 水面在台面上的矩形。 */
 const POOL = { x: 88, y: 76, w: 544, h: 380 };
 /**
- * 画布相对网格的放大倍率。
+ * 画布相对网格的放大倍率（生成离屏位图时用）。
  *
- * 网格本身已经是 480×336；再乘 1 就够（SVG 的 `<image>` 会做平滑放大）。乘大多
- * 只是把内存翻倍 —— 颜料是无损放大的，多出来的像素不会更清晰。
+ * 网格是 480×336，插值在**这个位图分辨率**上做，再由 SVG 的 `<image>` 平滑放到
+ * 544×380 的台面上。取 2 = 每格 2×2 像素：插值出的渐变在放大后仍然连续，而位图
+ * 只有 960×672（约 2.6MB），拖针时重建一次也不卡。再往上乘只会翻倍内存，画质
+ * 不会有可见变化 —— 颜料本身是无损放大的。
  */
 const SUPERSAMPLE = 2;
 
@@ -433,7 +435,11 @@ export default function Marbling() {
           type="button"
           className="craft-secondary"
           onClick={() => { setDraft(undoMarbling); sound.play('click'); }}
-          disabled={draft.history.length === 0}
+          // 成品阶段（stage==='print'）撤销只改水面网格，而屏幕上显示的是已经烘好的
+          // print，点下去看不到任何变化 —— 按下去没反应比按不动更糟，所以直接禁用；
+          // 想回到水面继续改，用「再印一张」。
+          disabled={draft.history.length === 0 || draft.stage === 'print'}
+          title={draft.stage === 'print' ? '成品已印出：用「再印一张」回到水面继续改' : '撤销上一笔'}
         >
           <Undo2 size={16} /> 撤销一步
         </button>

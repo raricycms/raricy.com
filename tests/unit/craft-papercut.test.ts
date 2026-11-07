@@ -114,12 +114,19 @@ describe('剪纸窗花：展开是镜像对称，不是旋转对称', () => {
       const layers = layerCount(folds);
       const unfolded = unfoldStroke(verticalKerf(folds), folds);
       expect(unfolded).toHaveLength(layers);
+      const step = (Math.PI * 2) / layers;
+      // 用**离轴**的采样点：轴上点经过镜像还是它自己，镜像方向写反了也照样"落在自己扇区"，
+      // 测不出偶数层的镜像被吞掉。离轴点还必须保持半径不变（层变换只做旋转 / 镜像，不缩放）。
+      const sample = { x: 40, y: -100 };
+      const radius = Math.hypot(sample.x, sample.y);
       for (let index = 0; index < layers; index += 1) {
-        const center = transformPoint({ x: 0, y: -100 }, folds, index);
-        const angle = Math.atan2(center.x, -center.y);
-        const step = (Math.PI * 2) / layers;
-        const ratio = (((angle % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2)) / step;
-        expect(Math.abs(ratio - Math.round(ratio)) * step).toBeLessThan(1e-9);
+        const point = transformPoint(sample, folds, index);
+        const angle = (((Math.atan2(point.x, -point.y) % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2));
+        expect(angle, `folds=${folds} 第 ${index} 层的点落到了别的扇区（angle=${angle}）`)
+          .toBeGreaterThanOrEqual(index * step - 1e-9);
+        expect(angle, `folds=${folds} 第 ${index} 层的点落到了别的扇区（angle=${angle}）`)
+          .toBeLessThanOrEqual((index + 1) * step + 1e-9);
+        expect(Math.hypot(point.x, point.y)).toBeCloseTo(radius, 9);
       }
     }
   });

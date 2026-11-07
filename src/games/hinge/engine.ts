@@ -1,4 +1,4 @@
-// 人物与终点记录在「纸片 / 半间」上，而不是桌面坐标上。
+﻿// 人物与终点记录在「纸片 / 半间」上，而不是桌面坐标上。
 // 平移和旋转只改变纸片姿态；跨门才会改变人物所在的半间。
 export type Direction = 0 | 1 | 2 | 3;
 export type RoomKind = 'slide' | 'pivot' | 'fixed';
@@ -32,9 +32,9 @@ export type Action =
 
 export const DIRECTIONS = [0, 1, 2, 3] as const;
 export const DIRECTION_NAMES = ['上', '右', '下', '左'] as const;
-export const DELTAS = [[0, -1], [1, 0], [0, 1], [-1, 0]] as const;
+const DELTAS = [[0, -1], [1, 0], [0, 1], [-1, 0]] as const;
 export const KINDS = { slide: '滑动纸片', pivot: '转动纸片', fixed: '固定房间' } as const;
-export const mod4 = (n: number) => ((n % 4) + 4) % 4;
+const mod4 = (n: number) => ((n % 4) + 4) % 4;
 
 export function initialState(level: Level): State {
   return { poses: Object.fromEntries(level.rooms.map((r) => [r.id, { ...r.initial }])), player: { ...level.start } };
@@ -104,3 +104,4 @@ export function stateKey(level: Level, state: State): string {
     return `${p.x},${p.y},${mod4(p.turn)}`;
   }).join('|') + `|${state.player.room},${state.player.chamber}`;
 }
+

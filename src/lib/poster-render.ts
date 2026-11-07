@@ -141,9 +141,12 @@ export async function renderFavoritePoster(data: {
  *
  * **可见性判定不在这里** —— 调用方（OG 路由）必须先过 `getExternallyVisibleBlog`，
  * 这里不做第二道防线（同 renderFavoritePoster 的纪律）。日期走 `ymd()`，与站内口径一致。
+ *
+ * 入参里**没有文章 id**：分享卡的文案全部来自 title/description/author/date，卡片上没有
+ * 「文章编号」这一格（编号只属于用户主动保存的物料）。曾经收一个 `id` 却从没传给
+ * buildBlogOgSvg，读代码的人会以为卡片上印了它。
  */
 export async function renderBlogOg(blog: {
-  id: string;
   title: string;
   description: string;
   author: string;

@@ -176,4 +176,10 @@ export interface SoundHandle {
   /** 界面点击（按钮 / 打开关卡选择）。 */
   ui(): void;
   setMuted(muted: boolean): void;
+  /**
+   * 释放底层 AudioContext。容器卸载时必须调 —— 浏览器对同时存在的 AudioContext
+   * 数量有限制（Chrome 约 6 个），反复进出这一页会让音效在某个时刻整体哑掉，
+   * 而且不报任何错。
+   */
+  dispose(): void;
 }
