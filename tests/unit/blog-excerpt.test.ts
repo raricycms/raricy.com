@@ -11,7 +11,13 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { describe, expect, it } from 'vitest';
-import { blogExcerpt, buildBlogExcerpt } from '@/lib/blog-excerpt';
+import {
+  blogExcerpt,
+  buildBlogExcerpt,
+  __blogExcerptCacheSizeForTests,
+  __BLOG_EXCERPT_CACHE_LIMIT_FOR_TESTS,
+  __clearBlogExcerptCacheForTests,
+} from '@/lib/blog-excerpt';
 
 describe('blogExcerpt：Markdown 标记与噪音清除', () => {
   it('围栏代码块整段丢掉，未闭合的丢到文末', () => {
@@ -190,5 +196,32 @@ describe('buildBlogExcerpt：按格式分派', () => {
     expect(buildBlogExcerpt(md, 'markdown')).toBe(blogExcerpt(md));
     expect(buildBlogExcerpt(md, null)).toBe(blogExcerpt(md));
     expect(buildBlogExcerpt(md, undefined)).toBe(blogExcerpt(md));
+  });
+
+  // R3-133：主页请求里每张高卡片都同步编译一次，隔离语料实测 10 张 8KB 卡片
+  // ≈ 212ms。摘要纯函数、键内含正文，因此进程内缓存只省重复编译、不改变读时现算。
+  it('★ 相同正文只编译一次，结果不变；不同正文各自入缓存', () => {
+    __clearBlogExcerptCacheForTests();
+    const a = buildBlogExcerpt('<card>甲</card>', 'reactive');
+    const b = buildBlogExcerpt('<card>甲</card>', 'reactive');
+    expect(a).toBe('甲');
+    expect(b).toBe(a);
+    expect(__blogExcerptCacheSizeForTests()).toBe(1);
+    buildBlogExcerpt('<card>乙</card>', 'reactive');
+    expect(__blogExcerptCacheSizeForTests()).toBe(2);
+    // max 不同是不同结果，必须分开缓存（键含 max）
+    buildBlogExcerpt('abcdef', 'markdown', 3);
+    expect(__blogExcerptCacheSizeForTests()).toBe(3);
+    expect(buildBlogExcerpt('abcdef', 'markdown', 3)).toBe('abc…');
+  });
+
+  it('★ 缓存有上限：超出后淘汰最老条目，不无界增长', () => {
+    __clearBlogExcerptCacheForTests();
+    for (let i = 0; i < __BLOG_EXCERPT_CACHE_LIMIT_FOR_TESTS + 5; i++) {
+      buildBlogExcerpt(`<card>第 ${i} 张</card>`, 'reactive');
+    }
+    expect(__blogExcerptCacheSizeForTests()).toBe(__BLOG_EXCERPT_CACHE_LIMIT_FOR_TESTS);
+    // 淘汰后仍能算对（不是返回被吞掉的旧值）
+    expect(buildBlogExcerpt('<card>新的</card>', 'reactive')).toBe('新的');
   });
 });

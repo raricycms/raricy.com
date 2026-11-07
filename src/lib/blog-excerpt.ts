@@ -295,5 +295,40 @@ export function buildBlogExcerpt(
     // 未知格式不猜；保留旧摘要器作为**格式未知**的兜底，而不是兼容警告的出口。
     return blogExcerpt(content, max);
   }
-  return reactiveExcerpt(content, format, max);
+
+  // 【进程内缓存】编译是这里的大头：隔离语料实测（2026-11-07，R3-133）单篇
+  // 1.6KB ≈ 5ms、8KB ≈ 17ms、33KB ≈ 76ms；主页同请求 10 张高卡片顺序编译
+  // ≈ 43ms（小）/ 212ms（8KB 级）。摘要是**纯函数**（正文 → 一行文本），
+  // 键里带 content，正文改了下一次请求自然是新键，不会出现「名片上是旧摘要」
+  // 的洞；所以缓存只是省重复编译，不改变「现算、不落表」的口径。
+  // 上限是防无界增长的墙：主页每次请求的卡片集合不同，键会持续累积。Map 的
+  // 插入顺序天然就是 LRU 的近似（命中不回写，只淘汰最老的一条），够用且无依赖。
+  const key = `${format}\u0000${max}\u0000${content}`;
+  const hit = excerptCache.get(key);
+  if (hit !== undefined) return hit;
+  const out = reactiveExcerpt(content, format, max);
+  if (excerptCache.size >= EXCERPT_CACHE_LIMIT) {
+    const oldest = excerptCache.keys().next().value;
+    if (oldest !== undefined) excerptCache.delete(oldest);
+  }
+  excerptCache.set(key, out);
+  return out;
 }
+
+/** 摘要缓存条目上限。按最坏 33KB 正文 × 200 ≈ 6.6MB，单进程可接受。 */
+const EXCERPT_CACHE_LIMIT = 200;
+const excerptCache = new Map<string, string>();
+
+/** 测试用：清空摘要缓存，避免用例之间互相命中。 */
+export function __clearBlogExcerptCacheForTests(): void {
+  excerptCache.clear();
+}
+
+/** 测试用：当前缓存条目数（校验上限与淘汰行为）。 */
+export function __blogExcerptCacheSizeForTests(): number {
+  return excerptCache.size;
+}
+
+/** 测试用：缓存上限常量，避免用例里重复魔法数字。 */
+export const __BLOG_EXCERPT_CACHE_LIMIT_FOR_TESTS = EXCERPT_CACHE_LIMIT;
+
