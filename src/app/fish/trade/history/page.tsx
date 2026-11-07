@@ -14,6 +14,10 @@ export const metadata={title:'练手盘交易记录',robots:{index:false,follow:
 // 这里是窄栏分页明细 —— 方向用文字、倍数恒显示、状态用「平仓」、不带结清价、秒级时间。
 export default async function TradeHistory({searchParams}:{searchParams:Promise<{page?:string}>}){
   const user=await getCurrentUser();if(!user)redirect(loginUrlWithNext('/fish/trade/history'));
+  // 与 /fish/trade（:47）、/fish/trade/stats（:61）同一道归档门：账号归档期间整站停用，
+  // 这三个入口一律 403；恢复归档后无需特殊处理，原有条件（登录 + 专注模式口径）自然放行，
+  // 既有交易记录仍在库里可查（归档处置不动账目与历史，见 P04）。
+  if(user.archivedAt)forbidden();
   if(isFocusFishTradeBlocked(user))forbidden();
   const sp=await searchParams;const page=Math.max(1,parseInt(sp.page||'1',10)||1);
   const [rows,total]=await Promise.all([listSettledPositions(user.id,20,(page-1)*20),settledPositionCount(user.id)]);
