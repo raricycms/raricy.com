@@ -210,10 +210,10 @@ export async function listOwnFavorites(
       title: true,
       isPublic: true,
       createdAt: true,
-      _count: { select: { items: { where: { deleted: false } } } },
+      _count: { select: { items: { where: { deleted: false, blog: { ignore: false } } } } },
       // 只在需要时带上归属判断，避免无谓的 join
       items: blogId
-        ? { where: { blogId, deleted: false }, select: { id: true }, take: 1 }
+        ? { where: { blogId, deleted: false, blog: { ignore: false } }, select: { id: true }, take: 1 }
         : false,
     },
   });
@@ -402,6 +402,19 @@ async function countItems(favoriteId: string): Promise<number> {
 }
 
 /**
+ * **展示口径**的篇数：与 `loadItems` 同源（未软删的条目 + 未软删的博客）。
+ *
+ * 产品决定 R3-239：列表 / 详情 / 相关 API 显示「当前查看者能打开的文章数」。
+ * ⚠️ 容量上限 FAVORITE_ITEMS_MAX 仍用 `countItems`（只数未删记录）—— 上限语义不变：
+ * 博客被软删只是从展示里消失，不把收藏记录腾空，仍占着上限（与「保留收藏记录」一致）。
+ */
+async function countVisibleItems(favoriteId: string): Promise<number> {
+  return prisma.favoriteItem.count({
+    where: { favoriteId, deleted: false, blog: { ignore: false } },
+  });
+}
+
+/**
  * 把一批博客挂到收藏夹上（复制 / 导入 / 单条加入共用这一份实现）。
  *
  * ★ upsert 而不是 createMany({ skipDuplicates: true }) ★
@@ -450,14 +463,15 @@ export async function addItem(
     where: { favoriteId: id, blogId, deleted: false },
     select: { id: true },
   });
-  if (already) return { ok: true, itemCount: await countItems(id) };
+  if (already) return { ok: true, itemCount: await countVisibleItems(id) };
 
+  // 上限仍按「未删记录数」判（上限语义不变，见 countVisibleItems 注释）。
   if ((await countItems(id)) >= FAVORITE_ITEMS_MAX) {
     return { ok: false, reason: 'itemsLimit' };
   }
 
   await attachItems(id, [blogId]);
-  return { ok: true, itemCount: await countItems(id) };
+  return { ok: true, itemCount: await countVisibleItems(id) };
 }
 
 /** 把一篇博客移出收藏夹（软删条目）。 */
@@ -476,7 +490,7 @@ export async function removeItem(
     where: { favoriteId: id, blogId, deleted: false },
     data: { deleted: true, deletedAt: nowForDb() },
   });
-  return { ok: true, itemCount: await countItems(id) };
+  return { ok: true, itemCount: await countVisibleItems(id) };
 }
 
 // ── 复制（快照）──────────────────────────────────────────────────────────────

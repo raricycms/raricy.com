@@ -180,6 +180,28 @@ describe('listOwnFavorites / isBlogFavorited', () => {
     expect(list[0].itemCount).toBe(0);
   });
 
+  it('itemCount 与「可打开文章」同源：博客软删后从篇数中消失，收藏记录保留（R3-239）', async () => {
+    const u = await makeUser();
+    const alive = await makeBlog({ authorId: u.id });
+    const dead = await makeBlog({ authorId: u.id });
+    const fav = await mk(u.id, '夹', false);
+    await addItem(fav.id, u.id, alive.id);
+    await addItem(fav.id, u.id, dead.id);
+    expect((await listOwnFavorites(u.id))[0].itemCount).toBe(2);
+
+    // 与 loadItems 同判据：blog.ignore=true 即从展示中消失。
+    await prisma.blog.update({ where: { id: dead.id }, data: { ignore: true } });
+    expect((await listOwnFavorites(u.id))[0].itemCount).toBe(1);
+    const own = await getOwnFavorite(fav.id, u.id);
+    expect(own.ok && own.favorite.items.map((i) => i.blogId)).toEqual([alive.id]);
+
+    // add/remove 的返回值也是展示口径；容量上限仍按未删记录数判（这里不因展示口径变化）。
+    const removed = await removeItem(fav.id, u.id, dead.id);
+    expect(removed.ok && removed.itemCount).toBe(1);
+    const readded = await addItem(fav.id, u.id, alive.id); // 幂等
+    expect(readded.ok && readded.itemCount).toBe(1);
+  });
+
   it('传 blogId 时给出 contains（选择器一次拿全）', async () => {
     const u = await makeUser();
     const blog = await makeBlog({ authorId: u.id });
