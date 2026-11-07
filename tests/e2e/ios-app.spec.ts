@@ -3,7 +3,8 @@
 //
 // 覆盖六件事（都是「源码里看着对、只有真浏览器才说得清」的）：
 //   1. 根文档带 manifest + Apple 主屏元数据，且声明的图标**真的取得回来**；
-//   2. 触屏下文本字段字号 ≥16px（否则 iOS 聚焦会强制放大整页），桌面值不变；
+//   2. 触屏下文本字段字号 ≥16px（否则 iOS 聚焦会强制放大整页）——只留登录页用户名一个
+//      代表值，其余字段的字号属固定实现断言，已按测试纪律退出（R3-732）；
 //   3. standalone（已从主屏图标打开）时安装引导隐藏；
 //   4. 文章页「返回上页」在没有上一页时落到站内列表，而不是变成死键。
 //   5. 主题色跟随偏好，且没有重复声明；
@@ -92,42 +93,22 @@ test('根文档：manifest、Apple 主屏元数据与图标都齐', async ({ pag
   );
 });
 
-test('触屏下文本字段字号 ≥16px，桌面保持原值', async ({ page }) => {
-  // 通用字段（登录页用户名 / 密码）
+test('触屏下文本字段字号 ≥16px（只留登录页用户名这一代表值）', async ({ page }) => {
+  // 【为什么只留一个】iOS 聚焦缩放的规则由全局媒体查询统一给出；逐字段量计算字号属
+  // 「固定实现断言」，按 AGENTS「纯样式不新增/不运行外观守卫、已有此类检查逐步清理」
+  // 只保留登录页用户名这一个代表值（R3-732）。字段有没有、能不能输入由各页自己的
+  // 功能用例覆盖，不靠字号量出来。
   await page.goto('/login');
   const coarse = await page.evaluate((q: string) => window.matchMedia(q).matches, TOUCH_QUERY);
-
-  const check = (px: number | null, label: string, required = true) => {
-    if (px === null) {
-      if (required) expect(px, `${label}：没渲染出来（选择器变了？）`).not.toBeNull();
-      return;
-    }
-    if (coarse) {
-      expect(
-        px,
-        `${label} 在触屏下必须 ≥16px，否则 iOS 聚焦时会强制把整页放大`
-      ).toBeGreaterThanOrEqual(16);
-    } else {
-      expect(px, `${label} 在桌面下的字号不该被改动`).toBeLessThan(16);
-    }
-  };
-
-  check(await fontPx(page, '#username'), '登录页用户名');
-  check(await fontPx(page, '#password'), '登录页密码');
-
-  await loginViaApi(page, SEED_USERS.core.username);
-
-  // 讨论 / 评论共用的富文本输入区（文章页的评论框）
-  await page.goto(BLOG_URL);
-  check(await fontPx(page, '.comment-composer__input'), '评论输入区');
-
-  // 全站共用类搜索框
-  await page.goto('/blog');
-  check(await fontPx(page, '.search-input'), '博客搜索框');
-
-  // 编辑器（CodeMirror）的实际 contenteditable 字号。
-  await page.goto('/blog/upload');
-  check(await fontPx(page, '.md-editor .cm-content'), '编辑器源码区（CodeMirror）');
+  const px = await fontPx(page, '#username');
+  expect(px, '登录页用户名：没渲染出来（选择器变了？）').not.toBeNull();
+  if (coarse) {
+    expect(px, '登录页用户名在触屏下必须 ≥16px，否则 iOS 聚焦时会强制把整页放大').toBeGreaterThanOrEqual(
+      16
+    );
+  } else {
+    expect(px, '登录页用户名在桌面下的字号不该被改动').toBeLessThan(16);
+  }
 });
 
 test('standalone 下不渲染「添加到主屏幕」引导', async ({ page }) => {
