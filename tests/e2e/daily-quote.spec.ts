@@ -253,7 +253,12 @@ test('零博客 core 可直接查看与投稿（P02 取消发文门槛），删�
   await page.goto('/quotes/submissions');
   await expect(page.getByRole('form', { name: '提交一言' })).toBeVisible();
   const submitted = await page.request.post('/api/daily-quotes/submissions', {
-    data: { content: '零博客投稿' + uniqueTag().slice(0, 4) },
+    data: {
+      content: `零博客投稿${uniqueTag()}`,
+      category: '治愈',
+      signature: 'nickname',
+      source_type: 'original',
+    },
   });
   expect(submitted.status(), await submitted.text()).toBe(200);
   expect((await submitted.json()).code).toBe(200);
