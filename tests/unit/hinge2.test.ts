@@ -1,7 +1,7 @@
-import { describe, expect, it } from 'vitest';
+﻿import { describe, expect, it } from 'vitest';
 import { attempt, graph, initialState, isWon, position, replay, route, type Action, type State } from '../../src/games/hinge2/engine';
 import { LEVELS, levelById } from '../../src/games/hinge2/levels';
-import { readProgress } from '../../src/games/hinge2/progress';
+import { freshProgress, readProgress, recordCompletion, type Progress } from '../../src/games/hinge2/progress';
 import { HINGE2_SOLUTIONS } from '../helpers/hinge2-solutions';
 
 describe('合页 II：空间变换与道路', () => {
@@ -79,4 +79,32 @@ describe('合页 II：空间变换与道路', () => {
     expect(saved.runs.fold).toBeUndefined();
     expect(readProgress('{broken').runs).toEqual({});
   });
+
+  it('完成记录与「本局步骤」分开存：通关后重开 / 撤销，标记仍在（P06）', () => {
+    // 重开当前关卡 = runs 清空；撤销 = runs 变短。两种情况都不该抹掉已通关记录。
+    const cleared = readProgress(JSON.stringify({ selected: 'turn', runs: {}, completed: ['turn'] }));
+    expect(cleared.runs.turn).toBeUndefined();
+    expect(cleared.completed).toContain('turn');
+    // 旧版本没有 completed 字段：按「这段历史真的通关了」补回来（迁移不清零）。
+    const legacy = readProgress(JSON.stringify({ selected: 'turn', runs: { turn: HINGE2_SOLUTIONS.turn } }));
+    expect(legacy.completed).toEqual(['turn']);
+    // 只走了几步、没通关的历史不产生完成记录。
+    const partial = readProgress(JSON.stringify({ selected: 'turn', runs: { turn: HINGE2_SOLUTIONS.turn.slice(0, 1) } }));
+    expect(partial.completed).toEqual([]);
+    // 伪造的 completed 条目会被丢掉（只收存在的关卡 id）。
+    const forged = readProgress(JSON.stringify({ runs: {}, completed: ['turn', 'missing', 42] }));
+    expect(forged.completed).toEqual(['turn']);
+  });
+
+  it('recordCompletion 只增不删、不碰本局步骤、重复调用不产生重复项', () => {
+    const run: Action[] = [{ type: 'turn', amount: 1 }];
+    const base: Progress = { ...freshProgress(), runs: { turn: run } };
+    const once = recordCompletion(base, 'turn');
+    expect(once.completed).toEqual(['turn']);
+    expect(once.runs).toBe(base.runs);
+    expect(recordCompletion(once, 'turn')).toBe(once);
+    expect(recordCompletion(once, 'missing').completed).toEqual(['turn']);
+  });
 });
+
+

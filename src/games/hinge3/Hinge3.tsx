@@ -5,7 +5,7 @@ import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
 import { ArrowLeft, ArrowRight, Check, ChevronDown, FlipHorizontal2, Fingerprint, FoldHorizontal, Lightbulb, RotateCcw, Undo2, Redo2 } from 'lucide-react';
 import { attempt, goalStatus, initialState, isWon, multiply, reflectionMatrix, replay, type Action, type Face, type State } from './engine';
 import { LEVELS, levelById } from './levels';
-import { freshProgress, readProgress, SAVE_KEY, type Progress } from './progress';
+import { freshProgress, readProgress, recordCompletion, SAVE_KEY, type Progress } from './progress';
 import Paper, { Glyph } from './Paper';
 
 const EMPTY: Action[] = [];
@@ -20,7 +20,9 @@ export default function Hinge3() {
   const state = useMemo(() => replay(level, actions) ?? initialState(level), [level, actions]);
   const crease = level.creases.find((item) => item.id === (state.fold?.crease ?? selection)) ?? level.creases[0];
   const won = isWon(level, state), future = redos[level.id] ?? EMPTY;
-  const completed = LEVELS.filter((item) => isWon(item, replay(item, progress.runs[item.id] ?? EMPTY) ?? initialState(item)));
+  // 完成记录来自 progress 的独立集合（不从 runs 现场推导）：撤销 / 重开之后「通关过」
+  // 仍成立，标记不跟着历史一起消失。
+  const completed = LEVELS.filter((item) => progress.completed.includes(item.id));
   const matched = level.goals.filter((goal) => goalStatus(goal, state) === 'matched').length;
 
   useEffect(() => {
@@ -63,7 +65,11 @@ export default function Hinge3() {
     if (action.type === 'fold') setSelection(action.crease);
     setNotice(action.type === 'press' ? result.printed ? `已留下 ${result.printed} 处新印痕，展开查看。` : '没有墨接触到完整纸面。展开后可以换一条折痕。' : '');
     animate(result.state);
-    setProgress((p) => ({ ...p, runs: { ...p.runs, [level.id]: [...actions, action] } }));
+    setProgress((p) => {
+      const next = { ...p, runs: { ...p.runs, [level.id]: [...actions, action] } };
+      // 通关与「这一局走到哪」分开记：撤销 / 重开只改 runs，不动 completed。
+      return isWon(level, result.state) ? recordCompletion(next, level.id) : next;
+    });
     setRedos((r) => ({ ...r, [level.id]: [] }));
   }
   function undo() {
@@ -77,7 +83,12 @@ export default function Hinge3() {
     if (!future.length || locked.current || dragging) return;
     const action = future[future.length - 1], next = attempt(level, state, action).state;
     if (next.fold) setSelection(next.fold.crease);
-    animate(next); setProgress((p) => ({ ...p, runs: { ...p.runs, [level.id]: [...actions, action] } }));
+    animate(next);
+    setProgress((p) => {
+      const progressed = { ...p, runs: { ...p.runs, [level.id]: [...actions, action] } };
+      // 重做也可能把这一局走成通关 —— 与 perform 同一处补完成记录。
+      return isWon(level, next) ? recordCompletion(progressed, level.id) : progressed;
+    });
     setRedos((r) => ({ ...r, [level.id]: future.slice(0, -1) })); setNotice('');
   }
   function reset() {

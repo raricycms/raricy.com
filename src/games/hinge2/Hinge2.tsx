@@ -5,7 +5,7 @@ import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
 import { ArrowLeft, ArrowRight, Check, ChevronDown, Columns2, Lightbulb, RotateCcw, RotateCw, Undo2, Redo2, MoveUpRight } from 'lucide-react';
 import { attempt, graph, initialState, isWon, poseOf, position, replay, route, transform, type Action, type Point, type Pose, type State } from './engine';
 import { LEVELS, levelById } from './levels';
-import { freshProgress, readProgress, SAVE_KEY, type Progress } from './progress';
+import { freshProgress, readProgress, recordCompletion, SAVE_KEY, type Progress } from './progress';
 import Scene, { project } from './Scene';
 
 const EMPTY: Action[] = [];
@@ -33,7 +33,9 @@ export default function Hinge2() {
   const won = isWon(level, state);
   const future = redos[level.id] ?? EMPTY;
   const seals = level.nodes.filter((node) => node.seal);
-  const completed = LEVELS.filter((item) => isWon(item, replay(item, progress.runs[item.id] ?? EMPTY) ?? initialState(item)));
+  // 完成记录来自 progress 的独立集合（不是从 runs 现场推导）：撤销 / 重开当前关卡之后
+  // 「通关过」这个事实仍然成立，标记不该跟着历史一起消失。
+  const completed = LEVELS.filter((item) => progress.completed.includes(item.id));
   const reachable = level.nodes.filter((node) => node.id !== state.player && route(level, state, node.id));
 
   function snap(nextLevel = level, nextState = state) {
@@ -94,7 +96,11 @@ export default function Hinge2() {
     setNotice(result.error ?? '');
     if (result.state === state) return;
     animate(result.state, action);
-    setProgress((p) => ({ ...p, runs: { ...p.runs, [level.id]: [...actions, action] } }));
+    setProgress((p) => {
+      const next = { ...p, runs: { ...p.runs, [level.id]: [...actions, action] } };
+      // 通关与「这一局走到哪」分开记：撤销 / 重开只改 runs，不动 completed。
+      return isWon(level, result.state) ? recordCompletion(next, level.id) : next;
+    });
     setRedos((r) => ({ ...r, [level.id]: [] })); setDestinations(false);
   }
   function undo() {
@@ -107,8 +113,13 @@ export default function Hinge2() {
   function redo() {
     if (!future.length || locked.current) return;
     const action = future[future.length - 1];
-    animate(attempt(level, state, action).state, action);
-    setProgress((p) => ({ ...p, runs: { ...p.runs, [level.id]: [...actions, action] } }));
+    const next = attempt(level, state, action).state;
+    animate(next, action);
+    setProgress((p) => {
+      const progressed = { ...p, runs: { ...p.runs, [level.id]: [...actions, action] } };
+      // 重做也可能把这一局走成通关 —— 与 perform 同一处补完成记录。
+      return isWon(level, next) ? recordCompletion(progressed, level.id) : progressed;
+    });
     setRedos((r) => ({ ...r, [level.id]: future.slice(0, -1) })); setNotice('');
   }
   function reset() {

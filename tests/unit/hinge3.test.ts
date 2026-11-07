@@ -1,7 +1,7 @@
-import { describe, expect, it } from 'vitest';
-import { attempt, clippedHalf, flapMatrix, goalStatus, hasPaper, initialState, isWon, markKey, multiply, reflected, reflectionMatrix, replay, signedDistance, transfers, type Mark } from '../../src/games/hinge3/engine';
+﻿import { describe, expect, it } from 'vitest';
+import { attempt, clippedHalf, flapMatrix, goalStatus, hasPaper, initialState, isWon, markKey, multiply, reflected, reflectionMatrix, replay, signedDistance, transfers, type Action, type Mark } from '../../src/games/hinge3/engine';
 import { LEVELS, levelById } from '../../src/games/hinge3/levels';
-import { readProgress } from '../../src/games/hinge3/progress';
+import { freshProgress, readProgress, recordCompletion, type Progress } from '../../src/games/hinge3/progress';
 import { HINGE3_SOLUTIONS } from '../helpers/hinge3-solutions';
 
 describe('合页 III：接触、镜像与两张材质面', () => {
@@ -89,4 +89,30 @@ describe('合页 III：接触、镜像与两张材质面', () => {
     }
     expect(markKey(LEVELS[0].ink[0])).not.toBe(markKey(LEVELS[0].goals[0]));
   });
+
+  it('完成记录与「本局步骤」分开存：通关后重开 / 撤销，标记仍在（P06）', () => {
+    const cleared = readProgress(JSON.stringify({ selected: 'window', runs: {}, completed: ['window'] }));
+    expect(cleared.runs.window).toBeUndefined();
+    expect(cleared.completed).toContain('window');
+    // 旧存档没有 completed：按历史能否证明通关补回记录（迁移不清零）。
+    const legacy = readProgress(JSON.stringify({ selected: 'window', runs: { window: HINGE3_SOLUTIONS.window } }));
+    expect(legacy.completed).toEqual(['window']);
+    const partial = readProgress(JSON.stringify({ selected: 'window', runs: { window: HINGE3_SOLUTIONS.window.slice(0, 1) } }));
+    expect(partial.completed).toEqual([]);
+    const forged = readProgress(JSON.stringify({ runs: {}, completed: ['window', 'missing', 42] }));
+    expect(forged.completed).toEqual(['window']);
+  });
+
+  it('recordCompletion 只增不删、不碰本局步骤、重复调用不产生重复项', () => {
+    const run: Action[] = [{ type: 'flip' }];
+    const base: Progress = { ...freshProgress(), runs: { first: run } };
+    const once = recordCompletion(base, 'first');
+    expect(once.completed).toEqual(['first']);
+    expect(once.runs).toBe(base.runs);
+    expect(recordCompletion(once, 'first')).toBe(once);
+    expect(recordCompletion(once, 'missing').completed).toEqual(['first']);
+  });
 });
+
+
+
