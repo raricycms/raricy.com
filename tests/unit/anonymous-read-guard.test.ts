@@ -90,6 +90,10 @@ const PUBLIC_READ_ROUTES: Record<string, string> = {
   // 请求由服务端代发，出站侧有 SSRF 判据（src/lib/dev-tools/net-guard.ts）、只读头
   // 不读 body、按 IP 限频（RULES.toolHeaderFetchPerIp）。
   '/api/tool/http-headers': '开发者工具：只回目标站点的响应头，不含本站用户数据；出站有 SSRF 判据与按 IP 限频',
+  // 退役的网页发码入口（P01，2026-11-07）：任何人访问都得到同一个 410 Gone，
+  // 不读库、不返回邀请码、不区分会话。留在这里是因为它**没有会话守卫**，
+  // 不是「匿名可以读到东西」—— 将来若有人把它改回有副作用的读口，这条要删掉并加守卫。
+  '/zhh': '已退役的网页发码入口：固定 410 Gone，不读库、不返回任何用户数据',
 };
 
 /**
