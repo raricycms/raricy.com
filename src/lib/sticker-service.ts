@@ -188,7 +188,10 @@ function fullScan(root: string): Manifest {
       //    并进去会把「用户.png」这种素材也一起吞掉。
       // ⚠️ 加第三个保留名时要与 sticker-refs.ts 的 RESERVED_CARD_COLLECTIONS 一起改。
       .filter((e) => e.name !== USER_CARD_COLLECTION && e.name !== AUDIO_REF_COLLECTION)
-      .map((e) => e.name);
+      .map((e) => e.name)
+      // 排序只为**确定性**：下面同键碰撞的取舍依赖「谁先扫到」，readdir 顺序是文件系统
+      // 实现细节（NTFS/ext4 不同），不能当契约。排序后行为可复现，回归用例才钉得住。
+      .sort();
   } catch {
     dirNames = []; // 根目录不存在 = 没有素材，不是错误
   }
@@ -246,10 +249,14 @@ function fullScan(root: string): Manifest {
         mime,
         ignored,
       };
-      // 键做 NFC 归一化（见 sticker-refs.ts 的 stickerKey）；同键碰撞时先到先得 ——
-      // 只在「两个文件仅差归一化形式」时发生，属于站长的命名失误，不覆盖已注册的。
+      // 键做 NFC 归一化（见 sticker-refs.ts 的 stickerKey）；同键碰撞时**可见优先** ——
+      // 只在「两个文件名仅差归一化形式」时发生，属于站长的命名失误，不覆盖已注册的。
+      // ⚠️ 不能写成「先到先得」：被 ignore 的合集若先扫到，会占住 byKey，面板仍列出
+      //    可见合集的这张图，但 resolveSticker 会按命中项的 ignored 拦成 null ——
+      //    挑得出、渲染不出来（R3-142，隔离素材目录实测：NFD 隐藏合集先扫到即复现）。
       const key = stickerKey(collection, name);
-      if (!byKey.has(key)) byKey.set(key, entry);
+      const prev = byKey.get(key);
+      if (!prev || (prev.ignored && !ignored)) byKey.set(key, entry);
       // 走 stickerUrl()，不自己拼 —— 前端拼 token、后端拼 URL 必须只有一处口径
       if (!ignored) stickers.push({ name, url: stickerUrl(collection, name) });
     }

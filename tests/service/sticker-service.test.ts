@@ -127,6 +127,22 @@ describe('sticker-service 扫盘', () => {
     expect(resolveSticker('公开', '图')).not.toBeNull();
   });
 
+  it('★ 同键碰撞（仅 Unicode 归一化形式不同）：隐藏合集不得压掉可见合集（R3-142）', () => {
+    // 两个目录名只差 NFC/NFD，去扩展名的基名也相同 → 归一化后同一个 stickerKey。
+    // fullScan 按目录名排序，`cafe\u0301`（NFD）先于 `café`（NFC）扫到；修复前它会先占住
+    // byKey，面板仍列出可见合集的图，但 resolveSticker 命中 ignored 项被拦成 null。
+    write('cafe\u0301/x.png', PNG);
+    write('cafe\u0301/info.json', JSON.stringify({ ignore: true }));
+    write('café/x.png', PNG); // NFC
+    write('café/info.json', JSON.stringify({ title: '可见合集' }));
+
+    expect(listStickerCollections().map((c) => c.key)).toEqual(['café']);
+    // 两种写法归一化到同一个键，都必须拿到**可见**那张（不是被隐藏的）
+    expect(resolveSticker('café', 'x')).not.toBeNull();
+    expect(resolveSticker('cafe\u0301', 'x')).not.toBeNull();
+    expect(resolveSticker('café', 'x')?.absPath).toBe(path.join(TEST_STICKERS_DIR, 'café', 'x.png'));
+  });
+
   it('★ `用户` 是保留合集名：列表里没有，查表也取不到（名片语法占着它）', () => {
     // `[@用户/张三]` 与 `[@合集/表情]` 形状同构，所以这一格归用户名片（见 user-refs.ts）。
     // 不在这里排掉的话，面板会给出一个「挑得出、但一渲染就变成别人的名片」的合集 ——
