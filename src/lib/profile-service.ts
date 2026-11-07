@@ -126,6 +126,29 @@ async function computeStats(userId: string): Promise<ProfileStats> {
   return { blogs, likes: likeAgg._sum.likesCount ?? 0, checkins };
 }
 
+/**
+ * 公开统计的**唯一来源**（R3-546）：/u/[id] 的统计块与分享画报都必须读这一份。
+ *
+ * 口径：文章只计匿名访客可公开列举的（`EXTERNAL_VISIBLE_BLOG_WHERE`：public / link），
+ * 获赞只累加这些文章，签到是累计天数。画报自己另查一套 = 两边数字分叉的活口。
+ */
+export async function getPublicProfileStats(userId: string): Promise<ProfileStats> {
+  return computeStats(userId);
+}
+
+/**
+ * 该用户的公开主页是否**已公开展示签到数字**（R3-546）。
+ *
+ * 主页只有在用户亲手放了统计块 / 签到块时才向访客展示签到；默认布局（只有最近文章）
+ * 不展示。画报据此决定是否画「签到」格 —— 主页不公开的数字，画报也不带出去。
+ */
+export async function isProfileCheckinPublic(userId: string): Promise<boolean> {
+  const hit = await prisma.profileBlock.count({
+    where: { userId, deleted: false, kind: { in: ['stats', 'checkin'] } },
+  });
+  return hit > 0;
+}
+
 async function resolveViews(
   userId: string,
   blocks: StoredBlock[],

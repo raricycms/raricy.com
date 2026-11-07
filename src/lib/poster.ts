@@ -513,7 +513,8 @@ export interface ProfilePosterData {
   joinedYear: string;
   blogs: number;
   likes: number;
-  comments: number;
+  /** 累计签到天数。undefined = 主页没有公开展示签到，画报不画这一格（R3-546）。 */
+  checkins?: number;
   /** 二维码内容（绝对 URL）。 */
   qrText: string;
   /** data:image/png;base64,... */
@@ -552,20 +553,23 @@ export function buildProfilePosterSvg(data: ProfilePosterData): string {
     cursor += 40;
   }
 
-  // 三格统计
+  // 统计格与 /u/[id] 的公开统计同一份来源与项目（R3-546）：文章 / 获赞 / 签到。
+  // 签到只在主页已公开展示时才画；否则只有两格（不凭空带出主页没有的数字）。
   const statsTop = cursor;
   const statsBottom = statsTop + 80;
   const cells: Array<[number, string]> = [
     [data.blogs, '文章'],
     [data.likes, '获赞'],
-    [data.comments, '评论'],
   ];
+  if (data.checkins !== undefined) cells.push([data.checkins, '签到']);
   cells.forEach(([value, label], i) => {
-    const x = cx + (i - 1) * 200;
+    // 以中轴为基准均分：2 格 → ±100，3 格 → -200 / 0 / +200，视觉上始终居中。
+    const x = cx + (i - (cells.length - 1) / 2) * 200;
     body.push(text(x, statsTop + 34, String(value), 36, c.title, 700));
     body.push(text(x, statsTop + 62, label, 20, c.muted));
   });
-  for (const dx of [-100, 100]) {
+  for (let i = 1; i < cells.length; i += 1) {
+    const dx = (i - cells.length / 2) * 200;
     body.push(
       `<line x1="${cx + dx}" y1="${statsTop + 6}" x2="${cx + dx}" y2="${statsBottom - 6}" stroke="${c.faint}" stroke-width="1" stroke-opacity="0.5"/>`
     );

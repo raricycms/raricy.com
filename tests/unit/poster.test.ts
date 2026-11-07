@@ -64,7 +64,7 @@ function profile(overrides: Partial<Parameters<typeof buildProfilePosterSvg>[0]>
     joinedYear: '2023',
     blogs: 42,
     likes: 1287,
-    comments: 356,
+    checkins: 356,
     qrText: 'https://raricy.com/u/u_e2e_owner',
     avatarDataUri: AVATAR,
     ...overrides,
@@ -204,6 +204,21 @@ describe('版式', () => {
     const svg = profile({ bio: '', joinedYear: '' });
     expect(svg).not.toContain('这个人还没有写简介');
     expect(svg).not.toContain('注册于');
+  });
+
+  it('统计格与 /u 公开统计同项目：文章 / 获赞 / 签到；签到未公开时只有两格', () => {
+    // 产品决定 R3-546：画报与公开主页共用 profile-service 的统计来源与项目。
+    const withCheckin = profile();
+    expect(withCheckin).toContain('文章');
+    expect(withCheckin).toContain('获赞');
+    expect(withCheckin).toContain('签到');
+    expect(withCheckin).not.toContain('评论');
+
+    // 主页没公开展示签到（默认布局只有文章块）→ 画报不带这一格。
+    const withoutCheckin = profile({ checkins: undefined });
+    expect(withoutCheckin).toContain('文章');
+    expect(withoutCheckin).toContain('获赞');
+    expect(withoutCheckin).not.toContain('签到');
   });
 
   it('整幅满出血：四角必须不透明（图片是方的，圆角只会把角抠漏）', async () => {

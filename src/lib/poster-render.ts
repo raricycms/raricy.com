@@ -23,6 +23,7 @@ import {
   buildFavoritePosterSvg,
   buildProfilePosterSvg,
 } from '@/lib/poster';
+import { getPublicProfileStats, isProfileCheckinPublic } from '@/lib/profile-service';
 
 /** 逻辑坐标 → 实际像素的倍率（2× 高清）。 */
 const POSTER_DENSITY = 144;
@@ -56,7 +57,10 @@ function rasterize(svg: string): Promise<Buffer> {
 
 /**
  * 个人主页画报。用户不存在 → null（路由据此 404）。
- * 统计口径与 /u/[id] 页面上的三格完全一致（同样是 ignore=false + 未删评论）。
+ *
+ * 统计口径与 /u/[id] 页面上的统计块**同一份来源**（profile-service 的
+ * getPublicProfileStats，R3-546）：文章只计匿名可公开列举的、获赞只累加这些文章。
+ * 签到格只在主页已公开展示签到时出现 —— 主页不公开的数字，画报也不带出去。
  */
 export async function renderProfilePoster(userId: string): Promise<Buffer | null> {
   const user = await prisma.user.findUnique({
@@ -65,15 +69,9 @@ export async function renderProfilePoster(userId: string): Promise<Buffer | null
   });
   if (!user) return null;
 
-  const [blogs, comments, likesAgg] = await Promise.all([
-    prisma.blog.count({ where: { authorId: userId, ignore: false } }),
-    prisma.blogComment.count({
-      where: { authorId: userId, isDeleted: false, blog: { ignore: false } },
-    }),
-    prisma.blog.aggregate({
-      where: { authorId: userId, ignore: false },
-      _sum: { likesCount: true },
-    }),
+  const [stats, checkinPublic] = await Promise.all([
+    getPublicProfileStats(userId),
+    isProfileCheckinPublic(userId),
   ]);
 
   const svg = buildProfilePosterSvg({
@@ -81,9 +79,9 @@ export async function renderProfilePoster(userId: string): Promise<Buffer | null
     roleLabel: ROLE_LABEL[user.role] ?? '',
     bio: user.bio ?? '',
     joinedYear: ymd(user.createdAt)?.slice(0, 4) ?? '',
-    blogs,
-    comments,
-    likes: likesAgg._sum.likesCount ?? 0,
+    blogs: stats.blogs,
+    likes: stats.likes,
+    ...(checkinPublic ? { checkins: stats.checkins } : {}),
     qrText: absoluteUrl(`/u/${user.id}`),
     avatarDataUri: await avatarDataUri(user.id),
   });

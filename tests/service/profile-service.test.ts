@@ -21,7 +21,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { resetDb, makeUser, makeBlog, prisma } from '../helpers/db';
 import { nowForDb } from '@/lib/db-time';
-import { getProfilePageData, saveProfileBlocks } from '@/lib/profile-service';
+import { getProfilePageData, saveProfileBlocks, getPublicProfileStats, isProfileCheckinPublic } from '@/lib/profile-service';
 import { MAX_BLOCKS } from '@/lib/profile-blocks';
 
 beforeEach(async () => {
@@ -157,6 +157,26 @@ describe('本人视图', () => {
     const checkin = own.blocks.find((b) => b.kind === 'checkin')!.view;
     expect(stats).toMatchObject({ blogs: 2, likes: 7, checkins: 3 });
     expect(checkin).toMatchObject({ days: 3 });
+  });
+
+  it('画报/主页共用同一公开统计来源；签到是否公开展示由公开布局决定（R3-546）', async () => {
+    const u = await makeUser({ role: 'core' });
+    await makeBlog({ authorId: u.id, visibility: 'public' });
+    await makeBlog({ authorId: u.id, visibility: 'internal' }); // 不计入公开统计
+    await prisma.dailyCheckIn.create({
+      data: { userId: u.id, checkinDate: nowForDb(), createdAt: nowForDb() },
+    });
+
+    // 公开统计只含匿名可列举的内容（文章 1 篇、签到 1 天）。
+    expect(await getPublicProfileStats(u.id)).toEqual({ blogs: 1, likes: 0, checkins: 1 });
+    // 默认布局（只有最近文章）不展示签到 → 画报不带签到格。
+    expect(await isProfileCheckinPublic(u.id)).toBe(false);
+
+    // 亲手放统计块之后，签到才进入公开主页 → 画报也才可以带这一格。
+    const res = await saveProfileBlocks(u.id, [block('stats', {}, { x: 0, y: 0, w: 2, h: 1 })]);
+    expect(res.ok).toBe(true);
+    expect(await isProfileCheckinPublic(u.id)).toBe(true);
+    expect((await getPublicProfileStats(u.id)).checkins).toBe(1);
   });
 });
 
