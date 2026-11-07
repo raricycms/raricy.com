@@ -38,7 +38,7 @@
 | identicon 算法 | `src/lib/identicon.ts` | md5 前 6 位取色、8×8 镜像网格、底色 (240,240,240)。**改则老用户头像图案全变** |
 | 字数统计正则 | `src/lib/blog-service.ts` 的 `countMarkdownWords` | 6 条清洗正则（代码块 / 行内代码 / 图片 / 链接 / HTML 标签 / Markdown 特殊字符；**只有代码块那条跨行**）。改则存量文章字数集体变化 |
 | 短 ID / 邀请码字符集 | `src/lib/short-id.ts`、`src/lib/invite-code.ts` | 要能继续校验**存量已发出的**码（12 位 base62，注册侧按 `length===12` 校验） |
-| 幂等键格式 | `src/lib/fish-idempotency.ts`、`fish-compensate.ts` | 客户端幂等键「1–48 位、`[A-Za-z0-9_.:-]`」是**对外契约**（`docs/bot/fish-bot.md` §6 按它写）。群发补偿的批次 ID 逐字节稳定是**刻意的**，为了让迁移前跑了一半的批次能续跑。**注意**：键之所以长这样（含 `xfer-{8位哈希}` 前缀、48 字上限）是因为当年要发往账户微服务、对方限 64 字符 —— 那边界没了，但格式不能改：存量 `account_sync_ledger` 里的键与新键共用一个命名空间 |
+| 幂等键格式 | `src/lib/fish-idempotency.ts`、`fish-compensate.ts` | 客户端幂等键「1–48 位、`[A-Za-z0-9_.:-]`」是**对外契约**（`docs/bot/fish-bot.md` §6 按它写）。群发补偿的批次 ID 逐字节稳定是**刻意的**，为了让迁移前跑了一半的批次能续跑。**注意**：派生键前缀曾按「发往账户微服务、对方限 64 字符」设计（`xfer-{8位哈希}`）；该边界消失后 R3-314 已把**内部**身份命名空间加宽到 16 位哈希，读路径双读旧 8 位键（存量重放不变），客户端键的 1–48 位格式未变 |
 | API JSON snake_case 形状 | `src/lib/blog-service.ts` 等 | **对外契约**：站外机器人按这个形状写死了。对外文档见 `docs/bot/` |
 | 权限档位语义 | `src/lib/guard.ts`、`src/lib/admin-user-service.ts` | 角色阶梯（user → core → admin → owner）是**产品设计**，见 `docs/architecture.md` §8 |
 | `session_version` 失效机制 | `src/lib/session.ts`、`src/lib/auth.ts` | 改密 / 禁言 / 强制下线要让旧会话立即失效 —— **安全需求** |

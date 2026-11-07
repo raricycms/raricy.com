@@ -397,11 +397,23 @@ ftyp 品牌 / 声明归一化 / `planImageUpload` —— 服务端与浏览器�
 5 个满额文件；图片每个引用是一次小文件读，音频是 MB 级传输。上限仍是正文长度的
 确定性函数，所以不破坏渲染缓存。
 
+**历史 HTML 的外链 `<audio>` 只降级为链接，不再内联播放**（R3-111）：`url-policy.ts`
+的 `audio` 用途只认本站受控的 `/api/audio/<10位>/raw`（直接 `src` 与多个 `<source src>`
+一起判）——站内音频保留 `[@音频/<ID>]` 播放器，外链地址渲染成 `[音频](url)` 点击访问，
+浏览器不会主动请求第三方地址（与评论禁外链图同源）。回退链在
+`reactive/legacy-compat.ts` 的 `convertMediaBlocks`。
+
 ### 画报与鱼干收款码
 
 `docs/architecture.md` §6.8（管线与四条约束）+ `src/lib/poster.ts` 头部（二维码必须矢量、
 纠错 H、静默区 ≥4 模块 —— `tests/unit/poster.test.ts` 会真解码）。收银台与收款页共用
 `src/app/fish/PayForm.tsx` 的 `variant` 分支，别另抄一个。
+
+**主页画报的统计与公开主页同源**（R3-546）：项目固定为统计块的「文章 / 获赞 / 签到」，
+数字来自 `profile-service.ts` 的 `getPublicProfileStats`（文章只计匿名访客可公开列举的
+public / link，获赞只累加这些文章，签到为累计天数）。**签到格只在主页已公开展示签到时
+才画**（公开布局里有 stats / checkin 块，见 `isProfileCheckinPublic`）；默认布局不展示
+签到，画报就只有文章 / 获赞两格。画报别再自己写一套 count。
 
 ### 前端样式
 
@@ -518,6 +530,12 @@ ftyp 品牌 / 声明归一化 / `planImageUpload` —— 服务端与浏览器�
 `[@六位]` 的纯逻辑在 `src/lib/favorite-refs.ts` 头部（为什么卡片是成品 HTML 而不是
 占位 + `data-*`，为什么替换按区间切片）。对外见 `docs/bot/favorite-bot.md`（含限频数值，
 改 `RULES` 要同步）与 `docs/guide/收藏夹使用指南.md`。
+
+**篇数口径**（R3-239）：列表 / 详情 / 条目增删 API 的 `itemCount` 都是「当前查看者能
+打开的文章数」—— 未软删的收藏条目 **且** `blog.ignore=false`，与 `loadItems` 同判据；
+服务层两个函数分工明确（`countVisibleItems` 给展示、`countItems` 只数记录、继续用于
+`FAVORITE_ITEMS_MAX` 容量判定）。容量语义不变：博客软删只从展示里消失，收藏记录不腾空、
+仍占上限。
 
 **改收藏夹按钮的样式前先在受影响页面与视口做实页检查**（`favorite-layout.spec.ts` 已按
 2026-11-04 前端样式测试清理计划移除几何断言，只保留操作与无障碍行为；该文件仍登记在
