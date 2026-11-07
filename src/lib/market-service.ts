@@ -114,7 +114,7 @@ import { isLiquidationRunning } from './market-liquidator';
 // 客户端幂等键的格式校验复用转账那一条 —— 同一个「调用方给的键」概念，
 // 没有理由长出第二套规则。定义在 fish-idempotency（零业务依赖），
 // 所以这里 import 它不会把 fish-transfer-service 拖进来。
-import { CLIENT_KEY_RE } from './fish-idempotency';
+import { CLIENT_KEY_RE, identityNamespace } from './fish-idempotency';
 import { rateLimit, RULES } from './rate-limit';
 import {
   fetchQuote,
@@ -193,8 +193,13 @@ export function displaySymbol(symbol: string): string {
  *
  * 【为什么把 userId 哈希掉、为什么键长这样】键的形状是**冻结的**：迁移前它要发往
  * 账户服务，而一个 userId 就有 36 字符，原样拼进去会顶到那边 64 字符的上限；库里
- * 也已经有一批这个形状的 open_key。客户端键那一路（`mop-…`）**必须逐字节重现**
- * （重放靠它认人），两条路保持同一代形状，别只改一条。
+ * 也已经有一批这个形状的 open_key。
+ *
+ * 【客户端键那一路的命名空间已加宽（R3-314）】旧实现是 `mop-{sha256(userId)[:8]}-{key}`
+ * （32 bit）：两个账号哈希相撞 + 同 clientKey 时，后者会命中前者的行。现在新写入用
+ * 16 hex（64 bit），**读路径双读**：先查新键，再查旧键（且带 `userId` 谓词 —— 旧键空间
+ * 相撞时另一用户的行绝不能被当成本人的重放）。旧键只用于读存量行，不再产生。
+ * 服务端自动键（本函数）含完整 16 hex 哈希与随机 nonce，不在此列、形状不变。
  *
  * 【键里嵌了 units，而 units 的标度改过一次（迁移 21_fish_units_1e4）—— 这是安全的】
  * 因为服务端自动键**只在这里生成一次、当场就用于查 + 插，从不事后重算**；调用方给键
@@ -460,19 +465,38 @@ export async function openPosition(input: {
   // 客户端键只在调用方自己的命名空间里唯一（`mrk-0007` 这种），两个用户完全可能撞上
   // 同一个字符串 —— 而 `market_positions.open_key` 是**全局唯一**的，不混进身份就会
   // 互相挡住：甲买了，乙用同一个键买会被当成「重放」，拿到甲那笔的结果。
-  // 同 makeClientIdempotencyKey 的理由（幂等键是全局唯一的）。
+  // R3-314：新写入用 16 hex（64 bit）身份命名空间；旧代 8 hex 键只用于**读**存量行。
+  const legacyOpenKey = clientKey
+    ? `mop-${identityNamespace(input.userId, 8)}-${clientKey}`
+    : null;
   const idempotencyKey = clientKey
-    ? `mop-${createHash('sha256').update(input.userId).digest('hex').slice(0, 8)}-${clientKey}`
+    ? `mop-${identityNamespace(input.userId)}-${clientKey}`
     : makeMarketIdempotencyKey(input.userId, symbol, units, randomBytes(4).toString('hex'));
 
   // 重放：这一单已经开过了 → 如实回报既有结果，不再建仓、不再取价、不消耗额度。
-  const existing = await prisma.marketPosition.findUnique({
-    where: { openKey: idempotencyKey },
-    select: {
-      id: true, symbol: true, direction: true, stakeUnits: true, entryPrice: true,
-      leverage: true, liquidationPrice: true, entryQuoteAt: true,
-    },
+  // 双读顺序：先新键（升级后写入的行），再旧键（升级前的存量行）。
+  // ⚠️ **两处都带 userId 谓词**：旧键命名空间只有 32 bit，相撞时另一个用户的行绝不能
+  // 被当成本人的重放（那正是 R3-314 的串单形态）；没找到就继续按新键正常建仓。
+  const replayFields = {
+    id: true,
+    symbol: true,
+    direction: true,
+    stakeUnits: true,
+    entryPrice: true,
+    leverage: true,
+    liquidationPrice: true,
+    entryQuoteAt: true,
+  } as const;
+  let existing = await prisma.marketPosition.findFirst({
+    where: { openKey: idempotencyKey, userId: input.userId },
+    select: replayFields,
   });
+  if (!existing && legacyOpenKey) {
+    existing = await prisma.marketPosition.findFirst({
+      where: { openKey: legacyOpenKey, userId: input.userId },
+      select: replayFields,
+    });
+  }
   if (existing) {
     const balance = await getBalanceFish(input.userId);
     return { ok: true, position: toPositionView(existing), balance, replayed: true };

@@ -31,6 +31,7 @@ import {
   claimIdempotency,
   findIdempotency,
   makeClientIdempotencyKey,
+  makeLegacyClientIdempotencyKey,
   makeTransferId,
   makeTransferIdempotencyKey,
   CLIENT_KEY_RE,
@@ -258,6 +259,20 @@ async function resolveDuplicate(
 }
 
 /**
+ * 读**旧代**派生键（8 hex）的存量登记行，并只认**同一发起人**的行。
+ *
+ * 旧键空间只有 32 bit：两个账号哈希相撞时会落到同一把全局键上。B 不能把 A 的行
+ * 当成自己的重放（那会串单），也不能因此被挡住 —— 调用方在「没找到」时改用新键空间
+ * 正常创建（新键 16 hex 不会撞上旧键）。所以这里用 payload.fromUserId 做归属过滤。
+ */
+async function findLegacyTransferReplay(fromUserId: string, clientKey: string) {
+  const legacyKey = makeLegacyClientIdempotencyKey(fromUserId, clientKey);
+  const row = await findIdempotency(legacyKey);
+  if (!row) return null;
+  return parseLedgerPayload(row).fromUserId === fromUserId ? row : null;
+}
+
+/**
  * 搜索转账收款人：任意用户（**不限 core+** —— 鱼干可以转给任何人），排除自己。
  * query 为空时返回最近注册的一批。按 username 匹配，返回分页总数供弹窗算页数。
  *
@@ -365,7 +380,9 @@ export async function transferFish(
     // archivedAt:null）。带键重放时先查登记行，把「已成交但对手方不可见」从 404 里摘出来
     // —— 它既不是「接收者不存在」，也不是「迁移前遗留」（R3-315）。
     if (clientKey) {
-      const existing = await findIdempotency(makeClientIdempotencyKey(fromUserId, clientKey));
+      const existing =
+        (await findIdempotency(makeClientIdempotencyKey(fromUserId, clientKey))) ??
+        (await findLegacyTransferReplay(fromUserId, clientKey));
       if (existing) {
         return resolveInvisibleRecipientReplay(existing, { fromUserId, toUserId, amount });
       }
@@ -396,14 +413,24 @@ export async function transferFish(
     : makeTransferIdempotencyKey(fromUserId, recipient.id, units, randomBytes(4).toString('hex'));
 
   // 共享单号：写进**两条**流水（派生规则见 fish-idempotency.makeTransferId）。
+  // ⚠️ 单号必须从**实际命中的那把键**派生：旧键重放要回报原单的单号。
   const transferId = makeTransferId(idempotencyKey);
 
   // 调用方给了键 → 先看有没有同一笔的记录：有就按「重放」处理，绝不重复转账。
   // 放在限频**之前**：重放请求不该消耗额度（调用方遇到超时就该用同键重试）。
+  // 双读顺序：先新键（升级后写入的行），再旧键（升级前的存量行；只认同一发起人）。
   const expected = { fromUserId, toUserId: recipient.id, amount, description };
   if (clientKey) {
     const existing = await findIdempotency(idempotencyKey);
     if (existing) return resolveDuplicate(existing, expected, transferId);
+    const legacy = await findLegacyTransferReplay(fromUserId, clientKey);
+    if (legacy) {
+      return resolveDuplicate(
+        legacy,
+        expected,
+        makeTransferId(makeLegacyClientIdempotencyKey(fromUserId, clientKey))
+      );
+    }
   }
 
   // 限频（放在校验之后：刷不存在的用户名不该烧掉自己的额度，对齐点赞/评论）。

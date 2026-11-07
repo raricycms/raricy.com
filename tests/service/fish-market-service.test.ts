@@ -27,6 +27,7 @@ import {
 import {
   CLIENT_KEY_RE,
   makeClientIdempotencyKey,
+  makeLegacyClientIdempotencyKey,
   makeTransferId,
   makeTransferIdempotencyKey,
 } from '@/lib/fish-idempotency';
@@ -545,15 +546,11 @@ describe('客户端幂等键 —— 对外契约', () => {
     await expectLedgerConsistent('同键换收款人被 409 拒后');
   });
 
-  it('★ 同键跨发起人（身份命名空间相撞）→ 409，不把 A 的原单当成 B 的重放', async () => {
-    // 场景：客户端键派生是 `xfer-{sha256(发起人)[:8]}-{客户端键}`，身份命名空间只有
-    // 32 bit。两个账号在这 8 位十六进制上相撞、又用了同一个客户端键时，B 派生的键
-    // 会命中 A 登记的那一行。修复前 resolveDuplicate 只比收款人/金额/留言 —— 参数
-    // 相同就把 A 的原单当成 B 的重放：回 ok + duplicated（B 以为自己转成功了一笔，
-    // 钱一分没动，A 那笔的单号/金额成了 B 的「成交回报」）。修复后是明确的 409。
-    //
-    // 这里**直接构造**那行账本模拟相撞：键落在 B 的命名空间（makeClientIdempotencyKey
-    // 用 B 的 id 派生），payload 却是 A 的 —— 与相撞后真正查到的那行逐字段同形。
+  it('★ 同键跨发起人（登记行 payload 属于别人）→ 409，不把 A 的原单当成 B 的重放', async () => {
+    // 无论哪一代派生键，登记行 payload 的 fromUserId 不是本人就**不能**当重放：
+    // resolveDuplicate 的参数比对必须挡住「串单」。这里直接构造一行「键在 B 名下、
+    // payload 却是 A」的账本（32-bit 相撞后真正查到的行就是这种形状），断言 409 而不是
+    // 回放 A 的成交。
     const { sender, recipient } = await scene(100, 0);
     const other = await makeUser();
     const clientKey = 'wd-collide-1';
@@ -590,6 +587,87 @@ describe('客户端幂等键 —— 对外契约', () => {
     expect(await prisma.accountSyncLedger.count(), '不新增行、也不改动 A 的那行').toBe(1);
 
     await expectLedgerConsistent('跨发起人撞键被 409 拒后');
+  });
+
+  // ── R3-314：命名空间加宽的兼容性（旧键可重放 / 新键 16 hex / 旧键相撞不串单）──
+  it('★ 旧代 8-hex 键的存量登记行仍按原键重放（升级不能把存量重试变成第二笔）', async () => {
+    const { sender, recipient } = await scene(100, 0);
+    const clientKey = 'wd-legacy-replay-1';
+    const description = `转给「${recipient.username}」`;
+    const now = nowForDb();
+    const legacyKey = makeLegacyClientIdempotencyKey(sender.id, clientKey);
+    await prisma.accountSyncLedger.create({
+      data: {
+        idempotencyKey: legacyKey,
+        operation: 'transfer',
+        payload: JSON.stringify({
+          fromUserId: sender.id,
+          toUserId: recipient.id,
+          amount: 7,
+          description,
+        }),
+        status: 'synced',
+        attempts: 0,
+        createdAt: now,
+        updatedAt: now,
+      },
+    });
+
+    const res = await transferFish(sender.id, recipient.id, 7, null, {
+      clientIdempotencyKey: clientKey,
+    });
+
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    expect(res.duplicated, '旧键必须仍能重放').toBe(true);
+    expect(res.transferId, '回报的是**原单**的单号（由旧键派生）').toBe(
+      makeTransferId(legacyKey)
+    );
+    expect(await balanceOf(sender.id), '重放不再扣款').toBe(100);
+    expect(await prisma.accountSyncLedger.count()).toBe(1);
+  });
+
+  it('★ 旧键空间 32-bit 相撞：B 用同名客户端键不被 A 的存量行挡住（不串单也不 409）', async () => {
+    // 真实相撞的形状：账本行的键落在 B 的旧命名空间、payload 却属于 A。旧实现会把 A
+    // 当成 B 的重放（串单）；只加发起人比对会回 409 把 B 的正常转账挡死。加宽命名空间
+    // 后 B 用自己的 16-hex 新键正常创建 —— 钱只扣一次、A 原单不动（R3-314）。
+    const { sender, recipient } = await scene(100, 0);
+    const other = await makeUser();
+    const clientKey = 'wd-legacy-collide-1';
+    const description = `转给「${recipient.username}」`;
+    const now = nowForDb();
+    await prisma.accountSyncLedger.create({
+      data: {
+        idempotencyKey: makeLegacyClientIdempotencyKey(sender.id, clientKey),
+        operation: 'transfer',
+        payload: JSON.stringify({
+          fromUserId: other.id,
+          toUserId: recipient.id,
+          amount: 7,
+          description,
+        }),
+        status: 'synced',
+        attempts: 0,
+        createdAt: now,
+        updatedAt: now,
+      },
+    });
+
+    const res = await transferFish(sender.id, recipient.id, 7, null, {
+      clientIdempotencyKey: clientKey,
+    });
+
+    expect(res.ok, 'B 应当能正常转账（新键空间与 A 的旧键不同）').toBe(true);
+    if (!res.ok) return;
+    expect(res.duplicated).toBeUndefined();
+    expect(await balanceOf(sender.id)).toBe(93);
+    expect(await txnsOf(sender.id)).toHaveLength(1);
+    expect(await prisma.accountSyncLedger.count()).toBe(2);
+    // A 的存量行原样保留
+    const legacy = await prisma.accountSyncLedger.findUniqueOrThrow({
+      where: { idempotencyKey: makeLegacyClientIdempotencyKey(sender.id, clientKey) },
+    });
+    expect(JSON.parse(legacy.payload).fromUserId).toBe(other.id);
   });
 
   it('不带客户端键 → 随机键、**一行账本都不写**（判据：键是确定的才登记）', async () => {

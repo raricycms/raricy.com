@@ -37,11 +37,23 @@ type TxClient = Prisma.TransactionClient;
 /**
  * 调用方提供的幂等键的字面量口径：1–48 位，仅字母数字与 `_ . : -`。
  *
- * 上限 48 不是随便定的：键会被拼成 `xfer-{8位哈希}-{客户端键}`，这是当年发往账户服务
- * 的格式（服务端上限 64）。**格式已冻结** —— 对外文档（`docs/bot/fish-bot.md` §6）与
- * 收银台的 `order` 参数口径都照着它写，放宽会让存量键与新键混进同一个命名空间。
+ * 上限 48 是**对外契约**（`docs/bot/fish-bot.md` §6、收银台 `order` 参数都照它写），
+ * 与内部的**派生键**长度无关：派生键会拼上身份命名空间，长度由服务端自己决定。
+ * ⚠️ 不要因为「内部键变长了」就放宽这个正则 —— 那会改变对调用方的键空间定义。
  */
 export const CLIENT_KEY_RE = /^[A-Za-z0-9_.:-]{1,48}$/;
+
+/**
+ * 幂等键的**身份命名空间**：sha256(userId) 的前 `hex` 位十六进制。
+ *
+ * 旧派生用 8 hex（32 bit）—— 用户量上来后两个账号哈希相撞是生日问题，相撞时
+ * 不同用户的同名字符串键会落到同一个全局唯一键上；新派生一律 16 hex（64 bit）。
+ * 双读兼容的约定：**旧键只用于读存量行**，新写入一律用 16 hex（见
+ * `makeLegacyClientIdempotencyKey` 的注释与两个调用方的重放顺序）。
+ */
+export function identityNamespace(userId: string, hex = 16): string {
+  return createHash('sha256').update(userId).digest('hex').slice(0, hex);
+}
 
 export interface IdempotencyEntry {
   /** 幂等键（`account_sync_ledger.idempotency_key`，全局唯一）。 */
@@ -110,18 +122,33 @@ export function makeTransferIdempotencyKey(
 }
 
 /**
- * 由**调用方提供的**键派生最终键。格式：`xfer-{sha256(fromUserId)[:8]}-{clientKey}`
+ * 由**调用方提供的**键派生最终键（当前代）。格式：`xfer-{sha256(fromUserId)[:16]}-{clientKey}`
  *
  * 【为什么要混进发送者哈希】客户端键只在调用方自己的命名空间里唯一（`wd-0007` 这种），
  * 两个不同的发送者完全可能撞上同一个字符串 —— 而幂等键是**全局唯一**的，
  * 不混进身份就会互相挡住。
  *
+ * 【为什么是 16 hex 而不是原来的 8】8 hex = 32 bit，按生日界约 7.7 万账号就有 50%
+ * 撞一对；相撞 + 同 clientKey 时，B 的键会命中 A 的行（串单/409）。16 hex 把命名空间
+ * 扩到 64 bit。**旧键仍要能重放**：读路径先查新键、再查旧键（见
+ * makeLegacyClientIdempotencyKey 与两个调用方），新写入不再产生旧键。
+ *
  * 【为什么与自动键分前缀】自动键是 `transfer-…`，这类是 `xfer-…`：
  * 运维查表时一眼能看出「这笔是调用方给了键」还是「服务端自己生成的」。
  */
 export function makeClientIdempotencyKey(fromUserId: string, clientKey: string): string {
-  const short = createHash('sha256').update(fromUserId).digest('hex').slice(0, 8);
-  return `xfer-${short}-${clientKey}`;
+  return `xfer-${identityNamespace(fromUserId)}-${clientKey}`;
+}
+
+/**
+ * **旧代**派生键（`xfer-` 8 hex → 32 bit）：只用于读取升级前写入的存量行。
+ *
+ * ⚠️ 绝不能拿它写新行：同一个 clientKey 在两个用户哈希相撞时会落到同一个全局唯一键上。
+ * 读旧键时还必须校验 `payload.fromUserId`（转账）或 `userId` 谓词（练手盘），
+ * 否则相撞的另一用户会被当成「重放」而串单。
+ */
+export function makeLegacyClientIdempotencyKey(fromUserId: string, clientKey: string): string {
+  return `xfer-${identityNamespace(fromUserId, 8)}-${clientKey}`;
 }
 
 /**

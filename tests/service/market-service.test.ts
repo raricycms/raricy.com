@@ -9,7 +9,7 @@
 //
 // 【DB】真实 SQLite（tests/.tmp/test-*），不 mock。
 
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { resetDb, makeUser, prisma } from '../helpers/db';
 import { expectLedgerConsistent, makeFishUser } from '../helpers/fish-ledger';
@@ -216,6 +216,80 @@ describe('开仓', () => {
     expect(ra.ok && rb.ok).toBe(true);
     expect(await listOpenPositions(a.id)).toHaveLength(1);
     expect(await listOpenPositions(b.id)).toHaveLength(1);
+  });
+
+  // ── R3-314：命名空间加宽的兼容性（旧键可重放 / 新键 16 hex / 相撞不串单）─────
+  /** 旧代 `mop-` 键（8 hex 身份哈希，R3-314 之前写入的存量行就是这个形状）。 */
+  const legacyOpenKey = (userId: string, clientKey: string) =>
+    `mop-${createHash('sha256').update(userId).digest('hex').slice(0, 8)}-${clientKey}`;
+
+  it('★ 旧代 8-hex 键的存量仓位仍按原键重放（升级不能把存量重试变成第二笔）', async () => {
+    const user = await makeUser({ driedFish: 100 });
+    priceIs(80000);
+    const clientKey = 'legacy-mrk-1';
+    const id = randomUUID();
+    await prisma.marketPosition.create({
+      data: {
+        id, userId: user.id, symbol: 'BTCUSDT', stakeUnits: 10000,
+        entryPrice: 80000, entryQuoteAt: nowForDb(), leverage: 1,
+        liquidationPrice: 0, openKey: legacyOpenKey(user.id, clientKey),
+        status: 'open', createdAt: nowForDb(),
+      },
+    });
+
+    const replayed = await openPosition({
+      userId: user.id, symbolRaw: 'BTCUSDT', amount: 1, clientKey,
+    });
+
+    expect(replayed.ok).toBe(true);
+    if (!replayed.ok) return;
+    expect(replayed.replayed, '旧键必须仍能重放').toBe(true);
+    expect(replayed.position.id).toBe(id);
+    expect(await balanceOf(user.id), '重放不扣款').toBe(100);
+    expect(await listOpenPositions(user.id)).toHaveLength(1);
+  });
+
+  it('★ 新写入用 16-hex 身份命名空间（旧键不再产生）', async () => {
+    const user = await makeUser({ driedFish: 100 });
+    priceIs(80000);
+    const clientKey = 'new-mrk-1';
+
+    const r = await openPosition({ userId: user.id, symbolRaw: 'BTCUSDT', amount: 1, clientKey });
+    expect(r.ok).toBe(true);
+
+    const row = await prisma.marketPosition.findFirstOrThrow({ where: { userId: user.id } });
+    expect(row.openKey).toBe(
+      `mop-${createHash('sha256').update(user.id).digest('hex').slice(0, 16)}-${clientKey}`
+    );
+  });
+
+  it('★ 旧键空间 32-bit 相撞：不把另一用户的仓当成自己的重放，也不挡住本人', async () => {
+    // 真实相撞后的形状：键落在 B 的旧命名空间、行却属于 A。旧实现在这里会回放 A 的仓
+    //（串单）；只加 userId 谓词则会让 B 撞 open_key 唯一约束得到 500。加宽命名空间后
+    // B 用自己的 16-hex 新键正常建仓 —— 既没串单，也没被挡住（R3-314）。
+    const a = await makeUser({ driedFish: 100 });
+    const b = await makeUser({ driedFish: 100 });
+    priceIs(80000);
+    const clientKey = 'collide-key';
+    const id = randomUUID();
+    await prisma.marketPosition.create({
+      data: {
+        id, userId: a.id, symbol: 'BTCUSDT', stakeUnits: 10000,
+        entryPrice: 80000, entryQuoteAt: nowForDb(), leverage: 1,
+        liquidationPrice: 0, openKey: legacyOpenKey(b.id, clientKey),
+        status: 'open', createdAt: nowForDb(),
+      },
+    });
+
+    const res = await openPosition({ userId: b.id, symbolRaw: 'BTCUSDT', amount: 1, clientKey });
+
+    expect(res.ok, 'B 应当能用自己的新命名空间建仓').toBe(true);
+    if (!res.ok) return;
+    expect(res.replayed).toBeUndefined();
+    expect(res.position.id).not.toBe(id);
+    expect(await listOpenPositions(a.id), 'A 的原仓原样保留').toHaveLength(1);
+    expect(await listOpenPositions(b.id)).toHaveLength(1);
+    expect(await balanceOf(b.id), 'B 只扣一次自己的仓').toBe(99);
   });
 
   it('客户端键格式非法 → 400', async () => {
