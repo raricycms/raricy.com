@@ -1031,6 +1031,31 @@ describe('createAppeal（提交申诉）', () => {
     });
   });
 
+  it('★ 并发提交同一条：只有一条 pending 落库，其余按同一文案拒绝（不 500）', async () => {
+    // 迁移 43 的 partial unique index 是「同日志 + 同申诉人只有一条 pending」的原子防线：
+    // 先查后写只能挡住顺序重复，并发时多个请求会同时通过检查、各插一行 —— 唯一索引
+    // 必须把后到的那些挡下，audit-service 再把 P2002 转成与顺序路径相同的业务拒绝。
+    // 不加索引时这条用例会看到多条 ok=true（重复 pending），因此它同时也是索引的回归网。
+    const admin = await makeUser({ role: 'admin' });
+    const user = await makeUser({ role: 'core' });
+    const logId = await makeLog({ action: 'delete_blog', adminId: admin.id, targetUserId: user.id });
+
+    const results = await Promise.all(
+      Array.from({ length: 5 }, (_, i) =>
+        createAppeal({ logId, appellantId: user.id, content: `并发申诉 ${i}` })
+      )
+    );
+
+    const okOnes = results.filter((r) => r.ok);
+    expect(okOnes, '同一条日志 + 同一个人只允许一条 pending').toHaveLength(1);
+    for (const r of results.filter((x) => !x.ok)) {
+      expect(r.message, '失败的那些必须是业务拒绝，不是 500/内部错误').toBe(
+        '该日志已存在你提交的待处理申诉'
+      );
+    }
+    expect(await prisma.adminActionAppeal.count({ where: { logId, appellantId: user.id } })).toBe(1);
+  });
+
   it('★ 第三方不能替他人申诉（日志 id 公开，不校验即可越权解封）', async () => {
     const admin = await makeUser({ role: 'admin' });
     const victim = await makeUser({ role: 'core' });

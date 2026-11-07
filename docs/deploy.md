@@ -247,6 +247,23 @@ DATABASE_URL="file:/绝对路径/instance/database/db.db" npm run migrate -- up
 `status` / `verify` 是只读的；`up` 只应用手写 SQL，不执行 RMD 正文检查、快照
 回填或公开索引重建。旧源码升级与索引修复是独立运维操作，见下文发布顺序。
 
+#### 迁移 43（pending 申诉唯一索引）的上线前预检
+
+此迁移只加一个 **partial unique index**（`uq_admin_action_appeals_pending`）：
+同一日志 + 同一申诉人只允许一条 `status='pending'` 的申诉。生产历史上可能有并发写入
+留下的**重复 pending**；存在重复时 `CREATE UNIQUE INDEX` 会失败、`up` 整体回滚（数据不动，
+是响亮的失败）。上线前先做一次只读统计：
+
+```sql
+SELECT log_id, appellant_id, COUNT(*) AS n
+  FROM admin_action_appeals
+ WHERE status = 'pending'
+ GROUP BY log_id, appellant_id
+HAVING n > 1;
+```
+
+有结果时由站长决定保留哪一条、处置其余（迁移不会自动清理），再执行 `up`。
+
 #### 取消投喂手续费后的历史返还
 
 此功能无需新迁移。先部署并重启**作者全额到账**的新代码，再在生产环境中指向正在使用的
@@ -319,11 +336,13 @@ SELECT name, checksum FROM _raricy_migrations WHERE name LIKE '21_%';        -- 
 `npm run migrate -- mark 21_fish_units_1e4` 刷新即可。
 
 另注：**迁移 SQL 在 CI 里默认没有任何东西会跑**（测试库由 `prisma db push` 建，走不到
-`prisma/migrations/`）。两个补这个洞的用例，新增迁移时照抄它们的形态：
+`prisma/migrations/`）。三个补这个洞的用例，新增迁移时照抄它们的形态：
 - `tests/unit/fish-migration-21.test.ts` —— 数据变换型：在临时库上照着**生产形态**
   （REAL 亲和列）重建那几列、灌已知值、原样执行迁移文件、逐行断言；
 - `tests/unit/checkin-migrations.test.ts` —— **删列**型（24，含外键父表 + 索引）与
-  **改写文本**型（25，含「没命中的行不许动」与幂等重跑）各一个。
+  **改写文本**型（25，含「没命中的行不许动」与幂等重跑）各一个；
+- `tests/unit/appeal-pending-migration.test.ts` —— **partial unique index** 型（43，
+  schema 表达不了的部分索引：重复 pending 被拒、历史处置行可重复、预检 SQL 能数出存量重复）。
 
 > 永远不要在生产跑 `prisma migrate dev` / `prisma db push` / `prisma migrate reset`——它们会无视 `_raricy_migrations` 直接动 schema。
 

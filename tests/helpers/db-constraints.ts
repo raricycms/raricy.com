@@ -22,30 +22,44 @@ const SEARCH_SQL_REL = path.join(
   '39_public_blog_search',
   'migration.sql'
 );
+const APPEAL_PENDING_SQL_REL = path.join(
+  'prisma',
+  'migrations',
+  '43_appeal_pending_unique',
+  'migration.sql'
+);
 
 /** 手写 SQL 的绝对路径（repoRoot = 仓库根）。 */
 export function constraintSqlPaths(repoRoot: string): {
   constraintSql: string;
   searchSql: string;
+  appealPendingSql: string;
 } {
   return {
     constraintSql: path.resolve(repoRoot, CONSTRAINT_SQL_REL),
     searchSql: path.resolve(repoRoot, SEARCH_SQL_REL),
+    appealPendingSql: path.resolve(repoRoot, APPEAL_PENDING_SQL_REL),
   };
 }
 
-/** 把迁移 38 的手写约束与迁移 39 的 FTS/触发器装进测试库。 */
+/**
+ * 把 db push 表达不了的手写 SQL 装进测试库：
+ *   · 38 的 partial unique index（每日一言活动内容）；
+ *   · 39 的 FTS/触发器；
+ *   · 43 的 pending 申诉 partial unique index（R3-447）。
+ */
 export function installTestConstraints(dbPath: string, repoRoot: string) {
   if (!dbPath.replace(/\\/g, '/').includes('/tests/.tmp/')) {
     throw new Error('拒绝向非测试库安装约束');
   }
-  const { constraintSql, searchSql } = constraintSqlPaths(repoRoot);
+  const { constraintSql, searchSql, appealPendingSql } = constraintSqlPaths(repoRoot);
   // 直取内置模块，避免 Playwright 的 require/ESM 加载钩子将实验模块当作源码。
   const { DatabaseSync } = process.getBuiltinModule('node:sqlite') as typeof import('node:sqlite');
   const db = new DatabaseSync(dbPath);
   try {
     db.exec(fs.readFileSync(constraintSql, 'utf8'));
     db.exec(fs.readFileSync(searchSql, 'utf8'));
+    db.exec(fs.readFileSync(appealPendingSql, 'utf8'));
   } finally {
     db.close();
   }

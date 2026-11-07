@@ -1,0 +1,23 @@
+-- 43_appeal_pending_unique —— 同一日志 + 同一申诉人的 pending 申诉原子唯一（R3-447）。
+--
+-- 背景：createAppeal（src/lib/audit-service.ts）对「同日志 + 同申诉人已有 pending」是
+-- **先查后写**：并发下两个请求都能通过检查、各插一行。业务口径上同一条日志的同一当事人
+-- 同时只该有一条待审申诉；已处置（accepted / rejected）的行要保留审计历史，所以
+-- 不能建普通唯一约束 —— 用 **partial unique index** 只覆盖 status='pending'。
+--
+-- 代码侧：audit-service 在 create 撞 P2002 时返回既有的「该日志已存在你提交的待处理申诉」，
+-- 与先查后写的顺序路径同文案；其它约束冲突照旧抛出。
+--
+-- ⚠️ 上线前预检（只读，不改数据）：生产可能已有重复 pending（历史并发写入）。
+--   SELECT log_id, appellant_id, COUNT(*) AS n
+--     FROM admin_action_appeals
+--    WHERE status = 'pending'
+--    GROUP BY log_id, appellant_id
+--   HAVING n > 1;
+-- 有结果时先由站长决定保留哪一条、处置其余（本迁移**不会**自动清理；存量重复存在时
+-- 建唯一索引会失败，属于刻意的响亮失败）。
+--
+-- 测试库：`prisma db push` 表达不了 partial index，由 tests/helpers/db-constraints.ts
+-- 在模板库里安装同一份 SQL（与迁移 38/39 的手写 SQL 同一机制）。
+CREATE UNIQUE INDEX IF NOT EXISTS "uq_admin_action_appeals_pending"
+  ON "admin_action_appeals" ("log_id", "appellant_id") WHERE "status" = 'pending';

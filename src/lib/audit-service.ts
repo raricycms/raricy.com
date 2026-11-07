@@ -7,6 +7,9 @@
 //     “是否有待处理申诉”标记。extra 是 String? 列存原始 JSON 文本，需 guarded 解析。
 //     ⚠️ 【安全】按当事人用户名筛时必须与 hideTarget:false 一起用 —— 见函数内 ★ 注释。
 //   • createAppeal：校验/频控（accepted 拦截、20/日、同日志同人 pending 唯一）。
+//     待审唯一由 **partial unique index** 兜底（migration 43，只约束 status='pending'）：
+//     先查后写只负责快路径与可读文案，并发仍可能各查各空 —— 那时 create 撞 P2002，
+//     按「已存在待处理申诉」返回（与顺序路径同文案），不冒成 500。
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { prisma } from './db';
@@ -25,6 +28,15 @@ const WINDOW_DAYS = 30; // 仅公示近 30 天（更早的日志仍在库，只�
 export const PUBLIC_RANGE_DAYS = [7, WINDOW_DAYS] as const;
 const APPEAL_MAX_LEN = 2000;
 const APPEAL_DAILY_LIMIT = 20;
+
+/** Prisma 唯一约束冲突（P2002）：并发提交同一 pending 申诉时由 migration 43 的索引挡下。 */
+function isUniqueViolation(e: unknown): boolean {
+  return (
+    typeof e === 'object' &&
+    e !== null &&
+    (e as { code?: string }).code === 'P2002'
+  );
+}
 
 /** guarded JSON.parse：extra 是可空的原始 JSON 文本列，解析失败一律回退为 {}。 */
 export function parseExtra(raw: string | null | undefined): Record<string, unknown> {
@@ -467,17 +479,28 @@ export async function createAppeal(params: {
     return { ok: false, message: '该日志已存在你提交的待处理申诉', appealId: null };
 
   const now = nowForDb();
-  const appeal = await prisma.adminActionAppeal.create({
-    data: {
-      logId: params.logId,
-      appellantId: params.appellantId,
-      content,
-      status: 'pending',
-      createdAt: now,
-      updatedAt: now,
-    },
-    select: { id: true },
-  });
+  let appeal: { id: number };
+  try {
+    appeal = await prisma.adminActionAppeal.create({
+      data: {
+        logId: params.logId,
+        appellantId: params.appellantId,
+        content,
+        status: 'pending',
+        createdAt: now,
+        updatedAt: now,
+      },
+      select: { id: true },
+    });
+  } catch (e) {
+    // 并发窗口：两个请求都通过了上面的先查后写，后插入的那个撞迁移 43 的
+    // `uq_admin_action_appeals_pending`（partial unique index）。这是「已存在待审申诉」
+    // 的第二种表达，不是故障 —— 与顺序路径回同一句文案（不暴露 P2002 内部细节）。
+    if (isUniqueViolation(e)) {
+      return { ok: false, message: '该日志已存在你提交的待处理申诉', appealId: null };
+    }
+    throw e;
+  }
 
   // 通知站长（给所有 owner 各发一条『申诉提交』）。
   // 与评论/点赞同口径：通知失败不影响申诉本身，吞掉即可 —— 申诉已经落库，

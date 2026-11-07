@@ -1003,6 +1003,11 @@ model AdminActionAppeal {
   @@index([createdAt], map: "ix_admin_action_appeals_created_at")
   @@index([appellantId], map: "ix_admin_action_appeals_appellant_id")
   @@index([status], map: "ix_admin_action_appeals_status")
+  // ⚠️ 「同日志 + 同申诉人只有一条 pending」的原子约束是 **partial unique index**
+  // （`uq_admin_action_appeals_pending`，migration 43，只覆盖 status='pending'）。
+  // Prisma schema 表达不了部分索引，所以这里**不写** @@unique —— 写成普通唯一约束会把
+  // 已处置（accepted/rejected）的历史行也一并挡掉。测试库由
+  // tests/helpers/db-constraints.ts 安装同一段 SQL。
 
   @@map("admin_action_appeals")
 }
