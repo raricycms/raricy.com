@@ -151,9 +151,14 @@ function RichContentBody({
           // 容器里只可能有内容引用图（附件图在容器**之外**，见 ChatMessageItem /
           // CommentSection），再按类名收一道，免得将来有别的 img 混进来。
           const target = e.target as HTMLElement;
-          if (target.tagName === 'IMG' && target.classList.contains(IMAGE_REF_CLASS)) {
-            setLightbox((target as HTMLImageElement).src);
-          }
+          if (target.tagName !== 'IMG' || !target.classList.contains(IMAGE_REF_CLASS)) return;
+          // ⚠️ 链接内的图片由**链接**处理一次点击（跳转），不再叠加灯箱（R3-126）：
+          // 正文在 `<a href>` 里再套 `<strong>/<em>` 时，图片引用仍会被插进去
+          //（embedImageRefs 只跳过**直接**父节点是 A 的文本节点），点一下会同时
+          // 打开灯箱并离开页面 —— 用户只应看到一次动作。正文内嵌图片（ReactiveMD
+          // 引擎）也是同一条判据（image-view 里 `closest("a")` 不绑放大）。
+          if (target.closest('a')) return;
+          setLightbox((target as HTMLImageElement).src);
         }}
         // html 来自 render：已过 DOMPurify 白名单净化 + 链接加固
         dangerouslySetInnerHTML={{ __html: html }}
