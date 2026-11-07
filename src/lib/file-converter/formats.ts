@@ -180,18 +180,3 @@ export const TEXT_ENCODINGS = [
 ] as const;
 
 export type TextEncodingKey = (typeof TEXT_ENCODINGS)[number]['key'];
-
-/** FileKind → 所属能力区（嗅探后给「应去哪个标签页」的提示用）。 */
-export const KIND_CATEGORY: Partial<Record<FileKind, string>> = {
-  jpeg: 'image', png: 'image', gif: 'image', webp: 'image', bmp: 'image',
-  tiff: 'image', ico: 'image', svg: 'image', heic: 'image', avif: 'image',
-  mp3: 'audio', wav: 'audio', flac: 'audio', m4a: 'audio', ogg: 'audio', aiff: 'audio',
-  mp4: 'video', mkv: 'video', webm: 'video', mov: 'video', avi: 'video', flv: 'video', wmv: 'video',
-  pdf: 'document', docx: 'document', pptx: 'document', odt: 'document', odp: 'document',
-  rtf: 'document', doc: 'document', ppt: 'document', html: 'document', markdown: 'document',
-  xlsx: 'table', csv: 'table', tsv: 'table', json: 'table', ndjson: 'table',
-  yaml: 'table', xml: 'table', ods: 'table', xls: 'table',
-  text: 'text', srt: 'text', vtt: 'text', ass: 'text',
-  epub: 'ebook',
-  zip: 'archive', gzip: 'archive', xz: 'archive', tar: 'archive', '7z': 'archive', rar: 'archive',
-};

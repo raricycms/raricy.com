@@ -152,7 +152,11 @@ export async function getUserUsedBytes(userId: string): Promise<number> {
 }
 
 /**
- * sharp 压缩：仅处理位图（png/jpeg/webp），保持原格式；svg 与 gif（可能含动画）跳过。
+ * sharp 压缩：仅处理位图（png/jpeg/webp），保持原格式；svg 跳过。
+ *
+ * 动画（GIF / 动画 WebP / APNG）一律**原样放行**（R3-371）：sharp 的
+ * `png()`/`webp()` 只输出首帧，静默把动图压成静止图。判定用 metadata 的
+ * `pages > 1`（多页/多帧；单体 JPEG/PNG 为 1 或缺省），比按 MIME 猜可靠。
  * 超过 2000px 等比缩小；仅当压缩结果更小才采用，否则原样返回。
  */
 export async function compressImage(buffer: Buffer, mimeType: string): Promise<Buffer> {
@@ -160,6 +164,7 @@ export async function compressImage(buffer: Buffer, mimeType: string): Promise<B
 
   try {
     const meta = await sharp(buffer, { failOn: 'none' }).metadata();
+    if (isAnimatedImage(meta)) return buffer; // 动画只压首帧会丢帧，原样保留
     let pipeline = sharp(buffer, { failOn: 'none' });
 
     const w = meta.width ?? 0;
@@ -186,6 +191,11 @@ export async function compressImage(buffer: Buffer, mimeType: string): Promise<B
   } catch {
     return buffer; // 压缩失败则回退原始字节，绝不丢图
   }
+}
+
+/** 多页 / 多帧图像（动画 WebP、APNG、多页 TIFF 等）—— 压缩会只取首帧。 */
+export function isAnimatedImage(meta: { pages?: number | null }): boolean {
+  return typeof meta.pages === 'number' && meta.pages > 1;
 }
 
 /** 10 位加密安全随机 ID（大小写字母 + 数字），对齐 generate_image_id(secrets)。 */

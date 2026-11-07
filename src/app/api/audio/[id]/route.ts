@@ -1,4 +1,4 @@
-import { getCurrentUser, hasAdminRights, isCoreUser } from '@/lib/auth';
+import { getCurrentUser, hasAdminRights } from '@/lib/auth';
 import { apiOk, apiErr } from '@/lib/format';
 import { getAudioForServe, softDeleteAudio } from '@/lib/audio-service';
 
@@ -14,12 +14,12 @@ export const runtime = 'nodejs';
 // `if (isOwner(user)) hardDelete(...)`，导致**站长永远无法软删** —— 连删自己的图
 // 都是物理删除、不可恢复，也架空了「硬删只走管理端那条显式路由」的分工。
 // 硬删只发生在管理端那条路由上。
+//
+// 【R3-385 / D 桶已批准】不先判 core：失去核心资格的账号仍可软删自己上传的音频
+// （历史数据可撤回）；上传侧的 core 门不变。
 export async function DELETE(_req: Request, ctx: { params: Promise<{ id: string }> }) {
   const user = await getCurrentUser();
   if (!user) return apiErr(401, '请先登录');
-  // 需核心用户（core 及以上）。
-  // 页面挡了 core，但接口没挡 —— 未认证用户用不了界面，却 curl 得动。
-  if (!isCoreUser(user)) return apiErr(403, '需要核心用户权限');
 
   const { id } = await ctx.params;
   // 注意用 getAudioForServe（不按软删过滤）：换成任何「过滤掉 ignore 的元信息读法」

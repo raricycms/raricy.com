@@ -256,6 +256,10 @@ describe('data-convert：CSV 解析', () => {
   it('自动识别制表符 / 分号分隔', () => {
     expect(parseCsv('a\tb\n1\t2').delimiter).toBe('\t');
     expect(parseCsv('a;b\n1;2').delimiter).toBe(';');
+    // R3-494：单元格里落单的 `"` 不能让分隔符识别整行失准（与 parseCsv 同一条引号规则：
+    // 只有字段开头的引号才生效），否则制表符分隔会被误判成逗号、整行变 1 列。
+    expect(parseCsv('a"b\tc\td\n1\t2\t3').delimiter).toBe('\t');
+    expect(parseCsv('a"b\tc\td\n1\t2\t3').rows[0]).toEqual(['a"b', 'c', 'd']);
     // 显式指定优先于自动识别
     expect(parseCsv('a;b\n1;2', { delimiter: ',' }).rows).toEqual([
       ['a;b'],

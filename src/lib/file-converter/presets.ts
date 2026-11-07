@@ -78,7 +78,7 @@ export const PRESETS: readonly PresetDef[] = [
   {
     id: 'motion-gif',
     label: '做短动图',
-    desc: '选片段 → 缩放 / 降帧 → GIF / 动画 WebP（没有声音）',
+    desc: '缩放 / 降帧 → GIF / 动画 WebP（没有声音；不支持裁剪片段）',
     category: 'video',
     edgeId: 'video:to-gif',
     params: { fps: 10, maxWidth: 480 },

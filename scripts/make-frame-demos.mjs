@@ -285,8 +285,8 @@ for (const [key, body] of Object.entries(FRAMES)) {
   await sharp(svg).png({ compressionLevel: 9 }).toFile(out);
 
   // 缩到 20px 的预览，给人眼看「小尺寸下还剩什么」。
-  // ⚠️ `_` 前缀 = frame-service 的扫盘会跳过它（见 isSkippedName 那条规则），
-  //    所以它不会被当成一款可用的框。
+  // ⚠️ `_` 前缀 = frame-service 扫盘会跳过它（见 src/lib/frame-service.ts:216
+  //    `name.startsWith('_')` 那条规则），所以它不会被当成一款可用的框。
   const preview = path.join(OUT_DIR, `_preview-20px-${key}.png`);
   await sharp(svg)
     .resize(20, 20, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } })

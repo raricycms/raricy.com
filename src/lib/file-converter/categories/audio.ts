@@ -40,7 +40,12 @@ import {
   type IoNames,
 } from '../engines/ffmpeg-args';
 
-// ─── 媒体 runner 公共件（video.ts 复用）────────────────────────────────────────
+// ─── 媒体 runner 公共件（audio / video / image 三区共用）────────────────────────
+//
+// 本段导出并非「音频专用」：`categories/image.ts` 与 `categories/video.ts` 也 import
+// 这里的 `loadEngine` / `throwIfAborted` / `strParam` / `numParam` / `probeMedia` /
+// `takeOutput` / `assertEncoderAvailable` / `streamTrackLabel` / `autoTrackOption`
+// 等。按文件名会误以为改这里只影响音频 —— 三区能力都在这条线上，改动要一起想。
 
 /** 引擎模块的运行时形状（engines/ffmpeg.ts 的契约投影）。 */
 export interface EngineApi {

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { showToast } from '@/app/components/toast';
 
@@ -21,6 +21,11 @@ export interface AdminAudioRow {
 export default function AudioAdminTable({ items }: { items: AdminAudioRow[] }) {
   const router = useRouter();
   const [list, setList] = useState<AdminAudioRow[]>(items);
+
+  // R3-372：翻页 / 刷新后以 props 为权威，避免继续显示（并删除）上一页的行。
+  useEffect(() => {
+    setList(items);
+  }, [items]);
 
   async function hardDelete(audioId: string, filename: string) {
     if (!confirm(`确定永久删除 "${filename}" 吗？\n此操作不可撤销，将删除文件及记录。`)) return;

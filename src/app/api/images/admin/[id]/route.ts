@@ -19,7 +19,8 @@ export async function DELETE(_req: Request, ctx: { params: Promise<{ id: string 
 
   // 不过滤 ignore：**已软删的图也要能硬删**（软删只是标 ignore，磁盘文件还在）。
   const img = await getImageForServe(id);
-  if (!img) return apiErr(400, '图片不存在');
+  // 与用户侧同口径（R3-377）：资源不存在统一 404，而不是管理端 400。
+  if (!img) return apiErr(404, '图片不存在');
 
   const authorId = img.authorId;
   const filename = img.filename;

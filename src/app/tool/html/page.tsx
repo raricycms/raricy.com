@@ -18,7 +18,8 @@ export default function HtmlToolPage() {
   const [left, setLeft] = useState('');
   const [right, setRight] = useState('');
   const [status, setStatus] = useState('');
-  // useNamed 开关保留在界面上，但 encodeHTML 不据它分支（基本实体始终命名）。
+  // useNamed 决定写法，不是死开关：勾选时基础字符用命名实体（&amp;），
+  // 取消勾选改成等价的十进制实体（&#38;）—— 输出不同，别按旧注释把分支删掉。
   const [useNamed, setUseNamed] = useState(true);
   const [encodeNonAscii, setEncodeNonAscii] = useState(true);
 

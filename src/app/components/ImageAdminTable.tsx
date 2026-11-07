@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { showToast } from '@/app/components/toast';
 
@@ -17,6 +17,12 @@ export interface AdminImageRow {
 export default function ImageAdminTable({ images }: { images: AdminImageRow[] }) {
   const router = useRouter();
   const [list, setList] = useState<AdminImageRow[]>(images);
+
+  // R3-372：翻页 / 刷新后父级传入的是**另一页**的行，而 useState 只在首次挂载时
+  // 取值 → 不随 props 同步就会继续显示、甚至删除上一页的行。以 props 为权威。
+  useEffect(() => {
+    setList(images);
+  }, [images]);
 
   async function hardDelete(imageId: string, filename: string) {
     if (!confirm(`确定永久删除 "${filename}" 吗？\n此操作不可撤销，将删除文件及记录。`)) return;

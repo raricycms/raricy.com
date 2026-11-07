@@ -24,6 +24,8 @@
 
 export type CodeLanguage = 'json' | 'javascript' | 'typescript' | 'css' | 'html' | 'xml';
 
+import { parseJsonText } from './json';
+
 export const CODE_LANGUAGES: ReadonlyArray<{ value: CodeLanguage; label: string; hint: string }> = [
   { value: 'json', label: 'JSON', hint: '用 JSON.parse 校验后重新序列化；语法错误会给出位置。' },
   { value: 'javascript', label: 'JavaScript', hint: '花括号缩进、分号换行；跳过字符串 / 模板串 / 正则 / 注释。' },
@@ -65,12 +67,23 @@ function escapeRegExp(text: string): string {
 // JSON
 // ═════════════════════════════════════════════════════════════════════════════
 
-/** 解析后再序列化；语法错误原样抛出（`at position N` 是最有用的定位信息）。 */
+/**
+ * 解析后再序列化。
+ *
+ * 失败时用 JSON 专页那套**中文说明 + 行列定位**（R3-495）：直接把 V8 的英文
+ * `Unexpected token … in JSON at position N` 甩给用户，等于让他自己数第几个字符。
+ */
 export function formatJson(source: string, indentSize: number): string {
   const trimmed = source.trim();
   if (trimmed === '') return '';
-  const parsed: unknown = JSON.parse(trimmed);
-  return JSON.stringify(parsed, null, indentSize);
+  const parsed = parseJsonText(trimmed);
+  if (!parsed.ok) {
+    const where = parsed.location
+      ? `（第 ${parsed.location.line} 行第 ${parsed.location.column} 列）`
+      : '';
+    throw new Error(`${parsed.message}${where}`);
+  }
+  return JSON.stringify(parsed.value, null, indentSize);
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -548,7 +561,12 @@ export function formatJavaScript(source: string, indentSize: number): string {
           break;
         }
         case '.': {
-          write('.', true);
+          // R3-495：数字字面量后紧跟 "." 不能贴住 —— `1 .toString()` 才是合法 JS，
+          // `1.toString()` 会被解析成 `1.` 后接标识符（语法错误）。其余位置（成员访问、
+          // 数字小数部分）仍紧贴。
+          const afterNumber = prev !== null && prev.type === 'number';
+          if (afterNumber) spacePending = true;
+          write('.', !afterNumber);
           spacePending = false;
           break;
         }

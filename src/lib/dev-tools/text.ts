@@ -91,12 +91,14 @@ export function analyzeText(text: string): TextStats {
   const normalized = text.replace(/\r\n?/g, '\n');
   const lines = normalized === '' ? [] : normalized.split('\n');
   const nonEmptyLines = lines.filter((line) => line.trim() !== '').length;
-  // 段落：先把行末空白统一掉，再按「至少一个空行」切块。
+  // 段落：按「至少一个只含空白的行」切块。空白口径与上面的非空行判定一致
+  // （`trim()` 认全部 Unicode 空白，所以这里用 `[^\S\n]` 而不是只列空格 / 制表 /
+  // 全角空格；否则「NBSP 空行」会让非空行数与段落数自相矛盾）。
   const paragraphs =
     normalized.trim() === ''
       ? 0
       : normalized
-          .split(/\n[ \t\u3000]*\n/)
+          .split(/\n[^\S\n]*\n/)
           .map((block) => block.trim())
           .filter((block) => block !== '').length;
 

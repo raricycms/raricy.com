@@ -82,11 +82,16 @@ export class ConvertQueue {
     return this.tasks.reduce((s, t) => s + (t.status === 'succeeded' ? t.heldOutputBytes : 0), 0);
   }
 
-  /** 任务总数与输入总额闸（format-converter-implementation §7.1）。返回 null 表示可入队。 */
-  admitError(files: File[]): string | null {
+  /**
+   * 任务总数与输入总额闸（format-converter-implementation §7.1）。返回 null 表示可入队。
+   *
+   * R3-481：只数**已存在**的任务会放过「本批一次加很多」—— 9 个存活任务 + 一次 5 个
+   * = 14，越过 maxTasks。这里必须把本批将产生的任务数算进去。
+   */
+  admitError(files: File[], incomingTaskCount = 1): string | null {
     const alive = this.tasks.filter((t) => t.status !== 'failed' && t.status !== 'cancelled');
-    if (alive.length >= LIMITS.queue.maxTasks) {
-      return `同时最多处理 ${LIMITS.queue.maxTasks} 个任务，请先移除已完成或失败的任务`;
+    if (alive.length + incomingTaskCount > LIMITS.queue.maxTasks) {
+      return `同时最多处理 ${LIMITS.queue.maxTasks} 个任务（含本次要加入的），请先移除已完成的任务`;
     }
     const held = alive.reduce((s, t) => s + t.fileSize, 0);
     const incoming = files.reduce((s, f) => s + f.size, 0);

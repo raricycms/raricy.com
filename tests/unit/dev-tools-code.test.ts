@@ -82,6 +82,13 @@ describe('文本工具：统计与转换', () => {
     expect(analyzeText('a😀b').chars).toBe(3);
   });
 
+  it('NBSP 等 Unicode 空白空行：非空行数与段落数口径一致（R3-501）', () => {
+    const stats = analyzeText('第一行\n\u00a0\n第三行');
+    expect(stats.lines).toBe(3);
+    expect(stats.nonEmptyLines).toBe(2);
+    expect(stats.paragraphs, 'NBSP 空行应算段落分隔，而不是让两数自相矛盾').toBe(2);
+  });
+
   it('大小写与首字母大写只动该动的字符', () => {
     expect(transformText('Hello World', 'upper')).toBe('HELLO WORLD');
     expect(transformText('Hello World', 'lower')).toBe('hello world');
@@ -127,6 +134,9 @@ describe('颜色转换：解析', () => {
   it('rgb()/rgba() 支持逗号与空格两种写法', () => {
     expect(parseColor('rgb(37, 99, 235)')).toEqual({ ok: true, color: { r: 37, g: 99, b: 235, a: 1 } });
     expect(parseColor('rgb(37 99 235 / 50%)')).toEqual({ ok: true, color: { r: 37, g: 99, b: 235, a: 0.5 } });
+    // R3-493：页面自己 rgbaToCss 产出的 4 参数逗号写法必须能读回来（CSS Color 4）。
+    expect(parseColor('rgba(37, 99, 235, 0.5)')).toEqual({ ok: true, color: { r: 37, g: 99, b: 235, a: 0.5 } });
+    expect(parseColor('hsla(0, 100%, 50%, 0.25)')).toEqual({ ok: true, color: { r: 255, g: 0, b: 0, a: 0.25 } });
     const percent = parseColor('rgb(100%, 0%, 0%)');
     expect(percent.ok).toBe(true);
     if (percent.ok) expect(percent.color.r).toBe(255);
@@ -577,6 +587,13 @@ describe('代码格式化：JSON', () => {
 
   it('非法 JSON 抛出带位置信息的错误', () => {
     expect(() => formatCode('{"a":}', 'json', 2)).toThrowError(/JSON|position|Unexpected/i);
+    // R3-495：不能直接把 V8 英文甩给用户 —— 错误应是中文说明（可带行列）。
+    try {
+      formatCode('{"a":}', 'json', 2);
+      expect.unreachable('应当抛错');
+    } catch (error) {
+      expect(String((error as Error).message)).toMatch(/JSON|属性名|成员|括号/);
+    }
   });
 
   it('空输入返回空串', () => {
@@ -585,6 +602,11 @@ describe('代码格式化：JSON', () => {
 });
 
 describe('代码格式化：JavaScript / TypeScript', () => {
+  it('数字后的成员访问要留空格（R3-495，`1.toString()` 是语法错误）', () => {
+    expect(formatJavaScript('const a = 1 .toString();', 2)).toContain('1 .toString()');
+    // 小数点的数字仍是紧贴的，不能被误插空格
+    expect(formatJavaScript('const b = 1.5;', 2)).toContain('1.5');
+  });
   it('花括号缩进与分号换行', () => {
     const out = formatJavaScript('function add(a,b){return a+b}const x={a:1,b:2};', 2);
     expect(out).toBe(

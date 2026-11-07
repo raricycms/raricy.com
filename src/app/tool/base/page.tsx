@@ -404,27 +404,39 @@ function encodeAlgo(algo: Algo, inputStr: string): string {
 }
 
 function decodeAlgo(algo: Algo, inputStr: string): string {
-  switch (algo) {
-    case 'base16':
-      return td.decode(hexToBytes(inputStr));
-    case 'base32':
-      return td.decode(base32ToBytes(inputStr));
-    case 'base36':
-      return td.decode(baseNDecode(inputStr.toLowerCase(), alphabets.base36));
-    case 'base58':
-      return td.decode(baseNDecode(inputStr, alphabets.base58));
-    case 'base62':
-      return td.decode(baseNDecode(inputStr, alphabets.base62));
-    case 'base64':
-      return td.decode(base64ToBytes(inputStr));
-    case 'base85':
-      return td.decode(ascii85Decode(inputStr));
-    case 'base91':
-      return td.decode(base91Decode(inputStr));
-    case 'base92':
-      return td.decode(base92Decode(inputStr));
-    default:
-      throw new Error('不支持的算法');
+  // R3-486：解码前统一容忍空白（粘贴折行的 Base 文本很常见；hex/ascii85/base91/92
+  // 原本各自 replace，base58/36/62 与 base64 没做 → 报「非法字符: 」这种不可见字符）。
+  const input = (inputStr || '').replace(/\s+/g, '');
+  try {
+    switch (algo) {
+      case 'base16':
+        return td.decode(hexToBytes(input));
+      case 'base32':
+        return td.decode(base32ToBytes(input));
+      case 'base36':
+        return td.decode(baseNDecode(input.toLowerCase(), alphabets.base36));
+      case 'base58':
+        return td.decode(baseNDecode(input, alphabets.base58));
+      case 'base62':
+        return td.decode(baseNDecode(input, alphabets.base62));
+      case 'base64':
+        return td.decode(base64ToBytes(input));
+      case 'base85':
+        return td.decode(ascii85Decode(input));
+      case 'base91':
+        return td.decode(base91Decode(input));
+      case 'base92':
+        return td.decode(base92Decode(input));
+      default:
+        throw new Error('不支持的算法');
+    }
+  } catch (e) {
+    // `atob` 抛的是英文 DOMException（InvalidCharacterError），直接上屏不可读。
+    const message = (e as Error).message || '';
+    if (/InvalidCharacterError|Invalid character|not valid base64|atob/i.test(message)) {
+      throw new Error('输入不是合法的 Base64（含非法字符或长度不完整）');
+    }
+    throw e;
   }
 }
 
@@ -499,10 +511,20 @@ export default function BaseToolPage() {
                   // .text-dark 站内更是压根没有定义。
                   className={`badge rounded-pill algo-badge${isActive ? ' active' : ''}`}
                   data-algo={key}
+                  // R3-486：与 hash 页的同类胶囊同口径 —— 可 Tab 到、Enter/Space 可切。
+                  role="button"
+                  tabIndex={0}
                   aria-pressed={isActive ? 'true' : 'false'}
                   onClick={() => {
                     setAlgo(key);
                     // 换算法后旧输出不再对应当前算法，清掉并重置状态。
+                    setRight('');
+                    setStatus('');
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key !== 'Enter' && event.key !== ' ') return;
+                    event.preventDefault();
+                    setAlgo(key);
                     setRight('');
                     setStatus('');
                   }}

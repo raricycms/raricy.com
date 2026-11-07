@@ -60,6 +60,9 @@ export default function AesToolPage() {
   const [ivAuto, setIvAuto] = useState(true);
   const [outFormat, setOutFormat] = useState('hex');
   const [status, setStatus] = useState('');
+  // R3-487 / D 桶：手填 GCM Nonce 时记录上一次用过的值 —— 同一 Nonce 加密两次在
+  // GCM 下是**致命**错误（泄露密钥流），必须阻止而不是默默复用。
+  const [lastManualIv, setLastManualIv] = useState('');
 
   const invalidate = () => {
     setRight('');
@@ -103,7 +106,22 @@ export default function AesToolPage() {
 
   async function encrypt() {
     try {
+      // D 桶 R3-487：空密钥不得静默用 `SHA-256('')` 派生固定密钥 —— 用户会以为已加密。
+      if ((key || '').trim() === '') {
+        setRight('');
+        setStatus('失败: 请先填写密钥');
+        return;
+      }
       const m = mode;
+      const manualIv = !ivAuto && iv.trim() !== '';
+      if (m === 'GCM' && manualIv) {
+        if (iv.trim().toLowerCase() === lastManualIv) {
+          setStatus(
+            '已阻止：GCM 下同一个 Nonce 不能复用（同一 Nonce 加密两次会泄露密钥流）；请换一个 Nonce，或切回自动生成'
+          );
+          return;
+        }
+      }
       const cryptoKey = await getKey(m);
       const ivBytes = getIv(m);
       const data = te.encode(left || '');
@@ -122,6 +140,7 @@ export default function AesToolPage() {
       combined.set(ivBytes, 0);
       combined.set(out, ivBytes.length);
       setRight(encodeOut(combined));
+      setLastManualIv(manualIv ? iv.trim().toLowerCase() : '');
       setStatus('完成（输出已包含 IV/Nonce 前缀）');
     } catch (e) {
       setRight('');
@@ -131,14 +150,34 @@ export default function AesToolPage() {
 
   async function decrypt() {
     try {
+      if ((key || '').trim() === '') {
+        setStatus('失败: 请先填写密钥');
+        return;
+      }
       const m = mode;
       const cryptoKey = await getKey(m);
       const input = decodeIn(right || '');
-      // 密文自带 IV/Nonce 前缀
       const ivLen = ivLength(m);
-      if (input.length <= ivLen) throw new Error('密文长度不足，或缺少 IV/Nonce 前缀');
-      const ivBytes = input.slice(0, ivLen);
-      const ciphertext = input.slice(ivLen);
+      // D 桶 R3-487：手填 IV/Nonce 时**解密也用它**（以前只按密文前缀切，输入框白填）。
+      // 允许两种粘贴形态：带前缀（加密输出原样）或去掉前缀的纯密文。
+      let ivBytes: Uint8Array;
+      let ciphertext: Uint8Array;
+      if (!ivAuto && iv.trim() !== '') {
+        ivBytes = hexToBytes(iv);
+        if (ivBytes.length !== ivLen) {
+          throw new Error(`${m} 需要 ${ivLen} 字节 ${m === 'GCM' ? 'Nonce' : 'IV/计数器'}`);
+        }
+        const prefix = input.slice(0, ivLen);
+        const hasPrefix =
+          prefix.length === ivLen && prefix.every((byte, index) => byte === ivBytes[index]);
+        ciphertext = hasPrefix ? input.slice(ivLen) : input;
+        if (ciphertext.length === 0) throw new Error('密文为空');
+      } else {
+        // 密文自带 IV/Nonce 前缀（自动模式与加密输出同口径）。
+        if (input.length <= ivLen) throw new Error('密文长度不足，或缺少 IV/Nonce 前缀');
+        ivBytes = input.slice(0, ivLen);
+        ciphertext = input.slice(ivLen);
+      }
       let plainBuf: ArrayBuffer;
       if (m === 'GCM') {
         plainBuf = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: ivBytes as BufferSource }, cryptoKey, ciphertext as BufferSource);
@@ -279,7 +318,7 @@ export default function AesToolPage() {
                   </select>
                 </div>
                 <div className="col-12 tool-options__wide">
-                  <label className="form-label">IV/Nonce（十六进制）</label>
+                  <label className="form-label">IV/Nonce（十六进制，加密 / 解密都用）</label>
                   <input
                     className="form-control mono"
                     value={iv}
@@ -288,8 +327,12 @@ export default function AesToolPage() {
                       setIvAuto(false);
                       invalidate();
                     }}
-                    placeholder="GCM 12 字节；CBC / CTR 16 字节"
+                    placeholder="GCM 12 字节；CBC / CTR 16 字节；留空则自动生成"
                   />
+                  <small className="text-muted">
+                    加密会使用这里填的值并把 IV 拼在密文前面；解密会用它读取密文（带不带前缀都行）。
+                    GCM 下同一个 Nonce 不能复用 —— 复用会被阻止。
+                  </small>
                 </div>
               </div>
             </div>

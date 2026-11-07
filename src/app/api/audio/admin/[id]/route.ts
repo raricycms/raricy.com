@@ -19,7 +19,8 @@ export async function DELETE(_req: Request, ctx: { params: Promise<{ id: string 
 
   // 不过滤 ignore：**已软删的也要能硬删**（软删只是标 ignore，磁盘文件还在）。
   const audio = await getAudioForServe(id);
-  if (!audio) return apiErr(400, '音频不存在');
+  // 与用户侧同口径（R3-377）：资源不存在统一 404，而不是管理端 400。
+  if (!audio) return apiErr(404, '音频不存在');
 
   const authorId = audio.authorId;
   const filename = audio.filename;

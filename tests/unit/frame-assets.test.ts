@@ -133,7 +133,21 @@ describe('入库的头像框素材', () => {
     }
   });
 
-  it('★ 台账不是空的、也不含已下线的 key', () => {
+  it('★ 每个框（含手画的）都要有 20px 预览，且预览也是真 PNG（R3-624）', () => {
+    // 手画的框不要求进台账（上面第三条刻意只遍历台账），但**预览图不能缺**：
+    // 框选面板按 `_preview-20px-<key>.png` 显示小图，缺了就是空位，而旧守卫对
+    // 手画框只查主图「是 PNG」、对预览连存在性都没查。
+    for (const key of FRAME_KEYS) {
+      const preview = path.join(FRAMES_DIR, `_preview-20px-${key}.png`);
+      expect(fs.existsSync(preview), `缺少 _preview-20px-${key}.png（框选面板会显示空位）`).toBe(
+        true
+      );
+      const head = fs.readFileSync(preview).subarray(0, 8);
+      expect(head.equals(PNG_SIG), `_preview-20px-${key}.png 的内容不是 PNG`).toBe(true);
+    }
+  });
+
+  it('台账不是空的、也不含已下线的 key', () => {
     // 自检：上面两条都是「遍历台账 / 遍历 FRAME_KEYS」，台账被清空时它们会**全绿**。
     const keys = Object.keys(manifest.frames);
     expect(keys.length, '台账里一个框都没有').toBeGreaterThan(0);

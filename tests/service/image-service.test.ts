@@ -524,79 +524,15 @@ describe('getUserUsedBytes（已用字节）', () => {
   });
 });
 
-describe('★ 配额边界（恰好满 / 超 1 字节）', () => {
-  /** 复刻路由里的判定：used + incoming > limitBytes → 拒绝。 */
-  async function wouldAccept(userId: string, role: string, incoming: number) {
-    const limitBytes = getQuotaLimitMb(role) * MB;
-    if (limitBytes === 0) return false;
-    const used = await getUserUsedBytes(userId);
-    return used + incoming <= limitBytes;
-  }
-
-  it('core：恰好用满 50MB 允许（边界是 <=，不是 <）', async () => {
-    const u = await makeUser({ role: 'core' });
-    await makeImage({ authorId: u.id, fileSize: 50 * MB - 100 });
-    expect(await wouldAccept(u.id, 'core', 100), '正好填满最后 100 字节应放行').toBe(true);
-  });
-
-  it('core：超出 1 字节即拒绝', async () => {
-    const u = await makeUser({ role: 'core' });
-    await makeImage({ authorId: u.id, fileSize: 50 * MB - 100 });
-    expect(await wouldAccept(u.id, 'core', 101), '多 1 字节必须拒绝').toBe(false);
-  });
-
-  it('core：已用满 50MB 后，再传 1 字节被拒', async () => {
-    const u = await makeUser({ role: 'core' });
-    await makeImage({ authorId: u.id, fileSize: 50 * MB });
-    expect(await getUserUsedBytes(u.id)).toBe(50 * MB);
-    expect(await wouldAccept(u.id, 'core', 1)).toBe(false);
-  });
-
-  it('owner：50MB 处仍有余量（core 会被拒的量 owner 放行）', async () => {
-    const o = await makeUser({ role: 'owner' });
-    await makeImage({ authorId: o.id, fileSize: 50 * MB });
-    expect(await wouldAccept(o.id, 'owner', 1), 'owner 配额是 100MB').toBe(true);
-    expect(await wouldAccept(o.id, 'core', 1), '同样用量下 core 口径应被拒').toBe(false);
-  });
-
-  it('owner：恰好用满 100MB 允许，超 1 字节拒绝', async () => {
-    const o = await makeUser({ role: 'owner' });
-    await makeImage({ authorId: o.id, fileSize: 100 * MB - 10 });
-    expect(await wouldAccept(o.id, 'owner', 10)).toBe(true);
-    expect(await wouldAccept(o.id, 'owner', 11)).toBe(false);
-  });
-
-  it('admin：与 core 同为 50MB（不因是管理员而放宽）', async () => {
-    const a = await makeUser({ role: 'admin' });
-    await makeImage({ authorId: a.id, fileSize: 50 * MB });
-    expect(await wouldAccept(a.id, 'admin', 1)).toBe(false);
-  });
-
-  it('user：配额 0，空账户传 1 字节也被拒（角色闸门先于容量）', async () => {
-    const u = await makeUser({ role: 'user' });
-    expect(await getUserUsedBytes(u.id)).toBe(0);
-    expect(await wouldAccept(u.id, 'user', 1), 'user 无权使用图床').toBe(false);
-  });
-
-  it('软删后腾出的空间可被重新使用（配额与软删的联动）', async () => {
-    const u = await makeUser({ role: 'core' });
-    const img = await makeImage({ authorId: u.id, fileSize: 50 * MB });
-    expect(await wouldAccept(u.id, 'core', 1024)).toBe(false);
-
-    await softDeleteImage(img.id);
-    expect(await wouldAccept(u.id, 'core', 1024), '软删后应重新有额度').toBe(true);
-  });
-
-  it('单文件上限 10MB 与角色配额是两道独立闸门', async () => {
-    expect(MAX_IMAGE_SIZE).toBe(10 * MB);
-    const u = await makeUser({ role: 'core' });
-    // 配额空空如也，但单文件超 10MB 仍应被上限拦下
-    expect(await wouldAccept(u.id, 'core', 10 * MB + 1), '配额层面 10MB+1 < 50MB 是放行的').toBe(
-      true
-    );
-    expect(10 * MB + 1 > MAX_IMAGE_SIZE, '但单文件闸门必须拦下').toBe(true);
-  });
-});
+// ═════════════════════════════════════════════════════════════════════════════
+// 四½、配额边界 → 已迁到**真实路由**用例
+// ═════════════════════════════════════════════════════════════════════════════
+//
+// R3-381：原先这里 9 条用测试内复刻的 `wouldAccept`（角色取整 + `used+incoming<=limit`），
+// 把 route 的 `>` 改成 `>=`、进制写错、或删掉 limitMb===0 的角色闸，这些断言仍全绿。
+// 现在边界值（恰好满 / 超 1 字节 / owner 100MB / admin 与 core 同额 / user 0 配额 /
+// 软删腾额度 / 单文件 10MB 上限）全部改为过 `POST /api/images` 的真实闸门：
+// `tests/route/image-quota-boundary.test.ts`。本文件不再保留手抄副本。
 
 // ═════════════════════════════════════════════════════════════════════════════
 // 五、MIME 白名单 / 扩展名映射
@@ -1278,16 +1214,23 @@ describe('saveUpload', () => {
 // 用 authState 控制「当前登录者」。注意 image-service / image-upload 不依赖 auth，
 // 所以此 mock 不影响本文件其它用例。
 
-const authState: { user: { id: string; role: string } | null } = { user: null };
+const authState: {
+  user: {
+    id: string;
+    role: string;
+    archivedAt?: Date | null;
+    isBanned?: boolean | null;
+    banUntil?: Date | null;
+  } | null;
+} = { user: null };
 
-vi.mock('@/lib/auth', () => ({
-  getCurrentUser: async () => authState.user,
-  hasAdminRights: (u: { role: string } | null) => u?.role === 'admin' || u?.role === 'owner',
-  isOwner: (u: { role: string } | null) => u?.role === 'owner',
-  isCoreUser: (u: { role: string } | null) =>
-    !!u && ['core', 'admin', 'owner'].includes(u.role),
-  isCurrentlyBanned: () => false,
-}));
+// R3-382：角色 / 禁言判据**不再手抄**成 mock（原来只比 role、archivedAt 缺失、
+// isCurrentlyBanned 恒 false → 归档/禁言分支零覆盖）。真实实现从 auth.ts 取，
+// 只替换依赖 cookies() / 会话表的 getCurrentUser。
+vi.mock('@/lib/auth', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/auth')>();
+  return { ...actual, getCurrentUser: async () => authState.user as never };
+});
 
 describe('GET /api/images/:id/raw（SVG XSS 防护 + 私有图鉴权）', () => {
   let rawGET: (req: Request, ctx: { params: Promise<{ id: string }> }) => Promise<Response>;
@@ -2051,6 +1994,27 @@ describe('POST /api/images（上传内容校验接线）', () => {
     expect(body.code).toBe(200);
     // 确实落库了
     expect(await prisma.imageHosting.count({ where: { authorId: u.id } })).toBe(1);
+  });
+
+  // R3-382：mock 层不再自带角色判定 —— 这两条走真实 auth.ts 判据 + 真实路由。
+  it('归档（archivedAt）用户上传 → 403「需要核心用户权限」', async () => {
+    const u = await makeUser({ role: 'core' });
+    authState.user = { id: u.id, role: 'core', archivedAt: new Date() };
+
+    const { res, body } = await upload(await pngBytes(), 'image/png');
+    expect(res.status).toBe(403);
+    expect(body.message).toContain('核心用户');
+    expect(await prisma.imageHosting.count({ where: { authorId: u.id } })).toBe(0);
+  });
+
+  it('禁言用户上传 → 403「你已被禁言」（真实 isCurrentlyBanned）', async () => {
+    const u = await makeUser({ role: 'core' });
+    authState.user = { id: u.id, role: 'core', isBanned: true, banUntil: null };
+
+    const { res, body } = await upload(await pngBytes(), 'image/png');
+    expect(res.status).toBe(403);
+    expect(body.message).toContain('禁言');
+    expect(await prisma.imageHosting.count({ where: { authorId: u.id } })).toBe(0);
   });
 
   it('★ SVG 字节 + 声明 image/png → 400，且不落库不落盘', async () => {

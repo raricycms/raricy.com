@@ -147,7 +147,10 @@ export interface UtmBuiltParam {
 export interface UtmBuilt {
   ok: true;
   url: string;
-  /** 基础链接（已补全协议、去掉旧的 utm_*）。 */
+  /**
+   * 基础链接：`origin + pathname`（**所有查询串与 `#hash` 都不在 base 里** ——
+   * 不只是 utm_*；面板上「基础链接」只是拆解用的展示值）。
+   */
   base: string;
   /** 实际拼进去的 UTM 参数（按固定顺序）。 */
   params: UtmBuiltParam[];

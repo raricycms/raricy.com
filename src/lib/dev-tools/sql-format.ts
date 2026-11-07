@@ -255,13 +255,6 @@ const KEYWORDS: Record<SqlDialect, Set<string>> = {
   sqlite: new Set([...BASE_KEYWORDS, ...DIALECT_KEYWORDS.sqlite]),
 };
 
-/** 函数名：它后面的 `(` 不加空格（`COUNT(` 而不是 `COUNT (`）。 */
-const FUNCTION_KEYWORDS = new Set([
-  'COUNT', 'SUM', 'AVG', 'MIN', 'MAX', 'COALESCE', 'NULLIF', 'CAST', 'ROUND',
-  'LOWER', 'UPPER', 'LENGTH', 'SUBSTRING', 'TRIM', 'CONCAT', 'ABS', 'NOW',
-  'IFNULL', 'JSON_EXTRACT', 'DATE_TRUNC', 'ROW_NUMBER', 'RANK', 'DENSE_RANK',
-]);
-
 /** 这些关键字后面的 `(` 要有空格（`IN (`、`VALUES (`）。 */
 const SPACE_BEFORE_PAREN_KEYWORDS = new Set([
   'IN', 'EXISTS', 'VALUES', 'AS', 'ON', 'USING', 'AND', 'OR', 'NOT', 'WHEN',
@@ -270,14 +263,11 @@ const SPACE_BEFORE_PAREN_KEYWORDS = new Set([
   'CASE', 'JOIN',
 ]);
 
-/** 会把内容缩进一级的子句（关键字之后换行）。 */
+/** 会把内容缩进一级的子句（关键字之后换行）。多词子句由上面的 combine 分支处理。 */
 const LIST_CLAUSES = new Set([
-  'SELECT', 'FROM', 'WHERE', 'GROUP BY', 'HAVING', 'ORDER BY', 'SET', 'VALUES',
-  'RETURNING', 'WITH', 'INSERT INTO', 'DELETE FROM', 'UPDATE',
+  'SELECT', 'FROM', 'WHERE', 'HAVING', 'SET', 'VALUES',
+  'RETURNING', 'WITH', 'UPDATE',
 ]);
-
-/** 关键字与本行内容同行、不强制换行的子句。 */
-const INLINE_CLAUSES = new Set(['LIMIT', 'OFFSET', 'UNION', 'UNION ALL', 'UNION DISTINCT', 'INTERSECT', 'EXCEPT']);
 
 const JOIN_PREFIXES = new Set(['LEFT', 'RIGHT', 'FULL', 'INNER', 'OUTER', 'CROSS', 'NATURAL']);
 
@@ -601,14 +591,7 @@ export function formatSql(source: string, options: SqlFormatOptions): string {
   return output.join('\n');
 }
 
-/** 关键字 / 方言相关的辅助：页面用来渲染提示，不上屏也不改输出。 */
-export function sqlKeywordUppercaseHint(): string {
-  return '关键字大写只影响被识别为关键字的词；字符串与引号标识符里的内容永远不会被改。';
-}
-
 /** 供单测断言「识别成关键字的词」用（页面不直接用）。 */
 export function isSqlKeyword(word: string, dialect: SqlDialect): boolean {
-  const upper = word.toUpperCase();
-  if (FUNCTION_KEYWORDS.has(upper)) return KEYWORDS[dialect].has(upper);
-  return KEYWORDS[dialect].has(upper);
+  return KEYWORDS[dialect].has(word.toUpperCase());
 }

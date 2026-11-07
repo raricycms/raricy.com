@@ -68,7 +68,7 @@ export default function HexToolPage() {
           const modifiedClass = modifiedIndices.has(i) ? ' modified-cell' : '';
           hexCells += `<span class="byte${isGroupGap ? ' group-gap' : ''}${modifiedClass}" data-index="${i}" tabindex="0">${hx}</span>`;
           const ch = (val >= 0x20 && val <= 0x7e) ? String.fromCharCode(val) : '.';
-          asciiCells += `<span class="char${modifiedClass}" data-index="${i}" tabindex="0">${ch}</span>`;
+          asciiCells += `<span class="char${modifiedClass}" data-index="${i}">${ch}</span>`;
         }
         // pad remaining cells to 16 for layout alignment
         for (let i = end; i < start + 16; i++) {
@@ -143,7 +143,9 @@ export default function HexToolPage() {
           showStatus('加载失败');
         }
       } finally {
-        showProgressUI(false);
+        // R3-489：只有**本次加载仍是当前加载**时才收进度条 —— 选 A 后立刻换 B 时，
+        // A 的 finally 会晚于 B 的显示执行；无条件隐藏会把 B 的进度与取消按钮关掉。
+        if (currentAbort === controller) showProgressUI(false);
         URL.revokeObjectURL(url);
         if (currentAbort === controller) currentAbort = null;
         // 清空原生 input 的值，允许再次选择同一文件（否则 change 不触发）。

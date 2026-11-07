@@ -95,6 +95,26 @@ describe('ConvertQueue 串行与生命周期', () => {
   });
 });
 
+describe('入队闸：批量不得越过 maxTasks（R3-481）', () => {
+  it('已存在 9 个存活任务时，一次加 2 个被拒、加 1 个放行', async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    // 第一个任务占住执行位，其余排队 → 全是「存活」任务。
+    const executor: Executor = async () => {
+      await gate;
+      return result(1);
+    };
+    const q = new ConvertQueue(executor, { onChange: () => {} });
+    for (let i = 0; i < 9; i += 1) q.enqueue(task(`f${i}.bin`));
+    const files = [{ size: 1 }] as unknown as File[];
+    expect(q.admitError(files, 2), '9 + 2 = 11 > maxTasks（10），必须拒绝').not.toBeNull();
+    expect(q.admitError(files, 1), '9 + 1 = 10，正好到顶应放行').toBeNull();
+    release();
+  });
+});
+
 describe('取消与代次', () => {
   it('取消排队中的任务：不启动执行体', async () => {
     const started: string[] = [];

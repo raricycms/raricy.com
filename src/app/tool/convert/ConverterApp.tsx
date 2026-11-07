@@ -387,10 +387,16 @@ export default function ConverterApp() {
       }
       setPending((prev) => {
         const cap = category.maxFilesPerTask > 1 ? category.maxFilesPerTask : LIMITS.queue.maxTasks;
-        const merged = [...prev, ...newPending].slice(0, Math.max(cap, 1) === 1 ? LIMITS.queue.maxTasks : cap);
+        const merged = [...prev, ...newPending].slice(0, cap);
+        const dropped = prev.length + newPending.length - merged.length;
+        // R3-482：超上限不能静默截断 —— 明确告诉用户多出的没加进来。
+        if (dropped > 0) {
+          setAnnounce(`最多同时保留 ${cap} 个文件，多出的 ${dropped} 个未加入`);
+        }
         return merged;
       });
-      setAnnounce('');
+      // 上面若没有触发提示（未截断），把「正在识别」的临时文案清掉；有提示时保留它。
+      setAnnounce((prev) => (prev.startsWith('正在识别') ? '' : prev));
     },
     [caps, category]
   );
@@ -482,17 +488,18 @@ export default function ConverterApp() {
       return;
     }
     const queue = queueRef.current!;
-    const admit = queue.admitError(okPending.map((p) => p.file));
-    if (admit) {
-      setAnnounce(admit);
-      return;
-    }
+    // 先算本批任务数再判闸（R3-481）：队列只数已存在任务会放过一次加很多的情况。
     const tasks = tasksForBatch(
       edge,
       category,
       okPending.map((p) => ({ file: p.file, inspect: p.inspect })),
       params
     );
+    const admit = queue.admitError(okPending.map((p) => p.file), tasks.length);
+    if (admit) {
+      setAnnounce(admit);
+      return;
+    }
     for (const t of tasks) queue.enqueue(t);
     setAnnounce(`已加入 ${tasks.length} 个任务`);
     setPending([]);

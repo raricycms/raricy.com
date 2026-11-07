@@ -109,17 +109,27 @@ function parseHue(raw: string): number | null {
   return ((value % 360) + 360) % 360;
 }
 
-/** 把函数式颜色的内部参数切成通道与 alpha：同时支持逗号法与空格 + `/` 法。 */
+/**
+ * 把函数式颜色的内部参数切成通道与 alpha：同时支持逗号法与空格 + `/` 法。
+ *
+ * 逗号法还要吃下 **第 4 段 alpha**（`rgba(37, 99, 235, 0.5)`）：CSS Color 4 里
+ * rgb()/rgba() 等价，浏览器 DevTools / 设计稿复制出来的半透明色正是这种写法；
+ * 以前只认 3 段会把页面自己 `rgbaToCss` 的输出判成非法（R3-493）。
+ */
 function splitColorArgs(inner: string): { channels: string[]; alpha: string | null } {
   const slashParts = inner.split('/');
   const head = slashParts[0];
-  const alpha = slashParts.length > 1 ? slashParts[1] : null;
-  const channels = head.includes(',')
+  let alpha = slashParts.length > 1 ? slashParts[1] : null;
+  let channels = head.includes(',')
     ? head.split(',').map((part) => part.trim())
     : head
         .trim()
         .split(/\s+/)
         .filter((part) => part !== '');
+  if (alpha === null && channels.length === 4) {
+    alpha = channels[3];
+    channels = channels.slice(0, 3);
+  }
   return { channels, alpha };
 }
 

@@ -57,7 +57,7 @@ export const CSV_DELIMITER_OPTIONS: ReadonlyArray<{ value: CsvDelimiterOption; l
 ];
 
 export const DATA_CONVERT_LOSS_NOTES: readonly string[] = [
-  'YAML → 其他：注释、锚点 / 别名（&a / *a）与多文档（---）都会丢失；YAML 特有类型按 JSON 兼容模式读取（日期保持原字符串，yes/no 保持字符串）。',
+  'YAML → 其他：注释、锚点 / 别名（&a / *a）会丢失；多文档（---）与 !!binary 等非 JSON 标签会在解析阶段直接报错（当前口径是拒绝，不是静默丢弃）。YAML 特有类型按 JSON 兼容模式读取（日期保持原字符串，yes/no 保持字符串）。',
   '其他 → YAML：字段顺序按对象顺序输出，原 YAML 的注释与排版不保留。',
   'CSV → 其他：每个单元格都变成字符串，数字、布尔、null 无法自动还原（读回来是 "123" / "true"）。',
   '其他 → CSV：只接受「对象数组」；嵌套的对象 / 数组会被压成一段 JSON 文本，读回来是字符串。',
@@ -71,23 +71,36 @@ export const DATA_CONVERT_LOSS_NOTES: readonly string[] = [
  *
  * 只认逗号 / 制表符 / 分号：从 Excel 直接粘贴过来的是制表符分隔，从其他工具复制
  * 的常见分号分隔（欧洲习惯）。猜不出时退回逗号（最通用）。
+ *
+ * 引号规则必须与 `parseCsv` 一致（R3-494）：只有**字段开头**的 `"` 才开引号、
+ * 字段内的 `""` 是转义。旧实现「任何 `"` 都翻转状态」会被单元格里一个落单引号
+ * 整行带偏（制表符分隔的文本被判成逗号 → 整行变 1 列）。
  */
 export function detectCsvDelimiter(text: string): CsvDelimiter {
   let comma = 0;
   let tab = 0;
   let semicolon = 0;
   let inQuotes = false;
+  let atFieldStart = true;
   for (let i = 0; i < text.length; i++) {
     const c = text[i];
-    if (c === '"') {
-      inQuotes = !inQuotes;
+    if (inQuotes) {
+      if (c === '"') {
+        if (text[i + 1] === '"') i += 1; // `""` 转义
+        else inQuotes = false;
+      }
       continue;
     }
-    if (inQuotes) continue;
+    if (c === '"' && atFieldStart) {
+      inQuotes = true;
+      atFieldStart = false;
+      continue;
+    }
     if (c === '\n' || c === '\r') break;
     if (c === ',') comma++;
     else if (c === '\t') tab++;
     else if (c === ';') semicolon++;
+    atFieldStart = false;
   }
   if (tab > comma && tab >= semicolon) return '\t';
   if (semicolon > comma && semicolon > tab) return ';';
