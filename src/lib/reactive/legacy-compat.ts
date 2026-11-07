@@ -748,15 +748,44 @@ function convertMediaBlocks(
       const padded = blockLength <= MAX_MEDIA_BLOCK_CHARS;
 
       // 站内受控音频仍走现有 `[@音频/<id>]`（音频 kind），不改 media。
+      // 外链音频按产品规则降级为可点击链接（R3-111）：**不能**进 media host，
+      // 否则浏览器会主动请求第三方地址（访客 IP 泄露的跟踪信标，与评论禁外链图同源）。
+      // 直接 `src` 与多个 `<source src>` 一起判；author 的原始 URL 以链接保留。
       if (tag === 'audio') {
-        const controlled = url?.match(/^\/api\/audio\/([A-Za-z0-9]{10})\/raw$/);
-        if (controlled) {
-          const token = `[@音频/${controlled[1]}]`;
-          if (padded && writeMediaReplacement(chars, start, blockLength, token)) {
-            count(counts, 'audio-ref');
-            cursor = closeEnd;
-            continue;
-          }
+        const audioUrls: string[] = [];
+        const directAudio = readAttr(openTag, 'src');
+        if (directAudio) audioUrls.push(directAudio);
+        for (const match of inner.matchAll(/<source\b[^>]*>/gi)) {
+          const sourceAudio = readAttr(match[0], 'src');
+          if (sourceAudio) audioUrls.push(sourceAudio);
+        }
+        const uniqueAudioUrls = [...new Set(audioUrls)];
+        // `audio` 用途真正接管：只有本站受控 raw 路径算「可播放」，其余一律不是。
+        const controlledId = uniqueAudioUrls
+          .filter((candidate) => isAllowedReactiveUrl(candidate, 'audio'))
+          .map((candidate) => /^\/api\/audio\/([A-Za-z0-9]{10})\/raw$/.exec(candidate)?.[1])
+          .find((id): id is string => typeof id === 'string');
+        const externalLinks = uniqueAudioUrls
+          .filter((candidate) => !isAllowedReactiveUrl(candidate, 'audio'))
+          .filter((candidate) => isAllowedReactiveUrl(candidate, 'link'))
+          .map((candidate) => `[音频](${candidate})`);
+
+        let audioText: string;
+        let audioCount: string;
+        if (controlledId) {
+          audioText = `[@音频/${controlledId}]`;
+          audioCount = 'audio-ref';
+        } else if (externalLinks.length > 0) {
+          audioText = externalLinks.join(' ');
+          audioCount = 'audio-link';
+        } else {
+          audioText = '音频';
+          audioCount = 'audio-drop';
+        }
+        if (padded && writeMediaReplacement(chars, start, blockLength, audioText)) {
+          count(counts, audioCount);
+          cursor = closeEnd;
+          continue;
         }
       }
 

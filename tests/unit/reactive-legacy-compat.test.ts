@@ -621,16 +621,47 @@ describe('历史 HTML 音视频 → 受限 media host', () => {
     expect(JSON.stringify(documentOf(result).nodes)).toContain('"kind":"media"');
   });
 
-  it('外部 audio 走 media；站内受控音频仍走 [@音频]；危险协议不生成 media', () => {
+  it('外部 audio 降级为音频链接；站内受控音频仍走 [@音频]；危险协议不生成 media', () => {
+    // 产品决定 R3-111：站内受控音频保留播放器，外链音频只给可点击链接 ——
+    // 绝不能进 media host（否则浏览器会主动请求第三方地址）。
     const external = applyLegacyHtmlCompat('<audio src="https://cdn.example.com/a.mp3"></audio>');
-    expect(external.source).toMatch(/\[\[媒体:[a-f0-9]{10}\]\]/);
-    expect(Object.values(external.mediaSources)).toEqual([
-      { media: 'audio', src: 'https://cdn.example.com/a.mp3' },
-    ]);
+    expect(external.source).toContain('[音频](https://cdn.example.com/a.mp3)');
+    expect(external.source).not.toMatch(/\[\[媒体:/);
+    expect(external.mediaSources).toEqual({});
+
+    // 多段 <source> 同样逐条降级，作者的原始地址都保留（不丢第二个）。
+    const multi = applyLegacyHtmlCompat(
+      '<audio controls><source src="https://cdn.example.com/a.mp3" type="audio/mpeg">' +
+        '<source src="https://cdn.example.com/b.ogg" type="audio/ogg"></audio>'
+    );
+    expect(multi.source).toContain('[音频](https://cdn.example.com/a.mp3)');
+    expect(multi.source).toContain('[音频](https://cdn.example.com/b.ogg)');
+    expect(multi.source).not.toMatch(/\[\[媒体:/);
+    expect(multi.mediaSources).toEqual({});
+
+    // <source> 里的受控音频也要能识别成播放器（旧实现只看直接 src / 首个 source）。
+    const controlledSource = applyLegacyHtmlCompat(
+      '<audio><source src="/api/audio/abcdefghij/raw"></audio>'
+    );
+    expect(controlledSource.source).toContain('[@音频/abcdefghij]');
+    expect(controlledSource.mediaSources).toEqual({});
+
+    const mixed = applyLegacyHtmlCompat(
+      '<audio><source src="https://cdn.example.com/a.mp3">' +
+        '<source src="/api/audio/abcdefghij/raw"></audio>'
+    );
+    expect(mixed.source).toContain('[@音频/abcdefghij]');
+    expect(mixed.mediaSources).toEqual({});
 
     const controlled = applyLegacyHtmlCompat('<audio src="/api/audio/abcdefghij/raw"></audio>');
     expect(controlled.source).toContain('[@音频/abcdefghij]');
     expect(controlled.mediaSources).toEqual({});
+
+    const unsafeAudio = applyLegacyHtmlCompat('<audio src="javascript:alert(1)"></audio>');
+    expect(unsafeAudio.source).not.toMatch(/\[\[媒体:/);
+    expect(unsafeAudio.source).not.toContain('[音频](');
+    expect(unsafeAudio.mediaSources).toEqual({});
+    expect(unsafeAudio.source).toContain('音频');
 
     const unsafe = applyLegacyHtmlCompat('<video src="javascript:alert(1)"></video>');
     expect(unsafe.source).not.toMatch(/\[\[媒体:/);
