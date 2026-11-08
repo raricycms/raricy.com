@@ -1,7 +1,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // chat-image.spec.ts —— 讨论图片
 //   · 点图片原位放大（覆盖层），不新开窗口
-//   · 上传第一次网络失败自动重试一次（弱网 / 微信内置浏览器）
+//   · 上传网络失败**不自动重发**（R3-373）：只提示失败，不落第二张图、不白占配额
 //
 // 【造数纪律】大区是全站共用频道：定位一律用本轮 uniqueTag 的哨兵串锚定，
 // 绝不断言「列表里有几条」。另外发图也走发言限频（120 条/分钟/用户），本文件用的
@@ -120,16 +120,16 @@ test.describe('讨论图片', () => {
     await expect(overlay).toHaveCount(0);
   });
 
-  test('上传第一次网络失败会自动重试一次', async ({ page }) => {
+  test('上传网络失败不自动重发，只提示失败', async ({ page }) => {
     await loginViaApi(page, SEED_USERS.core.username);
 
     let attempts = 0;
     await page.route('**/api/images', async (route) => {
       if (route.request().method() !== 'POST') return route.continue();
       attempts += 1;
-      // 第一次模拟「请求根本没发出去」（弱网/微信 X5 内核对 fetch+FormData 的偶发失败）
-      if (attempts === 1) return route.abort('connectionfailed');
-      return route.continue();
+      // 模拟「请求根本没发出去」。浏览器无法区分它与「服务端已落库、响应在回程丢了」，
+      // 所以不能自动重发（R3-373）：重发同一个 FormData 可能落第二张图、白占配额。
+      return route.abort('connectionfailed');
     });
 
     await page.goto(`/chat?channel=${LOBBY}`);
@@ -139,8 +139,12 @@ test.describe('讨论图片', () => {
       buffer: PNG_1X1,
     });
 
-    // 重试成功 → 待发送预览出现，且总请求数为 2
-    await expect(page.locator('.chat-composer__image')).toBeVisible({ timeout: 15_000 });
-    expect(attempts, '应当只重试一次').toBe(2);
+    // 失败如实提示，且不出现待发送预览
+    await expect(page.locator('#toast-container .toast__body', { hasText: '网络中断' })).toBeVisible();
+    await expect(page.locator('.chat-composer__image')).toHaveCount(0);
+
+    // 旧实现在 800ms 后用同一个 FormData 重发；再等一轮确认没有第二次请求。
+    await page.waitForTimeout(1_200);
+    expect(attempts, '网络失败不自动重发：重发可能落第二张图、白占配额').toBe(1);
   });
 });

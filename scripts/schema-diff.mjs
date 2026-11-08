@@ -8,9 +8,9 @@
 // 【为什么需要】本仓有三条建库路径：
 //   A. `npm run migrate -- up`（生产路径：手写 SQL）      ← 本脚本的 A 库
 //   B. `prisma db push`（测试/模板路径：从 schema.prisma） ← 本脚本的 B 库
-//   C. 生产真库（Alembic 建出、被两者共同描述）
-// schema（49 模型 / 105 索引 / 14 唯一约束）与迁移（43 个目录）之间**没有任何机器
-// 核对**：`migrate verify` 只比迁移文件 checksum，不比结构。于是「schema 改了、迁移
+//   C. 生产真库（由迁移历史演进而来、被两者共同描述）
+// schema.prisma 与手写迁移目录之间**没有任何机器核对**：`migrate verify` 只比迁移
+// 文件 checksum，不比结构。于是「schema 改了、迁移
 // 没写」「迁移写了、schema 漂了」「外键 CASCADE 只在迁移里」都只能靠人读。
 //
 // 本脚本在两份**隔离的空库**上各跑一条路径，然后把结构逐项比对并打印清单：
@@ -29,9 +29,14 @@
 //     迁移 INTEGER vs schema Boolean、默认值 0/1 vs false/true（语义相同）；
 //   · R3-019 已登记的 `blogs.visibility` 列默认 'private' vs 'internal'；
 //   · R3-014 已登记的 7 处 ON DELETE CASCADE（迁移）vs 默认 RESTRICT（schema）；
-//   · 38 号迁移的 partial unique index `uq_daily_quotes_active_content`（schema 表达不了）。
+//   · 38 / 43 号迁移的 partial unique index（schema 表达不了）。
 // 其余差异一律列在「需要人判读」区，退出码默认 0；加 `--fail-on-diff` 时只要存在
 // **非 known** 差异就退出 1，可直接当 CI 门禁用（已知项已从退出码里排除）。
+// ⚠️ 现状下 `--fail-on-diff` 仍会为 11 条**存量未登记差异**退出 1：`chat_members` /
+//    `chat_messages` 的 6 条外键只在 schema（迁移 4_chat 没建），以及
+//    `account_sync_ledger` / `chat_*` 的 5 条 NOT NULL 分叉。它们与 R3-014 的 CASCADE
+//    同类，是历史迁移与 schema 的既有分叉，不是本轮引入的；裁决前不要拿本开关当绿门禁，
+//    处置方式同 `docs/legacy-constraints.md`（登记为历史约束，或另开迁移补齐）。
 // ─────────────────────────────────────────────────────────────────────────────
 
 import fs from 'node:fs';
@@ -55,6 +60,17 @@ const { DatabaseSync } = createRequire(import.meta.url)('node:sqlite');
 /** 迁移侧独有、且属于「机制产物」的表前缀（不是 schema 漂移）。 */
 const KNOWN_MIGRATION_ONLY_TABLES = ['_raricy_migrations', 'public_blog_search'];
 const KNOWN_SCHEMA_ONLY_TABLES = ['_prisma_migrations'];
+
+/** 迁移刻意建、而 schema.prisma 表达不了（SQLite partial unique index）的索引。 */
+const KNOWN_PARTIAL_UNIQUE_INDEXES = new Map([
+  ['uq_daily_quotes_active_content', '38 号迁移的 partial unique，schema 表达不了（R3-019 已登记）'],
+  ['uq_admin_action_appeals_pending', '43 号迁移的 partial unique，schema 表达不了（R3-447 已登记）'],
+]);
+
+const MIGRATIONS_DIR = path.join(ROOT, 'prisma', 'migrations');
+const MIGRATION_COUNT = fs
+  .readdirSync(MIGRATIONS_DIR, { withFileTypes: true })
+  .filter((d) => d.isDirectory() && fs.existsSync(path.join(MIGRATIONS_DIR, d.name, 'migration.sql'))).length;
 
 fs.mkdirSync(TMP_ROOT, { recursive: true });
 const dir = fs.mkdtempSync(path.join(TMP_ROOT, 'schema-diff-'));
@@ -189,7 +205,7 @@ function isKnownTableOnlyInMigrations(name) {
 section('1/3 建库：migrate up（生产路径）');
 console.log(`  库：${path.relative(ROOT, MIGRATED_DB)}`);
 run('migrate up', process.execPath, [MIGRATE, 'up'], MIGRATED_DB);
-console.log('  ✓ 43 个迁移全部应用');
+console.log(`  ✓ ${MIGRATION_COUNT} 个迁移全部应用`);
 
 section('2/3 建库：prisma db push（schema.prisma 路径）');
 console.log(`  库：${path.relative(ROOT, PUSHED_DB)}`);
@@ -290,9 +306,10 @@ for (const [name, aTable] of migrated.tables) {
   const onlyIndexesB = bIndexes.filter((idx) => !aKeys.includes(indexKey(idx)));
   for (const idx of onlyIndexesA) {
     const message = `${name}：只迁移里有 ${renderIndex(idx)}`;
-    // 38 号迁移刻意把唯一索引换成 partial unique —— schema.prisma 表达不了部分索引。
-    if (idx.unique && idx.partial && idx.name === 'uq_daily_quotes_active_content') {
-      pushKnown('索引', `${message} —— 38 号迁移的 partial unique，schema 表达不了（R3-019 已登记）`);
+    // 部分唯一索引 schema.prisma 表达不了；只接受登记过的那些（见 KNOWN_PARTIAL_UNIQUE_INDEXES）。
+    const knownPartial = KNOWN_PARTIAL_UNIQUE_INDEXES.get(idx.name);
+    if (idx.unique && idx.partial && knownPartial) {
+      pushKnown('索引', `${message} —— ${knownPartial}`);
     } else {
       pushFinding('索引', message);
     }

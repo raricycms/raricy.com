@@ -65,7 +65,7 @@
 | `/explore` | page | **对外公开列表**（`public` 档，与 sitemap 同一个集合）。全站**唯一**不需要登录的浏览面，访客与非 core 的「博客」入口指向它（见 §6.12） |
 | `/api/blogs` · `/api/blogs/[id]` · `/api/categories` · `/api/spider/*` | API | 博客 API + 栏目清单 + 爬虫 API。**全部 core+**，与 `/blog` 页面同档（读口含正文搜索那条重活，见 §6.5）。`/api/categories` 是给发文方查 `category_id` 的读口（此前只有 `/api/admin/categories`，机器人无从枚举）；发文对外契约见 `docs/bot/blog-bot.md` |
 | `/api/og/blog/[id]` | API | **分享卡片 PNG**（OG 图）。无会话档位，逐篇判可见性：只对外可见的文章返回 200，其余与「不存在」同形 404。缓存与 `X-Robots-Tag` 按档位发（见 §6.11） |
-| `/api/auth/authentic` · `/zhh` | API + route | 邀请码升 core · 邀请码生成（站长） |
+| `/api/auth/authentic` · `/zhh` | API + route | 邀请码升 core · `/zhh` 网页发码入口已退役（固定 410；邀请码只由运维 CLI 签发，见 `docs/cli.md`） |
 | `/fish` · `/fish/transactions` · `/api/fish/*` | page + API | 小鱼干面板 + 流水 |
 | `/fish/market` · `/api/fish/market/*` | page + API | 鱼干市场：**用户间转账**（无手续费）+ **鱼干商城**（租头像框 §6.14、聊天气泡 §6.18）。`POST transfer`（支持客户端幂等键）/ `GET users`（收款人搜索）/ `POST balance`、`POST transactions`（站外脚本查询，含 `since_id` 对账游标）/ `POST pay`（收银台专用）/ `POST rent`、`POST bubble-rent`（装扮租赁，仅会话）。写路径见 §6.3；对外契约见 `docs/bot/fish-bot.md`（两条装扮租赁不在其中） |
 | `/fish/pay` | page | **收银台**：站外商户把用户送来付款（`?to= &amount= &note= &from= &return=`）。参数一律不可信，只做展示；付款必须**已登录 + 再输一次密码**（step-up），密码只输在本站域名下。不入索引 |
@@ -81,7 +81,7 @@
 | `/audio` · `/audio/admin` · `/audio/guide` · `/api/audio/*` | page + API | 音频床 + 管理。**独立配额**（不吃图床那份 50MB），见 §6.6/§6.15 |
 | `/image/i/<id>` · `/auth/avatar/<id>` | rewrite | **不是路由**：历史版本的旧直链，由 `next.config.mjs` 的 `rewrites()` 映射到 `/api/images/<id>/raw`、`/api/avatar/<id>`。存量正文里写死的就是它们（见 `tests/e2e/legacy-urls.spec.ts`） |
 | `/story` · `/story/[...path]` | page | 故事合集/阅读 |
-| `/tool` · `/tool/<sub>` | page | 工具集（aes / base / hash / hex / html / qp / translate / url / cattca）。**开发者工具**收在合集 `/tool/dev`（含 27 个新工具，见 §6.24）；`/tool/dev/<slug>` 是各工具子页 |
+| `/tool` · `/tool/<sub>` | page | 工具集（aes / base / hash / hex / html / qp / url / cattca）。**开发者工具**收在合集 `/tool/dev`（含 27 个新工具，见 §6.24）；`/tool/dev/<slug>` 是各工具子页 |
 | `/admin/*` · `/api/admin/*` | page + API | 管理后台（档位分页而异，见 §8） |
 | `/audit` · `/audit/[id]` | page | 审计日志公示 + 申诉。页面（母版 `src/app/audit/layout.tsx`）、`GET /api/audit` 与提交申诉**同为 core+** —— 「公示」的口径是**公示给站内成员**，不是对外透明。只列近 30 天、visibility='public' 的日志 |
 | `/admin/logs` | page | 审计日志**运维检索**（admin+，页面里 `requireAdmin()`）。与 `/audit` 是两个东西：看得到内部日志（`visibility='internal'`），且不设时间窗。**刻意不抹** `hideTarget`（匿名评论的当事人照常显示）—— 这正是它要 admin 档的原因（见 §6.16） |
@@ -115,7 +115,7 @@
 | 投票 / 签到 / 剪贴板 | `vote-service.ts` · `checkin-service.ts` · `clipboard-service.ts` |
 | 收藏夹 | `favorite-service.ts`（六条不变量见文件头）· `favorite-refs.ts`（`[@六位]` 的纯逻辑），见 §6.9 |
 | 保存的消息（私聊） | `saved-message-service.ts`（私聊消息保存箱：**不是收藏夹**，没有 6 位句柄 / 分享 / 导出 / 复制 / bot 出口），见 §6.20 |
-| 图床 | `image-service.ts` · `image-sniff.ts`（**零依赖的内容判定**：magic bytes / SVG 文本头 / HEIC·AVIF·MOV 的 ftyp 品牌 / 声明归一化 / `planImageUpload` —— 服务端与浏览器侧共用同一份）· `image-upload.ts`（服务端：配额 / sharp 压缩 / 落盘 / 落库）· `image-client.ts`（浏览器侧**单文件**上传：按字节归一化（HEIC → JPEG）/ XHR / 弱网重试。讨论、评论、博客与剪贴板编辑器共用这一条；编辑器侧的**多文件**调度另住 `md-editor/upload.ts`） |
+| 图床 | `image-service.ts` · `image-sniff.ts`（**零依赖的内容判定**：magic bytes / SVG 文本头 / HEIC·AVIF·MOV 的 ftyp 品牌 / 声明归一化 / `planImageUpload` —— 服务端与浏览器侧共用同一份）· `image-upload.ts`（服务端：配额 / sharp 压缩 / 落盘 / 落库）· `image-client.ts`（浏览器侧**单文件**上传：按字节归一化（HEIC → JPEG）/ XHR / 网络失败不自动重发（R3-373）。讨论、评论、博客与剪贴板编辑器共用这一条；编辑器侧的**多文件**调度另住 `md-editor/upload.ts`） |
 | 音频床 | `audio-upload.ts`（magic bytes 嗅探 + **MIME 别名归一化**，**无压缩**）· `audio-service.ts`（含**独立配额聚合**）· `audio-refs.ts`（`[@音频/<ID>]`，**零 import** —— 要被拉进客户端包），见 §6.15 |
 | 头像框 | `frame-refs.ts`（纯词汇层：白名单 / 解析 / 到期判定 / **租金与在架清单**，仅依赖共享租期 `shop-refs.ts`）· `frame-service.ts`（素材扫盘 + 持有与装备写路径 + **判定唯一出口**；授予内核 `grantFrameTx` 收调用方的事务，供商城拼原子性）· `frame-shop-service.ts`（鱼干商城：租框。**它不直接写那两列**，一律经 `grantFrameTx` —— F1），见 §6.14 |
 | 聊天气泡与商城词汇 | `bubble-refs.ts`（白名单、展示与定价）· `shop-refs.ts`（共享租期）· `bubble-service.ts`（持有/装备唯一写入者与判定出口）· `bubble-shop-service.ts`（同事务扣款与发放），见 §6.18 |

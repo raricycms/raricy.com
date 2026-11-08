@@ -1,10 +1,12 @@
 import { expect, test } from '@playwright/test';
-import { loginViaApi, registerFreshUser, uniqueTag } from './helpers';
+import { loginViaApi, registerFreshUser, uniqueTag, waitCommentSectionReady } from './helpers';
 import { SEED_BLOG, SEED_USERS } from './seed';
 
 test('评论选人支持键盘，保留光标两边正文，提示框在视口内', async ({ page }, info) => {
   await loginViaApi(page, SEED_USERS.core.username);
   await page.goto(`/blog/${SEED_BLOG.id}`);
+  // 评论区是客户端组件：水合完成前 fill 会被 React 首次渲染重置回空，@ 提示不会出现。
+  await waitCommentSectionReady(page);
   const input = page.locator('.comment-composer__input');
   await input.fill('前文 @e2e_ad 后文');
   // 真正移动光标，覆盖浏览器的 selectionchange（手发 select 不会触发 React onSelect）。
@@ -38,6 +40,7 @@ test('点选后匿名发表评论，收件人收到提及通知且可以打开�
     const target = await registerFreshUser(recipientPage, { core: true });
     const sender = await registerFreshUser(page, { core: true });
     await page.goto(`/blog/${SEED_BLOG.id}`);
+    await waitCommentSectionReady(page);
     const input = page.locator('.comment-composer__input');
     await input.fill(`@${target.username.slice(0, -2)}`);
     const option = page.getByRole('option', { name: `@${target.username}`, exact: true });
@@ -95,6 +98,7 @@ test('讨论大区提示排除专注账号，私聊只提示对方，切换会�
 test('Escape 关闭提示，邮件与名片不弹提示，中文输入法确认不会选人或发送', async ({ page }) => {
   await loginViaApi(page, SEED_USERS.core.username);
   await page.goto(`/blog/${SEED_BLOG.id}`);
+  await waitCommentSectionReady(page);
   const input = page.locator('.comment-composer__input');
   await input.fill('@e2e_admin');
   await expect(page.getByRole('option', { name: '@e2e_admin', exact: true })).toBeVisible();
@@ -115,6 +119,7 @@ test('Escape 关闭提示，邮件与名片不弹提示，中文输入法确认�
 test('较早的搜索响应不能覆盖新前缀的结果', async ({ page }) => {
   await loginViaApi(page, SEED_USERS.core.username);
   await page.goto(`/blog/${SEED_BLOG.id}`);
+  await waitCommentSectionReady(page);
   await page.route('**/api/mentions/users?**', async (route) => {
     const query = new URL(route.request().url()).searchParams.get('q');
     if (query === 'old') await new Promise((resolve) => setTimeout(resolve, 600));
@@ -134,6 +139,7 @@ test('较早的搜索响应不能覆盖新前缀的结果', async ({ page }) => 
 test('键盘选择长候选列表的末项会滚入提示框，正文保留在草稿中', async ({ page }) => {
   await loginViaApi(page, SEED_USERS.core.username);
   await page.goto(`/blog/${SEED_BLOG.id}`);
+  await waitCommentSectionReady(page);
   await page.route('**/api/mentions/users?**', (route) => route.fulfill({ json: {
     users: Array.from({ length: 8 }, (_, i) => ({ id: `user-${i}`, username: `candidate_${i}` })),
   } }));

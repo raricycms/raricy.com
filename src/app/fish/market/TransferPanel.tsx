@@ -38,7 +38,8 @@ const QUICK = [1, 5, 10];
  * 后 16 位随机 —— 生成方式照 `PayForm.randomKeyBase`（randomUUID 去横线截断）。
  *
  * 长度 20 ≤ 48、字符集满足服务端 `CLIENT_KEY_RE`（1-48 位 `A-Za-z0-9_.:-`）。
- * 服务端会再派生成 `xfer-{sha256(发起人)[:8]}-{这个键}` 落进账本。
+ * 服务端会再派生成 `xfer-{sha256(发起人)[:16]}-{这个键}` 落进账本（R3-314 起 16 位；
+ * 旧 8 位键仍由读路径双读，不产生新键）。
  */
 function newTransferKey(): string {
   const rnd =

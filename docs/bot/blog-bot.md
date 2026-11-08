@@ -472,7 +472,7 @@ GET /api/blogs?page=1       # 列表
     "content": "# 正文…",            // 正文**源码**（Markdown 或 ReactiveMD），绝不是 HTML
     "format": "markdown",             // 正文语言：markdown / reactive；认不出为 null
     "syntax_version": null,           // 仅 reactive 有意义（语法版本，用于升级审计）
-    "renderer_override": null,        // 逐篇渲染覆盖：null / legacy / reactive；不改变 format
+    "renderer_override": null,        // 历史字段：原样回显；兼容渲染已退役，不参与渲染选择
     "visibility": "internal",         // 对外可见性三档（§7.1）
     "allow_anonymous_comments": true  // 本文允不允许匿名评论（§7.1）
 
@@ -488,7 +488,8 @@ GET /api/blogs?page=1       # 列表
 > ⚠️ `search_fields=content` 搜的是**源码**，所以 reactive 文档里的组件标签
 > （如 `<site-embed …>`）也会参与匹配；本站不为正文另做一套抽词。
 >
-> ⚠️ `renderer_override` 只影响兼容渲染路径，**当前没有写接口**；`syntax_version`
+> ⚠️ `renderer_override` 是**历史列**：兼容渲染路径已整条退役，该列只原样回显、
+> **不参与任何渲染选择**，当前也没有写接口；`syntax_version`
 > 只在 `format='reactive'` 时有值，不要拿它当渲染开关。
 
 列表（`GET /api/blogs`）的查询参数：

@@ -177,7 +177,7 @@ async function markApplied(prisma, name, sum) {
 /**
  * 迁移文件是否自带事务（顶格 BEGIN，含 BEGIN IMMEDIATE / TRANSACTION 等变体）。
  *
- * 六个迁移自带：21 / 24 / 25 / 26 / 35 / 38。它们里有的在事务内写「哨兵」跟踪行，
+ * 七个迁移自带：21 / 24 / 25 / 26 / 35 / 38 / 42。它们里有的在事务内写「哨兵」跟踪行，
  * 外面再包一层会变成嵌套 BEGIN 直接报错 —— 所以自带事务的原样交给 `--file`。
  */
 function hasOwnTransaction(sql) {

@@ -629,7 +629,8 @@ npm ci --include=dev
 npx prisma generate
 
 # 应用 pending 手写 SQL（可能没有）；不扫描或编译正文。
-# 停写与一致备份按 §4「修改 schema 后」与 §10 执行；发布窗口顺序见 §14。
+# ⚠️ 本批含 DROP COLUMN（迁移 42，不可逆）：必须先按 §4「含数据变换的迁移」停服、
+#    做一致备份（§10），再执行下面的迁移；顺序不能换。发布窗口见 §14。
 DATABASE_URL="file:/绝对路径/instance/database/db.db" npm run migrate -- status
 DATABASE_URL="file:/绝对路径/instance/database/db.db" npm run migrate -- up
 DATABASE_URL="file:/绝对路径/instance/database/db.db" npm run migrate -- verify
