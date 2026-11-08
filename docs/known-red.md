@@ -85,6 +85,21 @@
 报告检查命令、退出码、已确认原因和未覆盖范围；旧日志引用须注明对应提交与环境。
 不为获取“当前全量耗时”而额外跑全量，数字如需保留应放在带日期的测量记录中。
 
+## 11. 全量 e2e 的已知非产品失败（2026-11-09 实测）
+
+全量 `npx playwright test` 在干净构建下仍可能红（近期实测 672 passed / 17 failed / 16 skipped）。
+先按下面的方向核对；**这不是跳过名单**，判定方法一律是「把失败 spec 单独跑一遍」。
+
+```powershell
+npx playwright test tests/e2e/<失败spec> --project=desktop   # 或 --project=mobile
+```
+
+| 症状 | 已确认原因 | 处置 |
+|---|---|---|
+| 多条 `发文失败：{"code":429,..."今日发布数量已达上限（20篇）"}` | 全量长跑里种子号 `e2e_core` 累计发文超过 `BLOG_DAILY_LIMIT = 20`（`src/lib/blog-service.ts`）。单跑时每个 spec 重开一轮、配额重置所以是绿的 —— 是测试共享账号的基建问题 | 要让全量绿，在测试基建层改用独立账号或按轮重置计数；**不要**为此放宽生产限额 |
+| 分散的 `expect(...).toBeVisible()` / 超时，单跑全绿 | 单库串行长跑的顺序/状态 flake；`reactive-ssr-cold` 还会因为全量时进程已预热而红（它要的是冷启动） | 单跑复核；确认顺序依赖后按 `docs/testing.md` §4 收紧用例，而不是加 retries |
+| `chat-image.spec.ts` 的「网络失败自动重试」或 `mention-picker.spec.ts` mobile 4 条 | 已在 `ee8efe1d` 修复：前者对齐 R3-373「失败不自动重发」，后者在 `fill` 前等评论区水合（`waitCommentSectionReady`） | 再出现时先确认构建与 HEAD 一致，别先怀疑产品回归 |
+
 ## 维护这一页
 
 保留能指导下一步排查的症状、核对方法和处理方式；脚本修复后同步更新当前入口。
