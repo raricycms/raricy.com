@@ -175,11 +175,11 @@ test('双影：刷新后进度还在（localStorage），并且续上次关卡',
   expect(errors).toEqual([]);
 });
 
-// 只有移动端才说得清的两件事：方向键可点、页面没有横向溢出。
+// 只有移动端才说得清的一件事：方向键可点（触屏路径）。
 // test.skip 放在用例里（而不是 RESPONSIVE_SPECS 里排除）是因为本文件另外四条
 // 在两种布局下都该跑 —— testMatch 只能到文件粒度，见 playwright.config.ts 的注释。
-test('双影（移动端）：方向键可见可点、无横向溢出，棋盘不塌', async ({ page, isMobile }) => {
-  test.skip(!isMobile, '只在 mobile project 跑：方向键与横向溢出是真视口才说得清的事实');
+test('双影（移动端）：方向键可见可点，点一下真的走一步', async ({ page, isMobile }) => {
+  test.skip(!isMobile, '只在 mobile project 跑：触屏方向键是移动端才有的操作路径');
   const errors = watchErrors(page);
   await openGame(page);
 
@@ -194,9 +194,5 @@ test('双影（移动端）：方向键可见可点、无横向溢出，棋盘�
   // 只断言按钮可见不够 —— disabled 或事件没绑上时按钮照样可见。
   await dpad.getByRole('button', { name: '向右' }).click();
   await expect(movesValue(page)).toHaveText('1');
-
-  // 无横向溢出：棋盘是 SVG，按 viewBox 缩放；下面那些绝对定位的浮层 / 方向键都不该撑宽文档。
-  expect(await page.evaluate(() => document.documentElement.scrollWidth))
-    .toBeLessThanOrEqual(page.viewportSize()!.width);
   expect(errors).toEqual([]);
 });

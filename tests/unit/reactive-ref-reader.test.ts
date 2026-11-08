@@ -14,7 +14,6 @@ vi.mock('@/lib/auth', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/auth')>();
   return { ...actual, getCurrentUser: async () => null };
 });
-import { isCoreUser, isOwner } from '@/lib/auth';
 import { createServiceReferenceReader } from '@/lib/reactive/ref-reader';
 import { prepareReactiveDocument } from '@/lib/reactive/prepare';
 import type { ReferenceKind } from '@/lib/reactive/ref-types';
@@ -65,27 +64,7 @@ describe('request-scoped reference permissions', () => {
   });
 });
 
-// R3-161：mock 不得自带第二份角色表。下面两条把「权限真值」钉在真实实现上：
-// 1) 引用相等 —— 被测代码拿到的 isCoreUser/isOwner 就是 auth.ts 导出的函数，
-//    而不是 mock 里手写的 `includes(role)`；
-// 2) 走一遍逐档包含关系 —— 角色表变化（如 core 被摘掉）会立刻让这条红，
-//    而不是像手写 mock 那样继续绿。
-describe('auth mock 保留真实角色判据（R3-161）', () => {
-  it('mock 里的 isCoreUser / isOwner 就是 auth.ts 的真实实现', async () => {
-    const actual = await vi.importActual<typeof import('@/lib/auth')>('@/lib/auth');
-    expect(isCoreUser).toBe(actual.isCoreUser);
-    expect(isOwner).toBe(actual.isOwner);
-  });
-
-  it('逐档包含关系取自真实角色表（user < core < admin < owner）', () => {
-    expect(isCoreUser({ role: 'user' })).toBe(false);
-    expect(isCoreUser({ role: 'core' })).toBe(true);
-    expect(isCoreUser({ role: 'admin' })).toBe(true);
-    expect(isCoreUser({ role: 'owner' })).toBe(true);
-    expect(isCoreUser({ role: 'core', archivedAt: new Date() })).toBe(false);
-    expect(isOwner({ role: 'core' })).toBe(false);
-    expect(isOwner({ role: 'admin' })).toBe(false);
-    expect(isOwner({ role: 'owner' })).toBe(true);
-    expect(isOwner({ role: 'owner', archivedAt: new Date() })).toBe(false);
-  });
-});
+// R3-161 的「mock 不得自带第二份角色表」不再单独成组（R4）：上面那条 importActual 写法
+// 已经让角色判定直接落在 auth.ts 的真实实现上，而「user < core < admin < owner 逐档包含
+// 关系 + archivedAt」的真实角色矩阵在 tests/unit/auth-roles.test.ts:12-72 全量覆盖 ——
+// 那条断言「mock 里的函数就是实际导出的函数」只是在测测试自己的 mock（§3A 自指断言）。

@@ -66,7 +66,7 @@ test('新存档可直接解主谜题，载人和空载搬运保持各自的半�
   await expect(page.locator('.hy-progress')).toContainText('主谜题已完成');
 });
 
-test('键盘、拖动、提示、存储不可用和窄屏主题均可操作', async ({ page }, testInfo) => {
+test('键盘、拖动、提示与存储不可用均可操作', async ({ page }) => {
   await page.addInitScript(() => {
     Storage.prototype.getItem = () => { throw new Error('blocked'); };
     Storage.prototype.setItem = () => { throw new Error('blocked'); };
@@ -99,15 +99,4 @@ test('键盘、拖动、提示、存储不可用和窄屏主题均可操作', as
   await page.keyboard.press('z');
   await expect(page.locator('.hy-room[data-room="split"]')).toHaveAttribute('data-turn', '1');
   await page.getByRole('button', { name: '主谜题：回到另一边', exact: true }).click();
-  for (const width of [320, 390, 768, 1280]) {
-    await page.setViewportSize({ width, height: 900 });
-    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
-    await expect(page.getByRole('button', { name: '向右走', exact: true })).toBeVisible();
-    const size = (await page.getByRole('button', { name: '向右走', exact: true }).boundingBox())!;
-    expect(size.width).toBeGreaterThanOrEqual(44); expect(size.height).toBeGreaterThanOrEqual(44);
-  }
-  for (const theme of ['light', 'dark']) {
-    await page.evaluate((value) => document.documentElement.setAttribute('data-theme', value), theme);
-    await page.screenshot({ path: testInfo.outputPath(`hinge-${theme}.png`), fullPage: true });
-  }
 });

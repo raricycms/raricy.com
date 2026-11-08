@@ -108,7 +108,7 @@ async function enqueue(userId: string, transferId = 'tid-1') {
 }
 
 describe('签名', () => {
-  it('★ 已知向量：签的是 `${timestamp}.${body}`，不是光 body', () => {
+  it('★ 已知向量：签的是 `${timestamp}.${body}`；时间戳或密钥任一变化签名就不同', () => {
     // 硬编码的期望值 —— 改了签名方案这里就红。商户那边照这个实现才能对上。
     const sig = signWebhook('topsecret', 1700000000, '{"a":1}');
     const expected = createHmac('sha256', 'topsecret')
@@ -116,16 +116,8 @@ describe('签名', () => {
       .digest('hex');
     expect(sig).toBe(expected);
     expect(sig).toMatch(/^[0-9a-f]{64}$/);
-  });
-
-  it('同样的正文换个时间戳 → 签名不同（时间戳挡住了重放）', () => {
-    const a = signWebhook('k', 100, '{}');
-    const b = signWebhook('k', 101, '{}');
-    expect(a).not.toBe(b);
-  });
-
-  it('换密钥 → 签名不同', () => {
-    expect(signWebhook('k1', 1, '{}')).not.toBe(signWebhook('k2', 1, '{}'));
+    expect(signWebhook('topsecret', 1700000001, '{"a":1}'), '时间戳挡住重放').not.toBe(sig);
+    expect(signWebhook('other', 1700000000, '{"a":1}'), '密钥是商户身份的根').not.toBe(sig);
   });
 });
 
@@ -155,25 +147,22 @@ describe('地址配置', () => {
     expect(openSecret(row.secretEncrypted, 'webhook-test-key')).toBe(secret);
   });
 
-  it('★ 私网地址在登记时就被拒（不落库）', async () => {
-    const u = await makeUser();
-    const res = await upsertWebhookEndpoint(u.id, 'https://169.254.169.254/latest/meta-data');
-    expect(res.ok).toBe(false);
-    if (res.ok) return;
-    expect(res.message).toContain('内网');
-    expect(await prisma.fishWebhookEndpoint.count()).toBe(0);
-  });
-
-  it.each(['::ffff:127.0.0.1', '::ffff:a00:1', '0:0:0:0:0:ffff:a9fe:a9fe'])(
-    '私网映射 IPv6 %s 在登记时被拒且不落库', async (host) => {
+  it('★ 私网地址在登记时就被拒（不落库）—— 含映射 IPv6 形态', async () => {
+    const hosts = [
+      '169.254.169.254',
+      '[::ffff:127.0.0.1]',
+      '[::ffff:a00:1]',
+      '[0:0:0:0:0:ffff:a9fe:a9fe]',
+    ];
+    for (const host of hosts) {
       const u = await makeUser();
-      const res = await upsertWebhookEndpoint(u.id, `https://[${host}]/cb`);
-      expect(res.ok).toBe(false);
-      if (res.ok) return;
+      const res = await upsertWebhookEndpoint(u.id, `https://${host}/cb`);
+      expect(res.ok, host).toBe(false);
+      if (res.ok) continue;
       expect(res.message).toContain('内网');
-      expect(await prisma.fishWebhookEndpoint.count()).toBe(0);
     }
-  );
+    expect(await prisma.fishWebhookEndpoint.count(), '一个都不该落库').toBe(0);
+  });
 
   it('换密钥后旧密钥立刻失效', async () => {
     const u = await makeUser();
@@ -205,7 +194,7 @@ describe('地址配置', () => {
 });
 
 describe('outbox 写入', () => {
-  it('收款人登记了地址 → 写一行 pending，正文含 transfer_id 与金额', async () => {
+  it('登记了地址 → 写一行 pending（正文含 transfer_id/金额/余额）；没登记 → 什么都不写', async () => {
     const u = await makeUser();
     await registerReceiver(u.id);
 
@@ -228,12 +217,10 @@ describe('outbox 写入', () => {
     expect(body.to.username).toBe('merchant');
     // delivery_id 与落库的那个一致（商户按它去重）
     expect(body.delivery_id).toBe(row.deliveryId);
-  });
 
-  it('没登记地址 → 什么都不写', async () => {
-    const u = await makeUser();
-    expect(await enqueue(u.id)).toBeNull();
-    expect(await prisma.fishWebhookDelivery.count()).toBe(0);
+    const noAddr = await makeUser();
+    expect(await enqueue(noAddr.id), '没登记地址 → 不写').toBeNull();
+    expect(await prisma.fishWebhookDelivery.count()).toBe(1);
   });
 
   it('★ 投递行写在调用方事务里：事务回滚 → 一行都不留（R3-318）', async () => {
@@ -396,27 +383,22 @@ describe('投递', () => {
     expect(console.error).toHaveBeenCalledWith(expect.stringContaining('WEBHOOK_DEAD_LETTER'));
   });
 
-  it('已 delivered 的再投 → skipped（不会重复发）', async () => {
+  it('★ 已 delivered 的再投 → skipped；并发同投两次只有一次真的发出去（条件 UPDATE）', async () => {
     const u = await makeUser();
     await registerReceiver(u.id);
     const id = (await enqueue(u.id))!;
     await deliverWebhook(id, { allowPrivate: true });
     expect(await deliverWebhook(id, { allowPrivate: true })).toBe('skipped');
-    expect(receiver!.hits).toHaveLength(1);
-  });
+    expect(receiver!.hits, '不会重复发').toHaveLength(1);
 
-  it('★ 认领是条件 UPDATE：同时投两次只有一次真的发出去', async () => {
-    const u = await makeUser();
-    await registerReceiver(u.id);
-    const id = (await enqueue(u.id))!;
-
+    const id2 = (await enqueue(u.id, 'tid-2'))!;
     const results = await Promise.all([
-      deliverWebhook(id, { allowPrivate: true }),
-      deliverWebhook(id, { allowPrivate: true }),
+      deliverWebhook(id2, { allowPrivate: true }),
+      deliverWebhook(id2, { allowPrivate: true }),
     ]);
     expect(results.filter((r) => r === 'delivered')).toHaveLength(1);
     expect(results.filter((r) => r === 'skipped')).toHaveLength(1);
-    expect(receiver!.hits, '商户只该收到一条').toHaveLength(1);
+    expect(receiver!.hits, '商户只该收到一条新回调').toHaveLength(2);
   });
 
   it('★ 地址在投递时**重新**校验 SSRF（登记后改指向私网也拦得住）', async () => {
@@ -553,27 +535,22 @@ describe('迁移期：两把钥匙', () => {
     return row.secretEncrypted;
   }
 
-  it('旧钥匙封的密文照样解得开（回退），并如实报成 legacy', async () => {
-    const uid = await seedLegacyRow('legacy-secret');
+  it('旧钥匙封的密文解得开（回退，报 legacy）；rekey 只换封装、不换密钥本身，重复跑是空操作', async () => {
+    const uid = await seedLegacyRow('merchant-must-not-rotate');
     const ct = await ciphertextOf(uid);
     expect(inspectWebhookSecret(ct)).toBe('legacy');
-    expect(openWebhookSecret(ct)).toBe('legacy-secret');
-  });
-
-  it('rekey 只换封装、不换密钥本身，且重复跑是空操作', async () => {
-    const uid = await seedLegacyRow('merchant-must-not-rotate');
+    expect(openWebhookSecret(ct)).toBe('merchant-must-not-rotate');
 
     const first = await rekeyWebhookSecrets();
     expect(first).toMatchObject({ total: 1, migrated: 1, alreadyCurrent: 0, failed: [] });
 
-    const ct = await ciphertextOf(uid);
-    expect(inspectWebhookSecret(ct)).toBe('current');
+    const migrated = await ciphertextOf(uid);
+    expect(inspectWebhookSecret(migrated)).toBe('current');
     // ★ 解出来的仍是原来那把 —— 商户的验签代码不该因为这次迁移失效
-    expect(openSecret(ct, process.env.FISH_ENCRYPTION_KEY as string)).toBe(
+    expect(openSecret(migrated, process.env.FISH_ENCRYPTION_KEY as string)).toBe(
       'merchant-must-not-rotate'
     );
-    // 旧钥匙已经打不开新密文了（这就叫搬过去了）
-    expect(inspectWebhookSecret(ct)).not.toBe('legacy');
+    expect(inspectWebhookSecret(migrated), '旧钥匙已经打不开新密文').not.toBe('legacy');
 
     const second = await rekeyWebhookSecrets();
     expect(second).toMatchObject({ total: 1, migrated: 0, alreadyCurrent: 1 });

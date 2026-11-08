@@ -44,7 +44,7 @@ import {
 //
 // ⚠️ 三条被 e2e 钉住、别动：
 //   · 表单容器类 `admin-filter-bar audit-filter-bar`
-//     （tests/e2e/admin-logs.spec.ts 用 `form.audit-filter-bar` 定位）；
+//     （tests/e2e/admin-permissions.spec.ts 用 `form.audit-filter-bar` 定位）；
 //   · 六个筛选控件首屏就要可见（没有「展开筛选」这种折叠层）——
 //     动作下拉 / 执行者输入 / 当事人输入 / 时间范围下拉都在那条用例里；
 //   · 抬头 h1 的文案是「日志检索」。

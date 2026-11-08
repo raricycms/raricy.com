@@ -25,7 +25,11 @@ runner 同时跑也不会互删临时库。
 **双 project**：
 
 - `desktop` 跑**全部** spec；
-- `mobile`（iPhone 13）只跑 `RESPONSIVE_SPECS`（真的按视口分支的 spec）。
+- `mobile`（iPhone 13）只跑 `RESPONSIVE_SPECS`（真的按视口分支的 spec）。这份清单的增删
+  以 `playwright.config.ts` 为准。
+
+纯外观/几何 e2e 已按仓库验证纪律退出（颜色、间距、版式改由受影响页面和视口检查确认）；
+保留在 `RESPONSIVE_SPECS` 里的必须是**行为性**用例（按视口分支的交互、可点击/键盘可达）。
 
 为什么不把通用用例从 mobile 里排除、只让 desktop 跑 —— 两者等价，但那样要写 project 级
 `testIgnore`，而它会**同时作用于两个 project**（踩过：一条用例不剩），比报错更危险。

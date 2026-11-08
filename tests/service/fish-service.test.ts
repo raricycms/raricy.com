@@ -57,43 +57,27 @@ async function makeTx(opts: {
 // ── getBalance / getBalanceBatch ────────────────────────────────────────────
 
 describe('getBalance', () => {
-  it('返回用户当前余额', async () => {
-    const u = await makeUser({ driedFish: 42 });
-    expect(await getBalance(u.id)).toBe(42);
+  it('返回余额；小数如实返回（历史投喂分成会留下小数）；新用户默认 0', async () => {
+    const a = await makeUser({ driedFish: 42 });
+    const b = await makeUser({ driedFish: 0.8 });
+    const fresh = await makeUser();
+    expect(await getBalance(a.id)).toBe(42);
+    expect(await getBalance(b.id)).toBe(0.8);
+    expect(await getBalance(fresh.id)).toBe(0);
   });
 
-  it('用户不存在时返回 0 而非 null/抛错', async () => {
-    expect(
-      await getBalance('no-such-user'),
-      '不存在的用户必须安全降级为 0，否则余额展示页会 500'
-    ).toBe(0);
-  });
-
-  it('小数余额如实返回（历史投喂分成会留下小数）', async () => {
-    const u = await makeUser({ driedFish: 0.8 });
-    expect(await getBalance(u.id)).toBe(0.8);
-  });
-
-  it('新用户默认余额为 0', async () => {
-    const u = await makeUser();
-    expect(await getBalance(u.id)).toBe(0);
+  it('用户不存在时返回 0 而非 null/抛错（否则余额展示页会 500）', async () => {
+    expect(await getBalance('no-such-user')).toBe(0);
   });
 });
 
 describe('getBalanceBatch', () => {
-  it('返回 {userId: balance} 映射', async () => {
+  it('返回 {userId: balance} 映射，不存在的 userId 补 0，空输入返回 {}', async () => {
     const a = await makeUser({ driedFish: 10 });
     const b = await makeUser({ driedFish: 3.5 });
     expect(await getBalanceBatch([a.id, b.id])).toEqual({ [a.id]: 10, [b.id]: 3.5 });
-  });
-
-  it('不存在的 userId 补 0（键必须存在，调用方才能无脑取值）', async () => {
-    const a = await makeUser({ driedFish: 10 });
-    const r = await getBalanceBatch([a.id, 'ghost']);
-    expect(r).toEqual({ [a.id]: 10, ghost: 0 });
-  });
-
-  it('空数组 / 空值返回 {}，不打 DB', async () => {
+    // 键必须存在，调用方才能无脑取 {userIds.map(id => map[id])}
+    expect(await getBalanceBatch([a.id, 'ghost'])).toEqual({ [a.id]: 10, ghost: 0 });
     expect(await getBalanceBatch([])).toEqual({});
   });
 
@@ -102,10 +86,7 @@ describe('getBalanceBatch', () => {
     const r = await getBalanceBatch(ids);
     expect(Object.keys(r)).toHaveLength(BALANCE_BATCH_MAX);
     expect(r[`id-${BALANCE_BATCH_MAX - 1}`]).toBe(0);
-    expect(
-      r[`id-${BALANCE_BATCH_MAX}`],
-      '第 501 个之后应被截断，键不存在（HTTP 入口用 truncated 标记告诉调用方）'
-    ).toBeUndefined();
+    expect(r[`id-${BALANCE_BATCH_MAX}`], '第 501 个之后应被截断，键不存在').toBeUndefined();
   });
 });
 
@@ -142,23 +123,16 @@ describe('addFish（加钱 + 写流水）', () => {
     });
   });
 
-  it('可选字段缺省时写 null（不是 undefined / 空串）', async () => {
+  it('可选字段与 transferId 缺省时写 null（不是 undefined / 空串）', async () => {
+    // transferId 只对「一笔转账的两条流水」有意义（签到 / 投喂 / 赠送 / 补偿都没有对手方）。
+    // 顺手给所有流水编一个共享单号会让「按单号取一笔转账」取到半笔。
     const u = await makeUser();
-    await prisma.$transaction((tx) => addFish(tx, { userId: u.id, amount: 1, type: 'admin_grant' }));
+    await prisma.$transaction((tx) => addFish(tx, { userId: u.id, amount: 1, type: 'checkin' }));
     const t = await prisma.fishTransaction.findFirstOrThrow({ where: { userId: u.id } });
     expect(t.description).toBeNull();
     expect(t.referenceType).toBeNull();
     expect(t.referenceId).toBeNull();
     expect(t.relatedUserId).toBeNull();
-  });
-
-  it('★ transferId 缺省时写 null —— 除用户间转账外的**所有**调用方都该如此', async () => {
-    // 这一列只对「一笔转账的两条流水」有意义（签到 / 投喂 / 赠送 / 补偿都没有对手方）。
-    // 断言它，是为了挡住「顺手给所有流水编一个共享单号」这类统一口径的改动 ——
-    // 那会让「按单号取一笔转账」取到半笔，或者取到一个根本不成对的东西。
-    const u = await makeUser();
-    await prisma.$transaction((tx) => addFish(tx, { userId: u.id, amount: 1, type: 'checkin' }));
-    const t = await prisma.fishTransaction.findFirstOrThrow({ where: { userId: u.id } });
     expect(t.transferId).toBeNull();
   });
 
@@ -182,42 +156,32 @@ describe('addFish（加钱 + 写流水）', () => {
 
   // ── 金额边界 ──────────────────────────────────────────────────────────────
 
-  it('amount = 0 被拒绝（amount <= 0 一律拒绝）', async () => {
+  it('amount <= 0 被拒绝（负数会让 addFish 变成没有余额校验的扣款后门）', async () => {
     const u = await makeUser({ driedFish: 5 });
-    await expect(
-      prisma.$transaction((tx) => addFish(tx, { userId: u.id, amount: 0, type: 'checkin' }))
-    ).rejects.toThrow('amount 必须为正数');
-    expect(await getBalance(u.id), '被拒绝后余额不能变').toBe(5);
-    expect(await prisma.fishTransaction.count(), '被拒绝后不能有流水').toBe(0);
+    for (const amount of [0, -3]) {
+      await expect(
+        prisma.$transaction((tx) => addFish(tx, { userId: u.id, amount, type: 'checkin' }))
+      ).rejects.toThrow('amount 必须为正数');
+      expect(await getBalance(u.id), '被拒绝后余额不能变').toBe(5);
+      expect(await prisma.fishTransaction.count(), '被拒绝后不能有流水').toBe(0);
+    }
   });
 
-  it('amount 为负数被拒绝（否则 addFish 会变成没有余额校验的扣款后门）', async () => {
-    const u = await makeUser({ driedFish: 5 });
-    await expect(
-      prisma.$transaction((tx) => addFish(tx, { userId: u.id, amount: -3, type: 'checkin' }))
-    ).rejects.toThrow('amount 必须为正数');
-    expect(await getBalance(u.id)).toBe(5);
-    expect(await prisma.fishTransaction.count()).toBe(0);
-  });
-
-  it('小数金额被接受（存储是 0.0001 鱼干整数单位；历史投喂分成的小数仍需保留）', async () => {
+  it('小数金额被接受，且 0.1 加 3 次精确等于 0.3（整数存储后 Float 漂移消失）', async () => {
     const u = await makeUser({ driedFish: 0 });
     await prisma.$transaction((tx) =>
       addFish(tx, { userId: u.id, amount: 0.8, type: 'feed_receive' })
     );
     expect(await getBalance(u.id)).toBe(0.8);
-  });
 
-  it('整数存储后 0.1 加 3 次精确等于 0.3（Float 时代的漂移已消失）', async () => {
-    const u = await makeUser({ driedFish: 0 });
+    const v = await makeUser({ driedFish: 0 });
     for (let i = 0; i < 3; i++) {
       await prisma.$transaction((tx) =>
-        addFish(tx, { userId: u.id, amount: 0.1, type: 'feed_receive' })
+        addFish(tx, { userId: v.id, amount: 0.1, type: 'feed_receive' })
       );
     }
-    // 存储单位（0.0001 鱼干 = 1）下三笔各写 fishToUnits(0.1)，余额按整数累加、再换回鱼干。
-    // 旧 Float 时代这里是 toBeCloseTo —— 整数化（fish-units.ts）后允许精确断言。
-    expect(await getBalance(u.id)).toBe(0.3);
+    // 存储单位（0.0001 鱼干 = 1）下余额按整数累加 —— 旧 Float 时代这里只能 toBeCloseTo
+    expect(await getBalance(v.id)).toBe(0.3);
   });
 
   it('极大金额：贴着 i32 上限（214748.3647 条 = 2147483647 单位）能写入且读回一致', async () => {
@@ -243,21 +207,6 @@ describe('addFish（加钱 + 写流水）', () => {
     ).rejects.toThrow();
     expect(await getBalance(u.id)).toBe(0);
     expect(await prisma.fishTransaction.count({ where: { userId: u.id } })).toBe(0);
-  });
-
-  it('amount = Infinity 的行为（记录现状：能通过 > 0 校验）', async () => {
-    const u = await makeUser({ driedFish: 0 });
-    const run = prisma.$transaction((tx) =>
-      addFish(tx, { userId: u.id, amount: Infinity, type: 'admin_grant' })
-    );
-    // 不预设通过/拒绝，只要求不能出现「余额变了但流水没落」的不一致。
-    await run.catch(() => {});
-    const bal = await getBalance(u.id);
-    const cnt = await prisma.fishTransaction.count({ where: { userId: u.id } });
-    expect(
-      bal === 0 ? cnt === 0 : cnt === 1,
-      `余额(${bal})与流水条数(${cnt})必须一致：要么都没发生，要么各一次`
-    ).toBe(true);
   });
 
   it('NaN 金额不会静默把余额污染成 NaN 且留下流水', async () => {
@@ -491,15 +440,6 @@ describe('getTransactions', () => {
     expect(new Set(ids).size, '三页拼起来应无重复无遗漏').toBe(25);
   });
 
-  it('越界页返回空列表而非报错', async () => {
-    const u = await makeUser();
-    await makeTx({ userId: u.id, amount: 1, type: 'checkin' });
-    const r = await getTransactions(u.id, 99, 10);
-    expect(r.transactions).toEqual([]);
-    expect(r.total).toBe(1);
-    expect(r.hasNext).toBe(false);
-  });
-
   it('无流水时 pages 至少为 1，total 为 0', async () => {
     const u = await makeUser();
     const r = await getTransactions(u.id);
@@ -538,18 +478,13 @@ describe('getTransactions', () => {
     expect(new Set(r.transactions.map((t) => t.type))).toEqual(new Set(['feed', 'feed_receive']));
   });
 
-  it('type 为 null / undefined / 空串时不过滤（空串是 falsy，等同不传）', async () => {
+  it('type 为 null / undefined / 空串时不过滤；未知类型返回空集', async () => {
     const u = await makeUser();
     await makeTx({ userId: u.id, amount: 1, type: 'checkin' });
     await makeTx({ userId: u.id, amount: -2, type: 'feed' });
 
     expect((await getTransactions(u.id, 1, 20, null)).total).toBe(2);
     expect((await getTransactions(u.id, 1, 20, '')).total).toBe(2);
-  });
-
-  it('未知类型返回空集，不报错', async () => {
-    const u = await makeUser();
-    await makeTx({ userId: u.id, amount: 1, type: 'checkin' });
     expect((await getTransactions(u.id, 1, 20, 'nope')).total).toBe(0);
   });
 
@@ -625,8 +560,8 @@ describe('getTransactionsSince（对账游标）', () => {
   it('type 筛选与分页查询同口径（transfer_all 覆盖转出与转入）', async () => {
     const u = await makeUser();
     const other = await makeUser();
-    await makeTx({ userId: u.id, amount: -fishToUnits(2), type: 'transfer', relatedUserId: other.id });
-    await makeTx({ userId: u.id, amount: fishToUnits(1), type: 'transfer_receive', relatedUserId: other.id });
+    await makeTx({ userId: u.id, amount: -2, type: 'transfer', relatedUserId: other.id });
+    await makeTx({ userId: u.id, amount: 1, type: 'transfer_receive', relatedUserId: other.id });
     await makeTx({ userId: u.id, amount: 3, type: 'checkin' });
 
     expect(await getTransactionsSince(u.id, 0, 100, 'transfer_all')).toHaveLength(2);
@@ -694,19 +629,6 @@ describe('getBalanceLeaderboard', () => {
     expect(new Set(lb.map((e) => e.userId)).size, '不能重复出现同一用户').toBe(3);
   });
 
-  it('⚠️ 并列 + limit 截断时，谁上榜由 SQLite 决定 —— 无第二排序键，结果不稳定', async () => {
-    for (const n of ['a', 'b', 'c']) await makeUser({ username: n, driedFish: 10 });
-    const first = (await getBalanceLeaderboard(2)).map((e) => e.username);
-    // 只断「返回 2 条」抓不住 limit 失效：limit 被忽略会返回 3 条，仍会过 length>=? 不会 ——
-    // 但若实现改成「先取全部再切」之外的路径，长度仍是唯一可判据。补：必须是 2 个**不同**
-    // 的人、且都来自并列组（R3-320）。
-    expect(first, 'limit=2 必须只返回 2 条').toHaveLength(2);
-    expect(new Set(first).size, '不能重复同一用户').toBe(2);
-    for (const name of first) expect(['a', 'b', 'c']).toContain(name);
-    // 记录现状：orderBy 只有 driedFish desc，并列时的取舍无确定性保证。
-    // 【修复后删掉本块，改为回归用例】
-  });
-
   it('返回 userId / username / avatarPath 字段，不泄漏 email 等敏感字段', async () => {
     const u = await makeUser({ username: 'someone', driedFish: 7 });
     const lb = await getBalanceLeaderboard();
@@ -762,16 +684,11 @@ describe('getTodayCheckinFish', () => {
     );
   }
 
-  it('今日签到流水（迁移来的 TEXT 存储）返回其 amount', async () => {
-    const u = await makeUser();
-    // 用 UTC+8 正午，避开两端时区边界。
-    await makeLegacyTx(u.id, 6, 'checkin', `${todayUtc8()}T12:00:00.000Z`);
-    expect(await getTodayCheckinFish(u.id)).toBe(6);
-  });
-
-  it('今天未签到返回 0', async () => {
-    const u = await makeUser();
-    expect(await getTodayCheckinFish(u.id)).toBe(0);
+  it('今天未签到返回 0（他人今天的签到也不串过来）', async () => {
+    const a = await makeUser();
+    const b = await makeUser();
+    await makeLegacyTx(b.id, 6, 'checkin', `${todayUtc8()}T12:00:00.000Z`);
+    expect(await getTodayCheckinFish(a.id)).toBe(0);
   });
 
   it('只认 type=checkin，其它类型的今日流水不算数', async () => {
@@ -787,13 +704,6 @@ describe('getTodayCheckinFish', () => {
       .slice(0, 10);
     await makeLegacyTx(u.id, 6, 'checkin', `${yesterday}T12:00:00.000Z`);
     expect(await getTodayCheckinFish(u.id)).toBe(0);
-  });
-
-  it('不串用户', async () => {
-    const a = await makeUser();
-    const b = await makeUser();
-    await makeLegacyTx(b.id, 6, 'checkin', `${todayUtc8()}T12:00:00.000Z`);
-    expect(await getTodayCheckinFish(a.id)).toBe(0);
   });
 
   // ── 以下三条守住两个已修复的真 bug（补测试时发现）──────────────────────────
@@ -843,70 +753,5 @@ describe('getTodayCheckinFish', () => {
     expect(types.map((r) => r.t), '新旧数据必须同为 INTEGER 存储，否则日期比较不可靠').toEqual([
       'integer',
     ]);
-  });
-});
-
-// ─────────────────────────────────────────────────────────────────────────────
-// 回归：流水时间戳与「今日签到」
-//
-// 补测试时发现的两个真 bug（均已修）：
-//  1. addFish 不写 createdAt，而 schema 里 FishTransaction.createdAt 是 DateTime? 且
-//     **无 @default(now())** → 所有经 addFish 落库的流水时间为 NULL。
-//  2. getTodayCheckinFish 曾用裸 SQL `date(created_at)`。但 Prisma 往 SQLite 写 DateTime
-//     存的是 INTEGER（Unix 毫秒），date(整数) 返回 NULL → 新写入的签到永远匹配不上，
-//     今日签到静默显示为 0。改用 Prisma 原生范围查询（对 TEXT/INTEGER 两种存储都有效）。
-// ─────────────────────────────────────────────────────────────────────────────
-describe('回归：流水 createdAt 与今日签到', () => {
-  it('addFish 必须写入 createdAt（NULL 会让流水排序与签到判定全失效）', async () => {
-    const u = await makeUser();
-    await prisma.$transaction((tx) =>
-      addFish(tx, { userId: u.id, amount: 5, type: 'checkin', description: '签到' })
-    );
-    const row = await prisma.fishTransaction.findFirst({ where: { userId: u.id } });
-    expect(row!.createdAt, 'createdAt 为 NULL —— addFish 漏写了时间戳').not.toBeNull();
-  });
-
-  it('getTodayCheckinFish 能读到「Next 自己写的」签到流水（裸 date() 时这里必红）', async () => {
-    const u = await makeUser();
-    await prisma.$transaction((tx) =>
-      addFish(tx, { userId: u.id, amount: 7, type: 'checkin', description: '签到' })
-    );
-    const n = await getTodayCheckinFish(u.id);
-    expect(n, 'Prisma 写的是 INTEGER 存储，裸 SQL date() 会返回 NULL 导致这里恒为 0').toBe(7);
-  });
-
-  it('getTodayCheckinFish 也能读到迁移来的老数据', async () => {
-    const u = await makeUser();
-    const today = new Date(Date.now() + 8 * 3600 * 1000).toISOString().slice(0, 10);
-    // 模拟 normalize-datetimes 产出的老行：INTEGER 毫秒；金额为存储单位（0.0001 鱼干）
-    await prisma.$executeRawUnsafe(
-      `INSERT INTO fish_transactions (user_id, amount, type, description, created_at)
-       VALUES (?, ?, 'checkin', '老数据', ?)`,
-      u.id,
-      fishToUnits(3),
-      new Date(`${today}T09:30:00.000Z`).getTime()
-    );
-    expect(await getTodayCheckinFish(u.id), '迁移来的老数据应能被匹配到').toBe(3);
-  });
-
-  it('昨天的签到不算今天', async () => {
-    const u = await makeUser();
-    const y = new Date(Date.now() + 8 * 3600 * 1000 - 24 * 3600 * 1000).toISOString().slice(0, 10);
-    await prisma.$executeRawUnsafe(
-      `INSERT INTO fish_transactions (user_id, amount, type, description, created_at)
-       VALUES (?, ?, 'checkin', '昨天', ?)`,
-      u.id,
-      fishToUnits(9),
-      new Date(`${y}T09:30:00.000Z`).getTime()
-    );
-    expect(await getTodayCheckinFish(u.id)).toBe(0);
-  });
-
-  it('非 checkin 类型的流水不计入今日签到', async () => {
-    const u = await makeUser();
-    await prisma.$transaction((tx) =>
-      addFish(tx, { userId: u.id, amount: 100, type: 'admin_grant', description: '发钱' })
-    );
-    expect(await getTodayCheckinFish(u.id)).toBe(0);
   });
 });

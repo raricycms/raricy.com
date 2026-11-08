@@ -35,7 +35,6 @@ import { buildClaimRows, decodeBase64UrlText, decodeJwt } from '@/lib/dev-tools/
 import {
   EXTRACT_MAX_INPUT_CHARS,
   EXTRACT_MAX_RESULTS,
-  UTM_PRESETS,
   buildUrl,
   buildUtmUrl,
   extractUrls,
@@ -604,12 +603,6 @@ describe('url-tools：UTM 生成', () => {
     const ok = normalizeBaseUrl('example.com');
     expect(ok.ok && ok.url.toString()).toBe('https://example.com/');
     expect(normalizeBaseUrl('').ok).toBe(false);
-  });
-
-  it('预设按钮的数据存在且常用组合在列', () => {
-    expect(UTM_PRESETS.length).toBeGreaterThanOrEqual(3);
-    expect(UTM_PRESETS.some((p) => p.source === 'google' && p.medium === 'cpc')).toBe(true);
-    expect(UTM_PRESETS.some((p) => p.source === 'wechat' && p.medium === 'social')).toBe(true);
   });
 });
 

@@ -16,7 +16,7 @@
 //   · src/lib/comment-markdown.ts → 评论正文（linkClass: comment-link, cacheMax: 200）
 //
 // ⚠️ 改本文件 = 改安全边界。单测在 tests/unit/chat-markdown.test.ts（五道防线逐条
-//    覆盖），comment-markdown 另有一份对等用例 —— 两者都要跟着跑。
+//    覆盖；评论侧的原 comment-markdown.test.ts 已于 Round4 并入该文件，两个入口都跑它）。
 //
 // 【威胁模型：五道防线】
 //   1. 原始 HTML —— marked 默认把 <script> / <img onerror> **原样透传**（实测 v18）。

@@ -172,59 +172,6 @@ test.describe('ReactiveMD 发布与阅读', () => {
     await expect(page.locator('.reactive-document')).toHaveCount(1);
   });
 
-  test('无法编译的 reactive 发布被整笔拒绝，且库里不出现半篇文章', async ({ page }) => {
-    await loginViaApi(page, SEED_USERS.core.username);
-    const tag = uniqueTag();
-    const title = `broken-${tag}`;
-    // 列表接口的计数在 `pagination.total`（顶层没有 total）。
-    const readTotal = async () =>
-      ((await (await page.request.get('/api/blogs?per_page=1')).json()) as {
-        pagination: { total: number };
-      }).pagination.total;
-    const searchTotal = async (q: string) =>
-      ((await (
-        await page.request.get(`/api/blogs?search=${encodeURIComponent(q)}&per_page=10`)
-      ).json()) as { pagination: { total: number } }).pagination.total;
-
-    const before = await readTotal();
-
-    // ★ 正向对照（判据有效性）★ 先证明「总数」与「按标题搜索」这两条通道真的
-    //   能看见**一行**：插一篇合法文章，两条通道都必须报 +1 / 1。否则后面
-    //   「没有变化 / 搜不到」就可能只是通道坏了（假绿）。
-    const controlTitle = `control-${tag}`;
-    const control = await page.request.post('/api/blogs', {
-      data: {
-        title: controlTitle,
-        description: '正向对照',
-        content: '对照正文',
-        visibility: 'internal',
-        format: 'markdown',
-      },
-    });
-    expect(control.status(), await control.text()).toBe(200);
-    expect(await readTotal(), '总数通道没看见刚插入的那一行 —— 后面的「没变化」不可信').toBe(
-      before + 1
-    );
-    expect(await searchTotal(controlTitle), '搜索通道没看见刚插入的那一行').toBe(1);
-
-    const res = await page.request.post('/api/blogs', {
-      data: {
-        title,
-        description: 'broken reactive',
-        content: '<panel title="未闭合">',
-        visibility: 'internal',
-        format: 'reactive',
-      },
-    });
-    expect(res.status()).toBe(400);
-    expect(((await res.json()) as { message: string }).message).toContain('无法编译渲染');
-
-    // ★ R3-145：标题说的是「整笔拒绝、库里不出现半篇文章」，就必须查**库里的数**
-    //   而不是只比两次列表接口的状态码（那两条在「半写落库」时也都是 200，恒绿）。
-    expect(await readTotal(), '文章总数变了 —— 被拒的那篇有半截落库了').toBe(before + 1);
-    expect(await searchTotal(title), '按标题还能搜到被拒的那篇 → 元数据已落库').toBe(0);
-  });
-
   test('无 JS：public reactive 文章的静态正文与脚注仍可读', async ({ browser }) => {
     const context = await browser.newContext({ javaScriptEnabled: false });
     const page = await context.newPage();
@@ -252,36 +199,6 @@ test.describe('ReactiveMD 发布与阅读', () => {
 
 
 test.describe('统一管线的兼容与保存边界', () => {
-  test('有效增强语法写成 markdown → 具名 400；未知普通标签仍可保存', async ({ page }) => {
-    await loginViaApi(page, SEED_USERS.core.username);
-    const mismatch = await page.request.post('/api/blogs', {
-      data: {
-        title: `mismatch-${uniqueTag()}`,
-        description: 'mismatch',
-        content: '<counter bind="n" label="N" initial="1" />',
-        visibility: 'internal',
-        format: 'markdown',
-      },
-    });
-    expect(mismatch.status()).toBe(400);
-    expect((await mismatch.json()) as { error_code: string }).toMatchObject({
-      error_code: 'content_format_mismatch',
-    });
-
-    const legacy = await page.request.post('/api/blogs', {
-      data: {
-        title: `legacy-${uniqueTag()}`,
-        description: 'legacy',
-        content: `<TAB>教程占位</TAB>
-
-普通正文`,
-        visibility: 'internal',
-        format: 'markdown',
-      },
-    });
-    expect(legacy.status(), await legacy.text()).toBe(200);
-  });
-
   test('★ 普通多行 MD 追加组件后保存重开：<br> / 公式 / 引用都不变 ★', async ({ page }) => {
     await loginViaApi(page, SEED_USERS.core.username);
     const clipId = await createClipViaApi(page, '被引用的剪贴板正文');

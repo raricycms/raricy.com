@@ -416,74 +416,6 @@ test.describe('内置黄脸表情', () => {
     expect(await page.locator('.comment-item').count()).toBe(before);
   });
 
-  test('★ 正文里黄脸是**文字大小**，图片表情仍是 4em（两者刻意不同）', async ({ page }) => {
-    await registerFreshUser(page, { core: true });
-    const marker = `emoji-size-${uniqueTag()}`;
-    // 一条消息里同时放两种，才能拿同一处的字号当尺子直接对比
-    await postMessage(page, `${marker} 黄脸 ${EMOJI_TOKEN} 图片 ${TOKEN}`);
-    await page.goto(`/chat?channel=${LOBBY}`);
-
-    const row = msgRow(page, marker);
-    await expect(row).toBeVisible();
-
-    const emoji = row.locator('img.rich-emoji-ref').first();
-    const sticker = row.locator('img.rich-sticker-ref:not(.rich-emoji-ref)').first();
-    await expect(emoji).toBeVisible();
-    await expect(sticker).toBeVisible();
-    // 黄脸的 src 走静态素材，不是那条字节路由
-    await expect(emoji).toHaveAttribute('src', EMOJI_SRC);
-
-    // 以所在段落的字号为尺子：「和文字一样大」= 1~2 倍之间。
-    // 尺寸由 CSS 定死，所以不依赖图片加载完成。
-    const ratio = await emoji.evaluate((el) => {
-      const fs = parseFloat(getComputedStyle(el.parentElement!).fontSize);
-      return el.getBoundingClientRect().height / fs;
-    });
-    expect(ratio).toBeGreaterThan(1);
-    expect(ratio).toBeLessThan(2);
-
-    // 对照组：图片表情还是那个大得多的 4em（1.2em vs 4em ≈ 3.3 倍）
-    const eb = await emoji.boundingBox();
-    const sb = await sticker.boundingBox();
-    expect(sb!.height).toBeGreaterThan(eb!.height * 3);
-  });
-
-  test('★ 整条正文只有一颗黄脸时，和图片表情一样大', async ({ page }) => {
-    // 【怎么定位独处那一张】单发消息的正文**就是那一个 token**，塞不进哨兵串，
-    // msgRow() 用不上。所以换一条锚：新注册的账号在这一轮里只发过这一条消息，
-    // 于是「作者名 = 新账号」的行就是它。
-    // ⚠️ 不能同账号再发第二条 —— 同人连续消息会被 grouped 掉（作者名只是被 CSS
-    //    藏起来，元素还在 DOM 里，Playwright 的 has: 过滤不看可见性，会命中两条）。
-    // 对照组（要哨兵串）因此由 core 账号发，走既有的 msgRow()。
-    await loginViaApi(page, SEED_USERS.core.username);
-    const marker = `emoji-solo-${uniqueTag()}`;
-    await postMessage(page, `${marker} ${TOKEN}`);
-
-    const user = await registerFreshUser(page, { core: true });
-    await postMessage(page, EMOJI_TOKEN);
-
-    await page.goto(`/chat?channel=${LOBBY}`);
-
-    const soloRow = page.locator('.chat-msg', {
-      has: page.locator('.chat-msg__name', { hasText: user.username }),
-    });
-    const solo = soloRow.locator('img.rich-emoji-solo');
-    // 恰好一颗：>1 说明同账号发过第二条，0 说明判据没命中（或素材缺失、
-    // 被降级链换回了字面量 —— 那时这个 img 已经不在 DOM 里了）
-    await expect(solo).toHaveCount(1);
-    await expect(solo).toHaveAttribute('src', EMOJI_SRC);
-
-    const sticker = msgRow(page, marker).locator('img.rich-sticker-ref:not(.rich-emoji-ref)').first();
-    await expect(sticker).toBeVisible();
-
-    // ★「一样大」就断这一条：同一个容器、同一套 em，尺寸由 CSS 定死，
-    //   所以不依赖图片有没有加载完（上面那条 toHaveCount 已经保证降级链没动过它）。
-    const a = (await solo.boundingBox())!;
-    const b = (await sticker.boundingBox())!;
-    expect(Math.abs(a.height - b.height)).toBeLessThanOrEqual(0.5);
-    expect(Math.abs(a.width - b.width)).toBeLessThanOrEqual(0.5);
-  });
-
   test('清单里没有的黄脸名字：退回字节路由 → 404 → 显示原文 token', async ({ page }) => {
     await registerFreshUser(page, { core: true });
     const marker = `emoji-miss-${uniqueTag()}`;
@@ -499,28 +431,12 @@ test.describe('内置黄脸表情', () => {
   });
 });
 
-// ── 面板布局与合集记忆 ──────────────────────────────────────────────────────
+// ── 面板合集记忆 ────────────────────────────────────────────────────────────
 //
-// 这两条都是**改坏了不报错**的那类：合集条挪回网格下面照样能切、记忆丢了照样能用 ——
-// 只是每打开一次面板都退回黄脸，得重新点一遍。所以钉在这里。
+// 合集记忆是**改坏了不报错**的那类：记忆丢了照样能用 —— 只是每打开一次面板都退回黄脸，
+// 得重新点一遍。所以钉在这里。（合集条与网格的相对位置属版式，按页面/视口验收。）
 
 test.describe('表情面板：合集条的位置与合集记忆', () => {
-  test('合集条排在网格**上面**', async ({ page }) => {
-    await registerFreshUser(page, { core: true });
-    await page.goto(`/chat?channel=${LOBBY}`);
-
-    const composer = page.locator('.chat-composer').first();
-    await composer.getByRole('button', { name: '表情' }).click();
-    const panel = composer.locator('.sticker-picker');
-    await expect(panel.locator('.sticker-picker__grid')).toBeVisible();
-
-    // ★ 断几何而不是断 DOM 次序：次序对了而 CSS 把某一条挪走（绝对定位、order、
-    //   flex-direction），用户看到的还是错的那版。+1 是给子像素留的余量。
-    const tabs = (await panel.locator('.sticker-picker__tabs').boundingBox())!;
-    const grid = (await panel.locator('.sticker-picker__grid').boundingBox())!;
-    expect(tabs.y + tabs.height).toBeLessThanOrEqual(grid.y + 1);
-  });
-
   test('★ 记住上次退出的合集：关掉再开、乃至刷新整页，都还停在同一栏', async ({ page }) => {
     const user = await registerFreshUser(page, { core: true });
     await page.goto(`/chat?channel=${LOBBY}`);

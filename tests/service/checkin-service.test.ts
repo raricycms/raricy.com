@@ -71,42 +71,19 @@ async function makeLegacyCheckin(userId: string, ymd: string) {
 // 因此 UTC 15:59:59 = UTC+8 23:59:59（今天），UTC 16:00:00 = UTC+8 次日 00:00（明天）。
 
 describe('todayUtc8（UTC+8 跨日边界）', () => {
-  it('UTC 15:59:59（= UTC+8 当日 23:59:59）仍算当天', () => {
-    freezeUtc('2026-07-15T15:59:59.999Z');
-    expect(todayUtc8(), 'UTC+8 还没到零点，签到日不能翻页').toBe('2026-07-15');
-  });
-
-  it('UTC 16:00:00（= UTC+8 次日 00:00:00）翻到次日', () => {
-    freezeUtc('2026-07-15T16:00:00.000Z');
-    expect(todayUtc8(), 'UTC+8 已跨零点，签到日必须 +1').toBe('2026-07-16');
-  });
-
-  it('UTC 00:00（= UTC+8 当日 08:00）仍是同一 UTC 日期', () => {
-    freezeUtc('2026-07-15T00:00:00.000Z');
-    expect(todayUtc8()).toBe('2026-07-15');
-  });
-
-  it('跨月边界：UTC 07-31 16:00 → 08-01', () => {
-    freezeUtc('2026-07-31T16:00:00.000Z');
-    expect(todayUtc8(), '月末不能算错').toBe('2026-08-01');
-  });
-
-  it('跨年边界：UTC 12-31 16:00 → 次年 01-01', () => {
-    freezeUtc('2026-12-31T16:00:00.000Z');
-    expect(todayUtc8(), '跨年不能算错').toBe('2027-01-01');
-  });
-
-  it('闰年 2-29 存在：UTC 2028-02-28 16:00 → 2028-02-29', () => {
-    freezeUtc('2028-02-28T16:00:00.000Z');
-    expect(todayUtc8()).toBe('2028-02-29');
-  });
-
-  it('todayUtc8 只依赖 Date.now()，不受本机 TZ 影响（同一瞬间恒定）', () => {
-    freezeUtc('2026-07-15T16:00:00.000Z');
-    const a = todayUtc8();
-    const b = todayUtc8();
-    expect(a, '同一冻结瞬间两次调用必须一致').toBe(b);
-    expect(a).toBe('2026-07-16');
+  it('UTC 时间在 [前日 16:00Z, 当日 16:00Z) 内 → 同一个 UTC+8 日期（含月/年/闰年翻页）', () => {
+    const cases: [string, string][] = [
+      ['2026-07-15T15:59:59.999Z', '2026-07-15'], // UTC+8 23:59:59，还没跨日
+      ['2026-07-15T16:00:00.000Z', '2026-07-16'], // UTC+8 00:00:00，翻页
+      ['2026-07-15T00:00:00.000Z', '2026-07-15'], // UTC+8 08:00，同一 UTC 日期
+      ['2026-07-31T16:00:00.000Z', '2026-08-01'], // 跨月
+      ['2026-12-31T16:00:00.000Z', '2027-01-01'], // 跨年
+      ['2028-02-28T16:00:00.000Z', '2028-02-29'], // 闰年 2-29
+    ];
+    for (const [utc, expected] of cases) {
+      freezeUtc(utc);
+      expect(todayUtc8(), `UTC ${utc} → UTC+8 ${expected}`).toBe(expected);
+    }
   });
 });
 
@@ -143,7 +120,7 @@ describe('checkinDate 的落库形态', () => {
 });
 
 describe('跨日签到（边界两侧属于不同签到日）', () => {
-  it('UTC 15:59 签一次、16:00 再签一次 —— 两次都成功，落 2 天记录', async () => {
+  it('UTC 15:59 签一次、16:00 再签一次 —— 两次都成功，落 2 天记录；之后同一 UTC+8 日不能再签', async () => {
     const u = await makeUser();
 
     freezeUtc('2026-07-15T15:59:59.000Z'); // UTC+8 07-15 23:59:59
@@ -160,22 +137,14 @@ describe('跨日签到（边界两侧属于不同签到日）', () => {
     ).map((r) => r.checkinDate.toISOString().slice(0, 10));
     expect(dates, '1 秒之隔却分属两天').toEqual(['2026-07-15', '2026-07-16']);
     expect(r2.totalCount).toBe(2);
-    // 两次签到 = 两笔鱼 —— 一天一次是按 UTC+8 的「天」算的，跨过零点就是新的一天
+    // 两次签到 = 两笔鱼 —— 一天一次是按 UTC+8 的「天」算的
     expect(r2.driedFish).toBe(CHECKIN_REWARD_FISH * 2);
-  });
 
-  it('UTC 16:00 与同一 UTC+8 日的 15:59（次日 UTC）之间不能再签', async () => {
-    const u = await makeUser();
-
-    freezeUtc('2026-07-15T16:00:00.000Z'); // UTC+8 07-16 00:00
-    const r1 = await checkIn(u.id);
-    expect(r1.alreadyChecked).toBe(false);
-
-    freezeUtc('2026-07-16T15:59:00.000Z'); // UTC+8 07-16 23:59 —— 仍是同一签到日
-    const r2 = await checkIn(u.id);
-    expect(r2.alreadyChecked, 'UTC 日期变了但 UTC+8 还是同一天 → 必须拒绝').toBe(true);
-
-    expect(await prisma.dailyCheckIn.count({ where: { userId: u.id } })).toBe(1);
+    // 同一 UTC+8 日的稍后（UTC 日期已经变了）再签仍必须被拒
+    freezeUtc('2026-07-16T15:59:00.000Z'); // UTC+8 07-16 23:59
+    const r3 = await checkIn(u.id);
+    expect(r3.alreadyChecked, 'UTC 日期变了但 UTC+8 还是同一天 → 必须拒绝').toBe(true);
+    expect(await prisma.dailyCheckIn.count({ where: { userId: u.id } })).toBe(2);
   });
 
   it('UTC 15:59 与 UTC 16:00 的 getTodayStatus 分属不同签到日', async () => {
@@ -198,9 +167,9 @@ describe('跨日签到（边界两侧属于不同签到日）', () => {
 // ── 唯一约束：一天只能签一次 ─────────────────────────────────────────────────
 
 describe('唯一约束防重复签到', () => {
-  it('同日二次签到被拒，返回「今天已签到」+ 当日状态', async () => {
+  it('同日二次签到被拒：返回「今天已签到」+ 当日状态，且不加行、不重复发鱼', async () => {
     freezeUtc('2026-07-15T04:00:00.000Z');
-    const u = await makeUser();
+    const u = await makeUser({ driedFish: 0 });
 
     const r1 = await checkIn(u.id);
     expect(r1.alreadyChecked).toBe(false);
@@ -213,20 +182,9 @@ describe('唯一约束防重复签到', () => {
     expect(r2.status.totalCount).toBe(1);
     expect(r2.status.todayFish, '第一次已经到账，状态里能读回那 3 条').toBe(CHECKIN_REWARD_FISH);
     expect(r2.status.driedFish).toBe(CHECKIN_REWARD_FISH);
-  });
 
-  it('★ 被拒的二次签到不加行、不重复发鱼', async () => {
-    freezeUtc('2026-07-15T04:00:00.000Z');
-    const u = await makeUser({ driedFish: 0 });
-
-    const first = await checkIn(u.id);
-    expect(first.alreadyChecked).toBe(false);
-    if (first.alreadyChecked) return;
-    expect(first.driedFish).toBe(CHECKIN_REWARD_FISH);
-
+    // 再签一次：行数/流水/余额都不许变（防「每次点都发一笔」）
     await checkIn(u.id);
-    await checkIn(u.id);
-
     expect(
       await prisma.user.findUniqueOrThrow({ where: { id: u.id } }),
       '重复签到刷鱼干 = 直接的资产漏洞'
@@ -328,25 +286,6 @@ describe('签到发鱼干', () => {
     });
   });
 
-  it('★ 流水 createdAt 非 NULL（NULL 会让流水倒序与今日签到判定全失效）', async () => {
-    freezeUtc('2026-07-15T04:00:00.000Z');
-    const u = await makeUser();
-    await checkIn(u.id);
-
-    const tx = await prisma.fishTransaction.findFirstOrThrow({ where: { userId: u.id } });
-    expect(tx.createdAt, 'FishTransaction.createdAt 无 @default(now())，漏写就是 NULL').not.toBeNull();
-  });
-
-  it('★ 签到写的流水能被 getTodayCheckinFish 读回（两侧 UTC+8 口径必须一致）', async () => {
-    freezeUtc('2026-07-15T04:00:00.000Z'); // UTC+8 07-15 12:00
-    const u = await makeUser();
-    await checkIn(u.id);
-
-    expect(
-      await getTodayCheckinFish(u.id),
-      'checkin-service 与 fish-service 若「今天」口径不一致，页面会显示今日 0 鱼'
-    ).toBe(CHECKIN_REWARD_FISH);
-  });
 
   it('★ UTC+8 深夜（UTC 16:05 = UTC+8 次日 00:05）签到，今日鱼数仍能读回', async () => {
     // 这是最容易翻车的时刻：库里时间戳语义是「UTC+8 墙上时间贴 Z」，
@@ -426,24 +365,17 @@ describe('getTodayStatus', () => {
     });
   });
 
-  it('totalCount 统计所有历史天数，不只是今天', async () => {
+  it('totalCount 统计所有历史天数（不只今天），且只数自己的', async () => {
     freezeUtc('2026-07-15T04:00:00.000Z');
     const u = await makeUser();
-    for (const d of ['2026-07-01', '2026-07-02', '2026-07-03']) {
-      await makeLegacyCheckin(u.id, d);
-    }
+    for (const d of ['2026-07-01', '2026-07-02', '2026-07-03']) await makeLegacyCheckin(u.id, d);
+    const other = await makeUser();
+    await makeLegacyCheckin(other.id, '2026-07-01');
+    await makeLegacyCheckin(other.id, '2026-07-02');
+
     const st = await getTodayStatus(u.id);
     expect(st.checkedIn, '今天没签').toBe(false);
-    expect(st.totalCount, '累计天数与今日是否签到无关').toBe(3);
-  });
-
-  it('totalCount 只数自己的（不能把别人的签到算进来）', async () => {
-    freezeUtc('2026-07-15T04:00:00.000Z');
-    const a = await makeUser();
-    const b = await makeUser();
-    await makeLegacyCheckin(b.id, '2026-07-01');
-    await makeLegacyCheckin(b.id, '2026-07-02');
-    expect((await getTodayStatus(a.id)).totalCount).toBe(0);
+    expect(st.totalCount, '累计天数与今日是否签到无关，也不含他人').toBe(3);
   });
 
   it('用户不存在时安全降级（driedFish/todayFish 为 0，不抛错）', async () => {
@@ -534,35 +466,24 @@ describe('getTodayStatus.canCheckIn（签到资格）', () => {
 // ── 排行榜 ──────────────────────────────────────────────────────────────────
 
 describe('getCountLeaderboard（签到天数榜）', () => {
-  it('按天数降序，rank 从 1 连续递增', async () => {
-    const a = await makeUser({ username: 'three' });
-    const b = await makeUser({ username: 'one' });
-    const c = await makeUser({ username: 'two' });
-    for (const d of ['2026-07-01', '2026-07-02', '2026-07-03']) await makeLegacyCheckin(a.id, d);
-    await makeLegacyCheckin(b.id, '2026-07-01');
-    for (const d of ['2026-07-01', '2026-07-02']) await makeLegacyCheckin(c.id, d);
+  it('按天数降序、rank 连续；limit 取天数最多的前 N 名', async () => {
+    for (const [i, username] of ['one', 'two', 'three', 'four'].entries()) {
+      const u = await makeUser({ username });
+      for (let d = 1; d <= i + 1; d++) await makeLegacyCheckin(u.id, `2026-07-0${d}`);
+    }
 
     const lb = await getCountLeaderboard();
-    expect(lb.map((e) => e.username)).toEqual(['three', 'two', 'one']);
-    expect(lb.map((e) => e.value)).toEqual([3, 2, 1]);
-    expect(lb.map((e) => e.rank)).toEqual([1, 2, 3]);
+    expect(lb.map((e) => e.username)).toEqual(['four', 'three', 'two', 'one']);
+    expect(lb.map((e) => e.value)).toEqual([4, 3, 2, 1]);
+    expect(lb.map((e) => e.rank)).toEqual([1, 2, 3, 4]);
+
+    const top2 = await getCountLeaderboard(2);
+    expect(top2.map((e) => e.value), 'limit 取天数最多的前 N').toEqual([4, 3]);
   });
 
   it('无人签到返回空数组', async () => {
     await makeUser();
     expect(await getCountLeaderboard()).toEqual([]);
-  });
-
-  it('limit 生效，取的是天数最多的前 N 名', async () => {
-    for (let n = 1; n <= 4; n++) {
-      const u = await makeUser({ username: `u${n}` });
-      for (let d = 1; d <= n; d++) {
-        await makeLegacyCheckin(u.id, `2026-07-0${d}`);
-      }
-    }
-    const lb = await getCountLeaderboard(2);
-    expect(lb).toHaveLength(2);
-    expect(lb.map((e) => e.value)).toEqual([4, 3]);
   });
 
   it('返回字段收敛（rank/userId/username/frameUrl/value），不泄漏 email', async () => {
@@ -611,28 +532,15 @@ describe('getCountLeaderboard（签到天数榜）', () => {
 // @default(now())** —— 建行时不显式写就会落 NULL，次级排序键随之失效。
 
 describe('DailyCheckIn.createdAt 落库', () => {
-  it('checkIn 必须写入 createdAt', async () => {
-    freezeUtc('2026-07-15T04:00:00.000Z');
-    const u = await makeUser();
-    await checkIn(u.id);
-
-    const row = await prisma.dailyCheckIn.findFirstOrThrow({ where: { userId: u.id } });
-    expect(
-      row.createdAt,
-      'createdAt 落 NULL —— 排行榜的并列排序键 max(created_at) 会失效'
-    ).not.toBeNull();
-  });
-
-  it('createdAt 走 nowForDb()（UTC+8 墙上时间），而非真实 UTC', async () => {
+  it('checkIn 必须写入 createdAt，且走 nowForDb()（UTC+8 墙上时间），不是 NULL / 真实 UTC', async () => {
     freezeUtc('2026-07-15T04:00:00.000Z'); // UTC 04:00 = UTC+8 12:00
     const u = await makeUser();
     await checkIn(u.id);
 
     const row = await prisma.dailyCheckIn.findFirstOrThrow({ where: { userId: u.id } });
-    expect(
-      row.createdAt!.toISOString(),
-      '库内时间戳约定为 UTC+8 墙上时间（见 db-time.ts）；用 new Date() 会差 8 小时'
-    ).toBe('2026-07-15T12:00:00.000Z');
+    // createdAt 落 NULL 会让排行榜的并列排序键 max(created_at) 静默失效；
+    // 用 new Date() 则差 8 小时（库内时间戳约定为 UTC+8 墙上时间，见 db-time.ts）
+    expect(row.createdAt!.toISOString()).toBe('2026-07-15T12:00:00.000Z');
   });
 
   it('存储类型是 INTEGER（与规整脚本产出一致，保证日期比较按数值）', async () => {

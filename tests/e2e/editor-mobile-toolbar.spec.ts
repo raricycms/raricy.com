@@ -15,20 +15,17 @@ import { SEED_USERS } from './seed';
 //     不写日志，只有真敲一下才知道。落点与多选区那部分已由
 //     tests/unit/md-editor-commands.test.ts 钉住，这里钉的是**按键真的走到它**。
 //
-// 【断言正文一律经预览】与 editor.spec / editor-upload.spec 同一条纪律：读
+// 【断言正文一律经预览】与 editor.spec 同一条纪律：读
 // `.md-editor__preview-body` 里的成品，不读 `.cm-content` 的 innerText。
 //
 // 【视口自己钉死】用例不按 isMobile 分支，而是 setViewportSize —— 断点属于视口
-// 而不属于设备，两个 project 跑的是同一件事。文件因此登记在 playwright.config.ts
-// 的 RESPONSIVE_SPECS 里（mobile 那一遍是主场景，desktop 那一遍验「宽屏没被
-// 顺手改窄」）。
+// 而不属于设备。文件因此登记在 playwright.config.ts 的 RESPONSIVE_SPECS 里。
+// 【Round4 精简】窄屏三档「工具条固定一行 / 触摸面积 44px / 宽屏不放大」的纯版式测量
+// 已按仓库约定删除（样式按页面/视口验收），保留的是入口可达与菜单可用。
 
 const BLOG_EDITOR = '#editor';
 const CLIP_EDITOR = '#clipboard-editor';
 
-/** 断点（767px）两侧的代表值：手机三档 + 桌面。 */
-const NARROW_WIDTHS = [320, 360, 390];
-const DESKTOP_WIDTH = 1280;
 
 /** 1x1 透明 PNG。 */
 const PNG_1X1 = Buffer.from(
@@ -38,47 +35,6 @@ const PNG_1X1 = Buffer.from(
 
 /** 窄屏首行五个图标入口的可访问名（撤销/重做收进「更多」）。 */
 const CORE_LABELS = ['格式', '组件', '上传图片', '插入引用', '更多'];
-/** 窄屏被样式表藏起来的按钮（仍可从「更多」菜单触发同一条命令）。 */
-const HIDDEN_LABELS = ['撤销', '重做'];
-
-interface RowGeometry {
-  /** 参与布局的按钮（`display: none` 的分组里的不算）。 */
-  labels: (string | null)[];
-  /** 每条不同的顶边（取整）—— 只有一条 = 同一行。 */
-  tops: number[];
-  /** 每颗按钮的高度（触摸面积）。 */
-  heights: number[];
-  /** 越出工具条内容区右缘的按钮（说明被裁掉或被挤出去）。 */
-  overflowRight: (string | null)[];
-  /** 工具条自身的横向溢出（>0 = 里面出现了横向滚动）。 */
-  scrollOverflow: number;
-}
-
-/**
- * 量一行工具条的几何。
- *
- * 【为什么用 offsetParent 过滤】`display: none` 的元素 `offsetParent` 是 null，
- * 而窄屏藏起来的历史组正是这样被藏起来的 —— 于是「参与布局的按钮」就是用户
- * 真正看得见的那几颗。
- */
-async function measureRow(toolbar: Locator): Promise<RowGeometry> {
-  return toolbar.evaluate((el) => {
-    const btns = Array.from(el.querySelectorAll<HTMLElement>('.md-toolbar__btn')).filter(
-      (b) => b.offsetParent !== null
-    );
-    const box = el.getBoundingClientRect();
-    const contentRight = box.right - parseFloat(getComputedStyle(el).paddingRight);
-    return {
-      labels: btns.map((b) => b.getAttribute('aria-label')),
-      tops: [...new Set(btns.map((b) => Math.round(b.getBoundingClientRect().top)))],
-      heights: btns.map((b) => b.getBoundingClientRect().height),
-      overflowRight: btns
-        .filter((b) => b.getBoundingClientRect().right > contentRight + 1)
-        .map((b) => b.getAttribute('aria-label')),
-      scrollOverflow: el.scrollWidth - el.clientWidth,
-    };
-  });
-}
 
 /**
  * CM6 认的 `Mod-` 是哪个 —— 照它自己的判据算（同 editor.spec.ts）。
@@ -285,65 +241,7 @@ test.describe('编辑器工具条：窄屏五个主入口 + 「更多」', () =>
     await loginViaApi(page, SEED_USERS.core.username);
   });
 
-  test('320 / 360 / 390 三档窄屏：工具条固定一行、主入口 + 「更多」', async ({ page }) => {
-    await page.goto('/blog/upload');
-    const toolbar = toolbarOf(page, BLOG_EDITOR);
-    await expect(toolbar).toBeVisible();
 
-    for (const width of NARROW_WIDTHS) {
-      await page.setViewportSize({ width, height: 844 });
-
-      // ① 主入口在、历史组由样式表藏起来
-      for (const name of CORE_LABELS) {
-        const button = toolbar.getByRole('button', { name, exact: true });
-        await expect(button, `${width}px 下「${name}」应当还在首行`).toBeVisible();
-        await expect(button.locator('svg').first(), `${name} 缺少可见图标`).toBeVisible();
-        await expect(button.locator('.md-toolbar__entry-label')).toBeHidden();
-      }
-      for (const name of HIDDEN_LABELS) {
-        await expect(
-          toolbar.getByRole('button', { name, exact: true }),
-          `${width}px 下「${name}」应当收进「更多」`
-        ).toBeHidden();
-      }
-
-      const geo = await measureRow(toolbar);
-      // ② 真的一行
-      expect(geo.tops, `${width}px 下工具条折成了 ${geo.tops.length} 行`).toHaveLength(1);
-      expect(geo.labels.slice().sort()).toEqual(CORE_LABELS.slice().sort());
-      // ③ 不溢出
-      expect(geo.overflowRight, `${width}px 下有按钮越过工具条右缘`).toEqual([]);
-      expect(geo.scrollOverflow, `${width}px 下工具条出现了横向滚动`).toBeLessThanOrEqual(1);
-      // ④ 触摸面积
-      expect(
-        Math.min(...geo.heights),
-        `${width}px 下按钮只有 ${Math.min(...geo.heights)}px 高`
-      ).toBeGreaterThanOrEqual(44);
-    }
-  });
-
-  test('宽屏：主入口带文字、历史组在、「更多」仍在', async ({ page }) => {
-    await page.setViewportSize({ width: DESKTOP_WIDTH, height: 900 });
-    await page.goto('/blog/upload');
-    const toolbar = toolbarOf(page, BLOG_EDITOR);
-    await expect(toolbar).toBeVisible();
-
-    for (const name of [...CORE_LABELS, ...HIDDEN_LABELS]) {
-      await expect(
-        toolbar.getByRole('button', { name, exact: true }),
-        `宽屏下「${name}」不该被藏起来`
-      ).toBeVisible();
-    }
-
-    // 宽屏不收起任何按钮：所有 .md-toolbar__btn 都参与布局
-    const total = await toolbar.locator('.md-toolbar__btn').count();
-    const geo = await measureRow(toolbar);
-    expect(geo.labels, '宽屏不该收起任何按钮').toHaveLength(total);
-    // 桌面保留紧凑的图标 + 文字入口，触屏使用更大的点击区域。
-    expect(Math.max(...geo.heights), '宽屏按钮被放大了').toBeLessThanOrEqual(36);
-    await expect(toolbar.getByRole('button', { name: '格式', exact: true })
-      .locator('.md-toolbar__entry-label')).toBeVisible();
-  });
 
   test('「更多」：撤销 / 导出 / 打印 / 格式化都在菜单里，Esc 关闭', async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });

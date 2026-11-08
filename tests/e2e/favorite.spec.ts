@@ -263,23 +263,13 @@ test('作者不会收到收藏通知（收藏刻意不推）', async ({ page }) 
   expect(count.count, '作者收到了收藏通知 —— 需求要求收藏不推通知').toBe(0);
 });
 
-test('非 core 用户：页面与接口同档，两边都挡（档位阶梯）', async ({ page }) => {
-  // 收藏夹与点赞/投喂同档（core+）。「页面与接口必须同档，每层都自己判」是
-  // CLAUDE.md 的硬约定 —— 页面挡了而接口没挡，就等于「用不了界面但 curl 得动」。
+test('非 core 用户：页面原地 403（接口档位由 tests/route/favorite-api.test.ts 覆盖）', async ({ page }) => {
+  // 收藏夹与点赞/投喂同档（core+）。接口三个 handler 的 401/403 阶梯在 route 层逐条钉住；
+  // 这里只留 e2e 独有的那一半：**页面**已登录但档位不够 → 原地 403（不是重定向到登录页）。
   await loginViaApi(page, SEED_USERS.plain.username);
 
-  const api = await page.request.get('/api/favorites');
-  expect(api.status(), '接口没挡住非 core 用户').toBe(403);
-
-  // 页面：已登录但档位不够 → 原地 403（不是重定向到登录页）
   const res = await page.goto('/favorite');
   expect(res?.status()).toBe(403);
-
-  // 建收藏夹也必须被挡（写路径同样每一层自己判）
-  const post = await page.request.post('/api/favorites', {
-    data: { title: '不该建出来', isPublic: true },
-  });
-  expect(post.status()).toBe(403);
 });
 
 test('未登录访客：/favorite 跳到登录页，next 落在**根路径**（页面没传具体目标）', async ({ page }) => {

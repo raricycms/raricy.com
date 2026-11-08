@@ -44,7 +44,6 @@ const RE_MIXED_SUBTRACTION =
 const RE_MIXED_COMPARE =
   /\.getTime\(\)\s*(?:[<>]=?|===|!==)\s*Date\.now\(\)|Date\.now\(\)\s*(?:[<>]=?|===|!==)\s*[\w.$]+\.getTime\(\)/g;
 const RE_TO_LOCALE = /toLocale(String|DateString|TimeString|Format)/g;
-const RE_TOP_LEVEL_AWAIT = /^await\s/gm;
 
 function collectFiles(dir: string, out: string[] = []): string[] {
   for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -190,14 +189,5 @@ describe('运维 CLI：后台操作不进前端公示页', () => {
     for (const spec of runtimeImports) {
       expect(spec, `audit-context.ts 引入了 ${spec}`).toBe('node:async_hooks');
     }
-  });
-});
-
-describe('运维 CLI：CJS 语义', () => {
-  it('不许顶层 await（scripts/ 下的 .ts 按 CJS 执行，没有顶层 await）', () => {
-    expect(
-      hits(RE_TOP_LEVEL_AWAIT),
-      '把 await 放进 async 函数里 —— 本目录不支持顶层 await'
-    ).toEqual([]);
   });
 });

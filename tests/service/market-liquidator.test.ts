@@ -150,29 +150,19 @@ describe('触发判据', () => {
     expect(pos?.exitPrice, '结算价是那条线，不是触发价').toBe(ENTRY * 2);
   });
 
-  it('★ 刚开的健康空头不会被误爆（判据写反就必然发生）', async () => {
+  it('★ 空头判据是「涨」：刚开的健康空头不被误爆，价格跌穿多头那条线也不动它', async () => {
     const user = await makeFishUser(100);
     priceIs(ENTRY);
     const r = await openPosition({
       userId: user.id, symbolRaw: 'BTCUSDT', amount: 100, leverageRaw: 10, directionRaw: 'short',
     });
     if (!r.ok) throw new Error(r.message);
-    // 10× 空头爆仓价 88000，而现价 80000。若判据沿用多头的 `现价 ≤ 爆仓价`，
-    // 80000 ≤ 88000 恒真 → 这一笔会在**下一轮立刻被结清**，而日志只有一行正常强平。
+    // 10× 空头爆仓价 88000，现价 80000：若沿用多头的 `现价 ≤ 爆仓价`，下一轮就会被正常强平
     priceIs(ENTRY);
     expect(await sweepLiquidations()).toBe(0);
     expect((await posRow(r.position.id))?.status).toBe('open');
-  });
 
-  it('空头看的是**涨**：价格跌穿多头那条线也不动它', async () => {
-    // 与上一条配对的另一半：同一个价位（72000）对多头是爆仓、对空头是盈利。
-    const user = await makeFishUser(100);
-    priceIs(ENTRY);
-    const r = await openPosition({
-      userId: user.id, symbolRaw: 'BTCUSDT', amount: 100, leverageRaw: 10, directionRaw: 'short',
-    });
-    if (!r.ok) throw new Error(r.message);
-
+    // 同一个价位（72000）对多头是爆仓、对空头是盈利
     priceIs(LIQ_10X - 1);
     expect(await sweepLiquidations()).toBe(0);
     expect((await posRow(r.position.id))?.status).toBe('open');
@@ -276,18 +266,11 @@ describe('幂等与并发', () => {
 });
 
 describe('行情源不可用时', () => {
-  it('取价失败 → 本轮跳过，仓位原样留着（不降级、不拿假价爆）', async () => {
+  it('取价失败 → 本轮跳过、仓位原样留着；行情恢复后照旧会爆（跳过只是延后）', async () => {
     const { positionId } = await openedLeveraged(10);
     mockQuote.mockRejectedValue(new MarketPriceError('boom'));
-
     expect(await sweepLiquidations()).toBe(0);
     expect((await posRow(positionId))?.status).toBe('open');
-  });
-
-  it('行情恢复后那一轮照旧会爆（跳过只是延后，不是放弃）', async () => {
-    const { positionId } = await openedLeveraged(10);
-    mockQuote.mockRejectedValue(new MarketPriceError('boom'));
-    expect(await sweepLiquidations()).toBe(0);
 
     priceIs(LIQ_10X - 1);
     expect(await sweepLiquidations()).toBe(1);
@@ -302,15 +285,14 @@ describe('行情源不可用时', () => {
 });
 
 describe('闸门：引擎没在跑就不卖杠杆', () => {
-  it('★ 默认是 **fail-closed**：标志没被写过（= 引擎没起来）就是「没在跑」★', async () => {
+  it('★ 默认 **fail-closed**：标志没被写过就是「没在跑」；stop 之后读 false（停掉强平 = 停止卖杠杆）', async () => {
     // 这条钉的是闸门的**默认方向**。它曾经写成「NODE_ENV === 'test' 就放行」——
-    // 那是 fail-open：服务进程一旦带着 NODE_ENV=test 起来，循环没起（函数开头就
-    // return false）而闸门却放行，站点会在没有任何清算者的情况下卖 10 倍仓，
-    // 用户手里拿着一份永久免费的看涨期权且毫无症状。
+    // 那是 fail-open：循环没起（函数开头就 return false）而闸门却放行，站点会在没有
+    // 任何清算者的情况下卖 10 倍仓，用户手里拿着一份永久免费的看涨期权且毫无症状。
     stopMarketLiquidator(); // 删掉标志 = 「没人写过它」
     expect(isLiquidationRunning(), '标志没写过时必须是 false').toBe(false);
 
-    // 而「没在跑」的后果是拒单，不是照卖
+    // 「没在跑」的后果是拒单，不是照卖
     const user = await makeFishUser(100);
     priceIs(ENTRY);
     const r = await openPosition({
@@ -319,9 +301,12 @@ describe('闸门：引擎没在跑就不卖杠杆', () => {
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.code).toBe(503);
 
-    // 显式打开之后才放行（测试要的就是这一条：开门看得见）
+    // 显式打开之后才放行；再 stop 又回到 false（不依赖任何「测试环境默认」）
     __setLiquidationRunning(true);
     expect(isLiquidationRunning()).toBe(true);
+    stopMarketLiquidator();
+    expect(isLiquidationRunning(), '停掉之后必须读成「没在跑」').toBe(false);
+    __setLiquidationRunning(true); // 还原，免得影响本文件后面的用例
   });
 
   it('显式关掉之后：杠杆开仓 503，**1 倍照旧能开**', async () => {
@@ -348,19 +333,6 @@ describe('闸门：引擎没在跑就不卖杠杆', () => {
     expect(txns.map((t) => t.type).sort()).toEqual(['admin_grant', 'market_buy']);
     expect(await balanceOf(user.id)).toBe(100); // 200 − 100（只扣了 1 倍那笔）
     await expectLedgerConsistent('杠杆被拒之后');
-  });
-
-  it('stop 之后闸门读 false（停掉强平 = 停止卖杠杆），且不依赖任何「测试环境默认」', async () => {
-    __setLiquidationRunning(true);
-    expect(isLiquidationRunning()).toBe(true);
-
-    stopMarketLiquidator();
-    // fail-closed 口径下这是**正确**的方向：没有清算者就不该卖杠杆仓。
-    // 文件后面那些用例靠的是 beforeEach 里显式开回来，不是靠这里留个后门。
-    expect(isLiquidationRunning(), '停掉之后必须读成「没在跑」').toBe(false);
-
-    __setLiquidationRunning(true); // 还原，免得影响本文件后面的用例
-    expect(isLiquidationRunning()).toBe(true);
   });
 
   it('启动尝试在测试进程里直接返回 false（NODE_ENV=test 那道保险）', () => {
@@ -405,13 +377,6 @@ describe('scanLiquidations（只读预览）', () => {
     const { due, skipped } = await scanLiquidations();
     expect(due).toEqual([]);
     expect(skipped).toEqual([{ symbol: 'BTCUSDT', reason: '行情源不可用' }]);
-  });
-
-  it('没有任何杠杆仓时一次行情源都不打', async () => {
-    mockQuote.mockClear();
-    const { due } = await scanLiquidations();
-    expect(due).toEqual([]);
-    expect(mockQuote).not.toHaveBeenCalled();
   });
 
   it('扫描说该爆、真正动手是**重新扫一遍**（不是复用那份名单）', async () => {

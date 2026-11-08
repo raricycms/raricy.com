@@ -12,6 +12,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { rateLimit, isRateLimited, recordRateLimitHit, RULES } from '@/lib/rate-limit';
 import { SERVICE_QUOTA } from '@/lib/service-accounts';
+import { clientIp } from '@/lib/request-ip';
 
 const HOUR = 60 * 60 * 1000;
 const DAY = 24 * HOUR;
@@ -174,143 +175,49 @@ describe('返回值形态', () => {
 });
 
 describe('RULES 全站配额（src/lib/rate-limit.ts 即权威，改动即报警）', () => {
-  // 这些数字是产品口径，不是实现细节 —— 任何改动都应是一次有意识的决定。
-  const EXPECTED = [
-    { name: 'likeHourly', limit: 300, windowMs: HOUR, desc: '点赞 300 次/时' },
-    { name: 'likeDaily', limit: 1500, windowMs: DAY, desc: '点赞 1500 次/天' },
-    { name: 'commentDaily', limit: 8000, windowMs: DAY, desc: '评论 8000 次/天' },
-    { name: 'voteCreateHourly', limit: 10, windowMs: HOUR, desc: '投票创建 10 次/时' },
-    { name: 'voteHourly', limit: 30, windowMs: HOUR, desc: '投票 30 次/时' },
-    { name: 'imageUploadHourly', limit: 200, windowMs: HOUR, desc: '图床上传 200 次/时' },
-    { name: 'audioUploadHourly', limit: 200, windowMs: HOUR, desc: '音频床地上传 200 次/时' },
-    { name: 'chatMinute', limit: 120, windowMs: 60_000, desc: '讨论发言 120 次/分' },
-    { name: 'chatDaily', limit: 8000, windowMs: DAY, desc: '讨论发言 8000 次/天' },
-    { name: 'chatPoll', limit: 120, windowMs: 60_000, desc: '讨论对账轮询 120 次/分' },
-    { name: 'chatNewChannel', limit: 20, windowMs: 60_000, desc: '发起私聊 20 次/分' },
-    { name: 'loginPerIp', limit: 300, windowMs: MIN15, desc: '登录失败 300 次/15 分/IP' },
-    { name: 'loginPerUser', limit: 100, windowMs: MIN15, desc: '登录失败 100 次/15 分/账号' },
-    { name: 'transferHourly', limit: 100, windowMs: HOUR, desc: '鱼干转账 100 次/时' },
-    { name: 'transferDaily', limit: 500, windowMs: DAY, desc: '鱼干转账 500 次/天' },
-    {
-      name: 'tradeMinute',
-      limit: 20,
-      windowMs: 60_000,
-      desc: '练手盘开/平仓 20 次/分/用户（每笔都要现取一次行情 + 一次远端转账）',
-    },
-    {
-      name: 'tradeDaily',
-      limit: 300,
-      windowMs: DAY,
-      desc: '练手盘开/平仓 300 次/天/用户（比转账松：它不通知任何人）',
-    },
-    {
-      name: 'frameRentHourly',
-      limit: 30,
-      windowMs: HOUR,
-      desc: '鱼干商城租头像框 30 次/时/用户（余额是花销的墙，这两条是写次数的墙）',
-    },
-    {
-      name: 'frameRentDaily',
-      limit: 200,
-      windowMs: DAY,
-      desc: '鱼干商城租头像框 200 次/天/用户',
-    },
-    {
-      name: 'fishApiPerUser',
-      limit: 20,
-      windowMs: 60_000,
-      desc: '鱼干市场无状态接口 20 次/分/账号（成功也计数：每次都要跑 scrypt）',
-    },
-    { name: 'fishApiPerIp', limit: 120, windowMs: 60_000, desc: '鱼干市场无状态接口 120 次/分/IP' },
-    {
-      name: 'fishTokenPerUser',
-      limit: 120,
-      windowMs: 60_000,
-      desc: '鱼干只读凭据 120 次/分/账号（**不跑 scrypt**，故不受上面那条 CPU 闸门约束；这条只防死循环）',
-    },
-    {
-      name: 'fishTokenPerIp',
-      limit: 600,
-      windowMs: 60_000,
-      desc: '鱼干只读凭据 600 次/分/IP（同上，与 fishApiPerIp 分开计桶）',
-    },
-    {
-      name: 'posterMinute',
-      limit: 30,
-      windowMs: 60_000,
-      desc: '画报 / 收款码 PNG 生成 30 次/分/用户（一次请求 = 一次 sharp 光栅化）',
-    },
-    {
-      name: 'profileSave',
-      limit: 30,
-      windowMs: 60_000,
-      desc: '个人主页布局保存 30 次/分/用户（整页替换 = 一个事务里最多 16 次写）',
-    },
-    {
-      name: 'toolHeaderFetchPerIp',
-      limit: 20,
-      windowMs: 60_000,
-      desc: '开发者工具「网站响应头查看」20 次/分/IP（全站唯一代用户发起外网请求的路由，一次最多 1+3 次出站）',
-    },
-    {
-      name: 'favoriteCreateHourly',
-      limit: 20,
-      windowMs: HOUR,
-      desc: '新建 / 复制收藏夹 20 次/时（总量闸是 FAVORITE_PER_USER_MAX=200，不在 RULES）',
-    },
-    {
-      name: 'quoteSubmitDaily',
-      limit: 5,
-      windowMs: 24 * HOUR,
-      desc: '每日一言投稿每人24小时最多5次，说明见每日一言使用指南',
-    },
-    {
-      name: 'favoriteImportHourly',
-      limit: 10,
-      windowMs: HOUR,
-      desc: '导入收藏夹 10 次/时（一次最多 1000 条 upsert）',
-    },
-    {
-      name: 'spiderFavoritePerIp',
-      limit: 120,
-      windowMs: 60_000,
-      desc: '收藏夹读取 120 次/分/IP（spider 命名空间里唯一有闸的一条；鉴权不替代限频）',
-    },
-    {
-      name: 'blogSearchMinute',
-      limit: 30,
-      windowMs: 60_000,
-      desc: '博客正文搜索 30 次/分/用户（全站唯一为「读」设的闸：一次请求 = count + findMany 两次全表扫描，约 48.6MB 正文）',
-    },
-    {
-      name: 'ogImagePerIp',
-      limit: 120,
-      windowMs: 60_000,
-      desc: '文章分享卡片 120 次/分/IP（匿名入口，每次请求 = 一次 sharp 光栅化 2400×1260 PNG）',
-    },
-    {
-      name: 'exploreSearchPerIp',
-      limit: 120,
-      windowMs: 60_000,
-      desc: '对外列表 /explore 的搜索 120 次/分/IP（本站第一个匿名**页面**的限频：没有会话可依，只能按 IP）',
-    },
-    { name: 'passwordPerUser', limit: 20, windowMs: 60_000, desc: '所有网络密码确认共享用户 ID 预算，成功也计数' },
-    { name: 'passwordPerIp', limit: 120, windowMs: 60_000, desc: '网络密码计算的可信 IP 预算' },
-    { name: 'passwordGlobal', limit: 240, windowMs: 60_000, desc: '全站网络密码计算预算' },
-    { name: 'realtimeLaunch', limit: 10, windowMs: 60_000, desc: '实时游戏启动票据 10 次/分/用户' },
-  ] as const;
-
-  for (const e of EXPECTED) {
-    it(`${e.name} = ${e.desc}`, () => {
-      const rule = RULES[e.name];
-      expect(rule, `RULES.${e.name} 缺失`).toBeDefined();
-      expect(rule.limit, `${e.name}.limit 应为 ${e.limit}`).toBe(e.limit);
-      expect(rule.windowMs, `${e.name}.windowMs 应为 ${e.windowMs}`).toBe(e.windowMs);
+  it('全站配额快照（数值即产品口径；改动是一次有意识的决定）', () => {
+    const snapshot = Object.fromEntries(
+      Object.entries(RULES).map(([name, rule]) => [name, [rule.limit, rule.windowMs]])
+    );
+    expect(snapshot).toEqual({
+      likeHourly: [300, HOUR],
+      likeDaily: [1500, DAY],
+      commentDaily: [8000, DAY],
+      voteCreateHourly: [10, HOUR],
+      voteHourly: [30, HOUR],
+      imageUploadHourly: [200, HOUR],
+      audioUploadHourly: [200, HOUR],
+      chatMinute: [120, 60_000],
+      chatDaily: [8000, DAY],
+      chatPoll: [120, 60_000],
+      chatNewChannel: [20, 60_000],
+      loginPerIp: [300, MIN15],
+      loginPerUser: [100, MIN15],
+      transferHourly: [100, HOUR],
+      transferDaily: [500, DAY],
+      tradeMinute: [20, 60_000],
+      tradeDaily: [300, DAY],
+      frameRentHourly: [30, HOUR],
+      frameRentDaily: [200, DAY],
+      fishApiPerUser: [20, 60_000],
+      fishApiPerIp: [120, 60_000],
+      fishTokenPerUser: [120, 60_000],
+      fishTokenPerIp: [600, 60_000],
+      posterMinute: [30, 60_000],
+      profileSave: [30, 60_000],
+      toolHeaderFetchPerIp: [20, 60_000],
+      favoriteCreateHourly: [20, HOUR],
+      quoteSubmitDaily: [5, 24 * HOUR],
+      favoriteImportHourly: [10, HOUR],
+      spiderFavoritePerIp: [120, 60_000],
+      blogSearchMinute: [30, 60_000],
+      ogImagePerIp: [120, 60_000],
+      exploreSearchPerIp: [120, 60_000],
+      passwordPerUser: [20, 60_000],
+      passwordPerIp: [120, 60_000],
+      passwordGlobal: [240, 60_000],
+      realtimeLaunch: [10, 60_000],
     });
-  }
-
-  it('RULES 的键集合完整且无多余项（新增配额需同步本用例与文档）', () => {
-    expect(Object.keys(RULES).sort()).toEqual(EXPECTED.map((e) => e.name).sort());
   });
 
   it('服务账号配额每一项都必须**高于**普通账号（否则白名单形同虚设）', () => {
@@ -482,5 +389,29 @@ describe('测试环境的快照隔离（tests/setup.ts）', () => {
     expect(path.basename(configured)).toMatch(
       new RegExp(`^rate-limit-snapshot-${process.pid}-[0-9a-z]+\\.json$`)
     );
+  });
+});
+
+// ── 可信入口 IP（限频桶的 key 来源；原 request-ip.test.ts，Round4 合并）──
+const from = (headers: Record<string, string>) => clientIp({ headers: new Headers(headers) });
+
+describe('可信入口 IP', () => {
+  it('只读 nginx 覆盖的 X-Real-IP，伪造 CF/XFF 不影响桶', () => {
+    expect(from({ 'x-real-ip': '203.0.113.7', 'cf-connecting-ip': '1.1.1.1', 'x-forwarded-for': '2.2.2.2' })).toBe('203.0.113.7');
+    expect(from({ 'cf-connecting-ip': '1.1.1.1', 'x-forwarded-for': '2.2.2.2' })).toBeUndefined();
+  });
+  it.each(['', ' ', 'unknown', '1.1.1.1, 2.2.2.2', '999.1.1.1', '1.1.1.1:80', 'fe80::1%eth0', '[::1]'])('非法 IP %s 不进入限频桶', (ip) => {
+    expect(from({ 'x-real-ip': ip })).toBeUndefined();
+  });
+  it('缺少 IP 不把所有人并入占位桶', () => expect(from({})).toBeUndefined());
+  it('去除空白并归一 IPv6 拼写和映射 IPv4', () => {
+    expect(from({ 'x-real-ip': ' 203.0.113.7 ' })).toBe('203.0.113.7');
+    expect(from({ 'x-real-ip': '2001:0DB8:0:0:0:0:0:1' })).toBe('2001:db8::1');
+    expect(from({ 'x-real-ip': '::ffff:203.0.113.7' })).toBe('203.0.113.7');
+    expect(from({ 'x-real-ip': '0:0:0:0:0:FFFF:cb00:7107' })).toBe('203.0.113.7');
+  });
+  it('Request 与页面 headers 的调用形状给出同一值', () => {
+    const headers = new Headers({ 'x-real-ip': '203.0.113.7' });
+    expect(clientIp(new Request('https://raricy.com/', { headers }))).toBe(clientIp({ headers }));
   });
 });

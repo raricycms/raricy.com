@@ -269,34 +269,22 @@ describe('transferFish —— 共享单号 transfer_id', () => {
 });
 
 describe('收银台 order 参数的幂等键基', () => {
-  it('同一收款人 + 同一订单号 → 同一个键（刷新页面重付会被认成同一笔）', () => {
+  it('同收款人 + 同订单号 → 同键；换收款人 → 不同键（同一个订单号可以付给两家商户）', () => {
     expect(makeOrderKeyBase('u_a', 'order-1')).toBe(makeOrderKeyBase('u_a', 'order-1'));
-  });
-
-  it('★ 同一个付款人给**两家不同商户**用同一个订单号串 → 键必须不同', () => {
-    // 不把收款人混进键的话，这里两条会相等 → 第二家商户直接 409、用户付不出去。
+    // 不把收款人混进键，第二家商户会直接 409、用户付不出去
     expect(makeOrderKeyBase('u_merchant_a', 'order-1')).not.toBe(
       makeOrderKeyBase('u_merchant_b', 'order-1')
     );
   });
 
-  it('最长订单号产出的键仍在 CLIENT_KEY_RE 的 48 字上限内', () => {
-    const longest = 'a'.repeat(32);
-    expect(ORDER_RE.test(longest)).toBe(true);
-    const key = makeOrderKeyBase('u_merchant', longest);
-    expect(CLIENT_KEY_RE.test(key), `键超长: ${key} (${key.length})`).toBe(true);
-  });
-
-  it('ORDER_RE 收下的任何值都产得出合法键（长度与字符集都不越界）', () => {
+  it('ORDER_RE 只收能产出合法键的值（长度与字符集都不越界）', () => {
     for (const order of ['a', 'order-20260915-0007', '_._:.-', 'x'.repeat(32), 'ABC123']) {
-      expect(ORDER_RE.test(order)).toBe(true);
-      expect(CLIENT_KEY_RE.test(makeOrderKeyBase('u_m', order))).toBe(true);
+      expect(ORDER_RE.test(order), `本该通过：${order}`).toBe(true);
+      const key = makeOrderKeyBase('u_m', order);
+      expect(CLIENT_KEY_RE.test(key), `键不合法：${key} (${key.length})`).toBe(true);
     }
-  });
-
-  it('ORDER_RE 拒绝会破坏键的值：空格、斜杠、超长、非 ASCII', () => {
     for (const bad of ['has space', 'a/b', 'x'.repeat(33), '订单号', '', 'a\nb', 'a+b']) {
-      expect(ORDER_RE.test(bad), `不该通过: ${JSON.stringify(bad)}`).toBe(false);
+      expect(ORDER_RE.test(bad), `不该通过：${JSON.stringify(bad)}`).toBe(false);
     }
   });
 });

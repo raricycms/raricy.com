@@ -7,7 +7,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { describe, expect, it } from 'vitest';
-import { compileLocal, localCompileOptionsKey, type LocalDocument } from 'reactive-md';
+import { compileLocal, type LocalDocument } from 'reactive-md';
 import { reactiveCompileOptions } from '@/lib/reactive/host-components';
 import { applyLegacyHtmlCompat } from '@/lib/reactive/legacy-compat';
 import { adaptReactiveReferences } from '@/lib/reactive/ref-adapter';
@@ -70,11 +70,9 @@ function counts(document: LocalDocument) {
 }
 
 describe('无缝混写：format 自动升级前后排版一致', () => {
-  it('Markdown 与 Reactive 使用同一套软换行规则', () => {
-    expect(localCompileOptionsKey(reactiveCompileOptions('markdown'))).toBe(
-      localCompileOptionsKey(reactiveCompileOptions('reactive'))
-    );
-  });
+  // 「Markdown 与 Reactive 使用同一套软换行规则」这条已在 reactive-compile.test.ts
+  // 「format 不再切换编译选项：同一份源码命中同一份编译结果」里从缓存键一侧钉住
+  // （R4 去重，原断言就是 localCompileOptionsKey 相等）。
 
   it('★ 追加组件后，原有 break / 公式 / 图片引用结构逐项不变 ★', async () => {
     const before = await compile(BASE);

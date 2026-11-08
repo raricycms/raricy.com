@@ -1,6 +1,6 @@
 {
   "generator": "scripts/make-pwa-icons.mjs",
-  "generatorSha256": "2b50a67a89e850d9cf429c78d030f5e419120bceba92598d78a19d4548148bf6",
+  "generatorSha256": "403eb5b17697ce0f46b51b1c393fcc85c22f5fe3e72045012a12ab5e677b91f5",
   "source": "public/static/img/favicon.png",
   "files": {
     "apple-touch-icon.png": "c59373af962446a5548a8cc66046ef8ad74fcc31cefd0195e5c1927beb34e2df",

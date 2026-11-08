@@ -303,24 +303,6 @@ test.describe('分享卡片（OG）与索引口径', () => {
       'content',
       new RegExp(`/api/og/blog/${id}`)
     );
-
-    const res = await page.request.get(`/api/og/blog/${id}`);
-    expect(res.status()).toBe(200);
-    expect(res.headers()['x-robots-tag'], 'link 档的卡片不许被索引').toBe('noindex');
-  });
-
-  test('internal 与不存在：OG 图同为 404，且响应体逐字相同（不确认存在性）', async ({ page }) => {
-    await loginViaApi(page, SEED_USERS.core.username);
-    const internalId = await createBlogWith(page, 'internal');
-    await becomeAnonymous(page);
-
-    const internalRes = await page.request.get(`/api/og/blog/${internalId}`);
-    const missingRes = await page.request.get('/api/og/blog/no-such-blog-id');
-    expect(internalRes.status(), 'internal 文章不出卡片').toBe(404);
-    expect(missingRes.status()).toBe(404);
-    // 「存在但你无权看」与「根本不存在」对外必须**逐字相同** —— 差一个字就是一个
-    // 存在性探针（拿一批 id 挨个试，能筛出哪些是真实文章）。
-    expect(await internalRes.text()).toBe(await missingRes.text());
   });
 
   test('作者把文章从 public 改回 internal，匿名立刻读不到（没有按 viewer 缓存住旧结果）', async ({

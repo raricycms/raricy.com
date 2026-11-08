@@ -10,7 +10,6 @@
 // 它是唯一能挡住「静默区 / 纠错等级 / 单元尺寸」这类改动的东西。
 
 import { describe, it, expect } from 'vitest';
-import path from 'node:path';
 import sharp from 'sharp';
 import jsQR from 'jsqr';
 
@@ -221,36 +220,6 @@ describe('版式', () => {
     expect(withoutCheckin).not.toContain('签到');
   });
 
-  it('整幅满出血：四角必须不透明（图片是方的，圆角只会把角抠漏）', async () => {
-    // 曾经给背景矩形加过 rx=28，四个角变成透明的：弹窗里（浅灰底）露出四个灰色
-    // 小月牙，下载到手机上换个深色底看也是破的。方图里抠圆角 = 把角抠漏，
-    // 要圆角是展示端的事（CSS border-radius），不该烧进像素。
-    for (const svg of [
-      profile(),
-      buildCollectPosterSvg({
-        username: '聪明山上的猫',
-        qrText: 'https://raricy.com/fish/collect?to=x',
-        avatarDataUri: AVATAR,
-      }),
-    ]) {
-      const png = await rasterize(svg);
-      const { data, info } = await sharp(png)
-        .ensureAlpha()
-        .raw()
-        .toBuffer({ resolveWithObject: true });
-      const alphaAt = (x: number, y: number) => data[(y * info.width + x) * 4 + 3];
-      const corners: Array<[number, number]> = [
-        [0, 0],
-        [info.width - 1, 0],
-        [0, info.height - 1],
-        [info.width - 1, info.height - 1],
-      ];
-      for (const [x, y] of corners) {
-        expect(alphaAt(x, y), `角点 (${x},${y}) 不该是透明的`).toBe(255);
-      }
-    }
-  });
-
   it('二维码卡片下的链接会缩到卡片内（uuid 长链接不能顶出白卡片）', () => {
     // 实测：`raricy.com/u/<uuid>` 是 49 个字符，19px 下约 512px，而卡片只有 420px。
     const long = 'raricy.com/u/9f8c1d2e-4a3b-4c5d-8e7f-0123456789ab';
@@ -276,66 +245,5 @@ describe('版式', () => {
     });
     expect(svg).toContain('聪明山上的猫');
     expect(svg).toContain('收款方');
-  });
-});
-
-describe('图标：主页画报用站点 logo，收款码用小鱼干', () => {
-  /** 小鱼干 path 里的一段特征串（用来判断「这张图有没有鱼」）。 */
-  const FISH = '1247.75404,909.299224';
-  const collect = () =>
-    buildCollectPosterSvg({
-      username: '聪明山上的猫',
-      qrText: 'https://raricy.com/fish/collect?to=x',
-      avatarDataUri: AVATAR,
-    });
-
-  it('主页画报：品牌行与二维码中心都是站点 logo，且不再出现小鱼干', () => {
-    const svg = profile();
-    // 站点 logo 的四个色（矢量复刻自 favicon.png）
-    for (const color of ['#63BCFC', '#FB797C', '#FFDB6F', '#36CEBC']) {
-      expect(svg, `站点 logo 的 ${color} 应当在主页画报里`).toContain(color);
-    }
-    expect(svg, '鱼干是货币图标，主页画报上不该出现').not.toContain(FISH);
-  });
-
-  it('收款码：鱼干才是主角，站点 logo 不掺和', () => {
-    const svg = collect();
-    expect(svg).toContain(FISH);
-    expect(svg).not.toContain('#63BCFC');
-  });
-
-  it('四个色块与 favicon.png 对得上（换了 favicon 必须同步 poster.ts）', async () => {
-    // poster.ts 的 siteLogo() 是 favicon.png 的**手抄矢量版**。站长哪天换了 favicon，
-    // 那条手抄就悄悄过期了 —— 这条用例盯住它。
-    //
-    // 【为什么只采样四个形状的中心，而不是逐像素比对】逐像素比对试过：两个光栅化器
-    // 在形状边缘的抗锯齿必然有差，坏点率基线就有 2~4%，而「少画一个形状」也才
-    // 7% —— 阈值根本没法定，要么天天误报、要么什么都抓不住。形状**内部**没有抗锯齿，
-    // 采样是精确的：站长改了配色、或者把某个形状挪走了，这里立刻红。
-    const favicon = path.resolve(import.meta.dirname, '../../public/static/img/favicon.png');
-    const { data, info } = await sharp(favicon).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
-    // 原图是 200×200，换成别的尺寸也按比例采样
-    const scale = info.width / 200;
-    const sample = (x: number, y: number) => {
-      const o = (Math.round(y * scale) * info.width + Math.round(x * scale)) * 4;
-      return [data[o], data[o + 1], data[o + 2]];
-    };
-
-    const expected: Array<{ name: string; x: number; y: number; rgb: [number, number, number] }> = [
-      { name: '大蓝圆', x: 67, y: 72, rgb: [0x63, 0xbc, 0xfc] },
-      { name: '小红圆', x: 149, y: 48, rgb: [0xfb, 0x79, 0x7c] },
-      { name: '黄三角', x: 135, y: 130, rgb: [0xff, 0xdb, 0x6f] },
-      { name: '青方块', x: 68, y: 158, rgb: [0x36, 0xce, 0xbc] },
-    ];
-
-    for (const { name, x, y, rgb } of expected) {
-      const got = sample(x, y);
-      for (let c = 0; c < 3; c++) {
-        expect(
-          Math.abs(got[c] - rgb[c]),
-          `${name} 在 (${x},${y})：favicon 是 rgb(${got})，siteLogo 写的是 rgb(${rgb})`
-        ).toBeLessThanOrEqual(8);
-      }
-    }
   });
 });

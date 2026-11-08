@@ -2,9 +2,10 @@ import type { ReactNode } from 'react';
 
 // 管理端抬头 —— /admin/* 与 /audit 共用的版式。
 //
-// 结构契约（tests/e2e/page-gutter.spec.ts 按真视口量）：
+// 结构契约（原 tests/e2e/page-gutter.spec.ts 按真视口量；该纯外观 spec 已于 Round4
+// 退出，版式改由页面验收，但结构仍不要改）：
 //   · 根节点必须是 `.admin-hero`，标题是**根节点里的 h1**，说明是**根节点里的 p**
-//     —— 那条用例取 `main h1` 与 `.admin-hero p`，换结构会当场判红。
+//     —— 原用例取 `main h1` 与 `.admin-hero p`。
 //   · 横向檐沟由 AdminShell 的 .admin-layout 给（20px），这里**不能再加**
 //     左右内距，否则窄屏下标题会离屏幕边 40px。
 export default function AdminPageHeader({

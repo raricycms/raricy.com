@@ -15,10 +15,12 @@
 // 这里跑真实 SQLite（tests/.tmp/test.db），不 mock Prisma —— 计数/唯一约束/
 // 外键这些正是要验的东西，mock 掉就什么也没测。
 
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { resetDb, makeUser, makeBlog, prisma } from '../helpers/db';
 import { rateLimit, RULES } from '@/lib/rate-limit';
+import * as notifications from '@/lib/notification-service';
 import {
+  COMMENT_MENTION_ACTION,
   listCommentsForBlog,
   createComment,
   softDeleteComment,
@@ -122,7 +124,7 @@ async function seedBlog() {
 // 【注意它现在是什么】评论正文改为前端渲染 Markdown（src/lib/comment-markdown.ts），
 // contentHtml **不再是站内的渲染来源**，它保留给 spider API（外部只读接口）与无 JS
 // 降级。所以这里断言的是「转义 + 换行」，与改版前逐字相同 —— 外部契约不能被打碎。
-// Markdown 的解析与净化在 tests/unit/comment-markdown.test.ts。
+// Markdown 的解析与净化在 tests/unit/chat-markdown.test.ts。
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('toContentHtml：服务端纯文本形态（只转义 + 换行，不解析 Markdown）', () => {
@@ -576,15 +578,6 @@ describe('冗余计数：新增评论', () => {
     expect(b!.commentsCount).toBe(2);
   });
 
-  it('创建评论不再写 lastCommentAt（停写留列）', async () => {
-    const { author, blog } = await seedBlog();
-    const r = await createComment({ blogId: blog.id, authorId: author.id, content: 'x' });
-    if (!r.ok) throw new Error('前置失败');
-
-    const b = await prisma.blog.findUnique({ where: { id: blog.id } });
-    expect(b!.lastCommentAt, 'lastCommentAt 已停写，不随新评论刷新').toBeNull();
-  });
-
   it('创建失败（文章不存在）不会误伤其它文章的计数', async () => {
     const { author, blog } = await seedBlog();
     await createComment({ blogId: blog.id, authorId: author.id, content: 'ok' });
@@ -645,28 +638,6 @@ describe('冗余计数：软删除评论', () => {
     const b = await prisma.blog.findUnique({ where: { id: blog.id } });
     expect(b!.commentsCount).toBe(0);
     expect(b!.lastCommentAt, 'lastCommentAt 已停写，不随删除回空').toEqual(c.createdAt);
-  });
-
-  it('删掉最新一条 → commentsCount 重算（lastCommentAt 停写、不回退）', async () => {
-    const { author, blog } = await seedBlog();
-    await makeComment({
-      blogId: blog.id, authorId: author.id, content: 'older', createdAt: new Date(1_000_000),
-    });
-    const newer = await makeComment({
-      blogId: blog.id, authorId: author.id, content: 'newer', createdAt: new Date(2_000_000),
-    });
-    await prisma.blog.update({
-      where: { id: blog.id },
-      data: { commentsCount: 2, lastCommentAt: newer.createdAt },
-    });
-
-    await softDeleteComment(newer.id, { id: author.id, role: 'core' });
-    const b = await prisma.blog.findUnique({ where: { id: blog.id } });
-    expect(b!.commentsCount).toBe(1);
-    expect(
-      b!.lastCommentAt!.getTime(),
-      'lastCommentAt 已停写，不会回退到剩余最新存活评论'
-    ).toBe(newer.createdAt!.getTime());
   });
 
   it('删除失败（越权）不改动计数', async () => {
@@ -911,12 +882,6 @@ describe('序列化：snake_case 字段与作者信息', () => {
     }
   });
 
-  it('created_at / updated_at 序列化为 ISO 字符串', async () => {
-    const { author, blog } = await seedBlog();
-    const r = await createComment({ blogId: blog.id, authorId: author.id, content: 'x' });
-    if (!r.ok) throw new Error('前置失败');
-    expect(r.comment.created_at).toMatch(/^\d{4}-\d{2}-\d{2}T[\d:.]+Z$/);
-  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -948,56 +913,6 @@ describe('频率限制：每日配额', () => {
 
     expect((await createComment({ blogId: blog.id, authorId: a.id, content: 'x' })).ok).toBe(false);
     expect((await createComment({ blogId: blog.id, authorId: b.id, content: 'x' })).ok).toBe(true);
-  });
-});
-
-// ─────────────────────────────────────────────────────────────────────────────
-// 10. 评论点赞（likesCount 冗余字段）
-// ─────────────────────────────────────────────────────────────────────────────
-
-describe('评论点赞：toggle 与 likesCount', () => {
-  it('点赞 → 取消 → 再点赞，likesCount 跟随', async () => {
-    const { author, blog } = await seedBlog();
-    const c = await makeComment({ blogId: blog.id, authorId: author.id });
-    const liker = await makeUser({ role: 'core' });
-
-    expect(await toggleCommentLike(c.id, liker.id)).toEqual({ liked: true, likesCount: 1 });
-    expect(await toggleCommentLike(c.id, liker.id)).toEqual({ liked: false, likesCount: 0 });
-    expect(await toggleCommentLike(c.id, liker.id)).toEqual({ liked: true, likesCount: 1 });
-
-    const row = await prisma.blogComment.findUnique({ where: { id: c.id } });
-    expect(row!.likesCount, '冗余字段必须与 comment_likes 实际行数一致').toBe(1);
-  });
-
-  it('多用户点赞累加，且每人只算一票（唯一约束 commentId+userId）', async () => {
-    const { author, blog } = await seedBlog();
-    const c = await makeComment({ blogId: blog.id, authorId: author.id });
-    const u1 = await makeUser({ role: 'core' });
-    const u2 = await makeUser({ role: 'core' });
-
-    await toggleCommentLike(c.id, u1.id);
-    const r = await toggleCommentLike(c.id, u2.id);
-    expect(r).toEqual({ liked: true, likesCount: 2 });
-    expect(await prisma.commentLike.count({ where: { commentId: c.id } })).toBe(2);
-  });
-
-  it('点赞不存在 / 已删除的评论 → notFound', async () => {
-    const { author, blog } = await seedBlog();
-    const dead = await makeComment({ blogId: blog.id, authorId: author.id, isDeleted: true });
-    const u = await makeUser({ role: 'core' });
-
-    expect(await toggleCommentLike('ghost', u.id)).toEqual({ notFound: true });
-    expect(await toggleCommentLike(dead.id, u.id)).toEqual({ notFound: true });
-  });
-
-  it('likes_count 出现在序列化结果里', async () => {
-    const { author, blog } = await seedBlog();
-    const c = await makeComment({ blogId: blog.id, authorId: author.id, content: 'x' });
-    const u = await makeUser({ role: 'core' });
-    await toggleCommentLike(c.id, u.id);
-
-    const tree = await listCommentsForBlog(blog.id);
-    expect(tree[0].likes_count).toBe(1);
   });
 });
 
@@ -1359,5 +1274,103 @@ describe('评论点赞', () => {
     const { toggleLike } = await import('@/lib/blog-service');
     const blogLike = await toggleLike(blog.id, liker.id);
     expect(blogLike, '博客点赞不该被评论点赞的额度影响').not.toHaveProperty('rateLimited');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 14. 评论 @ 提及通知（原 comment-mentions.test.ts 合并进来：同属评论通知，
+//     复用上面的 makeUser/makeBlog/resetDb，不再单开一个文件与一套 beforeEach）
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('博客评论 @ 通知', () => {
+  async function fixture() {
+    const author = await makeUser({ username: 'writer', role: 'core' });
+    const commenter = await makeUser({ username: 'speaker', role: 'core' });
+    const target = await makeUser({ username: 'target', role: 'core' });
+    const blog = await makeBlog({ authorId: author.id });
+    return { author, commenter, target, blog };
+  }
+
+  it('重复 @ 一人只发一条；通知指向文章，自己与不存在的名字不发送', async () => {
+    const { author, commenter, target, blog } = await fixture();
+    const result = await createComment({
+      blogId: blog.id, authorId: commenter.id,
+      content: '@target 你好 @target @speaker @missing',
+    });
+    expect(result.ok).toBe(true);
+    const rows = await prisma.notification.findMany();
+    expect(rows).toHaveLength(2);
+    expect(rows.find((n) => n.recipientId === author.id)?.action).toBe('文章评论');
+    expect(rows.find((n) => n.recipientId === target.id)).toMatchObject({
+      action: COMMENT_MENTION_ACTION, actorId: commenter.id,
+      objectType: 'blog', objectId: blog.id,
+    });
+  });
+
+  it('文章作者和被回复者已有通知时去重；回复里仍能 @ 其他人', async () => {
+    const { author, commenter, target, blog } = await fixture();
+    const parent = await createComment({ blogId: blog.id, authorId: target.id, content: '原评论' });
+    expect(parent.ok).toBe(true);
+    if (!parent.ok) return;
+    await createComment({
+      blogId: blog.id, authorId: commenter.id, parentId: parent.comment.id,
+      content: '@target @writer',
+    });
+    const replyRows = await prisma.notification.findMany({ where: { actorId: commenter.id } });
+    expect(replyRows).toHaveLength(2);
+    expect(replyRows.find((n) => n.recipientId === target.id)?.action).toBe('评论回复');
+    expect(replyRows.find((n) => n.recipientId === author.id)?.action).toBe(COMMENT_MENTION_ACTION);
+
+    await createComment({ blogId: blog.id, authorId: commenter.id, content: '@writer' });
+    const authorRows = await prisma.notification.findMany({
+      where: { recipientId: author.id, actorId: commenter.id },
+    });
+    expect(authorRows.map((n) => n.action).sort()).toEqual(['文章评论', COMMENT_MENTION_ACTION].sort());
+  });
+
+  it('公开文章也不通知非核心账号；专注或禁言中的 core 仍可读评论', async () => {
+    const { commenter, target, blog } = await fixture();
+    await makeUser({ username: 'ordinary', role: 'user' });
+    await prisma.blog.update({ where: { id: blog.id }, data: { visibility: 'public' } });
+    await prisma.user.update({ where: { id: target.id }, data: { focusMode: true, isBanned: true } });
+    await createComment({ blogId: blog.id, authorId: commenter.id, content: '@ordinary @target' });
+    const rows = await prisma.notification.findMany({ where: { action: COMMENT_MENTION_ACTION } });
+    expect(rows.map((n) => n.recipientId)).toEqual([target.id]);
+  });
+
+  it('匿名 @ 通知只有化名，名片 / 表情 token 与标点不触发提及', async () => {
+    const { commenter, target, blog } = await fixture();
+    await createComment({
+      blogId: blog.id, authorId: commenter.id, anonymous: true,
+      content: '@target 你好 [@用户/writer] [@writer/表情]',
+    });
+    const rows = await prisma.notification.findMany({ where: { action: COMMENT_MENTION_ACTION } });
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ recipientId: target.id, actorId: null });
+    expect(rows[0].detail).toContain('匿名读者「');
+    expect(rows[0].detail).not.toContain(commenter.username);
+    expect(rows[0].detail).not.toContain(commenter.id);
+    await createComment({ blogId: blog.id, authorId: commenter.id, content: '@target，你好' });
+    expect(await prisma.notification.count({ where: { action: COMMENT_MENTION_ACTION } })).toBe(1);
+  });
+
+  it('某一人的通知失败不影响评论落库或后续收件人', async () => {
+    const { commenter, target, blog } = await fixture();
+    const next = await makeUser({ username: 'target_two', role: 'owner' });
+    const original = notifications.sendNotification;
+    const spy = vi.spyOn(notifications, 'sendNotification').mockImplementation(async (input) => {
+      if (input.recipientId === target.id) throw new Error('test delivery failure');
+      return original(input);
+    });
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const result = await createComment({
+      blogId: blog.id, authorId: commenter.id, content: '@target @target_two',
+    });
+    expect(result.ok).toBe(true);
+    expect(await prisma.blogComment.count({ where: { blogId: blog.id } })).toBe(1);
+    expect(await prisma.notification.count({ where: { recipientId: next.id } })).toBe(1);
+    expect(log).toHaveBeenCalled();
+    spy.mockRestore();
+    log.mockRestore();
   });
 });

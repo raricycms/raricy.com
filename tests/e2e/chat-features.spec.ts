@@ -35,22 +35,6 @@ async function postTo(
 const postLobby = (page: import('@playwright/test').Page, content: string, replyTo?: number) =>
   postTo(page, LOBBY, content, replyTo);
 
-/** 一条消息上三个盒子的视口矩形：表头浮层（名字 / 时间 / 回执）、气泡、引用块。 */
-async function measureRow(row: import('@playwright/test').Locator) {
-  return row.evaluate((el) => {
-    const box = (sel: string) => {
-      const n = el.querySelector(sel);
-      if (!n) return null;
-      const b = n.getBoundingClientRect();
-      return { left: b.left, right: b.right, width: b.width, top: b.top, bottom: b.bottom };
-    };
-    return {
-      meta: box('.chat-msg__meta'),
-      bubble: box('.chat-msg__content'),
-      quote: box('.chat-msg__reply'),
-    };
-  });
-}
 
 /**
  * 按哨兵串定位消息行。
@@ -233,131 +217,6 @@ test.describe('讨论功能：链接 / 跳转 / 搜索 / 日期分隔', () => {
   });
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
-// 连续消息合并：同一个人连着发言时，只有**这一串的第一条**画表头（时间 / 用户名 /
-// 头像），后面几条省略。
-//
-// 【判据本身在单测里】测试是 tests/unit/chat-grouping.test.ts（5 分钟窗口锚在串首、
-// 拍一拍与跨日打断 —— 那些都要真等 5 分钟或造历史数据，e2e 里造不出来）。
-// 这条只钉**接线**：算出来的标志真的作用到了 DOM 上（少一处，屏幕上就是每条都顶着
-// 一行时间，而任何后端用例都不会红）。
-// ─────────────────────────────────────────────────────────────────────────────
-test.describe('连续消息合并', () => {
-  test('同人连着发两条 → 第二条省略时间与头像，第一条照常', async ({ page }) => {
-    const tag = uniqueTag();
-    const first = `e2e-group-1-${tag}`;
-    const second = `e2e-group-2-${tag}`;
-
-    // 发言者用一次性新用户（种子号的发言桶是两个 project 共用的，见 helpers）
-    await registerFreshUser(page, { core: true });
-    // 造在私聊里：大区是全站共用频道，别的用例随时可能插进两条之间把这一串打断
-    const created = await page.request.post('/api/chat/channels', {
-      data: { user_id: SEED_USERS.admin.id },
-    });
-    expect(created.status(), `建私聊失败: ${await created.text()}`).toBe(200);
-    const channelId = ((await created.json()) as { channel: { id: string } }).channel.id;
-    for (const content of [first, second]) {
-      const res = await page.request.post(`/api/chat/channels/${channelId}/messages`, {
-        data: { content },
-      });
-      expect(res.status(), `发消息失败: ${await res.text()}`).toBe(200);
-    }
-
-    await page.goto(`/chat?channel=${channelId}`);
-    const firstRow = msgRow(page, first);
-    const secondRow = msgRow(page, second);
-    await expect(firstRow).toBeVisible();
-    await expect(secondRow).toBeVisible();
-
-    // 串首：表头照常（时间与名字都在）。这两条也是下面「后继看不到」的**对照**——
-    // 少了它，选择器写错时 toBeHidden() 会因为「压根没有这个元素」而空过。
-    await expect(firstRow).not.toHaveClass(/chat-msg--grouped/);
-    await expect(firstRow.locator('.chat-msg__time')).toBeVisible();
-    await expect(firstRow.locator('.chat-msg__name')).toBeVisible();
-
-    // 后继：时间与名字都不显示（display: none，既不占宽也不占行高）。
-    await expect(secondRow).toHaveClass(/chat-msg--grouped/);
-    await expect(secondRow.locator('.chat-msg__time')).toBeHidden();
-    await expect(secondRow.locator('.chat-msg__name')).toBeHidden();
-
-    // 头像在分组消息里只是视觉弱化，仍是头像菜单的入口 —— 该入口不能因分组失效。
-    // （具体透明度属于视觉实现，不在测试里固定；入口可用性才是行为。）
-    await secondRow.locator('.chat-msg__avatar').click();
-    const avatarMenu = page.locator('.chat-menu');
-    await expect(avatarMenu).toBeVisible();
-    await avatarMenu.getByRole('menuitem', { name: '取消' }).click();
-    await expect(avatarMenu).toHaveCount(0);
-  });
-
-  /**
-   * ★ 表头浮层贴的是**气泡**的边，不是「引用块和正文里更长的那一个」的边。
-   *
-   * 【回归背景】站长 2026-09 报：回复里引用比正文长时，「已读」跟着引用块跑到外面
-   * 去了。根因是表头行的定位祖先是 .chat-msg__body，而它的宽度 =
-   * max(引用块, 自己的块) —— 修法是让浮层住进只装自己那几块的 .chat-msg__own-blocks。
-   * 结构那半边在 tests/unit/chat-message-dom.test.ts；这里量真渲染出来的几何。
-   *
-   * 【为什么量的是表头行本身】保存 / 回复 / 删除由右键 / 长按菜单（ChatMessageMenu）
-   * 打开，浮层里只剩回执；但「浮层贴谁」这条契约没变 —— 挂错层时
-   * 表头行的 box 边会跟着引用块走。空行也照样有 box（padding 撑出来的宽度）。
-   *
-   * 【为什么要真浏览器】jsdom 不排版，getBoundingClientRect 恒为 0：把定位父节点改回
-   * body，单测照过（结构没变），只有这里会红。断言全部写成**相对关系**（浮层到气泡的距离），
-   * 不写死绝对像素 —— 两个 project 的栏宽不同。
-   */
-  test('★ 分组消息的表头浮层贴气泡的边，不贴更长的引用块', async ({ page }) => {
-    const tag = uniqueTag();
-    const long = `e2e-anchor-long-${tag} ${'引用的一段很长很长的话，'.repeat(6)}`;
-    const reply = `短 ${tag}`;
-    const after = `e2e-anchor-after-${tag}`;
-
-    const me = await registerFreshUser(page, { core: true });
-    const created = await page.request.post('/api/chat/channels', {
-      data: { user_id: SEED_USERS.admin.id },
-    });
-    expect(created.status(), `建私聊失败: ${await created.text()}`).toBe(200);
-    const channelId = ((await created.json()) as { channel: { id: string } }).channel.id;
-
-    const longId = await postTo(page, channelId, long);
-    await postTo(page, channelId, reply, longId); // ← 要量的那条：短正文 + 长引用
-    await postTo(page, channelId, after); // 同人再发一条 → 上面那条成为后继（grouped）
-
-    await page.goto(`/chat?channel=${channelId}`);
-    const row = msgRow(page, reply);
-    await expect(row).toHaveClass(/chat-msg--grouped/);
-
-    const mine = await measureRow(row);
-    expect(mine.meta, '没量到表头浮层').not.toBeNull();
-    expect(mine.quote, '这条消息没有引用块').not.toBeNull();
-    expect(mine.quote!.bottom, '自己的引用应在正文上方').toBeLessThanOrEqual(mine.bubble!.top);
-    // 自己发的：浮层在气泡**左侧**，box 的右边缘贴着气泡左沿（8px 间距在 box 内部）
-    expect(mine.meta!.right).toBeCloseTo(mine.bubble!.left, 0);
-    // 牙在这里：挂错层时它贴的是引用块的左沿。先确认两者确实差得开（引用够长），
-    // 否则这条断言会退化成「两个数都差不多」而恒绿。
-    expect(mine.bubble!.left - mine.quote!.left, '引用块没比正文宽出可辨的距离').toBeGreaterThan(40);
-    expect(Math.abs(mine.meta!.right - mine.quote!.left)).toBeGreaterThan(40);
-
-    // 换到对方视角：同一条消息变成「别人的」，浮层挂到气泡**右侧**（另一条 CSS 分支）
-    await loginViaApi(page, SEED_USERS.admin.username);
-    await page.goto(`/chat?channel=${channelId}`);
-    const seenByPeer = msgRow(page, reply);
-    await expect(seenByPeer).toHaveClass(/chat-msg--grouped/);
-
-    const theirs = await measureRow(seenByPeer);
-    expect(theirs.meta).not.toBeNull();
-    expect(theirs.quote!.bottom, '他人的引用应在正文上方').toBeLessThanOrEqual(theirs.bubble!.top);
-    expect(theirs.meta!.left).toBeCloseTo(theirs.bubble!.right, 0);
-    expect(theirs.bubble!.right - theirs.quote!.right).toBeLessThan(-40);
-    expect(Math.abs(theirs.meta!.left - theirs.quote!.right)).toBeGreaterThan(40);
-
-    // 同一条 grouped 消息上，右键菜单也得好用：弹得出来，点「回复」能进回复态
-    await seenByPeer.locator('.chat-msg__content').click({ button: 'right' });
-    const menu = page.locator('.chat-menu');
-    await expect(menu).toBeVisible();
-    await menu.getByRole('menuitem', { name: '回复', exact: true }).click();
-    await expect(page.locator('.chat-composer__reply')).toContainText(`回复 ${me.username}`);
-  });
-});
 
 test.describe('消息操作菜单（右键 / 长按）', () => {
   // 真视口验证：没有常驻按钮、右键开菜单、焦点处理与菜单边界。
@@ -586,35 +445,6 @@ test.describe('消息操作菜单（右键 / 长按）', () => {
 });
 
 test.describe('Markdown 渲染', () => {
-  test('正文按 Markdown 渲染（粗体 / 行内代码 / 列表 / 引用）', async ({ page }) => {
-    const marker = `e2e-md-${uniqueTag()}`;
-    await loginViaApi(page, SEED_USERS.core.username);
-    await postLobby(
-      page,
-      [
-        marker,
-        '',
-        '**粗体标记** 和 `行内代码`',
-        '',
-        '- 列表项一',
-        '- 列表项二',
-        '',
-        '> 引用块',
-      ].join('\n')
-    );
-
-    await page.goto(`/chat?channel=${LOBBY}`);
-    const row = msgRow(page, marker);
-    await expect(row).toBeVisible();
-
-    const md = row.locator('.chat-msg__md');
-    await expect(md.locator('strong')).toHaveText('粗体标记');
-    await expect(md.locator('code')).toHaveText('行内代码');
-    await expect(md.locator('ul > li')).toHaveCount(2);
-    await expect(md.locator('blockquote')).toHaveText('引用块');
-    // Markdown 语法符号本身不该出现在可见文本里
-    await expect(md).not.toContainText('**粗体标记**');
-  });
 
   test('原始 HTML / 伪协议一律不执行（XSS）', async ({ page }) => {
     const marker = `e2e-xss-${uniqueTag()}`;
@@ -773,34 +603,6 @@ test.describe('发起私聊', () => {
 
     await expect(dmRow(page, SEED_USERS.owner.username)).toBeVisible();
     await expect(page.locator('.chat-main__title')).toHaveText(SEED_USERS.owner.username);
-  });
-});
-
-test.describe('讨论页布局', () => {
-  /**
-   * 讨论区是满屏工作台（.chat-page 高 calc(100dvh - 62px)），站点页脚在它下面
-   * 会把文档撑过一屏 —— 多出整页滚动条，滚一下连输入框都被顶出视野。
-   * 断言落在「页脚不存在」+「文档没有溢出」两条上：只断言前者的话，将来若换成
-   * 用 CSS 隐藏（display:none 之外的写法）仍可能留下高度。
-   *
-   * ⚠️ 这条**抓不到**真正的手机端病根（`vh` = 地址栏收起时的大视口）：无头浏览器
-   * 里没有地址栏，`vh` 与 `dvh` 恰好相等，两版代码都是绿的。它守的是「文档别平地
-   * 高出一块」（页脚 / 多出来的块级元素）。地址栏收起 / 展开造成的视口高度变化
-   * 只有在真实手机上操作才能确认，不能靠无头用例代替。
-   */
-  test('/chat 不渲染站点页脚，且整页没有滚动条', async ({ page }) => {
-    await loginViaApi(page, SEED_USERS.core.username);
-    await page.goto('/chat');
-    await expect(page.locator('.chat-page')).toBeVisible();
-
-    await expect(page.locator('footer.site-footer')).toHaveCount(0);
-
-    // 两个 project 都断言：移动端视口在 Playwright 里虽是定值，但「抽屉 / 汉堡 /
-    // 触屏」那几档样式是窄屏才挂上的，桌面那一遍覆盖不到（原先是跳过移动端）。
-    const overflow = await page.evaluate(
-      () => document.documentElement.scrollHeight - document.documentElement.clientHeight
-    );
-    expect(overflow, '讨论页不应出现整页滚动条').toBeLessThanOrEqual(1);
   });
 });
 

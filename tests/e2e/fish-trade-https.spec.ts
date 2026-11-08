@@ -1,6 +1,6 @@
 // 练手盘的协议闸（src/middleware.ts §A）在真实 HTTP 下的行为。
 //
-// 【为什么单测不够，非要在 E2E 层再打一遍】tests/unit/middleware-https.test.ts 是拿手搓的
+// 【为什么单测不够，非要在 E2E 层再打一遍】tests/unit/middleware.test.ts 是拿手搓的
 // NextRequest 直接喂给 middleware() 的 —— 它证明不了 **config.matcher 真的把这些路径
 // 交给了中间件**。matcher 漏一条时中间件根本不会被调用，而所有单测与其余 e2e 照常全绿
 //（页面在 http 下照常可达）。这与 csrf.spec.ts 头部记的那条教训同源。

@@ -11,7 +11,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { describe, expect, it } from 'vitest';
-import { EditorSelection, EditorState, type TransactionSpec } from '@codemirror/state';
+import { ChangeSet, EditorSelection, EditorState, type TransactionSpec } from '@codemirror/state';
 import type { EditorView } from '@codemirror/view';
 import { history, isolateHistory, redo, undo } from '@codemirror/commands';
 import {
@@ -22,6 +22,7 @@ import {
   settleUploadSlot,
   uploadBatchField,
 } from '@/lib/md-editor/upload-anchors';
+import { createInsertAnchor } from '@/lib/md-editor/insert-anchor';
 
 /** 组件里的那一步：取插入点 → 插入正文 → 结算槽位（同一个事务）。 */
 function insertResult(state: EditorState, batchId: number, index: number, text: string): EditorState {
@@ -497,5 +498,82 @@ describe('已完成槽位被整段删除后再恢复', () => {
       effects: settleUploadSlot.of({ batchId: 2, key: '2:0' }),
     });
     expect(h.text()).toBe(`HEAD\n${B}TAIL`);
+  });
+});
+
+// ═══ 引用面板的落点（原 md-editor-insert-anchor.test.ts 并入，R4）═══════════════
+//
+// 面板打开期间正文一变（上传落地、撤销），落点必须跟着走，否则引用插到别处 ——
+// 页面上只是一段位置不对的文字，没有异常。与上传锚点同属「编辑期间的坐标映射」，
+// 放在一起维护；下面的 changes() 与上面的 edit() 是同一种 ChangeSet 描述。
+
+/** 造一个「把 [from,to) 换成 insert」的改动描述。 */
+function changes(doc: string, from: number, to: number, insert: string) {
+  return ChangeSet.of({ from, to, insert }, doc.length);
+}
+
+describe('insert-anchor：在编辑期间活下来', () => {
+  it('没捕获过时 get() 是 null（面板没开就不该有落点）', () => {
+    const anchor = createInsertAnchor();
+    expect(anchor.get()).toBeNull();
+    anchor.map(changes('abcdef', 0, 0, 'X'));
+    expect(anchor.get()).toBeNull();
+  });
+
+  it('改动落在落点之前 → 落点整体右移', () => {
+    const anchor = createInsertAnchor();
+    anchor.capture(4);
+    // 在开头插 3 个字符
+    anchor.map(changes('abcdef', 0, 0, 'XYZ'));
+    expect(anchor.get()).toBe(7);
+  });
+
+  it('改动落在落点之后 → 落点不动', () => {
+    const anchor = createInsertAnchor();
+    anchor.capture(2);
+    anchor.map(changes('abcdef', 5, 5, 'XYZ'));
+    expect(anchor.get()).toBe(2);
+  });
+
+  it('★ 改动正好落在落点上 → 落点让到插入内容之后 ★', () => {
+    // 这正是「面板开着的时候一张图传完了」的样子：上传在光标处插一行图片。
+    // 让到后面（assoc: 1）之后，用户在面板里挑的引用排在图片后面 —— 与
+    // 「先看到刚传上来的图，再插引用」的直觉一致；让到前面就会插在图片之前。
+    const anchor = createInsertAnchor();
+    anchor.capture(3);
+    anchor.map(changes('abcdef', 3, 3, '![图](/x)\n'));
+    expect(anchor.get()).toBe(3 + '![图](/x)\n'.length);
+  });
+
+  it('落点被整段删掉 → 钳到删除处，不会跑到文档外面', () => {
+    const anchor = createInsertAnchor();
+    anchor.capture(4);
+    anchor.map(changes('abcdef', 2, 5, ''));
+    expect(anchor.get()).toBe(2);
+  });
+
+  it('clear() 之后不再映射（面板取消 = 这次插入作废）', () => {
+    const anchor = createInsertAnchor();
+    anchor.capture(2);
+    anchor.clear();
+    anchor.map(changes('abcdef', 0, 0, 'XYZ'));
+    expect(anchor.get()).toBeNull();
+  });
+
+  it('连续两次改动累积映射（不是各自按原值算）', () => {
+    const anchor = createInsertAnchor();
+    anchor.capture(3);
+    anchor.map(changes('abcdef', 0, 0, 'XX'));
+    anchor.map(changes('XXabcdef', 0, 0, 'YY'));
+    expect(anchor.get()).toBe(7);
+  });
+
+  it('capture() 可以重设（插入一条之后把落点交回调用方定）', () => {
+    const anchor = createInsertAnchor();
+    anchor.capture(3);
+    anchor.map(changes('abcdef', 3, 3, 'ZZ'));
+    expect(anchor.get()).toBe(5);
+    anchor.capture(0);
+    expect(anchor.get()).toBe(0);
   });
 });

@@ -228,12 +228,3 @@ test('减少动态效果时栏目面板直接展开，Escape 后焦点回到展�
     await expect(page.getByRole('button', { name: '展开我的博客', exact: true })).toBeFocused();
   }
 });
-
-test('目录页在 320/768/1024 宽度下不横向溢出', async ({ page }) => {
-  await page.goto('/blog?scope=mine');
-  await expect(page.locator('.blog-item').first()).toBeVisible();
-  for (const width of [320, 768, 1024]) {
-    await page.setViewportSize({ width, height: 800 });
-    await expect.poll(async () => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBe(0);
-  }
-});

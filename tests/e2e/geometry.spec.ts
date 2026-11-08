@@ -1,10 +1,10 @@
 // geometry.spec.ts —— 几何计算器（/tool/geometry + public/static/geometry）
 //
 // 这个工具是第三方静态页面（原作 xcxGeometry）的本地化副本，本站只提供入口与索引。
-// 三个最容易「静默坏掉」的点，各钉一条：
-//   1. 工具箱里没有入口 / 入口指错 —— 与 tools.spec.ts 的「工具必须点得进去」同源；
-//   2. 静态页面的相对资源（document/*.js）断了 —— 页面 200 但计算不工作；
-//   3. 上游把 math-page.css 误命名成 mathpath.css，导致 5 页没有样式 —— 用计算样式断言。
+// 钉住「打开得了、算得出、回得去」：入口可达、相对资源没断（点「化简」真出结果）、
+// 十个页面都能打开且返回链接指回站内索引。
+// 样式是否完好（math-page.css 在不在）属于外观，按仓库纪律不在测试里固定 ——
+// 由受影响页面的实际检查负责。
 import { test, expect } from '@playwright/test';
 
 const PAGES = [
@@ -51,17 +51,8 @@ test('索引页列出 10 个计算器，普通计算器能算出精确结果', a
   await expect(page.locator('#result')).toContainText('5 · a');
 });
 
-test('求导页有 math-page.css（页面骨架 + 编辑器样式）且能求导', async ({ page }) => {
+test('求导页的相对资源没断，能真的求导', async ({ page }) => {
   await page.goto('/static/geometry/derivative.html');
-
-  // 这条断言专门抓「上游 CSS 文件名对不上」：没有 math-page.css 时 #calculator
-  // 没有圆角、没有卡片底色，页面看着能用但样式全塌。
-  const style = await page.locator('#calculator').evaluate((el) => {
-    const s = getComputedStyle(el);
-    return { radius: s.borderRadius, bg: s.backgroundColor };
-  });
-  expect(style.radius).toBe('16px');
-  expect(style.bg).toBe('rgb(255, 255, 255)');
 
   const slot = page.locator('#formula-editor .slot').first();
   await slot.fill('x^2');

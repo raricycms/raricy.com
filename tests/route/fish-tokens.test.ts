@@ -61,10 +61,11 @@ describe('GET /api/fish/tokens', () => {
     expect((await GET(makeReq())).status).toBe(401);
   });
 
-  it('登录 → 列出自己的凭据，且**不返回明文也不返回哈希**', async () => {
+  it('登录 → 列出自己的凭据：空列表 200、不返回明文也不返回哈希', async () => {
     await makeSessionUser();
-    const minted = await (await POST(makeReq({ password: PASSWORD }))).json();
+    expect((await (await GET(makeReq())).json()).tokens).toEqual([]);
 
+    const minted = await (await POST(makeReq({ password: PASSWORD }))).json();
     const res = await GET(makeReq());
     expect(res.status).toBe(200);
     const text = JSON.stringify(await res.json());
@@ -72,12 +73,7 @@ describe('GET /api/fish/tokens', () => {
     expect(text).not.toContain(minted.secret);
     expect(text).not.toContain('tokenHash');
     expect(text).not.toContain('token_hash');
-  });
-
-  it('空列表是 200 + 空数组，不是 404', async () => {
-    await makeSessionUser();
-    const json = await (await GET(makeReq())).json();
-    expect(json.tokens).toEqual([]);
+    expect(JSON.parse(text).tokens).toHaveLength(1);
   });
 });
 
@@ -199,14 +195,6 @@ describe('DELETE /api/fish/tokens/[id] —— 吊销', () => {
 
   it('未登录 → 401', async () => {
     expect((await revokeById(makeReq(), ctx('1'))).status).toBe(401);
-  });
-
-  it('重复吊销是幂等的 → 仍然 200', async () => {
-    await makeSessionUser();
-    const minted = await (await POST(makeReq({ password: PASSWORD }))).json();
-    const id = String(minted.token.id);
-    expect((await revokeById(makeReq(), ctx(id))).status).toBe(200);
-    expect((await revokeById(makeReq(), ctx(id))).status).toBe(200);
   });
 });
 

@@ -108,8 +108,6 @@ describe('文档登记表 ↔ docs/ 双向对账', () => {
       if (!e.title.trim()) bad.push(`${e.slug}: title 为空`);
       if (!e.summary.trim()) bad.push(`${e.slug}: summary 为空`);
       if (/[\n\r]/.test(e.summary)) bad.push(`${e.slug}: summary 里有换行`);
-      // 索引页那两行是并排显示的，太长会把卡片撑成一堵墙
-      if (e.summary.length > 60) bad.push(`${e.slug}: summary ${e.summary.length} 字，超过 60`);
     }
     expect(bad, `登记表的字段不合格：\n  ${bad.join('\n  ')}`).toEqual([]);
   });

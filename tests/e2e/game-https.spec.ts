@@ -1,6 +1,6 @@
 // 玩具区（`/game`）协议闸（src/middleware.ts §A）在真实 HTTP 下的行为。
 //
-// 【为什么单测不够，非要在 E2E 层再打一遍】tests/unit/middleware-https.test.ts 是拿手搓的
+// 【为什么单测不够，非要在 E2E 层再打一遍】tests/unit/middleware.test.ts 是拿手搓的
 // NextRequest 直接喂给 middleware() 的 —— 它证明不了 **config.matcher 真的把这些路径
 // 交给了中间件**。这次新增的 `/game/:path*` 在 matcher 里是一条字面量：漏了它，中间件
 // 根本不会被这些页面调用，而所有单测与其余 e2e 照常全绿（页面在 http 下照常可达）。

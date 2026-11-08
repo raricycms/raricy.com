@@ -83,7 +83,8 @@
 
 - 相关测试（服务 / 路由 / 经典目录 / 迁移）：6 个文件、35 项通过（2026-10-29）。
 - 迁移 `37_daily_quote_resonance_once` 用真实含跨日重复的 SQLite 夹具验证回填、重复执行与
-  联合主键（`tests/unit/daily-quote-resonance-migration.test.ts`）。
+  联合主键（历史记录：原 `tests/unit/daily-quote-resonance-migration.test.ts`；Round4 三个
+  daily-quote 迁移 spec 已并成 `tests/unit/daily-quote-migrations.test.ts`）。
 - 浏览器：`tests/e2e/daily-quote.spec.ts` 桌面 11 项、手机 11 项通过；typecheck 与 build 通过。
 - 全量 vitest 267 文件 / 5,305 用例，剩余 21 条红来自当时工作区的 `host-components.ts` WIP，
   与本次改动无关（`docs/known-red.md` §8 同一例）。

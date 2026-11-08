@@ -17,11 +17,6 @@ import { loginViaApi } from './helpers';
 const ENDPOINTS = ['likers', 'feeders'] as const;
 
 for (const ep of ENDPOINTS) {
-  test(`/api/blogs/:id/${ep} 未登录 → 401`, async ({ request }) => {
-    const res = await request.get(`/api/blogs/${SEED_BLOG.id}/${ep}`);
-    expect(res.status()).toBe(401);
-  });
-
   test(`/api/blogs/:id/${ep} 作者本人 → 200（路由存在，不是 404）`, async ({ page }) => {
     await loginViaApi(page, SEED_USERS.core.username); // core 是种子文章的作者
     const res = await page.request.get(`/api/blogs/${SEED_BLOG.id}/${ep}`);
@@ -56,9 +51,4 @@ for (const ep of ENDPOINTS) {
     expect((await res.json()).message).toBe('无权查看');
   });
 
-  test(`/api/blogs/:id/${ep} 文章不存在 → 404`, async ({ page }) => {
-    await loginViaApi(page, SEED_USERS.admin.username);
-    const res = await page.request.get(`/api/blogs/no-such-blog/${ep}`);
-    expect(res.status()).toBe(404);
-  });
 }

@@ -37,43 +37,35 @@ describe('POST /api/fish/balance/batch', () => {
     expect(json.truncated).toBe(false);
   });
 
-  it('★ 元素不是字符串 → 400（而不是 Prisma 校验抛错变成 500）', async () => {
+  it('★ 元素不是字符串 / 缺字段 / 非数组 → 400（而不是 Prisma 校验抛错变成 500）', async () => {
     for (const bad of [[1], [null], [{ a: 1 }], ['ok', 2]]) {
       const res = await POST(batchReq({ user_ids: bad }));
       expect(res.status, JSON.stringify(bad)).toBe(400);
       expect((await res.json()).message).toContain('字符串');
     }
+    for (const body of [{}, { user_ids: 'abc' }, { user_ids: { 0: 'a' } }]) {
+      expect((await POST(batchReq(body))).status, JSON.stringify(body)).toBe(400);
+    }
   });
 
-  it('★ 501 个 id → 200 + truncated:true，只查前 500 个', async () => {
-    const ids = Array.from({ length: BALANCE_BATCH_MAX + 1 }, (_, i) => `id-${i}`);
-
-    const res = await POST(batchReq({ user_ids: ids }));
-
-    expect(res.status, '截断保持 200（向后兼容）').toBe(200);
-    const json = await res.json();
+  it('★ 截断必须可观察：501 个 → truncated:true 且只查前 500；恰好 500 个 → false', async () => {
+    const over = await POST(
+      batchReq({ user_ids: Array.from({ length: BALANCE_BATCH_MAX + 1 }, (_, i) => `id-${i}`) })
+    );
+    expect(over.status, '截断保持 200（向后兼容）').toBe(200);
+    const json = await over.json();
     expect(json.truncated, '截断必须可观察，否则对账分不清「没查」与「余额 0」').toBe(true);
     expect(Object.keys(json.balances)).toHaveLength(BALANCE_BATCH_MAX);
     expect(json.balances['id-499']).toBe(0);
     expect(json.balances['id-500'], '第 501 个应当没被查').toBeUndefined();
-  });
 
-  it('恰好 500 个 → truncated:false（边界不误报）', async () => {
-    const ids = Array.from({ length: BALANCE_BATCH_MAX }, (_, i) => `id-${i}`);
+    const exact = await (
+      await POST(batchReq({ user_ids: Array.from({ length: BALANCE_BATCH_MAX }, (_, i) => `id-${i}`) }))
+    ).json();
+    expect(exact.truncated, '边界不误报').toBe(false);
 
-    const json = await (await POST(batchReq({ user_ids: ids }))).json();
-
-    expect(json.truncated).toBe(false);
-    expect(Object.keys(json.balances)).toHaveLength(BALANCE_BATCH_MAX);
-  });
-
-  it('空数组 → 200 / 空映射；缺 user_ids 字段或非数组 → 400', async () => {
     const empty = await POST(batchReq({ user_ids: [] }));
     expect(empty.status).toBe(200);
     expect(await empty.json()).toMatchObject({ balances: {}, truncated: false });
-
-    for (const body of [{}, { user_ids: 'abc' }, { user_ids: { 0: 'a' } }]) {
-      expect((await POST(batchReq(body))).status, JSON.stringify(body)).toBe(400);
-    }
   });
 });

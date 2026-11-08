@@ -7,6 +7,9 @@
 //      —— 但这是在**身份合格之后**才做的区分，档位不足在进业务逻辑前就 401/403 了；
 //   ③ 响应头（导出的 Content-Disposition 不能把用户标题直接拼进去）。
 // 与 service 层的用例（六条不变量、越权审计）关注点不同，混在一起会互相干扰。
+// 业务规则（句柄分配、导入/导出内容、软删过滤、配额、条目幂等）由
+// tests/service/favorite-service.test.ts 承担；这里只留 route 独有的状态码映射、
+// 档位分叉、请求校验与响应头。
 //
 // 【DB】真实 SQLite（tests/.tmp/test-*）。
 
@@ -30,7 +33,6 @@ import { GET as listApi, POST as createApi } from '@/app/api/favorites/route';
 import {
   GET as detailApi,
   PATCH as patchApi,
-  DELETE as deleteApi,
 } from '@/app/api/favorites/[id]/route';
 import { POST as addItemApi } from '@/app/api/favorites/[id]/items/route';
 import { DELETE as removeItemApi } from '@/app/api/favorites/[id]/items/[blogId]/route';
@@ -102,21 +104,6 @@ describe('创建', () => {
     expect((await res.json()).message).toContain('isPublic');
   });
 
-  it('私密建出来 public_id 为 null；公开建出来是 6 位数字', async () => {
-    const u = await makeUser({ role: 'core' });
-    await login(u.id);
-
-    const priv = await (
-      await createApi(jsonReq('/api/favorites', 'POST', { title: '私', isPublic: false }))
-    ).json();
-    expect(priv.favorite.public_id).toBeNull();
-
-    const pub = await (
-      await createApi(jsonReq('/api/favorites', 'POST', { title: '公', isPublic: true }))
-    ).json();
-    expect(pub.favorite.public_id).toMatch(/^[0-9]{6}$/);
-  });
-
   it('列表带上 item_count 与 contains（选择器一次拿全）', async () => {
     const u = await makeUser({ role: 'core' });
     const other = await makeUser({ role: 'core' });
@@ -155,38 +142,24 @@ describe('PATCH：只接受 title', () => {
     expect(body.favorite.public_id).toBe(fav.public_id); // 句柄不因改名而变
   });
 
-  it('★ 想改 isPublic → 明确报错，而不是静默忽略', async () => {
+  it('★ 想改 isPublic / is_public → 明确报错，而不是静默忽略', async () => {
     const u = await makeUser({ role: 'core' });
     await login(u.id);
     const fav = (await (
       await createApi(jsonReq('/api/favorites', 'POST', { title: '私', isPublic: false }))
     ).json()).favorite;
 
-    const res = await patchApi(
-      jsonReq(`/api/favorites/${fav.id}`, 'PATCH', { title: '私', isPublic: true }),
-      ctx({ id: fav.id })
-    );
-    expect(res.status).toBe(400);
+    for (const extra of [{ isPublic: true }, { is_public: true }]) {
+      const res = await patchApi(
+        jsonReq(`/api/favorites/${fav.id}`, 'PATCH', { title: '私', ...extra }),
+        ctx({ id: fav.id })
+      );
+      expect(res.status, JSON.stringify(extra)).toBe(400);
+    }
     // 且真的没被改
     const after = await (await detailApi(jsonReq('', 'GET'), ctx({ id: fav.id }))).json();
     expect(after.favorite.is_public).toBe(false);
     expect(after.favorite.public_id).toBeNull();
-  });
-
-  it('★ snake_case 的 is_public 也明确报错（响应字段风格不是可忽略的理由）', async () => {
-    const u = await makeUser({ role: 'core' });
-    await login(u.id);
-    const fav = (await (
-      await createApi(jsonReq('/api/favorites', 'POST', { title: '私', isPublic: false }))
-    ).json()).favorite;
-
-    const res = await patchApi(
-      jsonReq(`/api/favorites/${fav.id}`, 'PATCH', { title: '私', is_public: true }),
-      ctx({ id: fav.id })
-    );
-    expect(res.status).toBe(400);
-    const after = await (await detailApi(jsonReq('', 'GET'), ctx({ id: fav.id }))).json();
-    expect(after.favorite.is_public).toBe(false);
     expect(after.favorite.title).toBe('私');
   });
 
@@ -206,7 +179,7 @@ describe('PATCH：只接受 title', () => {
 // ── 条目 ─────────────────────────────────────────────────────────────────────
 
 describe('条目增删', () => {
-  it('加入 → 移出 → 再加回来（复活旧行）', async () => {
+  it('加入 → 移出：200 且 item_count 如实回落', async () => {
     const u = await makeUser({ role: 'core' });
     await login(u.id);
     const blog = await makeBlog({ authorId: u.id });
@@ -223,10 +196,6 @@ describe('条目增删', () => {
     const rm = await removeItemApi(jsonReq('', 'DELETE'), ctx({ id: fav.id, blogId: blog.id }));
     expect(rm.status).toBe(200);
     expect((await rm.json()).item_count).toBe(0);
-
-    const again = await addItemApi(jsonReq('', 'POST', { blogId: blog.id }), ctx({ id: fav.id }));
-    expect(again.status).toBe(200);
-    expect((await again.json()).item_count).toBe(1);
   });
 });
 
@@ -300,23 +269,6 @@ describe('导出', () => {
     expect(res.headers.get('X-Injected')).toBeNull();
     expect(res.headers.get('Content-Disposition') ?? '').not.toMatch(/[\r\n]/);
   });
-
-  it('导出物不含 id / publicId / isPublic', async () => {
-    const u = await makeUser({ role: 'core' });
-    await login(u.id);
-    const blog = await makeBlog({ authorId: u.id });
-    const fav = (await (
-      await createApi(jsonReq('/api/favorites', 'POST', { title: '夹', isPublic: true }))
-    ).json()).favorite;
-    await addItemApi(jsonReq('', 'POST', { blogId: blog.id }), ctx({ id: fav.id }));
-
-    const text = await (await exportApi(jsonReq('', 'GET'), ctx({ id: fav.id }))).text();
-    expect(text).not.toContain(fav.public_id);
-    expect(text).not.toContain(fav.id);
-    expect(text).not.toContain('isPublic');
-    expect(text).not.toContain('publicId');
-    expect(JSON.parse(text).blogs).toHaveLength(1);
-  });
 });
 
 // ── 导入 ─────────────────────────────────────────────────────────────────────
@@ -339,27 +291,6 @@ describe('导入', () => {
     expect(body.created).toBe(2);
     expect(body.skipped).toBe(1);
     expect(body.favorite.public_id).toBeNull();
-  });
-
-  it('★ 一篇都导不进来 → 200 + created:0/skipped:N，不建空夹、不报 400', async () => {
-    const u = await makeUser({ role: 'core' });
-    await login(u.id);
-    const dead = await makeBlog({ authorId: u.id, ignore: true });
-
-    const res = await importApi(
-      jsonReq('/api/favorites/import', 'POST', {
-        isPublic: false,
-        data: { version: 1, title: '导不进来', blogs: [{ id: dead.id }, { id: 'nope' }] },
-      })
-    );
-    expect(res.status).toBe(200);
-    const body = await res.json();
-    expect(body.created).toBe(0);
-    expect(body.skipped).toBe(2);
-    expect(body.favorite).toBeNull();
-    // 没有偷偷建一个 0 篇的空夹子
-    const list = await (await listApi(jsonReq('/api/favorites', 'GET'))).json();
-    expect(list.favorites).toHaveLength(0);
   });
 });
 
@@ -519,31 +450,13 @@ describe('GET /api/spider/favorites/:id（需 core+）', () => {
     expect(res.status).toBe(404);
   });
 
-  it('不存在的 id → 404', async () => {
+  it('不存在 / 形态不对（非 6 位数字）→ 404', async () => {
     const u = await makeUser({ role: 'core' });
     await login(u.id);
-    const res = await spiderApi(jsonReq('', 'GET'), ctx({ id: '000001' }));
-    expect(res.status).toBe(404);
-  });
-
-  it('形态不对（非 6 位数字）→ 404', async () => {
-    const u = await makeUser({ role: 'core' });
-    await login(u.id);
-    for (const bad of ['abcdef', '12345', '1234567', 'has-dash']) {
+    for (const bad of ['000001', 'abcdef', '12345', '1234567', 'has-dash']) {
       const res = await spiderApi(jsonReq('', 'GET'), ctx({ id: bad }));
       expect(res.status, `应 404：${bad}`).toBe(404);
     }
-  });
-
-  it('★ 软删之后必须 404（否则「永不物理删」等于永远可读）', async () => {
-    const { userId, fav } = await seededPublic();
-    // 先确认删之前是读得到的
-    expect((await spiderApi(jsonReq('', 'GET'), ctx({ id: fav.public_id }))).status).toBe(200);
-
-    await login(userId); // 所有者删掉它
-    expect((await deleteApi(jsonReq('', 'DELETE'), ctx({ id: fav.id }))).status).toBe(200);
-
-    expect((await spiderApi(jsonReq('', 'GET'), ctx({ id: fav.public_id }))).status).toBe(404);
   });
 
   it('限频：超过 120 次/分被拒（鉴权不替代限频）', async () => {

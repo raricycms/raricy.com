@@ -65,7 +65,7 @@
 // 角色档位的软胶囊。修饰类（--owner/--admin/--core/--user）与文字都由页面给，
 // 颜色统一走令牌 —— 原先 owner 与 admin 就是同一个红，这里保持原样，只换令牌。
 // ⚠️ 不要给这里再加「禁言中」：users/page.tsx 的禁言徽标走 .admin-chip--amber，
-// 两枚同类名并存会让 admin-role-buttons.spec.ts 的 `.user-card__role` 定位不再唯一。
+// 两枚同类名并存会让 admin-permissions.spec.ts 的 `.user-card__role` 定位不再唯一。
 .user-card__role {
   display: inline-flex;
   align-items: center;

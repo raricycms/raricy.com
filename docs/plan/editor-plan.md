@@ -740,9 +740,10 @@ Safari / 微信内建浏览器、真实网络（只有本机回环）、**接近
   说它和本轮无关，也不能把它定性成既有问题 —— 只能照实记成「一次只出现过、之后未复现
   的观察」，不当作已解决。
 - `npx tsc --noEmit`、`npm run build` 通过。
-- 受影响浏览器回归 `editor` / `editor-upload` / `editor-hardening` / `editor-resources` /
+- 受影响浏览器回归 `editor` / `editor-hardening` / `editor-resources` /
   `save-navigation`：**57 条通过**（desktop 全跑、mobile 按 `RESPONSIVE_SPECS` 跑
-  `editor` 与 `editor-resources`）。
+  `editor` 与 `editor-resources`；历史记录：原 `editor-upload` 已于 Round4 并入
+  `editor-resources`）。
 - **新断言的反向验证**：第 2、3 条在旧实现（槽位区间冻结、无退场判定）上实测 8 条红；
   第 4 条在旧算式上 6 条红；第 5 条两条信号各红一条；第 1 条在把 `type="button"` 去掉并
   重新 build 之后，e2e 报出「点预览里的「复制」触发了写请求」。都不是只镜像实现。
@@ -792,7 +793,8 @@ Safari / 微信内建浏览器、真实网络（只有本机回环）、**接近
   **回退到本轮初版的零宽映射（两端同向贴左）时其中 4 条实测变红** —— 不是只镜像实现。
 - 相关单测 `tests/unit/md-editor-upload-anchors.test.ts` **37 条通过**（本轮前 30）。
 - `npx tsc --noEmit`、`npm run build` 通过。
-- 受影响浏览器回归 `editor` / `editor-upload` / `editor-hardening`：**36 条通过**
+- 受影响浏览器回归 `editor` / `editor-hardening`（历史记录：原 `editor-upload` 已于
+  Round4 并入 `editor-resources`）：**36 条通过**
   （desktop 全跑、mobile 按 `RESPONSIVE_SPECS` 只跑 `editor`）。
 - 只读复核带的两份**外部**复现脚本从 `REVERSED` 转为 `OK`（真 history undo 那一路、
   删除-恢复边界那一路）；另跑一份覆盖验收全部情形的探针（完整删除不恢复 / 真 undo /

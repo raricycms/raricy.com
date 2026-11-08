@@ -32,9 +32,8 @@ import {
 } from '@/lib/audit-actions';
 
 describe('AUDIT_ACTIONS 词汇表', () => {
-  it('27 个码，且互不重复', () => {
-    expect(AUDIT_ACTIONS).toHaveLength(27);
-    expect(new Set(AUDIT_ACTIONS).size).toBe(27);
+  it('动作码互不重复（重复会让筛选/打点认错类别）', () => {
+    expect(new Set(AUDIT_ACTIONS).size).toBe(AUDIT_ACTIONS.length);
   });
 
   it('四张 Record 表都穷尽全部动作码', () => {
@@ -52,26 +51,16 @@ describe('AUDIT_ACTIONS 词汇表', () => {
     expect(WEB_AUDIT_ACTIONS).not.toContain('unarchive_user');
     expect(PUBLIC_AUDIT_ACTIONS).not.toContain('frame_grant');
     expect(PUBLIC_AUDIT_ACTIONS).not.toContain('frame_revoke');
-    expect(PUBLIC_AUDIT_ACTIONS).toHaveLength(18);
-    // 其余一个不少 —— 别把「滤掉 CLI-only」写成「只剩几种」。
-    expect(AUDIT_ACTIONS.filter((a) => !PUBLIC_AUDIT_ACTIONS.includes(a))).toEqual([
-      'archive_user',
-      'unarchive_user',
-      'daily_quote_approve',
-      'daily_quote_reject',
-      'daily_quote_retire',
-      'frame_grant',
-      'frame_revoke',
-      'bubble_grant',
-      'bubble_revoke',
-    ]);
+    // CLI-only 的装扮/归档动作不上公开页（列表本身由 src 维护；这里只钉「该滤的滤了」）。
+    for (const cliOnly of ['archive_user', 'unarchive_user', 'daily_quote_retire']) {
+      expect(PUBLIC_AUDIT_ACTIONS, cliOnly).not.toContain(cliOnly);
+    }
   });
 
   it('公开页的对象类型清单只滤掉两类 CLI 装扮', () => {
     expect(PUBLIC_AUDIT_OBJECT_TYPES).not.toContain('user_frame');
     expect(PUBLIC_AUDIT_OBJECT_TYPES).not.toContain('user_bubble');
     expect(PUBLIC_AUDIT_OBJECT_TYPES).not.toContain('daily_quote');
-    expect(PUBLIC_AUDIT_OBJECT_TYPES).toHaveLength(9);
   });
 });
 

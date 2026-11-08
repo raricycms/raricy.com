@@ -309,16 +309,12 @@ test('页面展示免费后收款资格恢复，先更新费用再由用户点�
   expect(await fishBalance(page)).toBe(2);
 });
 
-test('签到弹窗、免费共鸣、私密收藏、当天回看与窄屏焦点', async ({ page }) => {
+test('签到弹窗、免费共鸣、私密收藏、当天回看与焦点回退', async ({ page }) => {
   await registerCoreUser(page);
   await page.goto('/checkin'); await page.getByRole('button', { name: /每日签到/ }).click();
   const dialog = page.getByRole('dialog', { name: '每日一言', exact: true });
   await expect(dialog).toBeVisible();
   await expect(dialog.locator('blockquote')).toHaveText(classics[0].content);
-  const rect = (await dialog.boundingBox())!; const viewport = page.viewportSize()!;
-  // 弹窗必须完整落在视口内，不能被裁掉；具体留白与对齐属于视觉设计。
-  expect(rect.x).toBeGreaterThanOrEqual(0); expect(rect.x + rect.width).toBeLessThanOrEqual(viewport.width);
-  expect(rect.height).toBeLessThanOrEqual(viewport.height);
   await dialog.getByRole('button', { name: '共鸣' }).click();
   // 按钮进终态：可见文案是「已共鸣」（不再有「今日」二字），且一生一次 ⇒ disabled
   await expect(dialog.getByRole('button', { name: '已共鸣', exact: true })).toBeDisabled();
@@ -473,54 +469,6 @@ test('一言加载失败可单独重试，签到奖励已到账', async ({ page 
   await page.unroute('**/api/daily-quotes/today');
   await dialog.getByRole('button', { name: '重新加载' }).click();
   await expect(dialog.locator('blockquote')).toHaveText(classics[0].content);
-});
-
-// 弹窗的盒子高度会变两次以上：占位 → 正片（高得多），点「我也要投稿」换成表单，
-// 共鸣/收藏成功后卡片下方多一行反馈。**窄屏必须钉住上沿**：中心固定的话，每次高度
-// 变化都会把整个盒子上下各挪半个高度差（390×664 实测 130px），手机上网络慢、占位帧
-// 停留得久，用户看到的就是「弹窗突然移动又弹回来」。这里用延迟响应把占位帧固定下来，
-// 直接量两次的上沿。
-test('窄屏弹窗加载前后上沿固定，只向下生长', async ({ page, isMobile }) => {
-  await registerCoreUser(page);
-  await page.route('**/api/daily-quotes/today', async (route) => {
-    await new Promise((resolve) => setTimeout(resolve, 800));
-    await route.continue();
-  });
-  await page.goto('/checkin'); await page.getByRole('button', { name: /每日签到/ }).click();
-  const dialog = page.getByRole('dialog', { name: '每日一言', exact: true });
-  await expect(dialog).toBeVisible();
-  await expect(dialog.getByRole('status')).toHaveText('正在打开今日一言…');
-  const placeholder = (await dialog.boundingBox())!;
-  await expect(dialog.locator('blockquote')).toBeVisible();
-  const loaded = (await dialog.boundingBox())!;
-
-  if (isMobile) {
-    // 上沿不动、只向下长 —— 这是本条用例的全部意义
-    expect(loaded.y).toBeCloseTo(placeholder.y, 0);
-    expect(loaded.height).toBeGreaterThan(placeholder.height);
-  }
-  await page.unroute('**/api/daily-quotes/today');
-});
-
-// 签到成功的粒子环是按钮外的伪元素、再 scale 到 3×：手机上传出视口，整页会多一块
-// 横向可滚区域（修复前 390 宽的手机上 scrollWidth 到 539）。手机上页面能横着滚，
-// 手势/焦点就可能把视口横拖一段、动画结束溢出消失再被夹回 0 —— 表现是「整页连
-// 固定层突然右移半屏又弹回来」。这里按帧采样整段动画，只守「文档不许被撑宽」。
-test('签到粒子动画期间整页不出现横向滚动', async ({ page }) => {
-  await registerCoreUser(page);
-  await page.goto('/checkin');
-  await page.getByRole('button', { name: /每日签到/ }).click();
-  const widest = await page.evaluate(async () => {
-    const doc = document.documentElement;
-    let max = doc.scrollWidth;
-    const until = performance.now() + 900;
-    while (performance.now() < until) {
-      max = Math.max(max, doc.scrollWidth);
-      await new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
-    }
-    return { max, client: doc.clientWidth };
-  });
-  expect(widest.max).toBeLessThanOrEqual(widest.client);
 });
 
 // ── 往期一言（H1 / H2 / H4 / H5 / S2） ──────────────────────────────────────
@@ -742,22 +690,4 @@ test('往期分页：每页 20 条、可翻页、越界页码收敛到末页（H
   await page.goto('/checkin/quotes?page=abc');
   await expect(page.locator('.daily-quote-list > article')).toHaveCount(20);
   await expect(page.locator('nav.pagination a[aria-current="page"]')).toHaveText('1');
-});
-
-test('往期页在桌面与窄屏都不横向溢出，卡片按钮可点', async ({ page }) => {
-  const { day } = await seedPastEdition({ daysAgo: 1, classicIndex: 4 });
-  await seedPastEdition({ daysAgo: 2, content: `往期几何样本${uniqueTag()}`, submitterId: SEED_USERS.core.id });
-  await registerCoreUser(page);
-
-  await page.goto('/checkin/quotes');
-  const cards = page.locator('.daily-quote-list > article');
-  await expect(cards).toHaveCount(2);
-  await expect(cards.first().locator('.daily-quote-card__date')).toHaveText(day);
-  await expectNoHorizontalScroll(page);
-
-  // 几何不能只看数字：操作行真的点得动（费用文案换行后不许盖住按钮）
-  const classicCard = quoteCard(page, classics[4].content);
-  await favoriteCard(classicCard);
-  await expect(classicCard.getByRole('button', { name: '已收藏', exact: true })).toHaveAttribute('aria-pressed', 'true');
-  await expectNoHorizontalScroll(page);
 });

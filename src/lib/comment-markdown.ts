@@ -10,8 +10,8 @@
 // 与讨论的唯一差别是链接类名（与缓存上限）：讨论气泡的 `.chat-msg__link` 有自己的
 // 字号 / 颜色，套到评论区会显得突兀，故单独一个 `comment-link`（样式见 pages/blog/_blog.scss）。
 //
-// ⚠️ 改这里 = 改安全边界。对等单测：tests/unit/comment-markdown.test.ts
-//    （用例与 chat-markdown.test.ts 逐条对齐，仅类名断言不同）。
+// ⚠️ 改这里 = 改安全边界。对等单测：tests/unit/chat-markdown.test.ts
+//    （原 comment-markdown.test.ts 已于 Round4 并入，用例与讨论侧逐条对齐，仅类名断言不同）。
 // ─────────────────────────────────────────────────────────────────────────────
 
 import {

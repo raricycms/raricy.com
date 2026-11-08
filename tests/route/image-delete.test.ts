@@ -100,42 +100,32 @@ async function makeImageWithFile(authorId: string) {
 const ctx = (id: string) => ({ params: Promise.resolve({ id }) });
 
 describe('DELETE /api/images/:id —— 一律软删（站长也不例外）', () => {
-  it('站长删自己的图 → 软删：行还在、磁盘文件还在', async () => {
+  it('站长 / 作者删自己或他人的图 → 软删：行还在、磁盘文件还在', async () => {
     const owner = await makeUser({ role: 'owner' });
-    const { row, diskPath } = await makeImageWithFile(owner.id);
-    expect(fs.existsSync(diskPath), '前置：磁盘文件应存在').toBe(true);
+    const author = await makeUser({ role: 'core' });
 
+    // 站长删自己的图
+    const own = await makeImageWithFile(owner.id);
+    expect(fs.existsSync(own.diskPath), '前置：磁盘文件应存在').toBe(true);
     mockUser.current = owner;
-    const res = await deleteImage(new Request('http://x'), ctx(row.id));
-    expect(res.status).toBe(200);
+    expect((await deleteImage(new Request('http://x'), ctx(own.row.id))).status).toBe(200);
+    const ownAfter = await prisma.imageHosting.findUnique({ where: { id: own.row.id } });
+    expect(ownAfter, '站长删自己的图被物理删除了 —— 应为软删，不可恢复是 bug').not.toBeNull();
+    expect(ownAfter!.ignore, '应标记为软删除').toBe(true);
+    expect(fs.existsSync(own.diskPath), '软删不该删磁盘文件').toBe(true);
 
-    const after = await prisma.imageHosting.findUnique({ where: { id: row.id } });
-    expect(after, '站长删自己的图被物理删除了 —— 应为软删，不可恢复是 bug').not.toBeNull();
-    expect(after!.ignore, '应标记为软删除').toBe(true);
-    expect(fs.existsSync(diskPath), '软删不该删磁盘文件').toBe(true);
-  });
-
-  it('站长删他人的图 → 同样是软删', async () => {
-    const owner = await makeUser({ role: 'owner' });
-    const other = await makeUser({ role: 'core' });
-    const { row, diskPath } = await makeImageWithFile(other.id);
-
+    // 站长删他人的图
+    const others = await makeImageWithFile(author.id);
     mockUser.current = owner;
-    expect((await deleteImage(new Request('http://x'), ctx(row.id))).status).toBe(200);
+    expect((await deleteImage(new Request('http://x'), ctx(others.row.id))).status).toBe(200);
+    expect((await prisma.imageHosting.findUnique({ where: { id: others.row.id } }))!.ignore).toBe(true);
+    expect(fs.existsSync(others.diskPath)).toBe(true);
 
-    const after = await prisma.imageHosting.findUnique({ where: { id: row.id } });
-    expect(after).not.toBeNull();
-    expect(after!.ignore).toBe(true);
-    expect(fs.existsSync(diskPath)).toBe(true);
-  });
-
-  it('作者删自己的图 → 软删', async () => {
-    const u = await makeUser({ role: 'core' });
-    const { row } = await makeImageWithFile(u.id);
-
-    mockUser.current = u;
-    expect((await deleteImage(new Request('http://x'), ctx(row.id))).status).toBe(200);
-    expect((await prisma.imageHosting.findUnique({ where: { id: row.id } }))!.ignore).toBe(true);
+    // 作者删自己的图
+    const mine = await makeImageWithFile(author.id);
+    mockUser.current = author;
+    expect((await deleteImage(new Request('http://x'), ctx(mine.row.id))).status).toBe(200);
+    expect((await prisma.imageHosting.findUnique({ where: { id: mine.row.id } }))!.ignore).toBe(true);
   });
 
   it('非作者且非管理员 → 403，图不动', async () => {

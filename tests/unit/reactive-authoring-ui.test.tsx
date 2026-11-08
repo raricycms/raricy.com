@@ -610,13 +610,22 @@ describe('MarkdownEditor：Reactive 诊断 / 补全 / 格式化', () => {
     expect(analysis).toEqual(author);
   });
 
-  it('worker 回退主线程检查时，面板明确写「本地检查」', async () => {
-    const container = mount(createElement(EditorHarness, { initialFormat: 'reactive' }));
+  it('worker 回退主线程检查时面板写「本地检查」，切回 worker 后收起（与 F4 合并，R4）', async () => {
+    // 原 F4（纯 Markdown + `<` 的回退提示）与本条是同一条 onModeChange 路径的两种起始格式，
+    // 合并成一个用例：markdown 起始时回退前不占版面、回退后出现并写「本地检查」，切回后收起。
+    const container = mount(
+      createElement(EditorHarness, {
+        initialFormat: 'markdown',
+        initialValue: '内嵌 <br> 的普通 Markdown',
+      })
+    );
+    expect(container.querySelector('.md-authoring')).toBeNull();
     expect(mocks.analyzerOptions?.onModeChange).toBeTypeOf('function');
 
     await act(async () => {
       mocks.analyzerOptions!.onModeChange!('fallback');
     });
+    expect(container.querySelector('.md-authoring')).not.toBeNull();
     expect(container.textContent).toContain('本地检查');
 
     await act(async () => {
@@ -832,22 +841,9 @@ describe('prepareSubmit：无效增强语法绝不静默按 Markdown 保存', ()
     expect(snapshot.syntaxVersion).toBe('local-draft-3');
   });
 
-  it('已保存为 reactive 的文档即使删光组件也不降级', async () => {
-    const ref = createRef<MarkdownEditorHandle>();
-    mount(
-      createElement(MarkdownEditor, {
-        initialValue: '只剩普通正文了',
-        format: 'reactive',
-        ref,
-      })
-    );
-    let snapshot!: EditorSubmitSnapshot;
-    await act(async () => {
-      snapshot = await ref.current!.prepareSubmit();
-    });
-    expect(snapshot.format).toBe('reactive');
-    expect(snapshot.blocked).toBeNull();
-  });
+  // 「已保存为 reactive 的文档即使删光组件也不降级」与下面第 5 节的
+  // 「正文删光增强语法也不降级，并带上权威版本」是同一条规则（后者还多断言了
+  // syntaxVersion），此处只留后者（R4 去重）。
 
   it('普通 Markdown 不排分析，直接按 markdown 提交', async () => {
     const ref = createRef<MarkdownEditorHandle>();
@@ -1105,23 +1101,8 @@ describe('终审回归：F1 保存成功后抬下限、F4 回退提示、F5 草�
     expect(ref.current!.getFormat()).toBe('reactive');
   });
 
-  it('F4：纯 Markdown（含 `<`）遇到 worker 回退时，语法检查条明示「本地检查」', async () => {
-    const container = mount(
-      createElement(EditorHarness, {
-        initialFormat: 'markdown',
-        initialValue: '内嵌 <br> 的普通 Markdown',
-      })
-    );
-    // 普通正文没有诊断面板 —— 回退前不占版面
-    expect(container.querySelector('.md-authoring')).toBeNull();
-    expect(mocks.analyzerOptions?.onModeChange).toBeTypeOf('function');
-
-    await act(async () => {
-      mocks.analyzerOptions!.onModeChange!('fallback');
-    });
-    expect(container.querySelector('.md-authoring')).not.toBeNull();
-    expect(container.textContent).toContain('本地检查');
-  });
+  // 原「F4：纯 Markdown（含 `<`）遇到 worker 回退时明示『本地检查』」与上面那条
+  // 是同一条 onModeChange 路径的两种起始格式 —— 已合并，不再单列（R4）。
 
   it('F5：插入组件后分析未落地就落盘，草稿不把临时升级写成 reactive', async () => {
     const KEY = 'ui-f5-draft';

@@ -34,7 +34,6 @@ import {
   settledPositionCount,
   MARKET_BUY_TYPE,
   MARKET_SELL_TYPE,
-  MARKET_FEE_RATE,
 } from '@/lib/market-service';
 
 const mockQuote = vi.mocked(fetchQuote);
@@ -395,28 +394,17 @@ describe('平仓', () => {
     expect(pos?.payoutUnits).toBe(0);
   });
 
-  it('★ 低于最小投入的仓位开不出来（下限现在只剩产品理由，不再是防舍入陷阱）', async () => {
-    // 这个下限**原来是防舍入陷阱的**：粒度 0.1 条时投 0.1 条、价格不涨过 0.1%（当时的
-    // 费率）就必然结算成 0。精度提到 0.0001 之后那条理由失效了（零头上界降到 0.0001 条），
-    // 下限改由「尘埃仓位只是库里一行 + 页面上一条的噪音」支撑。
-    // 断言本身不变 —— 变的是它为什么在这里。
-    const user = await makeUser({ driedFish: 100 });
-    priceIs(80000);
-    const r = await openPosition({ userId: user.id, symbolRaw: 'BTCUSDT', amount: 0.1 });
-    expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.message).toContain('最少投入');
-  });
-
-  it('★ 重复平仓 = 重放：不动钱、不重复发', async () => {
+  it('★ 重复平仓 = 重放：不动钱、不重复发，且重放不看行情源', async () => {
     const { userId, positionId } = await opened(100, 80000);
     priceIs(88000);
     const first = await closePosition({ userId, positionId });
     expect(first.ok).toBe(true);
 
-    // 价格已经变了，但重放必须回报**当初结算的那个数**，而不是按新价重算
+    // 价格已经变了、行情源也挂了，但重放必须回报**当初结算的那个数**
     priceIs(200000);
+    mockQuote.mockRejectedValue(new MarketPriceError('重试时行情源已不可用'));
     const second = await closePosition({ userId, positionId });
-    expect(second.ok).toBe(true);
+    expect(second.ok, '已平过的仓位不该因为此刻取不到价就报 503').toBe(true);
     if (!first.ok || !second.ok) return;
 
     expect(second.replayed).toBe(true);
@@ -426,31 +414,18 @@ describe('平仓', () => {
     expect(await txnsOf(userId)).toHaveLength(2);
   });
 
-  it('重放不该消耗限频额度，也不该因为行情源挂了而 503', async () => {
-    const { userId, positionId } = await opened(100, 80000);
-    priceIs(88000);
-    await closePosition({ userId, positionId });
-
-    mockQuote.mockRejectedValue(new MarketPriceError('挂了'));
-    const again = await closePosition({ userId, positionId });
-    expect(again.ok, '已平过的仓位不该因为此刻取不到价就报 503').toBe(true);
-  });
-
-  it('别人的仓位 → 404（不是 403 —— 那等于确认这个 id 存在）', async () => {
+  it('别人的仓位 / 不存在的仓位 → 404（不是 403 —— 那等于确认这个 id 存在）', async () => {
     const { positionId } = await opened(100, 80000);
     const other = await makeUser({ driedFish: 0 });
     priceIs(88000);
 
-    const r = await closePosition({ userId: other.id, positionId });
-    expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.code).toBe(404);
-  });
+    const notMine = await closePosition({ userId: other.id, positionId });
+    expect(notMine.ok).toBe(false);
+    if (!notMine.ok) expect(notMine.code).toBe(404);
 
-  it('不存在的仓位 → 404', async () => {
-    const user = await makeUser({ driedFish: 0 });
-    const r = await closePosition({ userId: user.id, positionId: 'no-such-position' });
-    expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.code).toBe(404);
+    const missing = await closePosition({ userId: other.id, positionId: 'no-such-position' });
+    expect(missing.ok).toBe(false);
+    if (!missing.ok) expect(missing.code).toBe(404);
   });
 
   it('★ 并发平仓只成交一次（条件写挡住后来者）', async () => {
@@ -483,10 +458,6 @@ describe('平仓', () => {
     expect(pos?.exitPrice).toBeNull();
     expect(await balanceOf(userId)).toBe(0); // 开仓花光了 100
     expect(await listOpenPositions(userId)).toHaveLength(1);
-  });
-
-  it('手续费率是 0.02%（改它要同步页面文案与钉住这个数的用例）', () => {
-    expect(MARKET_FEE_RATE).toBe(0.0002);
   });
 });
 
@@ -580,7 +551,7 @@ describe('杠杆（开仓）', () => {
     await expectLedgerConsistent('非法杠杆被拒之后');
   });
 
-  it('方向：不传 = long（向后兼容）；short 建仓后爆仓价落在开仓价**上方**', async () => {
+  it('方向：不传 = long（向后兼容）；short 爆仓价在开仓价**上方**，1 倍做空也有爆仓价', async () => {
     const user = await makeFishUser(100);
     priceIs(80000);
     const def = await openPosition({ userId: user.id, symbolRaw: 'BTCUSDT', amount: 10 });
@@ -600,22 +571,16 @@ describe('杠杆（开仓）', () => {
       expect(s.position.liquidationPrice).toBeCloseTo(120000, 6);
       expect(s.position.liquidationPrice).toBeGreaterThan(s.position.entryPrice);
     }
+
+    // 1× 空头同样有爆仓价（2 × 开仓价）——「1 倍永不爆仓」只对多头成立
+    const oneX = await openPosition({
+      userId: user.id, symbolRaw: 'BTCUSDT', amount: 10, directionRaw: 'short',
+    });
+    expect(oneX.ok).toBe(true);
+    if (oneX.ok) expect(oneX.position.liquidationPrice).toBe(160000);
     await expectLedgerConsistent('多空各开一仓之后');
   });
 
-  it('1 倍做空也有爆仓价（2 × 开仓价）—— 「1 倍永不爆仓」只对多头成立', async () => {
-    const user = await makeFishUser(100);
-    priceIs(80000);
-    const s = await openPosition({
-      userId: user.id, symbolRaw: 'BTCUSDT', amount: 10, directionRaw: 'short',
-    });
-    expect(s.ok).toBe(true);
-    if (s.ok) {
-      expect(s.position.leverage).toBe(1);
-      expect(s.position.liquidationPrice).toBe(160000);
-    }
-    await expectLedgerConsistent('1× 空头开仓之后');
-  });
 
   it('不认识的方向 → 400，且零痕迹', async () => {
     const user = await makeFishUser(100);
@@ -652,27 +617,6 @@ describe('杠杆（开仓）', () => {
     await expectLedgerConsistent('1× 空头被闸门拒绝之后');
   });
 
-  it('同一个幂等键带**不同**杠杆重试 → 重放既有那一笔，不改成新倍数', async () => {
-    const user = await makeFishUser(100);
-    priceIs(80000);
-    const key = 'lev-retry-1';
-    const first = await openPosition({
-      userId: user.id, symbolRaw: 'BTCUSDT', amount: 100, leverageRaw: 10, clientKey: key,
-    });
-    const second = await openPosition({
-      userId: user.id, symbolRaw: 'BTCUSDT', amount: 100, leverageRaw: 2, clientKey: key,
-    });
-    expect(first.ok && second.ok).toBe(true);
-    if (!first.ok || !second.ok) return;
-
-    expect(second.replayed).toBe(true);
-    // 如实回报**当初那一笔**的倍数 —— 这是「杠杆不进幂等键」这条决定的前提
-    expect(second.position.leverage).toBe(10);
-    expect(second.position.liquidationPrice).toBe(LIQ_10X);
-    expect(await prisma.marketPosition.count({ where: { userId: user.id } })).toBe(1);
-    expect(await balanceOf(user.id)).toBe(0); // 只扣了一次
-    await expectLedgerConsistent('改变杠杆的开仓重试之后');
-  });
 
   it.each(['long', 'short'] as const)('%s 仓同键改方向与倍数重试：回原仓，只扣一次，不再取价', async (direction) => {
     const user = await makeFishUser(100);

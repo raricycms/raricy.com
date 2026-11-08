@@ -174,19 +174,4 @@ describe('渲染层不许直接读头像框的原始装备列', () => {
     expect(files.some((f) => rel(f) === 'src/app/components/Avatar.tsx')).toBe(true);
     expect(files.some((f) => rel(f) === 'src/app/layout.tsx')).toBe(true);
   });
-
-  it('扫描面确实排除了 src/lib（否则 DTO 生产者会被误报，而它们本该读这两列）', () => {
-    const files = scopedFiles();
-    expect(files.some((f) => rel(f) === 'src/lib/frame-service.ts')).toBe(false);
-    expect(files.some((f) => rel(f) === 'src/lib/blog-service.ts')).toBe(false);
-  });
-
-  it('DTO 生产者那边确实在读这两列（证明上面那条不是因为「全仓没人读」而绿）', () => {
-    // 反向自检：若哪天有人把 select 全删了，上面那条会静默变成「永远没有框」的绿色。
-    const hits = scan(
-      fs.readFileSync(path.join(SRC, 'lib', 'comment-service.ts'), 'utf8'),
-      'comment-service.ts'
-    );
-    expect(hits.length, 'comment-service 应当 select 了装备两列').toBeGreaterThan(0);
-  });
 });

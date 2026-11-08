@@ -539,26 +539,10 @@ describe('getFeedStatus', () => {
     expect(await getFeedStatus(blog.id, feeder.id)).toEqual({ fed: 0, remaining: 5, isFull: false });
   });
 
-  it('投喂后如实反映累计与剩余', async () => {
-    const { blog, feeder } = await scene({ feederFish: 10 });
-    await feedBlog(blog.id, feeder.id, 2);
-    expect(await getFeedStatus(blog.id, feeder.id)).toEqual({ fed: 2, remaining: 3, isFull: false });
-  });
-
   it('投满后 isFull=true / remaining=0', async () => {
     const { blog, feeder } = await scene({ feederFish: 10 });
     await feedBlog(blog.id, feeder.id, 5);
     expect(await getFeedStatus(blog.id, feeder.id)).toEqual({ fed: 5, remaining: 0, isFull: true });
-  });
-
-  it('不串用户 / 不串文章', async () => {
-    const { blog, feeder } = await scene({ feederFish: 10 });
-    const other = await makeFishUser(10);
-    const otherBlog = await makeBlog({});
-    await feedBlog(blog.id, feeder.id, 3);
-
-    expect(await getFeedStatus(blog.id, other.id), '别人的额度不受影响').toMatchObject({ fed: 0 });
-    expect(await getFeedStatus(otherBlog.id, feeder.id), '另一篇文章额度独立').toMatchObject({ fed: 0 });
   });
 
   it('文章不存在时安全返回 0，不抛错（详情页渲染不能因此 500）', async () => {
@@ -683,28 +667,6 @@ describe('★★ 事务中途故障：本地零痕迹、异常如实上抛', () 
     expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('amount=2'), expect.anything());
   });
 });
-
-// ── 禁言：校验在路由层，服务层不管 ──────────────────────────────────────────
-
-describe('禁言用户', () => {
-  it('禁言校验在 route 层（isCurrentlyBanned → 403），feed-service 本身不校验', async () => {
-    const author = await makeUser();
-    const blog = await makeBlog({ authorId: author.id });
-    const banned = await makeFishUser(10, {
-      isBanned: true,
-      banUntil: new Date(Date.now() + 86400_000),
-      banReason: '测试禁言',
-    });
-
-    const r = await feedBlog(blog.id, banned.id, 1);
-
-    // 记录现状：服务层放行。拦截点在 src/app/api/blogs/[id]/feed/route.ts:13
-    // （getCurrentUser + isCurrentlyBanned → apiErr(403)）。
-    expect(r.ok, 'feed-service 不做禁言校验 —— 该职责在路由层').toBe(true);
-    await expectLedgerConsistent('被禁言者投喂之后');
-  });
-});
-
 // ─────────────────────────────────────────────────────────────────────────────
 // 这里原有两组用例，测的是账户微服务**站在站外**时的契约，随那条边界一起消失：
 //

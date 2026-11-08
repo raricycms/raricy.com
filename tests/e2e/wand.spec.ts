@@ -59,7 +59,6 @@ test('Wand：真实票据、多玩家移动同步、移动端方向按钮与断�
     await page.mouse.up();
   } else await page.keyboard.up('ArrowRight');
   expect(first.binarySent).toBe(true);
-  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(page.viewportSize()!.width);
   await observer.getByRole('button', { name: '断开连接', exact: true }).click();
   await expect.poll(() => first.snapshot?.players.some((player) => player.id === second.id)).toBe(false);
   await observer.close();

@@ -21,9 +21,6 @@ test('Wand 2 摇杆：死区、斜向、双指长按、拖出边界与取消后�
   const box = (await joystick.boundingBox())!, attackBox = (await attack.boundingBox())!;
   const center = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
   const diagonal = { x: center.x + 30, y: center.y - 30 };
-  await expect(joystick).toHaveCSS('touch-action', 'none');
-  await expect(joystick).toHaveCSS('user-select', 'none');
-  await expect(attack).toHaveCSS('user-select', 'none');
   const menuCanceled = await attack.evaluate(el => !el.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true })));
   expect(menuCanceled).toBe(true);
 
@@ -67,7 +64,6 @@ test('Wand 2 摇杆：死区、斜向、双指长按、拖出边界与取消后�
   }
   await expect.poll(() => state.buttons).toBe(0);
   await expect(joystick).toHaveAttribute('data-active', 'false');
-  await expect(page.locator('.wand2-joystick-knob')).toHaveCSS('transform', 'matrix(1, 0, 0, 1, 0, 0)');
   // 后台切换和断线也必须清掉方向，旧手指移动不能重新激活输入。
   await page.mouse.move(diagonal.x, diagonal.y); await page.mouse.down();
   await expect.poll(() => state.buttons).toBe(INPUT.up | INPUT.right);

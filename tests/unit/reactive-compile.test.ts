@@ -12,14 +12,16 @@
 
 import { beforeEach, describe, expect, it } from 'vitest';
 import { compileLocal } from 'reactive-md';
-import type { LocalNode } from 'reactive-md';
+import type { LocalDocument, LocalNode } from 'reactive-md';
+import { getNativeComponentCatalog, renderNativeSnippet } from 'reactive-md/authoring';
 
 import {
+  REACTIVE_COMPILER_VERSION,
   reactiveCompileOptions,
   SITE_EMBED_TAG,
 } from '@/lib/reactive/host-components';
+import { applyLegacyHtmlCompat } from '@/lib/reactive/legacy-compat';
 import {
-  REACTIVE_FALLBACK_CODES,
   reactiveDiagnosticCodes,
   reactiveFallbackReasons,
   shouldRejectReactive,
@@ -162,24 +164,10 @@ describe('拒绝判据', () => {
     expect(shouldRejectReactive(result)).toBe(true);
   });
 
-  it('白名单包含契约要求的全部码', () => {
-    for (const code of [
-      'local.html',
-      'local.html.fallback',
-      'local.component.unknown',
-      'local.options.invalid',
-      'local.budget',
-      'local.math.display.unsupported-command',
-      'local.math.display.unsupported-environment',
-      'local.math.display.budget',
-      'local.math.display.stray-end',
-      'local.math.display.environment-unclosed',
-      'local.math.display.environment-missing-name',
-      'local.math.display.syntax',
-    ]) {
-      expect(REACTIVE_FALLBACK_CODES).toContain(code);
-    }
-  });
+  // 原来还有一条「白名单包含契约要求的全部码」：逐字抄 REACTIVE_FALLBACK_CODES 的
+  // 12 个字符串断言它们都在常量里 —— 它只复述实现常量本身，上游新增码或删码都
+  // 抓不到，真正的风险（降级码不在白名单 → 静默放行）由上面各条的 shouldRejectReactive
+  // 行为断言覆盖。按 R4 静态清单口径删除（R4）。
 });
 
 // ═══ 四、编译缓存 ════════════════════════════════════════════════════════════
@@ -222,7 +210,8 @@ describe('compileReactiveSource 缓存', () => {
     const second = await compileReactiveSource(input);
     expect(first.cacheHit).toBe(false);
     expect(second.cacheHit).toBe(true);
-    expect(first.compilerVersion).toBe('reactive-md/0.7.0');
+    // 版本常量是缓存键的一段：写死版本号会在每次升级依赖时制造一处无意义同步点。
+    expect(first.compilerVersion).toBe(REACTIVE_COMPILER_VERSION);
     const visited = new Set<object>();
     const expectPlain = (value: unknown): void => {
       if (!value || typeof value !== 'object' || visited.has(value)) return;
@@ -290,5 +279,59 @@ describe('compileReactiveSource 缓存', () => {
     expect(third.cacheHit).toBe(true);
     expect(third.result.diagnostics).toHaveLength(0);
     expect(JSON.stringify(first.result)).toBe(firstJson);
+  });
+});
+
+// ═══ 五、Components 目录模板 × 统一编译管线 ═══════════════════════════════════
+//
+// 原 reactive-catalog-matrix.test.ts 并入这里（R4）：它本来就是「统一 compat + 编译」
+// 的行为用例，与本节共用同一套夹具，不必再单独维护一个编译测试文件。
+// 目录来自上游 getNativeComponentCatalog('zh')（与编辑器菜单同一份事实）。
+
+function instantiateCatalogTemplate(
+  component: ReturnType<typeof getNativeComponentCatalog>['components'][number]
+): string {
+  return renderNativeSnippet(component, '')
+    .replace(/\{\{selection(?::(.*?))?\}\}/g, '$1')
+    .replace(/\{\{caret\}\}/g, '')
+    .replace(/\{\{select:(.*?)\}\}/g, '$1');
+}
+
+function componentNames(document: LocalDocument): string[] {
+  const names: string[] = [];
+  const walk = (nodes: LocalDocument['nodes']): void => {
+    for (const node of nodes) {
+      if (node.type === 'component' && node.name) names.push(node.name);
+      if (node.children) walk(node.children);
+    }
+  };
+  walk(document.nodes);
+  return names;
+}
+
+describe('Components 目录模板 × 统一编译管线', () => {
+  const catalog = getNativeComponentCatalog('zh');
+
+  it('★ 目录非空，且每个模板都真的编译成对应组件节点 ★', () => {
+    expect(catalog.components.length).toBeGreaterThan(20);
+    for (const component of catalog.components) {
+      const source = instantiateCatalogTemplate(component);
+      const compat = applyLegacyHtmlCompat(source);
+      // 只断言 ok 不够：section / table / progress 被当成历史 HTML 解包后同样 ok，
+      // 但组件语义已经永久丢失。这里必须看到真实 component 节点。
+      expect(compat.source, `${component.id} 的标签被 compat 改写`).toContain(`<${component.id}`);
+      const result = compileLocal(compat.source, reactiveCompileOptions('reactive'));
+      const codes = result.diagnostics.map((d) => d.code);
+      expect(result.ok, `${component.id}: ${codes.join(', ')}`).toBe(true);
+      expect(codes, component.id).not.toContain('local.component.unknown');
+      if (!result.ok) continue; // 上面的断言已失败；这里只为类型收窄
+      expect(componentNames(result.document), component.id).toContain(component.id);
+    }
+  });
+
+  it('旧 HTML 的 <select><option> 仍按历史标签处理，不误当组件子结构', () => {
+    const compat = applyLegacyHtmlCompat('<select><option value="a">A</option></select>');
+    expect(compat.source).not.toContain('<option');
+    expect(compileLocal(compat.source, reactiveCompileOptions('markdown')).ok).toBe(true);
   });
 });

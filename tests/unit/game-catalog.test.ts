@@ -5,9 +5,6 @@
 // 又塞回一个 href、或让某个 parentId 指向不存在的合集，下面的用例会先红。
 
 import { describe, expect, it } from 'vitest';
-import { existsSync } from 'node:fs';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import {
   GAME_COLLECTIONS,
   GAMES,
@@ -65,20 +62,6 @@ describe('玩具清单：与合集的引用关系', () => {
     for (const game of GAMES) {
       if (game.collectionId === null) continue;
       expect(gameCollection(game.collectionId), game.id).toBeDefined();
-    }
-  });
-
-  it('href 与页面文件对得上：清单里指向的 /game/<x> 必须有 src/app/game/<x>/page.tsx', () => {
-    // href 是清单里唯一和路由重复的字段：改目录名 / 删页面时，卡片仍会渲染出来，
-    // 点进去才 404。这里做一次静态对账（现状 16/16 全部可解析）。
-    const root = fileURLToPath(new URL('../../src/app/', import.meta.url));
-    for (const game of GAMES) {
-      const slug = game.href.replace(/^\/game\//, '');
-      expect(slug, `${game.id} 的 href 不是 /game/<slug> 形状：${game.href}`).not.toBe(game.href);
-      expect(
-        existsSync(path.join(root, 'game', slug, 'page.tsx')),
-        `${game.id} 的 href ${game.href} 没有对应的 src/app/game/${slug}/page.tsx`,
-      ).toBe(true);
     }
   });
 

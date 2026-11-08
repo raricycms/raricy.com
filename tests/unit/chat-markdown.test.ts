@@ -1,6 +1,13 @@
 // @vitest-environment jsdom
 // ─────────────────────────────────────────────────────────────────────────────
-// chat-markdown.test.ts —— 讨论 Markdown 渲染管线的安全边界
+// chat-markdown.test.ts —— 讨论 / 评论 Markdown 渲染管线的安全边界
+//
+// 【为什么一份文件覆盖两个入口】chat-markdown.ts / comment-markdown.ts 都是
+// src/lib/rich-text.ts 里 createRichTextRenderer 的**薄壳**：同一条 marked → DOMPurify
+// → 后处理管线、同一份标签/属性白名单，唯一差别是链接类名（.chat-msg__link /
+// .comment-link）与缓存上限。安全行为在 rich-text.ts 里只有一份实现，用例也只该有一份；
+// 两个入口的差异（类名、缓存不串味、白名单判决一致）集中在「渲染器隔离」一节钉住。
+// 原 comment-markdown.test.ts 的逐条镜像用例已并入这里（R4 收敛）。
 //
 // 【为什么用 jsdom】管线依赖真实 DOM（DOMPurify 走浏览器解析器），且只有真解析一遍
 // 才能回答「输出里到底有没有可执行的东西」。断言一律落在**解析后的 DOM 结构**上，
@@ -13,11 +20,21 @@
 
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { renderChatMarkdown } from '@/lib/chat-markdown';
+import { renderCommentMarkdown } from '@/lib/comment-markdown';
 
-/** 渲染 + 解析成 DOM，便于按结构断言。 */
-function mount(content: string): HTMLElement {
+/** 两个入口：同一份 rich-text.ts 管线，只差链接类名（见文件头）。 */
+const RENDERERS: Array<{ name: string; render: (s: string) => string; linkClass: string }> = [
+  { name: '讨论', render: renderChatMarkdown, linkClass: 'chat-msg__link' },
+  { name: '评论', render: renderCommentMarkdown, linkClass: 'comment-link' },
+];
+
+/** 渲染 + 解析成 DOM，便于按结构断言。缺省走讨论入口。 */
+function mount(
+  content: string,
+  render: (s: string) => string = renderChatMarkdown
+): HTMLElement {
   const root = document.createElement('div');
-  root.innerHTML = renderChatMarkdown(content);
+  root.innerHTML = render(content);
   return root;
 }
 
@@ -75,20 +92,21 @@ describe('基础 Markdown 结构', () => {
 });
 
 describe('链接：识别与加固', () => {
-  it('Markdown 链接：类名 + 外链 target/rel', () => {
-    const a = mount('[点我](https://example.com/a)').querySelector('a')!;
+  // 两个入口各跑一次：链接类名是两者唯一的实现差异，且各自的缓存不能串味。
+  it.each(RENDERERS)('$name入口 Markdown 链接：各自的类名 + 外链 target/rel', ({ render, linkClass }) => {
+    const a = mount('[点我](https://example.com/a)', render).querySelector('a')!;
     expect(a.getAttribute('href')).toBe('https://example.com/a');
     expect(a.textContent).toBe('点我');
-    expect(a.classList.contains('chat-msg__link')).toBe(true);
+    expect(a.classList.contains(linkClass)).toBe(true);
     expect(a.getAttribute('target')).toBe('_blank');
     expect(a.getAttribute('rel')).toMatch(/noopener/);
   });
 
-  it('站内链接：本页跳转，不加 target', () => {
-    const a = mount('[博客](/blog/1)').querySelector('a')!;
+  it.each(RENDERERS)('$name入口站内链接：本页跳转，不加 target', ({ render, linkClass }) => {
+    const a = mount('[博客](/blog/1)', render).querySelector('a')!;
     expect(a.getAttribute('href')).toBe('/blog/1');
     expect(a.hasAttribute('target')).toBe(false);
-    expect(a.classList.contains('chat-msg__link')).toBe(true);
+    expect(a.classList.contains(linkClass)).toBe(true);
   });
 
   it('裸 URL 自动识别，尾部中文句读不吞进 href', () => {
@@ -221,5 +239,38 @@ describe('无 DOM 环境（SSR）的回退', () => {
     // Markdown 语法此时也不解析（没有净化器就不做富文本）
     expect(html).toContain('**粗**');
     expect(html).toContain('<br>');
+  });
+});
+
+// 两个渲染器各持缓存，不能互相串味（共用缓存会让评论拿到讨论类名的 HTML）。
+// 上一条「各自的类名」用例已经能抓住串味；这里钉住更根本的那条不变量：
+// 白名单收成 rich-text.ts 的一份共享常量之后，「只改讨论、忘了评论」在结构上已不可能，
+// 但两个入口对同一段标签必须给出**同样的判决**（保留哪些元素、剥掉哪些）。
+describe('渲染器隔离', () => {
+  it('两个入口共用同一份白名单：逐标签探针的判决一致', async () => {
+    const { RICH_TEXT_ALLOWED_TAGS } = await import('@/lib/rich-text');
+    const tagsOf = (root: HTMLElement) =>
+      Array.from(root.querySelectorAll('*')).map((el) => el.tagName.toLowerCase());
+
+    // 白名单内的标签 + 白名单外/危险标签（原始 HTML 会被管线转义成文本，但判决仍须一致）。
+    const probes = [
+      '<p>x</p>', '<h1>x</h1>', '<blockquote>x</blockquote>', '<ul><li>x</li></ul>',
+      '<table><thead><tr><th>x</th></tr></thead><tbody><tr><td>x</td></tr></tbody></table>',
+      '<input type="checkbox" checked disabled>', '<pre><code>x</code></pre>',
+      '<section>x</section>', '<img src="x">', '<iframe src="x"></iframe>',
+      '<style>x{}</style>', '<form><input></form>', '<svg></svg>',
+      '<script>x</script>', '<video src="x"></video>',
+    ];
+    for (const probe of probes) {
+      const commentRoot = mount(probe, renderCommentMarkdown);
+      const chatRoot = mount(probe);
+      expect(tagsOf(chatRoot), `讨论与评论对 ${probe} 的标签判决不一致`).toEqual(tagsOf(commentRoot));
+      expect(chatRoot.textContent, `讨论与评论对 ${probe} 的文本判决不一致`).toBe(commentRoot.textContent);
+    }
+
+    // 单点后的白名单只有一份：img / iframe 永远不许回到任何一端的正文里（CLAUDE.md 关键约定）。
+    expect(RICH_TEXT_ALLOWED_TAGS).not.toContain('img');
+    expect(RICH_TEXT_ALLOWED_TAGS).not.toContain('iframe');
+    expect(RICH_TEXT_ALLOWED_TAGS).not.toContain('style');
   });
 });

@@ -19,14 +19,13 @@ async function play(page: Page, actions: Action[]) {
   }
 }
 
-test('合集入口、四页通关、撤销重做与刷新续关', async ({ page }, testInfo) => {
+test('合集入口、四页通关、撤销重做与刷新续关', async ({ page }) => {
   test.setTimeout(60_000);
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));
   await page.goto('/game/collections/test');
   await page.getByRole('link', { name: /合页 Demo 2/ }).click();
   await expect(page.locator('.h2-game')).toHaveAttribute('data-ready', 'true');
-  await page.screenshot({ path: testInfo.outputPath('hinge2-initial.png'), fullPage: true });
   const ids = ['turn', 'mirror', 'fold', 'hinge'];
   for (const [i, id] of ids.entries()) {
     await page.getByRole('button', { name: new RegExp(`^0${i + 1} `) }).click();
@@ -48,7 +47,7 @@ test('合集入口、四页通关、撤销重做与刷新续关', async ({ page 
   expect(errors).toEqual([]);
 });
 
-test('纸景圆点、键盘机关、存储不可用与窄屏主题', async ({ page }, testInfo) => {
+test('纸景圆点、键盘机关与存储不可用', async ({ page }) => {
   await page.addInitScript(() => {
     Storage.prototype.getItem = () => { throw new Error('blocked'); };
     Storage.prototype.setItem = () => { throw new Error('blocked'); };
@@ -68,17 +67,4 @@ test('纸景圆点、键盘机关、存储不可用与窄屏主题', async ({ pa
   await page.getByRole('button', { name: '提示', exact: true }).click();
   await expect(page.locator('.h2-hint')).toBeVisible();
   await page.getByRole('button', { name: /^04 / }).click();
-  for (const width of [390, 320]) {
-    await page.setViewportSize({ width, height: 844 });
-    for (const theme of ['light', 'dark']) {
-      await page.evaluate((value) => document.documentElement.dataset.theme = value, theme);
-      await expect.poll(() => page.locator('body').evaluate((element) => getComputedStyle(element).color))
-        .toBe(theme === 'dark' ? 'rgb(241, 245, 249)' : 'rgb(15, 23, 42)');
-      const overflow = await page.evaluate(() => document.documentElement.scrollWidth - innerWidth);
-      expect(overflow).toBeLessThanOrEqual(1);
-      await expect(page.getByRole('button', { name: '对折右半页', exact: true })).toBeVisible();
-      await expect(page.getByRole('button', { name: '转动镜面', exact: true })).toBeVisible();
-      await page.screenshot({ path: testInfo.outputPath(`hinge2-${width}-${theme}.png`), fullPage: true });
-    }
-  }
 });

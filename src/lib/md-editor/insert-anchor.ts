@@ -15,7 +15,7 @@
 // 【映射语义】改动落在锚点**正上方**时锚点往右让（`assoc: 1`）：上传刚插进来的
 // 图片在锚点之前，用户挑的引用就排在它后面，与「先看到图片、再插引用」的直觉一致。
 //
-// 零依赖（只 import 类型），可直接单测（tests/unit/md-editor-insert-anchor.test.ts）。
+// 零依赖（只 import 类型），可直接单测（tests/unit/md-editor-upload-anchors.test.ts）。
 // ─────────────────────────────────────────────────────────────────────────────
 
 import type { ChangeDesc } from '@codemirror/state';

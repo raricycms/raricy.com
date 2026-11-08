@@ -18,7 +18,6 @@ import {
   hasUnrepresentable,
 } from '@/lib/file-converter/engines/encoding';
 import { CATEGORY } from '@/lib/file-converter/categories/text';
-import { registryProblems } from '@/lib/file-converter/registry';
 import type { InspectInfo } from '@/lib/file-converter/types';
 
 const utf8 = (s: string) => new TextEncoder().encode(s);
@@ -181,35 +180,6 @@ describe('hasUnrepresentable（不能静默变问号）', () => {
 // ─── text 类别登记表体检（只体检本模块，不跑别人的用例）──────────────────────
 
 describe('text 类别登记（本模块自洽）', () => {
-  it('registryProblems 对本类别无问题', () => {
-    expect(registryProblems([CATEGORY])).toEqual([]);
-  });
-
-  it('边界与参数形状', () => {
-    expect(CATEGORY.key).toBe('text');
-    const byId = new Map(CATEGORY.edges.map((e) => [e.id, e]));
-    for (const id of [
-      'text:convert-encoding',
-      'text:txt-to-md',
-      'text:txt-to-html',
-      'text:subtitle-to-srt',
-      'text:subtitle-to-vtt',
-      'text:subtitle-to-ass',
-    ]) {
-      expect(byId.has(id), `缺边 ${id}`).toBe(true);
-      expect(byId.get(id)!.status).toBe('live');
-    }
-
-    const enc = byId.get('text:convert-encoding')!;
-    const keys = Object.fromEntries(enc.params.map((p) => [p.key, p]));
-    expect(keys.fromEncoding.defaultValue).toBe('auto');
-    expect(keys.toEncoding.defaultValue).toBe('utf-8');
-    expect(keys.bom.defaultValue).toBe(false);
-    const fromOpts = keys.fromEncoding.options as { value: string }[];
-    expect(fromOpts[0].value).toBe('auto');
-    expect(fromOpts.some((o) => o.value === 'gbk')).toBe(true);
-  });
-
   it('字幕边的 match 排除同格式', () => {
     const at = (kind: InspectInfo['sniff']['kind']): InspectInfo => ({
       sniff: { kind, mime: 'text/plain', ext: kind },

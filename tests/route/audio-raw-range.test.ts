@@ -133,19 +133,14 @@ describe('无 Range / 畸形 Range → 全量 200', () => {
     expect(await bodyOf(res)).toEqual(bytes);
   });
 
-  it('Content-Type 取落库的 mimeType，并带 nosniff', async () => {
+  it('Content-Type 取落库的 mimeType，带 nosniff，且不设 Content-Disposition（内联播放）', async () => {
     const user = await makeUser();
     const { id } = await seedAudio({ authorId: user.id, mimeType: 'audio/ogg' });
 
     const res = await rawGet(req(id), ctx(id));
     expect(res.headers.get('Content-Type')).toBe('audio/ogg');
     expect(res.headers.get('X-Content-Type-Options')).toBe('nosniff');
-  });
-
-  it('**不设** Content-Disposition：音频是要内联播放的，不是下载', async () => {
-    const user = await makeUser();
-    const { id } = await seedAudio({ authorId: user.id });
-    const res = await rawGet(req(id), ctx(id));
+    // 音频是要内联播放的，不是下载
     expect(res.headers.get('Content-Disposition')).toBeNull();
   });
 
@@ -395,16 +390,6 @@ describe('条件请求（软删后必须能失效）', () => {
     expect(await bodyOf(res)).toEqual(replacement);
   });
 
-  it('私有音频不发 ETag（no-store 下条件请求无意义，也不能缓存鉴权结果）', async () => {
-    const author = await makeUser();
-    const { id } = await seedAudio({ authorId: author.id, isPublic: false });
-    mockUser.current = author;
-
-    const res = await rawGet(req(id), ctx(id));
-    expect(res.status).toBe(200);
-    expect(res.headers.get('ETag')).toBeNull();
-  });
-
   it('★ 公开音频先拿到 ETag，再改成私有：带匹配 ETag 也不能 304', async () => {
     const author = await makeUser();
     const { id } = await seedAudio({ authorId: author.id });
@@ -423,30 +408,17 @@ describe('条件请求（软删后必须能失效）', () => {
 // ═══ 三、不可满足 → 416 ═══════════════════════════════════════════════════════
 
 describe('不可满足的 Range → 416 + `bytes */total`', () => {
-  it('起点超出文件长度 → 416（不是 200、更不是 500）', async () => {
+  it('起点超出 / 起终都超出 / 后缀 0 → 416（不是 200、更不是 500）', async () => {
     const user = await makeUser();
     const { id } = await seedAudio({ authorId: user.id });
 
-    const res = await rawGet(req(id, `bytes=${AUDIO_SIZE}-`), ctx(id));
-    expect(res.status).toBe(416);
-    expect(res.headers.get('Content-Range')).toBe(`bytes */${AUDIO_SIZE}`);
-  });
+    expect((await rawGet(req(id, `bytes=${AUDIO_SIZE}-`), ctx(id))).status).toBe(416);
+    expect((await rawGet(req(id, 'bytes=2000-3000'), ctx(id))).status).toBe(416);
 
-  it('起点与终点都超出 → 416', async () => {
-    const user = await makeUser();
-    const { id } = await seedAudio({ authorId: user.id });
-
-    const res = await rawGet(req(id, 'bytes=2000-3000'), ctx(id));
-    expect(res.status).toBe(416);
-  });
-
-  it('`bytes=-0` → 416（RFC 7233：后缀长度 0 不可满足）', async () => {
-    const user = await makeUser();
-    const { id } = await seedAudio({ authorId: user.id });
-
-    const res = await rawGet(req(id, 'bytes=-0'), ctx(id));
-    expect(res.status).toBe(416);
-    expect(res.headers.get('Content-Range')).toBe(`bytes */${AUDIO_SIZE}`);
+    // RFC 7233：后缀长度 0 不可满足
+    const suffixZero = await rawGet(req(id, 'bytes=-0'), ctx(id));
+    expect(suffixZero.status).toBe(416);
+    expect(suffixZero.headers.get('Content-Range')).toBe(`bytes */${AUDIO_SIZE}`);
   });
 });
 

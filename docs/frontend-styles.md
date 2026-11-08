@@ -774,8 +774,9 @@ npm test -- tests/unit/docs-catalog.test.ts tests/unit/docs-xref.test.ts tests/u
 
 几何与交互变化必须通过实际页面验证。
 `tests/e2e/blog-directory.spec.ts`、`tests/e2e/favorite-layout.spec.ts`、
-`tests/e2e/page-gutter.spec.ts` 及主题相关用例中的行为断言继续保留；
-纯外观断言按需清理，不以新增外观 e2e 或截图快照替代。
+`tests/e2e/comment-layout.spec.ts` 中的**行为断言**继续保留；
+纯外观 e2e（`page-gutter` / `clipboard-layout` / `dark-theme` 等）已于 Round4 退出，
+颜色、间距、版式与响应式表现改由受影响页面和视口的实页检查确认，不以截图快照替代。
 e2e 读取现有构建产物；修改源码后先构建，或使用 `npm run e2e:ci`，
 避免把旧产物的结果当成本次验证。
 

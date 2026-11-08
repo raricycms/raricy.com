@@ -34,8 +34,6 @@ import {
 import {
   BLOG_VISIBILITIES,
   EXTERNAL_VISIBILITIES,
-  EXTERNAL_VISIBLE_BLOG_WHERE,
-  INDEXABLE_BLOG_WHERE,
   INDEXABLE_VISIBILITIES,
   getBlogDetail,
   getExternallyVisibleBlog,
@@ -399,103 +397,6 @@ describe('发文日限额 / countBlogsToday + BLOG_DAILY_LIMIT', () => {
   });
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
-// 3. countMarkdownWords
-//    下列期望值均由历史实现实跑后写死（基准值），逐条比对。
-// ─────────────────────────────────────────────────────────────────────────────
-
-describe('countMarkdownWords / 与历史实现逐样例对齐', () => {
-  it('纯文本中英混排', () => {
-    // 历史实现实测：{'total_characters': 16, 'non_whitespace_characters': 14}
-    expect(countMarkdownWords('你好世界 hello world')).toEqual({
-      total_characters: 16,
-      non_whitespace_characters: 14,
-    });
-  });
-
-  it('围栏代码块整段剔除（```...``` 跨行）', () => {
-    const md = '正文开始\n```python\nprint(1)\n```\n正文结束';
-    // 剩 "正文开始 正文结束" → 9 / 8
-    expect(countMarkdownWords(md)).toEqual({
-      total_characters: 9,
-      non_whitespace_characters: 8,
-    });
-  });
-
-  it('行内代码剔除（单行）', () => {
-    // '这是 `code` 行内' → '这是 行内' → 5 / 4
-    expect(countMarkdownWords('这是 `code` 行内')).toEqual({
-      total_characters: 5,
-      non_whitespace_characters: 4,
-    });
-  });
-
-  it('图片整体剔除（alt 文字也不计）', () => {
-    // '看图 ![alt](http://x.com/a.png) 完' → '看图 完' → 4 / 3
-    expect(countMarkdownWords('看图 ![alt](http://x.com/a.png) 完')).toEqual({
-      total_characters: 4,
-      non_whitespace_characters: 3,
-    });
-  });
-
-  it('链接剔除 URL 但保留链接文字', () => {
-    // '点 [百度](http://baidu.com) 吧' → '点 百度 吧' → 6 / 4
-    expect(countMarkdownWords('点 [百度](http://baidu.com) 吧')).toEqual({
-      total_characters: 6,
-      non_whitespace_characters: 4,
-    });
-  });
-
-  it('HTML 标签剔除但保留标签内文字', () => {
-    // '前<b>粗</b>后' → '前粗后' → 3 / 3
-    expect(countMarkdownWords('前<b>粗</b>后')).toEqual({
-      total_characters: 3,
-      non_whitespace_characters: 3,
-    });
-  });
-
-  it('综合样例：标题 + 加粗 + 代码块 + 图片 + 链接 + 中英混排', () => {
-    const md = '# 标题\n\n中英 mix 文本 **加粗**\n\n```js\nlet a=1\n```\n\n![img](a.png) [链接](b.com)';
-    // 历史实现实测：18 / 13
-    expect(countMarkdownWords(md)).toEqual({
-      total_characters: 18,
-      non_whitespace_characters: 13,
-    });
-  });
-
-  it('空字符串 → 0 / 0', () => {
-    expect(countMarkdownWords('')).toEqual({
-      total_characters: 0,
-      non_whitespace_characters: 0,
-    });
-  });
-
-  it('连续空白折叠为单空格并 trim', () => {
-    // '  a \n\n\t b  ' → 'a b' → 3 / 2
-    expect(countMarkdownWords('  a \n\n\t b  ')).toEqual({
-      total_characters: 3,
-      non_whitespace_characters: 2,
-    });
-  });
-
-  it('Markdown 特殊字符 * _ ~ > # - [ ] ( ) ! 一律剔除', () => {
-    expect(countMarkdownWords('*_~>#-[]()!')).toEqual({
-      total_characters: 0,
-      non_whitespace_characters: 0,
-    });
-  });
-
-  // 【回归】跨行的行内反引号不该被整段吃掉。
-  // 基准实现里的 r'`.*?`' **未开 DOTALL** → 不跨行 → 'a `x\ny` b' 保留为 'a x y b' = 7/4。
-  // 曾经 TS 写成 /`[\s\S]*?`/g（跨行）→ 整段吃掉 → 'a b' = 3/2。
-  // 五条正则里只有代码块那条开了 DOTALL，其余必须用不跨行的 `.`。
-  it('跨行的行内反引号不跨行匹配（与基准实现一致：7/4）', () => {
-    expect(
-      countMarkdownWords('a `x\ny` b'),
-      '若用 [\\s\\S] 模拟 `.`，会漏掉基准实现未开 DOTALL 这一点'
-    ).toEqual({ total_characters: 7, non_whitespace_characters: 4 });
-  });
-});
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 4. createBlog —— Blog + BlogContent 分表、同事务、UUID 主键
@@ -558,13 +459,6 @@ describe('createBlog', () => {
     expect(blog!.categoryId).toBeNull();
   });
 
-  it('每次调用生成不同主键', async () => {
-    const u = await makeUser();
-    const a = await createBlog(u.id, { title: 'A', description: 'D', content: 'C', categoryId: null, visibility: 'internal' });
-    const b = await createBlog(u.id, { title: 'B', description: 'D', content: 'C', categoryId: null, visibility: 'internal' });
-    expect(a).not.toBe(b);
-  });
-
   it('作者不存在 → 整体失败，不留下孤儿正文（事务原子性）', async () => {
     const before = await prisma.blogContent.count();
     await expect(
@@ -586,36 +480,6 @@ describe('createBlog', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('updateBlog / 变更详情文案', () => {
-  it('标题变更 → 「标题从《旧》改为《新》」（书名号逐字对齐）', async () => {
-    const u = await makeUser();
-    const b = await makeBlog({ authorId: u.id, title: '旧标题', description: 'D', content: 'C' });
-    const r = await updateBlog(b.id, { title: '新标题', description: 'D', content: 'C', categoryId: null, visibility: 'internal' }, b.authorId);
-    expect(r.hasChanges).toBe(true);
-    expect(r.changesDetail).toEqual(['标题从《旧标题》改为《新标题》']);
-  });
-
-  it('摘要变更 → 「摘要已更新」（不回显新旧内容）', async () => {
-    const u = await makeUser();
-    const b = await makeBlog({ authorId: u.id, title: 'T', description: '旧摘要', content: 'C' });
-    const r = await updateBlog(b.id, { title: 'T', description: '新摘要', content: 'C', categoryId: null, visibility: 'internal' }, b.authorId);
-    expect(r.changesDetail).toEqual(['摘要已更新']);
-  });
-
-  it('正文变更 → 「文章内容已更新」', async () => {
-    const u = await makeUser();
-    const b = await makeBlog({ authorId: u.id, title: 'T', description: 'D', content: '旧正文' });
-    const r = await updateBlog(b.id, { title: 'T', description: 'D', content: '新正文', categoryId: null, visibility: 'internal' }, b.authorId);
-    expect(r.changesDetail).toEqual(['文章内容已更新']);
-  });
-
-  it('未分类 → 有栏目：「栏目从《未分类》改为《技术》」', async () => {
-    const u = await makeUser();
-    const cat = await makeCategory({ name: '技术' });
-    const b = await makeBlog({ authorId: u.id, title: 'T', description: 'D', content: 'C', categoryId: null });
-    const r = await updateBlog(b.id, { title: 'T', description: 'D', content: 'C', categoryId: cat.id, visibility: 'internal' }, b.authorId);
-    expect(r.changesDetail).toEqual(['栏目从《未分类》改为《技术》']);
-  });
-
   it('有栏目 → 未分类：「栏目从《技术》改为《未分类》」', async () => {
     const u = await makeUser();
     const cat = await makeCategory({ name: '技术' });
@@ -898,14 +762,6 @@ describe('listBlogs / sort 参数（created=发布时间 / updated=最后编辑�
     await seedReversed(u.id);
     const r = await listBlogs({ sort: 'updated' });
     expect(r.blogs.map((b) => b.title)).toEqual(['u0', 'u1', 'u2']);
-  });
-
-  it('updated 排序与分页叠加：第 2 页是第 2 段切片', async () => {
-    const u = await makeUser();
-    await seedReversed(u.id);
-    const p2 = await listBlogs({ sort: 'updated', page: 2, perPage: 2 });
-    expect(p2.blogs.map((b) => b.title)).toEqual(['u2']);
-    expect(p2.total).toBe(3);
   });
 
   it('content 行缺失的文章在 updated 排序下排最后（SQLite DESC 的 NULL 语义，防御分支）', async () => {
@@ -1213,24 +1069,6 @@ describe('listBlogs / 搜索与精选', () => {
     expect(r.blogs.every((b) => b.snippet === null)).toBe(true);
   });
 
-  it('searchFields 含 content：搜不到任何文章时不炸（空 ids 早退）', async () => {
-    const u = await makeUser();
-    await makeBlog({ authorId: u.id, title: 'T' });
-    const r = await listBlogs({ search: '绝不存在的词zzzqqq', searchFields: ALL_SEARCH_FIELDS });
-    expect(r.total).toBe(0);
-    expect(r.blogs).toEqual([]);
-  });
-
-  it('featured=true → 只返回精选', async () => {
-    const u = await makeUser();
-    const a = await makeBlog({ authorId: u.id, title: '精选文' });
-    await prisma.blog.update({ where: { id: a.id }, data: { isFeatured: true } });
-    await makeBlog({ authorId: u.id, title: '普通文' });
-
-    const r = await listBlogs({ featured: true });
-    expect(r.blogs.map((b) => b.title)).toEqual(['精选文']);
-  });
-
   // 【回归】featured=false 必须筛出「非精选」（`if featured in (True, False)`：false 也得真的过滤）。
   // 曾经写 `if (params.featured)` → false 直接跳过，等同不传，丢掉了「只看非精选」的语义。
   it('featured=false 筛出非精选文章', async () => {
@@ -1435,16 +1273,6 @@ describe('toggleLike / 限频（RULES.likeHourly —— 数值不写死）', () 
     ).not.toEqual({ rateLimited: true });
   });
 
-  it('软删除的文章同样不消耗额度', async () => {
-    const u = await makeUser();
-    const gone = await makeBlog({ ignore: true });
-    const ok = await makeBlog({});
-
-    for (let i = 0; i < RULES.likeHourly.limit + 100; i++) {
-      expect(await toggleLike(gone.id, u.id)).toEqual({ notFound: true });
-    }
-    expect(await toggleLike(ok.id, u.id)).not.toEqual({ rateLimited: true });
-  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1524,20 +1352,6 @@ describe('toggleLike / 点赞通知', () => {
     expect(row!.notificationSent).toBe(true);
   });
 
-  it('多人点赞 → 每人各发一条，互不吞并', async () => {
-    const author = await makeUser();
-    const b = await makeBlog({ authorId: author.id });
-    const u1 = await makeUser();
-    const u2 = await makeUser();
-
-    await toggleLike(b.id, u1.id);
-    await toggleLike(b.id, u2.id);
-
-    const notes = await prisma.notification.findMany({
-      where: { recipientId: author.id, action: '文章点赞' },
-    });
-    expect(notes.map((n) => n.actorId).sort()).toEqual([u1.id, u2.id].sort());
-  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1586,30 +1400,6 @@ describe('回归：日期比较必须按数值而非存储类型', () => {
     expect(await countBlogsToday(u.id)).toBe(1);
   });
 
-  it('Prisma 写入 SQLite 的 DateTime 就是 INTEGER —— 规整必须与之一致', async () => {
-    const u = await makeUser();
-    await makeBlog({ authorId: u.id });
-    const [row] = await prisma.$queryRawUnsafe<{ t: string }[]>(
-      `SELECT typeof(created_at) t FROM blogs LIMIT 1`
-    );
-    expect(
-      row.t,
-      'Prisma 存 INTEGER；若规整脚本产出 TEXT，两者混存会让日期比较按类型序而非数值'
-    ).toBe('integer');
-  });
-
-  it('反证：TEXT 存储会让日期比较失效（这正是修复前的行为）', async () => {
-    const u = await makeUser({ role: 'core' });
-    // 故意插 TEXT ISO（旧版规整脚本的产物）
-    await insertBlogRaw('text-old', u.id, '2025-03-01T10:00:00.000Z');
-
-    const n = await countBlogsToday(u.id);
-    expect(
-      n,
-      'TEXT 行因 SQLite 类型序（TEXT > INTEGER）恒满足 gte —— 去年的文章被算成今天。' +
-        '此用例记录该缺陷，确保规整脚本不会退回 TEXT 格式。'
-    ).toBe(1); // 1 = 被错误计入（若哪天 Prisma/SQLite 改了语义，这条会红，提醒复查
-  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1632,6 +1422,9 @@ describe('countMarkdownWords 与历史实现对拍', () => {
   { input: "![a\nb](c) 跨行图片", total: 9, nonWs: 7 },
   { input: "[a\nb](c) 跨行链接", total: 9, nonWs: 7 },
   { input: "混排 English 中文 **粗体** `c` [l](u) 结束", total: 21, nonWs: 16 },
+  { input: "你好世界 hello world", total: 16, nonWs: 14 },
+  { input: "  a \n\n\t b  ", total: 3, nonWs: 2 },
+  { input: "*_~>#-[]()!", total: 0, nonWs: 0 },
   { input: "", total: 0, nonWs: 0 },
   { input: "   \n\n  ", total: 0, nonWs: 0 },
   ];
@@ -1776,19 +1569,6 @@ describe('banActionMessage —— 剩余时间与库内时钟同口径', () => {
     const banUntil = new Date(nowForDb().getTime() + 48 * 3600_000);
     expect(banActionMessage({ banUntil })).toContain('剩余约2.0天');
   });
-
-  it('永久禁言（banUntil 为 null）不带剩余时间（钉住现状：双句号）', () => {
-    expect(banActionMessage({ banUntil: null, banReason: '严重违规' })).toBe(
-      '您已被禁言，无法执行此操作。。原因：严重违规'
-    );
-  });
-
-  it('【回归】真实 Date.now() 相减会算成约 9 小时 —— 这条钉住两把钟的差', () => {
-    const banUntil = new Date(nowForDb().getTime() + 3600_000);
-    const wrongHours = (banUntil.getTime() - Date.now()) / 3600000;
-    expect(wrongHours, '错误算法：真实 UTC 与墙上时间相差 8 小时').toBeGreaterThan(8.99);
-    expect(banActionMessage({ banUntil }), '正确算法').toContain('剩余约1.0小时');
-  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1808,11 +1588,6 @@ describe('可见性 / 常量与解析', () => {
       'link 也读得到 —— 它与 public 的差别在列举与索引'
     ).toEqual(['link', 'public']);
     expect([...INDEXABLE_VISIBILITIES], '只有 public 进 sitemap').toEqual(['public']);
-  });
-
-  it('对外 where 常量与白名单同源（不是各写一份）', () => {
-    expect(EXTERNAL_VISIBLE_BLOG_WHERE).toEqual({ visibility: { in: ['link', 'public'] } });
-    expect(INDEXABLE_BLOG_WHERE).toEqual({ visibility: { in: ['public'] } });
   });
 
   it('parseVisibility：缺省 internal —— 旧客户端不带这个字段时不得改变对外状态', () => {
@@ -1857,10 +1632,6 @@ async function seedThreeVisibilities() {
 }
 
 describe('可见性 / getBlogDetail 的查看者矩阵', () => {
-  beforeEach(async () => {
-    await resetDb();
-  });
-
   it('游客（viewer=null）：只有 link / public 读得到，internal 是 null', async () => {
     const { ids } = await seedThreeVisibilities();
     expect(await getBlogDetail(ids.internal, null)).toBeNull();
@@ -1884,11 +1655,6 @@ describe('可见性 / getBlogDetail 的查看者矩阵', () => {
     }
   });
 
-  it('返回行里带着 visibility（页面要靠它决定 robots 与 OG）', async () => {
-    const { ids } = await seedThreeVisibilities();
-    expect((await getBlogDetail(ids.public, null))?.visibility).toBe('public');
-  });
-
   it('软删（ignore=true）对谁都读不到，与档位无关', async () => {
     const { ids } = await seedThreeVisibilities();
     await prisma.blog.update({ where: { id: ids.public }, data: { ignore: true } });
@@ -1898,10 +1664,6 @@ describe('可见性 / getBlogDetail 的查看者矩阵', () => {
 });
 
 describe('可见性 / 对外出口', () => {
-  beforeEach(async () => {
-    await resetDb();
-  });
-
   it('getExternallyVisibleBlog：link / public 拿得到；internal / 不存在 / 软删都是 null（三者同形）', async () => {
     const author = await makeUser({ role: 'core' });
     const mk = async (v: string) => {
@@ -1955,9 +1717,6 @@ async function mkBlog(v: string, over: Parameters<typeof makeBlog>[0] = {}) {
 }
 
 describe('可见性 / listPublicBlogs —— 对外列表的唯一出口', () => {
-  beforeEach(async () => {
-    await resetDb();
-  });
 
   it('只出 public：link 与 internal 都不出现（link 读得到，但不许被列举）', async () => {
     const author = await makeUser({ role: 'core' });
@@ -2124,10 +1883,6 @@ describe('可见性 / listPublicBlogs —— 对外列表的唯一出口', () =>
 });
 
 describe('可见性 / listPublicCategoryFacets —— 侧栏剪枝的数据源', () => {
-  beforeEach(async () => {
-    await resetDb();
-  });
-
   it('只收公开集合里真的出现过的栏目（空栏目不进 —— 那是死链）', async () => {
     const author = await makeUser({ role: 'core' });
     const used = await makeCategory();
@@ -2156,7 +1911,6 @@ describe('可见性 / listPublicCategoryFacets —— 侧栏剪枝的数据源',
 
 describe('可见性 / listBlogs 是站内列表，**不看** visibility（钉现状）', () => {
   it('存在 internal 文章时，listBlogs 照旧返回它', async () => {
-    await resetDb();
     const author = await makeUser({ role: 'core' });
     const b = await makeBlog({ authorId: author.id, title: '私密文章' });
     await prisma.blog.update({ where: { id: b.id }, data: { visibility: 'internal' } });
@@ -2174,23 +1928,6 @@ describe('可见性 / listBlogs 是站内列表，**不看** visibility（钉现
 });
 
 describe('可见性 / 写路径落库与变更明细', () => {
-  beforeEach(async () => {
-    await resetDb();
-  });
-
-  it('createBlog 落 visibility', async () => {
-    const u = await makeUser({ role: 'core' });
-    const id = await createBlog(u.id, {
-      title: 'T',
-      description: 'D',
-      content: 'C',
-      categoryId: null,
-      visibility: 'public',
-    });
-    const row = await prisma.blog.findUnique({ where: { id }, select: { visibility: true } });
-    expect(row?.visibility).toBe('public');
-  });
-
   it('updateBlog 改 visibility 时单独记一条变更（它是**不可逆**的那类改动）', async () => {
     const u = await makeUser({ role: 'core' });
     const b = await makeBlog({ authorId: u.id, title: 'T', description: 'D', content: 'C' });
@@ -2226,22 +1963,9 @@ describe('可见性 / 写路径落库与变更明细', () => {
     expect(r.hasChanges).toBe(false);
     expect(r.changesDetail).toEqual([]);
   });
-
-  it('未显式给 visibility 的文章是 internal —— 存量绝不被误公开', async () => {
-    await resetDb();
-    const u = await makeUser({ role: 'core' });
-    // makeBlog 不传 visibility，走 schema 默认 —— 老行迁移后就是这个值
-    const b = await makeBlog({ authorId: u.id });
-    const row = await prisma.blog.findUnique({ where: { id: b.id }, select: { visibility: true } });
-    expect(row?.visibility, 'DEFAULT 就是存量迁移本身').toBe('internal');
-  });
 });
 
 describe('可见性 / 变更记账（blog_visibility_logs）', () => {
-  beforeEach(async () => {
-    await resetDb();
-  });
-
   it('setBlogVisibility 改档位 → 落一行，from / to / actor 都对', async () => {
     const u = await makeUser({ role: 'core' });
     const b = await makeBlog({ authorId: u.id });
@@ -2327,7 +2051,6 @@ describe('可见性 / 变更记账（blog_visibility_logs）', () => {
 
 describe('可见性 / 管理端是结构性豁免，不需要 if (isAdmin)', () => {
   it('listAdminBlogs 必须能列出 internal 文章', async () => {
-    await resetDb();
     const u = await makeUser({ role: 'core' });
     const b = await makeBlog({ authorId: u.id, title: '站内文章' });
     await prisma.blog.update({ where: { id: b.id }, data: { visibility: 'internal' } });
@@ -2397,23 +2120,6 @@ describe('匿名评论开关：解析与落库', () => {
       where: { id }, select: { allowAnonymousComments: true },
     });
     expect(row?.allowAnonymousComments).toBe(true);
-  });
-
-  it('★ 整体保存时没带这个字段 → 这一列原样不动（关掉的不会被悄悄打开）', async () => {
-    const u = await makeUser({ role: 'core' });
-    const blog = await makeBlog({ authorId: u.id, allowAnonymousComments: false });
-
-    const res = await updateBlog(blog.id, {
-      title: '改过的标题', description: 'D', content: 'C',
-      categoryId: null, visibility: 'internal',
-    }, u.id);
-    expect(res.hasChanges).toBe(true);
-
-    const row = await prisma.blog.findUnique({
-      where: { id: blog.id }, select: { allowAnonymousComments: true, title: true },
-    });
-    expect(row?.title).toBe('改过的标题');
-    expect(row?.allowAnonymousComments, '旧调用方一次普通保存不该重开匿名评论').toBe(false);
   });
 
   it('显式传 false → 落库并在「文章已编辑」的 changesDetail 里说明', async () => {

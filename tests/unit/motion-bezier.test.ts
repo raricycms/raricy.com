@@ -20,11 +20,9 @@ import {
 } from '../../src/games/motion/bezier';
 import {
   MOTION_CURVES,
-  TAIL_CURVES,
   curveCss,
   curveById,
   type CurveVerdict,
-  type TailCurve,
 } from '../../src/games/motion/curves';
 import {
   MOTION_SCENARIOS,
@@ -257,127 +255,6 @@ describe('交互动画（交互反馈的统一曲线与默认时长）', () => {
     for (const variant of fade.variants) {
       expect(variant.duration, `切页 ${variant.key} 超出短时长那一档`).toBeLessThanOrEqual(240);
       expect(variant.duration).toBeLessThan(INTERACTION_DURATION);
-    }
-  });
-
-  it('展示标签里的 ms 数与 duration 一致（改时长忘了改文案会自相矛盾）', () => {
-    for (const scenario of [...MOTION_SCENARIOS, ...TAIL_SCENARIOS]) {
-      for (const variant of scenario.variants) {
-        // 「间隔 Nms」写的是 stagger，别把它当成时长核。
-        const staggerShown = /间隔\s*(\d+)ms/.exec(variant.label);
-        if (staggerShown) expect(Number(staggerShown[1])).toBe(variant.stagger);
-        const durationPart = variant.label.replace(/间隔\s*\d+ms/g, '');
-        for (const shown of [...durationPart.matchAll(/(\d+)ms\b/g)].map((match) => Number(match[1]))) {
-          expect(shown, `${scenario.id}/${variant.key} 标签写 ${shown}ms`).toBe(variant.duration);
-        }
-      }
-    }
-  });
-
-  it('曲线清单里不再出现旧名「展开档」', () => {
-    for (const curve of MOTION_CURVES) expect(curve.name).not.toContain('展开档');
-    for (const curve of TAIL_CURVES) expect(curve.name).not.toContain('展开档');
-    for (const scenario of [...MOTION_SCENARIOS, ...TAIL_SCENARIOS]) {
-      for (const variant of scenario.variants) expect(variant.label).not.toContain('展开档');
-    }
-  });
-});
-
-// 短尾变体：动画真的更早结束。每条仍是单个三次贝塞尔，参数按「墙钟时间」拟合 ——
-// 前段实时位置贴着 540 现版，但自己的时长只有 480 / 420 / 360 / 300ms。
-describe('TAIL_CURVES（真·更早结束的短尾变体）', () => {
-  const interaction = curveById(INTERACTION_CURVE_ID);
-  const baseDuration = INTERACTION_DURATION;
-
-  /** 某条曲线在自己的时长里，走到 target 进度时的墙钟毫秒数（这几条都单调，二分可靠）。 */
-  function wallTimeAtY(curve: TailCurve, target: number) {
-    let low = 0;
-    let high = 1;
-    for (let index = 0; index < 60; index++) {
-      const mid = (low + high) / 2;
-      if (sampleEasing(curve.points, mid) < target) low = mid;
-      else high = mid;
-    }
-    return ((low + high) / 2) * curve.duration;
-  }
-
-  it('四条变体的时长依次缩短，而且都真的短于现版', () => {
-    expect(TAIL_CURVES).toHaveLength(4);
-    expect(TAIL_CURVES.map((curve) => curve.duration)).toEqual([480, 420, 360, 300]);
-    for (const curve of TAIL_CURVES) {
-      expect(curve.duration).toBeLessThan(baseDuration);
-      expect(curveById(curve.id)).toBe(curve);
-    }
-  });
-
-  it('每条仍是可解析的 cubic-bezier，曲线单调不减、落在 [0, 1] 内', () => {
-    for (const curve of TAIL_CURVES) {
-      const match = /^cubic-bezier\((-?[\d.]+), (-?[\d.]+), (-?[\d.]+), (-?[\d.]+)\)$/.exec(curveCss(curve));
-      expect(match).not.toBeNull();
-      expect(match!.slice(1).map(Number)).toEqual([...curve.points]);
-      const ys = sampleEasingPoints(curve.points, 200).map(([, y]) => y);
-      expect(Math.min(...ys)).toBeGreaterThanOrEqual(0);
-      expect(Math.max(...ys)).toBeLessThanOrEqual(1);
-      for (let index = 1; index < ys.length; index++) {
-        expect(ys[index]).toBeGreaterThanOrEqual(ys[index - 1] - 1e-9);
-      }
-      expect(sampleEasing(curve.points, 1)).toBe(1);
-    }
-  });
-
-  it('墙钟时间上前段贴着现版：前 210ms 位置差 ≤ 3 个百分点，半程时刻几乎一样', () => {
-    for (const curve of TAIL_CURVES) {
-      for (const t of [30, 60, 90, 120, 150, 180, 210]) {
-        if (t > curve.duration) continue;
-        const got = sampleEasing(curve.points, t / curve.duration);
-        const want = sampleEasing(interaction.points, t / baseDuration);
-        expect(Math.abs(got - want), `${curve.id} @${t}ms`).toBeLessThan(0.03);
-      }
-      // 现版半程 55ms；四档 55–56ms。
-      const baseHalf = (() => {
-        let low = 0;
-        let high = 1;
-        for (let index = 0; index < 60; index++) {
-          const mid = (low + high) / 2;
-          if (sampleEasing(interaction.points, mid) < 0.5) low = mid;
-          else high = mid;
-        }
-        return ((low + high) / 2) * baseDuration;
-      })();
-      expect(Math.abs(wallTimeAtY(curve, 0.5) - baseHalf)).toBeLessThan(3);
-    }
-  });
-
-  it('动画真的更早结束，尾巴（最后 5% 行程）一次比一次短，口径与文案一致', () => {
-    const baseTail = baseDuration - (() => {
-      let low = 0;
-      let high = 1;
-      for (let index = 0; index < 60; index++) {
-        const mid = (low + high) / 2;
-        if (sampleEasing(interaction.points, mid) < 0.95) low = mid;
-        else high = mid;
-      }
-      return ((low + high) / 2) * baseDuration;
-    })();
-    expect(Math.round(baseTail)).toBe(310);
-
-    const tails = TAIL_CURVES.map((curve) => Math.round(curve.duration - wallTimeAtY(curve, 0.95)));
-    expect(tails).toEqual([256, 201, 146, 88]);
-    for (let index = 0; index < tails.length; index++) {
-      expect(tails[index], `${TAIL_CURVES[index].name} 的尾巴没比上一档短`).toBeLessThan(index === 0 ? baseTail : tails[index - 1]);
-    }
-  });
-
-  it('三个尾巴长度场景都摆出五列，时长用各曲线自己的', () => {
-    expect(TAIL_SCENARIOS).toHaveLength(3);
-    for (const scenario of TAIL_SCENARIOS) {
-      expect(scenario.variants).toHaveLength(5);
-      const [first] = scenario.variants;
-      expect(first.curveId).toBe(INTERACTION_CURVE_ID);
-      expect(first.duration).toBe(INTERACTION_DURATION);
-      expect(first.adopted).toBe(true);
-      expect(scenario.variants.slice(1).map((variant) => variant.curveId)).toEqual(TAIL_CURVES.map((curve) => curve.id));
-      expect(scenario.variants.slice(1).map((variant) => variant.duration)).toEqual(TAIL_CURVES.map((curve) => curve.duration));
     }
   });
 });

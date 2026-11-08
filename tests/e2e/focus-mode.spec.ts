@@ -11,7 +11,7 @@
 //     POST /api/blogs（core，纯接口、不经过编辑器 UI）。绝不 PATCH e2e-cat、不挪 SEED_BLOG。
 //   • 每个用例 afterEach 把 focusMode 复位 false（两个 project 共用一个库，
 //     残留 focus 会让后续 blog.spec 带着过滤跑）。
-//   • 该 spec 文件名序（f）在 admin-categories（a）/ blog（b）之后，
+//   • 该 spec 文件名序（f）在 admin-permissions（a）/ blog（b）之后，
 //     残留的被标记栏目 + 文章只影响自己（blog.spec 无全局计数断言，已核实）。
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -237,7 +237,7 @@ test.describe('专注模式（设置 → 各处生效）', () => {
     await expect(page.locator('.chat-main__empty')).toContainText('已开启专注模式');
   });
 
-  test('练手盘：入口整段不渲染；两页 403；四个接口 403', async ({ page }) => {
+  test('练手盘：入口整段不渲染；直连三个 URL 403（接口层 403 由 route 测试覆盖）', async ({ page }) => {
     await loginViaApi(page, SEED_USERS.core.username);
     await setFocus(page, true);
 
@@ -254,24 +254,10 @@ test.describe('专注模式（设置 → 各处生效）', () => {
     await page.goto('/fish/transfer');
     await expect(page.getByRole('link',{name:'转账记录',exact:true})).toBeVisible();
 
-    // 直连 URL：两页都原地 403（不是跳登录页 —— 他是登录着的）
+    // 直连 URL：三个页面都原地 403（不是跳登录页 —— 他是登录着的）
     for (const p of ['/fish/trade', '/fish/trade/stats', '/fish/trade/history']) {
       const res = await page.goto(p);
       expect(res?.status(), p).toBe(403);
-    }
-
-    // 接口直打：四个都 403，且文案是专注那句（只看状态码的话，被档位顺手挡住也会绿）
-    for (const [name, res] of [
-      ['buy', await page.request.post('/api/fish/trade/buy', { data: { symbol: 'BTCUSDT', amount: 10 } })],
-      ['sell', await page.request.post('/api/fish/trade/sell', { data: { position_id: 'x' } })],
-      ['quote', await page.request.get('/api/fish/trade/quote')],
-      [
-        'candles',
-        await page.request.get('/api/fish/trade/candles?symbol=BTCUSDT&interval=1h'),
-      ],
-    ] as const) {
-      expect(res.status(), `${name} 应 403 —— 漏一处就是专注模式没闸`).toBe(403);
-      expect(((await res.json()) as { message: string }).message, name).toBe(FOCUS_TITLE);
     }
   });
 

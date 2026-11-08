@@ -48,10 +48,9 @@ function compatCompile(source: string) {
 }
 
 describe('applyLegacyHtmlCompat', () => {
-  it('结果与原文等长（兼容改写的既有前提）', () => {
-    const source = '<font color="red" style="font-size:20px" class="x" id="y">正文</font>\n\n</br>';
-    expect(applyLegacyHtmlCompat(source).source).toHaveLength(source.length);
-  });
+  // 原「结果与原文等长（兼容改写的既有前提）」已删除（R4）：等长是早期区间映射/快照机制
+  // 的前提，那套机制已退出（R3-106），现在所有调用方只取 `compat.source` 重新编译，
+  // 没有任何产品行为依赖改写前后长度相等 —— 它只是在钉一个内部实现的中间结构。
 
   it('font / style / class / id 被剥掉，正文保留且可编译', () => {
     const { compat, result } = compatCompile(

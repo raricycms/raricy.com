@@ -213,14 +213,10 @@ test.describe('用户名片：输入区入口', () => {
 });
 
 test.describe('用户名片：接口契约', () => {
-  test('★ 按 id 匿名可达，按名字要 core+', async ({ page }) => {
-    // 全新 context（page.request 复用页面 cookie，这里要看未登录时的行为）
-    const anon = await page.request.get(`/api/users/${FRAMED.id}`);
-    expect(anon.status(), '公开主页那条路必须照旧匿名可达').toBe(200);
-
-    const byName = await page.request.get(`/api/users/${FRAMED.username}`);
-    expect(byName.status(), '名字到处都是、可以拿来枚举，所以要收档').toBe(403);
-
+  // 按 id 匿名可达 / 按名字要 core+ 的整套档位阶梯由 tests/route/read-auth.test.ts:154,161,166,173
+  // 逐条钉住（含「按名与按 id 载荷逐字相同」）；这里只留 route 断言不到的那一项：
+  // 用户载荷里**带着 frameUrl**（渲染层直接用服务层判定，不在前端重算）。
+  test('名片接口载荷带 frameUrl（框的判定已在服务层做完）', async ({ page }) => {
     await loginViaApi(page, FRAMED.username);
     const ok = await page.request.get(`/api/users/${FRAMED.username}`);
     expect(ok.status()).toBe(200);

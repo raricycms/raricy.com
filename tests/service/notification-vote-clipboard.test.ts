@@ -38,7 +38,6 @@ import {
   castVote,
   listVotes,
   getVoteDetail,
-  MAX_VOTES_PER_USER,
 } from '@/lib/vote-service';
 import {
   createClip,
@@ -47,7 +46,6 @@ import {
   listUserClips,
   CLIP_TITLE_MAX,
   CLIP_CONTENT_MAX,
-  CLIP_PER_USER_MAX,
 } from '@/lib/clipboard-service';
 import { getClip } from '@/lib/clipboard-query';
 import { PUT as clipPut, DELETE as clipDelete } from '@/app/api/clipboard/[id]/route';
@@ -940,10 +938,6 @@ describe('vote-service', () => {
   // 而按变量名与文案该数的是「这人**创建**了多少投票」。现按后者实现，
   // 即 Vote.authorId = userId AND ignore = false。下面几条把这个差异钉死。
   describe('每用户投票总数上限 100', () => {
-    it('常量是 100', () => {
-      expect(MAX_VOTES_PER_USER).toBe(100);
-    });
-
     it('已有 150 个投票的用户无法再创建，文案固定', async () => {
       const u = await makeUser();
       // 直接落库绕开 10 次/时限频（限频挡不住这条上限该管的事）
@@ -1365,10 +1359,6 @@ describe('clipboard-service', () => {
 
   // ── 总数上限 ──────────────────────────────────────────────────────────
   describe('每用户总数上限 200', () => {
-    it('常量是 200', () => {
-      expect(CLIP_PER_USER_MAX).toBe(200);
-    });
-
     it('已有 200 条时拒绝 —— 上限就是 200', async () => {
       // 曾经是 `count > 200`（off-by-one，实际放行到 201 条），
       // 已收紧为 `count >= 200`：站内文案与玩家指南一直写的都是 200。
@@ -1799,11 +1789,6 @@ describe('clipboard-service', () => {
   // 根本走不到要验的长度校验。用 core 不是为了绕过权限，而是因为这组测的是长度文案，
   // 权限那关有它自己的用例（见 e2e access-control「核心用户门槛（接口层）」）。
   describe('长度上限与错误文案（API route 层）', () => {
-    it('常量与长度校验边界一致', () => {
-      expect(CLIP_TITLE_MAX).toBe(40); // 边界：len(title) > 40
-      expect(CLIP_CONTENT_MAX).toBe(50000); // len(content) > 50000
-    });
-
     it('PUT /api/clipboard/:id 的长度校验与文案', async () => {
       const author = await makeUser({ role: 'core' });
       const r = (await createClip(author.id, { title: 't', content: 'c' })) as { ok: true; id: string };

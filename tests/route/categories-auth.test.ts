@@ -76,14 +76,6 @@ describe('GET /api/categories — core+ 档位', () => {
       ['甲栏目', '甲栏目', null],
       ['乙子栏', '甲栏目 > 乙子栏', parent.id],
     ]);
-  });
-
-  it('停用栏目不进清单（机器人照着发也不会撞上「选择的栏目不存在」）', async () => {
-    const u = await makeUser({ role: 'core' });
-    const off = await makeCategory({ isActive: false });
-    await login(u.id);
-
-    const body = (await (await getCategories()).json()) as { categories: { id: number }[] };
-    expect(body.categories.some((c) => c.id === off.id)).toBe(false);
+    // 「停用栏目不进清单」由 tests/service/blog-service.test.ts:301 的 listCategoryOptions 用例承担
   });
 });

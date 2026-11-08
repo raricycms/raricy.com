@@ -94,37 +94,27 @@ beforeEach(async () => {
 });
 
 describe('档位：未登录一律 401', () => {
-  it('GET 匿名 → 401', async () => {
-    expect((await getFrame()).status).toBe(401);
-  });
-
-  it('PUT 匿名 → 401，且不写库', async () => {
+  it('GET / PUT 匿名 → 401，且不写库', async () => {
     const u = await makeUser();
     await seedHolding(u.id, null);
+    expect((await getFrame()).status).toBe(401);
     expect((await putFrame({ frame_key: KEY })).status).toBe(401);
     expect((await equipCols(u.id))?.equippedFrameKey).toBeNull();
   });
 });
 
 describe('PUT —— 归属与到期', () => {
-  it('★ 没持有过 → 403，且库里一点没写', async () => {
-    const u = await makeUser();
-    await login(u.id);
-
-    const res = await putFrame({ frame_key: KEY });
-    expect(res.status).toBe(403);
-    const cols = await equipCols(u.id);
-    expect(cols?.equippedFrameKey).toBeNull();
-    expect(cols?.equippedFrameExpiresAt).toBeNull();
-  });
-
-  it('★ 持有但已过期 → 403，且库里一点没写', async () => {
-    const u = await makeUser();
-    await login(u.id);
-    await seedHolding(u.id, new Date(nowForDb().getTime() - 1000));
-
+  it('没持有过 / 持有但已过期 → 403，且库里一点没写', async () => {
+    const never = await makeUser();
+    await login(never.id);
     expect((await putFrame({ frame_key: KEY })).status).toBe(403);
-    expect((await equipCols(u.id))?.equippedFrameKey).toBeNull();
+    expect((await equipCols(never.id))?.equippedFrameKey).toBeNull();
+
+    const expired = await makeUser();
+    await login(expired.id);
+    await seedHolding(expired.id, new Date(nowForDb().getTime() - 1000));
+    expect((await putFrame({ frame_key: KEY })).status).toBe(403);
+    expect((await equipCols(expired.id))?.equippedFrameKey).toBeNull();
   });
 
   it('持有且未过期 → 200，两列被写，到期时刻 = 持有行的', async () => {
@@ -143,96 +133,59 @@ describe('PUT —— 归属与到期', () => {
     expect(cols?.equippedFrameExpiresAt?.getTime()).toBe(exp.getTime());
   });
 
-  it('未登记的 key → 400', async () => {
-    const u = await makeUser();
-    await login(u.id);
-    expect((await putFrame({ frame_key: 'no-such-frame' })).status).toBe(400);
-  });
-
-  it('frame_key 不是字符串 / null → 400（不静默当成卸下）', async () => {
+  it('★ 参数错误一律 400：未登记 key / 非字符串 / 缺 frame_key / 非 JSON', async () => {
     const u = await makeUser();
     await login(u.id);
     await seedHolding(u.id, null);
-
+    expect((await putFrame({ frame_key: 'no-such-frame' })).status).toBe(400);
     expect((await putFrame({ frame_key: 42 })).status).toBe(400);
     expect((await putFrame({ frame_key: {} })).status).toBe(400);
-    expect((await equipCols(u.id))?.equippedFrameKey).toBeNull();
-  });
 
-  it('★ 请求体里没有 frame_key 字段 → 400（`{}` 与 `{ frame_key: null }` 是两件事）', async () => {
-    const u = await makeUser();
-    await login(u.id);
-    await seedHolding(u.id, null);
-    // 先正常戴上
+    // `{}` 与 `{ frame_key: null }` 是两件事：先正常戴上，再传 {} 不能静默摘掉
     expect((await putFrame({ frame_key: KEY })).status).toBe(200);
-
-    // 空对象：若实现写成 `body.frame_key ?? null`，这会**静默地把框摘掉** ——
-    // 一个「忘了传字段」的客户端调用会丢掉用户的状态，而响应还是 200
     expect((await putFrame({})).status).toBe(400);
     expect((await equipCols(u.id))?.equippedFrameKey, '框不该被摘掉').toBe(KEY);
-  });
 
-  it('请求体不是 JSON → 400', async () => {
-    const u = await makeUser();
-    await login(u.id);
-    const res = await PUT(
+    const bad = await PUT(
       new Request('http://localhost/api/users/me/frame', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: '{ 这不是 JSON',
       })
     );
-    expect(res.status).toBe(400);
+    expect(bad.status).toBe(400);
   });
 });
 
 describe('PUT { frame_key: null } —— 卸下', () => {
-  it('戴着的时候卸下 → 两列清空', async () => {
-    const u = await makeUser();
-    await login(u.id);
-    await seedHolding(u.id, null);
-    await putFrame({ frame_key: KEY });
-
-    const res = await putFrame({ frame_key: null });
-    expect(res.status).toBe(200);
-    const cols = await equipCols(u.id);
-    expect(cols?.equippedFrameKey).toBeNull();
-    expect(cols?.equippedFrameExpiresAt).toBeNull();
-  });
-
-  it('★ 没戴着也成功（幂等）', async () => {
+  it('戴着 / 没戴着都 200（幂等）；白名单外的旧 key 也卸得掉', async () => {
     const u = await makeUser();
     await login(u.id);
     expect((await putFrame({ frame_key: null })).status).toBe(200);
-  });
 
-  it('★ 当前装备的是一个**白名单外的** key（已退役 / 已删）时，仍然卸得掉', async () => {
-    // 这是「退役 key 变成摘不掉的僵尸装备」那条风险的唯一出路。
-    // 直接写库构造这个状态（写路径本身不允许它出现）。
-    const u = await makeUser();
-    await login(u.id);
+    await seedHolding(u.id, null);
+    await putFrame({ frame_key: KEY });
+    expect((await putFrame({ frame_key: null })).status).toBe(200);
+    expect((await equipCols(u.id))?.equippedFrameKey).toBeNull();
+
+    // 写路径本身不允许出现白名单外的 key —— 直接写库构造，它必须仍能卸下
     await prisma.user.update({
       where: { id: u.id },
       data: { equippedFrameKey: 'a-key-that-no-longer-exists', equippedFrameExpiresAt: null },
     });
-
     expect((await putFrame({ frame_key: null })).status).toBe(200);
     expect((await equipCols(u.id))?.equippedFrameKey).toBeNull();
   });
 });
 
 describe('GET —— 下发的是判定后的结果', () => {
-  it('没持有 → 空列表、equipped null', async () => {
+  it('没持有 → 空列表；装备后服务端算好 url / expired / active', async () => {
     const u = await makeUser();
     await login(u.id);
-    const body = (await (await getFrame()).json()) as { frames: unknown[]; equipped: unknown };
-    expect(body.frames).toEqual([]);
-    expect(body.equipped).toBeNull();
-  });
+    const empty = (await (await getFrame()).json()) as { frames: unknown[]; equipped: unknown };
+    expect(empty.frames).toEqual([]);
+    expect(empty.equipped).toBeNull();
 
-  it('★ 服务端算好 url / expired / active —— 客户端一次都不判时间', async () => {
-    const u = await makeUser();
-    await login(u.id);
     await seedHolding(u.id, null);
     await putFrame({ frame_key: KEY });
 

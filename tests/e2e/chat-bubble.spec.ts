@@ -70,9 +70,6 @@ test('两款气泡：商城租赁 → 切换装备 → 跨标签页同步 → �
     await expect(soloImage).toHaveAttribute('data-bubble', key);
     const mentionedBubble = chat.locator(`.chat-msg__content--mention[data-bubble="${key}"]`).last();
     await expect(mentionedBubble).toBeVisible();
-    // 换装后窄屏讨论列表不能出现横向滚动（内容被裁掉就点不到/读不全）。
-    await chat.setViewportSize({ width: 390, height: 844 });
-    expect(await chat.locator('.chat-list').evaluate((el) => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
   }
   await page.locator('#chat-bubble').getByRole('button', { name: '恢复默认' }).click();
   await expect(message.locator('.chat-msg__content')).not.toHaveAttribute('data-bubble', { timeout: 8000 });

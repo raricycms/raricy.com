@@ -1,22 +1,22 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // pwa-metadata.test.ts —— Web App 可安装性的契约
 //
-// 钉四件事：manifest 的安装必需字段（standalone / 相对根路径 / 192+512 普通与蒙版档）、
-// 图标 src 真在盘上且 PNG 尺寸与声明一致、layout.tsx 没有禁用缩放（可访问性）、
-// 以及 AddToHomeScreenGuide 的独立窗口判定。
+// 钉三件事：manifest 的安装必需字段（standalone / 相对根路径 / 192+512 普通与蒙版档）、
+// 图标 src 真在盘上且 PNG 尺寸与声明一致、AddToHomeScreenGuide 的独立窗口判定；
+// 末尾再跑一次 `node scripts/make-pwa-icons.mjs --check`，确保「脚本 ↔ 已入库台账」的自检真的在跑
+// （Round4 移除了 pwa-assets.test.ts 的 sha256 逐文件比对，出图漂移由该脚本自检承接）。
 //
-// 主题色、素材 sha256 台账、安全区逐像素留白属美术细节与出图规范：改图调色不该让单测红，
-// 交给出图流程与页面检查。layout.tsx 不能直接 import（拖 SCSS / prisma），只能扫源码文本。
+// 主题色、逐像素留白属美术细节：改图调色不该让单测红，交给出图流程与页面检查。
 // ─────────────────────────────────────────────────────────────────────────────
 
 import fs from 'node:fs';
 import path from 'node:path';
+import { execFileSync } from 'node:child_process';
 import { describe, expect, it } from 'vitest';
 import manifest from '@/app/manifest';
 import { detectStandalone } from '@/app/components/AddToHomeScreenGuide';
 
 const ROOT = path.resolve(import.meta.dirname, '../..');
-const LAYOUT = path.join(ROOT, 'src', 'app', 'layout.tsx');
 
 const PNG_SIG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 
@@ -61,19 +61,6 @@ describe('Web App 清单（app/manifest.ts）', () => {
   });
 });
 
-describe('layout.tsx 的 viewport（可访问性）', () => {
-  const src = fs.readFileSync(LAYOUT, 'utf8');
-
-  it('没有禁用缩放（viewport 对象里不设 maximumScale / userScalable）', () => {
-    // 只查 viewport 对象体，不查全文件 —— 注释里正大光明写了「不设 maximumScale /
-    // userScalable」来解释这个决定，整文件扫描会被那句注释误伤。
-    const block = src.match(/export const viewport: Viewport\s*=\s*\{[\s\S]*?\n\};/)?.[0] ?? '';
-    expect(block, '没找到 viewport 对象字面量').not.toBe('');
-    expect(block).not.toMatch(/maximumScale/);
-    expect(block).not.toMatch(/userScalable/);
-  });
-});
-
 describe('AddToHomeScreenGuide 的独立窗口判定', () => {
   it('iOS 的 navigator.standalone 为 true → 独立窗口', () => {
     expect(detectStandalone({ navigator: { standalone: true } })).toBe(true);
@@ -93,5 +80,31 @@ describe('AddToHomeScreenGuide 的独立窗口判定', () => {
       },
     };
     expect(detectStandalone(throwing)).toBe(false);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 出图脚本自检：`--check` 是「生成脚本 ↔ 已入库图标/台账」唯一的自动比对入口。
+// Round4 删掉了 pwa-assets.test.ts（逐文件 sha256 台账），这里只保证那道自检真的在跑；
+// 它退出码非 0 时把 stderr 原样带进失败信息（否则只有一句 "Command failed"）。
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('make-pwa-icons --check', () => {
+  it('退出码 0，且真的打印了「台账一致」的结论（不是空转）', () => {
+    let stdout: string;
+    try {
+      stdout = execFileSync(process.execPath, [path.join(ROOT, 'scripts', 'make-pwa-icons.mjs'), '--check'], {
+        cwd: ROOT,
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'pipe'],
+      });
+    } catch (error) {
+      const e = error as { status?: number; stderr?: string; stdout?: string };
+      throw new Error(
+        `make-pwa-icons --check 失败（exit ${e.status ?? '?'}）：\n${e.stderr || e.stdout || (error as Error).message}\n` +
+          '修复：node scripts/make-pwa-icons.mjs，并把 public/static/img/pwa/ 的改动一起提交'
+      );
+    }
+    expect(stdout).toContain('台账一致');
   });
 });

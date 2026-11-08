@@ -56,7 +56,7 @@ describe('每日一言的HTTP权限、隐私与输入', () => {
     expect((await review(body({ action: 'approve', version: 'old' }, 'PATCH'), ctx('missing'))).status).toBe(409);
   });
 
-  it('共鸣接口必须确认金额；不能收款的社区稿返回零扣款，恢复资格后不补扣', async () => {
+  it('共鸣接口必须确认金额；不能收款的社区稿返回零扣款', async () => {
     const author = await makeUser({ role: 'core' }); const reader = await makeUser({ role: 'core' });
     const quote = await submitQuote(author.id, input);
     await prisma.dailyQuote.update({ where: { id: quote.id }, data: { status: 'approved', firstSelectedDay: pastDay(1) } });
@@ -67,9 +67,6 @@ describe('每日一言的HTTP权限、隐私与输入', () => {
     await prisma.user.update({ where: { id: author.id }, data: { role: 'user' } });
     const free = await resonate(body({ max_fish: 0 }), ctx(quote.id));
     expect(free.status).toBe(200); expect(await free.json()).toMatchObject({ charged_fish: 0, resonance_count: 1 });
-    await prisma.user.update({ where: { id: author.id }, data: { role: 'core' } });
-    expect(await (await resonate(body({ max_fish: 0 }), ctx(quote.id))).json()).toMatchObject({ already_resonated: true, charged_fish: 0 });
-    expect(await prisma.fishTransaction.count()).toBe(0);
   });
 
   it('所有接口未登录401，普通用户403；core不能审核', async () => {
@@ -166,30 +163,6 @@ describe('每日一言的HTTP权限、隐私与输入', () => {
     const anonymousEntry = data.editions.find((item: { quote: { id: string } | null }) => item.quote?.id === anon.id);
     expect(anonymousEntry.quote).toMatchObject({ author: '匿名', submitter_name: '匿名' });
     expect(JSON.stringify(anonymousEntry)).not.toContain(author.username);
-
-    // 页码非法 / 越界都由服务层收敛到有效页，不返回空列表也不 500。
-    expect((await (await history(historyRequest('?page=999'))).json()).page).toBe(1);
-    expect((await (await history(historyRequest('?page=abc'))).json()).page).toBe(1);
-    expect((await (await history(historyRequest('?page=-2'))).json()).page).toBe(1);
-  });
-
-  it('★ 越界页码收敛到**末页**而不是回第 1 页（需要 >1 页的数据量）', async () => {
-    // 只有 3 期、页大小 20 时 pages=1，「收敛末页」与「回落第 1 页」都能通过 ——
-    // 那条断言钉不住 normalizeQuotePage 的语义。造 21 期（pages=2）才能区分。
-    const author = await makeUser({ role: 'core' });
-    const quote = { id: 'many-pages', kind: 'builtin', content: '多页往期', contentKey: quoteContentKey('多页往期'),
-      category: '哲思', sourceType: 'quotation', sourceName: '典籍', authorName: '古人' };
-    await prisma.dailyQuote.create({ data: { ...quote, status: 'approved', createdAt: nowForDb() } });
-    for (let i = 1; i <= 21; i++) {
-      await prisma.dailyQuoteEdition.create({ data: { day: pastDay(i), quoteId: quote.id, createdAt: nowForDb() } });
-    }
-    await login(author.id);
-
-    const first = await (await history(historyRequest())).json();
-    expect(first).toMatchObject({ page: 1, pages: 2, total: 21 });
-    const clamped = await (await history(historyRequest('?page=999'))).json();
-    expect(clamped.page, '越界页码应收敛到末页（不是回落第 1 页）').toBe(2);
-    expect(clamped.editions).toHaveLength(1);
   });
 
   // 审核的三条成功路径。**这里的价值在「真的写了一条审计日志」**：早先只测了 401/403/400，

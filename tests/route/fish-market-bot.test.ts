@@ -2,8 +2,10 @@
 //
 // 【这是站外机器人的**对外契约**】鉴权分叉（会话 / 只读凭据 / body 凭据）、限频、
 // 错误码、以及**幂等键的语义**（同键重放 / 同键换参数 / 无键即新交易）都在这里钉着。
-// 站外脚本遇到超时之后唯一的自救手段就是「用同一个键重发」，所以那几条断言是契约
-// 本身、不是实现细节 —— 改它们等于改对外行为。
+// 站外脚本遇到超时之后唯一的自救手段就是「用同一个键重发」，所以那条重放断言是契约
+// 本身、不是实现细节 —— 改它等于改对外行为。换参数 409 / 无键即新交易 / 余额不足
+// 等**业务语义**由 tests/service/fish-market-service.test.ts 完整承担，这里只留一次
+// 重放（HTTP 200 + duplicated + 原单号回显）；同一条规则不再复述。
 //
 // 【为什么必须钉住「两处共用同一份校验」】/api/auth/login 与这里的市场接口都是
 // 「未认证即可让服务端跑一次 scrypt」的入口。若哪天有人把限频各抄一份、只收紧一边，
@@ -113,32 +115,6 @@ afterEach(() => {
 // ── 无会话：凭据随请求走 ────────────────────────────────────────────────────
 
 describe('无状态转账（无 cookie，body 带 username/password）', () => {
-  it('一次发包完成转账：双方余额变化 + 两条流水', async () => {
-    const sender = await makeLoginableUser({ driedFish: 100 });
-    const recipient = await makeUser({ driedFish: 0 });
-
-    const res = await transferReq({
-      username: sender.username,
-      password: PASSWORD,
-      to_username: recipient.username,
-      amount: 7.5,
-      note: '机器人转账',
-    });
-
-    expect(res.status).toBe(200);
-    const json = await res.json();
-    expect(json.code).toBe(200);
-    expect(json.amount).toBe(7.5);
-    expect(json.balance).toBe(92.5);
-    expect(json.recipient).toEqual({ id: recipient.id, username: recipient.username });
-
-    expect(await balanceOf(sender.id)).toBe(92.5);
-    expect(await balanceOf(recipient.id)).toBe(7.5);
-    expect(await txCount()).toBe(2);
-
-    await expectLedgerConsistent('无状态转账（一次发包）后');
-  });
-
   it('★ 响应带 transfer_id，且与**两条**流水的单号一致（付款方与收款方对的是同一笔）', async () => {
     const sender = await makeLoginableUser({ driedFish: 100 });
     const recipient = await makeUser({ driedFish: 0 });
@@ -151,6 +127,9 @@ describe('无状态转账（无 cookie，body 带 username/password）', () => {
     });
     const json = await res.json();
 
+    expect(res.status).toBe(200);
+    expect(json.amount).toBe(5);
+    expect(json.balance).toBe(95);
     expect(json.transfer_id).toMatch(/^[0-9a-f]{16}$/);
     const rows = await transferRows();
     expect(rows).toHaveLength(2);
@@ -203,51 +182,6 @@ describe('无状态转账（无 cookie，body 带 username/password）', () => {
     expect(ledger[0].status, '与业务写入同事务提交 ⇒ 提交成功即已生效').toBe('synced');
 
     await expectLedgerConsistent('带幂等键重发后（只成交一笔）');
-  });
-
-  it('★ 同一把键换成另一个金额 → 409，不静默改单、钱一分不动', async () => {
-    const sender = await makeLoginableUser({ driedFish: 100 });
-    const recipient = await makeUser({ driedFish: 0 });
-    const base = {
-      username: sender.username,
-      password: PASSWORD,
-      to_username: recipient.username,
-      idempotency_key: 'wd-20260920-0002',
-    };
-
-    expect((await transferReq({ ...base, amount: 5 })).status).toBe(200);
-    const res = await transferReq({ ...base, amount: 6 });
-
-    expect(res.status).toBe(409);
-    expect(await balanceOf(sender.id), '只有第一笔成交').toBe(95);
-    expect(await balanceOf(recipient.id)).toBe(5);
-    expect(await txCount()).toBe(2);
-    expect(await prisma.accountSyncLedger.count()).toBe(1);
-
-    await expectLedgerConsistent('同键换金额被 409 拒后');
-  });
-
-  it('不带幂等键 → 每次都是一笔新交易（随机键，一行账本都不写）', async () => {
-    // 「重试 = 再转一笔」：不给键就没有任何去重，服务端每次生成一个随机键
-    //（判据：键是确定的才登记）。做提现/对账的机器人必须自己带上键。
-    const sender = await makeLoginableUser({ driedFish: 100 });
-    const recipient = await makeUser({ driedFish: 0 });
-    const body = {
-      username: sender.username,
-      password: PASSWORD,
-      to_username: recipient.username,
-      amount: 5,
-    };
-
-    expect((await transferReq(body)).status).toBe(200);
-    expect((await transferReq(body)).status).toBe(200);
-
-    expect(await balanceOf(sender.id)).toBe(90);
-    expect(await balanceOf(recipient.id)).toBe(10);
-    expect(await txCount(), '两笔 = 四条腿').toBe(4);
-    expect(await prisma.accountSyncLedger.count(), '随机键不登记').toBe(0);
-
-    await expectLedgerConsistent('两笔无键转账后');
   });
 
   it('响应体里绝不回显密码', async () => {
@@ -353,23 +287,6 @@ describe('无状态转账（无 cookie，body 带 username/password）', () => {
     expect(await balanceOf(sender.id)).toBe(100);
 
     await expectLedgerConsistent('被禁言账号的转账被 403 拒后');
-  });
-
-  it('余额不足 → 400（凭据有效也不能透支）', async () => {
-    const sender = await makeLoginableUser({ driedFish: 1 });
-    const recipient = await makeUser({ driedFish: 0 });
-
-    const res = await transferReq({
-      username: sender.username,
-      password: PASSWORD,
-      to_username: recipient.username,
-      amount: 5,
-    });
-
-    expect(res.status).toBe(400);
-    expect(await balanceOf(sender.id)).toBe(1);
-
-    await expectLedgerConsistent('余额不足被 400 拒后');
   });
 });
 
@@ -703,27 +620,6 @@ describe('POST /api/fish/market/transactions', () => {
     await expectLedgerConsistent('流水接口读取的这笔转账之后');
   });
 
-  it('type 筛选与网页同口径（transfer_all 覆盖转出与转入）', async () => {
-    const sender = await makeLoginableUser({ driedFish: 10 });
-    const recipient = await makeLoginableUser({ driedFish: 0 }); // 收款人也要能凭据登录
-    await transferReq({
-      username: sender.username,
-      password: PASSWORD,
-      to_username: recipient.username,
-      amount: 2,
-    });
-
-    const res = await transactionsApi(
-      makeReq('/api/fish/market/transactions', {
-        username: recipient.username,
-        password: PASSWORD,
-        type: 'transfer_all',
-      })
-    );
-
-    expect((await res.json()).transactions).toHaveLength(1);
-  });
-
   it('游标模式：since_id → 升序 + next_cursor + has_more', async () => {
     const sender = await makeLoginableUser({ driedFish: 10 });
     const recipient = await makeUser({ driedFish: 0 });
@@ -898,8 +794,6 @@ describe('POST /api/fish/market/pay（收银台）', () => {
     expect(res.status, JSON.stringify(json)).toBe(200);
     expect(json.amount).toBe(2.5);
     expect(json.balance).toBe(7.5);
-    expect(await balanceOf(recipient.id)).toBe(2.5);
-    expect(await txCount()).toBe(2);
     // 收银台的成功面板拿它当回执，商户按同一个值认这一笔
     expect(json.transfer_id).toMatch(/^[0-9a-f]{16}$/);
 
@@ -935,25 +829,6 @@ describe('POST /api/fish/market/pay（收银台）', () => {
     expect(await txCount()).toBe(2);
 
     await expectLedgerConsistent('收银台同单重付后（只扣一次）');
-  });
-
-  it('★ 同一把键换成另一个金额 → 409（同键换参数不静默改单）', async () => {
-    const sender = await makeLoginableUser({ driedFish: 10 });
-    const recipient = await makeUser({ driedFish: 0 });
-    session.token = await createSessionToken({ uid: sender.id, sv: 0 });
-    const base = {
-      to_user_id: recipient.id,
-      password: PASSWORD,
-      idempotency_key: 'pay-def456def456def4',
-    };
-
-    expect((await payReq({ ...base, amount: 2.5 })).status).toBe(200);
-    const res = await payReq({ ...base, amount: 3 });
-
-    expect(res.status).toBe(409);
-    expect(await balanceOf(sender.id)).toBe(7.5);
-
-    await expectLedgerConsistent('收银台同键换金额被 409 拒后');
   });
 
   it('被禁言 → 403', async () => {

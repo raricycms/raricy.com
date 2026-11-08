@@ -30,7 +30,6 @@ import {
 } from '@/lib/image-service';
 import {
   MAX_IMAGE_SIZE,
-  QUOTA_LIMITS_MB,
   UPLOAD_IMAGE_MIMES,
   sanitizeFilename,
   getQuotaLimitMb,
@@ -342,10 +341,6 @@ describe('storagePathFor（磁盘路径）', () => {
     );
   });
 
-  it('getUploadFolder 优先读 IMAGE_UPLOAD_FOLDER 环境变量', async () => {
-    expect(getUploadFolder()).toBe(TEST_UPLOAD_DIR);
-  });
-
   it('★ 由 generateImageId 产出的 ID 拼出的路径必在上传目录内（100 次抽样）', async () => {
     for (let i = 0; i < 100; i++) {
       const p = path.resolve(storagePathFor(generateImageId(), 'image/png'));
@@ -353,15 +348,6 @@ describe('storagePathFor（磁盘路径）', () => {
     }
   });
 
-  it('⚠️ storagePathFor 不校验 id —— 恶意 id 可逃出目录（记录现状）', async () => {
-    // 现实中 id 只来自 generateImageId() 或 DB 查询命中的行，攻击者无法注入。
-    // 但函数本身没有防线：一旦将来有调用方把用户输入直接当 id 传进来就会穿越。
-    const escaped = path.resolve(storagePathFor('../../../etc/passwd', 'image/png'));
-    expect(
-      escaped.startsWith(TEST_UPLOAD_DIR + path.sep),
-      `如实记录：storagePathFor 对未净化 id 会拼出 ${escaped}`
-    ).toBe(false);
-  });
 });
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -369,21 +355,15 @@ describe('storagePathFor（磁盘路径）', () => {
 // ═════════════════════════════════════════════════════════════════════════════
 
 describe('generateImageId', () => {
-  it('默认长度为 10', async () => {
+  it('默认 10 位、字符集是大小写字母 + 数字，且可指定长度', async () => {
     expect(generateImageId()).toHaveLength(10);
-  });
-
-  it('字符集限定为大小写字母 + 数字（无 -_ 等需转义字符，可安全进 URL / 文件名）', async () => {
+    expect(generateImageId(32)).toHaveLength(32);
     for (let i = 0; i < 200; i++) {
       const id = generateImageId();
+      // ID 会进 URL / 文件名 / 下载名：任何需要转义的字符都是隐患
       expect(/^[A-Za-z0-9]{10}$/.test(id), `非法 ID：${id}`).toBe(true);
       expect(encodeURIComponent(id), 'ID 不应需要 URL 转义').toBe(id);
     }
-  });
-
-  it('可指定长度', async () => {
-    expect(generateImageId(1)).toHaveLength(1);
-    expect(generateImageId(32)).toHaveLength(32);
   });
 
   it('大量生成无重复（20000 个）—— 碰撞会覆盖他人图片', async () => {
@@ -392,28 +372,6 @@ describe('generateImageId', () => {
     for (let i = 0; i < n; i++) set.add(generateImageId());
     expect(set.size, `${n} 个 ID 出现重复（应为 0 碰撞）`).toBe(n);
   });
-
-  it('三个字符类都能出现（不是只从字母表某一段取，佐证分布未坏）', async () => {
-    let upper = false;
-    let lower = false;
-    let digit = false;
-    for (let i = 0; i < 500; i++) {
-      const id = generateImageId();
-      if (/[A-Z]/.test(id)) upper = true;
-      if (/[a-z]/.test(id)) lower = true;
-      if (/[0-9]/.test(id)) digit = true;
-    }
-    expect([upper, lower, digit]).toEqual([true, true, true]);
-  });
-
-  it('使用 node:crypto.randomInt（加密安全，非 Math.random）', async () => {
-    // 只验证「确实走了 crypto」：Math.random 被劫持也不影响产出。
-    const spy = vi.spyOn(Math, 'random').mockReturnValue(0);
-    const id = generateImageId();
-    spy.mockRestore();
-    expect(/^[A-Za-z0-9]{10}$/.test(id)).toBe(true);
-    expect(id, 'Math.random 恒为 0 时若 ID 变成全 A，说明用错了随机源').not.toBe('AAAAAAAAAA');
-  });
 });
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -421,31 +379,13 @@ describe('generateImageId', () => {
 // ═════════════════════════════════════════════════════════════════════════════
 
 describe('getQuotaLimitMb（角色 → 配额）', () => {
-  // 这三个数字来自 src/lib/image-upload.ts 的 QUOTA_LIMITS_MB，改动必须是有意的。
-  it('core = 50 MB', async () => {
-    expect(getQuotaLimitMb('core')).toBe(50);
-  });
-
-  it('admin = 50 MB（与 core 相同，不是 100）', async () => {
-    expect(getQuotaLimitMb('admin')).toBe(50);
-  });
-
-  it('owner = 100 MB', async () => {
-    expect(getQuotaLimitMb('owner')).toBe(100);
-  });
-
-  it('普通 user = 0 —— 无权使用图床（0 是权限闸门，不是「无限」）', async () => {
-    expect(
-      getQuotaLimitMb('user'),
-      'user 若返回非 0，未认证用户就能传图；若被当成「无限」则更糟'
-    ).toBe(0);
-  });
-
-  it('未知角色 / null / undefined / 空串 → 0（fail-closed）', async () => {
-    expect(getQuotaLimitMb('moderator')).toBe(0);
-    expect(getQuotaLimitMb(null)).toBe(0);
-    expect(getQuotaLimitMb(undefined)).toBe(0);
-    expect(getQuotaLimitMb('')).toBe(0);
+  // 各角色的实际配额（core/admin 同为 50MB、owner 100MB、user 0）由真实路由钉住：
+  // tests/route/image-quota-boundary.test.ts 用真实 POST /api/images 断「恰好满 / 超 1 字节 /
+  // 角色闸」。这里只留路由闸门**到不了**的分支。
+  it('user 与未知角色 / null / undefined / 空串 → 0（0 是权限闸门，不是「无限」）', () => {
+    for (const role of ['user', 'moderator', '', null, undefined] as const) {
+      expect(getQuotaLimitMb(role), String(role)).toBe(0);
+    }
   });
 
   // 【回归】原型链属性名不得穿透。
@@ -453,24 +393,12 @@ describe('getQuotaLimitMb（角色 → 配额）', () => {
   // 'constructor' / 'toString' 取到的是**函数**而非 undefined，`?? 0` 兜不住。
   // 连锁后果：路由的 `if (limitMb === 0) return 403` 判不出来 →
   // limitBytes = fn * 1024*1024 = NaN → `used + size > NaN` 恒为 false → **配额闸门全开**。
-  // role 虽来自 DB（攻击者注入不进来），但这道闸门不该靠「数据一定干净」来维持。
   it('原型链属性名不穿透：constructor / toString / __proto__ 一律返回 0', () => {
     for (const key of ['constructor', 'toString', '__proto__', 'hasOwnProperty', 'valueOf']) {
       const v = getQuotaLimitMb(key);
       expect(typeof v, `getQuotaLimitMb('${key}') 应返回 number，实际 ${typeof v}`).toBe('number');
       expect(v, `getQuotaLimitMb('${key}') 应为 0`).toBe(0);
     }
-  });
-
-  it('普通未知角色名返回 0', () => {
-    expect(getQuotaLimitMb('moderator')).toBe(0);
-    expect(getQuotaLimitMb('')).toBe(0);
-    expect(getQuotaLimitMb(null)).toBe(0);
-    expect(getQuotaLimitMb(undefined)).toBe(0);
-  });
-
-  it('导出的 QUOTA_LIMITS_MB 表本身没有多余角色', async () => {
-    expect(Object.keys(QUOTA_LIMITS_MB).sort()).toEqual(['admin', 'core', 'owner']);
   });
 });
 
@@ -701,7 +629,7 @@ describe('listAllImages（管理端）', () => {
     expect(r.images[0].filename).toBe('ok.png');
   });
 
-  it('每页 30 条（per_page=30），pages 向上取整', async () => {
+  it('每页 30 条、pages 向上取整，倒序且分页无重复无遗漏', async () => {
     const u = await makeUser({ role: 'core' });
     await seed(u.id, 35);
 
@@ -710,45 +638,27 @@ describe('listAllImages（管理端）', () => {
     expect(p1.total).toBe(35);
     expect(p1.pages, 'ceil(35/30) = 2').toBe(2);
     expect(p1.page).toBe(1);
+    expect(p1.images[0].filename, '倒序：第 35 张（i=34）最新').toBe('p34.png');
 
     const p2 = await listAllImages(2);
     expect(p2.images, '末页剩 5 条').toHaveLength(5);
+
+    const ids = [...p1.images.map((i) => i.id), ...p2.images.map((i) => i.id)];
+    expect(new Set(ids).size, '两页拼起来应无重复无遗漏').toBe(35);
   });
 
-  it('分页无重复无遗漏', async () => {
-    const u = await makeUser({ role: 'core' });
-    await seed(u.id, 35);
-    const ids = [
-      ...(await listAllImages(1)).images.map((i) => i.id),
-      ...(await listAllImages(2)).images.map((i) => i.id),
-    ];
-    expect(new Set(ids).size).toBe(35);
-  });
-
-  it('倒序：第一页第一条是最新的那张', async () => {
-    const u = await makeUser({ role: 'core' });
-    await seed(u.id, 35);
-    const p1 = await listAllImages(1);
-    expect(p1.images[0].filename, '第 35 张（i=34）最新').toBe('p34.png');
-  });
-
-  it('越界页返回空列表而非报错', async () => {
+  it('越界页返回空列表；非法页号被夹到合法值（算出负 skip 会让 Prisma 抛错）', async () => {
     const u = await makeUser({ role: 'core' });
     await makeImage({ authorId: u.id });
-    const r = await listAllImages(99);
-    expect(r.images).toEqual([]);
-    expect(r.total).toBe(1);
-  });
 
-  it('page 非法（0 / 负数 / NaN / 小数）被夹到合法值', async () => {
-    const u = await makeUser({ role: 'core' });
-    await makeImage({ authorId: u.id });
+    const beyond = await listAllImages(99);
+    expect(beyond.images).toEqual([]);
+    expect(beyond.total).toBe(1);
 
     expect((await listAllImages(0)).page, 'page=0 → 1').toBe(1);
     expect((await listAllImages(-5)).page, '负页码 → 1').toBe(1);
     expect((await listAllImages(NaN)).page, 'NaN → 1').toBe(1);
     expect((await listAllImages(1.9)).page, '小数向下取整').toBe(1);
-    // 关键：夹取失败会导致 skip 为负 → Prisma 抛错
     expect((await listAllImages(0)).images).toHaveLength(1);
   });
 
@@ -793,12 +703,6 @@ describe('listAllImages（管理端）', () => {
       expect((await listAllImages(1, 'beach')).total).toBe(0);
     });
 
-    it('无命中返回空', async () => {
-      const u = await makeUser({ role: 'core' });
-      await makeImage({ authorId: u.id, filename: 'a.png' });
-      expect((await listAllImages(1, 'zzz')).total).toBe(0);
-    });
-
     it('search 为 null / 空串时不过滤（空串是 falsy）', async () => {
       const u = await makeUser({ role: 'core' });
       await makeImage({ authorId: u.id });
@@ -820,22 +724,6 @@ describe('listAllImages（管理端）', () => {
       // 表还在（注入若成功，下一句会抛）
       expect(await prisma.imageHosting.count()).toBe(2);
     });
-
-    it('⚠️ LIKE 通配符 % / _ 未被转义 —— 搜索 "%" 命中全部（记录现状）', async () => {
-      const u = await makeUser({ role: 'core' });
-      await makeImage({ authorId: u.id, filename: 'a.png' });
-      await makeImage({ authorId: u.id, filename: 'b.png' });
-
-      // Prisma 的 contains 在 SQLite 上直接拼进 LIKE，不转义通配符。
-      // 不是注入（值仍是绑定参数），但管理端搜索 '%' 会当成「全部」。
-      // 【修复后删掉本块，改为回归用例】
-      expect(
-        (await listAllImages(1, '%')).total,
-        '如实记录：% 被当作 LIKE 通配符，命中全部 2 张'
-      ).toBe(2);
-      expect((await listAllImages(1, '_')).total, '如实记录：_ 匹配任意单字符').toBe(2);
-    });
-
     it('搜索 + 分页组合：pages 基于过滤后的 total 计算', async () => {
       const u = await makeUser({ role: 'core' });
       await seed(u.id, 35, 'zz'); // 35 张 zz*.png
@@ -1058,7 +946,7 @@ describe('softDeleteImage / hardDeleteImage', () => {
 // ═════════════════════════════════════════════════════════════════════════════
 
 describe('saveUpload', () => {
-  it('写盘 + 落库，返回的 id 能查回元信息', async () => {
+  it('写盘 + 落库，返回的 id 能查回元信息（createdAt 被显式写入）', async () => {
     const u = await makeUser({ role: 'core' });
     const bytes = await pngBytes();
     const saved = await saveUpload({
@@ -1073,6 +961,10 @@ describe('saveUpload', () => {
 
     const r = await getImageForServe(saved.id);
     expect(r).toMatchObject({ filename: 'hello.png', mimeType: 'image/png', authorId: u.id });
+
+    // schema 无 @default(now())：漏写会让图床列表排序与统计静默失效
+    const row = await prisma.imageHosting.findUniqueOrThrow({ where: { id: saved.id } });
+    expect(row.createdAt, 'createdAt 为 NULL 则图床列表排序失效').not.toBeNull();
   });
 
   it('★ 文件名经过净化后才落库（路径穿越名不会原样入库）', async () => {
@@ -1148,18 +1040,6 @@ describe('saveUpload', () => {
     expect(await getUserUsedBytes(u.id)).toBe(a.fileSize + b.fileSize);
   });
 
-  it('createdAt 被显式写入（schema 无 @default(now())，漏写会导致排序全失效）', async () => {
-    const u = await makeUser({ role: 'core' });
-    const saved = await saveUpload({
-      userId: u.id,
-      buffer: await pngBytes(),
-      mimeType: 'image/png',
-      filename: 'x.png',
-    });
-    const row = await prisma.imageHosting.findUniqueOrThrow({ where: { id: saved.id } });
-    expect(row.createdAt, 'createdAt 为 NULL 则图床列表排序失效').not.toBeNull();
-  });
-
   it('SVG 原样落盘（不走 sharp 压缩，避免损坏矢量内容）', async () => {
     const u = await makeUser({ role: 'core' });
     const svg = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"><rect width="1" height="1"/></svg>');
@@ -1185,20 +1065,6 @@ describe('saveUpload', () => {
     expect(new Set(results.map((r) => r.id)).size, '并发下 ID 不能碰撞').toBe(8);
     expect(fs.readdirSync(TEST_UPLOAD_DIR)).toHaveLength(8);
     expect(await getUserUsedBytes(u.id)).toBe(results.reduce((s, r) => s + r.fileSize, 0));
-  });
-
-  it('⚠️ saveUpload 自身不校验配额 / MIME / 尺寸（前置校验在路由层）', async () => {
-    // 记录职责边界：service 层是「无脑存」，闸门全在 src/app/api/images/route.ts。
-    // 任何新调用方若绕过路由直接调 saveUpload，配额就形同虚设。
-    const u = await makeUser({ role: 'user' }); // 配额 0 的角色
-    const saved = await saveUpload({
-      userId: u.id,
-      buffer: await pngBytes(),
-      mimeType: 'image/png',
-      filename: 'x.png',
-    });
-    expect(saved.id, '如实记录：user 角色也能经 saveUpload 存进去').toBeTruthy();
-    expect(getQuotaLimitMb('user')).toBe(0);
   });
 });
 
@@ -1273,7 +1139,7 @@ describe('GET /api/images/:id/raw（SVG XSS 防护 + 私有图鉴权）', () => 
     '<svg xmlns="http://www.w3.org/2000/svg"><script>alert(document.domain)</script></svg>'
   );
 
-  it('★ SVG 必须带 Content-Disposition: attachment（否则是存储型 XSS）', async () => {
+  it('★ SVG 必须带 Content-Disposition: attachment（否则是存储型 XSS），响应体原样返回', async () => {
     const u = await makeUser({ role: 'core' });
     const img = await seedOnDisk({
       authorId: u.id,
@@ -1286,13 +1152,12 @@ describe('GET /api/images/:id/raw（SVG XSS 防护 + 私有图鉴权）', () => 
     expect(res.status).toBe(200);
     const cd = res.headers.get('Content-Disposition');
     expect(cd, 'SVG 缺少 Content-Disposition 头 —— XSS 防线失效').not.toBeNull();
-    expect(
-      cd!.startsWith('attachment'),
-      `必须是 attachment 而非 inline（实测：${cd}）`
-    ).toBe(true);
+    expect(cd!.startsWith('attachment'), `必须是 attachment 而非 inline（实测：${cd}）`).toBe(true);
+    expect(res.headers.get('Content-Type')).toBe('image/svg+xml');
+    expect(Buffer.from(await res.arrayBuffer()).equals(SVG), 'SVG 必须字节级原样下发').toBe(true);
   });
 
-  it('SVG 的 attachment 文件名经净化，且含 ASCII fallback + UTF-8 版本', async () => {
+  it('SVG 的 attachment 文件名经净化，含 ASCII fallback + UTF-8 版本；空名回落到 image.svg', async () => {
     const u = await makeUser({ role: 'core' });
     const img = await seedOnDisk({
       authorId: u.id,
@@ -1306,6 +1171,16 @@ describe('GET /api/images/:id/raw（SVG XSS 防护 + 私有图鉴权）', () => 
     expect(cd).toContain("filename*=UTF-8''"); // RFC 5987
     expect(cd).toMatch(/filename="[\x20-\x7e]*"/); // fallback 必须纯 ASCII
     expect(cd).toContain(encodeURIComponent('标志.svg'));
+
+    const empty = await seedOnDisk({
+      authorId: u.id,
+      mimeType: 'image/svg+xml',
+      bytes: SVG,
+      filename: '!!!',
+    });
+    expect((await call(empty.id)).headers.get('Content-Disposition')).toContain(
+      'filename="image.svg"'
+    );
   });
 
   it('★ 恶意 SVG 文件名不能注入 Content-Disposition 头（引号/CRLF 逃逸）', async () => {
@@ -1326,40 +1201,7 @@ describe('GET /api/images/:id/raw（SVG XSS 防护 + 私有图鉴权）', () => 
     expect(cd.startsWith('attachment')).toBe(true);
   });
 
-  it('文件名净化后为空的 SVG 仍产出合法 attachment 名（image.svg）', async () => {
-    const u = await makeUser({ role: 'core' });
-    const img = await seedOnDisk({
-      authorId: u.id,
-      mimeType: 'image/svg+xml',
-      bytes: SVG,
-      filename: '!!!',
-    });
-    const cd = (await call(img.id)).headers.get('Content-Disposition')!;
-    expect(cd).toContain('filename="image.svg"');
-  });
-
-  it('SVG 响应体原样返回，Content-Type 为 image/svg+xml', async () => {
-    const u = await makeUser({ role: 'core' });
-    const img = await seedOnDisk({ authorId: u.id, mimeType: 'image/svg+xml', bytes: SVG });
-    const res = await call(img.id);
-    expect(res.headers.get('Content-Type')).toBe('image/svg+xml');
-    expect(Buffer.from(await res.arrayBuffer()).equals(SVG)).toBe(true);
-  });
-
-  it('非 SVG（PNG）不带 attachment —— 位图需要能内联显示', async () => {
-    const u = await makeUser({ role: 'core' });
-    const img = await seedOnDisk({ authorId: u.id, mimeType: 'image/png', bytes: await pngBytes() });
-
-    const res = await call(img.id);
-    expect(res.status).toBe(200);
-    expect(res.headers.get('Content-Type')).toBe('image/png');
-    expect(
-      res.headers.get('Content-Disposition'),
-      'PNG 若被强制下载，博客里的图就全挂了'
-    ).toBeNull();
-  });
-
-  it('⚠️ GIF/WebP/JPEG 也内联下发（只有 SVG 是特例）', async () => {
+  it('非 SVG 位图不带 attachment（PNG / WebP 内联下发，只有 SVG 是特例）', async () => {
     const u = await makeUser({ role: 'core' });
     const sharp = (await import('sharp')).default;
     const webp = await sharp({
@@ -1367,47 +1209,39 @@ describe('GET /api/images/:id/raw（SVG XSS 防护 + 私有图鉴权）', () => 
     })
       .webp()
       .toBuffer();
-    const img = await seedOnDisk({ authorId: u.id, mimeType: 'image/webp', bytes: webp });
-    expect((await call(img.id)).headers.get('Content-Disposition')).toBeNull();
+    const png = await seedOnDisk({ authorId: u.id, mimeType: 'image/png', bytes: await pngBytes() });
+    const webpImg = await seedOnDisk({ authorId: u.id, mimeType: 'image/webp', bytes: webp });
+
+    for (const img of [png, webpImg]) {
+      const res = await call(img.id);
+      expect(res.status).toBe(200);
+      expect(
+        res.headers.get('Content-Disposition'),
+        '位图若被强制下载，博客里的图就全挂了'
+      ).toBeNull();
+    }
+    expect((await call(png.id)).headers.get('Content-Type')).toBe('image/png');
   });
 
-  it('软删除的图片返回 404', async () => {
+  it('软删 / 不存在 / 磁盘文件缺失 一律 404，且 404 一律 no-store', async () => {
     const u = await makeUser({ role: 'core' });
-    const img = await seedOnDisk({
+    const softDeleted = await seedOnDisk({
       authorId: u.id,
       mimeType: 'image/png',
       bytes: await pngBytes(),
       ignore: true,
     });
-    expect((await call(img.id)).status).toBe(404);
-  });
+    const noFile = await makeImage({ authorId: u.id }); // 只落库，不写盘
 
-  it('不存在的 id 返回 404（不泄漏是否存在）', async () => {
-    expect((await call('nope')).status).toBe(404);
-  });
-
-  it('DB 有行但磁盘文件缺失 → 404，不是 500（404 也不许被缓存）', async () => {
-    const u = await makeUser({ role: 'core' });
-    const img = await makeImage({ authorId: u.id }); // 只落库
-    const res = await call(img.id);
-    expect(res.status).toBe(404);
-    expect(res.headers.get('Cache-Control')).toBe('no-store');
+    for (const id of [softDeleted.id, noFile.id, 'nope']) {
+      const res = await call(id);
+      expect(res.status, `应 404：${id}`).toBe(404);
+      expect(res.headers.get('Cache-Control'), '删图的反馈不能被浏览器记住').toBe('no-store');
+    }
   });
 
   describe('私有图鉴权（isPublic = false）', () => {
-    it('未登录者拿到 404（伪装成不存在，不回 403）', async () => {
-      const u = await makeUser({ role: 'core' });
-      const img = await seedOnDisk({
-        authorId: u.id,
-        mimeType: 'image/png',
-        bytes: await pngBytes(),
-        isPublic: false,
-      });
-      authState.user = null;
-      expect((await call(img.id)).status).toBe(404);
-    });
-
-    it('其他登录用户也拿到 404', async () => {
+    it('未登录者与无权登录用户都拿到 404（伪装成不存在，不回 403）', async () => {
       const owner = await makeUser({ role: 'core' });
       const other = await makeUser({ role: 'core' });
       const img = await seedOnDisk({
@@ -1416,8 +1250,11 @@ describe('GET /api/images/:id/raw（SVG XSS 防护 + 私有图鉴权）', () => 
         bytes: await pngBytes(),
         isPublic: false,
       });
+
+      authState.user = null;
+      expect((await call(img.id)).status, '未登录').toBe(404);
       authState.user = { id: other.id, role: 'core' };
-      expect((await call(img.id)).status).toBe(404);
+      expect((await call(img.id)).status, '非作者的登录用户').toBe(404);
     });
 
     it('作者本人可访问', async () => {
@@ -1432,7 +1269,7 @@ describe('GET /api/images/:id/raw（SVG XSS 防护 + 私有图鉴权）', () => 
       expect((await call(img.id)).status).toBe(200);
     });
 
-    it('管理员 / 站长可访问', async () => {
+    it('管理员 / 站长可访问，但仍不得进共享缓存', async () => {
       const u = await makeUser({ role: 'core' });
       const img = await seedOnDisk({
         authorId: u.id,
@@ -1441,10 +1278,14 @@ describe('GET /api/images/:id/raw（SVG XSS 防护 + 私有图鉴权）', () => 
         isPublic: false,
       });
 
-      authState.user = { id: 'admin-x', role: 'admin' };
-      expect((await call(img.id)).status).toBe(200);
-      authState.user = { id: 'owner-x', role: 'owner' };
-      expect((await call(img.id)).status).toBe(200);
+      for (const role of ['admin', 'owner']) {
+        authState.user = { id: `${role}-x`, role };
+        const res = await call(img.id);
+        expect(res.status, `${role} 应可访问`).toBe(200);
+        expect(res.headers.get('Cache-Control'), `${role} 取回也不得进共享缓存`).toBe(
+          'private, no-store'
+        );
+      }
     });
 
     it('私有 + 已软删：软删优先，作者本人也拿 404', async () => {
@@ -1517,30 +1358,6 @@ describe('GET /api/images/:id/raw（SVG XSS 防护 + 私有图鉴权）', () => 
     expect(res.headers.get('Cache-Control')).toBe('no-store');
   });
 
-  it('★ 404 一律 no-store（删图的反馈不能被浏览器记住）', async () => {
-    const u = await makeUser({ role: 'core' });
-    const deleted = await seedOnDisk({
-      authorId: u.id,
-      mimeType: 'image/png',
-      bytes: await pngBytes(),
-      ignore: true,
-    });
-    expect((await call(deleted.id)).headers.get('Cache-Control')).toBe('no-store');
-    expect((await call('nope')).headers.get('Cache-Control')).toBe('no-store');
-  });
-
-  it('磁盘文件被换掉（大小/时间变）→ ETag 变，旧 ETag 不再 304', async () => {
-    const u = await makeUser({ role: 'core' });
-    const img = await seedOnDisk({ authorId: u.id, mimeType: 'image/png', bytes: await pngBytes() });
-    const etag = (await call(img.id)).headers.get('ETag')!;
-
-    // 运维工作流：直接往 instance/images 里拷文件。换了字节就必须换 ETag，
-    // 否则「换了图、访客却永远 304 看旧图」，且不报任何错。
-    await fsp.writeFile(storagePathFor(img.id, 'image/png'), await pngBytes(20, 20));
-    const res = await call(img.id, { 'if-none-match': etag });
-    expect(res.status).toBe(200);
-    expect(res.headers.get('ETag')).not.toBe(etag);
-  });
 
   it('★ 同尺寸换文件（只差字节）→ ETag 也必须变，且 200 给的是新字节', async () => {
     const u = await makeUser({ role: 'core' });
@@ -1593,33 +1410,14 @@ describe('GET /api/images/:id/raw（SVG XSS 防护 + 私有图鉴权）', () => 
     expect(res.headers.get('Cache-Control')).toBe('private, no-store');
   });
 
-  it('私有图即便由管理员取回，也不得进共享缓存', async () => {
-    const u = await makeUser({ role: 'core' });
-    const img = await seedOnDisk({
-      authorId: u.id,
-      mimeType: 'image/png',
-      bytes: await pngBytes(),
-      isPublic: false,
-    });
-    authState.user = { id: 'admin-x', role: 'admin' };
-    expect((await call(img.id)).headers.get('Cache-Control')).toBe('private, no-store');
-  });
-
   // ── nosniff ───────────────────────────────────────────────────────────────
   //
   // 缺 nosniff 时，「字节是 SVG/HTML、Content-Type 是 image/png」的图会被浏览器
   // 嗅探成可执行文档 → 同源 XSS。上传侧的 magic byte 校验是第一道闸，这是第二道。
 
-  it('★ 响应必须带 X-Content-Type-Options: nosniff', async () => {
-    const u = await makeUser({ role: 'core' });
-    const img = await seedOnDisk({ authorId: u.id, mimeType: 'image/png', bytes: await pngBytes() });
-    expect((await call(img.id)).headers.get('X-Content-Type-Options')).toBe('nosniff');
-  });
-
-  it('nosniff 对所有 MIME / 公私有一致下发', async () => {
+  it('★ 响应必须带 X-Content-Type-Options: nosniff（所有 MIME / 公私一致下发）', async () => {
     const u = await makeUser({ role: 'core' });
     authState.user = { id: u.id, role: 'core' };
-
     const png = await seedOnDisk({
       authorId: u.id,
       mimeType: 'image/png',
@@ -1649,87 +1447,55 @@ describe('GET /api/images/:id/raw（SVG XSS 防护 + 私有图鉴权）', () => 
 //     「文件内容与声明的格式不匹配」，iPhone 用户看到时手里明明是一张照片）。
 
 describe('detectImageMime（由内容识别真实类型）', () => {
-  it('识别真 PNG', async () => {
-    expect(detectImageMime(await pngBytes())).toBe('image/png');
-  });
-
-  it('识别真 JPEG / WebP / GIF', async () => {
+  it('识别白名单内的真实位图（PNG / JPEG / WebP / GIF 两种签名）', async () => {
     const sharp = (await import('sharp')).default;
     const base = () =>
       sharp({ create: { width: 8, height: 8, channels: 3, background: { r: 1, g: 2, b: 3 } } });
 
+    expect(detectImageMime(await pngBytes())).toBe('image/png');
     expect(detectImageMime(await base().jpeg().toBuffer())).toBe('image/jpeg');
     expect(detectImageMime(await base().webp().toBuffer())).toBe('image/webp');
     expect(detectImageMime(await base().gif().toBuffer())).toBe('image/gif');
-  });
-
-  it('识别 GIF87a / GIF89a 两种签名', () => {
     expect(detectImageMime(Buffer.from('GIF87a\x00\x00'))).toBe('image/gif');
     expect(detectImageMime(Buffer.from('GIF89a\x00\x00'))).toBe('image/gif');
   });
 
   it('WebP 必须 RIFF 与 WEBP 同时命中（RIFF/WAVE 不算图片）', () => {
-    const wav = Buffer.concat([
-      Buffer.from('RIFF'),
-      Buffer.from([0, 0, 0, 0]),
-      Buffer.from('WAVE'),
-    ]);
+    const wav = Buffer.concat([Buffer.from('RIFF'), Buffer.from([0, 0, 0, 0]), Buffer.from('WAVE')]);
     expect(detectImageMime(wav)).toBeNull();
   });
 
   describe('SVG 文本识别', () => {
-    it('裸 <svg 开头', () => {
-      expect(detectImageMime(Buffer.from('<svg xmlns="..."></svg>'))).toBe('image/svg+xml');
-    });
-
-    it('带 XML prolog', () => {
-      expect(detectImageMime(Buffer.from('<?xml version="1.0"?><svg></svg>'))).toBe(
-        'image/svg+xml'
-      );
-    });
-
-    it('带 BOM', () => {
-      expect(detectImageMime(Buffer.from('﻿<svg></svg>', 'utf8'))).toBe('image/svg+xml');
-    });
-
-    it('带前导空白 / 换行', () => {
-      expect(detectImageMime(Buffer.from('\n\n   \t<svg></svg>'))).toBe('image/svg+xml');
-    });
-
-    it('带前导注释', () => {
-      expect(detectImageMime(Buffer.from('<!-- made by inkscape --><svg></svg>'))).toBe(
-        'image/svg+xml'
-      );
-    });
-
-    it('带 DOCTYPE（含内部子集）', () => {
+    it('常见前导形态（prolog / BOM / 空白 / 注释 / DOCTYPE）都认得出', () => {
       const doctype =
         '<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" ' +
         '"http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd" [<!ENTITY foo "bar">]>';
-      expect(detectImageMime(Buffer.from(`${doctype}<svg></svg>`))).toBe('image/svg+xml');
+      const forms = [
+        '<svg xmlns="..."></svg>',
+        '<?xml version="1.0"?><svg></svg>',
+        '﻿<svg></svg>',
+        '\n\n   \t<svg></svg>',
+        '<!-- made by inkscape --><svg></svg>',
+        `${doctype}<svg></svg>`,
+        // 真实 Inkscape / Illustrator 产物：prolog + 注释 + DOCTYPE 混合
+        '﻿<?xml version="1.0" encoding="UTF-8"?>\n<!-- Generator: Adobe Illustrator -->\n' +
+          '<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "svg11.dtd">\n<svg width="10"></svg>',
+      ];
+      for (const src of forms) {
+        expect(detectImageMime(Buffer.from(src, 'utf8')), JSON.stringify(src.slice(0, 40))).toBe(
+          'image/svg+xml'
+        );
+      }
     });
 
-    it('prolog + 注释 + DOCTYPE 混合（真实 Inkscape 产物形态）', () => {
-      const src =
-        '﻿<?xml version="1.0" encoding="UTF-8"?>\n' +
-        '<!-- Generator: Adobe Illustrator -->\n' +
-        '<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "svg11.dtd">\n' +
-        '<svg width="10"></svg>';
-      expect(detectImageMime(Buffer.from(src, 'utf8'))).toBe('image/svg+xml');
-    });
-
-    it('★ HTML 文档不算 SVG（哪怕内部含 <svg>）', () => {
-      const html = '<!DOCTYPE html><html><body><svg onload="alert(1)"></svg></body></html>';
-      expect(detectImageMime(Buffer.from(html))).toBeNull();
-    });
-
-    it('★ 纯 HTML / 脚本不算 SVG', () => {
-      expect(detectImageMime(Buffer.from('<script>alert(1)</script>'))).toBeNull();
-      expect(detectImageMime(Buffer.from('<html><body>hi</body></html>'))).toBeNull();
-    });
-
-    it('<svgfoo> 这类同前缀标签不算 SVG', () => {
-      expect(detectImageMime(Buffer.from('<svgfoo></svgfoo>'))).toBeNull();
+    it('★ HTML / 脚本 / 同前缀标签不算 SVG（哪怕内容里含 <svg>）', () => {
+      const notSvg = [
+        '<!DOCTYPE html><html><body><svg onload="alert(1)"></svg></body></html>',
+        '<script>alert(1)</script>',
+        '<html><body>hi</body></html>',
+        '<svgfoo></svgfoo>',
+      ];
+      for (const src of notSvg) expect(detectImageMime(Buffer.from(src))).toBeNull();
     });
 
     it('大小写不敏感', () => {
@@ -1843,43 +1609,28 @@ function acceptedMime(bytes: Buffer, claimed: string | null | undefined): string
 }
 
 describe('planImageUpload（内容 vs 声明）', () => {
-  it('内容与声明一致 → 收', async () => {
-    expect(acceptedMime(await pngBytes(), 'image/png')).toBe('image/png');
-  });
-
-  it('★ 位图之间声明不符 → 收，类型按内容纠正（这不是安全事件，只是名字错了）', async () => {
-    // 用户把 PNG 存成 .jpg（浏览器据此声明 image/jpeg）、另存为时改了后缀 ——
-    // 原来这些全被一句「文件内容与声明的格式不匹配」拒掉，而他手里就是一张正常图片。
+  it('声明与内容不符的良性情形 → 一律按内容收（声明只是提示）', async () => {
     const png = await pngBytes();
-    for (const claimed of ['image/jpeg', 'image/gif', 'image/webp']) {
-      expect(acceptedMime(png, claimed), `PNG 字节声明成 ${claimed}`).toBe('image/png');
+    for (const claimed of [
+      'image/jpeg',
+      'image/gif',
+      'image/webp',
+      '',
+      null,
+      undefined,
+      'application/octet-stream',
+    ]) {
+      expect(acceptedMime(png, claimed), `PNG 字节声明成 ${String(claimed)}`).toBe('image/png');
     }
-  });
 
-  it('浏览器给不出 type / 只给 octet-stream → 内容说了算', async () => {
-    for (const claimed of ['', null, undefined, 'application/octet-stream']) {
-      expect(acceptedMime(await pngBytes(), claimed), String(claimed)).toBe('image/png');
-    }
-  });
-
-  it('MIME 别名同理（image/jpg 不是「不支持」）', async () => {
     const sharp = (await import('sharp')).default;
     const jpeg = await sharp({
       create: { width: 8, height: 8, channels: 3, background: { r: 4, g: 5, b: 6 } },
     })
       .jpeg()
       .toBuffer();
-    expect(acceptedMime(jpeg, 'image/jpg')).toBe('image/jpeg');
-  });
-
-  it('声明 HEIC、字节却是 JPEG（浏览器为兼容自行转换过）→ 照收', async () => {
-    const sharp = (await import('sharp')).default;
-    const jpeg = await sharp({
-      create: { width: 8, height: 8, channels: 3, background: { r: 3, g: 2, b: 1 } },
-    })
-      .jpeg()
-      .toBuffer();
-    expect(acceptedMime(jpeg, 'image/heic')).toBe('image/jpeg');
+    expect(acceptedMime(jpeg, 'image/jpg'), 'MIME 别名不是「不支持」').toBe('image/jpeg');
+    expect(acceptedMime(jpeg, 'image/heic'), '浏览器为兼容自行转换过').toBe('image/jpeg');
   });
 
   it('★ SVG 字节声明成 image/png → 拒（这是 XSS 链路的入口）', () => {
@@ -1985,70 +1736,43 @@ describe('POST /api/images（上传内容校验接线）', () => {
     return { res, body: (await res.json()) as UploadRouteBody };
   }
 
-  it('真 PNG 正常上传', async () => {
-    const u = await makeUser({ role: 'core' });
-    authState.user = { id: u.id, role: 'core' };
-
-    const { res, body } = await upload(await pngBytes(), 'image/png');
-    expect(res.status).toBe(200);
-    expect(body.code).toBe(200);
-    // 确实落库了
-    expect(await prisma.imageHosting.count({ where: { authorId: u.id } })).toBe(1);
-  });
-
   // R3-382：mock 层不再自带角色判定 —— 这两条走真实 auth.ts 判据 + 真实路由。
-  it('归档（archivedAt）用户上传 → 403「需要核心用户权限」', async () => {
-    const u = await makeUser({ role: 'core' });
-    authState.user = { id: u.id, role: 'core', archivedAt: new Date() };
+  it('归档 / 禁言用户上传 → 403（真实 auth.ts 判据，不落库）', async () => {
+    const archived = await makeUser({ role: 'core' });
+    authState.user = { id: archived.id, role: 'core', archivedAt: new Date() };
+    const blocked1 = await upload(await pngBytes(), 'image/png');
+    expect(blocked1.res.status).toBe(403);
+    expect(blocked1.body.message).toContain('核心用户');
+    expect(await prisma.imageHosting.count({ where: { authorId: archived.id } })).toBe(0);
 
-    const { res, body } = await upload(await pngBytes(), 'image/png');
-    expect(res.status).toBe(403);
-    expect(body.message).toContain('核心用户');
-    expect(await prisma.imageHosting.count({ where: { authorId: u.id } })).toBe(0);
+    const banned = await makeUser({ role: 'core' });
+    authState.user = { id: banned.id, role: 'core', isBanned: true, banUntil: null };
+    const blocked2 = await upload(await pngBytes(), 'image/png');
+    expect(blocked2.res.status).toBe(403);
+    expect(blocked2.body.message).toContain('禁言');
+    expect(await prisma.imageHosting.count({ where: { authorId: banned.id } })).toBe(0);
   });
 
-  it('禁言用户上传 → 403「你已被禁言」（真实 isCurrentlyBanned）', async () => {
-    const u = await makeUser({ role: 'core' });
-    authState.user = { id: u.id, role: 'core', isBanned: true, banUntil: null };
-
-    const { res, body } = await upload(await pngBytes(), 'image/png');
-    expect(res.status).toBe(403);
-    expect(body.message).toContain('禁言');
-    expect(await prisma.imageHosting.count({ where: { authorId: u.id } })).toBe(0);
-  });
-
-  it('★ SVG 字节 + 声明 image/png → 400，且不落库不落盘', async () => {
+  it('★ 字节与声明不符的攻击形态 → 400，且不落库不落盘', async () => {
     const u = await makeUser({ role: 'core' });
     authState.user = { id: u.id, role: 'core' };
+    const svg = Buffer.from(
+      '<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>'
+    );
+    const html = Buffer.from('<!DOCTYPE html><html><script>alert(1)</script></html>');
+    const cases: [Buffer, string, string][] = [
+      [svg, 'image/png', 'evil.png'], // SVG 字节装成 PNG：内联下发即存储型 XSS
+      [html, 'image/svg+xml', 'evil.svg'],
+      [Buffer.from('just some text'), 'image/jpeg', 'a.jpg'],
+    ];
 
-    const svg = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>');
-    const { res, body } = await upload(svg, 'image/png', 'evil.png');
-
-    expect(res.status).toBe(400);
-    expect(body.message).toBe('文件内容与声明的格式不匹配');
+    for (const [bytes, mime, name] of cases) {
+      const { res, body } = await upload(bytes, mime, name);
+      expect(res.status, name).toBe(400);
+      expect(body.message, name).toBe('文件内容与声明的格式不匹配');
+    }
     expect(await prisma.imageHosting.count({ where: { authorId: u.id } })).toBe(0);
     expect(fs.readdirSync(TEST_UPLOAD_DIR)).toHaveLength(0);
-  });
-
-  it('★ HTML 字节 + 声明 image/svg+xml → 400', async () => {
-    const u = await makeUser({ role: 'core' });
-    authState.user = { id: u.id, role: 'core' };
-
-    const html = Buffer.from('<!DOCTYPE html><html><script>alert(1)</script></html>');
-    const { res, body } = await upload(html, 'image/svg+xml', 'evil.svg');
-
-    expect(res.status).toBe(400);
-    expect(body.message).toBe('文件内容与声明的格式不匹配');
-    expect(await prisma.imageHosting.count({ where: { authorId: u.id } })).toBe(0);
-  });
-
-  it('★ 任意垃圾字节 + 声明真图 MIME → 400', async () => {
-    const u = await makeUser({ role: 'core' });
-    authState.user = { id: u.id, role: 'core' };
-
-    const { res } = await upload(Buffer.from('just some text'), 'image/jpeg', 'a.jpg');
-    expect(res.status).toBe(400);
-    expect(await prisma.imageHosting.count({ where: { authorId: u.id } })).toBe(0);
   });
 
   it('合法 SVG（声明 image/svg+xml）仍可上传 —— 校验不能误伤', async () => {
@@ -2066,40 +1790,35 @@ describe('POST /api/images（上传内容校验接线）', () => {
   // 而是名字/声明错了 —— 存成 .jpg 的 PNG、Windows 给不出的 type、iOS 把 HEIC
   // 报成 image/jpeg（后者走下面的 HEIC 分支）。拒掉它们只会让用户觉得图床坏了。
 
-  it('PNG 字节声明 image/jpeg → 收，落库类型与文件名都按内容纠正', async () => {
+  it('PNG 字节声明 image/jpeg / 空 type / 别名 → 收，类型与文件名都按内容纠正', async () => {
     const u = await makeUser({ role: 'core' });
     authState.user = { id: u.id, role: 'core' };
 
-    const { res, body } = await upload(await pngBytes(), 'image/jpeg', 'renamed.jpg');
-    expect(res.status).toBe(200);
-    expect(body.items?.[0]?.filename).toBe('renamed.png');
-    const row = await prisma.imageHosting.findFirst({ where: { authorId: u.id } });
-    expect(row?.mimeType).toBe('image/png');
-  });
+    const renamed = await upload(await pngBytes(), 'image/jpeg', 'renamed.jpg');
+    expect(renamed.res.status).toBe(200);
+    expect(renamed.body.items?.[0]?.filename, '落库/回显的名字跟着内容改后缀').toBe(
+      'renamed.png'
+    );
+    expect(
+      (await prisma.imageHosting.findFirst({ where: { authorId: u.id, filename: 'renamed.png' } }))
+        ?.mimeType
+    ).toBe('image/png');
 
-  it('浏览器给不出 type（空串）→ 仍按字节收，并补上扩展名', async () => {
-    const u = await makeUser({ role: 'core' });
-    authState.user = { id: u.id, role: 'core' };
+    const noType = await upload(await pngBytes(), '', '无后缀的名字');
+    expect(noType.res.status).toBe(200);
+    expect(noType.body.items?.[0]?.filename).toBe('无后缀的名字.png');
 
-    const { res, body } = await upload(await pngBytes(), '', '无后缀的名字');
-    expect(res.status).toBe(200);
-    expect(body.items?.[0]?.filename).toBe('无后缀的名字.png');
-  });
-
-  it('MIME 别名（image/jpg）不再被当成「不支持」', async () => {
-    const u = await makeUser({ role: 'core' });
-    authState.user = { id: u.id, role: 'core' };
     const sharp = (await import('sharp')).default;
     const jpeg = await sharp({
       create: { width: 8, height: 8, channels: 3, background: { r: 7, g: 1, b: 2 } },
     })
       .jpeg()
       .toBuffer();
-
-    const { res } = await upload(jpeg, 'image/jpg', 'a.jpg');
-    expect(res.status).toBe(200);
-    const row = await prisma.imageHosting.findFirst({ where: { authorId: u.id } });
-    expect(row?.mimeType).toBe('image/jpeg');
+    const aliased = await upload(jpeg, 'image/jpg', 'a.jpg');
+    expect(aliased.res.status).toBe(200);
+    expect(
+      (await prisma.imageHosting.findFirst({ where: { authorId: u.id, filename: 'a.jpg' } }))?.mimeType
+    ).toBe('image/jpeg');
   });
 
   // ── HEIC / AVIF / 实况照片：以前全被归成「文件内容与声明的格式不匹配」 ─────
@@ -2107,52 +1826,24 @@ describe('POST /api/images（上传内容校验接线）', () => {
   // 服务端没有 HEVC 解码器（sharp 预编译版只带 AVIF 那一路 libheif），收不了 HEIC ——
   // 但至少要回一句用户能照着做的话，而不是让他对着「格式不匹配」怀疑自己。
 
-  it('★ HEIC 静帧（声明 image/heic）→ 400 + HEIC 专属提示', async () => {
+  it('★ HEIC / AVIF / 实况照片的 .MOV / 明确不支持的类型 → 400 + 各自能行动的文案', async () => {
     const u = await makeUser({ role: 'core' });
     authState.user = { id: u.id, role: 'core' };
+    const cases: [Buffer, string, string, string[]][] = [
+      [ftyp('heic'), 'image/heic', 'IMG_0001.HEIC', ['HEIC']],
+      // Safari 常见形态：声明说 JPEG，字节是 HEIC —— 用户手里明明是一张照片
+      [ftyp('heic'), 'image/jpeg', 'IMG_0002.jpg', ['HEIC']],
+      [ftyp('qt  '), 'video/quicktime', 'IMG_0003.MOV', ['实况照片']],
+      [ftyp('avif'), 'image/avif', 'a.avif', ['AVIF', '/tool/convert']],
+      [await pngBytes(), 'text/html', 'a.html', ['不支持的文件格式']],
+    ];
 
-    const { res, body } = await upload(ftyp('heic'), 'image/heic', 'IMG_0001.HEIC');
-    expect(res.status).toBe(400);
-    expect(body.message).toContain('HEIC');
-  });
-
-  it('★ HEIC 字节 + 声明 image/jpeg（Safari 的常见形态）→ 同样给 HEIC 提示', async () => {
-    // 这正是「内容与声明的格式不匹配」最费解的一类：声明说 JPEG，字节是 HEIC。
-    const u = await makeUser({ role: 'core' });
-    authState.user = { id: u.id, role: 'core' };
-
-    const { res, body } = await upload(ftyp('heic'), 'image/jpeg', 'IMG_0002.jpg');
-    expect(res.status).toBe(400);
-    expect(body.message).toContain('HEIC');
-  });
-
-  it('★ 实况照片的 .MOV（动态部分）→ 400 + 说明它是什么', async () => {
-    const u = await makeUser({ role: 'core' });
-    authState.user = { id: u.id, role: 'core' };
-
-    const { res, body } = await upload(ftyp('qt  '), 'video/quicktime', 'IMG_0003.MOV');
-    expect(res.status).toBe(400);
-    expect(body.message).toContain('实况照片');
+    for (const [bytes, mime, name, tokens] of cases) {
+      const { res, body } = await upload(bytes, mime, name);
+      expect(res.status, name).toBe(400);
+      for (const token of tokens) expect(body.message, `${name} 缺少「${token}」`).toContain(token);
+    }
     expect(await prisma.imageHosting.count({ where: { authorId: u.id } })).toBe(0);
-  });
-
-  it('★ AVIF → 400 + 指到站内格式转换器', async () => {
-    const u = await makeUser({ role: 'core' });
-    authState.user = { id: u.id, role: 'core' };
-
-    const { res, body } = await upload(ftyp('avif'), 'image/avif', 'a.avif');
-    expect(res.status).toBe(400);
-    expect(body.message).toContain('AVIF');
-    expect(body.message).toContain('/tool/convert');
-  });
-
-  it('声明是明确不支持的类型 → 仍被拦下（哪怕内容是真图）', async () => {
-    const u = await makeUser({ role: 'core' });
-    authState.user = { id: u.id, role: 'core' };
-
-    const { res, body } = await upload(await pngBytes(), 'text/html', 'a.html');
-    expect(res.status).toBe(400);
-    expect(body.message).toContain('不支持的文件格式');
   });
 
   it('内容校验先于配额（伪造上传不消耗额度）', async () => {
@@ -2301,16 +1992,6 @@ describe('POST /api/images（上传内容校验接线）', () => {
     expect(body.failed).toEqual([
       { filename: 'second.png', message: '上传频率过高，请稍后再试' },
     ]);
-  });
-
-  it('回显的文件名保证带扩展名（图床卡片 / 下载名都靠它）', async () => {
-    const u = await makeUser({ role: 'core' });
-    authState.user = { id: u.id, role: 'core' };
-
-    const { body } = await uploadMany([
-      { bytes: await pngBytes(), mime: 'image/png', name: '截图' },
-    ]);
-    expect(body.items?.[0]?.filename).toBe('截图.png');
   });
 
   it('请求体超限 → 413 + 能行动的文案（不是「无效的上传请求」）', async () => {

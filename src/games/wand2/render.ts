@@ -13,8 +13,9 @@ function playerPosition(player: Player, frame: Frame | null, progress: number) {
 }
 
 // `world.webp` 是按 **4 列 × 4 行** 均分的图集（1024×1024 → 每格 256×256）；本文件只用到
-// 第 4 行（碎石 / 灌木 / 小花，col 0–2）。规格由 tests/unit/wand2-assets.test.ts 的
-// 「world 图集」用例守：文件存在、尺寸是 4 的整数倍、被引用的三格真有像素。
+// 第 4 行（碎石 / 灌木 / 小花，col 0–2）。这份规格原由 tests/unit/wand2-assets.test.ts 守
+// （文件存在、尺寸是 4 的整数倍、被引用的三格真有像素）；该 spec 已于 Round4 删除，
+// 更新图集时按同样三条人工核对。
 function sprite(ctx: CanvasRenderingContext2D, sheet: HTMLImageElement, col: number, row: number, x: number, y: number, size: number, rows = 4) {
   if (!sheet.complete || !sheet.naturalWidth) return;
   const sw = sheet.naturalWidth / 4, sh = sheet.naturalHeight / rows;

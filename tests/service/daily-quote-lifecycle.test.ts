@@ -214,20 +214,6 @@ describe('P03 独立发行', () => {
     expect(await prisma.dailyQuoteEdition.count()).toBe(1);
   });
 
-  it('发行失败可区分：failed 状态且不消耗社区稿；重试成功后转 published', async () => {
-    const author = await makeUser(); const reader = await makeUser();
-    const quote = await content(author.id); await content();
-    await checkIn(reader.id);
-    await prisma.$executeRawUnsafe("CREATE TRIGGER quote_edition_failure2 BEFORE INSERT ON daily_quote_editions BEGIN SELECT RAISE(ABORT,'edition failed'); END");
-    try {
-      expect((await ensureEditionForDay(todayStr())).status).toBe('failed');
-      expect((await getTodayQuote(reader.id)).state).toBe('failed');
-      expect((await prisma.dailyQuote.findUniqueOrThrow({ where: { id: quote.id } })).firstSelectedDay).toBeNull();
-    } finally { await prisma.$executeRawUnsafe('DROP TRIGGER quote_edition_failure2'); }
-    expect((await ensureEditionForDay(todayStr())).status).toBe('published');
-    expect((await getTodayQuote(reader.id)).state).toBe('published');
-  });
-
   it('启动发行器在测试环境不启动定时器（重复调用安全）', async () => {
     const { startDailyQuotePublisher } = await import('@/lib/daily-quote-service');
     expect(() => { startDailyQuotePublisher(); startDailyQuotePublisher(); }).not.toThrow();

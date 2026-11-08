@@ -23,11 +23,11 @@ import AppealForm from './AppealForm';
 // 通用 .container：它自带 16px 内距，与本页外壳的 20px 檐沟叠加后，抬头会比列表页
 // 向右多缩 16px、内容列也更窄（两页之间来回跳会明显错位）。
 //
-// ⚠️ 三条被 e2e 钉住、别动（tests/e2e/audit-detail.spec.ts 与 dark-theme.spec.ts）：
+// ⚠️ 三条被执行路径 e2e 钉住、别动（tests/e2e/audit-detail.spec.ts；原 dark-theme 的
+//    底色/文字色外观用例已于 Round4 退出，深色对比度按页面验收）：
 //   · 页面上**恰好一个** h2，文案是「操作详情」；
 //   · 第一块 `.card` 里要能看到动作码（机器码 `delete_comment` 这类）与原因；
-//   · `.list-group-item` 在无申诉时整条文案就是「暂无申诉」（深色主题用例按它断言
-//     底色与文字色）。
+//   · `.list-group-item` 在无申诉时整条文案就是「暂无申诉」。
 // 机器码也保留显示：读日志的人要按码搜，e2e 也靠它断言。
 
 export const dynamic = 'force-dynamic';
@@ -139,8 +139,9 @@ export default async function AuditLogDetailPage({
 
           <ul className="list-group audit-appeal-list">
             {log.appeals.length === 0 ? (
-              /* ⚠️ 整条文案必须**恰好**是「暂无申诉」：dark-theme.spec 用
-                 toHaveText 断言它的底色与文字色。 */
+              /* ⚠️ 整条文案必须**恰好**是「暂无申诉」：原 dark-theme.spec 用
+                 toHaveText 断言它的底色与文字色（该外观用例已于 Round4 退出，
+                 深色对比度按页面验收）。 */
               <li className="list-group-item">暂无申诉</li>
             ) : (
               log.appeals.map((a) => (

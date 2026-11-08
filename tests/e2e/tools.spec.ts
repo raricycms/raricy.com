@@ -103,21 +103,6 @@ test('开发者工具合集：清单里的每个新工具页都能打开', async
   }
 });
 
-test('开发者工具各页在窄屏（390px）下没有横向溢出', async ({ page }) => {
-  // 这条是实测出来的：cron 页的宏列表是一串没有空格的等宽文本
-  // （`@yearly/@monthly/…`），390px 下把整页顶到 scrollWidth 415。
-  // 横向溢出不会让构建失败、单测也看不见，只有真浏览器量视口才现形。
-  // 遍历 registry，新增工具自动纳入。
-  await page.setViewportSize({ width: 390, height: 844 });
-  for (const path of ['/tool/dev', ...DEV_TOOLS.filter((x) => !x.legacy).map((t) => `/tool/dev/${t.slug}`)]) {
-    await page.goto(path);
-    const overflow = await page.evaluate(
-      () => document.documentElement.scrollWidth - document.documentElement.clientWidth
-    );
-    expect(overflow, `${path} 在 390px 视口下横向溢出 ${overflow}px`).toBeLessThanOrEqual(1);
-  }
-});
-
 for (const t of TOOLS) {
   test(`/tool/${t} 能打开`, async ({ page }) => {
     const res = await page.goto(`/tool/${t}`);

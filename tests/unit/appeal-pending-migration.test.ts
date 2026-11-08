@@ -70,8 +70,6 @@ describe('43_appeal_pending_unique —— 隔离库验证', () => {
     expect(fs.readFileSync(appealPendingSql, 'utf8'), '两处安装的必须是同一份 SQL').toBe(
       migrationSql
     );
-    expect(migrationSql).toContain('uq_admin_action_appeals_pending');
-    expect(migrationSql).toContain("WHERE \"status\" = 'pending'");
   });
 
   it('迁移后：重复 pending 被拒；accepted / rejected 历史行可重复', () => {

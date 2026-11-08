@@ -20,59 +20,20 @@ describe('化名表', () => {
     expect(PSEUDONYM_PREFIXES.length).toBe(27);
   });
 
-  it('首轮不带前缀（第 0 个前缀是空串），其余 26 个以 A–Z 打头', () => {
-    expect(PSEUDONYM_PREFIXES[0]).toBe('');
-    for (let i = 1; i < PSEUDONYM_PREFIXES.length; i++) {
-      expect(PSEUDONYM_PREFIXES[i][0]).toBe(String.fromCharCode('A'.charCodeAt(0) + i - 1));
-    }
-  });
-
-  it('名字按 A–Z 打头，站长的两个例子在表里（Alice / Bob / Carol）', () => {
-    expect(PSEUDONYM_NAMES[0]).toBe('Alice');
-    expect(PSEUDONYM_NAMES[1]).toBe('Bob');
-    expect(PSEUDONYM_NAMES[2]).toBe('Carol');
-    for (let i = 0; i < PSEUDONYM_NAMES.length; i++) {
-      expect(PSEUDONYM_NAMES[i][0]).toBe(String.fromCharCode('A'.charCodeAt(0) + i));
-    }
-  });
-
   it('常规档总数 = 27×26 = 702（`You Win #703` 那个 703 的来处）', () => {
     expect(PSEUDONYM_VARIANTS).toBe(702);
   });
 });
 
 describe('pseudonymForSeq：序号 → 化名', () => {
-  it('首个是 Alice，第二个 Bob，第三个 Carol', () => {
+  it('关键边界：首个 Alice、第 27 个起加前缀、702 是最后一个常规化名、703 起彩蛋档', () => {
     expect(pseudonymForSeq(1)).toBe('Alice');
-    expect(pseudonymForSeq(2)).toBe('Bob');
-    expect(pseudonymForSeq(3)).toBe('Carol');
-  });
-
-  it('第 26 个是最后一个裸名', () => {
     expect(pseudonymForSeq(26)).toBe('Zach');
-  });
-
-  it('第 27 个起加前缀：Angry Alice / Angry Bob', () => {
     expect(pseudonymForSeq(27)).toBe('Angry Alice');
-    expect(pseudonymForSeq(28)).toBe('Angry Bob');
-  });
-
-  it('第二轮整轮 26 个，第三轮换前缀', () => {
-    expect(pseudonymForSeq(52)).toBe('Angry Zach');
-    expect(pseudonymForSeq(53)).toBe('Bashful Alice');
-  });
-
-  it('最后一轮是 Z 前缀，702 是最后一个常规化名（末位正好凑成字面的 ZZ）', () => {
-    expect(pseudonymForSeq(677)).toBe('Zealous Alice');
     expect(pseudonymForSeq(702)).toBe('Zealous Zach');
-  });
-
-  it('703 起走彩蛋档，序号即编号（#703 是第一个）', () => {
     expect(pseudonymForSeq(703)).toBe('You Win #703');
-    expect(pseudonymForSeq(704)).toBe('You Win #704');
     expect(pseudonymForSeq(9999)).toBe('You Win #9999');
   });
-
   it('1..702 全不重复（重号 = 两个人同名）', () => {
     const seen = new Set<string>();
     for (let seq = 1; seq <= PSEUDONYM_VARIANTS; seq++) seen.add(pseudonymForSeq(seq));

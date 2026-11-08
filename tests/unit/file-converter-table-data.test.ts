@@ -39,11 +39,9 @@ import {
   tableToXlsx,
   tableToXml,
   tableToYaml,
-  type Cell,
   type Table,
 } from '@/lib/file-converter/engines/table-data';
 import { LIMITS } from '@/lib/file-converter/formats';
-import { registryProblems } from '@/lib/file-converter/registry';
 import { CATEGORY } from '@/lib/file-converter/categories/table';
 import type { InspectInfo, ParamOption } from '@/lib/file-converter/types';
 
@@ -498,55 +496,6 @@ describe('XLSX（node 真读真写）', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('类别契约（categories/table.ts）', () => {
-  it('登记册校验无问题', () => {
-    expect(registryProblems([CATEGORY])).toEqual([]);
-  });
-
-  it('类别元信息与单文件任务', () => {
-    expect(CATEGORY.key).toBe('table');
-    expect(CATEGORY.maxFilesPerTask).toBe(1);
-    for (const ext of ['.xlsx', '.csv', '.tsv', '.json', '.ndjson', '.yaml', '.xml']) {
-      expect(CATEGORY.accept).toContain(ext);
-    }
-  });
-
-  it('七条边 id 严格、from 覆盖七种输入、method=map、status=live', () => {
-    const expected = [
-      'table:to-csv',
-      'table:to-tsv',
-      'table:to-xlsx',
-      'table:to-json',
-      'table:to-ndjson',
-      'table:to-yaml',
-      'table:to-xml',
-    ];
-    expect(CATEGORY.edges.map((e) => e.id)).toEqual(expected);
-    const kinds = ['csv', 'tsv', 'xlsx', 'json', 'ndjson', 'yaml', 'xml'];
-    for (const e of CATEGORY.edges) {
-      expect(e.method).toBe('map');
-      expect(e.status).toBe('live');
-      expect(typeof e.run).toBe('function');
-      expect(e.from.sort()).toEqual([...kinds].sort());
-      expect(e.id.endsWith(`-${e.to}`)).toBe(true);
-    }
-  });
-
-  it('每条边都带 sheet / header / guessTypes 三个参数，形状与默认值正确', () => {
-    for (const e of CATEGORY.edges) {
-      expect(e.params.map((p) => p.key)).toEqual(['sheet', 'header', 'guessTypes']);
-      const sheet = e.params.find((p) => p.key === 'sheet')!;
-      const header = e.params.find((p) => p.key === 'header')!;
-      const guess = e.params.find((p) => p.key === 'guessTypes')!;
-      expect(sheet.type).toBe('select');
-      expect(sheet.defaultValue).toBe('__first');
-      expect(header.type).toBe('checkbox');
-      expect(header.defaultValue).toBe(true);
-      expect(guess.type).toBe('checkbox');
-      expect(guess.defaultValue).toBe(true);
-      expect(guess.advanced).toBe(true);
-    }
-  });
-
   it('sheet 动态选项：无 info 时兜底「第一个工作表」，有 info 时列出工作表', () => {
     const sheet = CATEGORY.edges[0].params.find((p) => p.key === 'sheet')!;
     expect(readonlyOptions(sheet, null)).toEqual([{ value: '__first', label: '第一个工作表' }]);
@@ -589,7 +538,3 @@ describe('类别契约（categories/table.ts）', () => {
     expect(await CATEGORY.probe!(bigStub, bigInfo)).toEqual({});
   });
 });
-
-// 类型守卫：Cell 的联合类型在测试里被正确使用（避免误删导出）。
-const _cellCheck: Cell = null;
-void _cellCheck;

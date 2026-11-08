@@ -11,9 +11,10 @@
 //   1. 危险元素/属性在不在？（img / on* / javascript:）
 //   2. 用户输入有没有被**看见**？（转义成文本，而不是静默消失）
 //
-// 【两份渲染器都要跑】评论与讨论白名单逐字相同、只差链接类名，本文件对两者
-// 跑同一组用例（parity）：一处漏打补丁、另一处不会知道 —— 这正是 rich-text.ts
-// 文件头讲的「防线漂移」。
+// 【两个入口只跑一遍】评论与讨论走的是 rich-text.ts 里同一段引用后处理（同一份
+// 白名单、只差链接类名）。原来对两者各跑一遍（parity 双跑）保护不到任何「只改一侧」
+// 的故障 —— 代码根本只有一份；两个入口的判决一致性由下面那条 parity 用例统一钉住。
+// 原 describe.each(RENDERERS) 的 11 条 × 2 次已收敛（R4）。
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { describe, it, expect } from 'vitest';
@@ -42,12 +43,6 @@ const IMG_ID = 'AbCdEf1234';
 const CLIP_ID = 'a1b2c3d4';
 /** 一份合法的 9 位投票 ID。 */
 const VOTE_ID = 'vOtE12345';
-
-/** 两个渲染器 + 名字，用来对同一组用例跑 parity。 */
-const RENDERERS = [
-  { name: '讨论', render: renderChatMarkdown },
-  { name: '评论', render: renderCommentMarkdown },
-] as const;
 
 /** 收集带 on* 事件属性的元素（转义成文本的「属性」不算 —— 那只是字符）。 */
 function elementsWithEventAttrs(root: HTMLElement): string[] {
@@ -159,7 +154,11 @@ describe('collectClipboardRefIds', () => {
 
 // ── 管线层：图床图片 ────────────────────────────────────────────────────────
 
-describe.each(RENDERERS)('$name 正文的 [@10位图床ID]', ({ render }) => {
+// 讨论入口即可代表两个入口（见文件头）；两个入口的判决一致性由「引用攻击面」里的
+// 那条 parity 用例统一钉住。
+const render = renderChatMarkdown;
+
+describe('正文的 [@10位图床ID]', () => {
   it('渲染成内联图片，src 恰为站内图床地址', () => {
     const root = mount(render, `看图 [@${IMG_ID}]`);
     const imgs = root.querySelectorAll('img');
@@ -208,19 +207,34 @@ describe.each(RENDERERS)('$name 正文的 [@10位图床ID]', ({ render }) => {
 
 // ── 管线层：攻击面 ──────────────────────────────────────────────────────────
 
-describe.each(RENDERERS)('$name 正文的引用攻击面', ({ render }) => {
-  it('★ 防线 4 未被削弱：外链图片仍降级成链接', () => {
-    const root = mount(render, '![x](https://evil.example/x.png)');
-    expect(root.querySelectorAll('img')).toHaveLength(0);
-    expect(root.querySelector('a')?.getAttribute('href')).toBe('https://evil.example/x.png');
+describe('正文的引用攻击面', () => {
+  // 两个入口共用 rich-text.ts 的同一段后处理：判决必须逐元素一致。
+  // 这一条替代了原来把下面每条用例对两个渲染器各跑一遍的 11×2 双跑。
+  it('★ 两个入口的引用旁路判决一致（同一份后处理，只差链接类名）', () => {
+    const body = [
+      `图 [@${IMG_ID}]`,
+      `[@${IMG_ID}" onerror="alert(1)]`,
+      '[@__________]',
+      '![x](https://evil.example/x.png)',
+      '<img src=x onerror="window.__x=1">',
+      `[@${VOTE_ID}] [@${CLIP_ID}] [[@${IMG_ID}]](/blog/1)`,
+    ].join('\n\n');
+    const chatRoot = mount(renderChatMarkdown, body);
+    const commentRoot = mount(renderCommentMarkdown, body);
+    const shape = (root: HTMLElement) =>
+      Array.from(root.querySelectorAll('*')).map(
+        (el) => `${el.tagName}:${el.getAttribute('src') ?? el.getAttribute('href') ?? ''}`
+      );
+    expect(shape(commentRoot)).toEqual(shape(chatRoot));
+    expect(commentRoot.textContent).toBe(chatRoot.textContent);
+    // 引用旁路绝不能把防线带塌：两个入口都没有 on* 落地、没有外链 img
+    expect(elementsWithEventAttrs(commentRoot)).toEqual([]);
+    expect(commentRoot.querySelectorAll('img[src^="https://evil"]')).toHaveLength(0);
   });
 
-  it('★ 防线 1 未被削弱：手写 <img onerror> 仍被当文本、且用户看得见', () => {
-    const root = mount(render, '<img src=x onerror="window.__x=1">');
-    expect(root.querySelectorAll('img')).toHaveLength(0);
-    expect(elementsWithEventAttrs(root)).toEqual([]);
-    expect(root.textContent).toContain('<img src=x onerror=');
-  });
+  // 「外链图片降级成链接」与「手写 <img onerror> 当文本」两条绝对断言已在
+  // chat-markdown.test.ts 的「链接」/「XSS：原始 HTML 一律当文本」里逐条钉住
+  // （同一份 rich-text.ts 实现，不需要跑两遍）。
 
   it('★ 9 位投票引用保持字面量（刻意不支持）', () => {
     const root = mount(render, `[@${VOTE_ID}]`);

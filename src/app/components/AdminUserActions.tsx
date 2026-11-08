@@ -184,7 +184,7 @@ export default function AdminUserActions({
   // 动作簇 = 一排紧凑胶囊（几何在 pages/admin/_users.scss 的
   // `.user-card__buttons > .btn`：34px 高、999px 圆角、0.78rem）。图标一律
   // aria-hidden —— 按钮的无障碍名称必须仍然**恰好**是那两个字
-  //（tests/e2e/admin-role-buttons.spec.ts 按 name 精确定位）。
+  //（tests/e2e/admin-permissions.spec.ts 按 name 精确定位）。
   //
   // 四个弹窗仍渲染在这个根节点里（它们 position:fixed，不参与这排按钮的排版）。
   // 入场动画统一用 `animation-fill-mode: backwards`：播完 transform 回到 none，

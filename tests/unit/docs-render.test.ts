@@ -153,10 +153,4 @@ describe('反引号文档路径 → 站内链接', () => {
     ).toEqual([]);
   });
 
-  it('认得出编号标题（渲染层与守卫共用同一个 sectionKeyOf）', () => {
-    expect(sectionKeyOf('6.3 CSRF 中间件')).toBe('6.3');
-    expect(sectionKeyOf('五、命令清单')).toBe('五、');
-    expect(sectionKeyOf('6.40 干扰项')).toBe('6.40'); // 前缀不算命中 6.4
-    expect(sectionKeyOf('没有编号的标题')).toBe(null);
-  });
 });

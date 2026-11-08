@@ -42,6 +42,13 @@
 import { describe, expect, it } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
+import {
+  INDEXABLE_BLOG_WHERE,
+  PUBLIC_BLOG_WHERE,
+  PUBLIC_BLOG_SQL,
+  PUBLIC_SEARCH_BLOG_SQL,
+  isPublicIndexableBlog,
+} from '@/lib/blog-public-scope';
 
 const ROOT = path.resolve(import.meta.dirname, '../..');
 const SRC = path.join(ROOT, 'src');
@@ -173,5 +180,32 @@ describe('判「对外可见」必须是白名单，不许写「不等于最不�
     expect(files.length, 'src/ 下应当有大量 ts/tsx').toBeGreaterThan(100);
     // blog-service 一定在扫描面内 —— 白名单就住在隔壁模块
     expect(files.some((f) => f.endsWith(path.join('lib', 'blog-service.ts')))).toBe(true);
+  });
+});
+
+// ── 公开集合的唯一定义（原 blog-public-scope.test.ts，Round4 合并）──
+describe('公开集合的唯一定义（R3-172）', () => {
+  it('可索引 = 只有 public；完整 where 额外排除软删', () => {
+    expect(INDEXABLE_BLOG_WHERE).toEqual({ visibility: { in: ['public'] } });
+    expect(PUBLIC_BLOG_WHERE).toEqual({ ignore: false, visibility: { in: ['public'] } });
+    // 两者都必须是同义白名单 —— 不是「不等于 internal / 不等于 private」那种开区间写法
+    expect(JSON.stringify(INDEXABLE_BLOG_WHERE)).not.toContain('not');
+  });
+
+  it('检索 raw SQL 保留归档作者补偿；纯可见性片段不带 users 依赖', () => {
+    expect(PUBLIC_SEARCH_BLOG_SQL.sql).toContain('u.archived_at IS NULL');
+    expect(PUBLIC_BLOG_SQL.sql).not.toContain('archived_at');
+    // 两个片段都只认 public（不是按「不等于某档」写的）
+    expect(PUBLIC_BLOG_SQL.sql).toMatch(/visibility IN \(/);
+    expect(PUBLIC_BLOG_SQL.sql).toContain('ignore=0');
+  });
+
+  it('内存判断与 where 同义：软删 / 非 public / 空值都不算', () => {
+    expect(isPublicIndexableBlog({ ignore: false, visibility: 'public' })).toBe(true);
+    expect(isPublicIndexableBlog({ ignore: true, visibility: 'public' })).toBe(false);
+    expect(isPublicIndexableBlog({ ignore: false, visibility: 'link' })).toBe(false);
+    expect(isPublicIndexableBlog({ ignore: false, visibility: 'internal' })).toBe(false);
+    expect(isPublicIndexableBlog({ visibility: null })).toBe(false);
+    expect(isPublicIndexableBlog({})).toBe(false);
   });
 });

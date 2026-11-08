@@ -269,7 +269,8 @@ export async function adjudicate(p: AdjudicateParams): Promise<AdminResult> {
         //   restoreComment：本次裁决已经由下面那条 decide_appeal 日志覆盖了，再写一条
         //   restore_comment 就是凭空多出审计行 —— 而 /audit 是**公开页**，
         //   多出来的行是用户可见的行为变化。这条由
-        //   tests/service/appeal-restore-extraction.test.ts 钉死。
+        //   tests/service/admin-user-and-appeal.test.ts 钉死（原 appeal-restore-extraction
+        //   .test.ts 已于 Round4 并入该文件）。
         const restored = await restoreCommentRow(appeal.log.objectId);
         if (restored) reversedNote = '，已恢复被删评论';
       }

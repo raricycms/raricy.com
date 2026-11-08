@@ -192,19 +192,21 @@ test.describe('角色门控', () => {
 test.describe('核心用户门槛（接口层）', () => {
   // 这些接口一律 core+ 档
   //
-  // ⚠️ 只放**两个方向都无副作用**的调用。签到的写接口（POST /api/checkin）
-  //    刻意不在此列：core 那一轮会真的给 e2e_core 建一条签到记录并发鱼，
-  //    改掉种子账号的余额，把别的用例绊倒。它的方向断言在 checkin.spec 里
-  //    （用临时注册的账号，不碰种子）。这里放状态 GET 就够证明门槛在了。
+  // 【只留 route 层没覆盖的】点赞 / 投喂 / 评论点赞等博客域 handler 的三连
+  // （匿名 401 / 非 core 403 / core 放行）已由 tests/route/blog-auth.test.ts:146,148,150
+  // 逐条钉住；投票在 tests/route/vote-auth.test.ts:123-124；签到状态的角色闸在
+  // checkin.spec.ts:192（同一个文件里另有发鱼不变量）。这些在 route 层跑得更快、
+  // 还能断言文案，e2e 里不再复述。留下来的是**没有 route 用例**的三个读/写口：
+  // 剪贴板列表、建剪贴板、图床列表 —— 删掉它们，"页面挡了、接口没挡" 这个漏洞形状
+  // 就只剩页面那一半的覆盖。
+  //
+  // ⚠️ 不碰种子账号的余额：签到写接口（POST /api/checkin）刻意不在此列 —— core 那一轮
+  //    会真的发鱼、改掉种子账号的余额并把别的用例绊倒；它的角色闸与发鱼不变量在
+  //    checkin.spec.ts:192 里用临时注册的账号验（那里也不碰种子）。
   const CASES: Array<{ name: string; method: 'GET' | 'POST'; path: string; body?: object }> = [
-    { name: '点赞', method: 'POST', path: `/api/blogs/${SEED_BLOG.id}/like` },
-    { name: '投喂', method: 'POST', path: `/api/blogs/${SEED_BLOG.id}/feed`, body: { amount: 1 } },
     { name: '剪贴板列表', method: 'GET', path: '/api/clipboard' },
     { name: '建剪贴板', method: 'POST', path: '/api/clipboard', body: { title: 't', content: 'c', publicity: true } },
     { name: '图床列表', method: 'GET', path: '/api/images' },
-    { name: '投票列表', method: 'GET', path: '/api/votes' },
-    { name: '建投票', method: 'POST', path: '/api/votes', body: { title: 't', options: ['a', 'b'] } },
-    { name: '签到状态', method: 'GET', path: '/api/checkin' },
   ];
 
   for (const c of CASES) {

@@ -178,13 +178,9 @@ export function notifDetail(i: number): string {
 /**
  * 公示的管理操作日志 —— /audit 列表与 /audit/[id] 详情页用例的锚点。
  *
- * 【为什么 desktop / mobile 各一条、且各自指定当事人】申诉只允许**当事人本人**提交
- * （createAppeal 校验 targetUserId === appellantId）。而 desktop / mobile 两个
- * project 共用一个库：同一条日志被两边各申诉一次，后跑的会撞上「同人同日志只允许
- * 一条 pending」。故每个 project 用各自的日志 + 各自的当事人。
- *
- * 第三条（theme）相反：它是**只读**的，供「必须没有申诉」的用例使用 —— 谁都不许
- * 往上提交申诉，理由见那一条自己的注释。
+ * 【为什么只需要一条】只有 desktop project 会跑 audit-detail.spec.ts（不在
+ * playwright.config.ts 的 RESPONSIVE_SPECS 里），mobile 那一遍不会申诉它，
+ * 因此不存在「两个 project 对同一条日志各申诉一次」的冲突。
  *
  * 当事人必须是 **core+**：提交申诉的接口要求 isCoreUser（plain 会 403）。
  */
@@ -195,35 +191,6 @@ export const SEED_LOGS = {
     objectType: 'comment',
     objectId: 'e2e-comment-0001',
     reason: 'E2E 用的操作原因',
-    targetUser: 'core',
-  },
-  mobile: {
-    id: 90002,
-    action: 'delete_comment',
-    objectType: 'comment',
-    objectId: 'e2e-comment-0002',
-    reason: 'E2E 用的操作原因（mobile）',
-    targetUser: 'owner',
-  },
-  /**
-   * 深色主题用例专用：**任何用例都不许对它提交申诉**。
-   *
-   * 【为什么单开一条】dark-theme.spec 要验的是「暂无申诉」这个空态条目的配色，
-   * 前提是那条日志下**一条申诉都没有**。原先它借用 desktop 那条，而
-   * audit-detail.spec 会往同一条上提交申诉 —— Playwright 按文件名顺序跑
-   * （audit-detail < dark-theme），于是全量跑时那个 <li> 里躺着别人的申诉，
-   * `toHaveText('暂无申诉')` 必挂；单跑 dark-theme 却是绿的（库里还没有申诉），
-   * 是个只在全量下现形的顺序依赖。
-   *
-   * 且两个 project 共库：desktop 那边提交的申诉对 mobile 这边同样可见 ——
-   * 所以这条日志必须独立于 testInfo.project，任何 project 都指向它、且都不写它。
-   */
-  theme: {
-    id: 90003,
-    action: 'delete_comment',
-    objectType: 'comment',
-    objectId: 'e2e-comment-0003',
-    reason: 'E2E 深色主题用例用（保持无申诉）',
     targetUser: 'core',
   },
 } as const;
@@ -246,29 +213,4 @@ export const E2E_STICKERS = {
   names: ['开心', '难过'],
   /** info.json 标了 ignore 的合集：列表里不该有，手打 token 也该取不到。 */
   hidden: '私密',
-} as const;
-
-/**
- * 故事模块 e2e 素材的合集 / 故事 slug。
- *
- * 素材由 global-setup.ts 的 seedStories() 写进 tests/.tmp/e2e-stories/
- * （与真实磁盘结构同构：<合集>/info.json + <合集>/<故事>.md|.cattca）。
- *
- * 【为什么必须先隔离 STORIES_DIR】不设它时 story-service 会回落到 repo 根的
- * instance/stories —— 那是站长自己的运行时数据，用例的 URL 与断言会随机器
- * 时通时不通（与 STICKERS_DIR 那条注解同一个道理）。设了之后故事页在 e2e 里
- * 才是确定的：这里写什么，页面上就只有什么。
- *
- * slug 用 ASCII：要拼进 URL（/story/e2e-collection/e2e-story）。
- * 标题用中文：抬头显示的是 frontmatter / info.json 里的 title，不是目录名。
- */
-export const E2E_STORIES = {
-  collection: 'e2e-collection',
-  collectionTitle: 'E2E 合集',
-  /** 合集内的一篇 markdown 故事 —— `.story-reader` 那一页。 */
-  markdown: 'e2e-story',
-  markdownTitle: 'E2E 故事',
-  /** 合集内的一份 cattca 脚本 —— `.story-cattca` 那一页。 */
-  cattca: 'e2e-cattca',
-  cattcaTitle: 'E2E 互动',
 } as const;

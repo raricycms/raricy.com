@@ -120,41 +120,25 @@ describe('detectAudioMime —— 只认字节', () => {
 // ═══ 二、声明侧归一化 ════════════════════════════════════════════════════════
 
 describe('normalizeAudioMime —— 把别名折到规范形', () => {
-  it('`.m4a` 的各平台别名都折成 audio/mp4', () => {
-    for (const alias of ['audio/mp4', 'audio/m4a', 'audio/x-m4a', 'audio/mp4a-latm']) {
-      expect(normalizeAudioMime(alias), alias).toBe('audio/mp4');
+  it('各平台别名都折到规范形（.m4a 的四种写法 / MP3 / OGG），带参数与大小写也能折', () => {
+    const aliasGroups: [string, string[]][] = [
+      ['audio/mp4', ['audio/mp4', 'audio/m4a', 'audio/x-m4a', 'audio/mp4a-latm']],
+      ['audio/mpeg', ['audio/mpeg', 'audio/mp3', 'audio/x-mp3', 'audio/mpeg3']],
+      ['audio/ogg', ['audio/ogg', 'audio/opus', 'audio/vorbis', 'application/ogg']],
+    ];
+    for (const [canonical, aliases] of aliasGroups) {
+      for (const alias of aliases) expect(normalizeAudioMime(alias), alias).toBe(canonical);
     }
-  });
-
-  it('MP3 别名折成 audio/mpeg', () => {
-    for (const alias of ['audio/mpeg', 'audio/mp3', 'audio/x-mp3', 'audio/mpeg3']) {
-      expect(normalizeAudioMime(alias), alias).toBe('audio/mpeg');
-    }
-  });
-
-  it('OGG 别名折成 audio/ogg（含 application/ogg）', () => {
-    for (const alias of ['audio/ogg', 'audio/opus', 'audio/vorbis', 'application/ogg']) {
-      expect(normalizeAudioMime(alias), alias).toBe('audio/ogg');
-    }
-  });
-
-  it('带参数与大小写都能折', () => {
     expect(normalizeAudioMime('Audio/MPEG; codecs="mp3"')).toBe('audio/mpeg');
     expect(normalizeAudioMime('  AUDIO/X-M4A  ')).toBe('audio/mp4');
   });
 
-  it('声明为空 → 按扩展名兜底', () => {
+  it('声明为空 → 按扩展名兜底；但兜底不等于放水（.mp4 / 认不出的类型 → null）', () => {
     expect(normalizeAudioMime('', 'voice.mp3')).toBe('audio/mpeg');
     expect(normalizeAudioMime(null, 'song.m4a')).toBe('audio/mp4');
     expect(normalizeAudioMime(undefined, 'a.OGG')).toBe('audio/ogg');
-  });
-
-  it('★ 空声明 + `.mp4` 扩展名 → **不认**（那是视频容器的通用扩展名）★', () => {
-    // 认了就等于给「传视频」开一条明路，而 brand 白名单本来就分辨不了 isom/mp42。
+    // 认了 .mp4 就等于给「传视频」开一条明路（brand 白名单本来就分辨不了 isom/mp42）
     expect(normalizeAudioMime('', 'movie.mp4')).toBeNull();
-  });
-
-  it('认不出的类型与扩展名 → null', () => {
     expect(normalizeAudioMime('image/png', 'x.png')).toBeNull();
     expect(normalizeAudioMime('', 'x.wav')).toBeNull();
     expect(normalizeAudioMime('', 'x.flac')).toBeNull();
@@ -184,12 +168,9 @@ describe('verifyAudioMime —— 归一化后仍要与字节严格相等', () =>
     expect(verifyAudioMime(ogg('\x01vorbis'), 'audio/mpeg', 'v.mp3')).toBeNull();
   });
 
-  it('不在白名单的声明 → 拒（哪怕字节看起来像）', () => {
+  it('不在白名单的声明 / OGG 装视频 → 拒（哪怕字节看起来像）', () => {
     expect(verifyAudioMime(mp3WithId3(), 'audio/flac', 'v.flac')).toBeNull();
     expect(verifyAudioMime(mp3WithId3(), 'video/mp4', 'v.mp4')).toBeNull();
-  });
-
-  it('Theora 视频 .ogv → 拒（声明再对也没用，字节不过关）', () => {
     expect(verifyAudioMime(ogg('\x80theora'), 'audio/ogg', 'v.ogv')).toBeNull();
   });
 });
@@ -197,12 +178,12 @@ describe('verifyAudioMime —— 归一化后仍要与字节严格相等', () =>
 // ═══ 四、常量 ════════════════════════════════════════════════════════════════
 
 describe('常量', () => {
-  it('白名单就是三种，扩它即放宽入站格式', () => {
-    expect([...ALLOWED_AUDIO_MIMETYPES].sort()).toEqual([
-      'audio/mp4',
-      'audio/mpeg',
-      'audio/ogg',
-    ]);
+  it('白名单就是三种（扩它即放宽入站格式），每种规范 MIME 都有磁盘扩展名', () => {
+    expect([...ALLOWED_AUDIO_MIMETYPES].sort()).toEqual(['audio/mp4', 'audio/mpeg', 'audio/ogg']);
+    expect(audioExtForMime('audio/mpeg')).toBe('.mp3');
+    expect(audioExtForMime('audio/mp4')).toBe('.m4a');
+    expect(audioExtForMime('audio/ogg')).toBe('.ogg');
+    expect(audioExtForMime('audio/nope')).toBe('');
   });
 
   it('单文件上限 10MB（与图床同值 —— 部署侧两道 12MB 闸门因此不用改）', () => {
@@ -216,12 +197,5 @@ describe('常量', () => {
     expect(label).toBe('MP3、M4A、OGG');
     // 白名单里每一项都要有名字，漏配会变成 undefined 而不是安静少一项
     expect(label).not.toContain('undefined');
-  });
-
-  it('规范 MIME 都能推出磁盘扩展名', () => {
-    expect(audioExtForMime('audio/mpeg')).toBe('.mp3');
-    expect(audioExtForMime('audio/mp4')).toBe('.m4a');
-    expect(audioExtForMime('audio/ogg')).toBe('.ogg');
-    expect(audioExtForMime('audio/nope')).toBe('');
   });
 });

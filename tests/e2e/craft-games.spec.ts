@@ -36,10 +36,6 @@ async function drag(page: Page, from: { x: number; y: number }, to: { x: number;
   await page.mouse.up();
 }
 
-async function expectNoOverflow(page: Page) {
-  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(page.viewportSize()!.width);
-}
-
 test('手工间合集：从实验室合集的子合集进入，三件手工都能从卡片打开', async ({ page }) => {
   await page.goto('/game');
   await page.locator('.game-collection[href="/game/collections/test"]').click();
@@ -110,7 +106,6 @@ test('小小织布机：拖一趟就是一行、换色只影响之后的行、�
   await expect(page.locator('.loom-artifact')).toBeVisible();
   await expectPngDownload(page, () => page.getByRole('button', { name: '导出 PNG' }).click());
   await expect(page.getByText('成品已导出。')).toBeVisible();
-  await expectNoOverflow(page);
   expect(errors).toEqual([]);
 });
 
@@ -188,7 +183,6 @@ test('剪纸窗花：折好的纸上一刀剪穿四层，展开是镜像对称�
   await expect(page.getByText('透明背景的窗花已导出。')).toBeVisible();
   await page.getByRole('button', { name: '回到案上' }).click();
   await expect(game).toHaveAttribute('data-view', 'trim');
-  await expectNoOverflow(page);
   expect(errors).toEqual([]);
 });
 
@@ -260,6 +254,5 @@ test('水面印花：滴颜料、梳出纹理、铺纸、揭起、刷新与导�
   await page.getByRole('button', { name: '再印一张' }).click();
   await expect(game).toHaveAttribute('data-stage', 'water');
   await expect(game).toHaveAttribute('data-painted', 'true');
-  await expectNoOverflow(page);
   expect(errors).toEqual([]);
 });

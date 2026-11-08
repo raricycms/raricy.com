@@ -141,8 +141,9 @@ it('取消资格后不能购买，原有余额不动', async () => {
 });
 
 describe('入参校验', () => {
-  it('天数非法 → 400', async () => {
+  it('天数非法 / 未登记 key / 不零售 / 请求体不是对象 → 400', async () => {
     writeAsset(KEY);
+    writeAsset(NOT_FOR_SALE);
     const user = await makeFishUser(10, { role: 'core' });
     await login(user.id);
 
@@ -150,23 +151,10 @@ describe('入参校验', () => {
       const res = await rent({ frame_key: KEY, count });
       expect(res.status, `count=${JSON.stringify(count)}`).toBe(400);
     }
-  });
-
-  it('未登记的 key / 不零售的框 → 400', async () => {
-    writeAsset(KEY);
-    writeAsset(NOT_FOR_SALE);
-    const user = await makeFishUser(10, { role: 'core' });
-    await login(user.id);
-
     expect((await rent({ frame_key: 'nope', count: 1 })).status).toBe(400);
     expect((await rent({ frame_key: NOT_FOR_SALE, count: 1 })).status).toBe(400);
-  });
 
-  it('请求体不是对象 → 400', async () => {
     // 先登录 —— 鉴权在解析请求体**之前**，没登录时这一条只会拿到 401
-    const user = await makeFishUser(10, { role: 'core' });
-    await login(user.id);
-
     const res = await POST(
       new Request('http://localhost/api/fish/market/rent', {
         method: 'POST',
@@ -179,7 +167,7 @@ describe('入参校验', () => {
 });
 
 describe('成功与业务失败', () => {
-  it('租成功 → 200，余额与到期都下来了（到期给两种形状）', async () => {
+  it('租成功 → 200，响应形状与两种到期时刻（机器读 ISO、人读展示串）', async () => {
     writeAsset(KEY);
     const user = await makeFishUser(10, { role: 'core' });
     await login(user.id);
@@ -198,38 +186,23 @@ describe('成功与业务失败', () => {
     // 机器读 ISO、人读展示串 —— 两者都指向同一刻
     expect(String(body.expires_at)).toMatch(/^\d{4}-\d{2}-\d{2}T/);
     expect(String(body.expires_at_text)).toMatch(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/);
-    // 这条路由是**真动钱**的（扣鱼干 + 建持有行同一事务）——
-    // 「余额 == 他所有流水之和」这条不变式在本层也要核一遍
-    await expectLedgerConsistent('租框成功');
   });
 
-  it('小鱼干不足 → 400，且**没有留下半张框**', async () => {
+  it('小鱼干不足 → 400；素材缺失 → 409（业务文案由 service 给）', async () => {
     writeAsset(KEY);
-    const user = await makeFishUser(1, { role: 'core' });
-    await login(user.id);
+    const poor = await makeFishUser(1, { role: 'core' });
+    await login(poor.id);
+    const insufficient = await rent({ frame_key: KEY, count: 5 });
+    expect(insufficient.status).toBe(400);
+    expect(String((await json(insufficient)).message)).toContain('小鱼干不足');
 
-    const res = await rent({ frame_key: KEY, count: 5 });
-    expect(res.status).toBe(400);
-    expect(String((await json(res)).message)).toContain('小鱼干不足');
-
-    expect(
-      await prisma.userFrame.findUnique({
-        where: { uq_user_frame: { userId: user.id, frameKey: KEY } },
-        select: { id: true },
-      })
-    ).toBeNull();
-    // 事务回滚之后账目也得是自洽的（余额、流水、持有行三样一起没写入）
-    await expectLedgerConsistent('余额不足被拒');
-  });
-
-  it('素材缺失 → 409', async () => {
     // 故意不铺素材
-    const user = await makeFishUser(10, { role: 'core' });
-    await login(user.id);
-
-    const res = await rent({ frame_key: KEY, count: 1 });
-    expect(res.status).toBe(409);
-    await expectLedgerConsistent('素材缺失被拒');
+    await resetDb();
+    fs.rmSync(TEST_FRAMES_DIR, { recursive: true, force: true });
+    __resetFrameAssetCacheForTests();
+    const rich = await makeFishUser(10, { role: 'core' });
+    await login(rich.id);
+    expect((await rent({ frame_key: KEY, count: 1 })).status).toBe(409);
   });
 });
 

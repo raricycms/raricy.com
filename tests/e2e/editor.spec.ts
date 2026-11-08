@@ -11,6 +11,10 @@ import { SEED_USERS } from './seed';
 //   · 主题跟随靠的是站点 CSS 变量级联，读源码看不出「换主题后颜色有没有真的变」；
 //   · 窄屏要少给「并排」这一档，而它是**样式表**藏掉的，JS 侧看不出来。
 //
+// 【Round4 精简】主题色板逐档比对（亮/暗 × 博客/剪贴板 × 工具条/代码底色）与「音频控件
+// 宽度」两条纯外观测量已按仓库约定删除（样式按页面/视口验收，见 e2e-app 报告）。
+// 这里保留的是浏览器独有且不报错的：工具条命令路径、视图切换、预览只读、代码高亮生命周期。
+//
 // 【断言的是行为，不是 CM6 的 DOM】正文一律经**预览**读回（`#editor .md-editor__preview-body`
 // 里的成品 HTML），而不是去读 `.cm-content` 的 innerText：后者是 CM6 的内部结构，
 // 换个小版本就可能变，而「我打的字渲染出来是什么样」才是用户看得见的事实。
@@ -32,13 +36,6 @@ async function openNavIfMobile(page: Page, isMobile: boolean) {
   if (await navbar.evaluate((el) => el.classList.contains('open'))) return;
   await page.click('.site-navbar-toggler');
   await expect(navbar).toHaveClass(/open/);
-}
-
-/** 把站点切到指定主题：点真实的 #themeToggle，不直接改 DOM 属性。 */
-async function switchToTheme(page: Page, want: 'light' | 'dark') {
-  const current = await page.evaluate(() => document.documentElement.getAttribute('data-theme'));
-  if (current !== want) await page.click('#themeToggle');
-  await expect(page.locator('html')).toHaveAttribute('data-theme', want);
 }
 
 /**
@@ -71,26 +68,6 @@ async function settledStyle(
     )
     .toBeGreaterThanOrEqual(1);
   return prev;
-}
-
-/** 收集页面上未捕获的错误。编辑器这一层最容易出的就是「初始化时抛在回调里」——
- *  页面上一点提示都没有，只是某个功能静默不工作。 */
-function collectPageErrors(page: Page): string[] {
-  const errors: string[] = [];
-  page.on('pageerror', (e) => errors.push(e.message));
-  return errors;
-}
-
-/** 只看**静态资源**的 404：路径拼错、资源改名、包被删掉之后留下的引用都长这样。
- *  不去盯全部 404 —— 接口的 404 有各自的语义，不归这里管。 */
-function collectAsset404(page: Page): string[] {
-  const missing: string[] = [];
-  page.on('response', (r) => {
-    if (r.status() === 404 && /\.(?:css|js|mjs|png|svg|woff2?)(?:\?|$)/.test(r.url())) {
-      missing.push(r.url());
-    }
-  });
-  return missing;
 }
 
 /** 在编辑区里打字。先点一下把焦点放进去（CM6 要焦点才收键盘）。 */
@@ -160,6 +137,28 @@ async function runInsertAction(page: Page, editor: string, name: string) {
     .or(menu.getByRole('menuitemradio', { name, exact: true }));
   await item.click();
   await expect(menu).toHaveCount(0);
+}
+
+/**
+ * 页面未捕获异常与静态资源 404 —— 都是「页面照常渲染、某个功能静默不工作」的形态
+ * （初始化回调没执行、CSS/高亮主题 404），只有真浏览器能看到。
+ * 挂在「离开再回来」这条跨导航用例上，覆盖编辑器两次加载。
+ */
+function collectPageErrors(page: Page): string[] {
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  return errors;
+}
+
+/** 只盯静态资源后缀的 404；接口 404 有各自语义，不归这里管。 */
+function collectAsset404(page: Page): string[] {
+  const missing: string[] = [];
+  page.on('response', (r) => {
+    if (r.status() === 404 && /\.(?:css|js|mjs|png|svg|woff2?)(?:\?|$)/.test(r.url())) {
+      missing.push(r.url());
+    }
+  });
+  return missing;
 }
 
 test.describe('编辑器行为', () => {
@@ -270,152 +269,20 @@ test.describe('编辑器行为', () => {
     expect(writes, `预览期间出现了写请求：${writes.join(' / ')}`).toEqual([]);
   });
 
-  // 音频控件撑破正文：`<audio controls>` 的浏览器默认宽度约 300px 且不随容器收缩，
-  // 而窄屏 390px 下预览盒子的**可用内容宽度只有 244px** —— 控件比容器还宽，于是正文
-  // 出现横向滚动，控件右半截被滚动盒子裁掉。判据必须是**几何**：`doc.scrollWidth`
-  // 量不出来（外层页面确实没有溢出，被滚动盒子吃掉了），只有预览容器自己的
-  // scrollWidth/clientWidth 与控件右边缘才说得清。
-  // 单测钉不到：这纯粹是浏览器排版事实（盒子宽度 + 替换元素的默认尺寸），
-  // jsdom 里没有排版。移动端才是主场景，桌面那一遍同时验「宽屏没有被顺手改窄」。
-  test('★ 预览里的音频控件不撑破正文容器（窄视口下也不被裁）★', async ({ page }) => {
-    // 只用 ID3v2 头的最小 MP3 —— 服务端只嗅头几个字节（audio-upload.ts）。
-    // 布局取决于元素的盒子，与能不能解码无关，但真上传一条才走的是真链路。
-    const MP3_MIN = Buffer.concat([Buffer.from('ID3'), Buffer.alloc(64)]);
-    const up = await page.request.post('/api/audio', {
-      multipart: { file: { name: 'e2e-audio.mp3', mimeType: 'audio/mpeg', buffer: MP3_MIN } },
-    });
-    const upBody = await up.json();
-    expect(upBody.code, `上传音频失败：${JSON.stringify(upBody)}`).toBe(200);
-
-    await page.goto('/blog/upload');
-    await typeInEditor(page, BLOG_EDITOR, `[@音频/${upBody.id}]`);
-    await setViewMode(page, BLOG_EDITOR, '预览');
-
-    const preview = page.locator(`${BLOG_EDITOR} .md-editor__preview-body`);
-    const audio = preview.locator('audio');
-    await expect(audio).toHaveCount(1);
-
-    const geo = await preview.evaluate((el) => {
-      const a = el.querySelector('audio') as HTMLElement;
-      const cs = getComputedStyle(el);
-      return {
-        scrollWidth: el.scrollWidth,
-        clientWidth: el.clientWidth,
-        audioRight: a.getBoundingClientRect().right,
-        contentRight: el.getBoundingClientRect().right - parseFloat(cs.paddingRight),
-        audioWidth: a.getBoundingClientRect().width,
-      };
-    });
-
-    // 1px 容差：亚像素布局的取整
-    expect(
-      geo.scrollWidth,
-      `预览容器被撑出横向滚动：scrollWidth=${geo.scrollWidth} > clientWidth=${geo.clientWidth}`
-    ).toBeLessThanOrEqual(geo.clientWidth + 1);
-    expect(
-      geo.audioRight,
-      `音频控件越过了正文可用宽度（控件 ${geo.audioWidth}px，右边缘 ${geo.audioRight} > ${geo.contentRight}）`
-    ).toBeLessThanOrEqual(geo.contentRight + 1);
-    // 反向：宽屏上**不许被顺手拉长**。用 `width: 100%` 去「修」溢出的话，桌面端会
-    // 从 300px 变成整列宽 —— 那是另一种坏法，别让它悄悄换一种错法。
-    expect(
-      geo.audioWidth,
-      `音频控件被拉长了（${geo.audioWidth}px > 控件本来的 300px）`
-    ).toBeLessThanOrEqual(300);
-  });
 });
 
-test.describe('编辑器跟随站点主题', () => {
+test.describe('编辑器代码高亮的生命周期（离开再回来）', () => {
   test.beforeEach(async ({ page }) => {
     await loginViaApi(page, SEED_USERS.core.username);
   });
 
-  for (const [name, url, editor] of [
-    ['博客', '/blog/upload', BLOG_EDITOR],
-    ['云剪贴板', '/clipboard/upload', CLIP_EDITOR],
-  ] as const) {
-    test(`${name}编辑器：亮 / 暗切换时工具条底色与代码真实高亮都跟着变`, async ({
-      page,
-      isMobile,
-    }) => {
-      const asset404 = collectAsset404(page);
-      const pageErrors = collectPageErrors(page);
-
-      await page.goto(url);
-      await expect(page.locator(`${editor} .md-toolbar`)).toBeVisible();
-      await openNavIfMobile(page, isMobile);
-
-      // 写一段真的会被高亮的语言围栏，再切到预览读新引擎产出的节点。
-      await typeCodeBlock(page, editor);
-      await setViewMode(page, editor, '预览');
-      const preview = page.locator(`${editor} .md-editor__preview-body`);
-      const keyword = preview.locator('.md-code-block .hljs-keyword');
-      await expect(keyword.first()).toBeVisible();
-      await expect(keyword.first()).toHaveText('const');
-
-      // ── 亮色基线 ──────────────────────────────────────────────────────────
-      await switchToTheme(page, 'light');
-      const lightBg = await settledStyle(page, `${editor} .md-toolbar`, 'backgroundColor');
-      const lightToken = await settledStyle(
-        page,
-        `${editor} .md-editor__preview-body .md-code-block .hljs-keyword`,
-        'color'
-      );
-      const lightCodeBg = await settledStyle(
-        page,
-        `${editor} .md-editor__preview-body .md-code-block .md-code`,
-        'backgroundColor'
-      );
-
-      // ── 切到暗色 ──────────────────────────────────────────────────────────
-      await openNavIfMobile(page, isMobile);
-      await switchToTheme(page, 'dark');
-      const darkBg = await settledStyle(page, `${editor} .md-toolbar`, 'backgroundColor');
-      const darkToken = await settledStyle(
-        page,
-        `${editor} .md-editor__preview-body .md-code-block .hljs-keyword`,
-        'color'
-      );
-      const darkCodeBg = await settledStyle(
-        page,
-        `${editor} .md-editor__preview-body .md-code-block .md-code`,
-        'backgroundColor'
-      );
-
-      // 「变量换了」不等于「颜色真的变了」—— 工具条、token、代码底色三处都要变：
-      // 代码块如果只有底色跟随而 token 仍是浅色值，暗色下会出现几乎看不清的深蓝字。
-      expect(darkBg).not.toBe(lightBg);
-      expect(darkToken).not.toBe(lightToken);
-      expect(darkCodeBg).not.toBe(lightCodeBg);
-      // token 不能退化成正文色（那说明高亮样式整块没生效，只剩裸文本）
-      const bodyColor = await settledStyle(
-        page,
-        `${editor} .md-editor__preview-body .md-document`,
-        'color'
-      );
-      expect(darkToken).not.toBe(bodyColor);
-
-      // ── 切回亮色，确认是双向的而不是单程 ──────────────────────────────────
-      await openNavIfMobile(page, isMobile);
-      await switchToTheme(page, 'light');
-      expect(await settledStyle(page, `${editor} .md-toolbar`, 'backgroundColor')).toBe(lightBg);
-      expect(
-        await settledStyle(
-          page,
-          `${editor} .md-editor__preview-body .md-code-block .hljs-keyword`,
-          'color'
-        )
-      ).toBe(lightToken);
-
-      expect(asset404, `静态资源 404：${asset404.join(', ')}`).toEqual([]);
-      expect(pageErrors, `页面有未捕获错误：${pageErrors.join(' / ')}`).toEqual([]);
-    });
-  }
 
   test('离开编辑页再回来，新引擎的代码高亮仍然正常（不再依赖全局单例样式）', async ({
     page,
     isMobile,
   }) => {
+    const pageErrors = collectPageErrors(page);
+    const asset404 = collectAsset404(page);
     // 旧实现把两份 hljs 主题挂成 `<style id="hljs-theme-*">` 全局单例，一个编辑器
     // 卸载时摘掉会连累同屏的另一份。新引擎按实例渲染、没有全局单例可争——
     // 但要守的行为还在：**离开再回来，代码高亮仍然正常**。
@@ -445,5 +312,9 @@ test.describe('编辑器跟随站点主题', () => {
 
     // 旧渲染器的全局主题节点不再存在，也不该为了这条用例重新加回来
     await expect(page.locator('#hljs-theme-light, #hljs-theme-dark')).toHaveCount(0);
+
+    // 两次加载都不能有未捕获异常或静态资源 404（CSS/高亮主题丢了页面照样渲染）
+    expect(asset404, `静态资源 404：${asset404.join(', ')}`).toEqual([]);
+    expect(pageErrors, `页面有未捕获错误：${pageErrors.join(' / ')}`).toEqual([]);
   });
 });

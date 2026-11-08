@@ -73,13 +73,6 @@ const server = http.createServer((req, res) => {
     return send(res, 200, { ok: true, symbol, price });
   }
 
-  if (path === '/__e2e__/prices') {
-    return send(res, 200, {
-      prices: Object.fromEntries(prices),
-      candle_closes: Object.fromEntries(candleCloses),
-    });
-  }
-
   // ── 真实契约 ────────────────────────────────────────────────────────────────
 
   // GET /api/v3/ticker/price —— 单币（成交用）与多币（批量）两种形状

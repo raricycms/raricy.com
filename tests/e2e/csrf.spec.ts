@@ -1,6 +1,6 @@
 // CSRF 中间件（src/middleware.ts）在真实 HTTP 下的行为。
 //
-// 【为什么要在 E2E 层再打一遍】tests/unit/middleware-csrf.test.ts 已经直接调 middleware()
+// 【为什么要在 E2E 层再打一遍】tests/unit/middleware.test.ts 已经直接调 middleware()
 // 验过判定逻辑。但它是拿手搓的 NextRequest 喂进去的 —— 证明不了两件事：
 //   1. matcher 是否真的生效（config.matcher 写错时单测照样全绿，因为它绕过了 matcher）
 //   2. 正常的同源请求会不会被误杀（线上翻过的车：反代下 Host 判定错误 → 正常请求 403）

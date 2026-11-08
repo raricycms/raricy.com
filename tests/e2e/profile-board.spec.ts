@@ -1,17 +1,17 @@
 import { expect, test, type Page } from '@playwright/test';
 import { publishBlog, registerFreshUser } from './helpers';
 
-// 个人主页「积木墙」的端到端契约。
+// 个人主页「积木墙」的端到端**行为**契约。
 //
 // 【2026-10 改版后的摆放模型】两端是**同一份坐标**：桌面 4 列自由网格是唯一真相，
-// 手机 2 列由它投影（`projectMobile`）：宽 ≥2 通栏、宽 1 看左右半、按桌面阅读顺序
-// (y, x) 紧排。手机上的拖动 / 左右移 / 上下移改的都是桌面坐标。所以这里必须同时
-// 验证「4 列的落点」和「2 列的投影」，而且**别把实现细节（数组顺序、132px 行高、
-// sort 列）当契约** —— 用户看得见的是：格子是不是方的、两列怎么对齐、拖完是不是
-// 换位、保存后是不是立刻看到新版。
+// 手机 2 列由它投影（`projectMobile`）。手机上的拖动 / 左右移 / 上下移改的都是桌面
+// 坐标 —— 这里验的是「操作完位置真的换位、保存后不刷新与刷新都还是新版」。
 //
-// 两遍都必须跑（本文件登记在 playwright.config.ts 的 RESPONSIVE_SPECS）：桌面量
-// 4 列几何 / 吸顶工具条，手机量投影落位 / 拖动把手 / 左右移 / 固定工具条遮挡。
+// 4 列几何（宽≈高、gap 16、网格线条数、吸顶 74px）、2 列投影的像素落位、固定工具条
+// 遮挡高度属于外观，按仓库纪律不再由 e2e 钉住 —— 由受影响页面与视口的实际检查负责。
+//
+// 两遍都必须跑（本文件登记在 playwright.config.ts 的 RESPONSIVE_SPECS）：桌面与
+// 手机的分支不同（编辑面板在流内 vs 底部工具条、拖动把手只在窄屏）。
 //
 // 每个用例都用一次性 core 账号：主页保存有 30/分 的限频桶，种子号被 desktop /
 // mobile 两轮共用时会互相消耗（helpers 里那条注释讲了同一件事）。
@@ -188,108 +188,6 @@ test('目标降档后：本人看到「已不可用 + 换一个」，访客看�
   await expect(page.locator('.bento-card--text')).toContainText('另一块能存的');
 });
 
-test('桌面：4 列方格（宽≈高）、gap 16、连续网格线，吸顶工具条停在顶栏下方', async ({ page, isMobile }) => {
-  test.skip(isMobile, '桌面网格与吸顶工具条只在宽屏分支存在');
-
-  const u = await registerFreshUser(page, { core: true });
-  // 四行满格（16 块 = 上限），把页面撑到可滚动（吸顶才有东西可验）
-  const blocks: BlockPayload[] = [];
-  for (let y = 0; y < 4; y++) {
-    for (let x = 0; x < 4; x++) {
-      blocks.push(textBlock(`格 ${x}-${y}`, x, y, 1, 1));
-    }
-  }
-  expect((await saveBlocks(page, blocks)).status).toBe(200);
-
-  await freezeMotion(page);
-  await page.goto(`/u/${u.id}?edit=1`);
-  const cards = page.locator('.bento-card--text');
-  await expect(cards).toHaveCount(16);
-
-  const first = await boxOf(cards.nth(0));
-  const second = await boxOf(cards.nth(1));
-  // 同一行的两块：顶边对齐；横向间隔就是网格 gap（16px）
-  expect(Math.abs(first.y - second.y)).toBeLessThan(2);
-  expect(Math.round(second.x - (first.x + first.width))).toBe(16);
-  // 方格：行高 = 列宽（不再有写死的 132px 行高）
-  expect(Math.abs(first.width - first.height)).toBeLessThanOrEqual(2);
-  // 第 5 块（第二行第一个）与第一块同一列；竖直间隔也是 16
-  const fifth = await boxOf(cards.nth(4));
-  expect(Math.abs(fifth.x - first.x)).toBeLessThan(2);
-  expect(Math.round(fifth.y - (first.y + first.height))).toBe(16);
-
-  // 编辑态网格线：桌面 3 条竖线 + (行数-1) 条横线，画在 gap 中线上、整片连续细线。
-  // 4 行卡片 + 一行空位 = 5 行 → 4 条横线。
-  await expect(page.locator('.bento-guides')).toHaveCount(1);
-  await expect(page.locator('.bento-guides__v')).toHaveCount(3);
-  await expect(page.locator('.bento-guides__h')).toHaveCount(4);
-  for (const w of await page
-    .locator('.bento-guides__v')
-    .evaluateAll((els) => els.map((el) => el.getBoundingClientRect().width))) {
-    expect(w).toBeLessThanOrEqual(2); // 1px 细线，不是每格一圈边框
-  }
-  for (const h of await page
-    .locator('.bento-guides__h')
-    .evaluateAll((els) => els.map((el) => el.getBoundingClientRect().height))) {
-    expect(h).toBeLessThanOrEqual(2);
-  }
-
-  // 吸顶：toolbar 的 top 是 74px（与博客筛选条同一档），滚动后必须落在那里、
-  // 且不能压住顶栏
-  await page.evaluate(() => window.scrollTo(0, 400));
-  await expect
-    .poll(async () => Math.round((await page.locator('.bento-toolbar').boundingBox())!.y))
-    .toBe(74);
-  const navbar = await boxOf(page.locator('.site-navbar'));
-  expect(navbar.y + navbar.height).toBeLessThanOrEqual(74);
-
-  // 加块面板在桌面是流内吸底（不是固定层）
-  await expect(page.locator('.bento-palette')).toHaveCount(1);
-  await expect(page.locator('.bento-dock')).toHaveCount(0);
-});
-
-test('手机：卡片按桌面坐标投影落位（方格 / gap 12 / 宽块通栏），网格线照画', async ({ page, isMobile }) => {
-  test.skip(!isMobile, '两列投影只在窄屏生效');
-
-  const u = await registerFreshUser(page, { core: true });
-  // 数组顺序故意与桌面阅读顺序相反：手机上的位置来自 (x, y) 投影，不是数组顺序。
-  const saved = await saveBlocks(page, [
-    textBlock('右半块', 3, 0, 1, 1), // 桌面右半 → 手机右列
-    textBlock('左半块', 0, 0, 1, 1), // 桌面左半 → 手机左列
-    textBlock('通栏块', 1, 1, 2, 1), // 桌面第 2–3 列（跨中线）→ 手机通栏
-  ]);
-  expect(saved.status, JSON.stringify(saved.body)).toBe(200);
-
-  await freezeMotion(page);
-  await page.goto(`/u/${u.id}?edit=1`);
-  await expect(page.locator('.bento-card')).toHaveCount(3);
-
-  const left = await boxOf(textCard(page, '左半块'));
-  const right = await boxOf(textCard(page, '右半块'));
-  // 同一行左右并排；手机 gap 是 12
-  expect(Math.abs(left.y - right.y)).toBeLessThan(2);
-  expect(Math.round(right.x - (left.x + left.width))).toBe(12);
-  expect(left.x).toBeLessThan(right.x);
-  // 手机也是方格（行高 = 列宽）
-  expect(Math.abs(left.width - left.height)).toBeLessThanOrEqual(2);
-
-  // 宽块（含跨中线的 2×1）在手机上通栏：从最左到最右、宽度 = 两列 + gap
-  const wide = await boxOf(textCard(page, '通栏块'));
-  expect(Math.abs(wide.x - left.x)).toBeLessThan(2);
-  expect(Math.abs(wide.x + wide.width - (right.x + right.width))).toBeLessThan(2);
-  expect(Math.round(wide.y - (left.y + left.height))).toBe(12);
-
-  // 手机编辑态也画网格线：1 竖 + (行数-1) 横。这里投影出 2 行卡片 + 1 行空位 = 3 行。
-  await expect(page.locator('.bento-guides')).toHaveCount(1);
-  await expect(page.locator('.bento-guides__v')).toHaveCount(1);
-  await expect(page.locator('.bento-guides__h')).toHaveCount(2);
-
-  // 不能横向溢出
-  expect(
-    await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)
-  ).toBe(true);
-});
-
 test('手机：dock 左移 / 右移 / 同列上下移，改的是桌面坐标并在保存后保持', async ({ page, isMobile }) => {
   test.skip(!isMobile, '底部固定工具条只在窄屏存在');
 
@@ -421,29 +319,6 @@ test('手机：按住左上角把手拖到另一张卡上即与它换位', async
   await expect(page).not.toHaveURL(/edit=1/);
   await page.reload();
   await expect.poll(async () => (await boxOf(jia)).x > (await boxOf(bing)).x).toBe(true);
-});
-
-test('手机：滚到底时最后一块不被固定工具条盖住', async ({ page, isMobile }) => {
-  test.skip(!isMobile, '固定工具条只在手机存在');
-
-  const u = await registerFreshUser(page, { core: true });
-  const blocks: BlockPayload[] = [];
-  for (let i = 0; i < 6; i++) {
-    blocks.push(textBlock(`块 ${i}`, i % 2 === 0 ? 0 : 2, Math.floor(i / 2), 1, 1));
-  }
-  expect((await saveBlocks(page, blocks)).status).toBe(200);
-
-  await freezeMotion(page);
-  await page.goto(`/u/${u.id}?edit=1`);
-  await expect(page.locator('.bento-toolbar')).toBeVisible();
-  await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
-  await expect
-    .poll(async () => {
-      const last = await boxOf(page.locator('.bento-card').last());
-      const dock = await boxOf(page.locator('.bento-dock'));
-      return Math.round(dock.y - (last.y + last.height));
-    })
-    .toBeGreaterThanOrEqual(0);
 });
 
 test('文章高卡片显示正文摘要；查看态点文字块弹出详情，Esc / 点背景关闭', async ({ page }) => {

@@ -22,7 +22,6 @@ import { installTestConstraints } from '../helpers/db-constraints';
 import {
   E2E_STICKERS,
   DIRECTORY_SEED,
-  E2E_STORIES,
   SEED_PASSWORD,
   SEED_FRAME_KEYS,
   SEED_FRAME_KEY,
@@ -152,47 +151,6 @@ function seedFrames() {
 }
 
 /**
- * 造故事素材（instance/stories 的等价物，指向 tests/.tmp/e2e-stories）。
- *
- * 【为什么必须隔离】STORIES_DIR 不设时 story-service 回落到 repo 根的
- * instance/stories —— 那是站长的真实数据，URL 与断言会随机器时通时不通
- * （同 seedStickers 的理由）。空目录也不够：/story 需要一篇 markdown 与一份
- * cattca 才能把 `.story-reader` / `.story-cattca` 两页渲染出来。
- */
-function seedStories() {
-  const root = process.env.STORIES_DIR;
-  if (!root) throw new Error('缺少 STORIES_DIR —— 见 playwright.config.ts 的 webServer.env');
-  if (!root.includes(`${path.sep}tests${path.sep}.tmp${path.sep}`)) {
-    throw new Error(`拒绝在非测试目录上造故事素材：${root}`);
-  }
-  fs.rmSync(root, { recursive: true, force: true });
-
-  const dir = path.join(root, E2E_STORIES.collection);
-  fs.mkdirSync(dir, { recursive: true });
-  fs.writeFileSync(
-    path.join(dir, 'info.json'),
-    JSON.stringify({
-      title: E2E_STORIES.collectionTitle,
-      description: 'e2e 造的故事合集',
-      author: 'e2e',
-    })
-  );
-
-  // markdown 故事：抬头取 frontmatter 的 title，正文走 renderMarkdown
-  fs.writeFileSync(
-    path.join(dir, `${E2E_STORIES.markdown}.md`),
-    `---\ntitle: ${E2E_STORIES.markdownTitle}\nauthor: e2e\n---\n\n# 第一节\n\ne2e 造的正文。\n`
-  );
-
-  // cattca 脚本：抬头同样取 frontmatter，正文交给客户端解释器（这里只求有个
-  // 能渲染的壳 —— 用例量的是布局，不看剧情）
-  fs.writeFileSync(
-    path.join(dir, `${E2E_STORIES.cattca}.cattca`),
-    `---\ntitle: ${E2E_STORIES.cattcaTitle}\nauthor: e2e\n---\n</label START/>\ne2e 造的互动脚本。\n`
-  );
-}
-
-/**
  * 拦住并发的第二轮 e2e。
  *
  * 库名每轮唯一，但端口、种子素材目录及限频快照仍共享。两轮不能并行：
@@ -231,7 +189,6 @@ export default async function globalSetup() {
   fs.mkdirSync(path.dirname(E2E_DB), { recursive: true });
   acquireLock();
   seedStickers();
-  seedStories();
   seedFrames();
   // 库名每轮唯一，天然从零开始。webServer 先于 globalSetup 启动，探活可能
   // 已让 SQLite 创建并打开本轮空库；Windows 此时 unlink 会 EBUSY，截断也不安全。

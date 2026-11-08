@@ -1,10 +1,6 @@
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect } from '@playwright/test';
 import { freshInvite, publishBlog, registerFreshUser, uniqueTag } from './helpers';
 import { SEED_PASSWORD } from './seed';
-
-async function noOverflow(page: Page) {
-  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(page.viewportSize()!.width);
-}
 
 test('邀请注册必填，成功直接登录并返回原任务；一言无文章时保留导航', async ({ page }) => {
   const invite = await freshInvite(page);
@@ -33,38 +29,30 @@ test('邀请注册必填，成功直接登录并返回原任务；一言无文�
     await expect(page).toHaveURL(target);
     await expect(page.getByRole('navigation', { name: '每日一言' })).toBeVisible();
   }
-  await noOverflow(page);
 });
 
-test('设置按任务分组，外观直达对应商品，旧市场锚点兼容', async ({ page }, testInfo) => {
+test('设置按任务分组，外观直达对应商品，旧市场锚点兼容', async ({ page }) => {
   await registerFreshUser(page, { core: true });
   await page.goto('/settings');
   const nav = page.getByRole('navigation', { name: '设置分组' });
   await expect(nav.locator('a')).toHaveCount(5);
-  expect((await page.locator('.settings-section__title').first().boundingBox())!.x).toBeGreaterThanOrEqual(16);
   await expect(page.locator('#appearance a[href="/fish/shop?category=frame#shop"]')).toBeVisible();
   await expect(page.locator('#appearance a[href="/fish/shop?category=bubble#shop"]')).toBeVisible();
   await nav.getByRole('link', { name: '外观', exact: true }).click();
   await expect(page).toHaveURL('/settings#appearance');
-  await noOverflow(page);
-  await page.screenshot({ path: testInfo.outputPath('settings-appearance.png') });
   await page.goto('/fish/market#shop');
   await expect(page).toHaveURL('/fish/shop#shop');
   await expect(page.locator('.market-card').filter({ hasText: '收款人' })).toHaveCount(0);
   await page.goto('/fish');
-  await noOverflow(page);
-  await page.screenshot({ path: testInfo.outputPath('fish-account.png'), fullPage: true });
   await page.context().clearCookies();
   await page.goto('/fish/shop?category=bubble');
   await expect(page.locator('#loginForm')).toBeVisible();
   expect(new URL(page.url()).searchParams.get('next')).toBe('/fish/shop?category=bubble');
 });
 
-test('文档按受众定位，重复指南与旧手工间路径跳转至规范地址', async ({ page }, testInfo) => {
+test('文档按受众定位，重复指南与旧手工间路径跳转至规范地址', async ({ page }) => {
   await page.goto('/docs');
   await expect(page.getByRole('navigation', { name: '文档受众' }).locator('a')).toHaveCount(3);
-  await noOverflow(page);
-  await page.screenshot({ path: testInfo.outputPath('docs-index.png') });
   await page.getByRole('navigation', { name: '文档受众' }).locator('a').last().click();
   await expect(page).toHaveURL('/docs#docs-dev');
   await page.goto('/docs/guide/' + encodeURIComponent('云剪贴板使用指南'));
@@ -78,10 +66,9 @@ test('文档按受众定位，重复指南与旧手工间路径跳转至规范�
   await page.goto('/game/collections/craft');
   await expect(page).toHaveURL('/game/collections/test/craft');
   await expect(page.locator('.game-card')).toHaveCount(3);
-  await noOverflow(page);
 });
 
-test('评论输入只留一次快捷键，字数临近时提示并关联输入框', async ({ page, isMobile }, testInfo) => {
+test('评论输入只留一次快捷键，字数临近时提示并关联输入框', async ({ page, isMobile }) => {
   await registerFreshUser(page, { core: true });
   const id = await publishBlog(page);
   await page.goto('/blog/' + id);
@@ -97,12 +84,9 @@ test('评论输入只留一次快捷键，字数临近时提示并关联输入�
   await expect(input).toHaveAttribute('aria-describedby', await hint.getAttribute('id') as string);
   await input.fill('');
   await expect(hint).toHaveCount(0);
-  await input.scrollIntoViewIfNeeded();
-  await noOverflow(page);
-  await page.screenshot({ path: testInfo.outputPath('comment-composer.png') });
 });
 
-test('对外文章默认访客预览，切换后可以展开成员引用，再切回不残留', async ({ page }, testInfo) => {
+test('对外文章默认访客预览，切换后可以展开成员引用，再切回不残留', async ({ page }) => {
   await registerFreshUser(page, { core: true });
   const secret = '仅成员片段' + uniqueTag();
   const clipResponse = await page.request.post('/api/clipboard', { data: { title: secret, content: secret, publicity: true } });
@@ -128,9 +112,6 @@ test('对外文章默认访客预览，切换后可以展开成员引用，再�
   // 一轮「切回访客 → 成员」已经覆盖「再切回不残留」这条主张；旧实现又重复两轮
   // 逐字相同的断言，不覆盖任何新状态，只让 RESPONSIVE_SPECS 里 desktop+mobile
   // 各跑一遍的成本翻倍（R3-641 ④）。
-  await noOverflow(page);
-  await preview.scrollIntoViewIfNeeded();
-  await page.screenshot({ path: testInfo.outputPath('visitor-preview.png') });
 });
 
 test('投票默认提供有效结构，仅临近文字或选项上限时提示', async ({ page }) => {
@@ -145,7 +126,6 @@ test('投票默认提供有效结构，仅临近文字或选项上限时提示',
   for (let i = 2; i < 10; i++) await page.locator('#addOption').click();
   await expect(page.locator('#addOption')).toBeDisabled();
   await expect(page.locator('#addOption')).toHaveText('已达选项上限');
-  await noOverflow(page);
 });
 
 

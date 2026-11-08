@@ -6,15 +6,17 @@
 // 入口申诉。这类「页面缺失 / 链接断头」tsc 不管、单测也不管
 // （单测直接调 service，不经过路由与页面），只有真的走一遍 HTTP 才暴露。
 //
-// 【申诉用例为什么按 project 分日志】申诉只允许**当事人本人**提交（见
-// src/lib/audit-service.ts 的 createAppeal）。desktop 与 mobile 两个 project 共库，
-// 同一条日志被两边各申诉一次，后跑的会撞「同人同日志只允许一条 pending」——
-// 故 seed.ts 给每个 project 各备一条日志与一位当事人。
+// 【申诉用哪条日志】本文件**只被 desktop project 跑**（不在 playwright.config.ts 的
+// RESPONSIVE_SPECS 里），所以全程用 `SEED_LOG`（= SEED_LOGS.desktop）这一条即可。
+// 申诉只允许**当事人本人**提交（见 src/lib/audit-service.ts 的 createAppeal）；
+// desktop / mobile 两个 project 共库，将来若把本文件加进 RESPONSIVE_SPECS，
+// 两边会对同一条日志各申诉一次 → 后跑的撞「同人同日志只允许一条 pending」，
+// 那时才需要按 project 分日志。
 // 提交申诉的接口要求 core+（详情**页面**同样要求 core）。
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { test, expect } from '@playwright/test';
-import { SEED_USERS, SEED_LOG, SEED_LOGS } from './seed';
+import { SEED_USERS, SEED_LOG } from './seed';
 import { loginViaApi, registerFreshUser, chooseExpandSelect } from './helpers';
 
 test.describe('操作详情页', () => {
@@ -85,10 +87,9 @@ test.describe('操作详情页', () => {
 });
 
 test.describe('申诉链路', () => {
-  test('提交申诉 → 详情页可见；同人同日志重复提交被拒', async ({ page }, testInfo) => {
-    // 每个 project 用各自的日志与当事人 —— 申诉只允许当事人本人提交，
-    // 且 desktop/mobile 共库，同一条日志申诉两次会撞「同人同日志只允许一条 pending」。
-    const log = testInfo.project.name === 'mobile' ? SEED_LOGS.mobile : SEED_LOGS.desktop;
+  test('提交申诉 → 详情页可见；同人同日志重复提交被拒', async ({ page }) => {
+    // 只有 desktop project 跑本文件，用唯一那条种子日志即可（见文件头注释）。
+    const log = SEED_LOG;
     const target = SEED_USERS[log.targetUser];
     await loginViaApi(page, target.username);
 
@@ -112,7 +113,7 @@ test.describe('申诉链路', () => {
 
   test('★ 非当事人提交申诉被拒（日志 id 公开，不校验即可替他人申诉）', async ({ page }) => {
     const fresh = await registerFreshUser(page, { core: true }); // 光注册是 role=user，接口要求 core
-    const log = SEED_LOGS.desktop;
+    const log = SEED_LOG;
 
     const res = await page.request.post(`/api/audit/${log.id}/appeal`, {
       data: { content: `越权申诉 ${fresh.username}` },

@@ -34,7 +34,6 @@ import {
   MAX_REF_CONCURRENCY,
   MAX_REF_EXPAND_CHARS,
   MAX_REF_FETCHES,
-  createConcurrencyLimiter,
 } from '@/lib/content-refs';
 
 const IMAGE_ID = 'AaBbCcDd10'; // 10 位
@@ -298,31 +297,10 @@ describe('预算：替换数 / 取数数 / 去重 / 音频上限 / 总长度', (
     expect(peak).toBeGreaterThan(1);
   });
 
-  // R3-103：预览与导出各自调一次适配是常态。各建一个闸门 → 峰值 2×4；
-  // 传同一个 scheduler（生产里 client-compile 的模块级闸门）→ 峰值仍是 4。
-  it(`★ 两次并发适配共享注入的闸门：峰值仍不超过 ${MAX_REF_CONCURRENCY} ★`, async () => {
-    let active = 0;
-    let peak = 0;
-    const reader: ReferenceReader = async () => {
-      active += 1;
-      peak = Math.max(peak, active);
-      await new Promise((resolve) => setTimeout(resolve, 5));
-      active -= 1;
-      return { status: 'ready' };
-    };
-    const gate = createConcurrencyLimiter(MAX_REF_CONCURRENCY);
-    // 两次适配各 4 条不同的投票引用：单独闸门会让峰值到 8。
-    const ids = Array.from({ length: 8 }, (_, i) => `AbCdEf2${String(i).padStart(2, '0')}`);
-    const sourceOf = (from: number) => ids.slice(from, from + 4).map((id) => `[@${id}]`).join(' ');
-
-    await Promise.all([
-      adaptReactiveReferences(sourceOf(0), { mode: 'expand', resolve: reader, scheduler: gate }),
-      adaptReactiveReferences(sourceOf(4), { mode: 'expand', resolve: reader, scheduler: gate }),
-    ]);
-
-    expect(peak, '共享闸门没生效时这里会是 8').toBeLessThanOrEqual(MAX_REF_CONCURRENCY);
-    expect(peak, '探针没测到并发，这条就测不到东西了').toBeGreaterThan(1);
-  });
+  // R3-103 的「两次并发适配共享同一条闸门（生产里是 client-compile 的模块级闸门）」
+  // 已有更贴近生产的守护：reactive-client-compile.test.ts 的
+  // describe('预览与导出共享同一条取数闸门') —— 它直接并发调用两处真实入口，
+  // 因此这里不再用注入 scheduler 的方式复述同一条规则（R4 去重）。
 });
 
 // ═══ 六、局部失败 ════════════════════════════════════════════════════════════

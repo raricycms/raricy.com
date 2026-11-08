@@ -283,7 +283,6 @@ public/static/converter/           可重建的 JS / WASM / 许可说明产物
 src/styles-scss/pages/_tool-convert.scss
 tests/unit/file-converter-*.test.ts
 tests/e2e/file-converter.spec.ts
-tests/e2e/file-converter-layout.spec.ts
 ```
 
 `formats.ts` 是零依赖词表；客户端模块不能 import 带 Prisma、sharp、Node fs 的上传
@@ -524,7 +523,8 @@ PCM 规格验收，图片按格式和允许的色差验收。音频容差在 M0 
 | 跨源 iframe | 普通嵌入下的全流程；受限 sandbox 下的原因提示 | 父页面 origin、权限和 sandbox 属性 |
 
 仓库 Playwright 的 mobile 项目使用设备配置模拟视口，不能替代真实 iOS Safari。
-新增布局 spec 要登记到 `playwright.config.ts` 的 `RESPONSIVE_SPECS`；桌面功能用例
+布局不再用 e2e 固定（纯外观按页面/视口验收）；若确有**行为性**响应式用例需要新增 e2e，
+按要求登记到 `playwright.config.ts` 的 `RESPONSIVE_SPECS`（以该文件为准）；桌面功能用例
 按既有项目执行。是否加 WebKit 自动化项目按环境支持决定，仍不能代替 iPhone 实测。
 
 ### 10.3 性能测量与发布条件

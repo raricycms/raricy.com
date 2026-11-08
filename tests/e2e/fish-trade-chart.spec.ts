@@ -1,18 +1,19 @@
-// 练手盘图表的几何与交互。
+// 练手盘图表的**交互**（几何/版式/配色已按仓库约定交给页面验收，不在这里量）。
 //
-// 【为什么按真视口量】「三栏是不是真的一行」「绘图区有没有塌成 0」「有没有横向滚动条」
-// 全是**浏览器排版之后**才成立的事实，读样式表看不出来 —— grid 列被内容撑破、网格里的
-// SVG 高度塌成 0，这两件事在源码里都完全正常，只有量出来才看得见。
+// 留下的三条都需要真浏览器 + 真 canvas：缩放后画出来的蜡烛根数与渲染宽度、
+// 滚轮在非被动监听里真的 preventDefault 掉页面滚动、拖动平移真的换了时间轴窗口。
+// 这些在 service/route 层都碰不到 —— 它们只看得到接口返回的数据。
 //
-// 【为什么登记进 RESPONSIVE_SPECS】四段阶梯里有两段只在窄视口走得到（自选变横向条、
-// 落成单列）。desktop 那一遍同样要跑 —— 三栏那一档正是最常见的场景。
+// 【为什么不进 RESPONSIVE_SPECS】原来那几条「三栏是不是一行 / 自选是否摊平 / 有没有横向
+// 滚动」是纯视口几何，已按仓库约定删除（交给页面验收）；剩下的交互与视口无关，
+// desktop 一遍覆盖即可。
 
 import { test, expect, type APIRequestContext, type Page } from '@playwright/test';
 import { registerFreshUser } from './helpers';
 
 const MARKET_MOCK = 'http://127.0.0.1:3102';
 
-/** 新号 + 定价 + 进页面，等图真的画出来（轮询落一次，几何才稳）。 */
+/** 新号 + 定价 + 进页面，等图真的画出来（交互需要初始视野已渲染）。 */
 async function openChart(page: Page, request: APIRequestContext) {
   await registerFreshUser(page, { core: true });
   await request.post(`${MARKET_MOCK}/__e2e__/set-price?symbol=BTCUSDT&price=80000`);
@@ -32,74 +33,6 @@ const boxOf = async (page: Page, sel: string) => {
 const drawnCount = (page: Page) => page.locator('.trade-chart__candle').count();
 /** 第一根蜡烛的**渲染宽度**（px）。缩放最直接的后果，且不依赖根数怎么取整。 */
 const bodyWidth = async (page: Page) => (await boxOf(page, '.trade-chart__candle')).width;
-
-test('图表不把页面撑宽，绘图区也不塌成 0', async ({ page, request }) => {
-  await openChart(page, request);
-
-  const plot = await boxOf(page, '.trade-chart__plot');
-  // 网格里的 SVG 给 `height: 100%` 会塌成 0（父格高度由内容决定）—— 那条在源码里看不出来
-  expect(plot.height, '绘图区高度塌了').toBeGreaterThan(200);
-  expect(plot.width).toBeGreaterThan(200);
-
-  const { scrollW, innerW } = await page.evaluate(() => ({
-    scrollW: document.documentElement.scrollWidth,
-    innerW: window.innerWidth,
-  }));
-  expect(scrollW, '图里的轴 / SVG 把 grid 的列撑破了').toBeLessThanOrEqual(innerW + 1);
-
-  // 轴标签必须落在图表卡里面（两端的日期最容易溢出，它们靠 --first/--last 贴边）
-  const card = await boxOf(page, '.trade-card--chart');
-  const labels = page.locator('.trade-chart__axis-label');
-  const n = await labels.count();
-  expect(n).toBeGreaterThan(4);
-  for (let i = 0; i < n; i++) {
-    const b = (await labels.nth(i).boundingBox())!;
-    expect(b.x, `第 ${i} 个轴标签溢出了卡片左边缘`).toBeGreaterThanOrEqual(card.x - 1);
-    expect(b.x + b.width, `第 ${i} 个轴标签溢出了卡片右边缘`).toBeLessThanOrEqual(
-      card.x + card.width + 1
-    );
-  }
-});
-
-test('版式：宽屏三栏一行，窄屏自选变横条后依次落下', async ({ page, request }) => {
-  await openChart(page, request);
-  const vw = page.viewportSize()!.width;
-
-  const watch = await boxOf(page, '.trade-watch');
-  const chart = await boxOf(page, '.trade-card--chart');
-  const side = await boxOf(page, '.trade-side');
-
-  if (vw >= 992) {
-    // 三栏：自选 | 图表 | 下单 + 持仓，且在同一行（纵向区间相交）
-    expect(watch.x, '自选该在最左').toBeLessThan(chart.x);
-    expect(chart.x, '图表该在中间').toBeLessThan(side.x);
-    expect(watch.y, '自选与图表该在同一行').toBeLessThan(chart.y + chart.height - 2);
-    expect(chart.y, '图表与右栏该在同一行').toBeLessThan(side.y + side.height - 2);
-    expect(chart.width, '中间那列拿不到宽度就等于没改成三栏').toBeGreaterThan(400);
-  } else {
-    // 自选横跨整行 → 图表落在它下面
-    expect(chart.y, '窄屏图表该在自选条下面').toBeGreaterThanOrEqual(watch.y + watch.height - 2);
-    if (vw < 768) {
-      expect(side.y, '单列时右栏该在图下面').toBeGreaterThanOrEqual(chart.y + chart.height - 2);
-    }
-  }
-});
-
-test('自选列表：宽屏竖排、窄屏摊成一行（同一份 DOM）', async ({ page, request }) => {
-  await openChart(page, request);
-  const vw = page.viewportSize()!.width;
-
-  const rows = page.locator('.trade-watch__row');
-  const a = (await rows.nth(0).boundingBox())!;
-  const b = (await rows.nth(1).boundingBox())!;
-
-  if (vw <= 991) {
-    expect(Math.abs(a.y - b.y), '这两格该并排').toBeLessThan(2);
-    expect(a.x).toBeLessThan(b.x);
-  } else {
-    expect(b.y, '宽屏是竖排').toBeGreaterThanOrEqual(a.y + a.height - 2);
-  }
-});
 
 test('缩放：放大更少更粗、缩小回来、双击复位', async ({ page, request }) => {
   await openChart(page, request);
@@ -188,35 +121,4 @@ test('拖动平移：往右拖看更早的行情', async ({ page, request }) => 
     innerW: window.innerWidth,
   }));
   expect(scrollW).toBeLessThanOrEqual(innerW + 1);
-});
-
-test('蜡烛配色跟着主题令牌走（涨绿跌红）', async ({ page, request }) => {
-  await openChart(page, request);
-
-  const { up, down, upToken, downToken } = await page.evaluate(() => {
-    // 令牌是 hex，先借一个探针元素换成浏览器算好的 rgb 形态再比
-    const resolve = (v: string) => {
-      const el = document.createElement('span');
-      el.style.color = v;
-      document.body.appendChild(el);
-      const c = getComputedStyle(el).color;
-      el.remove();
-      return c;
-    };
-    const fillOf = (sel: string) => {
-      const el = document.querySelector(sel);
-      return el ? getComputedStyle(el).fill : '';
-    };
-    const cs = getComputedStyle(document.documentElement);
-    return {
-      up: fillOf('.trade-chart__candle--up'),
-      down: fillOf('.trade-chart__candle--down'),
-      upToken: resolve(cs.getPropertyValue('--color-success-primary').trim()),
-      downToken: resolve(cs.getPropertyValue('--color-warning-primary').trim()),
-    };
-  });
-
-  expect(up, '阴线画不出来时这条会拿到空串').toMatch(/^rgb/);
-  expect(up).toBe(upToken);
-  expect(down).toBe(downToken);
 });

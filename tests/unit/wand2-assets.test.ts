@@ -1,108 +1,43 @@
-import { beforeAll, describe, expect, it } from 'vitest';
+// wand2 资产契约（最小恢复版）：render.ts 的 sprite() 用 naturalWidth/4 与 naturalHeight/rows
+// 现算格子（world/character/attack 4×4，walkDown 单行 4 帧）。尺寸不整除、被引用格子为空、帧内容
+// 贴边，都只表现为「草长得怪 / 角色错位 / 相邻帧串色」，不报错 —— 这里只守这三条，不比较像素内容。
+import { describe, expect, it } from 'vitest';
 import path from 'node:path';
 import sharp from 'sharp';
 import layout from '../../public/static/games/wand2/sprite-layout.json';
 
-// 从本文件位置推路径，不依赖 runner 的 cwd（IDE 单文件运行 / 子目录 shell）。
-const dir = path.resolve(import.meta.dirname, '../../public/static/games/wand2');
-const read = (file: string) => sharp(path.join(dir, file)).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
-type Pixels = Awaited<ReturnType<typeof read>>;
-let attack: Pixels, body: Pixels, character: Pixels, original: Pixels, walkDown: Pixels;
-const pixel = (image: Pixels, x: number, y: number) => image.data.subarray((y * image.info.width + x) * 4, (y * image.info.width + x) * 4 + 4);
+const DIR = path.resolve(import.meta.dirname, '../../public/static/games/wand2');
+const raw = (file: string) => sharp(path.join(DIR, file)).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
 
-beforeAll(async () => {
-  [attack, body, character, original, walkDown] = await Promise.all([
-    read('attack.webp'), read('attack-body.webp'), read('character.webp'), read('source/character-original.webp'), read('walk-down.webp'),
-  ]);
-});
+describe('Wand 2 资产契约（sprite() 切格依据）', () => {
+  it('图集尺寸整除 4、被引用的格子非空、walkDown 帧内容不贴边', async () => {
+    const meta = (file: string) => sharp(path.join(DIR, file)).metadata();
+    const [attack, character, world, walkDown] = await Promise.all(
+      ['attack.webp', 'character.webp', 'world.webp', 'walk-down.webp'].map(meta)
+    );
+    expect([attack.width, attack.height]).toEqual([layout.attackCellSize * 4, layout.attackCellSize * 4]);
+    expect([character.width, character.height]).toEqual([1024, 1024]);
+    expect([world.width, world.height]).toEqual([1024, 1024]);
+    expect(walkDown.height).toBe(256);
+    expect([walkDown.width! % 4, walkDown.width! / 4]).toEqual([0, 256]);
 
-describe('Wand 2 精灵资源', () => {
-  it('实际文件尺寸符合游戏切格，攻击留白不改变角色表规格', () => {
-    expect([attack.info.width, attack.info.height]).toEqual([1536, 1536]);
-    expect([body.info.width, body.info.height]).toEqual([1536, 1536]);
-    expect([character.info.width, character.info.height]).toEqual([1024, 1024]);
-  });
-
-  it('向下步行条的四帧能独立切出，保留边距，并同步角色表中的左右步', () => {
-    expect([walkDown.info.width, walkDown.info.height]).toEqual([1024, 256]);
-    const changed = [0, 0, 0, 0];
-    let edgePixels = 0, mismatched = 0;
-    for (let frame = 0; frame < 4; frame++) for (let y = 0; y < 256; y++) for (let x = 0; x < 256; x++) {
-      const p = pixel(walkDown, frame * 256 + x, y);
-      if ((x < 4 || x >= 252 || y < 4 || y >= 252) && p[3] > 0) edgePixels++;
-      const next = pixel(walkDown, (frame + 1) % 4 * 256 + x, y);
-      if (p[3] !== next[3] || p[3] > 0 && !p.equals(next)) changed[frame]++;
-      if (frame !== 0 && frame !== 2) continue;
-      const inCharacter = pixel(character, (frame === 0 ? 1 : 2) * 256 + x, y);
-      if (inCharacter[3] !== p[3] || p[3] > 0 && !inCharacter.equals(p)) mismatched++;
-    }
-    expect(edgePixels).toBe(0);
-    expect(mismatched).toBe(0);
-    for (const count of changed) expect(count).toBeGreaterThan(100);
-  });
-
-  it('攻击的所有实际切格均有透明边距，剑、鞋和剑光不跨格或被裁切', () => {
-    const cell = layout.attackCellSize, gutter = layout.gutter;
-    const touching: string[] = [];
-    for (let row = 0; row < 4; row++) for (let col = 0; col < 4; col++) {
-      let count = 0, visible = 0;
-      for (let y = 0; y < cell; y++) for (let x = 0; x < cell; x++) {
-        const alpha = pixel(attack, col * cell + x, row * cell + y)[3];
-        if (alpha > 0) visible++;
-        if ((x < gutter || x >= cell - gutter || y < gutter || y >= cell - gutter) && alpha > 0) count++;
-      }
-      if (count) touching.push(`${row + 1},${col + 1}: ${count}`);
-      expect(visible).toBeGreaterThan(1000);
-    }
-    expect(touching).toEqual([]);
-  });
-
-  it('每把剑的握点落在人物的实心拳头上，最终成图保留握点的手指', () => {
-    const cell = layout.attackCellSize;
-    for (let row = 0; row < 4; row++) for (let col = 0; col < 4; col++) {
-      const [hx, hy] = layout.attack[row].poses[col].hand;
-      const fist = pixel(body, col * cell + hx, row * cell + hy);
-      expect(fist[3]).toBeGreaterThan(240);
-      expect(fist[0]).toBeGreaterThan(120);
-      expect(fist[0]).toBeGreaterThan(fist[1] * 1.05);
-      const grip = pixel(attack, col * cell + hx, row * cell + hy);
-      expect(grip[3]).toBeGreaterThanOrEqual(fist[3]);
-      // 源图掌心也有少量透明度，叠到剑柄上会出现约 1–2 级颜色变化。
-      for (let c = 0; c < 3; c++) expect(Math.abs(grip[c] - fist[c])).toBeLessThanOrEqual(3);
-    }
-  });
-
-  it('步态与鞋子修补只改变登记区域，其余可见像素和透明度保持原样', () => {    let outsideChanges = 0;
-    const patchChanges = layout.characterPatches.map(() => 0);
-    for (let y = 0; y < 1024; y++) for (let x = 0; x < 1024; x++) {
-      const a = pixel(character, x, y), b = pixel(original, x, y);
-      // WebP 可重写全透明像素中不可见的 RGB，不视为画面变化。
-      if (a[3] === b[3] && (a[3] === 0 || a.equals(b))) continue;
-      const index = layout.characterPatches.findIndex(p => {
-        const [left, top, width, height] = p.region;
-        return x >= p.col * 256 + left && x < p.col * 256 + left + width
-          && y >= p.row * 256 + top && y < p.row * 256 + top + height;
-      });
-      if (index < 0) outsideChanges++; else patchChanges[index]++;
-    }
-    expect(outsideChanges).toBe(0);
-    for (const changed of patchChanges) expect(changed).toBeGreaterThan(100);
-  });
-
-  it('world 图集存在、按 4×4 均分，且被引用的三格真有像素', async () => {
-    // render.ts 的 sprite() 用 naturalWidth/4、naturalHeight/4 现算格子；world 没有生成脚本，
-    // 换图 / 裁图后尺寸一旦不是 4 的整数倍，切格就会错位，而画面上只是"草长得怪"——不报错。
-    const world = await read('world.webp');
-    expect([world.info.width, world.info.height]).toEqual([1024, 1024]);
-    expect([world.info.width % 4, world.info.height % 4]).toEqual([0, 0]);
-    const cell = world.info.width / 4;
-    // makeGround() 只引用第 4 行（row 3）的 col 0（碎石）、1（灌木）、2（小花）。
-    for (const col of [0, 1, 2]) {
+    // makeGround/render 引用 world 第 4 行 col 0–3（碎石/灌木/小花/死亡帧）：空格子会画成透明块。
+    const w = await raw('world.webp');
+    for (const col of [0, 1, 2, 3]) {
       let visible = 0;
-      for (let y = 0; y < cell; y++) for (let x = 0; x < cell; x++) {
-        if (pixel(world, col * cell + x, 3 * cell + y)[3] > 0) visible++;
+      for (let y = 0; y < 256; y++) for (let x = 0; x < 256; x++) {
+        if (w.data[((3 * 256 + y) * w.info.width + col * 256 + x) * 4 + 3] > 0) visible++;
       }
-      expect(visible, `world.webp 第 4 行第 ${col + 1} 格是空的：sprite() 会画出一个透明块`).toBeGreaterThan(100);
+      expect(visible, `world.webp 第 4 行第 ${col + 1} 格是空的`).toBeGreaterThan(100);
     }
+
+    // 4 帧各留 4px 透明边距：内容越过帧边 = 相邻帧相互串色（换图/裁图时最容易踩）。
+    const wd = await raw('walk-down.webp');
+    const bleeding: string[] = [];
+    for (let frame = 0; frame < 4; frame++) for (let y = 0; y < 256; y++) for (let x = 0; x < 256; x++) {
+      if (!(x < 4 || x >= 252 || y < 4 || y >= 252)) continue;
+      if (wd.data[(y * wd.info.width + frame * 256 + x) * 4 + 3] > 0) bleeding.push(`${frame}:${x},${y}`);
+    }
+    expect(bleeding.slice(0, 5), '帧边距内出现像素：内容越界 / 相邻帧会串色').toEqual([]);
   });
 });

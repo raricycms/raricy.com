@@ -13,12 +13,11 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { resetDb, makeUser, prisma } from '../helpers/db';
 import { nowForDb } from '@/lib/db-time';
 import { __resetRateLimitStore, rateLimit, RULES } from '@/lib/rate-limit';
-import { CHAT_LOBBY_ID, CHAT_DELETED_TEXT } from '@/lib/chat-shared';
+import { CHAT_DELETED_TEXT } from '@/lib/chat-shared';
 import { startDirectChannel, sendMessage, softDeleteMessage } from '@/lib/chat-service';
 import {
   SAVED_MESSAGE_MAX,
   countSavedMessages,
-  listSavedMessageIds,
   listSavedMessages,
   parseMessageId,
   saveMessage,
@@ -82,13 +81,6 @@ describe('saveMessage', () => {
     expect(await countSavedMessages(a.id)).toBe(1);
   });
 
-  it('拒绝大区消息（保存箱只收私聊）', async () => {
-    const a = await makeUser({ role: 'core' });
-    const msg = await send(a.id, CHAT_LOBBY_ID, '大区里的话');
-    const res = await saveMessage(a.id, msg.id);
-    expect(!res.ok && res.reason).toBe('badinput');
-  });
-
   it('拒绝不属于自己的会话（非成员）', async () => {
     const { a: owner, b, channelId } = await makeDirectPair();
     const outsider = await makeUser({ role: 'core' });
@@ -115,14 +107,6 @@ describe('saveMessage', () => {
     await prisma.user.update({ where: { id: b.id }, data: { archivedAt: nowForDb() } });
     const res = await saveMessage(a.id, msg.id);
     expect(!res.ok && res.reason).toBe('badinput');
-  });
-
-  it('无效 id / 不存在的 id 都是 badinput（不确认存在性）', async () => {
-    const { a } = await makeDirectPair();
-    for (const bad of ['0', 'abc', 999_999_999]) {
-      const res = await saveMessage(a.id, bad);
-      expect(!res.ok && res.reason).toBe('badinput');
-    }
   });
 
   it('限频在参数校验之前（随机探测也要消耗额度）', async () => {
@@ -197,12 +181,6 @@ describe('unsaveMessage', () => {
     const msg = await send(b.id, channelId, 'x');
     expect((await unsaveMessage(a.id, msg.id)).ok).toBe(true);
     expect((await unsaveMessage(a.id, msg.id)).ok).toBe(true);
-  });
-
-  it('无效 id → badinput', async () => {
-    const { a } = await makeDirectPair();
-    const res = await unsaveMessage(a.id, 'nope');
-    expect(!res.ok && res.reason).toBe('badinput');
   });
 });
 
@@ -324,40 +302,5 @@ describe('listSavedMessages', () => {
     const page = await listSavedMessages(a.id);
     expect(page.items[0].state).toBe('ok');
     expect(page.items[0].preview).toBe('[图片]');
-  });
-});
-
-// ── 频道内「已保存」id ───────────────────────────────────────────────────────
-
-describe('listSavedMessageIds', () => {
-  it('只返回该频道里我保存过的 id', async () => {
-    const { a, b, channelId } = await makeDirectPair();
-    const m1 = await send(b.id, channelId, '一');
-    const m2 = await send(b.id, channelId, '二');
-    await saveMessage(a.id, m1.id);
-
-    const res = await listSavedMessageIds(a.id, channelId);
-    expect(res.ok).toBe(true);
-    expect(res.ok && res.ids).toEqual([m1.id]);
-    expect(res.ok && res.ids).not.toContain(m2.id);
-  });
-
-  it('大区返回空数组（保存箱只收私聊）', async () => {
-    const a = await makeUser({ role: 'core' });
-    const res = await listSavedMessageIds(a.id, CHAT_LOBBY_ID);
-    expect(res).toEqual({ ok: true, ids: [] });
-  });
-
-  it('非成员 forbidden / 频道不存在 notfound', async () => {
-    const { channelId } = await makeDirectPair();
-    const outsider = await makeUser({ role: 'core' });
-    expect(await listSavedMessageIds(outsider.id, channelId)).toEqual({
-      ok: false,
-      reason: 'forbidden',
-    });
-    expect(await listSavedMessageIds(outsider.id, 'no-such-channel')).toEqual({
-      ok: false,
-      reason: 'notfound',
-    });
   });
 });

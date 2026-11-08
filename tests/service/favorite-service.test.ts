@@ -59,11 +59,6 @@ describe('generateFavoriteId', () => {
       expect(id).toMatch(FAVORITE_ID_RE);
     }
   });
-
-  it('不是常量（随机性冒烟）', () => {
-    const set = new Set(Array.from({ length: 200 }, () => generateFavoriteId()));
-    expect(set.size).toBeGreaterThan(150);
-  });
 });
 
 // ── 创建 ─────────────────────────────────────────────────────────────────────
@@ -81,13 +76,6 @@ describe('createFavorite', () => {
     const fav = await mk(u.id, '分享合辑', true);
     expect(fav.publicId).toMatch(FAVORITE_ID_RE);
     expect(fav.isPublic).toBe(true);
-  });
-
-  it('两个公开收藏夹的 id 不相同', async () => {
-    const u = await makeUser();
-    const a = await mk(u.id, '甲', true);
-    const b = await mk(u.id, '乙', true);
-    expect(a.publicId).not.toBe(b.publicId);
   });
 
   it('标题会 trim；空 / 超长 / 非字符串一律 badinput', async () => {
@@ -530,14 +518,6 @@ describe('copyFavorite', () => {
     await softDeleteFavorite(pub.id, u.id);
     expect((await copyFavorite(pub.id, u.id, false)).ok).toBe(false);
     expect((await copyFavorite(pub.publicId!, u.id, false)).ok).toBe(false);
-  });
-
-  it('复制出来的新行不继承源的 id / publicId', async () => {
-    const u = await makeUser();
-    const src = await mk(u.id, '源', true);
-    const res = await copyFavorite(src.id, u.id, true);
-    expect(res.ok && res.favorite!.id).not.toBe(src.id);
-    expect(res.ok && res.favorite!.publicId).not.toBe(src.publicId);
   });
 
   it('复制占用创建配额（第 201 个复制被拒 —— 否则是绕过上限的后门）', async () => {

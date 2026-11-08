@@ -13,9 +13,6 @@
 import { describe, expect, it } from 'vitest';
 import {
   JSON_MAX_BYTES,
-  JSON_PATH_RESULT_LIMIT,
-  JSON_PATH_SUPPORTED_SYNTAX,
-  JSON_PATH_UNSUPPORTED,
   countJsonNodes,
   exceedsJsonSizeLimit,
   findJsonSyntaxErrorPosition,
@@ -29,9 +26,6 @@ import {
   utf8ByteLength,
 } from '@/lib/dev-tools/json';
 import {
-  CSV_DELIMITER_OPTIONS,
-  DATA_CONVERT_LOSS_NOTES,
-  DATA_FORMAT_OPTIONS,
   DataConvertError,
   convertData,
   csvRowsToObjects,
@@ -224,12 +218,6 @@ describe('json 工具：JSONPath 子集', () => {
     expect(parseJsonPath('$.a[').ok).toBe(false);
     expect(parseJsonPath('').ok).toBe(false);
   });
-
-  it('页面的「支持 / 不支持」清单不是空的（诚实说明有落点）', () => {
-    expect(JSON_PATH_SUPPORTED_SYNTAX.length).toBeGreaterThanOrEqual(4);
-    expect(JSON_PATH_UNSUPPORTED.length).toBeGreaterThanOrEqual(3);
-    expect(JSON_PATH_RESULT_LIMIT).toBeGreaterThan(0);
-  });
 });
 
 // ── 数据转换 ─────────────────────────────────────────────────────────────────
@@ -396,12 +384,6 @@ describe('data-convert：统一入口的六条边', () => {
     expect(convertData('[{"a":1,"b":2}]', 'json', 'csv', { csvDelimiter: '\t' }).output).toBe(
       'a\tb\n1\t2',
     );
-  });
-
-  it('词汇表与有损项清单齐全', () => {
-    expect(DATA_FORMAT_OPTIONS.map((o) => o.value)).toEqual(['json', 'yaml', 'csv']);
-    expect(CSV_DELIMITER_OPTIONS.length).toBe(4);
-    expect(DATA_CONVERT_LOSS_NOTES.length).toBeGreaterThanOrEqual(4);
   });
 });
 

@@ -75,7 +75,8 @@ Next 15 App Router + React 19 的结构对切页动画是"半适合"：
 
 - 祖先一旦有 `transform` / `filter`，fixed 后代就会改以该祖先为包含块，位置当场跑掉；
 - Playwright 里一批几何用例在 `goto` 后**立刻**量盒子，整页 transform 会让它们变成
-  时序相关（`tests/e2e/page-gutter.spec.ts` 等）；
+  时序相关（历史记录：原 `tests/e2e/page-gutter.spec.ts` 等几何用例；Round4 已退出 e2e，
+  版式改由页面/视口验收）；
 - `opacity` 不移动任何盒子，是唯一安全的整页动画属性。它只在这 160ms 内临时创建
   stacking context，见 §4.4。
 
@@ -235,11 +236,11 @@ IntersectionObserver + 30ms stagger（最多 5 张卡），reduced-motion 下关
 - `npm run typecheck`、`npm test`（**`npm run lint` 不存在**，仓库不把它当门禁；
   `npx tsc --noEmit` 是已弃用的旧入口，会读到陈旧的 `.next/types`）；
 - `npm run build && npm run e2e`（注意 `npm run e2e` 不自动 build，读的是旧 `.next`）；
-  重点盯 `tests/e2e/page-gutter.spec.ts`、`tests/e2e/favorite-layout.spec.ts`、
-  `tests/e2e/comment-layout.spec.ts`、`tests/e2e/clipboard-layout.spec.ts`、
+  重点盯 `tests/e2e/favorite-layout.spec.ts`、`tests/e2e/comment-layout.spec.ts`、
   `tests/e2e/fish-layout.spec.ts`、`tests/e2e/editor-mobile-toolbar.spec.ts`、
   `tests/e2e/home-hero.spec.ts`、`tests/e2e/chat-image.spec.ts`、
-  `tests/e2e/save-navigation.spec.ts`；
+  `tests/e2e/save-navigation.spec.ts`（历史记录：原 `page-gutter` / `clipboard-layout`
+  两个纯外观 spec 已于 Round4 退出 e2e，版式改由页面/视口验收）；
 - 手动：Chrome / Safari / Firefox，reduced-motion，无 JS，iframe 嵌入，慢网，
   前进/后退与滚动位置恢复，暗色主题，超长文章返回；
 - 补等待态：给主要动态页补 `loading.tsx` 或骨架。**动画只能让"切换"顺滑，等待本身

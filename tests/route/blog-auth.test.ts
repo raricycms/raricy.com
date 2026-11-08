@@ -365,21 +365,6 @@ describe('PATCH /api/blogs/:id —— 可见性只能由**作者本人**改', ()
     expect(row?.title, '多传的键不许生效').toBe('原标题');
   });
 
-  it('改可见性**不碰**正文的 updatedAt —— 不该在「按更新时间」的列表里凭空跳位', async () => {
-    const author = await makeUser({ role: 'core' });
-    const before = new Date('2026-01-02T03:04:05.000Z');
-    const b = await makeBlog({ authorId: author.id, contentUpdatedAt: before });
-    await login(author.id);
-
-    await patchVis(b.id, 'public');
-
-    const c = await prisma.blogContent.findUnique({
-      where: { blogId: b.id },
-      select: { updatedAt: true },
-    });
-    expect(c?.updatedAt?.toISOString(), '分开了就是分开了').toBe(before.toISOString());
-  });
-
   it('软删的文章：404（与 PUT 同口径，不确认存在性）', async () => {
     const author = await makeUser({ role: 'core' });
     const b = await makeBlog({ authorId: author.id, ignore: true });

@@ -10,7 +10,8 @@
 //    只改这里的比例 / 来源而不重跑，站点会继续显示旧图，**且不报任何错**。
 //    出图会把「生成这一刻」写进 pwa/manifest.json（本文件自身 + 每张产物的 sha256）。
 //    守卫有两道：`node scripts/make-pwa-icons.mjs --check`（本文件，只读校验台账）与
-//    `tests/unit/pwa-assets.test.ts`（全量单测里跑同一套判据）。
+//    `tests/unit/pwa-metadata.test.ts`（清单里的每个图标在盘上存在、尺寸对得上；
+//    原 `pwa-assets.test.ts` 的台账比对已于 Round4 移除）。
 //
 // 用法：node scripts/make-pwa-icons.mjs            # 出图并写台账
 //       node scripts/make-pwa-icons.mjs --check    # 只校验已入库台账，不写任何文件

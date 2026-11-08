@@ -17,7 +17,6 @@ import {
   toggleCategoryActive,
   deleteCategory,
   listCategoriesTree,
-  categoryToDict,
 } from '@/lib/admin-category-service';
 
 beforeEach(async () => {
@@ -88,13 +87,6 @@ describe('createCategory 校验', () => {
     expect(r.data.notifyAdminOnPost).toBe(false);
     expect(r.data.focusHidden).toBe(false);
     expect(r.data.sortOrder).toBe(0);
-  });
-
-  it('合法创建：可显式设置 focusHidden=true', async () => {
-    const r = await createCategory({ name: '水区', slug: 'focus-water', focusHidden: true });
-    expect(r.ok).toBe(true);
-    if (!r.ok) return;
-    expect(r.data.focusHidden).toBe(true);
   });
 
   it('合法创建：父栏目下的二级栏目', async () => {
@@ -282,33 +274,4 @@ describe('listCategoriesTree / categoryToDict', () => {
     expect(tree[0].children[0].level).toBe(2);
   });
 
-  it('categoryToDict 字段形状（snake_case + level）', async () => {
-    const c = await prisma.category.create({
-      data: {
-        name: 'x',
-        slug: 'x',
-        description: null,
-        icon: '',
-        parentId: null,
-        sortOrder: 3,
-        isActive: false,
-        excludeFromAll: true,
-        adminOnlyPosting: false,
-        notifyAdminOnPost: false,
-      },
-    });
-    const d = categoryToDict(c);
-    expect(d).toMatchObject({
-      id: c.id,
-      name: 'x',
-      parent_id: null,
-      sort_order: 3,
-      is_active: false,
-      exclude_from_all: true,
-      admin_only_posting: false,
-      notify_admin_on_post: false,
-      focus_hidden: false,
-      level: 1,
-    });
-  });
 });

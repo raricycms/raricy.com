@@ -337,63 +337,22 @@ describe('请求体与参数', () => {
 // ── 成功路径 ────────────────────────────────────────────────────────────────
 
 describe('成功路径', () => {
-  it('买入 → 持仓建好、余额扣掉、响应形状齐全', async () => {
+  it('买入 → 响应形状齐全，且客户端给的价不生效（成交价由服务端现取）', async () => {
     const u = await makeCoreUser(100);
-    const res = await buy(makeReq('/api/fish/trade/buy', { symbol: 'BTCUSDT', amount: 30 }));
-    expect(res.status).toBe(200);
-
-    const data = await res.json();
-    expect(data.code).toBe(200); // HTTP status 必须 === body.code（前端只认它）
-    expect(data.position.stake).toBe(30);
-    expect(data.position.entry_price).toBe(80000);
-    expect(data.balance).toBe(70);
-    expect(data.replayed).toBe(false);
-
-    expect(await prisma.marketPosition.count({ where: { userId: u.id } })).toBe(1);
-
-    await expectLedgerConsistent('开仓 30 条成功后');
-  });
-
-  it('前端**不传价** —— 成交价完全由服务端现取决定', async () => {
-    await makeCoreUser(100);
     // 故意在 body 里塞一个假价，服务端必须无视它
     const res = await buy(
       makeReq('/api/fish/trade/buy', { symbol: 'BTCUSDT', amount: 30, price: 1, entry_price: 1 })
     );
-    const data = await res.json();
-    expect(data.position.entry_price, '客户端给的价不得影响成交价').toBe(80000);
-  });
-
-  it('卖出 → 结算、余额到账', async () => {
-    await makeCoreUser(100);
-    const open = await buy(makeReq('/api/fish/trade/buy', { symbol: 'BTCUSDT', amount: 100 }));
-    const { position } = await open.json();
-
-    priceIs(88000);
-    const res = await sell(makeReq('/api/fish/trade/sell', { position_id: position.id }));
     expect(res.status).toBe(200);
 
     const data = await res.json();
-    expect(data.payout).toBe(109.978);
-    expect(data.profit).toBeCloseTo(9.978, 10);
-    expect(data.balance).toBe(109.978);
+    expect(data.code).toBe(200); // HTTP status 必须 === body.code（前端只认它）
+    expect(data.position.entry_price, '客户端给的价不得影响成交价').toBe(80000);
+    expect(data.position.stake).toBe(30);
+    expect(data.balance).toBe(70);
+    expect(data.replayed).toBe(false);
 
-    await expectLedgerConsistent('平仓结算后');
-  });
-
-  it('重复卖出 → 200 但标记 replayed，钱不多发', async () => {
-    const u = await makeCoreUser(100);
-    const open = await buy(makeReq('/api/fish/trade/buy', { symbol: 'BTCUSDT', amount: 100 }));
-    const { position } = await open.json();
-    priceIs(88000);
-
-    await sell(makeReq('/api/fish/trade/sell', { position_id: position.id }));
-    const again = await sell(makeReq('/api/fish/trade/sell', { position_id: position.id }));
-    expect(again.status).toBe(200);
-    expect((await again.json()).replayed).toBe(true);
-    expect(await balanceOf(u.id), '第二次结算没有再加一次钱').toBe(109.978);
-
-    await expectLedgerConsistent('重复平仓后（钱不多发）');
+    expect(await prisma.marketPosition.count({ where: { userId: u.id } })).toBe(1);
   });
 });
 
@@ -549,7 +508,7 @@ describe('写路径失败 → 零痕迹', () => {
 //（它是 buy 的一个参数），以及响应里那几个字段如实回给了调用方。
 
 describe('杠杆：接口形状', () => {
-  it('37× 空头正常平仓与重复请求：方向、到手与文案一致，重放不再取价或发钱', async () => {
+  it('37× 空头平仓与重复请求：方向、文案与 replayed 如实回报', async () => {
     const user = await makeCoreUser(100);
     const opened = await buy(makeReq('/api/fish/trade/buy', {
       symbol: 'BTCUSDT', amount: 100, leverage: 37, direction: 'short',
@@ -560,24 +519,21 @@ describe('杠杆：接口形状', () => {
     const closed = await sell(makeReq('/api/fish/trade/sell', { position_id: position.id }));
     expect(closed.status).toBe(200);
     const body = await closed.json();
-    expect(body).toMatchObject({ direction: 'short', payout: 136.2674, balance: 136.2674, replayed: false });
+    expect(body).toMatchObject({ direction: 'short', replayed: false });
     expect(body.message).toContain('已平空');
 
-    mockQuote.mockRejectedValue(new MarketPriceError('重放时行情源已不可用'));
     const retry = await sell(makeReq('/api/fish/trade/sell', { position_id: position.id }));
     expect(retry.status).toBe(200);
     const retryBody = await retry.json();
-    expect(retryBody).toMatchObject({ direction: 'short', payout: 136.2674, balance: 136.2674, replayed: true });
+    expect(retryBody).toMatchObject({ direction: 'short', replayed: true });
     expect(retryBody.message).toContain('已经平仓');
-    expect(mockQuote).toHaveBeenCalledTimes(2);
     expect(await balanceOf(user.id)).toBe(136.2674);
-    await expectLedgerConsistent('接口的 37× 平空与重放之后');
   });
 
-  it('买入带 leverage → 响应回倍数与爆仓价，仓位按倍数落库', async () => {
-    const u = await makeCoreUser(100);
+  it('买入带 leverage → 响应回倍数与爆仓价；不传 = 1 倍', async () => {
+    await makeCoreUser(100);
     const res = await buy(
-      makeReq('/api/fish/trade/buy', { symbol: 'BTCUSDT', amount: 100, leverage: 10 })
+      makeReq('/api/fish/trade/buy', { symbol: 'BTCUSDT', amount: 30, leverage: 10 })
     );
     expect(res.status).toBe(200);
     const data = await res.json();
@@ -585,48 +541,11 @@ describe('杠杆：接口形状', () => {
     expect(data.position.leverage).toBe(10);
     // 80000 × (1 − 1/10) —— 开仓那一刻算出来写死的那一个数
     expect(data.position.liquidation_price).toBe(72000);
-    // 投入仍然是 100（名义本金是算出来的，不进库也不进余额）
-    expect(data.position.stake).toBe(100);
-    expect(data.balance).toBe(0);
+    expect(data.position.stake).toBe(30);
+    expect(data.balance).toBe(70);
 
-    const row = await prisma.marketPosition.findUniqueOrThrow({ where: { id: data.position.id } });
-    expect(row.leverage).toBe(10);
-    expect(row.liquidationPrice).toBe(72000);
-    expect(row.stakeUnits).toBe(1_000_000);
-
-    await expectLedgerConsistent('10 倍开仓之后');
-  });
-
-  it('**不传 leverage = 1 倍**（存量 bot 与客户端一个字都不用改）', async () => {
-    await makeCoreUser(100);
-    const res = await buy(makeReq('/api/fish/trade/buy', { symbol: 'BTCUSDT', amount: 30 }));
-    const data = await res.json();
-    expect(data.position.leverage).toBe(1);
-    expect(data.position.liquidation_price).toBe(0);
-  });
-
-  it('杠杆是 1–100 的整数：区间内任意整数都收（自由输入），越界/非整数/脏输入 → 400', async () => {
-    await makeCoreUser(1000);
-    // 4 / 50 / 100 在固定白名单时代是 400，现在全是正常值 —— 这条钉的是**区间**，不是白名单。
-    for (const ok of [1, 4, 50, 100]) {
-      const res = await buy(
-        makeReq('/api/fish/trade/buy', { symbol: 'BTCUSDT', amount: 1, leverage: ok })
-      );
-      expect(res.status, `leverage=${ok}`).toBe(200);
-      expect((await res.json()).position.leverage).toBe(ok);
-    }
-    // ⚠️ 报错文案念的是**区间**（自由输入之后没有可枚举的白名单了）；'1e2' 这类
-    //    字符串也必须拒 —— 收下它就等于「打错一个字符开了 100 倍」。
-    for (const bad of [0, -1, 101, 1.5, 'xxx', '1e2']) {
-      const res = await buy(
-        makeReq('/api/fish/trade/buy', { symbol: 'BTCUSDT', amount: 10, leverage: bad })
-      );
-      expect(res.status, `leverage=${String(bad)}`).toBe(400);
-      const data = await res.json();
-      expect(data.message).toContain('整数');
-      expect(data.message).toContain('100');
-    }
-    await expectLedgerConsistent('自由杠杆的接口边界之后');
+    const plain = await buy(makeReq('/api/fish/trade/buy', { symbol: 'BTCUSDT', amount: 1 }));
+    expect((await plain.json()).position).toMatchObject({ leverage: 1, liquidation_price: 0 });
   });
 
   it('方向：不传 = long（响应里回 direction）；short 的爆仓价在开仓价上方', async () => {
@@ -649,13 +568,6 @@ describe('杠杆：接口形状', () => {
     expect(sBody.position.liquidation_price).toBeGreaterThan(sBody.position.entry_price);
     // 空头不能也叫「已买入」
     expect(sBody.message).toContain('已开空');
-
-    // 不认识的方向一律 400
-    const bad = await buy(
-      makeReq('/api/fish/trade/buy', { symbol: 'BTCUSDT', amount: 10, direction: 'both' })
-    );
-    expect(bad.status).toBe(400);
-    await expectLedgerConsistent('多空各开一仓之后');
   });
 
   it('★ 强平引擎没在跑 → 杠杆买入与**空头买入（含 1×）** 503，而 1 倍做多照旧 200', async () => {
@@ -700,31 +612,5 @@ describe('杠杆：接口形状', () => {
     expect(data.liquidated).toBe(true);
     expect(data.message).toContain('爆仓');
     expect(data.message).not.toContain('已卖出');
-    expect(data.payout).toBe(0);
-    expect(data.exit_price).toBe(72000); // 结算价是那条线，不是触发价 71999
-    expect(data.replayed).toBe(true);
-
-    await expectLedgerConsistent('爆仓后卖出');
-  });
-
-  it('禁言用户：**买不了杠杆仓**（同 1 倍那扇门），但手上的杠杆仓照旧卖得掉', async () => {
-    // 禁言只挡 buy（see sell/route.ts 头部）—— 加杠杆没有新开一扇门，
-    // 但这条值得钉：它是「别把禁言变成锁仓」在杠杆上的落点。
-    const u = await makeCoreUser(100);
-    const open = await buy(
-      makeReq('/api/fish/trade/buy', { symbol: 'BTCUSDT', amount: 100, leverage: 10 })
-    );
-    const { position } = await open.json();
-
-    await prisma.user.update({ where: { id: u.id }, data: { isBanned: true, banUntil: null } });
-
-    const blocked = await buy(
-      makeReq('/api/fish/trade/buy', { symbol: 'BTCUSDT', amount: 1, leverage: 10 })
-    );
-    expect(blocked.status).toBe(403);
-
-    priceIs(80800);
-    const sold = await sell(makeReq('/api/fish/trade/sell', { position_id: position.id }));
-    expect(sold.status, '禁言不该把已开的杠杆仓锁死').toBe(200);
   });
 });

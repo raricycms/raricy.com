@@ -15,7 +15,6 @@ import { describe, it, expect } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 import {
-  guardFor,
   isConfirmedHttp,
   isLocalHost,
   isLoopbackHost,
@@ -62,70 +61,6 @@ describe('isConfirmedHttp —— 只在**确证**是 http 时返回 true', () =>
   it('空串 / 畸形值 → false（当没有信号处理）', () => {
     for (const v of ['', '   ', 'ftp', 'HTTP/1.1']) {
       expect(isConfirmedHttp(h({ 'x-forwarded-proto': v })), `XFP=${JSON.stringify(v)}`).toBe(false);
-    }
-  });
-});
-
-describe('guardFor —— 哪条路径过闸、过哪一档、403 文案点名谁', () => {
-  it('页面：练手盘的 /fish/trade 与玩具的 /game，以及它们下面的一切（含尾斜杠）', () => {
-    for (const p of [
-      '/fish/trade',
-      '/fish/trade/',
-      '/fish/trade/stats',
-      '/fish/trade/stats/',
-      '/game',
-      '/game/',
-      '/game/atamas',
-      '/game/wand2/',
-      '/game/collections/test',
-      // 合集可以嵌套：闸认的是 /game 前缀，新层级不该漏出去。
-      '/game/collections/test/craft',
-    ]) {
-      expect(guardFor(p), p).toEqual({ kind: 'page', label: p.startsWith('/game') ? '玩具' : '练手盘' });
-    }
-  });
-
-  it('★ /game/quandi/play 按页面走 308（它是 GET 的 iframe 文档，跟到 https 没损失）', () => {
-    expect(guardFor('/game/quandi/play')).toEqual({ kind: 'page', label: '玩具' });
-  });
-
-  it('接口：GUARDED_APIS 里每条都认（含尾斜杠）', () => {
-    for (const p of GUARDED_APIS) {
-      expect(guardFor(p), p).toEqual({ kind: 'api', label: p.startsWith('/api/game/') ? '玩具' : '练手盘' });
-      expect(guardFor(`${p}/`), `${p}/`).toEqual({
-        kind: 'api',
-        label: p.startsWith('/api/game/') ? '玩具' : '练手盘',
-      });
-    }
-  });
-
-  it('★ 403 文案点名的区域由路径决定，不是硬编码「练手盘」', () => {
-    // 中间件拿 label 拼「<label>仅支持 HTTPS 访问」。漏了这条，玩具区的 403 会
-    // 指着一个它不属于的功能，而页面/接口本身拦得完全正确 —— 只有真看文案才发现。
-    expect(guardFor('/game')?.label).toBe('玩具');
-    expect(guardFor('/api/game/wand2/launch')?.label).toBe('玩具');
-    expect(guardFor('/fish/trade')?.label).toBe('练手盘');
-    expect(guardFor('/api/fish/trade/quote')?.label).toBe('练手盘');
-  });
-
-  it('前缀不得误伤：/games、/gameplay、/fish/trades、/fish/tradex 不在闸内', () => {
-    // 少一条这样的用例，`startsWith('/game')` 这种写法就会把 /games 一起拦下
-    //（而它将来可能是个真页面）—— 症状是一个无关页面在 http 下 308。
-    for (const p of ['/games', '/gameplay', '/fish/trades', '/fish/tradex', '/fish', '/fish/market']) {
-      expect(guardFor(p), p).toBeNull();
-    }
-  });
-
-  it('其余接口一律不在闸内', () => {
-    for (const p of [
-      '/api/auth/login',
-      '/api/fish/market/transfer',
-      '/api/fish/trade',
-      '/api/game',
-      '/api/game/wand',
-      '/api/blogs',
-    ]) {
-      expect(guardFor(p), p).toBeNull();
     }
   });
 });

@@ -49,3 +49,31 @@ describe('isMainModule', () => {
     expect(isMainModule('', MIGRATE_SCRIPT)).toBe(false);
   });
 });
+
+// ── 手写 DDL 与迁移 SQL 的副本对账（原 migration-handwritten-sql-sync.test.ts，Round4 合并）──
+const ROOT = path.resolve(import.meta.dirname, '../..');
+const MIGRATION_38 = path.join(ROOT, 'prisma', 'migrations', '38_daily_quote_lifecycle');
+
+function readNormalized(file: string): string {
+  return fs.readFileSync(file, 'utf8').replace(/\r\n/g, '\n').trim();
+}
+
+describe('迁移 38 的手写约束与 migration.sql 保持同一份', () => {
+  it('constraints.sql 的内容逐字出现在 migration.sql 中', () => {
+    const constraints = readNormalized(path.join(MIGRATION_38, 'constraints.sql'));
+    const migration = readNormalized(path.join(MIGRATION_38, 'migration.sql'));
+
+    expect(constraints.length, 'constraints.sql 不该是空文件').toBeGreaterThan(0);
+    expect(
+      migration,
+      '38 的两份副本已漂移：constraints.sql（测试库安装的那份）没有逐字出现在 migration.sql 里'
+    ).toContain(constraints);
+  });
+
+  it('constraints.sql 只包含 schema 无法表达的 DDL（不是整份迁移的复制）', () => {
+    const constraints = readNormalized(path.join(MIGRATION_38, 'constraints.sql'));
+    // 若有人把整份 migration 抄进来，这里会红 —— 那不是「补约束」，而是制造第三份真相。
+    expect(constraints, 'constraints.sql 不该包含事务控制').not.toMatch(/\b(BEGIN|COMMIT)\b/);
+    expect(constraints.length, 'constraints.sql 不应整段复制 migration').toBeLessThan(2000);
+  });
+});

@@ -46,22 +46,23 @@ process.env.STICKERS_DIR = E2E_STICKERS_DIR;
 const E2E_FRAMES_DIR = path.resolve(__dirname, 'tests/.tmp/e2e-frames');
 process.env.FRAMES_DIR = E2E_FRAMES_DIR;
 
-// 故事素材同理。**不设它故事页会读 repo 根的 instance/stories**（站长的真实数据），
-// 那会让 /story 的用例随机器时通时不通 —— 本地有故事就跑得通，别人机器上就 404。
-// 素材由 global-setup 的 seedStories() 造（一篇 markdown + 一份 cattca），
-// 于是故事两页在 e2e 里是确定的。
-const E2E_STORIES_DIR = path.resolve(__dirname, 'tests/.tmp/e2e-stories');
-process.env.STORIES_DIR = E2E_STORIES_DIR;
 const PORT = 3100; // 避开开发用的 3000
 const MARKET_PORT = 3102; // 练手盘行情替身，见 tests/e2e/mock-market-price.ts
 const REALTIME_PORT = 3103;
 
 /**
- * 真正需要 mobile 布局的 spec —— mobile project 只跑这些（见下方 projects 的注解）。
+ * 真正仍按视口分支的 spec —— mobile project 只跑这些（见下方 projects 的注解）。
  *
- * 判据是「用例是否碰布局」，不是「文件里有没有 mobile 字样」：
+ * 判据是「用例是否真的按视口 / 指针分支」，不是「文件里有没有 mobile 字样」：
  *   · 用了 isMobile / viewportSize() 按布局分支的
  *   · 依赖抽屉 / 侧栏折叠 / 汉堡菜单的
+ *
+ * 2026-11 前端样式类测试清理后，mobile 只保留这批。已删除的 spec（page-gutter /
+ * navbar-capsule / chat-codeblock / file-converter-layout / theme-transition / motion）
+ * 与「文件还在但已无 viewport 分支」的 spec（blog-timestamps / chat-bubble /
+ * comment-layout / admin-ui / hinge / hinge2 / hinge3 / yiwen）都已从本表移除 ——
+ * 别再把只 goto 页面断言内容的 spec 加回来。唯一的例外是 daily-quote：它虽然也没有
+ * isMobile 分支，但断言「整页不许横向滚动」，那条判据只在窄视口才真的会红（见下表注释）。
  *
  * 注意 testMatch 匹配的是**文件路径**，匹配不了 describe 名（实测：
  * /^x\.spec\.ts:.*某describe/ 这种写法不报错但一个用例都选不中，是静默失效）。
@@ -72,9 +73,11 @@ const REALTIME_PORT = 3103;
  */
 const RESPONSIVE_SPECS: RegExp[] = [
   /frontend-ia\.spec\.ts$/,
+  // 每日一言：虽然已无 isMobile 分支，但用例里断言「整页不许横向滚动」
+  // （documentElement.scrollWidth ≤ clientWidth，见 daily-quote.spec.ts:227/246/429）——
+  // 这是真视口属性：390px 的窄屏才会把操作行撑出视口，桌面那一遍几乎恒真。故保留双跑。
   /daily-quote\.spec\.ts$/,
   /blog-directory\.spec\.ts$/,
-  /theme-transition\.spec\.ts$/,
   /public-space\.spec\.ts$/,
   /wand\.spec\.ts$/,
   /wand2(?:-controls)?\.spec\.ts$/,
@@ -85,23 +88,11 @@ const RESPONSIVE_SPECS: RegExp[] = [
   /twinshade\.spec\.ts$/,
   /lumen\.spec\.ts$/,
   /lumen2\.spec\.ts$/,
-  /yiwen\.spec\.ts$/,
-  /hinge\.spec\.ts$/,
-  /hinge2\.spec\.ts$/,
-  /hinge3\.spec\.ts$/,
-  // 动效试验台：窄屏「变体列收成一列 + 整页不横向溢出」是按真视口宽度量出来的，
-  // 曲线图与 cubic-bezier 长串最容易撑破这一条。桌面那一遍同样跑（重播、过冲、
-  // 展开高度那些与视口无关）。
-  /motion\.spec\.ts$/,
   // 手工间三款都靠真实指针在 SVG / canvas 上作画，窄屏的工作台高度与触控可用性
   // 只有 mobile 那一遍量得到；导出也必须在两种视口都能下载。
   /craft-games\.spec\.ts$/,
-  /navbar-capsule\.spec\.ts$/,
   // 首页山景的窄屏构图、SVG 视差与减少动态效果偏好。
   /home-hero\.spec\.ts$/,
-  // 博客时间：四处渲染点的折行、檐沟与深色主题需要在真视口检查。
-  /blog-timestamps\.spec\.ts$/,
-  /chat-bubble\.spec\.ts$/,
   /chat-features\.spec\.ts$/,
   /chat-sidebar\.spec\.ts$/,
   // Markdown 编辑器：视图三档在窄屏要少给「并排」那一档，且窄屏的栏宽是被
@@ -127,29 +118,13 @@ const RESPONSIVE_SPECS: RegExp[] = [
   /comment-rich\.spec\.ts$/,
   // @ 提示的点击、键盘确认与浮层几何需要同时覆盖桌面和触屏。
   /mention-picker\.spec\.ts$/,
-  // 代码块顶破气泡是按**视口宽度**才出现的（窄屏可用宽度更小，同样的长代码行
-  // 才会越过 fit-content 的上限）。桌面端跑它价值有限，移动端才是主场景。
-  /chat-codeblock\.spec\.ts$/,
   // 收藏夹：几何断言已按 2026-11-04 前端样式测试清理计划移除，保留的是窄屏管理菜单的
   // inert / 焦点行为与操作结果，按 viewportSize() 分档（<360px 有兜底）。
   // 桌面那一遍同样要跑 —— 宽屏分支不能无人验证。
   /favorite-layout\.spec\.ts$/,
-  // 评论区的横向溢出（楼中楼缩进把祖先撑宽）。同样是排版事实：border-box 下
-  // padding 算在 width: 100% 里、margin 不算，要靠浏览器排版才看得出溢出多少。
-  /comment-layout\.spec\.ts$/,
-  // 格式转换器：页面横向溢出、控件越出视口 —— 只有真视口量得出来，两档都要跑。
-  /file-converter-layout\.spec\.ts$/,
   // 小鱼干账户操作在窄屏保持可点且不撑宽页面 ——
   // 同样是只有浏览器排版才说得清的事实。桌面那一遍验的是「文案没被压掉」。
   /fish-layout\.spec\.ts$/,
-  // 页面檐沟：断言「抬头/首屏元素的左边缘离视口左边缘 ≥16px」。这是「谁兜住了这一页」
-  // 的合成结果（元素自身内边距 + 祖先容器的檐沟），读样式表看不出来。视口在文件内
-  // 显式钉死 390px，所以两遍跑的是同一件事，但 desktop 那一遍同样保留 —— 见文件头。
-  /page-gutter\.spec\.ts$/,
-  // 管理面板改版的几何契约：整页横向溢出、窄屏侧栏单行、日志筛选字段标签与表格
-  // 折卡、文章行勾选点/心形对齐、选中后批量底座。视口在文件内钉死 390px，
-  // desktop 那一遍同样保留 —— 与 page-gutter 同理，宽屏分支也不能无人验证。
-  /\/admin-ui\.spec\.ts$/,
   // 个人主页的积木墙：桌面是 4 列网格（位置契约），手机是两列流式（顺序契约 +
   // 底部固定工具条的几何与遮挡）。两种布局的判据完全不同，两遍都必须跑。
   /\/profile-board\.spec\.ts$/,
@@ -168,7 +143,7 @@ export default defineConfig({
   fullyParallel: false, // 共用一个测试库，串行更稳
   workers: 1,
   retries: process.env.CI ? 1 : 0,
-  reporter: process.env.CI ? 'list' : [['list']],
+  reporter: 'list',
   timeout: 30_000,
   globalSetup: './tests/e2e/global-setup.ts',
   globalTeardown: './tests/e2e/global-teardown.ts',
@@ -181,11 +156,11 @@ export default defineConfig({
 
   // ── project 划分 ────────────────────────────────────────────────────────
   //
-  // 原来两个 project 都把**每个**用例各跑一遍。但 23 个 spec 里只有 6 个真的
-  // 看 viewport，其余 17 个是「goto 一个页面 → 断言 DOM / 打接口」——
-  // 布局影响不到它们，mobile 那一遍纯属重复。
+  // 两个 project 都把**每个**用例各跑一遍是旧的默认口径：绝大多数 spec 是
+  // 「goto 一个页面 → 断言 DOM / 打接口」，布局影响不到它们，mobile 那一遍纯属重复。
   //
-  // 所以：desktop 跑全部，mobile 只跑 RESPONSIVE_SPECS。
+  // 所以：desktop 跑全部，mobile 只跑 RESPONSIVE_SPECS（仍按视口 / 指针分支的那批，
+  // 见上表）。这份表随样式类 spec 清理持续收缩，只留「mobile 真的能测出不同结果」的。
   //
   // 为什么不反过来（把通用用例从 mobile 里排除）——两者等价，但那样要写 testIgnore，
   // 而 testIgnore 在 project 级上会同时作用于两个 project（踩过：desktop 和 mobile
@@ -198,8 +173,6 @@ export default defineConfig({
   // 【为什么响应式的用例仍需 desktop 那一遍】这批用例大量写成
   // `if (isMobile) 点抽屉菜单 else 点展开的侧栏` —— 同一个 test 覆盖两种布局，
   // 只在 mobile 跑就等于桌面分支无人验证。所以 desktop 必须保留全量。
-  //
-  // 实测 300 → 179 个用例，耗时约减半。
   projects: [
     { name: 'desktop', use: { ...devices['Desktop Chrome'] } },
     {
@@ -293,7 +266,6 @@ export default defineConfig({
       // 「空素材」这类用例会因此随机通过或失败。
       STICKERS_DIR: E2E_STICKERS_DIR,
       FRAMES_DIR: E2E_FRAMES_DIR,
-      STORIES_DIR: E2E_STORIES_DIR,
     },
     },
   ],

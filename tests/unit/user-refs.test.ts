@@ -38,15 +38,11 @@ import { extractMentions } from '@/lib/chat-service';
 import { isMentioned } from '@/app/chat/ChatMessageItem';
 import { IMAGE_REF_CLASS } from '@/lib/content-refs';
 import { STICKER_REF_CLASS, stickerUrl } from '@/lib/sticker-refs';
+import { AVATAR_URL_PREFIX, avatarUrl } from '@/lib/avatar-refs';
 import { renderChatMarkdown } from '@/lib/chat-markdown';
 import { renderCommentMarkdown } from '@/lib/comment-markdown';
 
-/** 两个渲染器都要跑 —— 评论与讨论白名单逐字相同，只差链接类名，一处漏打补丁
- *  另一处不会知道（与 sticker-refs.test.ts 的 parity 写法同源）。 */
-const RENDERERS = [
-  { name: '讨论', render: renderChatMarkdown },
-  { name: '评论', render: renderCommentMarkdown },
-] as const;
+/** 两个入口共用 rich-text.ts 同一段后处理，只差链接类名（parity 见下方渲染层用例）。 */
 
 /** 渲染 + 解析成 DOM，便于按结构断言（字符串比对会被转义形式骗过去）。 */
 function mount(render: (s: string, ctx?: RichTextContext) => string, content: string, ctx?: RichTextContext): HTMLElement {
@@ -384,9 +380,12 @@ describe('embedUserRefs', () => {
   });
 });
 
-// ── 管线层：两个渲染器的 parity ─────────────────────────────────────────────
+// ── 管线层：正文渲染 ────────────────────────────────────────────────────────
 
-describe.each(RENDERERS)('$name 正文的 [@用户/…]', ({ render }) => {
+// 讨论入口即可代表两个入口；一致性由第一条 parity 用例钉住（同 sticker-refs 的收敛口径）。
+const render = renderChatMarkdown;
+
+describe('正文的 [@用户/…]', () => {
   const cards = new Map<string, UserCardData>([
     ['张三丰', card({ frameUrl: '/api/frames/cat.png' })],
     ['李四光', card({ id: '11111111-2222-3333-4444-555555555555', username: '李四光' })],
@@ -394,6 +393,18 @@ describe.each(RENDERERS)('$name 正文的 [@用户/…]', ({ render }) => {
   const ctx: RichTextContext = { userCards: cards };
   /** 一份合法的 10 位图床 ID（大小写字母 + 数字）。 */
   const IMG_ID = 'AbCdEf1234';
+
+  it('★ 两个入口的判决一致（同一份 rich-text.ts 后处理，只差链接类名）', () => {
+    const content =
+      '认识 [@用户/张三丰] 和 [@用户/并不存在] [@猫猫/开心] 图 [@AbCdEf1234] `[@用户/张三丰]`';
+    const shape = (root: HTMLElement) =>
+      Array.from(root.querySelectorAll('*')).map(
+        (el) => `${el.tagName}:${el.getAttribute('src') ?? el.getAttribute('href') ?? ''}`
+      );
+    expect(shape(mount(renderCommentMarkdown, content, ctx))).toEqual(
+      shape(mount(renderChatMarkdown, content, ctx))
+    );
+  });
 
   it('渲染成行内名片：一个带框头像 + 名字，整体是一个链接', () => {
     const root = mount(render, '来认识一下 [@用户/张三丰] 吧', ctx);
@@ -428,11 +439,6 @@ describe.each(RENDERERS)('$name 正文的 [@用户/…]', ({ render }) => {
     expect(render(content)).toContain('[@用户/张三丰]');
   });
 
-  it('★ 不带名片 token 的正文照旧吃缓存（别把旁路开成大水漫灌）', () => {
-    const content = `普通正文 [@${IMG_ID}]`;
-    expect(render(content)).toBe(render(content));
-  });
-
   it('★ 与图床图 / 表情共存：三种行内元素各渲染各的，互不吃掉', () => {
     const root = mount(render, `图 [@${IMG_ID}] 表情 [@猫猫/开心] 名片 [@用户/张三丰]`, ctx);
     // 图床图 + 表情 + 名片的头像与框
@@ -447,16 +453,6 @@ describe.each(RENDERERS)('$name 正文的 [@用户/…]', ({ render }) => {
     );
   });
 
-  it('★ 代码块 / 行内代码里的 token 不展开（用户要能展示这个语法本身）', () => {
-    const fenced = mount(render, '```\n[@用户/张三丰]\n```', ctx);
-    expect(fenced.querySelectorAll(USER_REF_CLASS_SEL)).toHaveLength(0);
-    expect(fenced.textContent).toContain('[@用户/张三丰]');
-
-    const inline = mount(render, '`[@用户/张三丰]`', ctx);
-    expect(inline.querySelectorAll(USER_REF_CLASS_SEL)).toHaveLength(0);
-    expect(inline.textContent).toContain('[@用户/张三丰]');
-  });
-
   it('★ @提及 与名片互不干扰：整条消息既不被标成提及，也不产生通知', () => {
     // 高亮与通知两条判定都跑在**原始正文**上，所以这里问的是原始字符串
     const content = '看 [@用户/张三丰] 和 @李四光';
@@ -465,16 +461,23 @@ describe.each(RENDERERS)('$name 正文的 [@用户/…]', ({ render }) => {
     expect(extractMentions(content)).toEqual(['李四光']);
   });
 
-  it('一条消息里的名片有上限，超出的保留字面量', () => {
-    const many = Array.from({ length: MAX_USER_REFS + 3 }, () => '[@用户/张三丰]').join(' ');
-    const root = mount(render, many, ctx);
-    expect(root.querySelectorAll(USER_REF_CLASS_SEL)).toHaveLength(MAX_USER_REFS);
-    expect(root.textContent).toContain('[@用户/张三丰]');
-  });
+  // 「代码块 / 行内代码里不展开」「一条消息有上限」「查不到的名字保留字面量」三条
+  // 已在上面 embedUserRefs 直调那一节逐条钉住（同一条 embedUserRefs 实现，渲染器
+  // 只是多一层 marked → 净化，不改变这三条判据），此处不再重复。
+});
 
-  it('查不到的名字保留字面量', () => {
-    const root = mount(render, '[@用户/并不存在]', ctx);
-    expect(root.querySelectorAll(USER_REF_CLASS_SEL)).toHaveLength(0);
-    expect(root.textContent).toContain('[@用户/并不存在]');
+// ── 头像地址的唯一出处（原 avatar-refs.test.ts 并入，R4）──────────────────────
+//
+// avatarUrl 拼错的症状是静默的：/api/avatar/[id] 读不到文件会按 id 生成 identicon，
+// 拼错的 id 只会得到「一张长得像头像、但不是那个人的 identicon」，没有报错。
+// 全仓不许再出现别处模板串的静态守卫在 avatar-sites-guard.test.ts。
+
+describe('avatarUrl', () => {
+  it('形状 = 路由前缀 + id；前缀自带结尾斜杠（少了它拼出 /api/avatarx 会落 404 而非 identicon 兜底）', () => {
+    const id = '1f0c2b3a-4d5e-6f70-8192-a3b4c5d6e7f8';
+    expect(avatarUrl(id)).toBe(`/api/avatar/${id}`);
+    expect(AVATAR_URL_PREFIX.endsWith('/')).toBe(true);
+    // 空 id 不抛：交给调用方（名片 DTO）去抓「少带了 id」
+    expect(() => avatarUrl('')).not.toThrow();
   });
 });

@@ -19,141 +19,19 @@ import {
   createClientReferenceReader,
 } from '@/lib/reactive/client-compile';
 
-const IMAGE_ID = 'AaBbCcDd10'; // 10 位
-const AUDIO_ID = 'EeFfGgHh20'; // 10 位
-const VOTE_ID = 'AbCdEf123'; // 9 位
 const CLIP_ID = 'AbCd1234'; // 8 位
 const FAV_ID = '123456'; // 6 位数字
 
-/** 一个按 kind 回固定数据、并记录调用的 reader（形状对齐 ref-reader）。 */
-function fakeReader(): { reader: ReferenceReader; calls: string[] } {
-  const calls: string[] = [];
-  const reader: ReferenceReader = async (slot) => {
-    calls.push(`${slot.kind}:${slot.ref}`);
-    if (slot.kind === 'clipboard') {
-      return {
-        status: 'ready',
-        title: '剪贴板标题',
-        format: 'markdown',
-        version: 'v1',
-        content: '# 不该被内联的正文',
-        payload: { href: `/clipboard/${slot.ref}`, title: '剪贴板标题' },
-      };
-    }
-    if (slot.kind === 'vote') {
-      return {
-        status: 'ready',
-        title: '投票标题',
-        payload: {
-          id: slot.ref,
-          title: '投票标题',
-          is_locked: false,
-          total_votes: 3,
-          user_voted: null,
-          options: [{ id: 1, label: '甲', count: 3, percentage: 100 }],
-        },
-      };
-    }
-    if (slot.kind === 'favorite') {
-      return {
-        status: 'ready',
-        title: '收藏夹标题',
-        payload: {
-          title: '收藏夹标题',
-          authorName: '站长',
-          href: `/favorite/${slot.ref}`,
-          count: 1,
-          items: [{ blogId: 'blog-1', title: '一篇博客' }],
-        },
-      };
-    }
-    return undefined;
-  };
-  return { reader, calls };
-}
-
-const tag = (kind: string, ref: string) => `<site-embed kind="${kind}" ref="${ref}" />`;
+const emptyReader: ReferenceReader = async () => undefined;
 
 describe('compileReactivePreview', () => {
-  it('适配五类引用：图床拼 URL，其余发宿主标签并带 hostData', async () => {
-    const { reader, calls } = fakeReader();
-    const source = [
-      `图 ![x] 在 [@${IMAGE_ID}]。`,
-      `音频 [@音频/${AUDIO_ID}]`,
-      `投票 [@${VOTE_ID}]`,
-      `收藏 [@${FAV_ID}]`,
-      `剪贴板 [@${CLIP_ID}]`,
-    ].join('\n\n');
-
-    const { adaptedSource, hostData, result } = await compileReactivePreview(source, reader);
-
-    expect(adaptedSource).toContain(`![${IMAGE_ID}](/api/images/${IMAGE_ID}/raw)`);
-    expect(adaptedSource).toContain(tag('audio', AUDIO_ID));
-    expect(adaptedSource).toContain(tag('vote', VOTE_ID));
-    expect(adaptedSource).toContain(tag('favorite', FAV_ID));
-    expect(adaptedSource).toContain(tag('clipboard', CLIP_ID));
-
-    expect(hostData[`audio:${AUDIO_ID}`]).toMatchObject({ status: 'ready' });
-    expect(hostData[`vote:${VOTE_ID}`]).toMatchObject({
-      kind: 'vote',
-      ref: VOTE_ID,
-      status: 'ready',
-    });
-    expect(hostData[`favorite:${FAV_ID}`]).toMatchObject({
-      kind: 'favorite',
-      ref: FAV_ID,
-      status: 'ready',
-    });
-    // Markdown 剪贴板在 expand 下内联一层（宿主渲染器只读展示）；Reactive 剪贴板才保持卡片。
-    expect(hostData[`clipboard:${CLIP_ID}`]).toMatchObject({
-      kind: 'clipboard',
-      ref: CLIP_ID,
-      status: 'ready',
-    });
-    // 原始正文只用于编译；预览与阅读拿到的是同版本静态子文档。
-    expect(hostData[`clipboard:${CLIP_ID}`].content).toBeUndefined();
-    expect(hostData[`clipboard:${CLIP_ID}`].document).toBeTruthy();
-    expect(hostData[`clipboard:${CLIP_ID}`].hostData).toBeTruthy();
-
-    // 取数只发生在需要它的三类上；图床 / 音频不占请求。
-    expect(calls.sort()).toEqual(
-      [`clipboard:${CLIP_ID}`, `favorite:${FAV_ID}`, `vote:${VOTE_ID}`].sort()
-    );
-
-    expect(result.ok).toBe(true);
-    if (result.ok) {
-      expect(result.document).toBeTruthy();
-    }
-  });
-
-  it('代码块与行内代码里的 token 原样保留，且不触发取数', async () => {
-    const { reader, calls } = fakeReader();
-    const source = [
-      '```',
-      `[@${CLIP_ID}]`,
-      '<site-embed kind="vote" ref="AbCdEf123" />',
-      '```',
-      '',
-      `行内 \`[@${VOTE_ID}]\` 也不展开。`,
-    ].join('\n');
-
-    const { adaptedSource, hostData } = await compileReactivePreview(source, reader);
-
-    expect(adaptedSource).toBe(source);
-    expect(hostData).toEqual({});
-    expect(calls).toEqual([]);
-  });
-
-  it('普通文档能编译出文档对象', async () => {
-    const { reader } = fakeReader();
-    const { result } = await compileReactivePreview('# 标题\n\n一段正文。', reader);
-    expect(result.ok).toBe(true);
-    if (result.ok) expect(result.document).toBeTruthy();
-  });
-
+  // R4 收敛：compileReactivePreview = adaptReactivePreview + 本地编译的**薄壳**。
+  // 「五类引用各自落到正确形态 / 标签与 hostData 同时产出」「代码块与行内代码里的
+  // token 原样保留且不取数」两条在 reactive-ref-adapter.test.ts 里对同一份适配实现
+  // 逐条钉住（reactive-ref-adapter.test.ts:73、:109），这里不再复述；本文件只保留
+  // 薄壳独有的部分：外部模式的发布预览、客户端 reader 的取数口径、共享闸门。
   it('非法源码返回诊断而不是抛出', async () => {
-    const { reader } = fakeReader();
-    const { result } = await compileReactivePreview('{{ 1 + }}', reader);
+    const { result } = await compileReactivePreview('{{ 1 + }}', emptyReader);
     expect(result.ok).toBe(false);
     expect(result.diagnostics.length).toBeGreaterThan(0);
     expect(result.diagnostics.some((d) => d.severity === 'error')).toBe(true);

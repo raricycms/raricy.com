@@ -1,11 +1,10 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // reactive-preparation.test.ts —— ReactiveMD 预适配（P6/P7/P8）的纯行为用例
 //
-// 覆盖四块新契约：
+// 覆盖三块契约：
 //   · URL 用途白名单（图片 / 音频 / 超链接）；
 //   · 编译缓存键 + 按字节容量 LRU；
-//   · 静态快照的发布 / 拒读 / 原子失败；
-//   · 语料静态扫描（盖码、结构/语法风险、预算、隐私边界）。
+//   · 语料输入的校验与报告隐私边界（逐字段报告统计见 R4 报告，已清退）。
 //
 // 这里刻意全部用行为断言，不读源码字符串 —— 改实现时测试应该仍能表达「行为没变」。
 // ─────────────────────────────────────────────────────────────────────────────
@@ -277,29 +276,12 @@ describe('语料输入校验', () => {
     expect(notArray.errors).toEqual([{ index: -1, code: 'not_array' }]);
   });
 });
-
 describe('语料静态风险扫描', () => {
-  const content = [
-    '# 标题',
-    '',
-    '第一行',
-    '第二行',
-    '',
-    '```',
-    '[@AbCdEf1234] <audio class="x" onerror="y">',
-    '```',
-    '',
-    '正文 <span class="a" style="color:red">x</span> {{ 1 + 2 }}',
-    '',
-    '![图片](/api/images/AbCdEf1234/raw) ![](https://example.com/a.png)',
-    '',
-    '![历史](http://116.62.179.232:22822/image/i/abc)',
-    '',
-    '[@12345678] [@123456789] [@123456] [@音频/AbCdEf1234]',
-    '',
-    '$\\frac{1}{2}$ \\begin{cases} a \\end{cases} \\(x\\) $$y$$',
-  ].join('\n');
-
+  // R4 收敛：报告的逐字段计数（结构 / HTML / 数学 / 引用分档 / 图片来源 / 汇总）
+  // 是迁移期一次性分析工具的输出格式，不是线上行为 —— 改坏了不会报错、不会 500、
+  // 不会损坏用户数据，只会让一份内部报告的数字不准，靠跑一次工具复核即可。
+  // 这里只保留**隐私边界**：报告与摘要不得夹带正文 / 标题（那是会静默外泄的那类）。
+  // 逐篇隔离与失败记账（单篇失败不能记成成功）仍在 reactive-corpus-scan.test.ts。
   function scanOne(body: string, extra: Record<string, unknown> = {}) {
     const { documents, errors } = validateCorpusDocuments([
       { id: 'blog-1', kind: 'blog', content: body, ...extra },
@@ -311,165 +293,6 @@ describe('语料静态风险扫描', () => {
     return { report, scan: report.documents[0] };
   }
 
-  it('报告明确标为 provisional / compile 与文本 diff 均未运行', () => {
-    const { report, scan } = scanOne(content);
-    expect(report.provisional).toBe(true);
-    expect(report.compile).toBe('not-run');
-    expect(report.textDiff).toBe('not-run');
-    expect(scan.bucket).toBe('provisional');
-    expect(scan.compile).toBe('not-run');
-    expect(scan.textDiff).toBe('not-run');
-  });
-
-  it('代码块里的引用 / HTML / 音频不参与扫描（盖码）', () => {
-    const { scan } = scanOne(content);
-    // 围栏里那个 10 位 token 不能算进图床引用。
-    expect(scan.refs.counts.image).toBe(0);
-    // 围栏里的 <audio onerror> 不能算进 HTML / 风险标签。
-    expect(scan.html.openingTags).toBe(1);
-    expect(scan.html.riskyTags).toEqual({});
-    expect(scan.html.withEvent).toBe(0);
-    expect(scan.structure.fencedBlocks).toBe(1);
-  });
-
-  it('结构：软换行、硬换行、表格 / 任务列表 / 脚注计数', () => {
-    const { scan } = scanOne(content);
-    expect(scan.structure.softLineBreaks).toBe(1); // 第一行 / 第二行
-
-    const structured = scanOne(
-      [
-        'a  ',
-        'b',
-        '',
-        '| h | v |',
-        '| - | - |',
-        '',
-        '- [x] done',
-        '',
-        '脚注[^1]',
-        '',
-        '[^1]: 说明',
-        '',
-        '<br>',
-      ].join('\n')
-    ).scan;
-    expect(structured.structure.hardBreaks).toBe(1);
-    expect(structured.structure.tableRows).toBe(2);
-    expect(structured.structure.taskListItems).toBe(1);
-    expect(structured.structure.footnoteMarkers).toBe(2);
-    expect(structured.structure.rawBrTags).toBe(1);
-  });
-
-  it('HTML：class / style / on* / 危险标签分别计数', () => {
-    const { scan } = scanOne(
-      [
-        '<panel name="x"></panel>',
-        '<audio controls></audio>',
-        '<div class="a" onclick="x()"></div>',
-      ].join('\n')
-    );
-
-    expect(scan.html.openingTags).toBe(3);
-    expect(scan.html.withClass).toBe(1);
-    expect(scan.html.withEvent).toBe(1);
-    expect(scan.html.riskyTags).toEqual({ audio: 1 });
-    expect(scan.syntaxCollisions.unknownLineStartTags).toEqual({ panel: 1 });
-  });
-
-  it('{{ }} 与行首未知标签单独成组', () => {
-    const { scan } = scanOne('{{ 1 + 2 }} {{ 3 }}\n<slider value="1"></slider>');
-    expect(scan.syntaxCollisions.braceExpressions).toBe(2);
-    expect(scan.syntaxCollisions.braceOpenings).toBe(2);
-    expect(scan.syntaxCollisions.unknownLineStartTags).toEqual({ slider: 1 });
-  });
-
-  it('数学只做清单与复核标记，不声称支持/不支持', () => {
-    const { scan } = scanOne(content);
-    expect(scan.math.commands).toEqual({ frac: 1 });
-    expect(scan.math.environments).toEqual({ cases: 1 });
-    expect(scan.math.macroDefinitions).toBe(0);
-    expect(scan.math.legacyDelimiters).toBe(2); // \( 与 \)
-    expect(scan.math.displayDollarMarkers).toBe(2);
-    expect(scan.math.reviewNeeded).toBe(true);
-  });
-
-  it('五类引用按长度分流并计算各档预算', () => {
-    const { scan } = scanOne(content);
-    expect(scan.refs.counts).toEqual({
-      image: 0,
-      audio: 1,
-      vote: 1,
-      favorite: 1,
-      clipboard: 1,
-    });
-    expect(scan.refs.unique).toEqual({
-      image: 0,
-      audio: 1,
-      vote: 1,
-      favorite: 1,
-      clipboard: 1,
-    });
-    expect(scan.refs.replacementSlots).toBe(2); // 剪贴板 + 投票
-    expect(scan.refs.fetchCandidates).toBe(3); // 剪贴板 + 投票 + 收藏夹
-    expect(scan.refs.replacementOverBudget).toBe(false);
-    expect(scan.refs.fetchOverBudget).toBe(false);
-    expect(scan.refs.favoriteOverBudget).toBe(false);
-    expect(scan.refs.audioOverBudget).toBe(false);
-  });
-
-  it('超出预算时逐项标出（替换 50 / 取数 50 / 收藏夹 3 / 音频 3）', () => {
-    const clips = Array.from(
-      { length: 60 },
-      (_, index) => `[@${String(index).padStart(8, '0')}]`
-    ).join(' ');
-    const favorites = Array.from(
-      { length: 5 },
-      (_, index) => `[@${String(index).padStart(6, '0')}]`
-    ).join(' ');
-    const audios = Array.from(
-      { length: 5 },
-      (_, index) => `[@音频/${String(index).padStart(10, '0')}]`
-    ).join(' ');
-    const images = '[@AbCdEf1234] [@ZzYyXx9876]';
-
-    const { scan } = scanOne([clips, favorites, audios, images].join('\n\n'));
-    expect(scan.refs.counts.clipboard).toBe(60);
-    expect(scan.refs.counts.favorite).toBe(5);
-    expect(scan.refs.counts.audio).toBe(5);
-    expect(scan.refs.counts.image).toBe(2);
-
-    expect(scan.refs.replacementSlots).toBe(62);
-    expect(scan.refs.replacementOverBudget).toBe(true);
-    expect(scan.refs.fetchCandidates).toBe(65);
-    expect(scan.refs.fetchOverBudget).toBe(true);
-    expect(scan.refs.favoriteOverBudget).toBe(true);
-    expect(scan.refs.audioOverBudget).toBe(true);
-  });
-
-  it('图片来源分桶：站内 API / 历史路径 / 历史 IP / 外链 / 相对 / data:', () => {
-    const { scan } = scanOne(
-      [
-        '![a](/api/images/AbCdEf1234/raw)',
-        '![b](/image/i/AbCdEf1234)',
-        '![c](http://116.62.179.232:22822/image/i/abc)',
-        '![d](https://example.com/d.png)',
-        '![e](local/e.png)',
-        '![f](data:image/png;base64,AAAA)',
-      ].join('\n')
-    );
-
-    expect(scan.images).toMatchObject({
-      total: 6,
-      internalApi: 1,
-      legacyPath: 1,
-      legacyIpHost: 1,
-      externalHttp: 1,
-      relative: 1,
-      dataUri: 1,
-      otherScheme: 0,
-    });
-  });
-
   it('报告与摘要不含正文 / 标题（隐私边界）', () => {
     const body = 'SECRET_BODY_TEXT\nSECRET_TITLE';
     const { report, scan } = scanOne(body, { title: 'SECRET_TITLE' });
@@ -479,29 +302,5 @@ describe('语料静态风险扫描', () => {
     expect(serialized).not.toContain('SECRET_BODY_TEXT');
     expect(serialized).not.toContain('SECRET_TITLE');
     expect(serialized).not.toContain(body);
-  });
-
-  it('整份报告汇总篇数、风险篇数与错误数', () => {
-    const { documents } = validateCorpusDocuments([
-      { id: 'b1', kind: 'blog', content },
-      { id: 'c1', kind: 'clipboard', content: 'plain text' },
-    ]);
-    const report = scanCorpusDocuments(documents, {
-      scannedAt: '2026-10-26T12:00:00+08:00',
-      errors: [{ index: 2, code: 'missing_id' }],
-    });
-
-    expect(report.totals.documents).toBe(2);
-    expect(report.totals.blogs).toBe(1);
-    expect(report.totals.clipboards).toBe(1);
-    expect(report.totals.documentsWithSoftLineBreaks).toBe(1);
-    expect(report.totals.documentsWithHtml).toBe(1);
-    expect(report.totals.documentsWithBraceExpressions).toBe(1);
-    expect(report.totals.documentsWithMathReview).toBe(1);
-    expect(report.totals.documentsWithReferences).toBe(1);
-    expect(report.totals.documentsWithExternalImages).toBe(1);
-    expect(report.totals.errors).toBe(1);
-    expect(report.totals.refs.clipboard).toBe(1);
-    expect(report.totals.images.total).toBe(3);
   });
 });

@@ -60,7 +60,8 @@ export default function AdminShell({
       </aside>
       {/* ⚠️ 这里不能再写 <main>：根 layout 已经把整页包在 <main> 里，嵌套两个
           <main> 是无效的文档结构（屏幕阅读器会把地标念两遍）。这个位置只需要
-          「内容列」语义，用 <div>；page-gutter 用例取的 `main h1` 仍由根 main 兜住。 */}
+          「内容列」语义，用 <div>；原 page-gutter 用例取的 `main h1` 仍由根 main
+          兜住（该纯外观 spec 已于 Round4 退出）。 */}
       <div className="admin-content">{children}</div>
     </div>
   );

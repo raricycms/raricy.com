@@ -17,7 +17,6 @@ import {
   MAX_CONCURRENT_UPLOADS,
   gateUploadBatch,
   imageMarkdown,
-  isAcceptableImage,
   normalizeDroppedFiles,
   precheckFile,
   runLimited,
@@ -33,23 +32,9 @@ function file(name: string, type: string, size: number): File {
 }
 
 describe('单文件判据', () => {
-  it('白名单里的四种位图收，SVG 不收', () => {
-    expect(isAcceptableImage(file('a.png', 'image/png', 100))).toBe(true);
-    expect(isAcceptableImage(file('a.jpg', 'image/jpeg', 100))).toBe(true);
-    expect(isAcceptableImage(file('a.webp', 'image/webp', 100))).toBe(true);
-    expect(isAcceptableImage(file('a.svg', 'image/svg+xml', 100))).toBe(false);
-  });
-
-  it('iPhone 的 HEIC 收 —— 会在浏览器里就地转成 JPEG，不该在闸门就被拒', () => {
-    expect(isAcceptableImage(file('IMG_0001.HEIC', 'image/heic', 100))).toBe(true);
-    // Windows 上浏览器可能给不出 type，只能靠后缀认
-    expect(isAcceptableImage(file('IMG_0001.HEIC', '', 100))).toBe(true);
-  });
-
-  it('零字节的"文件"不算（浏览器有时会给一个空壳）', () => {
-    expect(isAcceptableImage(file('a.png', 'image/png', 0))).toBe(false);
-  });
-
+  // 白名单 / HEIC / 零字节三条已在 image-client.test.ts 的 isUploadableImage 一节逐条钉住
+  // （md-editor/upload.ts 的 isAcceptableImage 只是它的转出，见 src/lib/md-editor/upload.ts:41）。
+  // 这里只留本模块独有的：前置校验的文案与单文件上限（与闸门同一份判定、同一份文案）。
   it('逐文件前置校验的文案与单文件上限一致', () => {
     expect(precheckFile(file('big.png', 'image/png', 10 * MB + 1))).toBe('图片不能超过 10MB');
     expect(precheckFile(file('a.svg', 'image/svg+xml', 100))).toBe(

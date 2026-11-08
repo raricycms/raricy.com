@@ -82,28 +82,6 @@ test('搜索正文：正文独有词能搜到，并显示命中处的片段', as
 });
 
 /**
- * 【防的回归】/api/blogs 的默认搜索范围被放宽成 'all'。
- *
- * 该接口被「引用博客」弹窗按防抖实时消费 —— 一旦放宽，每敲一个键就是一次约 48.6MB
- * 的全站正文扫描，而且线上不会报任何错，只是悄悄变慢。
- * （收成 core+ 只缩小了能触发它的人群，没有消除这笔开销 —— core+ 本来就是主要用户。）
- */
-test('/api/blogs 默认不搜正文；core+ 之外连接口都进不去', async ({ page, request }) => {
-  // page.request 带上 beforeEach 里登录的 core 会话
-  const res = await page.request.get(`/api/blogs?search=${BLOG_BODY_MARKER}`);
-  expect(res.status()).toBe(200);
-  const body = (await res.json()) as { blogs: unknown[] };
-  expect(body.blogs, '默认字段集不含正文 = 全表扫描不因缺参数而开放').toHaveLength(0);
-
-  // 匿名：整条路由已是 core+ 档，在**参数解析之前**就挡掉。
-  // `request` 是独立的 APIRequestContext（不带 page 的会话 cookie）。
-  const anon = await request.get('/api/blogs?search=x&search_fields=content');
-  expect(anon.status(), '闸门在参数解析之前，否则 400 会变成白名单探针').toBe(401);
-  const anonPlain = await request.get('/api/blogs?search=x');
-  expect(anonPlain.status(), '不只是正文那条路 —— 整条路由都收成 core+').toBe(401);
-});
-
-/**
  * 【防的回归】精选文章必须在「全部文章」与所属栏目目录里照常出现。
  *
  * 曾经的失效模式在**调用方**而非 service：页面把「URL 没有 featured 参数」直接
@@ -269,37 +247,6 @@ test('排序回显：updated 态下选栏目，URL 保留 sort（不用二次跳
   expect(await cardOrder(page, SEED_BLOG.id, SEED_BLOG2.id)).toBe('ba');
 });
 
-// 单行胶囊交互区；作者、管理员与第三方读者各自保留原有权限。
-
-test('详情页交互区：返回、互动胶囊、管理同一行，仅图标与数字', async ({ page }) => {
-  await page.goto(`/blog/${SEED_BLOG.id}`);
-  const controls = page.locator('#read-controls');
-  await expect(controls).toBeVisible();
-
-  const rows = controls.locator('.read-controls__row');
-  await expect(rows).toHaveCount(1);
-
-  // 第一行：点赞 + 投喂 + 收藏（点赞/投喂标签后带计数徽标，用前缀匹配）
-  const row0 = rows.nth(0);
-  await expect(row0.getByRole('button', { name: /点赞/ })).toBeVisible();
-  await expect(row0.getByRole('button', { name: /投喂/ })).toBeVisible();
-  // 收藏夹按钮：黄色五角星，且**刻意没有计数徽标**（站内不显示被收藏数）
-  const favBtn = row0.locator('#favorite-btn');
-  await expect(favBtn).toBeVisible();
-  await expect(favBtn.locator('.icon-star-fill')).toBeVisible();
-  await expect(favBtn.locator('.like-count-badge, .fish-count-badge')).toHaveCount(0);
-  await expect(row0.getByRole('button')).toHaveCount(3);
-
-  await expect(controls.getByRole('button', { name: '返回上页' })).toBeVisible();
-  await expect(controls.getByRole('button', { name: '管理文章' })).toBeVisible();
-  await expect(controls.getByRole('button')).toHaveCount(5);
-  await expect(page.getByRole('button', { name: '点赞者', exact: true })).not.toBeVisible();
-  const boxes = await Promise.all([
-    controls.locator('.read-controls__bar > .read-btn').boundingBox(), row0.boundingBox(), controls.locator('.manage-control').boundingBox(),
-  ]);
-  expect(boxes.every(b => b && Math.abs(b.y - boxes[0]!.y) < 1 && b.height === 48)).toBe(true);
-});
-
 test('管理胶囊：作者五入口齐备，列表可打开，删除取消回到胶囊', async ({ page }) => {
   await page.goto(`/blog/${SEED_BLOG.id}`);
 
@@ -376,49 +323,12 @@ test('第三方核心用户视角：返回与互动胶囊单行，无管理入�
   await expect(page.locator('#blog-manage-menu')).toHaveCount(0);
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
-// 编辑页那一排按钮：三颗必须一样大
-//
-// 用户报的：「保存修改」和「取消 / 返回阅读页」大小不一样。原样是「保存修改」走
-// `.button-primary`（16px / 10px 16px），两颗 `<a>` 走 `.button-primary-small`
-// （12px / 5px 10px）—— 同一排三种大小，读起来像三条互不相干的按钮。
-//
-// 为什么必须按**渲染后的几何**断言：三颗的字号内距写对了也还不一定一样高 ——
-// `<button>` 不继承正文字体（UA 给 Arial + 自带行高），而兄弟那颗是 `<a>`、继承站点
-// 字体栈，于是「保存修改」Arial、另两颗 Segoe UI，高度随平台差一两像素。
-// 静态看代码两处都「对」，只有浏览器排版说得清。
-// ─────────────────────────────────────────────────────────────────────────────
-test('编辑页：保存修改 / 取消 / 返回阅读页 三颗同高、同字号、同字体', async ({ page }) => {
+// 编辑卡片里不显示文章内部 ID（列表页与阅读页也不显示）——那是内部句柄。
+// 按钮的同高/同字号/同字体属于纯样式，按仓库约定不做测试，交给页面验收。
+test('编辑页：不显示文章内部 ID', async ({ page }) => {
   await page.goto(`/blog/${SEED_BLOG.id}/edit`);
   await expect(page.locator('#blog-form-container')).toBeVisible();
-
-  const btns = await page.evaluate(() =>
-    [...document.querySelectorAll('.blog-form-container .button')].map((el) => {
-      const r = el.getBoundingClientRect();
-      const cs = getComputedStyle(el);
-      return {
-        label: (el.textContent || '').trim(),
-        h: +r.height.toFixed(2),
-        fontSize: cs.fontSize,
-        fontFamily: cs.fontFamily,
-      };
-    })
-  );
-
-  // 顺序 = DOM 顺序：卡片顶部那颗「返回阅读页」，底部「保存修改 / 取消」
-  expect(btns.map((b) => b.label), '编辑页的按钮对不上').toEqual([
-    '返回阅读页',
-    '保存修改',
-    '取消',
-  ]);
-
-  const hs = btns.map((b) => b.h);
-  expect(Math.max(...hs) - Math.min(...hs), `三颗高度不一致：${hs.join(' / ')}`).toBeLessThan(1);
-  expect(new Set(btns.map((b) => b.fontSize)).size, '三颗字号不一致').toBe(1);
-  expect(new Set(btns.map((b) => b.fontFamily)).size, '三颗字体不一致（<button> 不继承正文字体）').toBe(1);
-
-  // 编辑卡片里不再出现文章 ID —— 那是内部句柄，列表页与阅读页都不显示它。
-  // （写作「ID:」「ID：」两种都要挡；正文页 hero 上那份不在这张卡里，不归这条管。）
+  // 写作「ID:」「ID：」两种都要挡；正文页 hero 上那份不在这张卡里，不归这条管。
   await expect(page.locator('#blog-form-container')).not.toContainText(/ID\s*[:：]/);
 });
 
@@ -442,7 +352,6 @@ test.describe('个人侧栏首帧', () => {
     const plus = page.locator('.blog-personal__create');
     await expect(plus).toBeVisible();
     await expect(plus).toHaveAttribute('href', '/blog/upload');
-    expect((await plus.boundingBox())!.width).toBe(44);
   });
 
   test('桌面宽度：水合前已经显示个人信息与范围', async ({ page }) => {

@@ -20,9 +20,8 @@ import {
   mammothMessagesToNotices,
   textToBlocks,
 } from '@/lib/file-converter/engines/office';
-import { CATEGORY, ebookExtraEdges } from '@/lib/file-converter/categories/office';
-import { registryProblems } from '@/lib/file-converter/registry';
-import type { CategoryDef, RunContext } from '@/lib/file-converter/types';
+import { CATEGORY } from '@/lib/file-converter/categories/office';
+import type { RunContext } from '@/lib/file-converter/types';
 
 // ─── 单文件边的多文件守卫（R3-460）─────────────────────────────────────────────
 //
@@ -206,33 +205,5 @@ describe('DOCX 往返（docx 包 ↔ mammoth）', () => {
     await expect(docxToText(new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8]))).rejects.toMatchObject({
       kind: 'corrupt',
     });
-  });
-});
-
-// ─── 登记表完整性 ─────────────────────────────────────────────────────────────
-
-describe('office 登记表', () => {
-  it('office 边的 id 前缀与定义为 document 的类别相容，且 planned 无 run', () => {
-    expect(registryProblems([CATEGORY])).toEqual([]);
-  });
-
-  it('电子书借调边在 ebook 类别下合法', () => {
-    const ebook: CategoryDef = {
-      key: 'ebook',
-      label: '电子书',
-      hint: '',
-      accept: '',
-      maxFilesPerTask: 1,
-      edges: ebookExtraEdges,
-    };
-    expect(registryProblems([ebook])).toEqual([]);
-    expect(ebookExtraEdges[0].id).toBe('ebook:docx-to-epub');
-  });
-
-  it('planned 边不实现 run', () => {
-    for (const e of CATEGORY.edges) {
-      if (e.status === 'planned') expect(e.run).toBeUndefined();
-      else expect(typeof e.run).toBe('function');
-    }
   });
 });

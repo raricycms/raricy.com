@@ -15,6 +15,7 @@ import {
   literalizeReactiveSyntax,
 } from '@/lib/reactive/detect-format';
 import { reactiveCompileOptions } from '@/lib/reactive/host-components';
+import { mightContainReactiveSyntax } from '@/lib/md-editor/format-mode';
 
 describe('detectReactiveSyntax —— 三态', () => {
   it('普通 Markdown / 历史 HTML / 未知角括号标签 → markdown 且可保存', () => {
@@ -190,5 +191,32 @@ describe('键名示例 / 普通伪标签不误判（vimtutor 类正文）', () =
       expect(detected.valid, source).toBe(false);
       expect(detected.publishable, source).toBe(false);
     }
+  });
+});
+
+// ── 编辑器的预筛（原 md-editor-format-mode.test.ts 并入，R4）──────────────────
+//
+// `mightContainReactiveSyntax` 是编辑器格式判定的**预筛**，只有一条判据：「肯定不含」。
+// 它不参与分类（分类在 @/lib/reactive/format-observer / detect-format，见上）。预筛
+// 漏判的症状是静默的：增强语法正文按 markdown 保存 → 组件变成字面量文本，不报错。
+// 所以「宁可多分析，绝不漏判」是它唯一的契约，和上面 detectReactiveSyntax 的三态
+// 属于同一条决策链，放在一起维护。
+
+describe('mightContainReactiveSyntax：只做「肯定不含」的排除', () => {
+  it('纯文本 / 普通 Markdown 不触发分析', () => {
+    expect(mightContainReactiveSyntax('')).toBe(false);
+    expect(mightContainReactiveSyntax('# 标题\n\n**粗体** 与 [链接](https://x.y)')).toBe(false);
+    expect(mightContainReactiveSyntax('单行公式 $x^2$ 与代码 `a + b`')).toBe(false);
+  });
+
+  it('组件、插值、声明、版本指令都算候选', () => {
+    expect(mightContainReactiveSyntax('<slider bind="a">')).toBe(true);
+    expect(mightContainReactiveSyntax('人数：{{ people }}')).toBe(true);
+    expect(mightContainReactiveSyntax('<theme primary="#fff"></theme>')).toBe(true);
+    expect(mightContainReactiveSyntax('<!-- reactive-md: local-draft-3 -->')).toBe(true);
+  });
+
+  it('代码块里的示例也会触发（宁可多分析，绝不漏判）', () => {
+    expect(mightContainReactiveSyntax('```\n<slider bind="a">\n```')).toBe(true);
   });
 });
