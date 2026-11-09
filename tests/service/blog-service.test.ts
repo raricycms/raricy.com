@@ -29,6 +29,7 @@ import {
   BLOG_DESCRIPTION_MAX,
   BLOG_CONTENT_MAX,
   BLOG_DAILY_LIMIT,
+  resolveBlogDailyLimit,
   ALL_SEARCH_FIELDS,
 } from '@/lib/blog-service';
 import {
@@ -345,6 +346,43 @@ const HOUR = 3600_000;
 describe('发文日限额 / countBlogsToday + BLOG_DAILY_LIMIT', () => {
   it('上限常量为 20（对齐视图里的 today_count >= 20）', () => {
     expect(BLOG_DAILY_LIMIT).toBe(20);
+  });
+
+  it('覆盖只对测试服务生效：E2E_TEST + tests/.tmp 库两条同时满足才放宽', () => {
+    const testDb = 'file:C:/repo/tests/.tmp/e2e-123.db';
+    expect(resolveBlogDailyLimit({}), '无任何 env → 生产默认').toBe(20);
+    expect(
+      resolveBlogDailyLimit({ BLOG_DAILY_LIMIT: '500' }),
+      '只设 BLOG_DAILY_LIMIT（生产误配）必须无效'
+    ).toBe(20);
+    expect(
+      resolveBlogDailyLimit({ E2E_TEST: '1', DATABASE_URL: 'file:/srv/raricy/instance/database/db.db', BLOG_DAILY_LIMIT: '500' }),
+      'E2E_TEST=1 但库不在 tests/.tmp → 不放宽'
+    ).toBe(20);
+    expect(
+      resolveBlogDailyLimit({ E2E_TEST: '1', DATABASE_URL: testDb }),
+      '测试环境没给覆盖值 → 仍 20'
+    ).toBe(20);
+    expect(
+      resolveBlogDailyLimit({ E2E_TEST: '1', DATABASE_URL: testDb, BLOG_DAILY_LIMIT: '500' }),
+      '测试服务显式放宽 → 生效'
+    ).toBe(500);
+    expect(
+      resolveBlogDailyLimit({
+        E2E_TEST: '1',
+        DATABASE_URL: 'file:C:\\repo\\tests\\.tmp\\e2e-123.db',
+        BLOG_DAILY_LIMIT: '500',
+      }),
+      'Windows 反斜杠路径同样算 tests/.tmp → 生效'
+    ).toBe(500);
+    expect(
+      resolveBlogDailyLimit({ E2E_TEST: '1', DATABASE_URL: testDb, BLOG_DAILY_LIMIT: '0' }),
+      '非法覆盖值回落 20，不能变成「不限」'
+    ).toBe(20);
+    expect(
+      resolveBlogDailyLimit({ E2E_TEST: '1', DATABASE_URL: testDb, BLOG_DAILY_LIMIT: 'abc' }),
+      '非数字覆盖值回落 20'
+    ).toBe(20);
   });
 
   it('无文章 → 0', async () => {

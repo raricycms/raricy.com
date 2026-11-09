@@ -98,7 +98,7 @@ npx playwright test tests/e2e/<失败spec> --project=desktop   # 或 --project=m
 
 | 症状 | 已确认原因 | 处置 |
 |---|---|---|
-| 多条 `发文失败：{"code":429,..."今日发布数量已达上限（20篇）"}` | **已修**：全量共用一个种子号，累计超过 `BLOG_DAILY_LIMIT = 20`。测试服务的 webServer 用 `BLOG_DAILY_LIMIT=500` 放宽（`playwright.config.ts`）；生产仍固定 20（`src/lib/blog-service.ts`） | 再遇 429 先确认测试服务 env 生效；**不要**改生产默认值 |
+| 多条 `发文失败：{"code":429,..."今日发布数量已达上限（20篇）"}` | **已修**：全量共用一个种子号，累计超过 `BLOG_DAILY_LIMIT = 20`。测试服务在 `playwright.config.ts` 同时给 `E2E_TEST=1` 与 `BLOG_DAILY_LIMIT=500`，且只在 `DATABASE_URL` 指向 `tests/.tmp/` 时生效（`resolveBlogDailyLimit`）；生产任何 env 组合都固定 20 | 再遇 429 先确认测试服务 env 生效；**不要**改生产默认值 |
 | `ios-app` 的「返回上页」在 `/blog` 找不到预期卡片 | **已修**：用例此前依赖种子文章在 `/blog` 第一页；全量发文量大了会把它挤到下一页。现在发一篇自己的文章、用 `?scope=mine` 锚定 | 新用例别依赖「种子数据一定在列表首页」 |
 | 注册页 / `mention-picker` 等「单跑绿、全量红」 | **已修**：`goto` 后立刻 `fill` 受控输入框，React 水合前的值会被首次渲染重置回空（注册页提交空邀请码、@ 提示不出现）。注册用 `waitForHydrated(page, selector)`，评论/讨论用 `waitCommentSectionReady` | `goto` 后立刻输入前先等水合；不要用 `waitForTimeout` 猜 |
 | 其它分散的 `expect(...).toBeVisible()` / 超时 | 单库串行长跑的顺序/状态依赖；`reactive-ssr-cold` 在全量时进程已预热（文件头写明只验「关 JS 仍可读」，真冷启动要单跑该文件） | 单跑复核；确认顺序依赖后按 `docs/testing.md` §4 收紧用例，而不是加 retries |

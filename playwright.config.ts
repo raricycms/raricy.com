@@ -268,7 +268,9 @@ export default defineConfig({
       FRAMES_DIR: E2E_FRAMES_DIR,
       // 发文日限额：生产是 20（src/lib/blog-service.ts）。全量 e2e 共用一个库，几十个
       // 用例各发一篇，会在长跑中途 429（不是产品回归，见 docs/known-red.md §11）。
-      // 只放宽测试服务；生产 .env 不要配置这个变量。
+      // 放宽只在测试服务生效：必须同时有 E2E_TEST=1 且 DATABASE_URL 在 tests/.tmp 下，
+      // 只设 BLOG_DAILY_LIMIT 在生产不生效（见 resolveBlogDailyLimit）。
+      E2E_TEST: '1',
       BLOG_DAILY_LIMIT: '500',
     },
     },

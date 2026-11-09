@@ -890,15 +890,25 @@ export {
 } from './blog-limits';
 import { BLOG_TITLE_MAX, BLOG_DESCRIPTION_MAX, BLOG_CONTENT_MAX } from './blog-limits';
 /**
- * 每日发文上限。**生产固定 20**，不随环境变化。
+ * 每日发文上限的解析。**生产固定 20**；只有明确的测试服务才允许放宽。
  *
- * 例外：全量 e2e 共用一个测试库，几十个用例各发一篇，累计会在长跑中途撞 429（那是
- * 测试共享账号的基建问题，不是产品回归）。所以 playwright 的 webServer 用
- * `BLOG_DAILY_LIMIT` 把测试服务的额度放宽；生产不要配置这个变量。
+ * 判据不是「BLOG_DAILY_LIMIT 有没有设」，而是同时满足两条：
+ *   1. `E2E_TEST=1` —— 测试入口显式打的标记；
+ *   2. `DATABASE_URL` 指向 `tests/.tmp/` —— 真实测试库路径。
+ * 只满足其中一条就回落 20：生产误配一个环境变量不会改变业务限额，把 E2E_TEST=1
+ * 带进生产也不会放宽（生产库不在 tests/.tmp）。测试覆盖值本身来自 playwright 的
+ * webServer env（见 playwright.config.ts）。
  */
-const ENV_DAILY_LIMIT = Number(process.env.BLOG_DAILY_LIMIT);
-export const BLOG_DAILY_LIMIT =
-  Number.isInteger(ENV_DAILY_LIMIT) && ENV_DAILY_LIMIT > 0 ? ENV_DAILY_LIMIT : 20;
+export function resolveBlogDailyLimit(env: Record<string, string | undefined> = process.env): number {
+  if (env.E2E_TEST !== '1') return 20;
+  // Windows 的 DATABASE_URL 带反斜杠（file:C:\…\tests\.tmp\e2e-…db）：归一化后再判。
+  const databaseUrl = (env.DATABASE_URL ?? '').replaceAll('\\', '/');
+  if (!databaseUrl.includes('tests/.tmp')) return 20;
+  const raw = Number(env.BLOG_DAILY_LIMIT);
+  return Number.isInteger(raw) && raw > 0 ? raw : 20;
+}
+
+export const BLOG_DAILY_LIMIT = resolveBlogDailyLimit();
 
 /** 发文 / 改文**唯一接受**的键。多一个都会被 400 顶回去，理由见 validateBlogData 里那段。 */
 export const BLOG_ACCEPTED_KEYS = [

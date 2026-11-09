@@ -40,9 +40,11 @@ runner 同时跑也不会互删临时库。
 侧栏」，同一个 test 覆盖两种布局，只在 mobile 跑等于桌面分支无人验证。
 
 **测试服务的业务限额**：发文日限额在代码里固定 20（`src/lib/blog-service.ts`），全量长跑
-会让同一个种子号累计超过它、在中途 429。测试服务的 webServer 通过 `BLOG_DAILY_LIMIT`
-放宽（见 `playwright.config.ts` 的 env）；生产不要配置这个变量。同理，任何「按轮累计」
-的业务限额都走测试服务 env，不改生产默认值。
+会让同一个种子号累计超过它、在中途 429。放宽只在**明确的测试服务**生效：必须同时满足
+`E2E_TEST=1` 与 `DATABASE_URL` 指向 `tests/.tmp/`（判据见 `resolveBlogDailyLimit`，
+两把锁缺一回落 20）；`playwright.config.ts` 的 webServer env 同时给了这两项。
+生产误配 `BLOG_DAILY_LIMIT` 不会改变限额。同理，任何「按轮累计」的业务限额都走
+测试服务 env，不改生产默认值。
 
 **水合纪律**：`page.goto` 等到 `load` 不等于 React 已水合。紧接着对受控输入框 `fill` 时，
 水合前的值会被首次渲染重置回空（注册表单、评论/讨论输入框都踩过）。需要「goto 后立刻
