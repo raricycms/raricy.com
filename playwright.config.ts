@@ -266,6 +266,10 @@ export default defineConfig({
       // 「空素材」这类用例会因此随机通过或失败。
       STICKERS_DIR: E2E_STICKERS_DIR,
       FRAMES_DIR: E2E_FRAMES_DIR,
+      // 发文日限额：生产是 20（src/lib/blog-service.ts）。全量 e2e 共用一个库，几十个
+      // 用例各发一篇，会在长跑中途 429（不是产品回归，见 docs/known-red.md §11）。
+      // 只放宽测试服务；生产 .env 不要配置这个变量。
+      BLOG_DAILY_LIMIT: '500',
     },
     },
   ],

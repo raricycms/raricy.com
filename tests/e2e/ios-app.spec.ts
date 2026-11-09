@@ -11,10 +11,8 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { test, expect } from '@playwright/test';
-import { loginViaApi } from './helpers';
-import { SEED_BLOG, SEED_USERS } from './seed';
-
-const BLOG_URL = `/blog/${SEED_BLOG.id}`;
+import { loginViaApi, publishBlog } from './helpers';
+import { SEED_USERS } from './seed';
 
 test('根文档：manifest、Apple 主屏元数据与图标都齐', async ({ page }) => {
   await page.goto('/');
@@ -108,19 +106,24 @@ test('返回上页：有上一页原样返回，没有则落回站内列表', as
   await loginViaApi(page, SEED_USERS.core.username);
   const back = page.getByRole('button', { name: '返回上页' });
 
+  // 先发一篇**本用例自己的**文章：全量长跑里别处的发文会把种子文章挤出 `/blog` 第一页
+  // （列表分页），依赖种子文章一定在首页就是顺序/数据量依赖。用「我发布的」列表锚定它。
+  const blogId = await publishBlog(page);
+  const blogUrl = `/blog/${blogId}`;
+
   // ① 普通浏览：从 /blog 点进文章（历史里多一条）→ 返回应回到 /blog
-  await page.goto('/blog');
-  const card = page.locator(`a[href="${BLOG_URL}"]`).first();
+  await page.goto('/blog?scope=mine');
+  const card = page.locator(`a[href="${blogUrl}"]`).first();
   await expect(card).toBeVisible();
   await card.click();
-  await page.waitForURL((u) => u.pathname === BLOG_URL);
+  await page.waitForURL((u) => u.pathname === blogUrl);
   await expect(back).toBeVisible();
   await back.click();
   await page.waitForURL((u) => u.pathname === '/blog');
 
   // ② 没有上一页（A2HS 冷启 / 从外部点开的链接）：history.length 为 1。
   //    把 length 模拟成 1 是唯一能在这个环境里复现「冷启无历史」的办法。
-  await page.goto(BLOG_URL);
+  await page.goto(blogUrl);
   await page.evaluate(() =>
     Object.defineProperty(window.history, 'length', { value: 1, configurable: true })
   );

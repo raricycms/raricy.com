@@ -401,8 +401,9 @@ npm run fonts:check:regen    # 需 Python + fonttools：重新生成并校验可
 npm run build
 ```
 
-`build` = `node scripts/build.mjs`：依次 `prisma generate` → `copy-converter-assets`（转换器引擎资产）
-→ `next build` → **`realtime:build`**（`tsc -p services/realtime/tsconfig.json`，实时服务单独编译）。
+`build` = `node scripts/build.mjs`：依次 **PWA 图标台账校验**（`make-pwa-icons.mjs --check`）→
+`prisma generate` → `copy-converter-assets`（转换器引擎资产）→ `next build` →
+**`realtime:build`**（`tsc -p services/realtime/tsconfig.json`，实时服务单独编译）。
 先按当前 `schema.prisma` 重新生成 Prisma Client，并确保转换器引擎资产与实时服务产物就位。
 **不要跳过它直接 `next build`**——否则 `node_modules/.prisma/client` 还是上次生成的旧类型，
 schema 新增字段（如 `focusMode`）会报 `Property 'x' does not exist on type 'SafeUser'`；

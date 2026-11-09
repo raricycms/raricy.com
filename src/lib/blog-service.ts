@@ -889,7 +889,16 @@ export {
   BLOG_CONTENT_MAX,
 } from './blog-limits';
 import { BLOG_TITLE_MAX, BLOG_DESCRIPTION_MAX, BLOG_CONTENT_MAX } from './blog-limits';
-export const BLOG_DAILY_LIMIT = 20; // 每日发文上限
+/**
+ * 每日发文上限。**生产固定 20**，不随环境变化。
+ *
+ * 例外：全量 e2e 共用一个测试库，几十个用例各发一篇，累计会在长跑中途撞 429（那是
+ * 测试共享账号的基建问题，不是产品回归）。所以 playwright 的 webServer 用
+ * `BLOG_DAILY_LIMIT` 把测试服务的额度放宽；生产不要配置这个变量。
+ */
+const ENV_DAILY_LIMIT = Number(process.env.BLOG_DAILY_LIMIT);
+export const BLOG_DAILY_LIMIT =
+  Number.isInteger(ENV_DAILY_LIMIT) && ENV_DAILY_LIMIT > 0 ? ENV_DAILY_LIMIT : 20;
 
 /** 发文 / 改文**唯一接受**的键。多一个都会被 400 顶回去，理由见 validateBlogData 里那段。 */
 export const BLOG_ACCEPTED_KEYS = [

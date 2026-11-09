@@ -25,6 +25,24 @@ export async function waitCommentSectionReady(page: Page): Promise<void> {
 }
 
 /**
+ * 等某个客户端组件**真的水合完成**：React 接管 DOM 后会把内部 fiber/props 挂到节点上。
+ *
+ * 【什么时候需要】`page.goto` 等到的是 `load`，不是水合；紧接着对受控输入框 `fill` 时，
+ * 若 React 还没接管，首次渲染会把 value 重置回空 —— 页面不报错，提交的是空表单。
+ * 评论区有 `waitCommentSectionReady` 的专属判据；这个是不依赖业务数据的通用版本
+ * （注册表单这类没有「加载完成」信号的页面用）。
+ */
+export async function waitForHydrated(page: Page, selector: string): Promise<void> {
+  await page.waitForFunction((sel) => {
+    const el = document.querySelector(sel);
+    if (!el) return false;
+    return Object.keys(el).some(
+      (key) => key.startsWith('__reactFiber$') || key.startsWith('__reactProps$')
+    );
+  }, selector);
+}
+
+/**
  * 在自定义下拉（`ExpandSelect`）里选中一项。
  *
  * 站内那些「选择栏目 / 全部动作」已经从原生 <select> 换成带展开动画的自定义控件，

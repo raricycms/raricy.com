@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { freshInvite, publishBlog, registerFreshUser, uniqueTag } from './helpers';
+import { freshInvite, publishBlog, registerFreshUser, uniqueTag, waitForHydrated } from './helpers';
 import { SEED_PASSWORD } from './seed';
 
 test('邀请注册必填，成功直接登录并返回原任务；一言无文章时保留导航', async ({ page }) => {
@@ -12,6 +12,9 @@ test('邀请注册必填，成功直接登录并返回原任务；一言无文�
     expect(denied.status()).toBe(400);
   }
   await page.goto('/register?next=' + encodeURIComponent('/quotes/history?page=2'));
+  // 注册表单是受控客户端组件：水合前 fill 会被 React 首次渲染重置回空（移动端更明显），
+  // 于是提交空邀请码、URL 原地不动。等水合再填。
+  await waitForHydrated(page, '#inviteCode');
   await expect(page.locator('#inviteCode')).toHaveAttribute('required', '');
   await page.locator('#inviteCode').fill(invite);
   await page.locator('#username').fill(data.username);

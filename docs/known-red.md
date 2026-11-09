@@ -87,8 +87,10 @@
 
 ## 11. 全量 e2e 的已知非产品失败（2026-11-09 实测）
 
-全量 `npx playwright test` 在干净构建下仍可能红（近期实测 672 passed / 17 failed / 16 skipped）。
-先按下面的方向核对；**这不是跳过名单**，判定方法一律是「把失败 spec 单独跑一遍」。
+2026-11-09 同一构建连续三轮全量：**672 passed / 17 failed** → **686 / 3** → **689 / 0**
+（desktop 全量 + mobile 响应式子集，16–18 分钟）。0 failed 是当前基线，但单库长跑仍可能
+冒出单条顺序/水合 flake；先按下面方向核对。**这不是跳过名单**，判定方法一律是「把失败
+spec 单独跑一遍」。
 
 ```powershell
 npx playwright test tests/e2e/<失败spec> --project=desktop   # 或 --project=mobile
@@ -96,9 +98,11 @@ npx playwright test tests/e2e/<失败spec> --project=desktop   # 或 --project=m
 
 | 症状 | 已确认原因 | 处置 |
 |---|---|---|
-| 多条 `发文失败：{"code":429,..."今日发布数量已达上限（20篇）"}` | 全量长跑里种子号 `e2e_core` 累计发文超过 `BLOG_DAILY_LIMIT = 20`（`src/lib/blog-service.ts`）。单跑时每个 spec 重开一轮、配额重置所以是绿的 —— 是测试共享账号的基建问题 | 要让全量绿，在测试基建层改用独立账号或按轮重置计数；**不要**为此放宽生产限额 |
-| 分散的 `expect(...).toBeVisible()` / 超时，单跑全绿 | 单库串行长跑的顺序/状态 flake；`reactive-ssr-cold` 还会因为全量时进程已预热而红（它要的是冷启动） | 单跑复核；确认顺序依赖后按 `docs/testing.md` §4 收紧用例，而不是加 retries |
-| `chat-image.spec.ts` 的「网络失败自动重试」或 `mention-picker.spec.ts` mobile 4 条 | 已在 `ee8efe1d` 修复：前者对齐 R3-373「失败不自动重发」，后者在 `fill` 前等评论区水合（`waitCommentSectionReady`） | 再出现时先确认构建与 HEAD 一致，别先怀疑产品回归 |
+| 多条 `发文失败：{"code":429,..."今日发布数量已达上限（20篇）"}` | **已修**：全量共用一个种子号，累计超过 `BLOG_DAILY_LIMIT = 20`。测试服务的 webServer 用 `BLOG_DAILY_LIMIT=500` 放宽（`playwright.config.ts`）；生产仍固定 20（`src/lib/blog-service.ts`） | 再遇 429 先确认测试服务 env 生效；**不要**改生产默认值 |
+| `ios-app` 的「返回上页」在 `/blog` 找不到预期卡片 | **已修**：用例此前依赖种子文章在 `/blog` 第一页；全量发文量大了会把它挤到下一页。现在发一篇自己的文章、用 `?scope=mine` 锚定 | 新用例别依赖「种子数据一定在列表首页」 |
+| 注册页 / `mention-picker` 等「单跑绿、全量红」 | **已修**：`goto` 后立刻 `fill` 受控输入框，React 水合前的值会被首次渲染重置回空（注册页提交空邀请码、@ 提示不出现）。注册用 `waitForHydrated(page, selector)`，评论/讨论用 `waitCommentSectionReady` | `goto` 后立刻输入前先等水合；不要用 `waitForTimeout` 猜 |
+| 其它分散的 `expect(...).toBeVisible()` / 超时 | 单库串行长跑的顺序/状态依赖；`reactive-ssr-cold` 在全量时进程已预热（文件头写明只验「关 JS 仍可读」，真冷启动要单跑该文件） | 单跑复核；确认顺序依赖后按 `docs/testing.md` §4 收紧用例，而不是加 retries |
+| `chat-image.spec.ts` 的「网络失败自动重试」 | 已在 `ee8efe1d` 修复（对齐 R3-373「失败不自动重发」）；若再出现先确认构建与 HEAD 一致 | 不要恢复自动重发用例 |
 
 ## 维护这一页
 

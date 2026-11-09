@@ -20,6 +20,9 @@
 //
 // 其余步骤与原命令逐字一致，顺序未动：prisma generate（client 必须先于 next build）
 // → copy-converter-assets（转换器引擎资产）→ next build → realtime:build。
+// 另有一道前置校验：PWA 图标台账（`make-pwa-icons.mjs --check`）。图标与 manifest 是
+// 构建产物之外**随代码入库**的素材，漏重跑生成脚本只会到安装时才坏；所以放进 build，
+// 而不是等某个用例或 CI 想起来跑它。
 
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
@@ -52,6 +55,7 @@ try {
   console.warn(`[build] 清理 .next/types 失败（忽略，继续构建）：${e.message}`);
 }
 
+run('校验 PWA 图标台账', 'node', ['scripts/make-pwa-icons.mjs', '--check']);
 run('prisma generate', 'npx', ['prisma', 'generate']);
 run('复制转换器引擎资产', 'node', ['scripts/copy-converter-assets.mjs']);
 run('next build', 'npx', ['next', 'build']);
