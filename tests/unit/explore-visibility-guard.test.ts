@@ -1,92 +1,75 @@
-// 「对外列表与 sitemap 必须列同一个集合」这条不变量的**静态**守卫。
+// 「对外列表与 sitemap 必须列同一个集合」这条不变量。
 //
 // 【为什么需要它】两条路径分叉的后果是静默的：搜索引擎收录了一篇，读者在公开列表上
-// 翻不到（或反过来）—— 没有任何报错，行为测试也未必覆盖到那个组合（要造出「同一篇
-// 文章在一条路径上出现、在另一条上不出现」的状态，前提是两条路径的 where 真的不同）。
-// 而「可发现」的整个承诺就是这两者一致。
+// 翻不到（或反过来）—— 没有任何报错，行为测试也未必覆盖到那个组合。
 //
-// 手法与 tests/unit/blog-visibility-guard.test.ts 相同：**名字就是台账**。
-// 两个出口的函数体里都必须出现 INDEXABLE_BLOG_WHERE 这个名字 —— 它是「与 sitemap
-// 同源」这件事唯一可被静态识别的凭证，不是随便起的一个常量名。
+// 【判据怎么是行为，而不是常量名】旧版本靠「函数体里出现 INDEXABLE_BLOG_WHERE 这个名字」
+// 来判同源 —— 常量一改名守卫就红，而且它证明不了两个函数**真的**给数据库发了同一份
+// where。现在改成：用 mock 的 prisma 截获两个出口实际发出的 `where`，直接比较两份参数，
+// 并断言语义只含 `public`、未软删。这样实现随便怎么改名都不影响判据，而「分叉」一定红。
 //
-// ⚠️ 静态守卫是绊线，不是证明器：它只看源码里有没有那个名字。真正的行为保证在
-// tests/service/blog-service.test.ts 的「与 listIndexableBlogs 列同一个集合」那条
-// （它真造数据、真比对两个集合）。
+// 剩下的结构性检查（/explore 页面、sitemap、公开检索）只钉**模块边界**：页面不得绕过
+// 具名出口自己查表；检索不得自己手抄可见性条件（从 blog-public-scope 取片段）。
+//
+// ⚠️ 这是单元层守卫；真正的库级保证还有 tests/service/blog-service.test.ts 的
+// 「listIndexableBlogs 只出 public」与「与 listPublicBlogs 列同一集合」两条。
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 
-const SERVICE = path.resolve(import.meta.dirname, '../../src/lib/blog-service.ts');
-const serviceSrc = fs.readFileSync(SERVICE, 'utf-8');
+const { prismaMock } = vi.hoisted(() => ({
+  prismaMock: { calls: [] as { method: string; where: unknown }[] },
+}));
 
-/**
- * 截出某个导出 async 函数的函数体。
- *
- * 靠「顶格的 `}` **且它后面就是换行**」收尾 —— 函数内部的块都缩进，所以顶格的 `}`
- * 只有函数结束那一个……
- *
- * ⚠️ **但多行的返回类型注解会破例**：`listPublicBlogs` 的签名是
- *
- *     export async function listPublicBlogs(params: …): Promise<{
- *       blogs: PublicBlogRow[];
- *     }> {
- *
- * 那个 `}> {` 的行首也有一个 `}`。只写 `\n\}` 的话正则会**在那里就收尾**，截出的
- * 「函数体」其实是签名 —— 而它当然不含 where，于是主断言会以一条看起来很像真问题的
- * 报错变红（本文件第一版就是这么错的）。所以要补一个「后面必须是换行」的环视。
- */
-function bodyOf(name: string): string {
-  const m = serviceSrc.match(
-    new RegExp(`export async function ${name}\\b[\\s\\S]*?\\n\\}(?=\\r?\\n|$)`)
-  );
-  return m ? m[0] : '';
-}
+vi.mock('@/lib/db', () => {
+  const record = (method: string, args: { where?: unknown } | undefined) => {
+    prismaMock.calls.push({ method, where: args?.where });
+  };
+  return {
+    prisma: {
+      blog: {
+        findMany: vi.fn(async (args?: { where?: unknown }) => {
+          record('findMany', args);
+          return [];
+        }),
+        count: vi.fn(async (args?: { where?: unknown }) => {
+          record('count', args);
+          return 0;
+        }),
+      },
+    },
+  };
+});
+
+const ROOT = path.resolve(import.meta.dirname, '../..');
 
 describe('explore / 对外列表与 sitemap 同源（不变量【5】）', () => {
-  it('产出自检：正则真能截出函数体（否则下面那条会静默变绿）', () => {
-    // 两个函数都要检 —— `listPublicBlogs` 正是「多行返回类型」那个形状，
-    // 只检 listIndexableBlogs 的话，第一版的截断 bug 根本暴露不出来。
-    for (const fn of ['listIndexableBlogs', 'listPublicBlogs']) {
-      const body = bodyOf(fn);
-      expect(body.length, `截不出 ${fn} 的函数体`).toBeGreaterThan(50);
-      expect(body, `${fn} 截出来的不是函数体（多半又停在返回类型那个 } 上了）`).toContain(
-        'prisma.blog.'
-      );
-    }
-    // 反例：不存在的函数名必须截出空串（证明「截到了」不是恒真）
-    expect(bodyOf('noSuchFunctionAtAll'), '不存在的函数竟然也截出了东西').toBe('');
-  });
+  it('两个出口实际发给数据库的 where 相等，且只含 public + 未软删', async () => {
+    const { listIndexableBlogs, listPublicBlogs } = await import('@/lib/blog-service');
+    prismaMock.calls.length = 0;
+    await listIndexableBlogs();
+    await listPublicBlogs();
 
-  it('★ 两个出口都必须提到 INDEXABLE_BLOG_WHERE', () => {
-    for (const fn of ['listPublicBlogs', 'listIndexableBlogs']) {
-      const body = bodyOf(fn);
-      expect(body, `没找到 ${fn} 的函数体`).toContain(fn);
-      expect(
-        body,
-        `${fn} 的函数体里没有 INDEXABLE_BLOG_WHERE —— 它必须与另一个出口用**同一个常量**，` +
-          `否则 sitemap 与 /explore 会列不同的集合，而那条差异不会有任何报错。` +
-          `（要么改回这个常量，要么先想清楚「两条路径列不同集合」为什么可以接受。）`
-      ).toContain('INDEXABLE_BLOG_WHERE');
-    }
-  });
+    const findManyCalls = prismaMock.calls.filter((call) => call.method === 'findMany');
+    expect(findManyCalls.length, '两个出口都应该查一次 blog.findMany').toBe(2);
 
-  it('对外列表不许退化成「link + public」—— link 读得到，但不许被列举', () => {
-    // EXTERNAL_VISIBLE_BLOG_WHERE 是给**单篇可达性**用的，不是给列表用的。
-    // 谁把 listPublicBlogs 的 where 换成它，link 档就会出现在公开列表上 ——
-    // 那等于把「凭链接可读」变成了「被列举」，而这两档的差别就在这里。
+    const [indexableWhere, publicWhere] = findManyCalls.map((call) => call.where);
     expect(
-      bodyOf('listPublicBlogs'),
-      'listPublicBlogs 用了 EXTERNAL_VISIBLE_BLOG_WHERE —— 那是单篇可达性的常量，' +
-        '列表只该用 INDEXABLE_BLOG_WHERE（只有 public）'
-    ).not.toContain('EXTERNAL_VISIBLE_BLOG_WHERE');
+      publicWhere,
+      'sitemap（listIndexableBlogs）与 /explore（listPublicBlogs）的 where 不同 —— ' +
+        '两条路径会列不同集合，而那条差异不会有任何报错。'
+    ).toEqual(indexableWhere);
+
+    // 语义：可索引 = 未软删的 public；link 读得到但不许被列举，internal 更不许。
+    expect(indexableWhere).toMatchObject({ ignore: false, visibility: { in: ['public'] } });
+    const visibility = JSON.stringify((indexableWhere as { visibility?: unknown }).visibility);
+    expect(visibility, '公开列表的可见性条件放进了 link').not.toContain('link');
+    expect(visibility, '公开列表的可见性条件放进了 internal').not.toContain('internal');
   });
 
   it('/explore 页面走的是 listPublicBlogs，没自己手写 where', () => {
-    const page = fs.readFileSync(
-      path.resolve(import.meta.dirname, '../../src/app/explore/page.tsx'),
-      'utf-8'
-    );
+    const page = fs.readFileSync(path.join(ROOT, 'src/app/explore/page.tsx'), 'utf-8');
     expect(page, '页面必须经过那个具名出口').toContain('listPublicBlogs');
     expect(page, '/explore 不该自己查 blog 表（绕过了出口）').not.toMatch(/prisma\.blog\./);
     expect(page, '/explore 不许用站内那个不看可见性的列表函数').not.toMatch(/\blistBlogs\b/);
@@ -94,30 +77,25 @@ describe('explore / 对外列表与 sitemap 同源（不变量【5】）', () =>
   });
 
   it('sitemap 只经过 listIndexableBlogs，没自己查 blog 表', () => {
-    const sitemap = fs.readFileSync(
-      path.resolve(import.meta.dirname, '../../src/app/sitemap.ts'),
-      'utf-8'
-    );
+    const sitemap = fs.readFileSync(path.join(ROOT, 'src/app/sitemap.ts'), 'utf-8');
     expect(sitemap).toContain('listIndexableBlogs');
     expect(sitemap, 'sitemap 不该自己查 blog 表 —— 过滤要收在出口里').not.toMatch(
       /prisma\.blog\./
     );
   });
 
-  it('公开检索的 raw SQL 也复用同一定义（不许手抄可见性白名单）', () => {
-    // 检索是另一个载体（Prisma.sql），但它列的就是「可索引集合」。条件若在
-    // public-blog-search.ts 里再写一份，改白名单 / 加过滤条件时就会与列表分叉。
-    const search = fs.readFileSync(
-      path.resolve(import.meta.dirname, '../../src/lib/public-blog-search.ts'),
-      'utf-8'
+  it('公开检索的可见性片段来自 blog-public-scope（不许自己手抄）', () => {
+    const search = fs.readFileSync(path.join(ROOT, 'src/lib/public-blog-search.ts'), 'utf-8');
+    // 模块边界：检索必须从公开集合的唯一定义处取片段（常量名可以改，模块归属不能变）。
+    expect(search, '公开检索必须从 blog-public-scope 取可见性片段').toMatch(
+      /from '\.\/blog-public-scope'/
     );
-    expect(search).toContain('PUBLIC_SEARCH_BLOG_SQL');
     // 注释里可以出现「手抄 visibility IN (...)」这种反例说明，只扫代码行。
     const code = search
       .split(/\r?\n/)
       .filter((line) => {
-        const t = line.trim();
-        return !(t.startsWith('//') || t.startsWith('*') || t.startsWith('/*'));
+        const text = line.trim();
+        return !(text.startsWith('//') || text.startsWith('*') || text.startsWith('/*'));
       })
       .join('\n');
     expect(

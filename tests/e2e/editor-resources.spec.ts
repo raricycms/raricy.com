@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { loginViaApi, registerFreshUser } from './helpers';
+import { loginViaApi, registerFreshUser, waitForHydrated } from './helpers';
 import { SEED_USERS } from './seed';
 
 // 「插入引用」资源面板（图床 / 音频 / 剪贴板 / 投票 / 收藏夹）的真跑链路。
@@ -389,6 +389,9 @@ for (const { name, url, editor } of EDITORS) {
     await loginViaApi(page, SEED_USERS.core.username);
     await page.goto(url);
     await expect(page.locator(`${editor} .md-toolbar`)).toBeVisible();
+    // 编辑器是客户端组件：toolbar 可见 ≠ React 已接管文件 input。水合前 setInputFiles
+    // 触发的 change 没有处理器，请求根本不会发出（移动端长跑里会以 30s 超时现形）。
+    await waitForHydrated(page, `${editor} input[type="file"]`);
 
     // .filepick 是 base.js 给**看得见的**原生 input[type=file] 注入的 UI
     //（一颗蓝按钮 + 「未选择文件」+ ×）。编辑器那颗上传 input 靠 `hidden` 属性
@@ -440,6 +443,9 @@ for (const { name, url, editor } of EDITORS) {
     await loginViaApi(page, SEED_USERS.core.username);
     await page.goto(url);
     await expect(page.locator(`${editor} .md-toolbar`)).toBeVisible();
+    // 编辑器是客户端组件：toolbar 可见 ≠ React 已接管文件 input。水合前 setInputFiles
+    // 触发的 change 没有处理器，请求根本不会发出（移动端长跑里会以 30s 超时现形）。
+    await waitForHydrated(page, `${editor} input[type="file"]`);
 
     // 先挂上响应监听再喂文件，否则可能错过已经返回的请求
     const uploadResponse = page.waitForResponse(
@@ -469,6 +475,9 @@ for (const { name, url, editor } of EDITORS) {
     await loginViaApi(page, SEED_USERS.core.username);
     await page.goto(url);
     await expect(page.locator(`${editor} .md-toolbar`)).toBeVisible();
+    // 编辑器是客户端组件：toolbar 可见 ≠ React 已接管文件 input。水合前 setInputFiles
+    // 触发的 change 没有处理器，请求根本不会发出（移动端长跑里会以 30s 超时现形）。
+    await waitForHydrated(page, `${editor} input[type="file"]`);
 
     const uploads = countUploads(page);
 
@@ -545,6 +554,9 @@ for (const { name, url, editor } of EDITORS) {
     await loginViaApi(page, SEED_USERS.core.username);
     await page.goto(url);
     await expect(page.locator(`${editor} .md-toolbar`)).toBeVisible();
+    // 编辑器是客户端组件：toolbar 可见 ≠ React 已接管文件 input。水合前 setInputFiles
+    // 触发的 change 没有处理器，请求根本不会发出（移动端长跑里会以 30s 超时现形）。
+    await waitForHydrated(page, `${editor} input[type="file"]`);
 
     const uploads = countUploads(page);
 

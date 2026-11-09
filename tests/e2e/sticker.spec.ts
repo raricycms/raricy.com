@@ -25,7 +25,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { expect, test, type Page } from '@playwright/test';
-import { loginViaApi, registerFreshUser, uniqueTag } from './helpers';
+import { loginViaApi, registerFreshUser, uniqueTag, waitCommentSectionReady } from './helpers';
 import { E2E_STICKERS, SEED_BLOG, SEED_USERS } from './seed';
 
 const LOBBY = 'lobby';
@@ -271,6 +271,9 @@ test.describe('表情包：输入区', () => {
   test('评论：点面板里的表情 → 插到输入框，**不发送**', async ({ page }) => {
     const user = await registerFreshUser(page, { core: true });
     await page.goto(BLOG_URL);
+    // 评论区是客户端组件：水合/首次拉取完成前 `.comment-item` 还是 0，
+    // 马上读计数会把「后来才渲染出来的既有评论」当成新增（全量长跑里的顺序/时序红）。
+    await waitCommentSectionReady(page);
 
     const composer = page.locator('.comment-composer').first();
     await expect(composer).toBeVisible();
@@ -303,6 +306,9 @@ test.describe('表情包：输入区', () => {
   test('评论：Esc 关掉面板，草稿不受影响', async ({ page }) => {
     await registerFreshUser(page, { core: true });
     await page.goto(BLOG_URL);
+    // 评论区是客户端组件：水合/首次拉取完成前 `.comment-item` 还是 0，
+    // 马上读计数会把「后来才渲染出来的既有评论」当成新增（全量长跑里的顺序/时序红）。
+    await waitCommentSectionReady(page);
 
     const composer = page.locator('.comment-composer').first();
     const draft = '还没写完的评论';
@@ -342,6 +348,9 @@ test.describe('内置黄脸表情', () => {
   test('面板里排在最前、默认激活，且图是真出得来的', async ({ page }) => {
     await registerFreshUser(page, { core: true });
     await page.goto(BLOG_URL);
+    // 评论区是客户端组件：水合/首次拉取完成前 `.comment-item` 还是 0，
+    // 马上读计数会把「后来才渲染出来的既有评论」当成新增（全量长跑里的顺序/时序红）。
+    await waitCommentSectionReady(page);
 
     const composer = page.locator('.comment-composer').first();
     await composer.getByRole('button', { name: '表情' }).click();
@@ -401,6 +410,9 @@ test.describe('内置黄脸表情', () => {
   test('评论：点黄脸 → 插到光标处，**不发送**', async ({ page }) => {
     await registerFreshUser(page, { core: true });
     await page.goto(BLOG_URL);
+    // 评论区是客户端组件：水合/首次拉取完成前 `.comment-item` 还是 0，
+    // 马上读计数会把「后来才渲染出来的既有评论」当成新增（全量长跑里的顺序/时序红）。
+    await waitCommentSectionReady(page);
 
     const composer = page.locator('.comment-composer').first();
     const before = await page.locator('.comment-item').count();

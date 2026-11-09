@@ -1,6 +1,13 @@
 import { test, expect } from '@playwright/test';
-import { freshInvite, publishBlog, registerFreshUser, uniqueTag, waitForHydrated } from './helpers';
-import { SEED_PASSWORD } from './seed';
+import {
+  freshInvite,
+  loginViaApi,
+  publishBlog,
+  registerFreshUser,
+  uniqueTag,
+  waitForHydrated,
+} from './helpers';
+import { SEED_PASSWORD, SEED_USERS } from './seed';
 
 test('邀请注册必填，成功直接登录并返回原任务；一言无文章时保留导航', async ({ page }) => {
   const invite = await freshInvite(page);
@@ -32,6 +39,38 @@ test('邀请注册必填，成功直接登录并返回原任务；一言无文�
     await expect(page).toHaveURL(target);
     await expect(page.getByRole('navigation', { name: '每日一言' })).toBeVisible();
   }
+});
+
+test('顶栏用户菜单：Esc 关闭并把焦点还给触发钮', async ({ page, isMobile }) => {
+  await loginViaApi(page, SEED_USERS.core.username);
+  await page.goto('/');
+  // base.js 是 afterInteractive 脚本：等它挂出全局函数再点顶栏，否则交互还没初始化。
+  await page.waitForFunction(() => typeof (window as any).updateNotificationCount === 'function');
+  if (isMobile) {
+    // 移动端动作区随汉堡一起折叠 —— 先展开导航，才看得到头像胶囊。
+    const hamburger = page.locator('.site-navbar-toggler');
+    await expect(hamburger).toBeVisible();
+    await hamburger.click();
+    await expect(page.locator('.site-navbar')).toHaveClass(/open/);
+  }
+
+  const toggle = page.locator('#userDropdownToggle');
+  const menu = page.locator('#userDropdownMenu');
+  const firstItem = menu.getByRole('menuitem').first();
+
+  await toggle.click();
+  await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+  await expect(menu).toBeVisible();
+
+  // 焦点真的进到面板里再按 Esc —— 只有「焦点在菜单内」时才该归还，
+  // 否则键盘用户按 Esc 后会掉回 body（顶栏胶囊的既有语义，见 base.js）。
+  await firstItem.focus();
+  await expect(firstItem).toBeFocused();
+
+  await page.keyboard.press('Escape');
+  await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+  await expect(menu).toBeHidden();
+  await expect(toggle, 'Esc 关闭后焦点必须回到触发钮').toBeFocused();
 });
 
 test('设置按任务分组，外观直达对应商品，旧市场锚点兼容', async ({ page }) => {
