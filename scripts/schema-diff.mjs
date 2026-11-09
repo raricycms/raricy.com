@@ -32,11 +32,10 @@
 //   · 38 / 43 号迁移的 partial unique index（schema 表达不了）。
 // 其余差异一律列在「需要人判读」区，退出码默认 0；加 `--fail-on-diff` 时只要存在
 // **非 known** 差异就退出 1，可直接当 CI 门禁用（已知项已从退出码里排除）。
-// ⚠️ 现状下 `--fail-on-diff` 仍会为 11 条**存量未登记差异**退出 1：`chat_members` /
-//    `chat_messages` 的 6 条外键只在 schema（迁移 4_chat 没建），以及
-//    `account_sync_ledger` / `chat_*` 的 5 条 NOT NULL 分叉。它们与 R3-014 的 CASCADE
-//    同类，是历史迁移与 schema 的既有分叉，不是本轮引入的；裁决前不要拿本开关当绿门禁，
-//    处置方式同 `docs/legacy-constraints.md`（登记为历史约束，或另开迁移补齐）。
+// ⚠️ 已知的存量分叉（`chat_*` 的外键 / NOT NULL、`account_sync_ledger.id`）登记在
+//    下面的 known 列表与 `docs/legacy-constraints.md` §8：它们不算新漂移，所以
+//    `--fail-on-diff` 在现状下可以当绿门禁用。新增差异若确属可接受的历史形态，
+//    先在 legacy-constraints §8 登记，再加进对应 known 列表。
 // ─────────────────────────────────────────────────────────────────────────────
 
 import fs from 'node:fs';
@@ -65,6 +64,28 @@ const KNOWN_SCHEMA_ONLY_TABLES = ['_prisma_migrations'];
 const KNOWN_PARTIAL_UNIQUE_INDEXES = new Map([
   ['uq_daily_quotes_active_content', '38 号迁移的 partial unique，schema 表达不了（R3-019 已登记）'],
   ['uq_admin_action_appeals_pending', '43 号迁移的 partial unique，schema 表达不了（R3-447 已登记）'],
+]);
+
+/**
+ * 迁移路径与 schema 路径的存量结构分叉（已登记在 docs/legacy-constraints.md §8）。
+ * 不是新漂移；收敛要重建表，按 R3-014 口径只登记、不擅自收敛。
+ */
+const KNOWN_NOT_NULL_DIFFS = new Map([
+  ['account_sync_ledger.id', '2_account_sync_ledger 的 INTEGER PRIMARY KEY 在 SQLite 里允许 NULL；schema 写非空。应用总是由自增赋值，生产无 NULL 行（legacy-constraints §8）'],
+  ['chat_channels.created_at', '4_chat 建表写 NOT NULL，schema 写 DateTime?；应用插入总是给值（legacy-constraints §8）'],
+  ['chat_members.created_at', '同上：4_chat 建表写 NOT NULL，schema 写可空（legacy-constraints §8）'],
+  ['chat_messages.created_at', '同上：4_chat 建表写 NOT NULL，schema 写可空（legacy-constraints §8）'],
+  ['chat_messages.is_deleted', '4_chat 建 NOT NULL DEFAULT 0，schema 写 Boolean?（应用写入总是给值；legacy-constraints §8）'],
+]);
+
+/** 只 schema 里有的外键（迁移 4_chat 建表时未建，见 legacy-constraints §8）。 */
+const KNOWN_SCHEMA_ONLY_FOREIGN_KEYS = new Map([
+  ['chat_members:user_id→users.id', '4_chat 未建外键，生产靠应用层约束（legacy-constraints §8）'],
+  ['chat_members:channel_id→chat_channels.id', '同上（legacy-constraints §8）'],
+  ['chat_messages:reply_to→chat_messages.id', '同上（legacy-constraints §8）'],
+  ['chat_messages:image_id→image_hosting.id', '同上；4_chat 头部写明不建图片外键（legacy-constraints §8）'],
+  ['chat_messages:author_id→users.id', '同上（legacy-constraints §8）'],
+  ['chat_messages:channel_id→chat_channels.id', '同上（legacy-constraints §8）'],
 ]);
 
 const MIGRATIONS_DIR = path.join(ROOT, 'prisma', 'migrations');
@@ -281,7 +302,10 @@ for (const [name, aTable] of migrated.tables) {
       else pushFinding('列', message);
     }
     if (col.notnull !== other.notnull) {
-      pushFinding('列', `${name}.${col.name} NOT NULL：迁移 ${col.notnull} / schema ${other.notnull}`);
+      const message = `${name}.${col.name} NOT NULL：迁移 ${col.notnull} / schema ${other.notnull}`;
+      const reason = KNOWN_NOT_NULL_DIFFS.get(`${name}.${col.name}`);
+      if (reason) pushKnown('列', `${message} —— ${reason}`);
+      else pushFinding('列', message);
     }
     if (col.default !== other.default) {
       const message = `${name}.${col.name} 默认值：迁移 ${String(col.default)} / schema ${String(other.default)}`;
@@ -323,6 +347,12 @@ for (const [name, aTable] of migrated.tables) {
   for (const fk of aTable.foreignKeys) fkGroups.set(groupKey(fk), { ...(fkGroups.get(groupKey(fk)) ?? {}), a: fk });
   for (const fk of bTable.foreignKeys) fkGroups.set(groupKey(fk), { ...(fkGroups.get(groupKey(fk)) ?? {}), b: fk });
   for (const [key, pair] of fkGroups) {
+    const knownSchemaOnly = KNOWN_SCHEMA_ONLY_FOREIGN_KEYS.get(`${name}:${key}`);
+    // 迁移路径没有、schema 路径有 → 4_chat 建表时的历史分叉（已登记，见 legacy-constraints §8）。
+    if (!pair.a && knownSchemaOnly) {
+      pushKnown('外键', `${name}：${key} 只 schema 里有 —— ${knownSchemaOnly}`);
+      continue;
+    }
     if (!pair.a) {
       pushFinding('外键', `${name}：只 schema 里有 ${renderForeignKey(pair.b)}（缺迁移外键）`);
       continue;
@@ -361,7 +391,7 @@ if (knownOnlyInAExtra.length > 0) {
 }
 if (knownOnlyInB.length > 0) console.log(`  · B 独有表：${knownOnlyInB.join(', ')}`);
 if (knownFindings.length > 0) {
-  console.log(`  · 列/索引/外键级已知差异 ${knownFindings.length} 条（SQLite 亲和、布尔词法、CASCADE↔RESTRICT、partial unique）；`);
+  console.log(`  · 列/索引/外键级已知差异 ${knownFindings.length} 条（SQLite 亲和、布尔词法、CASCADE↔RESTRICT、partial unique、4_chat 外键 / NOT NULL）；`);
   console.log('    要逐条看可加 `--keep` 后另开，或直接读本脚本的 knownColumnReason / fk 分支。');
 }
 

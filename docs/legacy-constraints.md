@@ -159,7 +159,10 @@ git ls-tree -r 7d7be1c^ --name-only app/ # 列出旧 app/ 全树
 | `13_blog_visibility` 的列默认值 | `'private'` | `'internal'` | 插入路径全部显式给值，不依赖默认值；改迁移会改 checksum |
 | 索引名 | 迁移里多为**显式命名** | Prisma 忽略 `name:` 时用派生名 | 只在 `migrate diff` / 人工比对时造成噪音，不影响查询 |
 | `blogs.renderer_override` | 列在库里 | 列在 schema 里 | **保留**：对外 bot 契约字段（见 §1.1 与迁移 `42_retire_residual` 头部），退役需产品 / 文档批次 |
+| **聊天表的外键只在 schema** | `4_chat` 建表时没有任何外键（`chat_members` / `chat_messages`） | schema 的 relation 让 `db push` 建出 6 条：`chat_members.user_id` / `channel_id`，`chat_messages.reply_to` / `image_id` / `author_id` / `channel_id`（后两条 `image_id` / `reply_to` 是 `ON DELETE SET NULL`，其余 `RESTRICT`） | `4_chat` 头部写明「图片只存 id、不建外键，站长硬删图不挡聊天」；补外键要重建三张表（风险同 R3-014）。应用按 id 查询、软删/隐藏不依赖 FK。只登记（机器侧见 schema-diff 的 `KNOWN_SCHEMA_ONLY_FOREIGN_KEYS`） |
+| **NOT NULL 分叉** | `chat_channels.created_at` / `chat_members.created_at` / `chat_messages.created_at` / `chat_messages.is_deleted` 是 `NOT NULL`；`account_sync_ledger.id` 是 `INTEGER PRIMARY KEY`（SQLite 允许 NULL） | schema 把前三个 `created_at` 写成 `DateTime?`、`is_deleted` 写成 `Boolean?`、`id` 写非空 | 生产严格、测试宽松；应用对所有这些列都显式赋值，运行期不会遇 NULL。改 schema 会改 Prisma 类型与 `db push` 建库形态，按 R3-014 只登记（机器侧见 schema-diff 的 `KNOWN_NOT_NULL_DIFFS`） |
 
 > 判据：这些差异**不改运行期行为**，所以只登记、不逐条收敛。`npm run schema:diff`
 > 会把「迁移路径库」与「schema 路径库」逐项比对（表 / 列 / 索引 / 外键 / 触发器），
-> 输出就是本表的机器版本；新增差异应先在这里登记再决定是否收敛。
+> 输出就是本表的机器版本；已登记项在脚本的 known 列表里，`--fail-on-diff` 在现状下应为绿。
+> 新增差异应先在这里登记再决定是否收敛。
