@@ -12,7 +12,7 @@ import {
   isPublicIndexableBlog,
 } from './blog-public-scope';
 import { parseContentFormat } from './content-format';
-import { reactiveCompileOptions } from './reactive/host-components';
+import { REACTIVE_COMPILE_OPTIONS } from './reactive/host-components';
 import { applyLegacyHtmlCompat } from './reactive/legacy-compat';
 import { currentCompileSignature } from './reactive/compile-identity';
 import { checkSyntaxBudget } from './reactive/syntax-budget';
@@ -24,8 +24,7 @@ export const PUBLIC_SEARCH_BASE_VERSION = 'public-body/3';
 /** 独立索引的失效身份，不依赖数据库快照或 SQL 迁移。 */
 export const PUBLIC_SEARCH_VERSION = JSON.stringify([
   PUBLIC_SEARCH_BASE_VERSION,
-  currentCompileSignature('markdown'),
-  currentCompileSignature('reactive'),
+  currentCompileSignature(),
 ]);
 export type SearchAvailability = 'ready' | 'metadata-only' | 'partial';
 
@@ -37,7 +36,7 @@ export function searchTerms(text: string, query = false): string {
 }
 
 const TEXT = new Set(['text', 'inlineCode', 'code', 'math', 'inlineMath']);
-const CONTAINERS = new Set(['root', 'heading', 'paragraph', 'emphasis', 'strong', 'delete', 'underline', 'mark', 'sup', 'sub', 'span', 'div', 'summary', 'blockquote', 'list', 'listItem', 'table', 'tableRow', 'tableCell', 'link', 'footnoteDefinition']);
+const CONTAINERS = new Set(['root', 'heading', 'paragraph', 'emphasis', 'strong', 'delete', 'underline', 'mark', 'sup', 'sub', 'span', 'div', 'details', 'summary', 'blockquote', 'list', 'listItem', 'table', 'tableRow', 'tableCell', 'link', 'footnoteDefinition']);
 
 /** 没有读者可见正文的组件 / 宿主节点；其余组件的子节点继续取文字。 */
 const SKIPPED_COMPONENTS = new Set(['computed', 'const', 'validation', 'site-embed', 'if']);
@@ -52,7 +51,7 @@ export async function publicBodyText(source: string, rawFormat: unknown): Promis
     const { compileLocal } = await import('reactive-md');
     // 与阅读 / 预览同一套历史 HTML 兼容；否则旧 HTML 文章会 body_status='missing'。
     const compat = applyLegacyHtmlCompat(sourceForCurrentCompiler(source));
-    const result = compileLocal(compat.source, reactiveCompileOptions(format));
+    const result = compileLocal(compat.source, REACTIVE_COMPILE_OPTIONS);
     if (!result.ok) return { text: '', status: 'missing' };
     const visit = (node: LocalNode): string => {
       // fallback / htmlDocument / hostComponent / interpolation 均不取源码或状态；

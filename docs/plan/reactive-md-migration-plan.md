@@ -3,7 +3,7 @@
 > 状态：早期接入与实施记录（`reactive-md@0.5.3` → 0.6.1）。现行规则由
 > `docs/plan/reactive-md-simplification-plan.md` 与 `src/lib/reactive/read-render.ts` 定义；
 > 旧 `src/lib/renderer-select.ts` 已随 legacy 渲染整条退役删除（`3f2508c6`）。
-> 当前依赖 `reactive-md@0.7.0`，0.5.x 协议细节与分阶段记录见 Git 历史。
+> 当时依赖 `reactive-md@0.7.0`，0.5.x 协议细节与分阶段记录见 Git 历史。
 >
 > **2026-11 校订（R3-703）**：§10 的「Node ≥22.12 但 engines 写 ≥20」「print.css 由总样式
 > 间接导入」已过时 —— `package.json` 的 `engines` 现为 `>=22.12.0`；print.css **明确不 import**

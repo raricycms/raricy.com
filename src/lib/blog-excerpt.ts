@@ -38,7 +38,7 @@
 import { compileLocal, createLocalRuntime } from 'reactive-md';
 import type { LocalNode, LocalRuntime } from 'reactive-md';
 import type { ContentFormat } from './content-format';
-import { reactiveCompileOptions, SITE_EMBED_TAG } from './reactive/host-components';
+import { REACTIVE_COMPILE_OPTIONS, SITE_EMBED_TAG } from './reactive/host-components';
 import { applyLegacyHtmlCompat } from './reactive/legacy-compat';
 import { checkSyntaxBudget } from './reactive/syntax-budget';
 
@@ -246,14 +246,14 @@ function collectReactiveText(nodes: readonly LocalNode[], runtime: LocalRuntime,
  * ReactiveMD 正文 → 纯文本摘要。编译或建运行时失败返回空串（不降级成源码）。
  * 运行时只读初值，收集完立即 dispose。
  */
-function reactiveExcerpt(source: string, format: ContentFormat, max: number): string {
+function reactiveExcerpt(source: string, max: number): string {
   // R3-105：与阅读 / 发布走**同一个语法预算闸门**。摘要在主页请求里逐卡同步编译，
   // 病态正文（海量未闭合 `<` / `{{`）会在这里把单进程卡住；超预算直接给空串
   // （主页少一段摘要），绝不进入超线性编译。闸门实测是线性的。
   if (checkSyntaxBudget(source)) return '';
   let result: ReturnType<typeof compileLocal>;
   try {
-    result = compileLocal(applyLegacyHtmlCompat(source).source, reactiveCompileOptions(format));
+    result = compileLocal(applyLegacyHtmlCompat(source).source, REACTIVE_COMPILE_OPTIONS);
   } catch {
     return '';
   }
@@ -303,10 +303,10 @@ export function buildBlogExcerpt(
   // 的洞；所以缓存只是省重复编译，不改变「现算、不落表」的口径。
   // 上限是防无界增长的墙：主页每次请求的卡片集合不同，键会持续累积。Map 的
   // 插入顺序天然就是 LRU 的近似（命中不回写，只淘汰最老的一条），够用且无依赖。
-  const key = `${format}\u0000${max}\u0000${content}`;
+  const key = `${max}\u0000${content}`;
   const hit = excerptCache.get(key);
   if (hit !== undefined) return hit;
-  const out = reactiveExcerpt(content, format, max);
+  const out = reactiveExcerpt(content, max);
   if (excerptCache.size >= EXCERPT_CACHE_LIMIT) {
     const oldest = excerptCache.keys().next().value;
     if (oldest !== undefined) excerptCache.delete(oldest);

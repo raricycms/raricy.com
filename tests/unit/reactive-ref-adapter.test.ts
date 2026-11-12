@@ -16,8 +16,7 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { compileLocal } from 'reactive-md';
-import ReactiveSubDocument from '@/app/components/reactive/ReactiveSubDocument';
-import { renderSiteEmbedStatic } from '@/app/components/reactive/site-embed-static';
+import { InlineClipboardDocument, renderSiteEmbedStatic } from '@/app/components/reactive/site-embed-static';
 import {
   __resetInlineMarkdownCacheForTests,
   adaptReactiveReferences,
@@ -27,7 +26,7 @@ import {
 import { checkSyntaxBudget } from '@/lib/reactive/syntax-budget';
 import type { SiteMediaPayload } from '@/lib/reactive/ref-types';
 import { applyLegacyHtmlCompat } from '@/lib/reactive/legacy-compat';
-import { reactiveCompileOptions } from '@/lib/reactive/host-components';
+import { REACTIVE_COMPILE_OPTIONS } from '@/lib/reactive/host-components';
 import type { ReferenceReader, ReferenceSlot, ResolvedReference } from '@/lib/reactive/ref-types';
 import {
   MAX_BLOG_REF_ITEMS,
@@ -398,7 +397,7 @@ describe('剪贴板引用：Markdown 子剪贴板内联一层（与父文档格�
       mode: 'external',
       dataImages: compat.dataImages,
     });
-    const compiled = compileLocal(direct.adaptedSource, reactiveCompileOptions('markdown'));
+    const compiled = compileLocal(direct.adaptedSource, REACTIVE_COMPILE_OPTIONS);
     expect(compiled.ok).toBe(true);
     if (!compiled.ok) return;
     expect(data.document).toEqual(compiled.document);
@@ -482,7 +481,7 @@ describe('剪贴板引用：Markdown 子剪贴板内联一层（与父文档格�
       dataImages: compat.dataImages,
       mediaSources: compat.mediaSources,
     });
-    const compiled = compileLocal(direct.adaptedSource, reactiveCompileOptions('markdown'));
+    const compiled = compileLocal(direct.adaptedSource, REACTIVE_COMPILE_OPTIONS);
     expect(compiled.ok).toBe(true);
     if (!compiled.ok) return;
     expect(data.document).toEqual(compiled.document);
@@ -490,17 +489,15 @@ describe('剪贴板引用：Markdown 子剪贴板内联一层（与父文档格�
     // 内联渲染与「详情页同一条准备链的产物」用同一份静态渲染器必须逐字一致：
     // 历史 `<video>` 只留链接、公式仍由同一个文档视图渲染。
     const inlineHtml = renderToStaticMarkup(
-      createElement(ReactiveSubDocument, {
+      createElement(InlineClipboardDocument, {
         document: data.document,
         hostData: data.hostData,
-        hostRenderer: renderSiteEmbedStatic,
       })
     );
     const detailHtml = renderToStaticMarkup(
-      createElement(ReactiveSubDocument, {
+      createElement(InlineClipboardDocument, {
         document: compiled.document,
         hostData: direct.hostData,
-        hostRenderer: renderSiteEmbedStatic,
       })
     );
     expect(inlineHtml).toBe(detailHtml);

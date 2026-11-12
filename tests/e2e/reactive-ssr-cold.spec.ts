@@ -1,10 +1,6 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // reactive-ssr-cold.spec.ts —— **冷启动后的第一个正文请求**，且浏览器禁用 JS
 //
-// 实现前提：`ReactiveDocumentLazy` 是**静态 import**（刻意不用 React.lazy —— 实测
-// lazy + Suspense fallback={null} 在 SSR 只输出空壳，关 JS 的读者看到空白；见
-// src/app/components/reactive/ReactiveDocumentLazy.tsx 的文件头）。
-//
 // 判据刻意不用“响应 HTML 里含字符串”（标题 / 摘要 / RSC 载荷都可能带上它），
 // 也不用“打开过一个页面再关 JS”：本 spec 只用 API 造数，绝不在无 JS 页面之前
 // 导航任何页面。

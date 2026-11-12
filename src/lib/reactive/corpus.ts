@@ -30,10 +30,10 @@ import { performance } from 'node:perf_hooks';
 import { utf8ByteLength } from './cache';
 import { compileLocal, LOCAL_SYNTAX_VERSION } from 'reactive-md';
 import { shouldRejectReactive } from './diagnostics';
-import { detectReactiveSyntax, documentEvidence, literalizeReactiveSyntax } from './detect-format';
+import { compiledEvidence, detectReactiveSyntax, literalizeReactiveSyntax } from './detect-format';
 import { applyLegacyHtmlCompat, LEGACY_COMPAT_VERSION } from './legacy-compat';
 import { checkSyntaxBudget } from './syntax-budget';
-import { REACTIVE_COMPILER_VERSION, REACTIVE_MAX_SYNTAX_NODES, reactiveCompileOptions } from './host-components';
+import { REACTIVE_COMPILER_VERSION, REACTIVE_MAX_SYNTAX_NODES, REACTIVE_COMPILE_OPTIONS } from './host-components';
 
 export const CORPUS_SCAN_SCHEMA_VERSION = 1;
 
@@ -687,14 +687,17 @@ function compileCorpusDocumentUnsafe(document: CorpusDocument): CorpusCompileSca
     };
   }
   const compat = applyLegacyHtmlCompat(document.content);
-  const options = reactiveCompileOptions(document.format);
-  let result = compileLocal(compat.source, options);
+  const options = REACTIVE_COMPILE_OPTIONS;
+  let compiledSource = compat.source;
+  let result = compileLocal(compiledSource, options);
   let literalized = false;
   if (!result.ok && document.format === 'markdown') {
     const literal = literalizeReactiveSyntax(document.content);
     if (literal.changed) {
-      const retry = compileLocal(applyLegacyHtmlCompat(literal.source).source, options);
+      const retrySource = applyLegacyHtmlCompat(literal.source).source;
+      const retry = compileLocal(retrySource, options);
       if (retry.ok) {
+        compiledSource = retrySource;
         result = retry;
         literalized = true;
       }
@@ -710,7 +713,7 @@ function compileCorpusDocumentUnsafe(document: CorpusDocument): CorpusCompileSca
       formatMismatch: false,
     };
   }
-  const detectedFormat = documentEvidence(result.document).length > 0 ? 'reactive' : 'markdown';
+  const detectedFormat = compiledEvidence(compiledSource, result).length > 0 ? 'reactive' : 'markdown';
   // literalize 救活的 Markdown 不能按「字面化后的文档」判格式：原文可能已经
   // 被解析器认成 invalid-enhanced（服务端写入会拒绝）。语料报告要单列这一类，
   // 否则全量扫描里它们看起来只是“字面量降级”的普通 Markdown。

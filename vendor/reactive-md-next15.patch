@@ -1,0 +1,17 @@
+diff --git a/vite.lib.config.ts b/vite.lib.config.ts
+index c4dba65..0455d01 100644
+--- a/vite.lib.config.ts
++++ b/vite.lib.config.ts
+@@ -6,2 +6,12 @@ export default defineConfig({
+   plugins: [{
++    name: 'keep-radix-react-effect-event-optional',
++    transform(code, id) {
++      if (!id.endsWith('/@radix-ui/react-use-effect-event/dist/index.mjs')) return;
++      // Preserve Radix's fallback on React versions without useEffectEvent.
++      return code.replace(
++        'React[" useEffectEvent ".trim().toString()]',
++        'Reflect.get(React, "useEffectEvent")',
++      );
++    },
++  }, {
+     name: 'optional-print-css',

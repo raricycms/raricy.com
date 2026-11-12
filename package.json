@@ -85,7 +85,7 @@
     "qrcode-generator": "^2.0.4",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "reactive-md": "0.7.0",
+    "reactive-md": "file:vendor/reactive-md-0.8.0-next.0-be1fadd-next15.tgz",
     "sharp": "^0.35.3",
     "tesseract.js": "5.1.1",
     "utif": "3.1.0",

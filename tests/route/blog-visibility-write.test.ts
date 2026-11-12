@@ -253,7 +253,7 @@ describe('博客写接口：format 的 HTTP 映射', () => {
     expect(((await unknown.json()) as { message: string }).message).toContain('内容格式');
 
     const broken = await createBlog(
-      post({ ...base, content: '<panel title="未闭合">', format: 'reactive' })
+      post({ ...base, content: '{{ 1 + }}', format: 'reactive' })
     );
     expect(broken.status).toBe(400);
     expect(((await broken.json()) as { message: string }).message).toContain('无法编译');
@@ -292,7 +292,7 @@ describe('剪贴板写接口：format 的 HTTP 映射', () => {
     });
 
     const broken = await updateClip(
-      put({ ...clipBody, content: '<panel title="未闭合">', format: 'reactive' }),
+      put({ ...clipBody, content: '{{ 1 + }}', format: 'reactive' }),
       ctx(id)
     );
     expect(broken.status).toBe(400);

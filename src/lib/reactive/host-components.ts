@@ -15,7 +15,6 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import type { LocalCompileOptions, LocalHostComponentSchema } from 'reactive-md';
-import type { ContentFormat } from '../content-format';
 
 /** 唯一允许作者/适配器产出的宿主标签。 */
 export const SITE_EMBED_TAG = 'site-embed';
@@ -53,7 +52,7 @@ export const SITE_EMBED_TAG = 'site-embed';
 export const REACTIVE_MAX_SYNTAX_NODES = 50_000;
 
 /** 精确编译包版本（进缓存键与诊断上报，不是 semver 范围）。 */
-export const REACTIVE_COMPILER_VERSION = 'reactive-md/0.7.0';
+export const REACTIVE_COMPILER_VERSION = 'reactive-md/0.8.0-next.0+be1fadd';
 
 /**
  * 宿主组件 schema。`kind` 是枚举、`ref` 是受限字符串，两者都静态（拒绝 `{{ }}`）。
@@ -91,10 +90,10 @@ export const SITE_EMBED_SCHEMA: LocalHostComponentSchema = {
  * `<br>`。Reactive 作者若要分段而不换行，请用空行或显式标签；这是站点级的排版
  * 规则，不是按文档分叉的选项。
  */
-export function reactiveCompileOptions(_format: ContentFormat): LocalCompileOptions {
-  return {
-    hostComponents: [SITE_EMBED_SCHEMA],
-    limits: { maxSyntaxNodes: REACTIVE_MAX_SYNTAX_NODES },
-    markdownBreaks: true,
-  };
-}
+export const REACTIVE_COMPILE_OPTIONS: LocalCompileOptions = {
+  hostComponents: [SITE_EMBED_SCHEMA],
+  limits: { maxSyntaxNodes: REACTIVE_MAX_SYNTAX_NODES },
+  markdownBreaks: true,
+  // 局部结构损坏保留为惰性文本，其余正文继续编译。
+  strict: false,
+};

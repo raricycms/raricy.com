@@ -1015,7 +1015,7 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(
      *   1. 先等**当前正文**的格式判定（与保存同一条 `prepareSubmit`）：刚插入组件、
      *      350ms 分析还没回来时立刻点导出，不能按旧格式走另一套引擎（审查 5.4）；
      *   2. 无论 Markdown 还是 Reactive，都用**统一的新引擎**做静态渲染
-     *      （`renderStaticMarkup` → compat + 引用适配 + `reactiveCompileOptions(format)`），
+     *      （`renderStaticMarkup` → compat + 引用适配 + `REACTIVE_COMPILE_OPTIONS`），
      *      旧 MarkdownRenderer / blog-renderer 已随 legacy 渲染面整体退役（审查 5.1）。
      *
      * 判定 blocked（无效增强语法 / 不可发布）时明确提示并拒绝导出 —— 宁可什么都不
@@ -1044,7 +1044,6 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(
         }
         const bodyHtml = await renderStaticMarkup({
           source: prepared.content,
-          format: prepared.format,
           // 导出跟随当前预览口径（终审 F2）：访客视角预览是 external 时，
           // 私有剪贴板 / 投票 / 收藏夹保留字面量，导出件不得越过同一边界。
           referenceMode,
@@ -1308,7 +1307,7 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(
           诊断条：增强语法（含无效的）或确实有诊断时才出现。默认收起，只在标题行
           显示「检查中 / 错误 N · 警告 M / 未发现问题」。普通 Markdown 不占版面。
 
-          ⚠️ 唯一的例外是 worker 回退（`analysisActive && analysisFallback`）：
+          worker 回退时（`analysisActive && analysisFallback`）也显示状态：
           纯 Markdown 里只要有一个 `<`，格式检查就会在主线程跑，这时必须说一句
           「本地检查」；否则用户只感到变卡，而页面上一切正常（终审 F4）。
           普通正文没在检查时不排编译，也不会出现这块技术提示。
@@ -1317,7 +1316,8 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(
           invalidEnhanced ||
           analysisFailure !== null ||
           (analysisActive && analysisFallback) ||
-          (formatAnalysis?.candidates.length ?? 0) > 0) && (
+          (formatAnalysis?.candidates.length ?? 0) > 0 ||
+          (formatAnalysis?.diagnostics.length ?? 0) > 0) && (
           <ReactiveAuthoringPanel
             diagnostics={formatAnalysis?.diagnostics ?? []}
             localized={formatAnalysis !== null}
@@ -1378,17 +1378,11 @@ const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(
               </button>
             </div>
             <div className="md-editor__preview-body" ref={previewBodyRef}>
-              {/*
-                预览**全部**走统一引擎：普通 Markdown 与增强文档同一份 compat /
-                引用适配 / 编译选项，避免「预览一套、阅读另一套」。Markdown 父
-                文档同样传 format，Markdown 子剪贴板按约定内联一层。
-              */}
               <ReactivePreview
-                key={`${referenceMode}:${effectiveFormat}`}
+                key={referenceMode}
                 source={previewDoc}
                 refreshToken={refreshToken}
                 referenceMode={referenceMode}
-                format={effectiveFormat}
               />
             </div>
           </div>

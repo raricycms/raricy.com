@@ -8,7 +8,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { compileLocal, type LocalDocument } from 'reactive-md';
-import { reactiveCompileOptions } from '@/lib/reactive/host-components';
+import { REACTIVE_COMPILE_OPTIONS } from '@/lib/reactive/host-components';
 import { applyLegacyHtmlCompat } from '@/lib/reactive/legacy-compat';
 import { adaptReactiveReferences } from '@/lib/reactive/ref-adapter';
 
@@ -34,7 +34,7 @@ const BASE = [
 async function compile(source: string): Promise<LocalDocument> {
   const compat = applyLegacyHtmlCompat(source);
   const adapted = await adaptReactiveReferences(compat.source, { mode: 'external' });
-  const result = compileLocal(adapted.adaptedSource, reactiveCompileOptions('markdown'));
+  const result = compileLocal(adapted.adaptedSource, REACTIVE_COMPILE_OPTIONS);
   if (!result.ok) throw new Error(result.diagnostics.map((d) => d.code).join(','));
   return result.document;
 }

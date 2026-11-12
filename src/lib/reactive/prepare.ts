@@ -2,14 +2,12 @@ import { adaptReactiveReferences, ADAPTER_VERSION } from './ref-adapter';
 import { createServiceReferenceReader } from './ref-reader';
 import { applyLegacyHtmlCompat } from './legacy-compat';
 import type { ReferenceMode } from './ref-types';
-import type { ContentFormat } from '../content-format';
 
-/** Server-only preparation. Page rendering stays on legacy until upstream integration. */
+/** Prepare compatibility edits and references for the current reader. */
 export async function prepareReactiveDocument(
   source: string,
   context: {
     mode: ReferenceMode;
-    format: ContentFormat;
     viewer: Parameters<typeof createServiceReferenceReader>[1];
     clientIp?: string;
   },

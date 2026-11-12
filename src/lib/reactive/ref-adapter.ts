@@ -78,7 +78,7 @@ import { isFavoriteId, maskMarkdownCode, MAX_FAVORITE_REFS } from '@/lib/favorit
 import { applyLegacyHtmlCompat, LEGACY_COMPAT_VERSION } from './legacy-compat';
 import {
   REACTIVE_COMPILER_VERSION,
-  reactiveCompileOptions,
+  REACTIVE_COMPILE_OPTIONS,
 } from './host-components';
 import { literalizeReactiveSyntax } from './detect-format';
 import {
@@ -455,7 +455,7 @@ const INLINE_CACHE_IDENTITY = [
   LEGACY_COMPAT_VERSION,
   REACTIVE_COMPILER_VERSION,
   LOCAL_SYNTAX_VERSION,
-  localCompileOptionsKey(reactiveCompileOptions('markdown')),
+  localCompileOptionsKey(REACTIVE_COMPILE_OPTIONS),
   // 预算阈值变了，旧的 null（超预算）不能继续命中。
   `${MAX_UNCLOSED_TAGS}:${MAX_UNCLOSED_INTERPOLATIONS}`,
 ].join('|');
@@ -525,7 +525,7 @@ async function buildInlineMarkdown(source: string): Promise<{
     mediaSources: compat.mediaSources,
   });
   return {
-    result: compileLocal(adapted.adaptedSource, reactiveCompileOptions('markdown')),
+    result: compileLocal(adapted.adaptedSource, REACTIVE_COMPILE_OPTIONS),
     hostData: adapted.hostData,
   };
 }

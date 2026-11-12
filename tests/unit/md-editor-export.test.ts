@@ -269,7 +269,7 @@ describe('ReactiveMD 静态导出', () => {
 
   it('★ 无语法残留、宿主卡片在、图片内联成 data URL ★', async () => {
     stubReactiveFetch();
-    const html = await renderStaticMarkup({ source: SOURCE, format: 'reactive', base: ORIGIN });
+    const html = await renderStaticMarkup({ source: SOURCE, base: ORIGIN });
 
     // 语法 / 组件标签 / 引用 token 都不得泄漏到导出件里
     expect(html).not.toContain('{{');
@@ -297,7 +297,6 @@ describe('ReactiveMD 静态导出', () => {
     // 成员 / expand：按既有口径取数；Markdown 子剪贴板内联静态子文档。
     const expanded = await renderStaticMarkup({
       source,
-      format: 'markdown',
       referenceMode: 'expand',
       base: ORIGIN,
     });
@@ -309,7 +308,6 @@ describe('ReactiveMD 静态导出', () => {
     fetchMock.mockClear();
     const external = await renderStaticMarkup({
       source,
-      format: 'markdown',
       referenceMode: 'external',
       base: ORIGIN,
     });
@@ -333,7 +331,6 @@ describe('ReactiveMD 静态导出', () => {
     );
     const html = await renderStaticMarkup({
       source: '![父图](/api/images/AaBbCcDd10/raw)\n\n剪贴板 [@AbCd1234]',
-      format: 'markdown',
       base: ORIGIN,
     });
 
@@ -382,7 +379,6 @@ describe('ReactiveMD 静态导出', () => {
 
     const html = await renderStaticMarkup({
       source: '![父图](/api/images/AaBbCcDd10/raw)\n\n剪贴板 [@AbCd1234]',
-      format: 'markdown',
       base: ORIGIN,
     });
 
@@ -405,7 +401,6 @@ describe('ReactiveMD 静态导出', () => {
     );
     const html = await renderStaticMarkup({
       source: '![私图](/api/images/AaBbCcDd10/raw)',
-      format: 'reactive',
       base: ORIGIN,
     });
     expect(html).not.toContain('data:image');
@@ -430,7 +425,6 @@ describe('ReactiveMD 静态导出', () => {
         '',
         '导出正文照常出现',
       ].join('\n'),
-      format: 'reactive',
       base: ORIGIN,
     });
     // 先让适配 / 编译跑完、单图计时器挂上，再推过单图上限。
@@ -451,7 +445,7 @@ describe('ReactiveMD 静态导出', () => {
     const source = Array.from({ length: 20 }, (_, index) =>
       `![图片${index}](https://images.example.test/${index}.png)`
     ).join('\n\n');
-    const pending = renderStaticMarkup({ source: `${source}\n\n总预算后的正文`, format: 'reactive', base: ORIGIN });
+    const pending = renderStaticMarkup({ source: `${source}\n\n总预算后的正文`, base: ORIGIN });
     await vi.advanceTimersByTimeAsync(1);
     await vi.advanceTimersByTimeAsync(IMAGE_PREFETCH_BUDGET_MS + 50);
     expect(await pending).toContain('总预算后的正文');
@@ -492,7 +486,6 @@ describe('ReactiveMD 静态导出', () => {
         '',
         '读了正文还在',
       ].join('\n'),
-      format: 'reactive',
       base: ORIGIN,
     });
     await vi.advanceTimersByTimeAsync(1);
@@ -522,7 +515,6 @@ describe('ReactiveMD 静态导出', () => {
         '',
         '![真实图片](/api/images/RealImage1/raw)',
       ].join('\n'),
-      format: 'reactive',
       base: ORIGIN,
     });
 
@@ -710,15 +702,15 @@ describe('语法预算（R3-105：导出走同步编译，病态正文必须先�
     // 旧实现靠 prepareSubmit 间接挡；库级 / 测试 / 新调用方（或 adaptedSource 快路径）
     // 会真正走到 compileLocal —— 这里断言闸门本身。
     await expect(
-      renderStaticMarkup({ source: '<'.repeat(1_000), format: 'markdown' })
+      renderStaticMarkup({ source: '<'.repeat(1_000) })
     ).rejects.toThrow(/语法复杂度预算/);
     await expect(
-      renderStaticMarkup({ source: '{{'.repeat(200), format: 'reactive' })
+      renderStaticMarkup({ source: '{{'.repeat(200) })
     ).rejects.toThrow(/语法复杂度预算/);
   });
 
   it('预算内的正常正文不误伤（适配 + 编译 + 离屏渲染照常）', async () => {
-    const html = await renderStaticMarkup({ source: '普通 **加粗** 段落', format: 'markdown' });
+    const html = await renderStaticMarkup({ source: '普通 **加粗** 段落' });
     expect(html).toContain('加粗');
     expect(html).toContain('普通');
   });

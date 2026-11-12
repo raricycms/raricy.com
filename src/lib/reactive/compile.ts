@@ -20,14 +20,14 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { compileLocal, localCompileOptionsKey, LOCAL_SYNTAX_VERSION } from 'reactive-md';
-import type { Diagnostic, LocalCompileResult, LocalDocument } from 'reactive-md';
+import type { LocalCompileResult } from 'reactive-md';
 
 import { prepareReactiveDocument } from './prepare';
 import { ReactiveLruCache, reactiveCompileCacheKey } from './cache';
 import {
   REACTIVE_COMPILER_VERSION,
   REACTIVE_MAX_SYNTAX_NODES,
-  reactiveCompileOptions,
+  REACTIVE_COMPILE_OPTIONS,
 } from './host-components';
 import { reactiveDiagnosticCodes } from './diagnostics';
 import { checkSyntaxBudget } from './syntax-budget';
@@ -66,47 +66,23 @@ export interface ReactiveCompileInput {
   clientIp?: string;
 }
 
-/** 缓存里允许出现的全部内容 —— 故意没有 hostData / 会话数据。 */
-interface CachedCompile {
-  ok: boolean;
-  document?: LocalDocument;
-  diagnostics: Diagnostic[];
-}
-
 /** 按估算字节数计容（含 AST 与诊断），不是只数篇数。 */
 const CACHE_MAX_BYTES = 64 * 1024 * 1024;
 const CACHE_MAX_ENTRIES = 500;
 
 interface ReactiveCompileGlobal {
-  __raricyReactiveCompileCache?: ReactiveLruCache<CachedCompile>;
+  __raricyReactiveCompileCache?: ReactiveLruCache<LocalCompileResult>;
 }
 
-function getCache(): ReactiveLruCache<CachedCompile> {
+function getCache(): ReactiveLruCache<LocalCompileResult> {
   const g = globalThis as typeof globalThis & ReactiveCompileGlobal;
   if (!g.__raricyReactiveCompileCache) {
-    g.__raricyReactiveCompileCache = new ReactiveLruCache<CachedCompile>({
+    g.__raricyReactiveCompileCache = new ReactiveLruCache<LocalCompileResult>({
       maxBytes: CACHE_MAX_BYTES,
       maxEntries: CACHE_MAX_ENTRIES,
     });
   }
   return g.__raricyReactiveCompileCache;
-}
-
-function toCacheEntry(result: LocalCompileResult): CachedCompile {
-  return result.ok
-    ? { ok: true, document: result.document, diagnostics: result.diagnostics }
-    : { ok: false, diagnostics: result.diagnostics };
-}
-
-/**
- * 缓存产物 → 本次调用的结果。diagnostics 每次都复制一份，document 是缓存里的
- * 冻结副本（编译产物只读；要改就重新编译，不要就地改共享文档）。
- */
-function fromCacheEntry(entry: CachedCompile): LocalCompileResult {
-  if (entry.ok && entry.document) {
-    return { ok: true, document: entry.document, diagnostics: [...entry.diagnostics] };
-  }
-  return { ok: false, diagnostics: [...entry.diagnostics] };
 }
 
 /** 清空编译缓存并重置计数（只给测试用；生产靠 LRU 自然淘汰）。 */
@@ -164,18 +140,16 @@ export async function compileReactiveSource(
   const source = sourceForCurrentCompiler(input.source, input.syntaxVersion);
   const prepared = await prepareReactiveDocument(source, {
     mode: input.mode,
-    format: input.format,
     viewer: input.viewer,
     clientIp: input.clientIp,
   });
 
-  const options = reactiveCompileOptions(input.format);
   const cacheKey = reactiveCompileCacheKey({
     adaptedSource: prepared.adaptedSource,
     syntaxVersion: LOCAL_SYNTAX_VERSION,
     compilerVersion: REACTIVE_COMPILER_VERSION,
     adapterVersion: prepared.adapterVersion,
-    optionsKey: localCompileOptionsKey(options),
+    optionsKey: localCompileOptionsKey(REACTIVE_COMPILE_OPTIONS),
   });
 
   const cache = getCache();
@@ -185,12 +159,16 @@ export async function compileReactiveSource(
 
   if (cached) {
     cacheHit = true;
-    result = fromCacheEntry(cached);
+    result = {
+      ...cached,
+      diagnostics: [...cached.diagnostics],
+      ...(cached.recoveries ? { recoveries: [...cached.recoveries] } : {}),
+    };
   } else {
     cacheHit = false;
-    result = compileLocal(prepared.adaptedSource, options);
+    result = compileLocal(prepared.adaptedSource, REACTIVE_COMPILE_OPTIONS);
     // 失败结果也缓存：同一份坏文档不必每次请求都重编译一遍。
-    cache.set(cacheKey, toCacheEntry(result));
+    cache.set(cacheKey, result);
   }
 
   const compileMs = Math.round((performance.now() - startedAt) * 1000) / 1000;

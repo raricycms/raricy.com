@@ -14,7 +14,7 @@ import {
   detectReactiveSyntax,
   literalizeReactiveSyntax,
 } from '@/lib/reactive/detect-format';
-import { reactiveCompileOptions } from '@/lib/reactive/host-components';
+import { REACTIVE_COMPILE_OPTIONS } from '@/lib/reactive/host-components';
 import { mightContainReactiveSyntax } from '@/lib/md-editor/format-mode';
 
 describe('detectReactiveSyntax —— 三态', () => {
@@ -59,15 +59,16 @@ describe('detectReactiveSyntax —— 三态', () => {
     expect(interpolation.evidence).toContain('interpolation');
   });
 
-  it('★ 已知组件结构出错 → invalid-enhanced：保留身份、诊断可定位、不可发布 ★', () => {
+  it('组件结构可恢复时保留 ReactiveMD 格式，发出可定位的警告', () => {
     const source = '<panel title="未闭合">\n\n正文';
     const detected = detectReactiveSyntax(source);
     expect(detected.format).toBe('reactive');
     expect(detected.reactive).toBe(true);
-    expect(detected.valid).toBe(false);
-    expect(detected.publishable).toBe(false);
+    expect(detected.valid).toBe(true);
+    expect(detected.publishable).toBe(true);
     expect(detected.diagnostics.length).toBeGreaterThan(0);
     const diagnostic = detected.diagnostics[0];
+    expect(diagnostic).toMatchObject({ code: 'local.recovery.unclosed', severity: 'warning' });
     expect(diagnostic.range.end).toBeGreaterThanOrEqual(diagnostic.range.start);
     expect(diagnostic.line).toBeGreaterThanOrEqual(1);
     expect(diagnostic.column).toBeGreaterThanOrEqual(1);
@@ -79,7 +80,7 @@ describe('detectReactiveSyntax —— 三态', () => {
     const literal = literalizeReactiveSyntax(source);
     expect(literal.changed).toBe(true);
     expect(literal.source).not.toBe(source);
-    expect(compileLocal(literal.source, reactiveCompileOptions('markdown')).ok).toBe(true);
+    expect(compileLocal(literal.source, REACTIVE_COMPILE_OPTIONS).ok).toBe(true);
   });
 
   it('前导版本声明会影响 syntaxVersion 证据', () => {
@@ -93,7 +94,7 @@ describe('detectReactiveSyntax —— 三态', () => {
 describe('classifyReactiveSyntax —— worker 结果分类（不重复编译）', () => {
   it('已知组件 + 未知属性 → reactive + 不可发布（不降成 Markdown）', () => {
     const source = '<counter extra="x" bind="n" label="N" initial="1" />';
-    const options = reactiveCompileOptions('markdown');
+    const options = REACTIVE_COMPILE_OPTIONS;
     const result = compileLocal(source, options);
     const analysis = analyzeLocalSource(source, options, { diagnostics: false });
     const detected = classifyReactiveSyntax(source, result, analysis);
@@ -102,8 +103,8 @@ describe('classifyReactiveSyntax —— worker 结果分类（不重复编译）
   });
 
   it('编译失败但有 authoring 组件证据 → invalid-enhanced', () => {
-    const source = '<panel title="未闭合">\n\n正文';
-    const options = reactiveCompileOptions('markdown');
+    const source = '<counter bind="n" label="N" initial="oops" />';
+    const options = REACTIVE_COMPILE_OPTIONS;
     const result = compileLocal(source, options);
     const analysis = analyzeLocalSource(source, options, { diagnostics: false });
     const detected = classifyReactiveSyntax(source, result, analysis);
@@ -113,10 +114,9 @@ describe('classifyReactiveSyntax —— worker 结果分类（不重复编译）
 });
 
 describe('半截增强：未闭合标签 / 插值', () => {
-  it('已知组件没有闭合 `>`、未闭合 `{{` → invalid-enhanced 且不可发布', () => {
+  it('未闭合的组件开头可以降级成字面量，仍保留 ReactiveMD 格式', () => {
     const cases = [
       { source: '<panel title="x"', evidence: 'component:panel' },
-      { source: '文字 {{ 未闭合', evidence: 'interpolation' },
       { source: '<section color="#000"', evidence: 'component:section' },
       { source: '<table page-size="5"', evidence: 'component:table' },
       { source: '<progress value="{{ 40 }}"', evidence: 'component:progress' },
@@ -124,8 +124,8 @@ describe('半截增强：未闭合标签 / 插值', () => {
     for (const { source, evidence } of cases) {
       const detected = detectReactiveSyntax(source);
       expect(detected.format, source).toBe('reactive');
-      expect(detected.valid, source).toBe(false);
-      expect(detected.publishable, source).toBe(false);
+      expect(detected.valid, source).toBe(true);
+      expect(detected.publishable, source).toBe(true);
       expect(detected.literalized, source).toBeUndefined();
       expect(detected.evidence, source).toContain(evidence);
       expect(detected.diagnostics.length, source).toBeGreaterThan(0);
@@ -143,22 +143,22 @@ describe('半截增强：未闭合标签 / 插值', () => {
       expect(detected.format, source).toBe('markdown');
       expect(detected.publishable, source).toBe(true);
     }
-    // 未知普通标签：历史 Markdown 仍可保存（字面量降级）。
+    // 同名历史 HTML 经上游恢复，仍按 Markdown 保存。
     const select = detectReactiveSyntax('<select 文本');
     expect(select.format).toBe('markdown');
     expect(select.publishable).toBe(true);
-    expect(select.literalized).toBe(true);
+    expect(select.diagnostics).toContainEqual(expect.objectContaining({ severity: 'warning' }));
   });
 
-  it('worker 分类路径同样识别半截增强（不依赖 authoring token）', () => {
-    const options = reactiveCompileOptions('markdown');
-    for (const source of ['<panel title="x"', '文字 {{ 未闭合']) {
+  it('worker 结果区分可恢复的标签与阻断发布的插值', () => {
+    const options = REACTIVE_COMPILE_OPTIONS;
+    for (const [source, valid] of [['<panel title="x"', true], ['文字 {{ 未闭合', false]] as const) {
       const result = compileLocal(source, options);
       const analysis = analyzeLocalSource(source, options, { diagnostics: false });
       const detected = classifyReactiveSyntax(source, result, analysis);
       expect(detected.format, source).toBe('reactive');
-      expect(detected.valid, source).toBe(false);
-      expect(detected.publishable, source).toBe(false);
+      expect(detected.valid, source).toBe(valid);
+      expect(detected.publishable, source).toBe(valid);
     }
   });
 });
@@ -184,8 +184,8 @@ describe('键名示例 / 普通伪标签不误判（vimtutor 类正文）', () =
     }
   });
 
-  it('真正的半截增强仍然阻断（带属性的已知组件 / 未闭合插值）', () => {
-    for (const source of ['<slider bind="a"', '<panel title="x"', '{{ 1 +']) {
+  it('插值及语义错误仍然阻断', () => {
+    for (const source of ['<slider bind="a" label="N" initial="x" />', '{{ 1 +']) {
       const detected = detectReactiveSyntax(source);
       expect(detected.format, source).toBe('reactive');
       expect(detected.valid, source).toBe(false);

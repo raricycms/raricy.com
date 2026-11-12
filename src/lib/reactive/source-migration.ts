@@ -39,9 +39,14 @@ import {
   type LocalMigrationResult,
   type SourceRange,
 } from 'reactive-md';
-import { reactiveCompileOptions } from './host-components';
+import { REACTIVE_COMPILE_OPTIONS } from './host-components';
 import { currentDeclaration, findLeadingVersionDirective, findVersionDirectives, type LeadingDeclaration } from './version-directive';
 import { checkSyntaxBudget } from './syntax-budget';
+
+export const REACTIVE_MIGRATION_OPTIONS: LocalCompileOptions = {
+  ...REACTIVE_COMPILE_OPTIONS,
+  strict: true,
+};
 
 export class SourceCompatibilityError extends Error {}
 
@@ -229,7 +234,7 @@ export function findDynamicConstraintActivations(source: string): Diagnostic[] {
       source.slice(declaration.range.end)
     : source;
 
-  const baseOptions = reactiveCompileOptions('reactive');
+  const baseOptions = REACTIVE_MIGRATION_OPTIONS;
   const analysis = analyzeLocalSource(blanked, {
     ...baseOptions,
     limits: {
@@ -313,7 +318,7 @@ export function migrateLocalSourceWithSiteBudget(
   // 版本指令存在但不是 draft-2：上游已按 fromVersion 校验过；这里保守阻塞。
   if (declaration && declaration.version !== 'local-draft-2') return upstream;
 
-  const options = reactiveCompileOptions('reactive');
+  const options = REACTIVE_MIGRATION_OPTIONS;
   const activationErrors = findActivatedExternal(source, declaration?.range ?? null, options);
   if (activationErrors.length > 0) {
     return { ...upstream, diagnostics: [...activationErrors, ...upstream.diagnostics] };

@@ -33,4 +33,12 @@ test('编辑器格式分析在真实 Worker 中完成，不回退本地检查', 
 
   // 诊断面板的格式化状态不应出现“检查中”这种挂起态。
   await expect(state).not.toContainText('检查中');
+
+  await editor.press('ControlOrMeta+A');
+  await page.keyboard.insertText('<panel title="未闭合">\n\n局部正文\n\n## 后续章节\n\n继续显示');
+  await expect(state).toContainText('错误 0 · 警告 1');
+  await page.locator('.md-editor__mode', { hasText: '预览' }).click();
+  const preview = page.locator('.md-editor__preview-body');
+  await expect(preview.getByRole('heading', { name: '后续章节' })).toBeVisible();
+  await expect(preview).toContainText('继续显示');
 });

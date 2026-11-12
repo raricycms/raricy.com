@@ -16,7 +16,7 @@ import {
   findLeadingVersionDirective,
   findVersionDirectives,
 } from '@/lib/reactive/version-directive';
-import { reactiveCompileOptions } from '@/lib/reactive/host-components';
+import { REACTIVE_COMPILE_OPTIONS } from '@/lib/reactive/host-components';
 
 const OLD_DECLARATION = '<!-- reactive-md: local-draft-2 -->';
 
@@ -170,7 +170,7 @@ describe('migrateLocalSourceWithSiteBudget', () => {
     const source = longDraft2Source();
 
     // 前提：站点配置能编译，**上游迁移器本身确实因默认 10k 预算拒绝**。
-    const compiled = compileLocal(source.replace(OLD_DECLARATION, `<!-- reactive-md: ${LOCAL_SYNTAX_VERSION} -->`), reactiveCompileOptions('reactive'));
+    const compiled = compileLocal(source.replace(OLD_DECLARATION, `<!-- reactive-md: ${LOCAL_SYNTAX_VERSION} -->`), REACTIVE_COMPILE_OPTIONS);
     expect(compiled.ok).toBe(true);
     const upstream = migrateLocalSource(source, { fromVersion: 'local-draft-2' });
     expect(upstream.ok).toBe(false);
@@ -182,7 +182,7 @@ describe('migrateLocalSourceWithSiteBudget', () => {
     expect(migrated.source.startsWith(`<!-- reactive-md: ${LOCAL_SYNTAX_VERSION} -->`)).toBe(true);
     // 正文原始字节保持不动。
     expect(migrated.source.endsWith(source.slice(OLD_DECLARATION.length))).toBe(true);
-    expect(compileLocal(migrated.source, reactiveCompileOptions('reactive')).ok).toBe(true);
+    expect(compileLocal(migrated.source, REACTIVE_COMPILE_OPTIONS).ok).toBe(true);
   });
 
   it('没有版本指令时在 BOM 之后补指令，保留 CRLF', () => {

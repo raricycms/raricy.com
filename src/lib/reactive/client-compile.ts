@@ -1,11 +1,9 @@
 'use client';
 
 // ─────────────────────────────────────────────────────────────────────────────
-// client-compile.ts — 编辑器预览的**客户端**取数 + 编译
+// client-compile.ts — 编辑器预览与导出的客户端引用适配
 //
-// 【职责】把作者原文按站内 `[@…]` 引用规则适配成 ReactiveMD 源码，并在浏览器里
-// 编译出一份可渲染的文档。阅读页那条路走服务端（`compile.ts`），这里只服务
-// `MarkdownEditor` 的预览面板。
+// 把作者原文按站内 `[@…]` 引用规则适配成可编译的 ReactiveMD 源码。
 //
 // 【为什么取数在客户端】预览必须能看见「作者此刻能看到的东西」：私有的剪贴板、
 // 本人投过票的投票、私密收藏夹都依赖**当前会话**。服务端渲染预览等于把作者
@@ -34,11 +32,9 @@
 // 正是这么做的：成功与失败的缓存一起作废）。
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { compileLocal, type LocalCompileResult } from 'reactive-md';
 import { parseContentFormat } from '../content-format';
 import { MAX_CARD_ITEMS, isFavoriteId } from '../favorite-refs';
 import { MAX_REF_CONCURRENCY, createConcurrencyLimiter } from '../content-refs';
-import { reactiveCompileOptions } from './host-components';
 import { adaptReactiveReferences } from './ref-adapter';
 import { applyLegacyHtmlCompat } from './legacy-compat';
 import { sourceForCurrentCompiler } from './source-migration';
@@ -62,10 +58,6 @@ const previewFetchGate = createConcurrencyLimiter(MAX_REF_CONCURRENCY);
 export interface AdaptedReactivePreview {
   adaptedSource: string;
   hostData: SiteHostData;
-}
-
-export interface ReactivePreviewCompile extends AdaptedReactivePreview {
-  result: LocalCompileResult;
 }
 
 export interface ClientReferenceReaderOptions {
@@ -276,19 +268,4 @@ export async function adaptReactivePreview(
     scheduler: previewFetchGate,
   });
   return { adaptedSource: adapted.adaptedSource, hostData: adapted.hostData };
-}
-
-/**
- * 适配 + 主线程编译的一步版本。供单测 / 不需要 worker 的调用方使用；
- * 编辑器预览走 `adaptReactivePreview` + 调度器，避免编译两遍。
- */
-export async function compileReactivePreview(
-  source: string,
-  reader: ReferenceReader
-): Promise<ReactivePreviewCompile> {
-  const adapted = await adaptReactivePreview(source, reader, 'expand');
-  return {
-    ...adapted,
-    result: compileLocal(adapted.adaptedSource, reactiveCompileOptions('reactive')),
-  };
 }

@@ -19,7 +19,7 @@ import { appendFileSync, mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { performance } from 'node:perf_hooks';
 import { compileLocal, type LocalCompileOptions } from 'reactive-md';
-import { reactiveCompileOptions } from '../src/lib/reactive/host-components';
+import { REACTIVE_COMPILE_OPTIONS } from '../src/lib/reactive/host-components';
 import { applyLegacyHtmlCompat } from '../src/lib/reactive/legacy-compat';
 
 interface Scenario {
@@ -134,7 +134,7 @@ function findScenario(name: string): Scenario | undefined {
 }
 
 function optionsFor(budget: number): LocalCompileOptions {
-  const base = reactiveCompileOptions('markdown');
+  const base = REACTIVE_COMPILE_OPTIONS;
   return { ...base, limits: { ...base.limits, maxSyntaxNodes: budget } };
 }
 

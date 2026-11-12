@@ -47,11 +47,9 @@ import { compileLocal, createLocalRuntime, type LocalDocument, type LocalNode } 
 import { LocalDocumentView } from 'reactive-md/react/unstyled';
 import 'reactive-md/screen.css';
 
-import { renderSiteEmbedStatic } from '@/app/components/reactive/site-embed-static';
-import ReactiveSubDocument from '@/app/components/reactive/ReactiveSubDocument';
-import type { ContentFormat } from '@/lib/content-format';
+import { InlineClipboardDocument, renderSiteEmbedStatic } from '@/app/components/reactive/site-embed-static';
 import { adaptReactivePreview, createClientReferenceReader } from '@/lib/reactive/client-compile';
-import { reactiveCompileOptions } from '@/lib/reactive/host-components';
+import { REACTIVE_COMPILE_OPTIONS } from '@/lib/reactive/host-components';
 import type { SiteEmbedData, SiteHostData } from '@/lib/reactive/ref-types';
 import { isAllowedReactiveUrl } from '@/lib/reactive/url-policy';
 import { MAX_REF_CONCURRENCY, createConcurrencyLimiter } from '@/lib/content-refs';
@@ -485,7 +483,6 @@ export interface ReactiveStaticMarkupInput {
   /** 作者源码（未适配）。给了 `adaptedSource` 时忽略。 */
   source: string;
   /** 正文语言：决定 `markdownBreaks` 等编译选项。 */
-  format: ContentFormat;
   /**
    * 引用口径，必须与**导出那一刻的预览**一致（终审 F2）：
    * `external` = 访客视图，私有剪贴板 / 投票 / 收藏夹保留字面量；默认 `expand`。
@@ -534,7 +531,7 @@ export async function renderStaticMarkup(input: ReactiveStaticMarkupInput): Prom
     throw new Error(`正文超过语法复杂度预算（${SYNTAX_BUDGET_CODE}），已拒绝导出`);
   }
 
-  const compiled = compileLocal(adapted.adaptedSource, reactiveCompileOptions(input.format));
+  const compiled = compileLocal(adapted.adaptedSource, REACTIVE_COMPILE_OPTIONS);
   if (!compiled.ok) {
     const codes = compiled.diagnostics.map((diagnostic) => diagnostic.code).join(', ');
     throw new Error(codes ? `ReactiveMD 编译失败：${codes}` : 'ReactiveMD 编译失败');
@@ -585,20 +582,17 @@ export async function renderStaticMarkup(input: ReactiveStaticMarkupInput): Prom
               record.document &&
               record.hostData
             ) {
-              return createElement(ReactiveSubDocument, {
+              return createElement(InlineClipboardDocument, {
                 document: record.document,
                 hostData: record.hostData,
-                hostRenderer: renderSiteEmbedStatic,
                 // 预取失败时回退到原 URL（导出件里仍可联网加载），不伪造空图。
                 imageResolver: (url: string) => resolveImage(url) ?? url,
               });
             }
             return renderSiteEmbedStatic(node, data, ctx);
           },
-          urlPolicy: (url: string, kind: 'image' | 'link') =>
-            isAllowedReactiveUrl(url, kind),
-          imageResolver: (url: string) =>
-            resolvedImages.get(url) ?? resolvedImages.get(resolveUrl(url, pageBase(input.base))) ?? null,
+          urlPolicy: isAllowedReactiveUrl,
+          imageResolver: resolveImage,
         })
       );
       mounted = true;

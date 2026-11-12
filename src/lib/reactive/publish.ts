@@ -3,7 +3,7 @@
 import { LOCAL_SYNTAX_VERSION } from 'reactive-md';
 import type { ContentFormat, ContentWriteErrorCode } from '../content-format';
 import { shouldRejectReactive } from './diagnostics';
-import { detectReactiveSyntax, documentEvidence } from './detect-format';
+import { compiledEvidence, detectReactiveSyntax } from './detect-format';
 import { findLeadingVersionDirective } from './version-directive';
 import { SourceCompatibilityError } from './source-migration';
 
@@ -88,7 +88,7 @@ export async function validateContentForPublish(
   }
 
   const detectedFormat: ContentFormat =
-    documentEvidence(outcome.result.document).length > 0 ? 'reactive' : 'markdown';
+    compiledEvidence(outcome.adaptedSource, outcome.result).length > 0 ? 'reactive' : 'markdown';
   // 旧版前导声明按原文写回（R3-101 复核后的取舍）：存量旧内容必须保持「原文 +
   // 旧 syntax_version」，阅读路径据此迁移；写入当前版本会改变已发布内容的版本语义。
   const syntaxVersion = input.format === 'reactive'

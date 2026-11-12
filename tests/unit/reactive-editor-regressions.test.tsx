@@ -85,7 +85,6 @@ vi.mock('reactive-md', () => ({
 vi.mock('@/lib/reactive/client-compile', () => ({
   adaptReactivePreview: mocks.adaptReactivePreview,
   createClientReferenceReader: mocks.createClientReferenceReader,
-  compileReactivePreview: vi.fn(),
 }));
 
 // 文档渲染表面换成一行 JSON：预览刷新要验的是「拿哪一份 hostData 去渲染」。

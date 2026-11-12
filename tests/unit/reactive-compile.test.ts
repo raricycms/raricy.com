@@ -17,7 +17,7 @@ import { getNativeComponentCatalog, renderNativeSnippet } from 'reactive-md/auth
 
 import {
   REACTIVE_COMPILER_VERSION,
-  reactiveCompileOptions,
+  REACTIVE_COMPILE_OPTIONS,
   SITE_EMBED_TAG,
 } from '@/lib/reactive/host-components';
 import { applyLegacyHtmlCompat } from '@/lib/reactive/legacy-compat';
@@ -52,7 +52,7 @@ describe('SITE_EMBED_SCHEMA', () => {
   it('把 <site-embed> 编译成宿主节点，且不产生诊断', () => {
     const result = compileLocal(
       `<site-embed kind="audio" ref="${EMBED_REF}" />`,
-      reactiveCompileOptions('reactive')
+      REACTIVE_COMPILE_OPTIONS
     );
 
     expect(result.ok).toBe(true);
@@ -95,7 +95,7 @@ describe('作者伪造的 <site-embed>', () => {
 // ═══ 三、拒绝判据 ════════════════════════════════════════════════════════════
 
 describe('拒绝判据', () => {
-  const options = reactiveCompileOptions('reactive');
+  const options = REACTIVE_COMPILE_OPTIONS;
 
   it('干净编译不拒绝', () => {
     const result = compileLocal('普通正文，没有特殊语法。', options);
@@ -149,7 +149,7 @@ describe('拒绝判据', () => {
   });
 
   it('反斜线行内和块级公式能编译为数学节点', () => {
-    const result = compileLocal(String.raw`行内 \(x^2\)` + '\n\n' + String.raw`\[y^2\]`, reactiveCompileOptions('markdown'));
+    const result = compileLocal(String.raw`行内 \(x^2\)` + '\n\n' + String.raw`\[y^2\]`, REACTIVE_COMPILE_OPTIONS);
     expect(result.ok).toBe(true);
     expect(reactiveFallbackReasons(result)).toEqual([]);
     if (result.ok) {
@@ -159,8 +159,9 @@ describe('拒绝判据', () => {
   });
 
   it('ok:false 一定拒绝，即使没有命中白名单', () => {
-    const result = compileLocal('<panel title="x">', options);
+    const result = compileLocal('{{ 1 + }}', options);
     expect(result.ok).toBe(false);
+    expect(reactiveFallbackReasons(result)).toEqual([]);
     expect(shouldRejectReactive(result)).toBe(true);
   });
 
@@ -320,7 +321,7 @@ describe('Components 目录模板 × 统一编译管线', () => {
       // 只断言 ok 不够：section / table / progress 被当成历史 HTML 解包后同样 ok，
       // 但组件语义已经永久丢失。这里必须看到真实 component 节点。
       expect(compat.source, `${component.id} 的标签被 compat 改写`).toContain(`<${component.id}`);
-      const result = compileLocal(compat.source, reactiveCompileOptions('reactive'));
+      const result = compileLocal(compat.source, REACTIVE_COMPILE_OPTIONS);
       const codes = result.diagnostics.map((d) => d.code);
       expect(result.ok, `${component.id}: ${codes.join(', ')}`).toBe(true);
       expect(codes, component.id).not.toContain('local.component.unknown');
@@ -332,6 +333,6 @@ describe('Components 目录模板 × 统一编译管线', () => {
   it('旧 HTML 的 <select><option> 仍按历史标签处理，不误当组件子结构', () => {
     const compat = applyLegacyHtmlCompat('<select><option value="a">A</option></select>');
     expect(compat.source).not.toContain('<option');
-    expect(compileLocal(compat.source, reactiveCompileOptions('markdown')).ok).toBe(true);
+    expect(compileLocal(compat.source, REACTIVE_COMPILE_OPTIONS).ok).toBe(true);
   });
 });

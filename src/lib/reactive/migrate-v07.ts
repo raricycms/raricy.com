@@ -1,6 +1,5 @@
 import { compileLocal, LOCAL_SYNTAX_VERSION } from 'reactive-md';
 import { prisma } from '../db';
-import { reactiveCompileOptions } from './host-components';
 import { applyLegacyHtmlCompat } from './legacy-compat';
 import { shouldRejectReactive } from './diagnostics';
 import { checkSyntaxBudget } from './syntax-budget';
@@ -8,6 +7,7 @@ import {
   findDynamicConstraintActivations,
   findStaleVersionDeclaration,
   migrateLocalSourceWithSiteBudget,
+  REACTIVE_MIGRATION_OPTIONS,
 } from './source-migration';
 import { isoWithOffset, nowForDb } from '../db-time';
 import { runAsBackendOps } from '../audit-context';
@@ -68,10 +68,10 @@ export async function planReactiveV07Migration(): Promise<ReactiveV07Plan> {
           blockers.push({ kind: item.kind, id: item.id, codes: stale.map((d) => d.code) });
           continue;
         }
-        // 列当前但正文本身不可编译 / 语义不安全：一次性标记之后阅读页会一直拒绝。
+        // 显式版本迁移使用严格编译核验已标记为当前版本的正文。
         const probe = compileLocal(
           applyLegacyHtmlCompat(item.source).source,
-          reactiveCompileOptions('reactive')
+          REACTIVE_MIGRATION_OPTIONS
         );
         if (!probe.ok || shouldRejectReactive(probe)) {
           blockers.push({

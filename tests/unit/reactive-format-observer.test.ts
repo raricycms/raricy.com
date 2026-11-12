@@ -57,14 +57,17 @@ describe('FormatAnalysis：worker 降级与作者分析', () => {
     analyzer.dispose();
   });
 
-  it('半截增强（未闭合组件 / 插值）回到 invalid-enhanced，不按 Markdown 放行', async () => {
+  it('可恢复的组件显示警告，无法恢复的插值阻断保存', async () => {
     const analyzer = fallbackAnalyzer();
-    for (const source of ['<panel title="x"', '文字 {{ 未闭合']) {
-      const result = await analyzer.analyze(source, 9);
-      expect(result.effective, source).toBe('invalid-enhanced');
-      expect(result.publishable, source).toBe(false);
-      expect(result.diagnostics.length, source).toBeGreaterThan(0);
-    }
+    const recovered = await analyzer.analyze('<panel title="x"', 9);
+    expect(recovered).toMatchObject({
+      effective: 'reactive',
+      publishable: true,
+      diagnostics: [{ code: 'local.recovery.unclosed', severity: 'warning' }],
+    });
+    const invalid = await analyzer.analyze('文字 {{ 未闭合', 10);
+    expect(invalid).toMatchObject({ effective: 'invalid-enhanced', publishable: false });
+    expect(invalid.diagnostics).toContainEqual(expect.objectContaining({ severity: 'error' }));
     analyzer.dispose();
   });
 

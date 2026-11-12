@@ -74,7 +74,7 @@ test.describe('ReactiveMD 发布与阅读', () => {
     await page.goto(`/clipboard/${id}`);
     const body = page.locator('.reactive-document');
     await expect(body).toContainText('人数 2 人');
-    const slider = body.locator('input[type="range"]');
+    const slider = body.getByRole('slider', { name: '人数' });
     await slider.focus(); await slider.press('ArrowRight');
     await expect(body).toContainText('人数 3 人');
     await body.getByRole('radio', { name: '自由' }).check();
@@ -91,7 +91,7 @@ test.describe('ReactiveMD 发布与阅读', () => {
   });
   }
 
-  test('reactive 发布后阅读页默认可交互，引用 / 脚注 / 软换行都在', async ({
+  test('reactive 发布后阅读页可交互，保留引用、脚注、软换行与曲线', async ({
     page,
   }) => {
     await loginViaApi(page, SEED_USERS.core.username);
@@ -109,6 +109,18 @@ test.describe('ReactiveMD 发布与阅读', () => {
       '</panel>',
       '',
       '人数 {{ n }} 人。',
+      '',
+      '<select bind="course" label="课程类型" initial="theory">',
+      '<option value="theory">理论</option>',
+      '<option value="lab">实验</option>',
+      '</select>',
+      '',
+      '当前课程 {{ course }}。',
+      '',
+      '<plot min="-2" max="2" samples="80" label="曲线示例">',
+      String.raw`$$ \begin{cases} x = t \\ y = t^2 \end{cases} $$`,
+      '$$ x^2 + y^2 = 1 $$',
+      '</plot>',
       '',
       `![图](/api/images/${imageId}/raw)`,
       '',
@@ -132,9 +144,12 @@ test.describe('ReactiveMD 发布与阅读', () => {
     const container = page.locator('#userContentContainer');
     await expect(container).toHaveAttribute('data-content-renderer', 'reactive');
 
-    // SSR 先给静态首屏，水合后组件可操作：滑杆是真实 input，初始值 2。
-    await expect(container.locator('.local-slider input')).toHaveCount(1);
-    await expect(container.locator('.local-slider input')).toHaveValue('2');
+    await expect(container.getByRole('slider', { name: '人数' })).toHaveAttribute('aria-valuenow', '2');
+    await container.getByRole('combobox', { name: '课程类型' }).click();
+    await page.getByRole('option', { name: '实验' }).click();
+    await expect(container).toContainText('当前课程 lab。');
+    await expect(container.getByRole('list', { name: '曲线图例' }).getByRole('listitem')).toHaveCount(2);
+    expect(await container.locator('svg .local-visual-plot-line').count()).toBeGreaterThanOrEqual(2);
 
     // 站点统一软换行规则：Markdown 与 Reactive 都把单换行渲染成 <br>，
     // 这样 Markdown 追加组件、format 自动升级后排版不变。
@@ -159,10 +174,10 @@ test.describe('ReactiveMD 发布与阅读', () => {
     await expect(container).not.toContainText('<panel');
   });
 
-  test('markdown 文档也走统一引擎，加粗与正文正常', async ({ page }) => {
+  test('Markdown 正文保留加粗和可操作的 HTML 折叠', async ({ page }) => {
     await loginViaApi(page, SEED_USERS.core.username);
     const blogId = await createBlogViaApi(page, {
-      content: '## 普通标题\n\n正文 **加粗**',
+      content: '## 普通标题\n\n正文 **加粗**\n\n<details><summary>查看详情</summary>折叠正文</details>',
       format: 'markdown',
     });
 
@@ -170,6 +185,11 @@ test.describe('ReactiveMD 发布与阅读', () => {
     await expect(page.locator('#userContentContainer[data-content-renderer="reactive"]')).toHaveCount(1);
     await expect(page.locator('#userContentContainer strong')).toHaveText('加粗');
     await expect(page.locator('.reactive-document')).toHaveCount(1);
+    const disclosure = page.getByRole('button', { name: '查看详情' });
+    await expect(disclosure).toHaveAttribute('aria-expanded', 'false');
+    await disclosure.press('Enter');
+    await expect(disclosure).toHaveAttribute('aria-expanded', 'true');
+    await expect(page.locator('#userContentContainer').getByText('折叠正文')).toBeVisible();
   });
 
   test('无 JS：public reactive 文章的静态正文与脚注仍可读', async ({ browser }) => {
@@ -290,8 +310,7 @@ test.describe('ReactiveMD 编辑器预览', () => {
     await expect(preview.locator('.reactive-preview .md-document')).toBeVisible({
       timeout: 20_000,
     });
-    // preview 是交互模式：原生控件在，但站点嵌入组件（这里没有）会按只读态渲染。
-    await expect(preview.locator('.local-slider input')).toHaveCount(1);
+    await expect(preview.getByRole('slider', { name: '人数' })).toBeVisible();
     await expect(preview.locator('.reactive-preview__errors')).toHaveCount(0);
     await expect(preview).not.toContainText('{{ n }}');
   });

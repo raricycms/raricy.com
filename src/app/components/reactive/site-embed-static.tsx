@@ -5,7 +5,7 @@
 //   · `SiteEmbedView`（客户端）在 static / 预览态直接调用它；
 //   · 阅读页（本次现编译的 `LocalDocument`）也走它。
 // 所以这里只允许纯数据与 React 元素：不读 window、不发请求。剪贴板内联的子文档
-// 交给 `ReactiveSubDocument`（它自己管 runtime 生命周期），本文件仍不持有 hooks。
+// 交给编译文档视图，本文件仍不持有 hooks。
 //
 // 类名沿用站内既有嵌入件的成品形态（`.vote-embed*` / `.favorite-embed*`），
 // 这样现有 SCSS 与 e2e 选择器不用为「换了个渲染器」改一遍。所有动态文本都由
@@ -16,8 +16,8 @@
 
 import type { ReactNode } from 'react';
 import type { LocalDocument, LocalNode } from 'reactive-md';
-import type { LocalRenderContext } from 'reactive-md/react';
-import ReactiveSubDocument from './ReactiveSubDocument';
+import type { LocalDocumentViewProps, LocalRenderContext } from 'reactive-md/react';
+import CompiledDocumentView from './CompiledDocumentView';
 import type {
   SiteEmbedData,
   SiteEmbedKind,
@@ -590,11 +590,7 @@ function ClipboardEmbed({
   const childHostData = isRecord(data.hostData) ? data.hostData : null;
   if (data.format === 'markdown' && document && childHostData) {
     return (
-      <ReactiveSubDocument
-        document={document}
-        hostData={childHostData}
-        hostRenderer={renderSiteEmbedStatic}
-      />
+      <InlineClipboardDocument document={document} hostData={childHostData} />
     );
   }
 
@@ -614,6 +610,24 @@ function ClipboardEmbed({
         <span>剪贴板</span>
       </span>
     </a>
+  );
+}
+
+export function InlineClipboardDocument({
+  document,
+  hostData,
+  imageResolver,
+}: Pick<LocalDocumentViewProps, 'document' | 'hostData' | 'imageResolver'>) {
+  return (
+    <div className="reactive-document site-embed-clipboard-inline" data-content-renderer="clipboard-inline">
+      <CompiledDocumentView
+        document={document}
+        hostData={hostData}
+        hostRenderer={renderSiteEmbedStatic}
+        imageResolver={imageResolver}
+        mode="static"
+      />
+    </div>
   );
 }
 

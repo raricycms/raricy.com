@@ -7,7 +7,7 @@
 import Link from 'next/link';
 import { useState } from 'react';
 import type { LocalDocument } from 'reactive-md';
-import ReactiveDocument from '@/app/components/reactive/ReactiveDocumentLazy';
+import ReactiveDocument from '@/app/components/reactive/ReactiveDocument';
 import type { SiteHostData } from '@/lib/reactive/ref-types';
 import type { ReadRenderer } from '@/lib/reactive/read-render';
 

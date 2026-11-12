@@ -21,10 +21,15 @@ Next.js 15 + Prisma + SQLite 主站，自有 `instance/` 数据目录；实时�
   ATÅMAS 不依赖它。部署反代见 `docs/realtime.md`。
 - **前端**：服务端 / 客户端组件混用；评论 / 讨论走 marked → DOMPurify，故事走服务端
   marked + `stripScripts`（按可信输入处理）；**不做语法高亮**（`highlight.js` 已不是依赖）
-- **ReactiveMD**：精确依赖 `reactive-md@0.7.0`（`local-draft-3`）。博客与云剪贴板
+- **ReactiveMD**：使用 `reactive-md@0.8.0-next.0`（`local-draft-3`）。博客与云剪贴板
   **全部**走统一引擎，Markdown 与 ReactiveMD 都编译为同一份 `LocalDocument`；
   正常阅读 SSR 静态首屏 + 水合交互。**reactive 是唯一正文渲染路径**（Markdown / Reactive 同引擎），
   旧 Markdown 回退管线已整条退役（2026-11，`REACTIVE_MD_MODE=off` 不再被读取）。见 `docs/architecture.md` §6.23
+
+ReactiveMD 预览版尚未发布到 npm。本仓库的 `npm ci` 使用 `vendor/` 内的上游 npm 包，
+锁文件校验归档完整性。在上游提交应用 `vendor/reactive-md-next15.patch` 后执行
+`npm ci`、`npm pack` 可重新生成归档。补丁保留 Radix 在 Next.js 15 自带 React 中的回退路径。
+归档包含上游许可证和第三方许可声明。[上游提交 be1fadd](https://github.com/yao1145/ReactiveMD/commit/be1faddeae7c44158040920a8118a5b83739ec5b)
 
 组件与子系统的关系见 `docs/architecture.md`。
 

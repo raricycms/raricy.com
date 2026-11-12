@@ -213,7 +213,7 @@ describe('博客格式：validateBlogData / 落库 / 读出口', () => {
     await expect(
       createBlog(u.id, {
         ...BLOG_BASE,
-        content: '<panel title="未闭合">',
+        content: '{{ 1 + }}',
         categoryId: null,
         visibility: 'internal',
         format: 'reactive',
@@ -221,6 +221,27 @@ describe('博客格式：validateBlogData / 落库 / 读出口', () => {
     ).rejects.toThrow('正文无法编译渲染');
     expect(await prisma.blog.count()).toBe(0);
     expect(await prisma.blogContent.count()).toBe(0);
+  });
+
+  it('可恢复的增强正文保存原文，命中缓存后仍保留警告与后续章节', async () => {
+    const u = await makeUser();
+    const content = '<panel title="未闭合">\n\n片段 {{ missing }}\n\n## 后续章节\n\n正常正文';
+    const blogId = await createBlog(u.id, {
+      ...BLOG_BASE, content, categoryId: null, visibility: 'internal', format: 'reactive',
+    });
+    expect(await prisma.blogContent.findUnique({ where: { blogId } })).toMatchObject({
+      content, format: 'reactive', syntaxVersion: LOCAL_SYNTAX_VERSION,
+    });
+    const input = { source: content, format: 'reactive', viewer: u, mode: 'expand' } as const;
+    await resolveReadRender(input);
+    const cached = await resolveReadRender(input);
+    expect(cached.bundle?.cacheHit).toBe(true);
+    expect(cached.bundle?.result).toMatchObject({
+      ok: true,
+      recoveries: [{ code: 'local.recovery.unclosed', boundary: 'heading' }],
+      diagnostics: [{ code: 'local.recovery.unclosed', severity: 'warning' }],
+      document: { nodes: expect.arrayContaining([expect.objectContaining({ type: 'heading' })]) },
+    });
   });
 
   it('★ 有效增强语法却写 markdown → 具名格式不匹配，不落库 ★', async () => {
@@ -405,7 +426,7 @@ describe('剪贴板格式：createClip / updateClip / getClip', () => {
     }
 
     expect(
-      await createClip(u.id, { title: 't', content: '<panel title="未闭合">', format: 'reactive' })
+      await createClip(u.id, { title: 't', content: '{{ 1 + }}', format: 'reactive' })
     ).toEqual({ ok: false, reason: 'reactive_invalid' });
   });
 
@@ -463,7 +484,7 @@ describe('剪贴板格式：createClip / updateClip / getClip', () => {
     expect(
       await updateClip(reactiveId, u.id, {
         title: 't',
-        content: '<panel title="未闭合">',
+        content: '{{ 1 + }}',
         publicity: true,
         format: 'reactive',
       })

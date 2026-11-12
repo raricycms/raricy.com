@@ -1,7 +1,7 @@
 # ReactiveMD 功能与架构简化方案
 
 > 状态：用户后续确认的收缩范围已完成本地实现与验收（2026-11-02）；未推送、未部署。
-> 本站核对基线：`9a9b99b7`；已安装包：`reactive-md@0.7.0`。
+> 本站核对基线：`9a9b99b7`；当时使用 `reactive-md@0.7.0`。
 > 上游核对提交：`dc276866cc53f33fab099a1f1eb439debe24fa62`。
 > 本方案保留统一 Markdown / ReactiveMD 的产品目标，调整快照、发布、源码升级和部署
 > 的职责。此前实施记录保留在 `docs/plan/reactive-md-unification-plan.md`，其中持久快照、

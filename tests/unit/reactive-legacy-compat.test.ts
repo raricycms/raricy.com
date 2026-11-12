@@ -16,7 +16,7 @@ import { compileLocal, type LocalNode } from 'reactive-md';
 import { renderSiteEmbedStatic } from '@/app/components/reactive/site-embed-static';
 import { adaptReactiveReferences } from '@/lib/reactive/ref-adapter';
 import { applyLegacyHtmlCompat } from '@/lib/reactive/legacy-compat';
-import { reactiveCompileOptions } from '@/lib/reactive/host-components';
+import { REACTIVE_COMPILE_OPTIONS } from '@/lib/reactive/host-components';
 import { parseLegacyDataImage } from '@/lib/reactive/data-image';
 import { isAllowedReactiveUrl } from '@/lib/reactive/url-policy';
 
@@ -24,7 +24,7 @@ const PNG_1PX =
   'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
 
 function compile(source: string) {
-  return compileLocal(source, reactiveCompileOptions('markdown'));
+  return compileLocal(source, REACTIVE_COMPILE_OPTIONS);
 }
 
 function flatten(nodes: readonly LocalNode[]): string {
@@ -236,8 +236,9 @@ describe('applyLegacyHtmlCompat', () => {
     expect(compat.source.slice(-3)).toBe(source.slice(-3));
     // 诊断 range 也必须落在原始源码的同一位置
     const invalid = '😀 <panel title="未闭合">';
-    const result = compileLocal(applyLegacyHtmlCompat(invalid).source, reactiveCompileOptions('markdown'));
-    expect(result.ok).toBe(false);
+    const result = compileLocal(applyLegacyHtmlCompat(invalid).source, REACTIVE_COMPILE_OPTIONS);
+    expect(result.ok).toBe(true);
+    expect(result.diagnostics[0]?.severity).toBe('warning');
     const range = result.diagnostics[0]?.range;
     expect(range).toBeTruthy();
     // range 必须是原文里一段**非空且有序**的区间（原先 `length >= 0` 恒真）。
@@ -320,7 +321,7 @@ describe('applyLegacyHtmlCompat', () => {
     ].join('\n');
     const compat = applyLegacyHtmlCompat(source);
     expect(compat.source).toBe(source);
-    expect(compileLocal(compat.source, reactiveCompileOptions('reactive')).ok).toBe(true);
+    expect(compileLocal(compat.source, REACTIVE_COMPILE_OPTIONS).ok).toBe(true);
     expect(applyLegacyHtmlCompat(compat.source).source).toBe(source);
   });
 
@@ -501,7 +502,7 @@ describe('与原生 HTML 同名的合法组件', () => {
       const compat = applyLegacyHtmlCompat(source);
       expect(compat.source, source).toContain(`<${name}`);
       expect(compat.counts['unwrapped-tag'] ?? 0, source).toBe(0);
-      const result = compileLocal(compat.source, reactiveCompileOptions('reactive'));
+      const result = compileLocal(compat.source, REACTIVE_COMPILE_OPTIONS);
       expect(result.ok, source).toBe(true);
       expect(JSON.stringify(documentOf(result).nodes), source).toContain(`"type":"component"`);
       expect(JSON.stringify(documentOf(result).nodes), source).toContain(`"name":"${name}"`);

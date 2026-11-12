@@ -13,7 +13,7 @@ import {
 } from '@/lib/blog-service';
 import { ymd } from '@/lib/format';
 import { prisma } from '@/lib/db';
-import ReactiveDocument from '@/app/components/reactive/ReactiveDocumentLazy';
+import ReactiveDocument from '@/app/components/reactive/ReactiveDocument';
 import Avatar from '@/app/components/Avatar';
 import BlogTimestamps from '@/app/components/BlogTimestamps';
 import CommentSection from '@/app/components/CommentSection';

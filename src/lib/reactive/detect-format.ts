@@ -31,10 +31,9 @@ import {
   type Diagnostic,
   type LocalCompileOptions,
   type LocalCompileResult,
-  type LocalDocument,
   type LocalNode,
 } from 'reactive-md';
-import { SITE_REACTIVE_COMPONENT_NAMES } from './component-names';
+import { SITE_REACTIVE_COMPONENT_SET as COMPONENT_NAMES } from './component-names';
 import { shouldRejectReactive } from './diagnostics';
 import {
   HTML_COLLISION_TAGS,
@@ -42,7 +41,7 @@ import {
   looksLikeComponentTag,
   maskProtectedContent,
 } from './legacy-compat';
-import { reactiveCompileOptions } from './host-components';
+import { REACTIVE_COMPILE_OPTIONS } from './host-components';
 import { SYNTAX_BUDGET_CODE, checkSyntaxBudget } from './syntax-budget';
 import { findLeadingVersionDirective } from './version-directive';
 
@@ -73,8 +72,6 @@ export interface ReactiveSyntaxDetection {
   literalized?: boolean;
 }
 
-const COMPONENT_NAMES: ReadonlySet<string> = new Set(SITE_REACTIVE_COMPONENT_NAMES);
-
 function walk(nodes: readonly LocalNode[], onNode: (node: LocalNode) => void): void {
   for (const node of nodes) {
     onNode(node);
@@ -82,7 +79,11 @@ function walk(nodes: readonly LocalNode[], onNode: (node: LocalNode) => void): v
   }
 }
 
-export function documentEvidence(document: LocalDocument): string[] {
+export function compiledEvidence(
+  source: string,
+  result: Extract<LocalCompileResult, { ok: true }>
+): string[] {
+  const { document, recoveries } = result;
   const evidence = new Set<string>();
   if (Object.keys(document.bindings).length > 0) evidence.add('bindings');
   if (document.computations && Object.keys(document.computations).length > 0) {
@@ -99,6 +100,21 @@ export function documentEvidence(document: LocalDocument): string[] {
       evidence.add('interpolation');
     }
   });
+  // Recovery turns the damaged component into a literal node. Use the parser's
+  // cause range to retain its format without treating ordinary HTML as RMD.
+  for (const recovery of recoveries ?? []) {
+    if (!recovery.code.startsWith('local.recovery.')) continue;
+    const { start, end } = recovery.causeRange;
+    const head = source.slice(start, end);
+    const match = /^<\/?([a-z][a-z0-9-]*)/.exec(head);
+    if (!match || !COMPONENT_NAMES.has(match[1])) continue;
+    const name = match[1];
+    if (HTML_COLLISION_TAGS.has(name)) {
+      const tag = head.endsWith('>') ? head : source.slice(start, recovery.affectedRange.end);
+      if (!looksLikeComponentTag(name, tag, [])) continue;
+    }
+    evidence.add(`component:${name}`);
+  }
   return [...evidence];
 }
 
@@ -213,15 +229,13 @@ export function classifyReactiveSyntax(
 ): Omit<ReactiveSyntaxDetection, 'syntaxVersion'> {
   const declaration = declaredVersion(source);
   if (result.ok) {
-    const evidence = documentEvidence(result.document);
+    const evidence = compiledEvidence(source, result);
     const format: ContentFormatName = evidence.length > 0 ? 'reactive' : 'markdown';
-    const publishable =
-      format === 'reactive' ? !shouldRejectReactive(result) : !shouldRejectReactive(result);
     return {
       format,
       reactive: format === 'reactive',
       valid: true,
-      publishable,
+      publishable: !shouldRejectReactive(result),
       evidence,
       diagnostics: result.diagnostics,
       codes: [...new Set(result.diagnostics.map((diagnostic) => diagnostic.code))],
@@ -264,7 +278,7 @@ export function finalizeReactiveDetection(
  */
 export function detectReactiveSyntax(
   source: string,
-  options: LocalCompileOptions = reactiveCompileOptions('markdown')
+  options: LocalCompileOptions = REACTIVE_COMPILE_OPTIONS
 ): ReactiveSyntaxDetection {
   // 编译前的语法复杂度闸门：上游对大量未闭合 `<` / `{{` 是超线性的（25 万 `<`
   // 实测约 30s）。超预算直接给出诊断并保留原文，绝不进入 compileLocal。

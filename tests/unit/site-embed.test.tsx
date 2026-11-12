@@ -15,7 +15,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { compileLocal, type LocalNode, type LocalRuntime } from 'reactive-md';
 import type { LocalRenderContext } from 'reactive-md/react';
 import { SiteEmbedView } from '@/app/components/reactive/SiteEmbedView';
-import { reactiveCompileOptions } from '@/lib/reactive/host-components';
+import { REACTIVE_COMPILE_OPTIONS } from '@/lib/reactive/host-components';
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -26,7 +26,7 @@ const MEDIA_REF = 'abcdef1234';
 
 /** 内联剪贴板的新契约：hostData 只带同版本编译产物，不再带原始 content。 */
 function inlineClipboardDocument() {
-  const compiled = compileLocal('可内联的正文', reactiveCompileOptions('markdown'));
+  const compiled = compileLocal('可内联的正文', REACTIVE_COMPILE_OPTIONS);
   if (!compiled.ok) throw new Error('fixture compile failed');
   return { document: compiled.document, hostData: {} };
 }

@@ -24,7 +24,7 @@
 //
 // 【为什么用上游公开入口】补全 / 格式化的词法、schema 与编译预算必须和
 // 预览 / 阅读页**同一份**。自己再解析一遍，两边对「什么算 reactive 语法」迟早
-// 会分叉，而且分叉时不报错。编译选项统一走 `reactiveCompileOptions('reactive')`。
+// 会分叉，而且分叉时不报错。编译选项统一走 `REACTIVE_COMPILE_OPTIONS`。
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { StateEffect, StateField, type Extension, type Range } from '@codemirror/state';
@@ -51,12 +51,12 @@ import type {
   Diagnostic,
   LocalComponentCatalogEntry,
 } from 'reactive-md/authoring';
-import { reactiveCompileOptions } from '@/lib/reactive/host-components';
+import { REACTIVE_COMPILE_OPTIONS } from '@/lib/reactive/host-components';
 
 export type { AuthorAnalysis, AuthorCompletion } from 'reactive-md/authoring';
 
 /** 与预览 / 阅读页完全一致的宿主 schema、节点预算与语法开关。 */
-const COMPILE_OPTIONS = reactiveCompileOptions('reactive');
+const COMPILE_OPTIONS = REACTIVE_COMPILE_OPTIONS;
 
 /**
  * 用户显式触发作者工具（补全 / 格式化）的正文长度上限。

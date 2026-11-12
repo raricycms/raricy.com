@@ -696,14 +696,9 @@ describe('MarkdownEditor：Reactive 诊断 / 补全 / 格式化', () => {
     expect(container.textContent).toContain('没有需要格式化的内容');
   });
 
-  it('预览始终走统一引擎，并把当前格式传下去（Markdown 子剪贴板内联一层）', () => {
-    const markdown = mount(createElement(EditorHarness, { initialFormat: 'markdown' }));
-    expect(mocks.previewProps?.format).toBe('markdown');
+  it.each(['markdown', 'reactive'] as const)('%s 使用相同的正文预览入口', (initialFormat) => {
+    mount(createElement(EditorHarness, { initialFormat }));
     expect(mocks.previewProps?.source).toBe('# 标题\n\n正文');
-    markdown.remove();
-
-    mount(createElement(EditorHarness, { initialFormat: 'reactive' }));
-    expect(mocks.previewProps?.format).toBe('reactive');
   });
 
   it('Markdown 模式不启用作者扩展、不显示诊断面板；Components 入口仍在', () => {

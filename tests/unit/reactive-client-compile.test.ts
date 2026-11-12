@@ -1,13 +1,5 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// reactive-client-compile.test.ts —— 编辑器预览的客户端适配 + 编译（T3）
-//
-// 钉四件事，每件错了都**不报错**：
-//   · `[@…]` token 没被适配（预览里只剩一串原文，作者以为引用坏了）；
-//   · 代码块里的 token 被适配（《内容引用语法指南》承诺不展开）；
-//   · 适配后的源码编译不过（预览永远停在上一版 / 空白）；
-//   · 坏源码没有诊断（作者看不到错在哪，只看到旧预览）。
-//
-// 全程离线：reader 是假的，编译走本地 `compileLocal`。
+// 编辑器预览和导出的引用取数、适配与并发上限。
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { describe, expect, it, vi } from 'vitest';
@@ -15,28 +7,11 @@ import type { ReferenceReader } from '@/lib/reactive/ref-types';
 import { MAX_REF_CONCURRENCY } from '@/lib/content-refs';
 import {
   adaptReactivePreview,
-  compileReactivePreview,
   createClientReferenceReader,
 } from '@/lib/reactive/client-compile';
 
 const CLIP_ID = 'AbCd1234'; // 8 位
 const FAV_ID = '123456'; // 6 位数字
-
-const emptyReader: ReferenceReader = async () => undefined;
-
-describe('compileReactivePreview', () => {
-  // R4 收敛：compileReactivePreview = adaptReactivePreview + 本地编译的**薄壳**。
-  // 「五类引用各自落到正确形态 / 标签与 hostData 同时产出」「代码块与行内代码里的
-  // token 原样保留且不取数」两条在 reactive-ref-adapter.test.ts 里对同一份适配实现
-  // 逐条钉住（reactive-ref-adapter.test.ts:73、:109），这里不再复述；本文件只保留
-  // 薄壳独有的部分：外部模式的发布预览、客户端 reader 的取数口径、共享闸门。
-  it('非法源码返回诊断而不是抛出', async () => {
-    const { result } = await compileReactivePreview('{{ 1 + }}', emptyReader);
-    expect(result.ok).toBe(false);
-    expect(result.diagnostics.length).toBeGreaterThan(0);
-    expect(result.diagnostics.some((d) => d.severity === 'error')).toBe(true);
-  });
-});
 
 describe('createClientReferenceReader', () => {
   it('只发 GET（无 method 字段），并按 kind 复用同一次请求', async () => {
