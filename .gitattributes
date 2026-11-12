@@ -27,3 +27,8 @@
 # （SQL 内容确实没变）后，对报出的每个 `mark` 一次即可；`up` 全程不受影响
 # （已应用的一律跳过）。
 *.sql text eol=lf
+
+# 生成物文档：内容由脚本生成、守卫逐字节对账（tests/unit/lib-index-guard.test.ts），
+# 而守卫要求纯 LF。autocrlf=true 的机器检出成 CRLF 会让守卫假红（本机实测），
+# 所以和 SCSS / SQL 同理钉死 LF —— 这里为的是「各平台生成物字节一致」，不是洁癖。
+docs/src-lib-index.md text eol=lf
