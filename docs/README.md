@@ -84,6 +84,10 @@ GitHub 上仍是原来的反引号，两边不冲突。
 | `instance-restore.md` | 从 `instance.zip` 还原数据目录与数据库（灾备） |
 | `legacy-constraints.md` | 历史遗留约束：哪些不能删、为什么（含「不是框架痕迹」的辨析）；注释清理口径与已解决问题记录 |
 | `format-converter-implementation.md` | 格式转换器首轮实施记录：原始方案、八个能力区的交付与历史验证（**功能已交付，全部验收条件尚未满足**；剩余项在 `plan/`） |
+| `source-header-style.md` | 源码头注释约定：头里只留职责 / 唯一出口 / 改动注意，长背景抽到设计说明；含抽取判断与 `npm run lib:headers` |
+| `source-design-notes.md` | 从 `src/lib` 文件头抽出的设计背景、踩坑与取舍（当前规则仍以文件头为准） |
+| `market-design-notes.md` | 从 `market-*.ts` 文件头抽出的行情源、结算、强平与统计的设计背景 |
+| `src-lib-index.md` | `src/lib` 根目录 TS 文件索引：行数、职责与导出（`npm run lib:index` 生成，勿手改） |
 
 ## plan/ —— 计划、维护待办与相关实施记录
 

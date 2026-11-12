@@ -1,54 +1,20 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // frame-refs.ts — 头像框的**词汇表**（白名单、解析、人话标签、到期判定）
-//
-// 头像框 = 一张带透明通道的 PNG，绝对定位叠在头像上（`src/app/components/Avatar.tsx`
-// 的 `.avatar__frame`）。素材字节在 `public/static/frames/<key>.png`（**随代码入库** ——
-// 它是我们自己画的，与用户上传 / 第三方表情那些运行时数据不是一类东西），
-// 扫盘与字节路由在 `src/lib/frame-service.ts`（server-only）。
-//
-// ── 【为什么单独一个文件】────────────────────────────────────────────────────
-// `/settings` 的装备面板是**客户端组件**，它要把每个框渲染成一张卡片（缩略图 + 显示名）；
-// 而 `frame-service.ts` 拖着 `node:fs` 与 prisma，**不能进客户端包**。词汇是这一整套
-// 设计里唯一两端都要用到的部分，所以它只能依赖纯词汇模块 —— 否则前端只能手抄一份
-// 清单，而手抄的那份会在加第二个框时静默漏掉（面板少一张卡片，不报错，
-// 只是那个框从此在界面上不可达）。`type-only` 的 `import type` 帮不上忙：
-// 它只擦类型，擦不掉运行时要用到的数组。同一理由见 `blog-visibility.ts` 的文件头。
-//
-// ── 【key 空间在白名单里，目录只提供字节】────────────────────────────────────
-// 这一点与**表情包相反**，别照抄那边的直觉：表情的目录即 key 空间（往
-// `instance/stickers/` 丢什么就有什么）。这里 `FRAME_KEYS` 是权威，磁盘只是素材仓库。
-// 于是「目录缺席」只让框**不显示**，不会让框**不存在** —— 授权、价格、展示名都照常，
-// 缺的只是那张图（`frame-service` 的第三道闸会把它判成「暂时没图」）。
-//
-// ── 【改这里的代价】────────────────────────────────────────────────────────────
-// 加一个框 = 加一条 `FRAMES` 条目 + 一张 `public/static/frames/<key>.png`（正常是改
-// `scripts/make-frame-demos.mjs` 的 SVG 再重跑，见那个文件头）。
-// `FRAMES` 是 `Record<FrameKey, FrameDef>`（穷尽的），加了 key 不补条目 **tsc 当场报错** ——
-// 这正是要的形状：漏补的后果（面板上少一张卡片、CLI 的选项里没有它）都是静默的。
-// **不需要迁移**：`user_frames.frame_key` 是文本、不是外键，框的定义不住库。
-//
-// ── 【到期判定：全仓只有这里做比较】──────────────────────────────────────────
-// `isFrameExpired` 是**唯一**的到期比较，而它只被 `resolveFrameKey` 调用，
-// `resolveFrameKey` 又只被 `frame-service.frameUrlFor()` 调用（那是下发 DTO 的唯一出口）。
-// 为什么要把这件事收成一条线：
-//   · 漏判的症状是**那一处永远戴着框** —— 到期不消失，不报错、不 500、日志里什么都没有；
-//   · 客户端一次都不该判：`tests/unit/db-time-guard.test.ts` 规则 3–5 扫**整个 `src/`**
-//     （含页面组件），在客户端写 `new Date(expires_at) > new Date()` 会被静态守卫判红。
-//     所以「唯一的判定形状」与「静态守卫的要求」在这里正好重合。
-//
-// ⚠️ 时钟：`expires_at` 由 `nowForDb()` 写入（UTC+8 墙上时间贴 Z 标签），
-//    比较必须用同一把钟。本文件是纯函数、**自己不读时钟** —— `now` 一律由调用方给，
-//    服务端那唯一一处调用传的就是 `nowForDb()`（见 `frame-service.frameUrlFor`）。
-//    拿真实 UTC 的 `new Date()` 去比会凭空多 8 小时：**30 天的框实际生效 29 天 16 小时**，
-//    轻微到没人会发现，正是那种静默错误。
-//
-// ── 【边界口径】───────────────────────────────────────────────────────────────
-//   `expires_at === null`  → 永久，不过期
-//   `now === expiresAt`    → **未过期**（用 `>` 不是 `>=`，与 `isCurrentlyBanned`
-//                            的 `nowForDb() > banUntil` 同口径）
-//
-// 本文件不依赖任何 Node 侧东西、不碰 React、不碰 prisma，故可直接单测
-//（tests/unit/frame-refs.test.ts）。
+// 头像框 = 带透明通道的 PNG 叠在头像上（Avatar.tsx 的 .avatar__frame）；素材在 public/static/
+// frames/<key>.png（随代码入库）；扫盘与字节路由在 frame-service.ts（server-only）。
+// 【key 空间】FRAME_KEYS 是权威，目录只提供字节（与表情「目录即 key 空间」相反）：
+//   多余文件不收纳；目录缺席只让框不显示，不会让框不存在（授权 / 价格 / 展示名照常）。
+// 【改这里的代价】加框 = FRAMES 加一条 + 一张 PNG（改 make-frame-demos.mjs 的 SVG 后重跑）。
+//   FRAMES 是 Record<FrameKey, FrameDef>，漏补条目 tsc 报错；无需迁移（user_frames.frame_key
+//   是文本、不是外键，框定义不住库）。
+// 【到期判定：全仓只有这里做比较】isFrameExpired 只被 resolveFrameKey 调，后者只被
+//   frameUrlFor 调（下发 DTO 的唯一出口）；漏判 = 那一处永远戴着框、不报错。客户端判零次
+//   （db-time-guard 规则 3–5 扫 src/ 含页面组件，写 new Date(expires_at) 会被判红）。
+// 【时钟】expires_at 由 nowForDb() 写（UTC+8 墙上时间贴 Z），比较必须同一把钟；本文件纯函数、
+//   不读时钟，now 由调用方给（服务端唯一调用传 nowForDb()）。拿真实 UTC 比会凭空多 8 小时。
+// 【边界口径】expires_at === null → 永久，不过期；now === expiresAt → 未过期（用 > 不是 >=）。
+// 本文件不碰 Node / React / prisma，可直接单测（tests/unit/frame-refs.test.ts）。
+// 设计背景与取舍：docs/source-design-notes.md §2
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
@@ -95,7 +61,7 @@ export interface FrameDef {
    * 鱼干商城的租金：**单位 + 单价**（`价格 鱼干 / 单位`）。省略 = 不零售，
    * 只能由站长发放。
    *
-   * 【为什么价格住这里而不是库】与 `label` 同一个理由（见文件头）：商城面板是
+   * 【为什么价格住这里而不是库】与 `label` 同一个理由（见 `docs/source-design-notes.md` §2）：商城面板是
    * 客户端组件，而 `frame-service` 拖着 prisma 进不了客户端包 —— 价格若住在那边，
    * 前端就只能手抄一份，而手抄的那份会在改价时静默对不上（页面显示 1 鱼干、
    * 服务端扣 2 条）。放这里，**展示与校验读的是同一个数**。

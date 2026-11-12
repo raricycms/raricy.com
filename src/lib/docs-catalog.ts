@@ -423,6 +423,30 @@ export const DOC_ENTRIES: readonly DocEntry[] = [
   },
   {
     group: 'dev',
+    slug: 'source-header-style',
+    title: '源码头注释约定',
+    summary: '文件头写什么、不写什么：职责 / 唯一出口 / 改动注意留在头里，长背景抽到设计说明。',
+  },
+  {
+    group: 'dev',
+    slug: 'source-design-notes',
+    title: '源码设计说明',
+    summary: '从 src/lib 文件头抽出的设计背景、踩坑与取舍；当前规则仍以文件头为准。',
+  },
+  {
+    group: 'dev',
+    slug: 'market-design-notes',
+    title: '练手盘设计说明',
+    summary: '从 market-*.ts 文件头抽出的行情源、结算、强平与统计的设计背景。',
+  },
+  {
+    group: 'dev',
+    slug: 'src-lib-index',
+    title: 'src/lib 根目录索引',
+    summary: '由 npm run lib:index 生成的根目录 TS 文件清单：行数、职责与导出。',
+  },
+  {
+    group: 'dev',
     slug: 'README',
     title: '文档索引',
     summary: '本目录的索引与互指规范（给改文档的人）。',

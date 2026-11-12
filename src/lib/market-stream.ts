@@ -1,45 +1,23 @@
-// ─────────────────────────────────────────────────────────────────────────────
 // market-stream.ts — 练手盘行情的**常驻 WebSocket 消费端**（只喂展示缓存）
 //
-// 【它解决什么】15 秒一轮的 REST 轮询让屏幕上的价最坏 30 秒旧。这条流把「服务器知
-// 道最新价」的延迟从 15 秒压到 ~50ms（实测），前端再把轮询降到 1 秒，于是页面上的价
-// 每秒跳一次。**REST 那条循环一个字符都没动** —— 它现在同时是兜底价源：这条流挂了，
-// getCachedQuotes() 在 STREAM_TRUST_MS 之后自动回落到它，屏幕不会冻住。
+// 订币安 @trade（与成交价同口径：都是最新成交价；@miniTicker / @bookTicker 都不对口径），把价写进
+// market-price 的 stream 字段；REST 轮询那份是兜底，流挂了读侧在 STREAM_TRUST_MS 之后自动回落。
 //
-// 【★ 它只服务展示，不服务成交 ★】与 market-poll-drainer 同一条红线：成交价必须在
-//   下单那一刻现取（market-service 的 fetchQuote），**谁要是图省事让下单读这里抄来的
-//   价，就把整条安全边界拆了** —— 一帧 ~50ms 前的价同样是无风险套利，只是赢面小一点。
-//   见 src/lib/market-price.ts 的文件头。
+// ★ 只服务展示，不服务成交 ★ 成交价必须在下单那一刻现取（market-service 的 fetchQuote）；谁让
+// 下单读这里抄来的价，就把整条安全边界拆了 —— 一帧 ~50ms 前的价同样是无风险套利，只是赢面小一点。
 //
-// 【为什么是 @trade】它与成交价**同口径**（都是「最新成交价」），展示与成交是同一个量、
-//   只是时刻不同。@miniTicker 每条 1 秒、@bookTicker 是买一卖一，都不对口径。
+// ★ 启动与关闭 ★ 只导出 startMarketStream 由 src/instrumentation.ts 调 —— 别改成被 import 时自动
+// 启动（vitest 会直接 import src/lib/*，那样每个测试文件都会去连真实币安）。测试与 e2e 必须关掉，
+// 三层保险：NODE_ENV 为 test 时不启动 / tests/setup.ts 置 MARKET_STREAM_SILENCE_MS=0 / playwright
+// webServer env 同款（e2e 跑 next start，NODE_ENV 是 production，那道保险盖不住；e2e 的行情替身
+// 只有 HTTP、没有 WS 端点）。单进程前提：多实例各连一条，无害（多收几帧只读数据）。
 //
-// 【启动方式】与另两个后台循环同款：只**导出** startMarketStream，由
-//   src/instrumentation.ts 调。不要改成「被某个库 import 时自动启动」—— vitest 会直接
-//   import src/lib/*，那样每个测试文件都会去连真实币安。
+// ★ 判据 ★ 半死阈值看「合计」静默（任何标的的帧都算活着 —— 单标的可以冷清好几秒，按单标的判会
+// 白重连），默认 30 秒 = 实测合计最长静默 0.9s 的 33 倍。失效模式：握手失败既没有 close 也可能没有
+// error（RST/TLS 拦只触发 error；域黑洞两个都不来）—— 所以「连接结束了」一律走 onDown()，另有 1 秒
+// 看门狗兜底；别只挂 onclose（那会在第一次失败后彻底安静，同顶栏 SSE 那条「连着但收不到」）。
 //
-// 【测试与 e2e 里必须关掉】三层保险（另两个循环只有两层）：
-//   ① NODE_ENV === 'test' 直接不启动（vitest 那边）；
-//   ② tests/setup.ts 置 MARKET_STREAM_SILENCE_MS=0；
-//   ③ playwright 的 webServer env 同款 —— e2e 跑的是 next start，NODE_ENV 是
-//      production，那道保险在那儿**盖不住**。e2e 的行情替身只有 HTTP、没有 WS 端点，
-//      不关就会去连真实外网（违反「e2e 不能打真实外网」）。
-//
-// 【单进程前提】与 SSE / chat-bus / 另两个 drainer 同款：多实例部署时每个实例各连一条。
-//   这里**完全无害**（各自多收几帧只读数据），不像限频那样需要换 Redis。
-//
-// 【阈值不是拍的，是量出来的】2026-09-22 生产机实测 10 分钟：0 重连、53828 tick、
-//   合计最长静默 0.9s、事件时间差 30~54ms（对照 REST 一次往返 402ms）。
-//   ⚠️ **半死判据必须盯「合计」静默**：同一次实测里单标的可以冷清 3.5 秒（BTC），
-//   按单标的判会把一次正常冷清误判成断流、白重连一次。
-//
-// 【失效模式：握手失败既没有 close 也可能没有 error】探针实测（node 内置 WebSocket）：
-//   域被 RST/TLS 拦时只触发 error 不触发 close；域被黑洞掉时**两个都不来**，连接就那么
-//   挂着。只挂 onclose 的写法会在第一次失败后彻底安静 —— 那正是本站已经交过学费的
-//   「连着但收不到」（顶栏 SSE 那条红线）。所以这里：「这条连接结束了」一律走 onDown()，
-//   另有一个 1 秒看门狗兜底。这套写法已在 scripts/probe-binance-ws.mjs 上跑过 10 分钟
-//   生产实测，是同一个形状。
-// ─────────────────────────────────────────────────────────────────────────────
+// 设计背景与取舍：docs/market-design-notes.md §6
 
 import { MARKET_SYMBOLS, applyStreamTick } from './market-price';
 
@@ -48,7 +26,7 @@ const GLOBAL_KEY = '__raricyMarketStream';
 
 /**
  * 行情 WS 的域。与 REST 那条腿同族（`data-api.binance.vision` 的 WS 版）——
- * 生产机实测可达、解析到 AWS 东京真 IP，见 market-price.ts 文件头那串域名实测记录。
+ * 生产机实测可达、解析到 AWS 东京真 IP，见 docs/market-design-notes.md §5 的选源实测记录。
  * **故意不给它一个 env 覆盖**：这条流坏了会自动回落到 REST，而 REST 那条腿已经有一个
  * `MARKET_PRICE_BASE_URL` 换源开关了，再加一个只是多一处要登记的配置。
  */
