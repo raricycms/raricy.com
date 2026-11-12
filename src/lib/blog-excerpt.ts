@@ -1,38 +1,22 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // blog-excerpt.ts —— 把 Markdown / ReactiveMD 正文压成一段纯文本摘要（纯函数）
-//
-// 【只给主页的**高**卡片用】个人主页积木墙里，尺寸 h≥2 的文章块有第二行空间，用它
-// 填一段正文摘要；h=1 的矮卡片只放标题与日期，拿到的是空串（见 profile-service 的
-// resolveViews）。不用于列表页、不用于 SEO 描述 —— 那些各有自己的字段（Blog.description）。
-//
-// 【它是现算，不是快照】摘要**不进** profile_blocks.config、不落任何表：正文改了，
-// 下一次请求的摘要就跟着变；文章降档 / 被删 / 归档 → 那块 view 为 null，摘要一起消失。
-// 这与「存指针不存快照」是同一条口径（见 profile-service.ts 文件头第 2 条）。把摘要
-// 抄进 config 会得到「正文已经改了、名片上还是旧摘要」的洞，而且**永远不会报错**。
-//
-// 【它不是渲染】Markdown 路径只做字符串变换：不 import rich-text / marked / prisma，
-// 也不做 HTML 白名单。reactive 路径只借用 `reactive-md` 的**编译产物与初始运行时**，
-// 不挂 React / DOM。产出是**纯文本**，React 直接当子节点画，不存在「摘要里带标签」的问题。
-// 反过来也刻意：正文管线里那些 `[@…]` 引用、播放器、卡片一律不展开 —— 摘要不该把
-// 一篇文章的资源清单拖到主页上。
-//
-// 【口径】按「读者看到什么」取：
-//   · 围栏代码块与行内代码：连内容一起丢掉（变量名 / 命令 / 路径塞进一句话只会把
-//     句子读断，而摘要本来就没有等宽排版）；
-//   · 图片：连 alt 一起丢掉（alt 多是文件名）；
-//   · `<script>` / `<style>`：连内容一起丢掉，其余 HTML 标签只去标签留文字；
-//   · `[@8位]` / `[@音频/ID]` / `[@用户/名字]` 这类引用 token：整个 token 丢掉；
-//   · 链接保留**文字**（`[阅读全文](/blog/x)` → `阅读全文`），URL 不进摘要；
-//   · 去掉 `# > - * _ ~ \`` 等标记，空白折叠成单个空格，结果恒为一行。
-//
-// 【截断】超过 max 个 UTF-16 码元就切到 max，再补一个 `…`（所以结果最多 max+1 个码元）。
-// 切点落在代理对中间时整个字符让出去 —— 半个 emoji 会变成 U+FFFD，比少一个字符难看。
-//
-// 【两种格式】`blogExcerpt` 保持原样，只处理 Markdown；`buildBlogExcerpt` 按
-// `ContentFormat` 分派。reactive 文档走编译后的 AST：容器（panel / card / tabs）里的
-// 文字保留，`computed` / `const` / `validation` / `if` / 宿主组件标签丢弃，`{{ }}` 用
-// **初始**运行时状态求值（出错就整段省略，绝不回显表达式源码），脚注标记与 `[@…]` token 丢弃。
-// 编译失败返回空串 —— 宁可没有摘要，也不能把源码漏到主页上。
+// 【只给主页的高卡片用】积木墙 h≥2 的文章块有第二行空间；h=1 矮卡片只放标题与日期，拿到空串
+//   （profile-service.resolveViews）。不用于列表页、不用于 SEO 描述（那些用 Blog.description）。
+// 【现算，不是快照】摘要不进 profile_blocks.config、不落任何表；正文改了下次请求跟着变，文章
+//   降档 / 被删 / 归档 → view 为 null、摘要消失（同 profile-service 的「存指针不存快照」）。
+// 【不是渲染】Markdown 路径只做字符串变换：不 import rich-text / marked / prisma，不做 HTML
+//   白名单；reactive 路径只借用 reactive-md 编译产物与初始运行时，不挂 React / DOM。产出纯文本。
+// 【口径】按「读者看到什么」取：围栏代码块与行内代码连内容丢掉；图片连 alt 丢掉（alt 多是
+//   文件名）；<script>/<style> 连内容丢掉，其余 HTML 只去标签留文字；[@8位]/[@音频/ID]/
+//   [@用户/名字] 整个 token 丢掉；链接保留文字、URL 不进摘要；去掉 # > - * _ ~ \` 等标记，
+//   空白折叠成单个空格，结果恒为一行。正文管线的引用 / 播放器 / 卡片一律不展开。
+// 【截断】超过 max 个 UTF-16 码元切到 max 再补一个 …（结果最多 max+1 码元）；切点落在代理对
+//   中间时整个字符让出去（半个 emoji 变 U+FFFD 更难看）。
+// 【两种格式】blogExcerpt 只处理 Markdown；buildBlogExcerpt 按 ContentFormat 分派。reactive 走
+//   编译后 AST：容器（panel/card/tabs）文字保留，computed/const/validation/if/宿主组件标签丢弃，
+//   {{ }} 用**初始**运行时求值（出错整段省略，绝不回显表达式源码），脚注标记与 [@…] token
+//   丢弃。编译失败返回空串 —— 宁可没摘要，也不能把源码漏到主页上。
+// 设计背景与取舍：docs/source-design-notes.md §9
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { compileSource } from './reactive/compile-source';
@@ -112,7 +96,7 @@ export function blogExcerpt(markdown: string, max = DEFAULT_EXCERPT_MAX): string
   out = out.replace(new RegExp(String.raw`!\[[^\]\n]*\]` + LINK_TARGET, 'g'), '');
   out = out.replace(/!\[[^\]\n]*\]\[[^\]\n]*\]/g, '');
 
-  // 行内代码：连内容一起删（理由见文件头）。先处理成对的反引号串，落单的反引号
+  // 行内代码：连内容一起删（理由见 `docs/source-design-notes.md` §9）。先处理成对的反引号串，落单的反引号
   // 留到后面的标记清理。
   out = out.replace(/(`+)([^`\n]*?)\1/g, '');
 

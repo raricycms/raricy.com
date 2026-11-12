@@ -1,48 +1,23 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// blog-service.ts — 博客业务逻辑
-//
-// 纯函数 + 显式参数，方便测试与复用。
-// 软删除：Blog.ignore = true 的一律排除（对齐 CLAUDE.md 的软删除约定）。
-//
-// ── 可见性四条不变量（`Blog.visibility`）─────────────────────────────────────
-//
-// 三档是 'internal' / 'link' / 'public'，**只对非 core 的查看者生效** —— core+ 在
-// 博客域是全读的，压根不看这一列。所以这一列对任何 core+ 入口都是零行为变化。
-//
-// 【1】判「对外可见」**永远**用 EXTERNAL_VISIBILITIES / EXTERNAL_VISIBLE_BLOG_WHERE，
-//   绝不写 `visibility !== 'internal'`，也别写 `not: 'internal'`。那两种写法在加第四档
-//   时会**静默把新档一起放出去** —— 而「放出去」是不可逆的（搜索引擎与第三方存档会
-//   抓走副本）。有静态守卫盯着这条：tests/unit/blog-visibility-guard.test.ts。
-//
-// 【2】不判档位的读口必须过共享出口，别各自手写 where：
-//   · 对外读一篇（游客视角）→ getExternallyVisibleBlog(id)
-//   · 对外列清单（可索引）  → listIndexableBlogs()（sitemap） / listPublicBlogs()（/explore 页面）
-//   · 带查看者读一篇        → getBlogDetail(id, viewer)
-//   这几个名字本身就说明了「这里做了可见性判定」，静态守卫的台账认得它们。
-//
-// 【3】「对外可读」与「可列举 / 可索引」是**两件事**：link 档读得到，但不进 sitemap、
-//   不许索引。所以判可达用 EXTERNAL_*，sitemap 用 INDEXABLE_*，别混用。
-//
-// 【4】internal 的语义是「仅站内 core+ 可见」，**不是「不存在」**：访客拿到的是登录页。
-//   由此推出两件刻意的事：
-//   · **管理员 / 站长不需要豁免** —— 他们本来就在 core+ 里，压根不走可见性判定。
-//     这不是「忘了给管理员开后门」，是结构性豁免。
-//   · **作者不设后门** —— 被降权（core→user）的作者读不到自己当年的 internal 文章。
-//     档位回答的是「你现在还配不配用这个区」，归属回答不了这个问题
-//     （见 `docs/architecture.md` §8「档位 vs 归属是两层」）。想加「作者可见自己」
-//     之前，先回去读那张表。
-//
-// 【5】（第 2 期）对外列表只有一个出口 `listPublicBlogs`，且它**必须**与 sitemap 的
-//   `listIndexableBlogs` 列同一个集合（都用 `INDEXABLE_BLOG_WHERE`）。这不是洁癖：
-//   「可发现」的整个承诺就是「爬虫抓得到 ⟺ 公开列表上找得到」。若列表多一层过滤，
-//   就会出现「搜索引擎收录了一篇，读者在公开列表上翻不到」——而这两条路径的差异
-//   不会有任何报错。有静态守卫盯：tests/unit/explore-visibility-guard.test.ts。
-//   另一条：对外列表的行**不带任何计数**（点赞/评论/鱼干）—— 对外视图没有评论区，
-//   卡片上写「评论 12」却翻不到评论是自相矛盾的。由 select 保证，不靠渲染层自觉。
-//
-// 【6】（第 2 期）`exclude_from_all` 与专注屏蔽 **不作用于对外列表**。它们分别是
-//   站内「全部文章」的陈列规则与账号级浏览偏好（用户自选栏目，未自定义时用站长标记的
-//   默认集合），而对外列表的资格只有一条：`visibility = public`。混合它们会直接破坏【5】。
+// blog-service.ts — 博客业务逻辑（纯函数 + 显式参数；软删除：Blog.ignore = true 一律排除）
+// 【可见性不变量】三档 'internal' / 'link' / 'public' 只对非 core 查看者生效；core+ 全读、
+//   压根不看这一列，所以对任何 core+ 入口零行为变化。
+// 【1】判「对外可见」永远用 EXTERNAL_VISIBILITIES / EXTERNAL_VISIBLE_BLOG_WHERE，绝不写
+//   visibility !== 'internal' / not: 'internal'（加第四档会静默放出去且不可逆）；
+//   tests/unit/blog-visibility-guard.test.ts 盯着。
+// 【2】不判档位的读口必须过共享出口：getExternallyVisibleBlog(id)（游客读一篇）/
+//   listIndexableBlogs()（sitemap）/ listPublicBlogs()（/explore）/ getBlogDetail(id, viewer)。
+// 【3】「对外可读」与「可列举 / 可索引」是两件事：link 档读得到但不进 sitemap、不许索引；
+//   判可达用 EXTERNAL_*，sitemap 用 INDEXABLE_*，别混用。
+// 【4】internal = 仅站内 core+ 可见，**不是不存在**（访客拿到登录页）。管理员 / 站长不需要
+//   豁免（他们本来就在 core+ 里，结构性豁免）；作者不设后门（降权作者读不到自己当年的
+//   internal 文章 —— 档位 vs 归属是两层，见 docs/architecture.md §8）。
+// 【5】对外列表只有一个出口 listPublicBlogs，且必须与 sitemap 的 listIndexableBlogs 同一集合
+//   （都用 INDEXABLE_BLOG_WHERE）：可发现 = 爬虫抓得到 ⟺ 公开列表找得到；对外列表行不带
+//   任何计数（点赞/评论/鱼干），由 select 保证。tests/unit/explore-visibility-guard.test.ts 盯。
+// 【6】exclude_from_all 与专注屏蔽不作用于对外列表（它们是站内陈列规则 / 账号级浏览偏好）；
+//   对外列表资格只有 visibility = public；混合会破坏【5】。
+// 设计背景与取舍：docs/source-design-notes.md §7
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { prisma } from './db';

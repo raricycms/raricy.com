@@ -1,53 +1,26 @@
-// ─────────────────────────────────────────────────────────────────────────────
 // market-price.ts — 练手盘的行情源（币安公开行情域）
 //
-// 【数据源为什么是 data-api.binance.vision】
-//   生产服务器是**阿里云中国大陆**（116.62.179.232）。实测从大陆裸连：
-//     · api.binance.com / api.coingecko.com / www.okx.com / api.coinbase.com
-//       / api.kraken.com / api.mexc.com / www.bitstamp.net —— 要么超时要么被 DNS 投毒
-//       （binance.com 解析到 157.240.17.14，那是 Facebook 的段；okx.com 解析到北大 IP）
-//     · data-api.binance.vision —— 200 / ~450ms，连打 6 次无抖动；解析到真实 AWS
-//       东京 IP，TLS 证书 `issuer=Amazon, subject=CN=*.binance.vision`（不是中间人假站）
-//   它是币安拆出来的**纯行情公共域**，不要 key、不吃签名，自报配额 6000 权重/分。
-//   api.gateio.ws 实测也可达，留作后备源（改 MARKET_PRICE_BASE_URL 即可换）。
+// 默认 data-api.binance.vision（选源实测见 docs/market-design-notes.md §5）；可用 MARKET_PRICE_BASE_URL 覆盖 —— e2e 必须指向
+// 替身（不能打真实外网），上线时也是换源开关。
 //
-// 【为什么基址必须可配】两个理由，都不是洁癖：
-//   1. **e2e 不能打真实外网** —— 否则用例的成败取决于币安当时通不通、价格是多少。
-//      e2e 里把 MARKET_PRICE_BASE_URL 指向 tests/e2e/mock-market-price.ts。
-//   2. **上线保险** —— 万一阿里云出口连 .vision 也不通，改一行环境变量换源，
-//      不用改代码、不用发版。
+// ★ 安全边界：展示可以缓存，成交不行 ★ getCachedQuotes() 是展示用的，允许拿旧价；fetchQuote() 是
+// 成交用的，必须现取。写成「成交时缓存兜底」= 看盘的人可以在价格跳动后、缓存刷新前下单 —— 无风险、
+// 可重复、无上限的套利。开平仓与强平都只认 fetchQuote()；失败抛 MarketPriceError，调用方 503 拒单。
 //
-// 【★ 安全边界：展示可以缓存，成交不行 ★】
-//   getCachedQuotes() 是**展示**用的，允许拿旧价；fetchQuote() 是**成交**用的，必须现取。
-//   写成「成交时缓存兜底」= 看盘的人可以在价格跳动后、缓存刷新前下单 —— 那是无风险、
-//   可重复、无上限的套利，不需要任何交易水平。整个功能的安全性就压在这一条上。
+// ★ 两层价：WS 实时 + REST 兜底，合并发生在读的时候 ★ 两个写入者：market-stream.ts 的常驻 WS 写
+// stream 字段（订 @trade），market-poll-drainer.ts 每 15 秒 REST 刷新整份覆盖 cache。读侧
+// getCachedQuotes() 逐标的挑：帧在 STREAM_TRUST_MS（10 秒，单标的冷清 3.5 秒的 3 倍）之内用 WS，
+// 否则回落 REST。WS 挂掉 10 秒内自动降级不冻住；24h 涨跌幅仍由 REST 给。⚠️ WS 那份不能写进
+// cache —— refreshQuotes() 是整份覆盖写，每 15 秒会把它抹掉。
 //
-// 【两层价：WS 实时 + REST 兜底】展示缓存有**两个写入者**，合并发生在**读**的时候：
-//   · market-stream.ts 的常驻 WebSocket（订 @trade）→ applyStreamTick() 写进 `stream` 字段
-//   · market-poll-drainer.ts 每 15 秒的 REST 刷新 → refreshQuotes() 整份覆盖 `cache`
-// 读侧 getCachedQuotes() **逐标的**挑：那一帧还在 STREAM_TRUST_MS 之内就用 WS 的，
-// 否则回落到 REST 那份。于是 WS 挂掉时屏幕在 10 秒内自动降级、**不会冻住**；REST 那条
-// 15 秒的循环一个字符都没动，它现在同时是兜底价源。24h 涨跌幅仍由 REST 给（WS 不带，
-// 而一个 24 小时口径的百分数 15 秒旧完全无所谓）。
-// ⚠️ WS 那份**不能写进 `cache`** —— refreshQuotes() 是整份覆盖写，每 15 秒会把它抹掉。
-// ⚠️ 这条流**只喂展示**：成交仍然 fetchQuote() 现取，上面那条安全边界不因它松动。
+// ★ 缓存住在 globalThis 上，不是模块级变量 ★ 轮询器（instrumentation 图）与请求处理（应用图）是
+// 两份编译产物，模块级变量 = 两份缓存 —— 症状是页面上的价永远冻住且不报错（见 docs/market-design-notes.md §5）。
 //
-// 阈值都有实测依据（2026-09-22 生产机，10 分钟）：0 重连、53828 tick、合计最长静默
-// 0.9s、事件时间差 30~54ms（对照 REST 一次往返 402ms）。**单标的**可以冷清到 3.5 秒
-// （BTC 那次），所以信任窗按单标的算、取 10 秒（3× 余量）；而「半死」判据必须盯
-// **合计**静默（见 market-stream.ts）——按单标的判会把一次正常冷清误判成断流。
+// ★ 两把钟不要混 ★ 缓存龄用真实 UTC 毫秒（fetchedAtMs / Date.now()）；写进 position 行的 quotedAt
+// 用 nowForDb()（库内墙上时间），两者绝不互相相减（见 db-time.ts）。K 线 openTime 是第三样：交易所
+// 真实 UTC 毫秒（可与 Date.now() 相减，但不是库内那套「UTC+8 墙上时间贴 Z」，不可与库内时间戳比）。
 //
-// 【两把钟不要混】缓存龄用「真实 UTC 毫秒」（fetchedAtMs，两边都是 Date.now()）；
-//   写进 position 行的 quotedAt 用 nowForDb()（库内墙上时间）。两者各管各的，
-//   绝不互相相减 —— 见 src/lib/db-time.ts 的来龙去脉。
-//   K 线的 openTime 是**第三样东西**：交易所给的真实 UTC 毫秒（与 Date.now() 同一把尺子，
-//   可以相减），但它**不是**库内那套「UTC+8 墙上时间贴 Z」。图表要按本站钟面显示时，
-//   得先加 SITE_TZ_OFFSET_MS 再用 getUTC* 读 —— 而绝不可拿它去和库内时间戳比大小。
-//
-// 【★ 缓存住在 globalThis 上，不是模块级变量 ★】轮询器（ instrumentation 图）与
-//   请求处理（应用图）是**两份编译产物**，模块级变量等于两份缓存 —— 症状是页面上的
-//   价永远冻住且不报错。展开见下方 GLOBAL_KEY 处。
-// ─────────────────────────────────────────────────────────────────────────────
+// 设计背景与取舍：docs/market-design-notes.md §5
 
 import { nowForDb } from './db-time';
 import {

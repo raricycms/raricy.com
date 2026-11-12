@@ -934,7 +934,7 @@ URL 请来抓」。（`robots.ts` 的**路径级**规则不需要动 —— `/ex
 - **数据源是 `data-api.binance.vision`**（币安拆出来的纯行情公共域，不吃 key）。之所以不用
   `api.binance.com`：生产服务器是阿里云大陆，实测那个域名被 DNS 投毒，CoinGecko / OKX /
   Coinbase 等一概超时。基址可用 `MARKET_PRICE_BASE_URL` 覆盖 —— e2e 指向替身，也是上线时
-  万一出口不通的换源开关，不用发版。见 `src/lib/market-price.ts` 头部。
+  万一出口不通的换源开关，不用发版。见 `docs/market-design-notes.md` §5 与 `src/lib/market-price.ts` 头部。
 - **展示缓存与轮询**：`market-poll-drainer.ts` 每 15 秒刷一次（`MARKET_POLL_MS=0` 可关），
   由 `src/instrumentation.ts` 启动 —— 它是本站**第二个**后台循环。它**只服务展示**，
   与成交无关。页面自己也有轮询（1 秒；隐藏标签页不轮、回前台先补一次）。

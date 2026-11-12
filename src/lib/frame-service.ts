@@ -1,111 +1,26 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// frame-service.ts — 头像框的素材域（扫盘 / 缓存 / 查表）+ 持有与装备 + **判定唯一出口**
-// · server-only
-//
-// ═══════════════════════════════════════════════════════════════════════════════
-// 五条不变量 —— 本文件的正确性核心，改动前先读完
-// ═══════════════════════════════════════════════════════════════════════════════
-//
-// 【F1】唯一写入者。`users.equipped_frame_key` / `users.equipped_frame_expires_at`
-//   这两列**只由本文件的 grantFrameTx / grantFrame / revokeFrame / equipFrame 写**。
-//   任何别的地方写它们 = 绕过到期判定（渲染侧直接读原始列会被
-//   tests/unit/frame-guard.test.ts 静态判红）。
-//   ⚠️ 权限变更（禁言 / 重置密码 / 踢下线）那条纪律在这里的同款是：**别的文件要改
-//   持有行或装备列时，加一个 `…Tx(tx, …)` 内核到本文件里，而不是自己在外面写** ——
-//   商城的购买路径（frame-shop-service）就是这么接进来的。
-//
-// 【F2】★ 同步契约 ★ 凡改动某用户对 key K 的持有行 `expires_at`（grant 续期 /
-//   revoke 失效），若该用户此刻 `equipped_frame_key === K`，**必须在同一个事务里**
-//   刷新（或清空）`equipped_frame_expires_at`。
-//   违反它 = 用户续期后**框永远不出现**，看起来像浏览器缓存。
-//   为什么：渲染侧读的是 users 上那两个**冗余列**（见迁移 20 头部的取舍），
-//   它不会回头去看持有行。这是本设计里最隐蔽的一条。
-//
-// 【F3】装备前置。`equipFrame(K)` 要求「alive 持有行 && 未过期 && K 在白名单 &&
-//   未退役」。**但素材缺失不阻止装备** —— 站长先授权、后传素材是合法顺序，
-//   那时 `frameUrlFor` 会是 null（框暂时不显示），而装备状态本身是有效的。
-//   反过来「卸下」**无条件成功**：不看当前 key 合不合法、不看有没有持有行。
-//   否则一个退役的 key 会变成卸不掉的僵尸装备。
-//
-// 【F4】唯一约束是**物理**的、包含墓碑行 → 「收回后再授予」必须**复活旧行**
-//   （翻转 deleted），不能新插 —— 会撞唯一约束。写法照 favorite-service 的 attachItems
-//   （那里记着 createMany({skipDuplicates}) 会静默变成 no-op 的教训）。
-//
-// 【F5】永不物删（全站口径）。到期 ≠ 撤销：`expires_at` 过期只让行失效，
-//   `deleted` 仍是 false；只有 revokeFrame 才翻墓碑。
-//
-// ═══════════════════════════════════════════════════════════════════════════════
-// 判定唯一出口
-// ═══════════════════════════════════════════════════════════════════════════════
-//
-//   frame-refs.resolveFrameKey(key, exp, now)   ← 唯一的比较运算（纯函数）
-//            ↓ 只被一处调用
-//   frameUrlFor(row)                            ← 唯一出口：白名单 → 未退役 →
-//            ↓                                    未过期 → 盘上有图，四道合一
-//   ~10 个 DTO 生产者 / 两个 API / CLI          下发「判定后的结果」
-//            ↓
-//   客户端（15 处头像 + 设置面板）—— **一次都不判**
-//
-// ⚠️ `frameUrlFor` 内部固定用 `nowForDb()`，**不接受 now 参数** —— 少一个传错的机会。
-//    `resolveFrameKey` 收 now 是为了可单测（它自己不读时钟）。
-// ⚠️ 客户端判零次：理由与静态守卫的要求见 frame-refs.ts 的「到期判定」小节。
-//
-// ─────────────────────────────────────────────────────────────────────────────
-// 素材域（扫盘 / 缓存 / 查表）
-//
-// 【目录结构】public/static/frames/<key>.png —— **是平铺的一层，没有子目录**，
-// 且**只认 PNG**。与 instance/stickers/<合集>/<表情>.{gif,webp,png,jpg,jpeg} 不同：
-// 框只有十几二十个、没有「合集」这一层，多一层目录只是多一份要维护的约定。
-//
-// 【为什么在 public/ 而不是 instance/】这些图是**我们自己画的**（源码 =
-// scripts/make-frame-demos.mjs），与用户上传、第三方表情那些**运行时数据**不是一类东西：
-//   · 它随代码入库 → 一次 clone / 一次 git pull 就有框可发。原先「部署时把
-//     instance/frames/ 拷到服务器」是一个**没有报错**的步骤，漏拷 = 全站静默不显示框，
-//     而「框不显示」与「没发过框」长得一模一样（见 docs/architecture.md 的风险表）。
-//   · instance/ 因此回到「只装运行时数据」这个干净的口径，不需要任何 gitignore 例外。
-//   · 与 public/static/img/icons/ 同源：自己的静态素材住 public/static/。
-//
-// ⚠️ 【入库带出来的新失效：改了脚本忘了重跑】原先素材不在库里，你非跑脚本不可，
-//    所以这件事**不可能发生**。现在 PNG 是仓库里的独立副本，改了 FRAMES 里的 SVG
-//    而不重跑，站点会继续显示旧图 —— 且不报任何错。所以脚本会把「生成这一刻」记进
-//    public/static/frames/manifest.json（脚本自身 + 每张产物的 sha256），
-//    tests/unit/frame-assets.test.ts 逐条核对。**改了出图脚本就必须重跑并一起提交。**
-//
-// 【只认 PNG 是硬要求，不是偷懒】头像框靠**透明通道**工作 —— 中间那块必须透出下面的
-// 头像。JPEG 没有 alpha，GIF 的 1 位透明度边缘全是锯齿。收窄到 PNG 顺带把
-// 「按扩展名下发的实现会以 image/svg+xml 内联返回」这条同源存储型 XSS 路径
-// 关在外面（详见下面 ALLOWED_FRAME_MIME）。
-//
-// ── 【与表情包最关键的差别：key 空间不在目录里】──────────────────────────────
-// 表情是「目录即 key 空间」——往 instance/stickers/ 丢什么就有什么。
-// 框**不是**：key 的权威是 src/lib/frame-refs.ts 的 FRAME_KEYS（代码白名单），
-// 目录只提供**字节**。所以：
-//   · 目录里多出来的文件（手滑拷进来的 psd、备份文件）**一律不被收编**；
-//   · 目录缺席只让框**不显示**（第三道闸判成「暂时没图」），不会让框不存在 ——
-//     授权、展示名、价格照常，缺的只是那张图。
-//
-// 【这一层的安全模型】与 resolveSticker 同源：**key 先过白名单，才谈得上拼路径**。
-// 白名单是手写的源码常量，所以「攻击者控制了一个 key」这件事本身不可能发生；
-// `path.dirname` 断言是纵深防御（防将来有人把白名单改成从别处读）。
-//
-// ── 【为什么要缓存】──────────────────────────────────────────────────────────
-// raw 路由是**每张图一个请求**（一屏讨论 30 个头像 = 30 次请求）。不缓存就是 30 次
-// readdir。三层，与 sticker-service 逐条同构：
-//   1. TTL（5s）内直接返回缓存
-//   2. TTL 过了但目录 mtime 没变 → 只重算时间戳，不重建 set
-//   3. 变了 → 全量重扫
-//   4. **兜底**：距上次全扫 > 60s 无条件重扫。Windows 的 8.3 短名缓存会在重命名时
-//      产生「隧道」效应，目录 mtime 有极小概率不更新 —— 只靠 mtime 的话新加的框
-//      会**永远看不见，且看起来毫无原因**。有兜底全扫，最坏是「新框最多 60 秒后
-//      出现」，且**任何时候都不需要重启进程**。
-//
-// ★ 关键性质：覆盖同名文件的内容**不需要任何失效** ★
-// 缓存里只有 key 的集合，字节是每次请求现读的。所以「把 demo.png 换成另一张图」
-// 立刻生效（剩下的只是浏览器 HTTP 缓存，见 raw 路由的 Cache-Control）。
-// 时间戳只需要捕捉「增 / 删 / 改名」这三种。
-//
-// ⚠️ 素材域只回答「某个 key 在盘上有没有图」，而这个问题与「谁在戴」无关 ——
-//    所以它**不碰 prisma**。判定出口与写路径在文件后半段。
+// frame-service.ts — 头像框素材域（扫盘 / 缓存 / 查表）+ 持有与装备 + 判定唯一出口（server-only）
+// 【F1】唯一写入者：users.equipped_frame_key / equipped_frame_expires_at 只由 grantFrameTx /
+//   grantFrame / revokeFrame / equipFrame 写；别的文件要改就加 …Tx 内核到本文件，渲染侧直读
+//   原始列会被 tests/unit/frame-guard.test.ts 判红。
+// 【F2】改持有行 expires_at（续期 / 失效）时若正戴着同一 key，必须同一事务刷新/清空
+//   equipped_frame_expires_at；违反 = 续期后框永远不出现（渲染侧只读 users 的冗余列）。
+// 【F3】equipFrame 要求 alive 持有行 && 未过期 && 白名单 && 未退役；素材缺失不阻止装备
+//   （frameUrlFor 为 null 只是暂时不显示），卸下无条件成功（否则退役 key 卸不掉）。
+// 【F4】唯一约束物理且含墓碑行：收回后再授予必须复活旧行（翻 deleted），不能新插；
+//   写法照 favorite-service 的 attachItems（upsert，别用 createMany skipDuplicates）。
+// 【F5】永不物删：到期只让行失效（deleted 仍 false），只有 revokeFrame 翻墓碑。
+// 【判定唯一出口】resolveFrameKey（唯一比较运算）→ frameUrlFor（白名单/未退役/未过期/
+//   有图，四道合一）→ DTO 生产者 / API / CLI 下发结果 → 客户端判零次（db-time-guard 规则
+//   3–5 扫 src/）；frameUrlFor 固定用 nowForDb() 不收 now，resolveFrameKey 收 now 只为单测。
+// 【素材域】public/static/frames/<key>.png 平铺、只认 PNG（透明通道；关掉按扩展名下发
+//   SVG 内联的 XSS 路径）。key 权威是 frame-refs.FRAME_KEYS，目录只提供字节：多余文件不
+//   收纳，缺席只让框不显示。白名单先于拼路径，path.dirname 是纵深防御。缓存 TTL 5s / mtime
+//   / 全量重扫 + 60s 兜底（Windows 8.3 缓存可能不更新 mtime），只存 key 集合（覆盖同名内容
+//   无需失效），本层不碰 prisma。
+// ⚠️ 改 scripts/make-frame-demos.mjs 必须重跑并提交 manifest.json 与产物
+//   （tests/unit/frame-assets.test.ts 核对 sha256）。
+// 设计背景与取舍：docs/source-design-notes.md §1
 // ─────────────────────────────────────────────────────────────────────────────
 
 import fs from 'node:fs';
@@ -137,7 +52,7 @@ import {
  *
  * ⚠️ 素材**入库**，所以这个回落路径在任何环境里都该有东西。它空了只有两种可能：
  *    部署时 FRAMES_DIR 指到了别处，或 git 里那张图被删了 —— 两种都会让全站
- *    静默不显示框，而页面不报错（见文件头的「入库带出来的新失效」）。
+ *    静默不显示框，而页面不报错（见 `docs/source-design-notes.md` §1 的「入库带出来的新失效」）。
  */
 function framesRoot(): string {
   return process.env.FRAMES_DIR || path.resolve(process.cwd(), 'public', 'static', 'frames');

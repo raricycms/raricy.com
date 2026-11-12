@@ -96,6 +96,9 @@
 - 评论 / 讨论不把 `img` 加进净化白名单；对外资源读口维持权限与可见性白名单，匿名身份不泄露到通知或审计。
 - 第三方素材只有授权允许再分发才入库；自行创作的素材可入库，运行时数据与私密部署信息不入库。
 - 产品文案只写功能名称、操作提示和状态等必要信息，不主动添加装饰性副标题。
+- 源码头注释只写职责 / 唯一出口 / 改动注意；设计史与背景抽到 `docs/source-design-notes.md`
+  （行情在 `docs/market-design-notes.md`），写法与抽取命令见 `docs/source-header-style.md`。
+  `docs/src-lib-index.md` 由 `npm run lib:index` 生成，不要手改。
 
 ## 按任务读取
 

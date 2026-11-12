@@ -1,52 +1,21 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // rich-text.ts — 用户输入正文 → 安全 HTML 的**共享管线**（marked → DOMPurify → 后处理）
-//
-// 【为什么单独成模块】讨论正文与评论正文是同一类东西：**用户输入**，且渲染进所有
-// 登录用户都能看到的公共区域 —— 一处 XSS 等于全站会话沦陷（偷 cookie / 冒名发消息
-// / CSRF 写操作）。两者的威胁模型与防线**逐条相同**，差别只在白名单与链接类名。
-//
-// 各写一份的代价不是重复代码，是**防线漂移**：任一边漏打一个补丁（比如下面
-// walkTokens 堵的那个 marked 裸文本通道 —— 那是实测过的假密码框钓鱼向量），
-// 另一边不会知道，而两边看起来都「有净化」。
-//
-// 所以本文件是唯一管线：**标签 / 属性白名单**也收在这里，两个入口共用同一份
-// （R3-151 —— 此前 chat-markdown / comment-markdown 各存一份逐字相同的副本，只改
-// 一边时另一边的用例不会红）；只有链接类名与缓存上限由调用方注入：
-//   · src/lib/chat-markdown.ts    → 讨论气泡（linkClass: chat-msg__link, cacheMax: 300）
-//   · src/lib/comment-markdown.ts → 评论正文（linkClass: comment-link, cacheMax: 200）
-//
-// ⚠️ 改本文件 = 改安全边界。单测在 tests/unit/chat-markdown.test.ts（五道防线逐条
-//    覆盖；评论侧的原 comment-markdown.test.ts 已于 Round4 并入该文件，两个入口都跑它）。
-//
+// 【唯一管线】标签 / 属性白名单也收在这里，两个入口共用；只有链接类名与缓存上限由调用方注入：
+//   chat-markdown.ts → 讨论气泡（linkClass chat-msg__link, cacheMax 300）；
+//   comment-markdown.ts → 评论正文（linkClass comment-link, cacheMax 200）。
+// ⚠️ 改本文件 = 改安全边界；单测 tests/unit/chat-markdown.test.ts 逐条覆盖五道防线（两个入口都跑）。
 // 【威胁模型：五道防线】
-//   1. 原始 HTML —— marked 默认把 <script> / <img onerror> **原样透传**（实测 v18）。
-//      override renderer.html 后，用户自带标签一律转义成可见文本：既挡住注入，也让
-//      用户看得见「你写的标签被当成文本了」，不静默吞内容。
-//      ⚠️ 光有 renderer.html 不够：marked 的 inRawBlock 状态会让「它认不出、浏览器
-//      认得」的畸形标签走裸文本通道直出（实测 `<input type="password"y>`），
-//      故另有 walkTokens 补丁 —— 见下方 marked.use 里的注释。
-//   2. 伪协议 —— `[x](javascript:alert(1))` / data: / vbscript: 靠 DOMPurify 的
-//      ALLOWED_URI_REGEXP 拦截：只放行 http(s) / mailto / 站内相对路径，其余摘除 href。
-//   3. 属性注入 —— ALLOWED_ATTR 白名单里没有 class / style / on*；链接类名一律由
-//      **净化之后**的后处理代码添加（固定字符串），用户无从伪造 `.chat-msg__blog`
-//      之类 UI 类名去冒充博客卡片。
-//   4. 外链图片 —— <img> 不在白名单，`![](url)` 降级成链接：发图走图床**附件**
-//      （imageId），不允许正文里嵌任意外链图片（第三方跟踪像素 / 访客 IP 泄露 /
-//      混合内容告警）。评论与讨论共用这条口径。
-//      ⚠️ **唯一的例外是 `[@<10位图床ID>]`** —— 它不是「放开了这个白名单」，
-//      而是全程绕开白名单：`[@id]` 本身就是纯文本，marked 原样留着，等 DOMPurify
-//      净化完之后，再由 embedImageRefs 用 createElement 把它换成
-//      <img src="/api/images/<id>/raw">。因此用户手写的 <img> 与 `![](外链)` 的
-//      待遇**一点没变**；能出现的图片只有我们自己构造的站内图床 URL 这一种形态
-//      （id 还先过严格形态）。细节见 src/lib/content-refs.ts 的文件头。
-//   5. 服务端无 DOM —— DOMPurify 在没有 window 时 sanitize 会**原样返回输入**
-//      （purify.js: `if (!DOMPurify.isSupported) return dirty`），这是个静默的
-//      安全洞。故此处显式拦：净化不可用 → 只输出转义纯文本，绝不透传 HTML。
-//
-// 【为什么关掉 marked 的 GFM 自动链接】它的 `_backpedal` 只认 ASCII 标点，中文写作
-// 里「见 https://a.com/x。后面」会把「。后面」整段吞进 href（实测）。这里关掉它，
-// 改在净化后的 DOM 上跑 linkify —— 那份实现专门处理中文句读 / 成对括号，且有单测
-// （tests/unit/linkify.test.ts）。
+// 1. 原始 HTML：marked 默认原样透传 <script>/<img onerror>；renderer.html 把用户标签转义成
+//    可见文本，另有 walkTokens 补丁堵 marked inRawBlock 的裸文本通道（它认不出、浏览器认得的畸形标签）。
+// 2. 伪协议：ALLOWED_URI_REGEXP 只放行 http(s)/mailto/站内相对路径，其余摘除 href。
+// 3. 属性注入：ALLOWED_ATTR 没有 class/style/on*；链接类名由净化**之后**的固定字符串后处理添加。
+// 4. 外链图片：<img> 不在白名单，![](url) 降级成链接；发图只走图床附件，评论与讨论共用。
+//    唯一例外 [@<10位图床ID>] 不是放开白名单，而是全程绕开：净化后由 embedImageRefs 用
+//    createElement 换成站内图床 URL（id 先过严格形态），用户手写 <img> 待遇不变（见 content-refs.ts）。
+// 5. 服务端无 DOM：DOMPurify 不支持时 sanitize 原样返回输入 → 显式拦：只输出转义纯文本，绝不透传。
+// 【别打开 marked 的 GFM 自动链接】它会吞中文句读（「见 url。后面」）；改在净化后的 DOM 上跑
+//   linkify（专处理中文句读 / 成对括号，有单测 tests/unit/linkify.test.ts）。
+// 设计背景与取舍：docs/source-design-notes.md §5
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { Marked } from 'marked';
