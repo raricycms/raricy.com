@@ -31,14 +31,37 @@ import { fileURLToPath } from 'node:url';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 
+// ── `next build` 的 V8 堆上限 ────────────────────────────────────────────────
+// 类型检查（`Linting and checking validity of types`）要把整个 TS 程序装进
+// 内存，是全流程的内存峰值。内存小的服务器上 Node 默认堆上限只有 1GB 量级，
+// 构建会在这步以 SIGABRT 死掉：
+//   FATAL ERROR: Ineffective mark-compacts near heap limit
+//   JavaScript heap out of memory
+// 只给 `next build` 这一步显式抬高上限，不波及 dev / test / 其它脚本。
+// 机器级设置仍可用 `BUILD_MAX_OLD_SPACE_MB=1536 npm run build` 覆盖数值；部署机
+// 已有的 NODE_OPTIONS 会保留，但我们这个 flag 追加在最后 —— Node 对重复的
+// `--max-old-space-size` 取最后一次，因此这里的值才是最终生效值。
+const requestedMaxOldSpace = Number(process.env.BUILD_MAX_OLD_SPACE_MB);
+const NEXT_BUILD_MAX_OLD_SPACE_MB =
+  Number.isFinite(requestedMaxOldSpace) && requestedMaxOldSpace > 0
+    ? requestedMaxOldSpace
+    : 1280;
+
+function nextBuildNodeOptions(existing = '') {
+  return [existing, `--max-old-space-size=${NEXT_BUILD_MAX_OLD_SPACE_MB}`]
+    .filter(Boolean)
+    .join(' ');
+}
+
 /** 跑一条命令，失败即止（与原 `&&` 串联的语义一致）。 */
-function run(label, command, args) {
+function run(label, command, args, extraEnv = {}) {
   console.log(`\n[build] ${label}`);
   const r = spawnSync(command, args, {
     cwd: root,
     // Windows 上 npm/npx 是 .cmd 批处理，必须经 shell 才能拉起（同 tests 里的既有注解）。
     shell: process.platform === 'win32',
     stdio: 'inherit',
+    env: { ...process.env, ...extraEnv },
   });
   if (r.status !== 0) {
     console.error(`[build] 失败：${label}（exit ${r.status ?? 'null'}）`);
@@ -58,7 +81,9 @@ try {
 run('校验 PWA 图标台账', 'node', ['scripts/make-pwa-icons.mjs', '--check']);
 run('prisma generate', 'npx', ['prisma', 'generate']);
 run('复制转换器引擎资产', 'node', ['scripts/copy-converter-assets.mjs']);
-run('next build', 'npx', ['next', 'build']);
+run('next build', 'npx', ['next', 'build'], {
+  NODE_OPTIONS: nextBuildNodeOptions(process.env.NODE_OPTIONS),
+});
 run('realtime 构建', 'npx', ['tsc', '-p', 'services/realtime/tsconfig.json']);
 
 console.log('\n[build] 完成');

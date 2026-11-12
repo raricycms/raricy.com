@@ -412,6 +412,14 @@ schema 新增字段（如 `focusMode`）会报 `Property 'x' does not exist on t
 生产构建的类型检查用 `tsconfig.build.json`（`next.config.mjs` 在 `NODE_ENV=production` 时切换）：
 继承根 `tsconfig.json` 的严格选项，只检查 `next-env.d.ts`、`src/**/*.ts(x)` 与 `.next/types/**/*.ts`
 （应用与路由类型），把测试、脚本与实时服务排除在部署类型检查之外，降低构建内存需求。
+
+`next build` 的 V8 堆上限由 `scripts/build.mjs` 显式设为 **1280MB**（`NODE_OPTIONS=--max-old-space-size=1280`，
+只作用于这一步）：小内存服务器上 Node 默认上限约 1GB，类型检查会以 `JavaScript heap out of memory` /
+`SIGABRT` 崩掉。RAM 更大时可 `BUILD_MAX_OLD_SPACE_MB=1536 npm run build` 覆盖数值（脚本把它追加为最后一个
+`--max-old-space-size`，Node 取最后一次，部署机原有的 `NODE_OPTIONS` 不会抵消它）。注意 1280MB 只是 JS 堆
+上限，进程实际内存占用还会更高；RAM 只有 1GB 级别的机器不要抬过实际可用内存，否则会从 V8 的 OOM 变成系统
+的 OOM killer。
+
 开发机上的**完整**检查走 `npm run typecheck`（`tsc -p tsconfig.typecheck.json --noEmit`）：
 覆盖 `src/`、`tests/`、`scripts/`（含根目录 4 个 `.mts`）与 `services/`，且**不读 `.next/types`**
 （构建产物陈旧时会报出指向已删除路由的幻影错误，见 `tsconfig.typecheck.json` 文件头）。
