@@ -62,7 +62,7 @@ const mocks = vi.hoisted(() => {
   return {
     instances,
     FakeScheduler,
-    adaptReactivePreview: vi.fn(),
+    expandClientReferences: vi.fn(),
     createClientReferenceReader: vi.fn(),
   };
 });
@@ -83,7 +83,7 @@ vi.mock('reactive-md', () => ({
 }));
 
 vi.mock('@/lib/reactive/client-compile', () => ({
-  adaptReactivePreview: mocks.adaptReactivePreview,
+  expandClientReferences: mocks.expandClientReferences,
   createClientReferenceReader: mocks.createClientReferenceReader,
 }));
 
@@ -144,7 +144,7 @@ beforeEach(() => {
   vi.useFakeTimers();
   window.localStorage.clear();
   mocks.instances.length = 0;
-  mocks.adaptReactivePreview.mockReset();
+  mocks.expandClientReferences.mockReset();
   mocks.createClientReferenceReader.mockReset();
   mocks.createClientReferenceReader.mockImplementation(() => ({}));
 });
@@ -353,111 +353,51 @@ async function mountPreview(source: string, refreshToken = 0): Promise<PreviewHa
 }
 
 /** 替身调度器「编译完成」的那一下（hostData 已在适配完成时进了预览内部的表）。 */
-function emitResult(
-  scheduler: ReturnType<PreviewHandle['scheduler']>,
-  source: string
-) {
-  act(() => {
+async function emitResult(scheduler: ReturnType<PreviewHandle['scheduler']>, source: string) {
+  await act(async () => {
     scheduler.options.onResult({
-      source,
-      result: { ok: true, document: {} },
-      duration: 0,
-      mode: 'fallback',
+      source, result: { ok: true, document: {} }, duration: 0, mode: 'worker',
     });
   });
 }
 
-describe('刷新引用：同一份源码也要重取、重编译', () => {
-  it('刷新会重建 reader、重新适配并把新结果渲染出来', async () => {
-    mocks.adaptReactivePreview
-      .mockResolvedValueOnce({ adaptedSource: 'SRC', hostData: { title: '旧标题' } })
-      .mockResolvedValueOnce({ adaptedSource: 'SRC', hostData: { title: '新标题' } });
+describe('编译后展开预览引用', () => {
+  it('刷新引用会重建 reader，同一份源码也会重新展开', async () => {
+    mocks.expandClientReferences
+      .mockResolvedValueOnce({ document: {}, hostData: { title: '旧标题' } })
+      .mockResolvedValueOnce({ document: {}, hostData: { title: '新标题' } });
+    const source = '[@AbCdEf123]';
+    const view = await mountPreview(source);
+    await emitResult(view.scheduler(), source);
+    expect(view.container.textContent).toContain('旧标题');
 
-    const h = await mountPreview('[@AbCdEf123]');
-    await tick(1);
-    const scheduler = h.scheduler();
-    expect(scheduler.schedule).toHaveBeenCalledTimes(1);
-    expect(mocks.createClientReferenceReader).toHaveBeenCalledTimes(1);
-
-    emitResult(scheduler, 'SRC');
-    expect(h.container.textContent).toContain('旧标题');
-
-    await h.render('[@AbCdEf123]', 1);
-    await tick(1);
-
-    expect(
-      mocks.createClientReferenceReader,
-      '刷新必须换一份 reader（成功与失败的缓存都跟着作废）'
-    ).toHaveBeenCalledTimes(2);
-    expect(scheduler.schedule, '同一份源码刷新后要重新编译').toHaveBeenCalledTimes(2);
-
-    emitResult(scheduler, 'SRC');
-    expect(h.container.textContent).toContain('新标题');
-    h.unmount();
+    await view.render(source, 1);
+    expect(mocks.createClientReferenceReader).toHaveBeenCalledTimes(2);
+    expect(view.scheduler().schedule).toHaveBeenCalledWith(source, expect.anything());
+    await emitResult(view.scheduler(), source);
+    expect(view.container.textContent).toContain('新标题');
+    view.unmount();
   });
 
-  it('失败也随刷新重试：先报错，刷新后恢复', async () => {
-    mocks.adaptReactivePreview
-      .mockRejectedValueOnce(new Error('取数失败'))
-      .mockResolvedValueOnce({ adaptedSource: 'SRC', hostData: {} });
-
-    const h = await mountPreview('[@AbCdEf123]');
-    await tick(1);
-    expect(h.container.textContent).toContain('取数失败');
-
-    await h.render('[@AbCdEf123]', 1);
-    await tick(1);
-    const scheduler = h.scheduler();
-    expect(scheduler.schedule).toHaveBeenCalledTimes(1);
-
-    emitResult(scheduler, 'SRC');
-    expect(h.container.textContent).not.toContain('取数失败');
-    h.unmount();
+  it('旧取数迟到时保留新源码的预览', async () => {
+    let resolveOld: (value: unknown) => void = () => {};
+    mocks.expandClientReferences
+      .mockImplementationOnce(() => new Promise((resolve) => { resolveOld = resolve; }))
+      .mockResolvedValueOnce({ document: {}, hostData: { title: '新引用' } });
+    const view = await mountPreview('原稿');
+    await emitResult(view.scheduler(), '原稿');
+    await view.render('新版', 0);
+    await emitResult(view.scheduler(), '新版');
+    await act(async () => { resolveOld({ document: {}, hostData: { title: '旧引用' } }); });
+    expect(view.container.textContent).toContain('新引用');
+    expect(view.container.textContent).not.toContain('旧引用');
+    view.unmount();
   });
 
-  it('刷新后迟到的旧适配结果不得覆盖新结果', async () => {
-    let resolveFirst: (value: unknown) => void = () => {};
-    mocks.adaptReactivePreview
-      .mockImplementationOnce(
-        () =>
-          new Promise((resolve) => {
-            resolveFirst = resolve;
-          })
-      )
-      .mockResolvedValueOnce({ adaptedSource: 'NEW', hostData: { title: '新' } });
-
-    const h = await mountPreview('原稿');
-    await tick(1); // 第一轮适配在飞（旧 reader）
-    const scheduler = h.scheduler();
-
-    await h.render('原稿', 1); // 刷新：也换掉 reader
-    await tick(1); // 第二轮适配完成并排进调度器
-    expect(scheduler.schedule).toHaveBeenCalledTimes(1);
-    expect(scheduler.schedule).toHaveBeenCalledWith('NEW', expect.anything());
-
-    emitResult(scheduler, 'NEW');
-    expect(h.container.textContent).toContain('新');
-
-    // 旧一代的结果现在才回来（用旧 reader 取的数）—— 必须被代次守卫丢掉。
-    await act(async () => {
-      resolveFirst({ adaptedSource: 'OLD', hostData: { title: '旧' } });
-    });
-    await tick(1);
-
-    expect(scheduler.schedule, '旧代次不得再排进调度器').toHaveBeenCalledTimes(1);
-    expect(h.container.textContent, '旧结果不得覆盖已渲染的新结果').toContain('新');
-    h.unmount();
-  });
-
-  it('F4：worker 回退主线程时，预览明示「本地检查」而不是静默变慢', async () => {
-    mocks.adaptReactivePreview.mockResolvedValue({ adaptedSource: 'SRC', hostData: {} });
-    const h = await mountPreview('正文');
-    await tick(1);
-    const scheduler = h.scheduler();
-
-    expect(h.container.textContent).not.toContain('本地检查');
-    act(() => scheduler.options.onModeChange?.('fallback', 'worker boom'));
-    expect(h.container.textContent).toContain('本地检查');
-    h.unmount();
+  it('Worker 回退时显示本地检查状态', async () => {
+    const view = await mountPreview('正文');
+    act(() => view.scheduler().options.onModeChange?.('fallback'));
+    expect(view.container.textContent).toContain('本地检查');
+    view.unmount();
   });
 });

@@ -28,12 +28,9 @@ import { parseContentFormat, type ContentFormat } from '../content-format';
 import { MAX_FAVORITE_REFS, isFavoriteId } from '../favorite-refs';
 import { performance } from 'node:perf_hooks';
 import { utf8ByteLength } from './cache';
-import { compileLocal, LOCAL_SYNTAX_VERSION } from 'reactive-md';
-import { shouldRejectReactive } from './diagnostics';
-import { compiledEvidence, detectReactiveSyntax, literalizeReactiveSyntax } from './detect-format';
-import { applyLegacyHtmlCompat, LEGACY_COMPAT_VERSION } from './legacy-compat';
-import { checkSyntaxBudget } from './syntax-budget';
-import { REACTIVE_COMPILER_VERSION, REACTIVE_MAX_SYNTAX_NODES, REACTIVE_COMPILE_OPTIONS } from './host-components';
+import { LOCAL_SYNTAX_VERSION } from 'reactive-md';
+import { detectReactiveSyntax } from './detect-format';
+import { REACTIVE_COMPILER_VERSION, REACTIVE_MAX_SYNTAX_NODES } from './host-components';
 
 export const CORPUS_SCAN_SCHEMA_VERSION = 1;
 
@@ -675,62 +672,14 @@ function compileCorpusDocument(document: CorpusDocument): CorpusCompileScan {
 }
 
 function compileCorpusDocumentUnsafe(document: CorpusDocument): CorpusCompileScan {
-  const budget = checkSyntaxBudget(document.content);
-  if (budget) {
-    return {
-      status: 'failed',
-      codes: [budget.diagnostic.code],
-      compatCounts: {},
-      detectedFormat: document.format,
-      literalized: false,
-      formatMismatch: false,
-    };
-  }
-  const compat = applyLegacyHtmlCompat(document.content);
-  const options = REACTIVE_COMPILE_OPTIONS;
-  let compiledSource = compat.source;
-  let result = compileLocal(compiledSource, options);
-  let literalized = false;
-  if (!result.ok && document.format === 'markdown') {
-    const literal = literalizeReactiveSyntax(document.content);
-    if (literal.changed) {
-      const retrySource = applyLegacyHtmlCompat(literal.source).source;
-      const retry = compileLocal(retrySource, options);
-      if (retry.ok) {
-        compiledSource = retrySource;
-        result = retry;
-        literalized = true;
-      }
-    }
-  }
-  if (!result.ok) {
-    return {
-      status: 'failed',
-      codes: [...new Set(result.diagnostics.map((d) => d.code))],
-      compatCounts: compat.counts,
-      detectedFormat: 'markdown',
-      literalized,
-      formatMismatch: false,
-    };
-  }
-  const detectedFormat = compiledEvidence(compiledSource, result).length > 0 ? 'reactive' : 'markdown';
-  // literalize 救活的 Markdown 不能按「字面化后的文档」判格式：原文可能已经
-  // 被解析器认成 invalid-enhanced（服务端写入会拒绝）。语料报告要单列这一类，
-  // 否则全量扫描里它们看起来只是“字面量降级”的普通 Markdown。
-  const invalidEnhancedMarkdown =
-    literalized && detectReactiveSyntax(document.content).format === 'reactive';
+  const result = detectReactiveSyntax(document.content);
   return {
-    status: shouldRejectReactive(result) ? 'fallback' : 'ok',
-    codes: [
-      ...new Set([
-        ...result.diagnostics.map((d) => d.code),
-        ...(invalidEnhancedMarkdown ? ['site.write.format-mismatch'] : []),
-      ]),
-    ],
-    compatCounts: compat.counts,
-    detectedFormat,
-    literalized,
-    formatMismatch: invalidEnhancedMarkdown || (document.format === 'markdown' && detectedFormat === 'reactive'),
+    status: result.valid ? 'ok' : 'failed',
+    codes: result.codes,
+    compatCounts: {},
+    detectedFormat: result.format,
+    literalized: false,
+    formatMismatch: document.format === 'markdown' && result.reactive,
   };
 }
 
@@ -971,7 +920,7 @@ export function scanCorpusDocuments(
           compilerVersion: REACTIVE_COMPILER_VERSION,
           syntaxVersion: LOCAL_SYNTAX_VERSION,
           maxSyntaxNodes: REACTIVE_MAX_SYNTAX_NODES,
-          compatVersion: LEGACY_COMPAT_VERSION,
+          compatVersion: 'upstream',
         }
       : null,
     textDiff: 'not-run',

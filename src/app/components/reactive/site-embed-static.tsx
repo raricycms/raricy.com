@@ -21,14 +21,8 @@ import CompiledDocumentView from './CompiledDocumentView';
 import type {
   SiteEmbedData,
   SiteEmbedKind,
-  SiteMediaPayload,
-  SiteMediaPreload,
-  SiteMediaSourceItem,
-  SiteMediaTrackItem,
 } from '@/lib/reactive/ref-types';
 import { CONTENT_FORMAT_LABELS, parseContentFormat } from '@/lib/content-format';
-import { parseLegacyDataImage } from '@/lib/reactive/data-image';
-import { isAllowedReactiveUrl } from '@/lib/reactive/url-policy';
 import { FAVORITE_ID_RE, MAX_CARD_ITEMS } from '@/lib/favorite-refs';
 import type { VoteEmbedData, VoteOptionData } from '@/lib/reactive/ref-types';
 
@@ -41,9 +35,6 @@ const KIND_REF: Record<SiteEmbedKind, RegExp> = {
   vote: /^[A-Za-z0-9]{1,32}$/,
   favorite: FAVORITE_ID_RE,
   clipboard: /^[A-Za-z0-9]{8}$/,
-  image: /^[a-f0-9]{24}$/,
-  // 历史 HTML 音视频：compat 生成的 token 固定 10 位小写十六进制。
-  media: /^[a-f0-9]{10}$/,
 };
 
 /** 收藏夹条目的博客 id 只作为站内路径的一段；UUID 以外的值不给链接。 */
@@ -54,8 +45,6 @@ const EMBED_KINDS: readonly SiteEmbedKind[] = [
   'vote',
   'favorite',
   'clipboard',
-  'image',
-  'media',
 ];
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -347,238 +336,10 @@ function FavoriteEmbed({
   );
 }
 
-/** 受限 data 位图：真实字节只来自 hostData，渲染前再验一次 MIME / 魔数。 */
-function ImageEmbed({ data }: { data: SiteEmbedData }): ReactNode {
-  const payload = isRecord(data.payload) ? data.payload : null;
-  const src = typeof payload?.src === 'string' ? payload.src : '';
-  const image = parseLegacyDataImage(src);
-  if (!image) return <SiteEmbedStatus status="error" />;
-  const alt = typeof payload?.alt === 'string' && payload.alt.length > 0 ? payload.alt : '图片';
-  const dimension = (value: unknown): number | undefined => {
-    if (typeof value !== 'string' || !/^\d{1,5}$/.test(value)) return undefined;
-    const parsed = Number(value);
-    return parsed > 0 ? parsed : undefined;
-  };
-  return (
-    <img
-      className="site-embed site-embed--image"
-      src={image.url}
-      alt={alt}
-      width={dimension(payload?.width)}
-      height={dimension(payload?.height)}
-      loading="lazy"
-    />
-  );
-}
-
-// ── 历史 HTML 音视频（`media` kind）──────────────────────────────────────────
-//
-// 旧 Markdown 白名单允许 video / audio / source / track。compat 把它们变成
-// `[[媒体:<10 hex>]]`，适配器展开成 `site-embed kind="media"`；这里按**同一份**
-// hostRenderer 渲染静态控件（SSR / 阅读 / 预览 / 导出共用），并在渲染前重新
-// 复核 URL —— 不采信 payload 里的任意协议。
-//
-// ★ 永不输出 autoplay ★ 产品决定禁止自动播放；payload 里的该字段直接忽略。
-// ★ 默认 preload="none" ★ 作者显式写了 none/metadata/auto 才保留。
-
-const MEDIA_MAX_SOURCES = 8;
-const MEDIA_MAX_TRACKS = 8;
-const MEDIA_PRELOADS = new Set<SiteMediaPreload>(['none', 'metadata', 'auto']);
-const MEDIA_TRACK_KINDS = new Set([
-  'subtitles',
-  'captions',
-  'descriptions',
-  'chapters',
-  'metadata',
-]);
-const SAFE_MIME = /^[A-Za-z0-9][A-Za-z0-9.+-]*\/[A-Za-z0-9][A-Za-z0-9.+-]*$/;
-const SAFE_SRCLANG = /^[A-Za-z0-9-]{1,16}$/;
-const SAFE_PIXELS = /^[1-9][0-9]{0,4}$/;
-
-interface ParsedMedia {
-  media: 'video' | 'audio';
-  src?: string;
-  sources: SiteMediaSourceItem[];
-  tracks: SiteMediaTrackItem[];
-  poster?: string;
-  preload: SiteMediaPreload;
-  loop: boolean;
-  muted: boolean;
-  playsInline: boolean;
-  width?: number;
-  height?: number;
-  crossorigin?: 'anonymous' | 'use-credentials';
-}
-
-function mediaUrl(value: unknown): string | undefined {
-  return typeof value === 'string' && isAllowedReactiveUrl(value, 'link')
-    ? value
-    : undefined;
-}
-
-function posterUrl(value: unknown): string | undefined {
-  return typeof value === 'string' && isAllowedReactiveUrl(value, 'image')
-    ? value
-    : undefined;
-}
-
-function parseMediaSources(value: unknown): SiteMediaSourceItem[] {
-  if (!Array.isArray(value)) return [];
-  const sources: SiteMediaSourceItem[] = [];
-  for (const raw of value.slice(0, MEDIA_MAX_SOURCES)) {
-    if (!isRecord(raw)) continue;
-    const src = mediaUrl(raw.src);
-    if (!src) continue;
-    const type =
-      typeof raw.type === 'string' && raw.type.length <= 100 && SAFE_MIME.test(raw.type)
-        ? raw.type
-        : undefined;
-    sources.push(type ? { src, type } : { src });
-  }
-  return sources;
-}
-
-function parseMediaTracks(value: unknown): SiteMediaTrackItem[] {
-  if (!Array.isArray(value)) return [];
-  const tracks: SiteMediaTrackItem[] = [];
-  for (const raw of value.slice(0, MEDIA_MAX_TRACKS)) {
-    if (!isRecord(raw)) continue;
-    const src = mediaUrl(raw.src);
-    if (!src) continue;
-    const kind =
-      typeof raw.kind === 'string' && MEDIA_TRACK_KINDS.has(raw.kind)
-        ? (raw.kind as SiteMediaTrackItem['kind'])
-        : undefined;
-    const srclang =
-      typeof raw.srclang === 'string' && SAFE_SRCLANG.test(raw.srclang)
-        ? raw.srclang
-        : undefined;
-    const label =
-      typeof raw.label === 'string' && raw.label.length > 0 && raw.label.length <= 200
-        ? raw.label
-        : undefined;
-    tracks.push({
-      src,
-      ...(kind ? { kind } : {}),
-      ...(srclang ? { srclang } : {}),
-      ...(label ? { label } : {}),
-      ...(raw.default === true ? { default: true } : {}),
-    });
-  }
-  return tracks;
-}
-
-function parseMediaPixels(value: unknown): number | undefined {
-  if (typeof value === 'number' && Number.isInteger(value) && value > 0 && value <= 10000) {
-    return value;
-  }
-  if (typeof value === 'string' && SAFE_PIXELS.test(value)) return Number(value);
-  return undefined;
-}
-
-/** `payload` 是不可信 hostData；任何形状不对都返回 null（渲染错误占位）。 */
-function parseMediaPayload(payload: unknown): ParsedMedia | null {
-  if (!isRecord(payload)) return null;
-  if (payload.media !== 'video' && payload.media !== 'audio') return null;
-
-  const src = mediaUrl(payload.src);
-  const sources = parseMediaSources(payload.sources);
-  // 无直接 src 时必须至少有一条可播放的 <source>；否则旧结构会「整段消失」。
-  if (!src && sources.length === 0) return null;
-
-  const tracks = parseMediaTracks(payload.tracks);
-  const preload =
-    typeof payload.preload === 'string' &&
-    MEDIA_PRELOADS.has(payload.preload as SiteMediaPreload)
-      ? (payload.preload as SiteMediaPreload)
-      : 'none';
-  const crossorigin =
-    payload.crossorigin === 'anonymous' || payload.crossorigin === 'use-credentials'
-      ? payload.crossorigin
-      : undefined;
-
-  return {
-    media: payload.media,
-    ...(src ? { src } : {}),
-    sources,
-    tracks,
-    ...(payload.media === 'video' && typeof payload.poster === 'string'
-      ? { poster: posterUrl(payload.poster) }
-      : {}),
-    preload,
-    loop: payload.loop === true,
-    muted: payload.muted === true,
-    playsInline: payload.playsInline === true,
-    ...(payload.media === 'video'
-      ? { width: parseMediaPixels(payload.width), height: parseMediaPixels(payload.height) }
-      : {}),
-    ...(crossorigin ? { crossorigin } : {}),
-  };
-}
-
-function MediaEmbed({ data }: { data: SiteEmbedData }): ReactNode {
-  const media = parseMediaPayload(data.payload);
-  if (!media) return <SiteEmbedStatus status="error" />;
-
-  const className = `site-embed site-embed--media site-embed--${media.media}`;
-  const shared = {
-    className,
-    controls: true,
-    preload: media.preload,
-    ...(media.loop ? { loop: true } : {}),
-    ...(media.muted ? { muted: true } : {}),
-    ...(media.crossorigin ? { crossOrigin: media.crossorigin } : {}),
-    ...(media.src ? { src: media.src } : {}),
-  };
-  const children = [
-    ...media.sources.map((source, index) => (
-      <source key={`source:${index}:${source.src}`} src={source.src} type={source.type} />
-    )),
-    ...media.tracks.map((track, index) => (
-      <track
-        key={`track:${index}:${track.src}`}
-        src={track.src}
-        kind={track.kind}
-        srcLang={track.srclang}
-        label={track.label}
-        default={track.default}
-      />
-    )),
-  ];
-
-  if (media.media === 'video') {
-    return (
-      <video
-        {...shared}
-        poster={media.poster}
-        width={media.width}
-        height={media.height}
-        playsInline={media.playsInline}
-      >
-        {children}
-      </video>
-    );
-  }
-
-  return <audio {...shared}>{children}</audio>;
-}
-
-/** 子产物形状的最小复核：不是合法 `LocalDocument` 就当没有，退回链接卡片。 */
 function isLocalDocument(value: unknown): value is LocalDocument {
-  return isRecord(value) && Array.isArray((value as { nodes?: unknown }).nodes);
+  return isRecord(value) && Array.isArray(value.nodes);
 }
 
-/**
- * 剪贴板嵌入。
- *
- * Markdown 子剪贴板在成员 expand 视图里带同一版本编译的 `document` + 子 `hostData`：
- * 用静态子文档渲染（不嵌套交互运行时、不读原始 `content`）。Reactive 子剪贴板、
- * external 快照、或子编译失败时都没有子产物 —— 此时是链接卡片。
- *
- * 内联前必须复核 `format === 'markdown'`，与生产端同一条判据（ref-adapter 的
- * attachInlineMarkdownDocuments 只给 markdown 补子产物）：渲染端不看 format 的话，
- * 一份伪造的 reactive 快照带上 document / hostData 就能内联本不该内联的文档（R3-125）。
- */
 function ClipboardEmbed({
   clipboardId,
   data,
@@ -648,12 +409,8 @@ export function renderSiteEmbedStatic(
   switch (resolved.kind) {
     case 'audio':
       return <AudioEmbed audioId={resolved.ref} />;
-    case 'image':
-      return <ImageEmbed data={resolved.data} />;
     case 'clipboard':
       return <ClipboardEmbed clipboardId={resolved.ref} data={resolved.data} />;
-    case 'media':
-      return <MediaEmbed data={resolved.data} />;
     case 'favorite':
       return <FavoriteEmbed favoriteId={resolved.ref} data={resolved.data} />;
     case 'vote': {

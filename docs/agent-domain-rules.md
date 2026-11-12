@@ -397,12 +397,6 @@ ftyp 品牌 / 声明归一化 / `planImageUpload` —— 服务端与浏览器�
 5 个满额文件；图片每个引用是一次小文件读，音频是 MB 级传输。上限仍是正文长度的
 确定性函数，所以不破坏渲染缓存。
 
-**历史 HTML 的外链 `<audio>` 只降级为链接，不再内联播放**（R3-111）：`url-policy.ts`
-的 `audio` 用途只认本站受控的 `/api/audio/<10位>/raw`（直接 `src` 与多个 `<source src>`
-一起判）——站内音频保留 `[@音频/<ID>]` 播放器，外链地址渲染成 `[音频](url)` 点击访问，
-浏览器不会主动请求第三方地址（与评论禁外链图同源）。回退链在
-`reactive/legacy-compat.ts` 的 `convertMediaBlocks`。
-
 ### 画报与鱼干收款码
 
 `docs/architecture.md` §6.8（管线与四条约束）+ `src/lib/poster.ts` 头部（二维码必须矢量、

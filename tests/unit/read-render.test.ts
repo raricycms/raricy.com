@@ -1,12 +1,12 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-vi.mock('@/lib/reactive/compile-content', () => ({ compileContent: vi.fn() }));
-import { compileContent } from '@/lib/reactive/compile-content';
+vi.mock('@/lib/reactive/compile', () => ({ compileReactiveSource: vi.fn() }));
+import { compileReactiveSource } from '@/lib/reactive/compile';
 import { resolveReadRender, type ReadRenderInput } from '@/lib/reactive/read-render';
-const compileMock = vi.mocked(compileContent);
+const compileMock = vi.mocked(compileReactiveSource);
 afterEach(() => { vi.resetAllMocks(); });
 const input: ReadRenderInput = { source: '正文', format: 'markdown', viewer: null, mode: 'external' };
 function compiled(ok = true) {
-  return { outcome: { result: ok ? { ok: true, document: { nodes: [] }, diagnostics: [] } : { ok: false, diagnostics: [{ code: 'local.structure.children' }] }, hostData: {}, compileMs: 3, cacheHit: false } } as never;
+  return { result: ok ? { ok: true, document: { nodes: [] }, diagnostics: [] } : { ok: false, diagnostics: [{ code: 'local.structure.children' }] }, hostData: {}, compileMs: 3, cacheHit: false } as never;
 }
 describe('按需渲染源码（reactive 是唯一正文渲染路径）', () => {
   it.each(['markdown', 'reactive'])('%s 源文都按当前编译器编译出可交互正文', async (format) => {
@@ -22,11 +22,6 @@ describe('按需渲染源码（reactive 是唯一正文渲染路径）', () => {
     await resolveReadRender({ ...input, viewer: null });
     expect(compileMock.mock.calls[0][0]).toMatchObject({ mode: 'expand', viewer: { id: 'alice' } });
     expect(compileMock.mock.calls[1][0]).toMatchObject({ mode: 'external', viewer: null });
-  });
-  it('数据库里的语法版本传入解释入口，不改源文', async () => {
-    compileMock.mockResolvedValue(compiled());
-    await resolveReadRender({ ...input, format: 'reactive', syntaxVersion: 'local-draft-2' });
-    expect(compileMock).toHaveBeenCalledWith(expect.objectContaining({ source: input.source, syntaxVersion: 'local-draft-2' }));
   });
   it('未知格式不读取或编译源码', async () => {
     expect((await resolveReadRender({ ...input, format: 'oops' })).failure).toBe('invalid-format');

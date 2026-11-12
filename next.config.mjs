@@ -63,6 +63,11 @@ const nextConfig = {
   // 静音，而症状从「构建失败」退化成「运行时报不是函数」—— 现在这几个是实测
   // 撞到的，就只列这几个。
   webpack: (config, { isServer, webpack }) => {
+    // Next 15's bundled React predates useEffectEvent. Preserve Radix's optional lookup.
+    config.module.rules.push({
+      test: /[\\/]reactive-md[\\/]dist-library[\\/]LocalDocumentView-[\w-]+\.js$/,
+      loader: path.join(import.meta.dirname, 'scripts/reactive-md-react-fallback.cjs'),
+    });
     if (!isServer) {
       config.plugins.push(
         new webpack.IgnorePlugin({ resourceRegExp: /^(node:(fs|https)|module)$/ })

@@ -1,215 +1,84 @@
-// ─────────────────────────────────────────────────────────────────────────────
-// compile.ts — 服务端 ReactiveMD 编译核心（适配 → 缓存 → compileLocal）
-//
-// 【只缓存编译产物】缓存里只放 `{ ok, document?, diagnostics }`。`hostData` 随
-// **当前请求的权限上下文**变化（同一份源码对成员与访客可以不同），放进来等于把
-// 两名用户串在一起。它每次调用现算。
-//
-// 【缓存键 = 一次编译的完整身份】适配后源码 hash + 语法版本 + 编译包精确版本 +
-// 适配器版本 + 选项键（计划 §5.3）。漏任一段都会静默命中「另一次编译」的结果。
-//
-// 【挂在 globalThis 上】Next 会把 `instrumentation.ts` 编进独立 compilation，
-// 本模块可能在同一份产物里有多份实例。模块级变量 = 「一份在写、另一份在冻」，
-// 不报任何错（与 market-price.ts 头部同一个理由）。
-//
-// 【缓存值不可变】`ReactiveLruCache` 写入时做 JSON 深拷贝并冻结；读取时再给出
-// 一份新的 diagnostics 数组，调用方改自己的结果不会污染缓存。
-//
-// 服务端专用：不 import React / DOM。客户端只需要 `LocalDocument` 这份可序列化
-// 产物（走 RSC payload），不要 import 本文件。
-// ─────────────────────────────────────────────────────────────────────────────
-
-import { compileLocal, localCompileOptionsKey, LOCAL_SYNTAX_VERSION } from 'reactive-md';
-import type { LocalCompileResult } from 'reactive-md';
-
-import { prepareReactiveDocument } from './prepare';
-import { ReactiveLruCache, reactiveCompileCacheKey } from './cache';
-import {
-  REACTIVE_COMPILER_VERSION,
-  REACTIVE_MAX_SYNTAX_NODES,
-  REACTIVE_COMPILE_OPTIONS,
-} from './host-components';
-import { reactiveDiagnosticCodes } from './diagnostics';
-import { checkSyntaxBudget } from './syntax-budget';
-import { sourceForCurrentCompiler } from './source-migration';
+import { compileSource } from './compile-source';
+import { LOCAL_SYNTAX_VERSION, localCompileOptionsKey, type LocalCompileResult } from 'reactive-md';
 import type { ContentFormat } from '../content-format';
+import { ReactiveLruCache, reactiveCompileCacheKey } from './cache';
+import { REACTIVE_COMPILER_VERSION, REACTIVE_COMPILE_OPTIONS } from './host-components';
+import { ADAPTER_VERSION, expandDocumentReferences } from './ref-adapter';
+import { createServiceReferenceReader } from './ref-reader';
 import type { ReferenceMode, SiteHostData } from './ref-types';
-
-/**
- * 慢编译告警阈值（毫秒）。
- *
- * 只影响日志，不改变任何行为。取 250 ms：实测真实文章 250 KB 约 206 ms，所以正常
- * 内容不会触发；越过这条线就说明这份正文已经花到足以让同进程其它请求可感地排队。
- */
-export const SLOW_COMPILE_WARN_MS = 250;
-
-export interface ReactiveCompileOutcome {
-  result: LocalCompileResult;
-  adaptedSource: string;
-  hostData: SiteHostData;
-  adapterVersion: string;
-  compilerVersion: string;
-  syntaxVersion: string;
-  /** 历史 HTML 兼容改写的计数（只观测；不含正文）。 */
-  compatCounts: Record<string, number>;
-  cacheKey: string;
-  cacheHit: boolean;
-  compileMs: number;
-}
 
 export interface ReactiveCompileInput {
   source: string;
-  syntaxVersion?: string | null;
   format: ContentFormat;
   mode: ReferenceMode;
   viewer: { id: string; role?: string; archivedAt?: Date | null } | null;
   clientIp?: string;
 }
 
-/** 按估算字节数计容（含 AST 与诊断），不是只数篇数。 */
-const CACHE_MAX_BYTES = 64 * 1024 * 1024;
-const CACHE_MAX_ENTRIES = 500;
+export interface ReactiveCompileOutcome {
+  result: LocalCompileResult;
+  hostData: SiteHostData;
+  compilerVersion: string;
+  syntaxVersion: string;
+  cacheKey: string;
+  cacheHit: boolean;
+  compileMs: number;
+}
 
-interface ReactiveCompileGlobal {
+const globals = globalThis as typeof globalThis & {
   __raricyReactiveCompileCache?: ReactiveLruCache<LocalCompileResult>;
-}
+};
 
-function getCache(): ReactiveLruCache<LocalCompileResult> {
-  const g = globalThis as typeof globalThis & ReactiveCompileGlobal;
-  if (!g.__raricyReactiveCompileCache) {
-    g.__raricyReactiveCompileCache = new ReactiveLruCache<LocalCompileResult>({
-      maxBytes: CACHE_MAX_BYTES,
-      maxEntries: CACHE_MAX_ENTRIES,
-    });
-  }
-  return g.__raricyReactiveCompileCache;
-}
-
-/** 清空编译缓存并重置计数（只给测试用；生产靠 LRU 自然淘汰）。 */
-export function resetReactiveCompileCacheForTests(): void {
-  const g = globalThis as typeof globalThis & ReactiveCompileGlobal;
-  delete g.__raricyReactiveCompileCache;
-}
-
-/** 缓存观测值（测试 / 运维用）。 */
-export function stats(): { hits: number; misses: number; entries: number; bytes: number } {
-  const current = getCache().stats();
-  return {
-    hits: current.hits,
-    misses: current.misses,
-    entries: current.entries,
-    bytes: current.bytes,
-  };
-}
-
-/**
- * 编译一篇正文。
- *
- * 顺序固定：先适配（引用取数在请求权限上下文中发生），再查缓存，最后才编译。
- * 适配结果不缓存 —— 它的产物（hostData）与会话数据同量级，而且
- * 缓存键本身已经用适配后源码的 hash 表达了「编译输入相同」。
- */
-export async function compileReactiveSource(
-  input: ReactiveCompileInput
-): Promise<ReactiveCompileOutcome> {
-  const startedAt = performance.now();
-
-  // 编译前的语法复杂度闸门：上游对海量未闭合 `<` / `{{` 是超线性的，且 compileLocal
-  // 是同步的。超预算明确拒绝并保留原文，不进入 prepare / compile（见 syntax-budget.ts）。
-  const budget = checkSyntaxBudget(input.source);
-  if (budget) {
-    const compileMs = Math.round((performance.now() - startedAt) * 1000) / 1000;
-    console.info(
-      '[reactive]',
-      JSON.stringify({ cacheHit: false, compileMs, codes: [budget.diagnostic.code], compat: {} })
-    );
-    return {
-      result: { ok: false, diagnostics: [budget.diagnostic] },
-      adaptedSource: input.source,
-      hostData: {},
-      adapterVersion: 'syntax-budget',
-      compilerVersion: REACTIVE_COMPILER_VERSION,
-      syntaxVersion: LOCAL_SYNTAX_VERSION,
-      compatCounts: {},
-      cacheKey: 'syntax-budget',
-      cacheHit: false,
-      compileMs,
-    };
-  }
-
-  const source = sourceForCurrentCompiler(input.source, input.syntaxVersion);
-  const prepared = await prepareReactiveDocument(source, {
-    mode: input.mode,
-    viewer: input.viewer,
-    clientIp: input.clientIp,
+function getCache() {
+  return globals.__raricyReactiveCompileCache ??= new ReactiveLruCache<LocalCompileResult>({
+    maxBytes: 64 * 1024 * 1024,
+    maxEntries: 500,
   });
+}
 
+export function resetReactiveCompileCacheForTests(): void {
+  delete globals.__raricyReactiveCompileCache;
+}
+
+export function stats() {
+  return getCache().stats();
+}
+
+export async function compileReactiveSource(input: ReactiveCompileInput): Promise<ReactiveCompileOutcome> {
+  const started = performance.now();
   const cacheKey = reactiveCompileCacheKey({
-    adaptedSource: prepared.adaptedSource,
+    adaptedSource: input.source,
     syntaxVersion: LOCAL_SYNTAX_VERSION,
     compilerVersion: REACTIVE_COMPILER_VERSION,
-    adapterVersion: prepared.adapterVersion,
+    adapterVersion: ADAPTER_VERSION,
     optionsKey: localCompileOptionsKey(REACTIVE_COMPILE_OPTIONS),
   });
-
   const cache = getCache();
   const cached = cache.get(cacheKey);
-  let cacheHit: boolean;
-  let result: LocalCompileResult;
+  const compiled = cached ?? compileSource(input.source, REACTIVE_COMPILE_OPTIONS);
+  if (!cached) cache.set(cacheKey, compiled);
+  const compileMs = performance.now() - started;
 
-  if (cached) {
-    cacheHit = true;
-    result = {
-      ...cached,
-      diagnostics: [...cached.diagnostics],
-      ...(cached.recoveries ? { recoveries: [...cached.recoveries] } : {}),
-    };
-  } else {
-    cacheHit = false;
-    result = compileLocal(prepared.adaptedSource, REACTIVE_COMPILE_OPTIONS);
-    // 失败结果也缓存：同一份坏文档不必每次请求都重编译一遍。
-    cache.set(cacheKey, result);
-  }
-
-  const compileMs = Math.round((performance.now() - startedAt) * 1000) / 1000;
-  // 只记诊断码与耗时，绝不打印正文（源码可能含私有内容）。
-  console.info(
-    '[reactive]',
-    JSON.stringify({
-      cacheHit,
-      compileMs,
-      codes: reactiveDiagnosticCodes(result),
-      compat: prepared.compat.counts,
-    })
-  );
-  // 慢编译告警：`compileLocal` 是同步的，落在被 await 的渲染路径上，编译期间整个
-  // 进程的其它请求一起排队（见 host-components.ts 的 REACTIVE_MAX_SYNTAX_NODES）。
-  // 这条**只观测、不降级** —— 兜底交给编译器自己的 `local.budget`（预算超了直接
-  // 判 ok:false），在这里把「编译慢但成功」改成 unavailable 等于让一篇合法长文
-  // 永久打不开。留这条是为了让运维看得见真实分布，再决定要不要收紧预算。
-  if (!cacheHit && compileMs >= SLOW_COMPILE_WARN_MS) {
-    console.warn(
-      '[reactive-slow]',
-      JSON.stringify({
-        compileMs,
-        budget: REACTIVE_MAX_SYNTAX_NODES,
-        format: input.format,
-        mode: input.mode,
-        codes: reactiveDiagnosticCodes(result),
-      })
-    );
-  }
+  // The cached AST is shared. Resolve authorized reference data for this reader only.
+  const expanded = compiled.ok ? await expandDocumentReferences(compiled.document, {
+    mode: input.mode,
+    resolve: input.mode === 'expand'
+      ? createServiceReferenceReader('expand', input.viewer, input.clientIp)
+      : undefined,
+  }) : null;
 
   return {
-    result,
-    adaptedSource: prepared.adaptedSource,
-    hostData: prepared.hostData,
-    adapterVersion: prepared.adapterVersion,
+    result: {
+      ...compiled,
+      ...(compiled.ok && expanded ? { document: expanded.document } : {}),
+      diagnostics: [...compiled.diagnostics],
+      ...(compiled.recoveries ? { recoveries: [...compiled.recoveries] } : {}),
+    },
+    hostData: expanded?.hostData ?? {},
     compilerVersion: REACTIVE_COMPILER_VERSION,
     syntaxVersion: LOCAL_SYNTAX_VERSION,
-    compatCounts: prepared.compat.counts,
     cacheKey,
-    cacheHit,
+    cacheHit: cached !== undefined,
     compileMs,
   };
 }

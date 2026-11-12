@@ -15,7 +15,7 @@ vi.mock('@/lib/auth', async (importOriginal) => {
   return { ...actual, getCurrentUser: async () => null };
 });
 import { createServiceReferenceReader } from '@/lib/reactive/ref-reader';
-import { prepareReactiveDocument } from '@/lib/reactive/prepare';
+import { compileReactiveSource } from '@/lib/reactive/compile';
 import type { ReferenceKind } from '@/lib/reactive/ref-types';
 
 const slot = (kind: ReferenceKind, ref: string) => ({ kind, ref, token: `[@${ref}]`, start: 0, end: ref.length + 3 });
@@ -24,13 +24,13 @@ beforeEach(() => vi.clearAllMocks());
 describe('request-scoped reference permissions', () => {
   it('prepares external payloads without probing member resources', async () => {
     const source = '[@AbCd1234] [@AbCdEf123] [@123456]';
-    const result = await prepareReactiveDocument(source, { mode: 'external', viewer: null });
+    const result = await compileReactiveSource({ source, mode: 'external', viewer: null, format: 'markdown' });
     expect(result.hostData).toEqual({});
-    expect(result.adaptedSource).toBe(source);
-    expect(result.adaptedSource).toContain('[@AbCdEf123]');
+    expect(result.result.ok).toBe(true);
+    expect(JSON.stringify(result.result)).toContain('[@AbCdEf123]');
     // 同一输入再准备一次，适配产出必须一致（快照/哈希机制已退出，见 R3-106）。
-    const again = await prepareReactiveDocument(source, { mode: 'external', viewer: null });
-    expect(again.adaptedSource).toBe(result.adaptedSource);
+    const again = await compileReactiveSource({ source, mode: 'external', viewer: null, format: 'markdown' });
+    expect(again.result).toEqual(result.result);
     expect(mocks.clip).not.toHaveBeenCalled();
     expect(mocks.vote).not.toHaveBeenCalled();
     expect(mocks.favorite).not.toHaveBeenCalled();

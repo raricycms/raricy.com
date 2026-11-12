@@ -14,6 +14,7 @@
 // 不要拿旧 revision 的结果给新正文贴标签。
 // ─────────────────────────────────────────────────────────────────────────────
 
+import { compileSource } from './compile-source';
 import {
   LocalCompileScheduler,
   formatLocalDiagnostic,
@@ -22,7 +23,6 @@ import {
   type LocalCompileWorker,
 } from 'reactive-md';
 import { REACTIVE_COMPILE_OPTIONS } from './host-components';
-import { compileEditorSource } from './editor-compile';
 import {
   classifyReactiveSyntax,
   finalizeReactiveDetection,
@@ -160,10 +160,10 @@ export class ReactiveFormatAnalyzer {
 
   constructor(options: ReactiveFormatAnalyzerOptions) {
     this.scheduler = new LocalCompileScheduler({
+      fallbackCompile: compileSource,
       includeAuthorAnalysis: true,
       delay: options.delayMs,
       createWorker: options.createWorker,
-      fallbackCompile: compileEditorSource,
       onModeChange: (mode, detail) => {
         this.mode = mode;
         if (mode === 'fallback') options.onFallback?.(detail);

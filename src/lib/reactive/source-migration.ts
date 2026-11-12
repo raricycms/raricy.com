@@ -41,37 +41,11 @@ import {
 } from 'reactive-md';
 import { REACTIVE_COMPILE_OPTIONS } from './host-components';
 import { currentDeclaration, findLeadingVersionDirective, findVersionDirectives, type LeadingDeclaration } from './version-directive';
-import { checkSyntaxBudget } from './syntax-budget';
 
 export const REACTIVE_MIGRATION_OPTIONS: LocalCompileOptions = {
   ...REACTIVE_COMPILE_OPTIONS,
   strict: true,
 };
-
-export class SourceCompatibilityError extends Error {}
-
-/** 旧修订只在当前解释副本上安全升级；不写数据库、不代替显式源码迁移。 */
-export function sourceForCurrentCompiler(source: string, storedVersion?: string | null): string {
-  const declaration = findLeadingVersionDirective(source);
-  if (storedVersion && storedVersion !== LOCAL_SYNTAX_VERSION && storedVersion !== 'local-draft-2') {
-    throw new SourceCompatibilityError('Unsupported reactive source version');
-  }
-  if (declaration && storedVersion && declaration.version !== storedVersion) {
-    throw new SourceCompatibilityError('Reactive source version mismatch');
-  }
-  const version = declaration?.version ?? storedVersion;
-  if (version !== 'local-draft-2') return source;
-  // 不让版本适配绕过编译入口已有的复杂度保护。
-  if (checkSyntaxBudget(source) || findDynamicConstraintActivations(source).length > 0) {
-    throw new SourceCompatibilityError('Reactive source requires explicit semantic upgrade');
-  }
-  const migrated = migrateLocalSourceWithSiteBudget(source, version);
-  if (!migrated.ok) throw new SourceCompatibilityError('Reactive source cannot be safely upgraded');
-  // 无声明时原文已按当前版本解释；检查仅确认旧语义安全，不插入会改变诊断偏移的前缀。
-  return declaration ? migrated.source : source;
-}
-
-
 
 /** 上游结果是否**只**因节点预算失败（其余阻塞项一律不放行）。 */
 function budgetOnly(result: LocalMigrationResult): boolean {

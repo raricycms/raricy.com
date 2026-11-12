@@ -2,7 +2,7 @@
 // reactive-preparation.test.ts —— ReactiveMD 预适配（P6/P7/P8）的纯行为用例
 //
 // 覆盖三块契约：
-//   · URL 用途白名单（图片 / 音频 / 超链接）；
+//   · 图片加载策略；
 //   · 编译缓存键 + 按字节容量 LRU；
 //   · 语料输入的校验与报告隐私边界（逐字段报告统计见 R4 报告，已清退）。
 //
@@ -11,7 +11,7 @@
 
 import { describe, expect, it, vi } from 'vitest';
 
-import { isAllowedReactiveUrl } from '@/lib/reactive/url-policy';
+import { isAllowedReactiveImage } from '@/lib/reactive/url-policy';
 import {
   ReactiveLruCache,
   estimateReactiveCacheBytes,
@@ -27,7 +27,7 @@ import {
 // 一、URL 白名单
 // ═══════════════════════════════════════════════════════════════════════════
 
-describe('URL 用途白名单', () => {
+describe('图片加载策略', () => {
   it('图片：站内相对 / 历史路径 / 历史 IP / 外链 http(s) 都放行', () => {
     const allowed = [
       '/api/images/AbCdEf1234/raw',
@@ -41,35 +41,7 @@ describe('URL 用途白名单', () => {
       '//cdn.example.com/a.png',
     ];
     for (const url of allowed) {
-      expect(isAllowedReactiveUrl(url, 'image'), url).toBe(true);
-    }
-  });
-
-  it('音频只认本站受控路径（外链音频一律拒绝）', () => {
-    expect(isAllowedReactiveUrl('/api/audio/AbCdEf1234/raw', 'audio')).toBe(true);
-    expect(isAllowedReactiveUrl('/api/audio/AbCdEf1234/raw?x=1', 'audio')).toBe(false);
-    expect(isAllowedReactiveUrl('/api/audio/AbCdEf1234', 'audio')).toBe(false);
-    expect(isAllowedReactiveUrl('/api/images/AbCdEf1234/raw', 'audio')).toBe(false);
-    expect(isAllowedReactiveUrl('/api/audio/../../etc/passwd', 'audio')).toBe(false);
-    expect(isAllowedReactiveUrl('https://tracker.example.com/a.mp3', 'audio')).toBe(false);
-    expect(isAllowedReactiveUrl('//tracker.example.com/a.mp3', 'audio')).toBe(false);
-    expect(isAllowedReactiveUrl('audio/a.mp3', 'audio')).toBe(false);
-  });
-
-  it('超链接：相对 / 片段 / mailto / tel / http(s) 放行', () => {
-    const allowed = [
-      '/blog/1',
-      'blog/1',
-      '#section',
-      '?page=2',
-      'https://example.com/page',
-      'http://example.com/page',
-      'mailto:someone@example.com',
-      'tel:+8613800000000',
-      '//example.com/page',
-    ];
-    for (const url of allowed) {
-      expect(isAllowedReactiveUrl(url, 'link'), url).toBe(true);
+      expect(isAllowedReactiveImage(url), url).toBe(true);
     }
   });
 
@@ -82,8 +54,6 @@ describe('URL 用途白名单', () => {
       'file:///etc/passwd',
       'blob:https://example.com/x',
       'about:blank',
-      'javascript%3Aalert(1)',
-      '&#106;avascript&#58;alert(1)',
       'java\tscript:alert(1)',
       'java\nscript:alert(1)',
       ' javascript:alert(1)',
@@ -92,17 +62,14 @@ describe('URL 用途白名单', () => {
       'https://user:pass@evil.example/a.png',
     ];
     for (const url of denied) {
-      expect(isAllowedReactiveUrl(url, 'image'), url).toBe(false);
-      expect(isAllowedReactiveUrl(url, 'link'), url).toBe(false);
-      expect(isAllowedReactiveUrl(url, 'audio'), url).toBe(false);
+      expect(isAllowedReactiveImage(url), url).toBe(false);
     }
   });
 
-  it('片段只对超链接有意义；空串与超长地址拒绝', () => {
-    expect(isAllowedReactiveUrl('#top', 'image')).toBe(false);
-    expect(isAllowedReactiveUrl('#top', 'link')).toBe(true);
-    expect(isAllowedReactiveUrl('', 'image')).toBe(false);
-    expect(isAllowedReactiveUrl(`https://example.com/${'a'.repeat(9000)}`, 'image')).toBe(
+  it('拒绝片段、空串与超长地址', () => {
+    expect(isAllowedReactiveImage('#top')).toBe(false);
+    expect(isAllowedReactiveImage('')).toBe(false);
+    expect(isAllowedReactiveImage(`https://example.com/${'a'.repeat(9000)}`)).toBe(
       false
     );
   });

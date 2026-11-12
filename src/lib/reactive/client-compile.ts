@@ -1,49 +1,16 @@
 'use client';
 
-// ─────────────────────────────────────────────────────────────────────────────
-// client-compile.ts — 编辑器预览与导出的客户端引用适配
-//
-// 把作者原文按站内 `[@…]` 引用规则适配成可编译的 ReactiveMD 源码。
-//
-// 【为什么取数在客户端】预览必须能看见「作者此刻能看到的东西」：私有的剪贴板、
-// 本人投过票的投票、私密收藏夹都依赖**当前会话**。服务端渲染预览等于把作者
-// 的会话带进一次后台任务，既慢又多一套权限分叉。
-//
-// 【只复用既有读口，绝不发明端点、绝不发写请求】
-//   剪贴板 `GET /api/clipboard/<id>`、投票 `GET /api/votes/<id>`、
-//   收藏夹 `GET /api/spider/favorites/<id>` —— 与阅读页服务端 `ref-reader.ts` 的
-//   'expand' 模式逐字一致（含 `credentials: 'same-origin'`）。本模块只发 GET。
-//   图床与音频**不取数**：适配器只拼 `/api/images|audio/<id>/raw`，权限由 raw
-//   路由逐条判。
-//
-// 【数据形状对齐服务端 ref-reader】适配器把 `payload` 原样塞进 hostData，
-// `SiteEmbedView` / `site-embed-static` 又按自己的 parser 读它。所以这里的
-// payload 必须与 `ref-reader.ts` 同形：
-//   · 投票 —— `{id,title,is_locked,total_votes,user_voted,options}`；
-//   · 收藏夹 —— `{title,authorName,href,count,items:[{blogId,title}]}`；
-//   · 剪贴板 —— `{href,title}`，**不携带正文**（首期一律链接卡片，见 ref-adapter【6】）。
-//   `/api/spider/favorites/<id>` 返回的列表键是 `blogs[].id`，不是 `blogId` ——
-//   少这一笔映射，卡片会静默变成「0 篇」。
-//
-// 【reader 是会话级的，不是模块级】`createClientReferenceReader()` 每次调用新建
-// 一份缓存与在飞去重；模块级单例会让 A 篇草稿的私有数据漏进 B 篇，也会让
-// 「刷新引用」再也取不到新数据。缓存失败结果与旧 resolver 同口径：不在每次按键
-// 时重试 —— 要重试就由调用方换一份新 reader（`ReactivePreview` 的 refreshToken
-// 正是这么做的：成功与失败的缓存一起作废）。
-// ─────────────────────────────────────────────────────────────────────────────
-
+import type { LocalDocument } from 'reactive-md';
 import { parseContentFormat } from '../content-format';
 import { MAX_CARD_ITEMS, isFavoriteId } from '../favorite-refs';
 import { MAX_REF_CONCURRENCY, createConcurrencyLimiter } from '../content-refs';
-import { adaptReactiveReferences } from './ref-adapter';
-import { applyLegacyHtmlCompat } from './legacy-compat';
-import { sourceForCurrentCompiler } from './source-migration';
-import type { ReferenceReader, ResolvedReference, SiteHostData } from './ref-types';
+import { expandDocumentReferences } from './ref-adapter';
+import type { ReferenceMode, ReferenceReader, ResolvedReference } from './ref-types';
 
 /**
  * 预览 + 导出**共用**的真实取数闸门（R3-103）。
  *
- * 编辑器里预览面板与「导出 / 打印」各自调一次 `adaptReactivePreview`，同页并发时
+ * 编辑器里预览面板与「导出 / 打印」各自调一次 `expandClientReferences`，同页并发时
  * 两边各自建闸门会让峰值变成 2×`MAX_REF_CONCURRENCY`（8 条真实 HTTP）。闸门放在
  * 模块级后，同一时刻在飞的请求封在 4 条；「实例级」指的是这一份共享实例，不是每次
  * 适配一份。
@@ -53,12 +20,6 @@ import type { ReferenceReader, ResolvedReference, SiteHostData } from './ref-typ
  * 也不用担心跨草稿串数据：闸门只排队、不缓存任何结果。
  */
 const previewFetchGate = createConcurrencyLimiter(MAX_REF_CONCURRENCY);
-
-/** 适配后的预览源码 + 渲染它所需的 hostData（与 `adaptReactiveReferences` 同形）。 */
-export interface AdaptedReactivePreview {
-  adaptedSource: string;
-  hostData: SiteHostData;
-}
 
 export interface ClientReferenceReaderOptions {
   /** 仅测试注入；生产一律用全局 fetch（同源、只读）。 */
@@ -245,27 +206,6 @@ export function createClientReferenceReader(
   };
 }
 
-/**
- * 只做引用适配（不编译）。预览要先在这里拿到 `adaptedSource`，再交给
- * `LocalCompileScheduler`（worker 或主线程回退）编译。
- *
- * 取数走本模块共享的 `previewFetchGate`（R3-103）：预览与导出同页并发时，
- * 真实 HTTP 峰值仍是 `MAX_REF_CONCURRENCY`，而不是各自一份闸门的 2×。
- */
-export async function adaptReactivePreview(
-  source: string,
-  reader: ReferenceReader,
-  mode: 'expand' | 'external' = 'expand'
-): Promise<AdaptedReactivePreview> {
-  // 与阅读页同一条兼容规则（等长改写，预览与终稿逐字一致）。
-  const compat = applyLegacyHtmlCompat(sourceForCurrentCompiler(source));
-  const adapted = await adaptReactiveReferences(compat.source, {
-    mode,
-    dataImages: compat.dataImages,
-    // compat 的返回类型里 mediaSources 是必填字段，直接读（R3-130）。
-    mediaSources: compat.mediaSources,
-    resolve: mode === 'expand' ? reader : undefined,
-    scheduler: previewFetchGate,
-  });
-  return { adaptedSource: adapted.adaptedSource, hostData: adapted.hostData };
+export function expandClientReferences(document: LocalDocument, reader: ReferenceReader, mode: ReferenceMode) {
+  return expandDocumentReferences(document, { mode, resolve: reader, scheduler: previewFetchGate });
 }

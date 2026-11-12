@@ -35,8 +35,7 @@ describe('公开正文索引', () => {
     expect(media.text).not.toContain('媒体:');
     // R3-105：索引编译是同步的 —— 超语法预算的病态正文直接记 missing（metadata-only
     // 降级），不进入超线性 compileLocal。
-    expect(await publicBodyText('<'.repeat(1_000), 'reactive')).toEqual({ text: '', status: 'missing' });
-    expect(await publicBodyText('{{'.repeat(200), 'reactive')).toEqual({ text: '', status: 'missing' });
+    expect(await publicBodyText('{{ '.repeat(2_000), 'reactive')).toEqual({ text: '', status: 'missing' });
   });
   it('编辑、改格式、公开/撤回、删除/恢复同步更新；失效旧行不可泄露', async () => {
     const u=await makeUser({role:'core'});

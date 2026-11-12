@@ -9,8 +9,7 @@
 import { describe, expect, it } from 'vitest';
 import { compileLocal, type LocalDocument } from 'reactive-md';
 import { REACTIVE_COMPILE_OPTIONS } from '@/lib/reactive/host-components';
-import { applyLegacyHtmlCompat } from '@/lib/reactive/legacy-compat';
-import { adaptReactiveReferences } from '@/lib/reactive/ref-adapter';
+import { expandDocumentReferences } from '@/lib/reactive/ref-adapter';
 
 const BASE = [
   '# 标题',
@@ -32,11 +31,9 @@ const BASE = [
 ].join('\n');
 
 async function compile(source: string): Promise<LocalDocument> {
-  const compat = applyLegacyHtmlCompat(source);
-  const adapted = await adaptReactiveReferences(compat.source, { mode: 'external' });
-  const result = compileLocal(adapted.adaptedSource, REACTIVE_COMPILE_OPTIONS);
+  const result = compileLocal(source, REACTIVE_COMPILE_OPTIONS);
   if (!result.ok) throw new Error(result.diagnostics.map((d) => d.code).join(','));
-  return result.document;
+  return (await expandDocumentReferences(result.document, { mode: 'external' })).document;
 }
 
 function stripIds<T>(value: T): T {

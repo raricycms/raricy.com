@@ -3,7 +3,7 @@
 //
 // 扫描跑在业务库副本上，最怕两件事：一篇病态输入拖垮整批（没有报告）、
 // 或者把超时/崩溃记成“成功”。这里钉住：
-//   · 巨型 data 位图替换后不再产生几十万空格（上游编译不会卡死）；
+//   · 上游拒绝巨型 data 位图时仍生成报告；
 //   · 单篇失败仍产出带 ID / 类别 / 诊断码的行，且 totals.scanFailures 计数。
 // 报告不含正文 —— 断言输出 JSON 里没有夹具正文。
 // ─────────────────────────────────────────────────────────────────────────────
@@ -25,7 +25,7 @@ function document(id: string, content: string): CorpusDocument {
 }
 
 describe('scanCorpusDocuments：逐篇隔离', () => {
-  it('接近上限的 data 位图仍能编译，且报告不含正文', () => {
+  it('超预算的 data 位图产生失败记录，且报告不含正文', () => {
     const big = `data:image/png;base64,${PNG_PREFIX}${'A'.repeat(400_000)}`;
     const source = `<p>前</p><img src="${big}" alt="大图"><p>后</p>`;
     const report = scanCorpusDocuments([document('blog-big-image', source)], {
@@ -35,7 +35,7 @@ describe('scanCorpusDocuments：逐篇隔离', () => {
     expect(report.totals.scanFailures).toBe(0);
     expect(report.totals.compile).toBeUndefined(); // 汇总由 CLI 写，模块只给逐篇结果
     expect(report.documents[0].scanError).toBeNull();
-    expect(report.documents[0].compileResult?.status).toBe('ok');
+    expect(report.documents[0].compileResult?.status).toBe('failed');
     const serialized = JSON.stringify(report);
     expect(serialized).not.toContain('data:image');
     expect(serialized).not.toContain('A'.repeat(200));

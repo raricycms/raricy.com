@@ -4,7 +4,6 @@
 // 为什么不直接用 `cache.ts` 的 `ReactiveLruCache`：那份实现为了计算真实字节数
 // import 了 `node:buffer` / `node:crypto`，而本模块要被 `ref-adapter` 带进
 // 编辑器预览的客户端包。这里只做「按键 + 估算大小」的淘汰，**不复制任何编译
-// 规则**；编译预算仍走 `syntax-budget.ts` 的 `checkSyntaxBudget`。
 //
 // 大小单位是 **UTF-16 码元近似值**（键长 + `sizeOf` 返回值），只用于有界性，
 // 不用于精确内存核算。`sizeOf` 返回 null / 非法值 = 拒收该值，不会把容量上限

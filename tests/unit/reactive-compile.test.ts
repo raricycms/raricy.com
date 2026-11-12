@@ -20,7 +20,6 @@ import {
   REACTIVE_COMPILE_OPTIONS,
   SITE_EMBED_TAG,
 } from '@/lib/reactive/host-components';
-import { applyLegacyHtmlCompat } from '@/lib/reactive/legacy-compat';
 import {
   reactiveDiagnosticCodes,
   reactiveFallbackReasons,
@@ -48,30 +47,10 @@ function collectNodes(nodes: readonly LocalNode[] | undefined, type: string): Lo
 
 // ═══ 一、宿主 schema ══════════════════════════════════════════════════════════
 
-describe('SITE_EMBED_SCHEMA', () => {
-  it('把 <site-embed> 编译成宿主节点，且不产生诊断', () => {
-    const result = compileLocal(
-      `<site-embed kind="audio" ref="${EMBED_REF}" />`,
-      REACTIVE_COMPILE_OPTIONS
-    );
-
-    expect(result.ok).toBe(true);
-    expect(result.diagnostics).toEqual([]);
-    if (result.ok) {
-      const hosts = collectNodes(result.document.nodes, 'hostComponent');
-      expect(hosts).toHaveLength(1);
-      expect(hosts[0]).toMatchObject({
-        name: SITE_EMBED_TAG,
-        attrs: { kind: 'audio', ref: EMBED_REF },
-      });
-    }
-  });
-});
-
 // ═══ 二、作者伪造标签 ════════════════════════════════════════════════════════
 
 describe('作者伪造的 <site-embed>', () => {
-  it('适配器先转义，编译后不会变成宿主节点', async () => {
+  it('作者源码中的标签只由 RMD 解释', async () => {
     resetReactiveCompileCacheForTests();
     const forged = `<site-embed kind="audio" ref="${EMBED_REF}" />`;
 
@@ -82,7 +61,7 @@ describe('作者伪造的 <site-embed>', () => {
       viewer: null,
     });
 
-    expect(outcome.adaptedSource).toContain('&lt;site-embed');
+    expect(outcome.result.ok).toBe(true);
     expect(outcome.result.ok).toBe(true);
     if (outcome.result.ok) {
       expect(collectNodes(outcome.result.document.nodes, 'hostComponent')).toHaveLength(0);
@@ -317,11 +296,9 @@ describe('Components 目录模板 × 统一编译管线', () => {
     expect(catalog.components.length).toBeGreaterThan(20);
     for (const component of catalog.components) {
       const source = instantiateCatalogTemplate(component);
-      const compat = applyLegacyHtmlCompat(source);
       // 只断言 ok 不够：section / table / progress 被当成历史 HTML 解包后同样 ok，
       // 但组件语义已经永久丢失。这里必须看到真实 component 节点。
-      expect(compat.source, `${component.id} 的标签被 compat 改写`).toContain(`<${component.id}`);
-      const result = compileLocal(compat.source, REACTIVE_COMPILE_OPTIONS);
+      const result = compileLocal(source, REACTIVE_COMPILE_OPTIONS);
       const codes = result.diagnostics.map((d) => d.code);
       expect(result.ok, `${component.id}: ${codes.join(', ')}`).toBe(true);
       expect(codes, component.id).not.toContain('local.component.unknown');
@@ -330,9 +307,4 @@ describe('Components 目录模板 × 统一编译管线', () => {
     }
   });
 
-  it('旧 HTML 的 <select><option> 仍按历史标签处理，不误当组件子结构', () => {
-    const compat = applyLegacyHtmlCompat('<select><option value="a">A</option></select>');
-    expect(compat.source).not.toContain('<option');
-    expect(compileLocal(compat.source, REACTIVE_COMPILE_OPTIONS).ok).toBe(true);
-  });
 });

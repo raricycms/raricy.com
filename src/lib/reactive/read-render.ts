@@ -7,7 +7,7 @@
 // 渲染器。认不出格式或编译失败的正文只返回 `unavailable`（页面给一句可读提示），
 // **不存在第二条渲染管线**，也不再有环境变量能改变这条决策。
 import { parseContentFormat } from '../content-format';
-import { compileContent } from './compile-content';
+import { compileReactiveSource } from './compile';
 import type { ReactiveCompileOutcome } from './compile';
 
 /** 正文渲染器只有两种结果：可编译出来，或明确不可用。 */
@@ -25,8 +25,6 @@ export interface ReadRenderInput {
   viewer: { id: string; role?: string; archivedAt?: Date | null } | null;
   mode: 'expand' | 'external';
   clientIp?: string;
-  /** 正文行里存着的语法版本（仅 reactive 有意义）；缺省按当前编译器版本。 */
-  syntaxVersion?: string | null;
 }
 
 export interface ReadRenderResult {
@@ -61,10 +59,10 @@ export async function resolveReadRender(input: ReadRenderInput): Promise<ReadRen
   } else {
     // 失败只影响这一篇正文：编译抛错与编译失败走同一条降级，不给第二套解析器兜底。
     try {
-      bundle = (await compileContent({
+      bundle = await compileReactiveSource({
         source: input.source, format, mode: input.mode,
-        viewer: input.viewer, clientIp: input.clientIp, syntaxVersion: input.syntaxVersion,
-      })).outcome;
+        viewer: input.viewer, clientIp: input.clientIp,
+      });
     } catch {
       // 不再用空 catch 吞掉：抛错时 bundle 是 undefined，日志 codes 原本恒空，
       // 排障分不清「编译器抛了」还是「编译返回 !ok」（R3-132）。

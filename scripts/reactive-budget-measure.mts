@@ -20,7 +20,6 @@ import { dirname, resolve } from 'node:path';
 import { performance } from 'node:perf_hooks';
 import { compileLocal, type LocalCompileOptions } from 'reactive-md';
 import { REACTIVE_COMPILE_OPTIONS } from '../src/lib/reactive/host-components';
-import { applyLegacyHtmlCompat } from '../src/lib/reactive/legacy-compat';
 
 interface Scenario {
   name: string;
@@ -163,7 +162,6 @@ function parseArgs(argv: string[]) {
     out: '',
     list: false,
     timeoutMs: 45_000,
-    compat: false,
   };
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
@@ -175,7 +173,6 @@ function parseArgs(argv: string[]) {
     };
     if (arg === '--list') out.list = true;
     else if (arg === '--run-all') out.runAll = true;
-    else if (arg === '--compat') out.compat = true;
     else if (arg === '--scenario') out.scenario = value();
     else if (arg === '--budget') out.budget = Number(value());
     else if (arg === '--samples') out.samples = Math.max(1, Math.min(9, Number(value())));
@@ -302,27 +299,6 @@ function main(): void {
 
   const scenario = findScenario(args.scenario);
   if (!scenario) throw new Error(`未知场景：${args.scenario}（用 --list 查看）`);
-  if (args.compat) {
-    const time = (): number => {
-      const start = performance.now();
-      applyLegacyHtmlCompat(scenario.source);
-      return Math.round((performance.now() - start) * 100) / 100;
-    };
-    const first = time();
-    const samples: number[] = [];
-    for (let index = 0; index < Math.max(3, args.samples); index += 1) samples.push(time());
-    console.log(JSON.stringify({
-      scenario: scenario.name,
-      characters: scenario.source.length,
-      budget: 0,
-      status: 'ok',
-      nodes: null,
-      codes: ['compat-main-thread'],
-      firstMs: first,
-      medianMs: median(samples),
-    }));
-    return;
-  }
   if (!Number.isSafeInteger(args.budget) || args.budget < 1) {
     throw new Error('--budget 必须是正整数');
   }

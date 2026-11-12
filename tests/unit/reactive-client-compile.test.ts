@@ -2,11 +2,12 @@
 // 编辑器预览和导出的引用取数、适配与并发上限。
 // ─────────────────────────────────────────────────────────────────────────────
 
+import { compileSource } from '@/lib/reactive/compile-source';
 import { describe, expect, it, vi } from 'vitest';
 import type { ReferenceReader } from '@/lib/reactive/ref-types';
 import { MAX_REF_CONCURRENCY } from '@/lib/content-refs';
 import {
-  adaptReactivePreview,
+  expandClientReferences,
   createClientReferenceReader,
 } from '@/lib/reactive/client-compile';
 
@@ -101,12 +102,13 @@ describe('发布时的访客预览',()=>{
   it('不读取任何成员资源，引用保持原文，与实际外部文章一致',async()=>{
     const reader=vi.fn<ReferenceReader>();
     const source='正文 [@AbCd1234] [@AbCdEf123] [@123456]';
-    const result=await adaptReactivePreview(source,reader,'external');
-    expect(result.adaptedSource).toBe(source);expect(result.hostData).toEqual({});expect(reader).not.toHaveBeenCalled();
+    const document = parse(source);
+    const result=await expandClientReferences(document,reader,'external');
+    expect(result.document).toEqual(document);expect(result.hostData).toEqual({});expect(reader).not.toHaveBeenCalled();
   });
 });
 
-// R3-103：编辑器里「预览」与「导出 / 打印」各自调一次 adaptReactivePreview。
+// R3-103：编辑器里「预览」与「导出 / 打印」各自调一次 expandClientReferences。
 // 以前每次适配各建一个 4 并发闸门 → 同页并发时真实请求峰值 2×4；现在两处共用
 // client-compile.ts 的模块级闸门，峰值封在 MAX_REF_CONCURRENCY。
 describe('预览与导出共享同一条取数闸门（R3-103）', () => {
@@ -125,11 +127,17 @@ describe('预览与导出共享同一条取数闸门（R3-103）', () => {
     const sourceOf = (from: number) => ids.slice(from, from + 4).map((id) => `投 [@${id}]`).join('\n\n');
 
     await Promise.all([
-      adaptReactivePreview(sourceOf(0), reader),
-      adaptReactivePreview(sourceOf(4), reader),
+      expandClientReferences(parse(sourceOf(0)), reader, 'expand'),
+      expandClientReferences(parse(sourceOf(4)), reader, 'expand'),
     ]);
 
     expect(peak, '共享闸门没生效时这里会是 8').toBeLessThanOrEqual(MAX_REF_CONCURRENCY);
     expect(peak, '探针没测到并发，这条就测不到东西了').toBeGreaterThan(1);
   });
 });
+
+function parse(source: string) {
+  const result = compileSource(source);
+  if (!result.ok) throw new Error('编译失败');
+  return result.document;
+}

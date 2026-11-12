@@ -3,7 +3,6 @@ import { makeUser, prisma, resetDb } from '../helpers/db';
 import { createBlog, updateBlog } from '@/lib/blog-service';
 import { createClip, updateClip } from '@/lib/clipboard-service';
 import { resolveReadRender } from '@/lib/reactive/read-render';
-import { sourceForCurrentCompiler } from '@/lib/reactive/source-migration';
 import { resetReactiveCompileCacheForTests } from '@/lib/reactive/compile';
 
 beforeEach(async () => { await resetDb(); resetReactiveCompileCacheForTests(); });
@@ -28,26 +27,10 @@ describe('仅源码保存与按需渲染', () => {
     if (result.bundle?.result.ok) expect(result.bundle.result.document.bindings.pace).toBeDefined();
   });
 
-  it('draft-2 在冷读时临时适配，存储原文和版本保持不变', async () => {
-    const user = await makeUser();
-    const id = await createBlog(user.id, { title: '旧文', description: '', content: '初始', visibility: 'internal', categoryId: null });
-    const old = '<!-- reactive-md: local-draft-2 -->\n\n' + source;
-    await prisma.blogContent.update({ where: { blogId: id }, data: { content: old, format: 'reactive', syntaxVersion: 'local-draft-2' } });
-    const rendered = await resolveReadRender({ source: old, format: 'reactive', syntaxVersion: 'local-draft-2', viewer: user, mode: 'expand' });
-    expect(rendered.bundle?.result.ok).toBe(true);
-    expect(await prisma.blogContent.findUniqueOrThrow({ where: { blogId: id } })).toMatchObject({ content: old, syntaxVersion: 'local-draft-2' });
-  });
 
   it('不安全旧修订的保存返回语法错误，不抛服务异常', async () => {
     const user = await makeUser();
     const result = await createClip(user.id, { title: '旧约束', format: 'reactive', content: '<!-- reactive-md: local-draft-2 -->\n<number bind="limit" initial="2">\n<number bind="n" initial="1" min="{{ limit }}">' });
     expect(result).toEqual({ ok: false, reason: 'reactive_invalid' });
-  });
-
-  it('隐式旧修订也不允许静默激活动态约束', () => {
-    const unsafe = '<number bind="limit" initial="2">\n<number bind="n" initial="1" min="{{ limit }}">';
-    expect(() => sourceForCurrentCompiler(unsafe, 'local-draft-2')).toThrow();
-    expect(() => sourceForCurrentCompiler(source, 'unknown')).toThrow();
-    expect(() => sourceForCurrentCompiler('<!-- reactive-md: local-draft-2 -->\n' + source, 'local-draft-3')).toThrow();
   });
 });

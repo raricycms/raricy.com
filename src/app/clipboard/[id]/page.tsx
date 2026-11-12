@@ -36,7 +36,6 @@ export default async function ClipDetailPage({ params }: { params: Promise<{ id:
     mode: 'expand',
     // 与博客正文同一入口：公开收藏夹引用的按 IP 限频需要真实来源 IP（R3-131）。
     clientIp: clientIp({ headers: await headers() }),
-    syntaxVersion: clip.syntaxVersion,
   });
   const reactiveDocument =
     readRender.bundle?.result.ok

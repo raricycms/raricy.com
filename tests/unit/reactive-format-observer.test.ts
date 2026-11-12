@@ -47,12 +47,12 @@ describe('FormatAnalysis：worker 降级与作者分析', () => {
     analyzer.dispose();
   });
 
-  it('fallback 与阅读 / worker 共用 legacy compat：旧 HTML 不产生未知标签诊断', async () => {
+  it('fallback 与 Worker 共用 RMD 的 HTML 诊断', async () => {
     const analyzer = fallbackAnalyzer();
     for (const source of ['<font color="red">旧标签</font>', '<marquee>滚动</marquee>']) {
       const result = await analyzer.analyze(source, 1);
       expect(result.effective, source).toBe('markdown');
-      expect(result.codes, source).toEqual([]);
+      expect(result.codes, source).toContain('local.html.fallback');
     }
     analyzer.dispose();
   });

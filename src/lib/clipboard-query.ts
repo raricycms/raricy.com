@@ -1,10 +1,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // clipboard-query.ts — 云剪贴板的**只读**查询（含公开性判定）
 //
-// 单独成文件是为了切断依赖环：内容编译链（prepare → ref-reader）需要按 id 读剪贴板
-// 正文，而 clipboard-service 是写用例、要调 publish 校验。若 ref-reader 直接 import
-// 写服务，就形成 clipboard-service → publish → compile → prepare → ref-reader →
-// clipboard-service 的环。这里只依赖 prisma 与格式工具，环因此断开。
+// 读取正文引用与写入校验共用这条查询，查询本身只依赖 Prisma 和格式工具。
 //
 // 规则随查询本身（软删不可见、私有仅本人 / 站长）；写用例仍在 clipboard-service。
 // ─────────────────────────────────────────────────────────────────────────────
@@ -30,10 +27,7 @@ export interface ClipDetail {
    * 猜错等于把另一种语言的源码交给 Markdown 解析器。读取方必须保留字面量 / 走链接。
    */
   format: ContentFormat | null;
-  /**
-   * 正文语法版本。**参与解释兼容**：阅读时按写入时的版本解释同一份源码
-   * （`reactive/compile.ts` 的 `sourceForCurrentCompiler`），不参与渲染器选择。
-   */
+  /** 写入时记录的语法版本，随正文一起通过 API 返回。 */
   syntaxVersion: string | null;
   /** Shared by API, member embeds and public embeds. */
   version: string;

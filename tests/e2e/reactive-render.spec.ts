@@ -57,12 +57,12 @@ async function createBlogViaApi(
 
 test.describe('ReactiveMD 发布与阅读', () => {
   for (const width of [1280, 390]) {
-  test(`云剪贴板旧版 RMD 保存原文，radio-group 与滑块可交互，更新后正常重读（${width}px）`, async ({ page }) => {
+  test(`云剪贴板 RMD 保存原文，radio-group 与滑块可交互，更新后正常重读（${width}px）`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 });
     await loginViaApi(page, SEED_USERS.core.username);
     const title = `source-only-${uniqueTag()}`;
     const source = [
-      '<!-- reactive-md: local-draft-2 -->', '', '旧片段正文', '',
+      '旧片段正文', '',
       '<radio-group bind="pace" label="节奏" initial="guided">',
       '<option value="guided">跟随</option>', '<option value="free">自由</option>',
       '</radio-group>', '', '<slider bind="n" label="人数" initial="2" min="1" max="5">',
@@ -81,7 +81,7 @@ test.describe('ReactiveMD 发布与阅读', () => {
     await expect(body).toContainText('节奏 free');
     const { clip: stored } = await (await page.request.get(`/api/clipboard/${id}`)).json();
     expect(stored.content).toBe(source);
-    expect(stored.syntax_version).toBe('local-draft-2');
+    expect(stored.syntax_version).toBe('local-draft-3');
     const edited = source.replace('旧片段正文', '更新后的片段正文');
     const updated = await page.request.put(`/api/clipboard/${id}`, { data: { title, content: edited, format: 'reactive', publicity: true } });
     expect(updated.status(), await updated.text()).toBe(200);
@@ -122,11 +122,20 @@ test.describe('ReactiveMD 发布与阅读', () => {
       '$$ x^2 + y^2 = 1 $$',
       '</plot>',
       '',
-      `![图](/api/images/${imageId}/raw)`,
+      '<gallery label="图集示例">',
+      '<gallery-item>',
+      '### 图集首项',
+      '',
+      `[@${imageId}]`,
+      '</gallery-item>',
+      '<gallery-item>',
+      '### 图集次项',
+      '</gallery-item>',
+      '</gallery>',
       '',
       `[@${clipId}]`,
       '',
-      // 作者伪造的宿主标签：适配器必须转义成字面量，绝不当成真组件。
+      // 宿主标签由站点在编译后生成，作者写入的标签由 RMD 作为未注册标签处理。
       '<site-embed kind="vote" ref="Abc123456" />',
       '',
       '```js',
@@ -159,7 +168,8 @@ test.describe('ReactiveMD 发布与阅读', () => {
 
     // 五类引用：图片内联、Markdown 子剪贴板内联一层（新引擎静态子文档）、
     // 伪造宿主标签只是文字
-    await expect(container.locator(`img[src*="/api/images/${imageId}/raw"]`)).toHaveCount(1);
+    const gallery = container.getByRole('region', { name: '图集示例' });
+    await expect(gallery.locator(`img[src*="/api/images/${imageId}/raw"]`)).toHaveCount(1);
     const inlineClip = container.locator('.site-embed-clipboard-inline');
     await expect(inlineClip).toHaveCount(1);
     await expect(inlineClip).toContainText('剪贴板里的公开正文');
@@ -258,28 +268,6 @@ test.describe('统一管线的兼容与保存边界', () => {
     await expect(page.locator('#userContentContainer p br')).not.toHaveCount(0);
   });
 
-  test('历史 data 位图在真实浏览器里显示为 <img>（>8KB 也不回退源码）', async ({ page }) => {
-    await loginViaApi(page, SEED_USERS.core.username);
-    const png =
-      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg';
-    const padded = `${png}${'A'.repeat(9000)}`;
-    const dataUrl = `data:image/png;base64,${padded.slice(0, padded.length - (padded.length % 4))}`;
-    const blogId = await createBlogViaApi(page, {
-      content: `前面
-
-<img src="${dataUrl}" alt="历史位图">
-
-后面`,
-      format: 'markdown',
-    });
-    await page.goto(`/blog/${blogId}`);
-    const image = page.locator('#userContentContainer img[alt="历史位图"]');
-    await expect(image).toHaveCount(1);
-    await expect(image).toHaveAttribute('src', /^data:image\/png;base64,/);
-    const rendered = await image.evaluate((element) => (element as HTMLImageElement).naturalWidth);
-    expect(rendered).toBeGreaterThan(0);
-    await expect(page.locator('#userContentContainer')).not.toContainText('base64');
-  });
 });
 
 test.describe('ReactiveMD 编辑器预览', () => {

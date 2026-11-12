@@ -5,7 +5,7 @@ import 'reactive-md/screen.css';
 import { useEffect, useState } from 'react';
 import { createLocalRuntime, type LocalDocument, type LocalRuntime } from 'reactive-md';
 import { LocalDocumentView, type LocalDocumentViewProps } from 'reactive-md/react/unstyled';
-import { isAllowedReactiveUrl } from '@/lib/reactive/url-policy';
+import { reactiveUrlPolicy } from '@/lib/reactive/url-policy';
 
 type Props = Omit<LocalDocumentViewProps, 'runtime' | 'urlPolicy'>;
 
@@ -35,7 +35,7 @@ export default function CompiledDocumentView({ document, locale = 'zh', ...props
       document={document}
       runtime={active.runtime}
       locale={locale}
-      urlPolicy={isAllowedReactiveUrl}
+      urlPolicy={reactiveUrlPolicy}
     />
   );
 }

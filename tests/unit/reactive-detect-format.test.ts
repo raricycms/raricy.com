@@ -2,7 +2,7 @@
 // reactive-detect-format.test.ts —— 自动 format 的三态边界
 //
 // 同时钉住两组不能顾此失彼的行为：
-//   · 普通旧 Markdown 里的未知角括号标签 / 历史 HTML → markdown，可读可保存；
+//   · 上游可恢复的未知标签 / HTML → markdown，可读可保存；
 //   · 已知增强组件 / 插值出错 → invalid-enhanced，保留身份、给出可定位诊断、
 //     阻止静默按 Markdown 发布。
 // ─────────────────────────────────────────────────────────────────────────────
@@ -12,17 +12,15 @@ import { analyzeLocalSource, compileLocal, LOCAL_SYNTAX_VERSION } from 'reactive
 import {
   classifyReactiveSyntax,
   detectReactiveSyntax,
-  literalizeReactiveSyntax,
 } from '@/lib/reactive/detect-format';
 import { REACTIVE_COMPILE_OPTIONS } from '@/lib/reactive/host-components';
 import { mightContainReactiveSyntax } from '@/lib/md-editor/format-mode';
 
 describe('detectReactiveSyntax —— 三态', () => {
-  it('普通 Markdown / 历史 HTML / 未知角括号标签 → markdown 且可保存', () => {
+  it('普通 Markdown 和可恢复的 HTML → markdown 且可保存', () => {
     for (const source of [
       '# 标题\n\n普通 **加粗** 与 [链接](https://example.com)',
       '<div style="color:red" class="x">旧 HTML 正文</div>',
-      '<TAB>教程里的占位标签</TAB>',
       '<marquee>老网页效果</marquee>',
       '<details><summary>折叠</summary>正文</details></details>',
     ]) {
@@ -75,13 +73,6 @@ describe('detectReactiveSyntax —— 三态', () => {
     expect(detected.evidence.some((item) => item.startsWith('component:'))).toBe(true);
   });
 
-  it('普通 Markdown 的 Reactive 外形可走字面量降级（不吞掉正文）', () => {
-    const source = '示例 {{ 1 + 1 }} 与 <counter> 文字';
-    const literal = literalizeReactiveSyntax(source);
-    expect(literal.changed).toBe(true);
-    expect(literal.source).not.toBe(source);
-    expect(compileLocal(literal.source, REACTIVE_COMPILE_OPTIONS).ok).toBe(true);
-  });
 
   it('前导版本声明会影响 syntaxVersion 证据', () => {
     const source = `<!-- reactive-md: ${LOCAL_SYNTAX_VERSION} -->\n\n<counter bind="n" label="N" initial="1" />`;
@@ -126,29 +117,11 @@ describe('半截增强：未闭合标签 / 插值', () => {
       expect(detected.format, source).toBe('reactive');
       expect(detected.valid, source).toBe(true);
       expect(detected.publishable, source).toBe(true);
-      expect(detected.literalized, source).toBeUndefined();
       expect(detected.evidence, source).toContain(evidence);
       expect(detected.diagnostics.length, source).toBeGreaterThan(0);
     }
   });
 
-  it('代码 / 数学 / 未知普通 HTML 的半截写法不被误判', () => {
-    for (const source of [
-      '`<panel title="x"`',
-      '```\n<panel title="x"\n```',
-      '    <panel title="x"',
-      '示例 <marquee 文本',
-    ]) {
-      const detected = detectReactiveSyntax(source);
-      expect(detected.format, source).toBe('markdown');
-      expect(detected.publishable, source).toBe(true);
-    }
-    // 同名历史 HTML 经上游恢复，仍按 Markdown 保存。
-    const select = detectReactiveSyntax('<select 文本');
-    expect(select.format).toBe('markdown');
-    expect(select.publishable).toBe(true);
-    expect(select.diagnostics).toContainEqual(expect.objectContaining({ severity: 'warning' }));
-  });
 
   it('worker 结果区分可恢复的标签与阻断发布的插值', () => {
     const options = REACTIVE_COMPILE_OPTIONS;
@@ -164,25 +137,6 @@ describe('半截增强：未闭合标签 / 插值', () => {
 });
 
 describe('键名示例 / 普通伪标签不误判（vimtutor 类正文）', () => {
-  it('键名、大小写标签、命令范围都仍按 Markdown 可保存', () => {
-    const snippets = [
-      'Press <ESC> then :q! <ENTER>.',
-      'Press <TAB>.',
-      'Press <tab>.',
-      'Press <Tab>.',
-      '<Help> / <F1>',
-      '箭头示意 < h l >',
-      "命令范围 :'<,'>",
-      'SVG 示例 <text>hello</text>',
-      '```text\nPress <tab>.\n```',
-    ];
-    for (const source of snippets) {
-      const detected = detectReactiveSyntax(source);
-      expect(detected.format, source).toBe('markdown');
-      expect(detected.publishable, source).toBe(true);
-      expect(detected.literalized, source).toBeUndefined();
-    }
-  });
 
   it('插值及语义错误仍然阻断', () => {
     for (const source of ['<slider bind="a" label="N" initial="x" />', '{{ 1 +']) {

@@ -40,20 +40,20 @@
 // 导出件不该再被第二套全局分页规则接管。
 // ─────────────────────────────────────────────────────────────────────────────
 
+import { compileSource } from '@/lib/reactive/compile-source';
 import { createElement } from 'react';
 import { flushSync } from 'react-dom';
 import { createRoot } from 'react-dom/client';
-import { compileLocal, createLocalRuntime, type LocalDocument, type LocalNode } from 'reactive-md';
+import { createLocalRuntime, type LocalDocument, type LocalNode } from 'reactive-md';
 import { LocalDocumentView } from 'reactive-md/react/unstyled';
 import 'reactive-md/screen.css';
 
 import { InlineClipboardDocument, renderSiteEmbedStatic } from '@/app/components/reactive/site-embed-static';
-import { adaptReactivePreview, createClientReferenceReader } from '@/lib/reactive/client-compile';
+import { expandClientReferences, createClientReferenceReader } from '@/lib/reactive/client-compile';
 import { REACTIVE_COMPILE_OPTIONS } from '@/lib/reactive/host-components';
 import type { SiteEmbedData, SiteHostData } from '@/lib/reactive/ref-types';
-import { isAllowedReactiveUrl } from '@/lib/reactive/url-policy';
+import { isAllowedReactiveImage, reactiveUrlPolicy } from '@/lib/reactive/url-policy';
 import { MAX_REF_CONCURRENCY, createConcurrencyLimiter } from '@/lib/content-refs';
-import { SYNTAX_BUDGET_CODE, checkSyntaxBudget } from '@/lib/reactive/syntax-budget';
 
 /**
  * 解析相对地址时的**基准地址** —— 这一页自己的地址。
@@ -480,9 +480,8 @@ async function prefetchImages(urls: readonly string[], base?: string): Promise<M
 }
 
 export interface ReactiveStaticMarkupInput {
-  /** 作者源码（未适配）。给了 `adaptedSource` 时忽略。 */
+  /** 作者源码。 */
   source: string;
-  /** 正文语言：决定 `markdownBreaks` 等编译选项。 */
   /**
    * 引用口径，必须与**导出那一刻的预览**一致（终审 F2）：
    * `external` = 访客视图，私有剪贴板 / 投票 / 收藏夹保留字面量；默认 `expand`。
@@ -490,16 +489,14 @@ export interface ReactiveStaticMarkupInput {
   referenceMode?: 'expand' | 'external';
   /** 解析相对地址的基准（页面地址）；不传取 `location.href`。 */
   base?: string;
-  /** 已适配的源码与 hostData（预览侧已做过同一趟时可复用）。 */
-  adaptedSource?: string;
-  hostData?: SiteHostData;
+
 }
 
 /**
  * 把一份 ReactiveMD 文档渲染成**只读静态** HTML。
  *
  * 三步，顺序固定：
- *   1. 适配 `[@…]`（与预览同一套 `adaptReactiveReferences`）并编译；
+ *   1. 编译正文，在文档节点中展开引用；
  *   2. 预取允许的图片 → data URL（同步 resolver 才拿得到）；
  *   3. 离屏 `createRoot` + `flushSync` 渲染 `mode="static"` 的 `LocalDocumentView`，
  *      读 `innerHTML`，然后卸载并释放运行时。
@@ -510,32 +507,14 @@ export interface ReactiveStaticMarkupInput {
  * 编译失败会抛出（调用方据此提示「导出失败」）—— 绝不拿一份空正文冒充成功。
  */
 export async function renderStaticMarkup(input: ReactiveStaticMarkupInput): Promise<string> {
-  // R3-105：导出是**同步编译**（下面的 compileLocal），病态正文（海量未闭合
-  // `<` / `{{`）会把工作台卡死。这里与阅读 / 发布共用同一个语法预算闸门：
-  // 源文一次；适配后的源码再一次（内联的剪贴板子正文来自他人正文，同样可能带病态标记）。
-  // 超预算明确失败，由调用方提示「导出失败」—— 绝不拿空正文冒充成功。
-  if (checkSyntaxBudget(input.source)) {
-    throw new Error(`正文超过语法复杂度预算（${SYNTAX_BUDGET_CODE}），已拒绝导出`);
-  }
-  const adapted =
-    input.adaptedSource !== undefined
-      ? { adaptedSource: input.adaptedSource, hostData: input.hostData ?? {} }
-      : // 与预览共用同一份客户端取数 / 适配（client-compile）—— 两处各写一份的话，
-        // 「导出里能看见的引用」与「预览里能看见的引用」会慢慢漂开。
-        await adaptReactivePreview(
-          input.source,
-          createClientReferenceReader(),
-          input.referenceMode ?? 'expand'
-        );
-  if (checkSyntaxBudget(adapted.adaptedSource)) {
-    throw new Error(`正文超过语法复杂度预算（${SYNTAX_BUDGET_CODE}），已拒绝导出`);
-  }
-
-  const compiled = compileLocal(adapted.adaptedSource, REACTIVE_COMPILE_OPTIONS);
+  const compiled = compileSource(input.source, REACTIVE_COMPILE_OPTIONS);
   if (!compiled.ok) {
-    const codes = compiled.diagnostics.map((diagnostic) => diagnostic.code).join(', ');
-    throw new Error(codes ? `ReactiveMD 编译失败：${codes}` : 'ReactiveMD 编译失败');
+    const codes = compiled.diagnostics.map(({ code }) => code).join(', ');
+    throw new Error('ReactiveMD 编译失败：' + codes);
   }
+  const { document: expanded, hostData } = await expandClientReferences(
+    compiled.document, createClientReferenceReader(), input.referenceMode ?? 'expand'
+  );
 
   // 图片地址从**编译后的 AST** 取，不从源码跑正则：代码围栏 / 行内代码里的
   // `![](...)` 只是字符串，不是会被渲染的图片节点。
@@ -543,21 +522,20 @@ export async function renderStaticMarkup(input: ReactiveStaticMarkupInput): Prom
   // ★ 父 AST + 一层内联子文档一起收集、一次预取 ★：子文档是独立编译产物，
   // 不在父 AST 里；只收集父图会让内联子正文的图片继续联网（P1-3 交接缺口）。
   // 共用同一个 `prefetchImages`：白名单、单图/总字节/整体预算与失败降级都不变。
-  const inlineDocuments = collectInlineClipboardDocuments(adapted.hostData);
+  const inlineDocuments = collectInlineClipboardDocuments(hostData);
   const imageUrls = [
     ...new Set([
-      ...collectDocumentImageUrls(compiled.document),
+      ...collectDocumentImageUrls(expanded),
       ...inlineDocuments.flatMap((document) => collectDocumentImageUrls(document)),
     ]),
-  ].filter((url) => isAllowedReactiveUrl(url, 'image'));
+  ].filter(isAllowedReactiveImage);
   const resolvedImages = await prefetchImages(imageUrls, input.base);
-  const hostData = adapted.hostData;
   const resolveImage = (url: string): string | null =>
     resolvedImages.get(url) ??
     resolvedImages.get(resolveUrl(url, pageBase(input.base))) ??
     null;
 
-  const runtime = createLocalRuntime(compiled.document);
+  const runtime = createLocalRuntime(expanded);
   const container = document.createElement('div');
   container.style.cssText = 'position:absolute;left:-100000px;top:0;width:760px;';
   document.body.appendChild(container);
@@ -567,7 +545,7 @@ export async function renderStaticMarkup(input: ReactiveStaticMarkupInput): Prom
     flushSync(() => {
       root.render(
         createElement(LocalDocumentView, {
-          document: compiled.document,
+          document: expanded,
           runtime,
           mode: 'static',
           locale: 'zh',
@@ -591,7 +569,7 @@ export async function renderStaticMarkup(input: ReactiveStaticMarkupInput): Prom
             }
             return renderSiteEmbedStatic(node, data, ctx);
           },
-          urlPolicy: isAllowedReactiveUrl,
+          urlPolicy: reactiveUrlPolicy,
           imageResolver: resolveImage,
         })
       );
