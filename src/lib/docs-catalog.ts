@@ -423,6 +423,12 @@ export const DOC_ENTRIES: readonly DocEntry[] = [
   },
   {
     group: 'dev',
+    slug: 'plan/test-suite-audit',
+    title: '测试套件价值审计与精简清单',
+    summary: '272 个测试文件的分档处置（保/裁/搬/删）：预计省 39% 工作量，执行待确认。',
+  },
+  {
+    group: 'dev',
     slug: 'source-header-style',
     title: '源码头注释约定',
     summary: '文件头写什么、不写什么：职责 / 唯一出口 / 改动注意留在头里，长背景抽到设计说明。',
