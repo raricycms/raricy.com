@@ -148,7 +148,10 @@ describe('transferFish —— 成功路径', () => {
     const row = await prisma.fishWebhookDelivery.findFirstOrThrow({
       where: { transferId: res.transferId },
     });
-    expect(row.status).toBe('pending');
+    // 事务提交后还有一下 `void deliverWebhook(...)`（见 fish-transfer-service.ts）：它可能
+    // 已经把行领走（status → sending），也可能还没跑。两态都满足「同一事务写出 outbox 行」
+    // 的本意，断死 pending 会在这条竞态上偶发红。
+    expect(['pending', 'sending']).toContain(row.status);
     expect(row.event).toBe(WEBHOOK_EVENT_TRANSFER_RECEIVED);
     expect(JSON.parse(row.payload)).toMatchObject({
       transfer_id: res.transferId,

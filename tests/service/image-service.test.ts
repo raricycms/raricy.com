@@ -725,7 +725,9 @@ describe('listAllImages（管理端）', () => {
       expect(await prisma.imageHosting.count()).toBe(2);
     });
     it('搜索 + 分页组合：pages 基于过滤后的 total 计算', async () => {
-      const u = await makeUser({ role: 'core' });
+      // 显式用户名：search 同时匹配「作者用户名」，自动生成的 `u_test-<随机串>` 若恰好含
+      // 搜索词（zz）会让 other.png 也被算进命中，造成 1/260 概率的随机红。
+      const u = await makeUser({ role: 'core', username: 'page-search-author' });
       await seed(u.id, 35, 'zz'); // 35 张 zz*.png
       await makeImage({ authorId: u.id, filename: 'other.png' });
 

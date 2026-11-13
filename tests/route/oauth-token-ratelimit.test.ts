@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { scrypt as _scrypt } from 'node:crypto';
 import { resetDb, makeUser, prisma } from '../helpers/db';
 import { nowForDb } from '@/lib/db-time';
 import { __resetRateLimitStore } from '@/lib/rate-limit';
@@ -136,7 +137,20 @@ describe('OAuth token 密码计算前限频', () => {
     const actual = await vi.importActual<typeof import('@/lib/password')>('@/lib/password');
     verify.mockImplementation(actual.verifyPassword);
     const { application } = await makeApp();
-    await prisma.oAuthApplication.update({ where: { id: application.id }, data: { clientSecretHash: await hashPassword(SECRET) } });
+    // 【为什么用低 N 的 scrypt 哈希】生产参数 scrypt:32768:8:1 已被
+    // `tests/unit/password.test.ts` 钉住；这条要验的是「限频在密码计算之前生效」，
+    // 走的是同一段 verifyPassword 代码路径，单次 ~4ms（若用生产参数 ~123ms，
+    // 60 次在并发全量下会撞 20s 超时，见 `docs/plan/test-suite-audit.md` §4.2）。
+    const salt = 'test-salt-000000';
+    const derived = await new Promise<Buffer>((resolve, reject) => {
+      _scrypt(SECRET, salt, 64, { N: 1024, r: 8, p: 1, maxmem: 132 * 1024 * 1024 }, (err, key) =>
+        err ? reject(err) : resolve(key)
+      );
+    });
+    await prisma.oAuthApplication.update({
+      where: { id: application.id },
+      data: { clientSecretHash: `scrypt:1024:8:1$${salt}$${derived.toString('hex')}` },
+    });
     for (let i = 0; i < 60; i++) expect((await POST(request(application.clientId))).status).toBe(401);
     expect((await POST(request(application.clientId))).status).toBe(400);
     expect(verify).toHaveBeenCalledTimes(60);
