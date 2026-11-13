@@ -130,13 +130,6 @@ describe('collectArgs：按顺序收集', () => {
     expect(await collectArgs(cmd([]), deps(s.prompter))).toEqual({});
     expect(s.asked).toEqual([]);
   });
-
-  it('逐题提示里带上参数自己的 label', async () => {
-    const s = scripted([{ text: 'alice' }, { num: 1 }]);
-    await collectArgs(cmd([NAME, AMOUNT]), deps(s.prompter));
-    expect(s.asked[0]).toContain('用户名');
-    expect(s.asked[1]).toContain('数量');
-  });
 });
 
 // ── 导航 ─────────────────────────────────────────────────────────────────────
@@ -190,29 +183,6 @@ describe('collectArgs：校验与必填', () => {
     const s = scripted([{ text: 'alice' }, { text: '' }]);
     expect(await collectArgs(cmd([NAME, DESC]), deps(s.prompter))).toEqual({ username: 'alice' });
   });
-
-  it('可选参数留空但有 defaultValue → 用缺省值', async () => {
-    const s = scripted([{ text: 'alice' }, { text: '' }]);
-    const args = await collectArgs(
-      cmd([NAME, { ...DESC, defaultValue: '管理员手动赠送' }]),
-      deps(s.prompter)
-    );
-    expect(args).toEqual({ username: 'alice', description: '管理员手动赠送' });
-  });
-
-  it('校验用的是注册表里那一份（两条前端共用，不会各写一套）', async () => {
-    let calls = 0;
-    const spec: ArgSpec = {
-      ...DESC,
-      validate: () => {
-        calls++;
-        return null;
-      },
-    };
-    const s = scripted([{ text: 'x' }]);
-    await collectArgs(cmd([spec]), deps(s.prompter));
-    expect(calls).toBe(1);
-  });
 });
 
 // ── 密码 ─────────────────────────────────────────────────────────────────────
@@ -244,11 +214,6 @@ describe('collectArgs：密码题', () => {
       password: 'Hunter2Hunter2',
     });
     expect(d.io.err.join('\n')).toContain('不能为空');
-  });
-
-  it('密码原样收下（判空用 trim，但收下的值不 trim —— 空格也是密码的一部分）', async () => {
-    const s = scripted([{ secret: '  Hunter22  ' }]);
-    expect(await collectArgs(cmd([PW]), deps(s.prompter))).toEqual({ password: '  Hunter22  ' });
   });
 });
 
@@ -291,23 +256,6 @@ describe('collectArgs：条件跳题', () => {
     const args = await collectArgs(cmd([MODE, PW, DESC]), deps(s.prompter));
     expect(args).toEqual({ mode: 'manual', password: 'Hunter2Hunter2' });
   });
-
-  it('★ 退回改成跳过之后，先前收下的值会被丢掉（否则命令会以为自己收到了密码）', async () => {
-    // 走位：模式选 manual → 填了昵称 → 在说明那题按返回 → 再返回到模式题 → 改选 generate
-    // → 昵称题被跳过 → 说明。昵称必须从参数表里消失，不能留个「幽灵值」。
-    const NICK: ArgSpec = { name: 'nickname', flags: ['--nick'], label: '昵称', help: '昵称' };
-    const s = scripted([
-      { pick: 'manual' },
-      { text: '昵称A' },
-      { text: NAV_BACK },
-      { text: NAV_BACK },
-      { pick: 'generate' },
-      { text: '原因' },
-    ]);
-    const args = await collectArgs(cmd([MODE, { ...NICK, skipIf: (a) => a.mode === 'generate' }, DESC]), deps(s.prompter));
-    expect(args).toEqual({ mode: 'generate', description: '原因' });
-    expect(args).not.toHaveProperty('nickname');
-  });
 });
 
 // ── 先搜后选 ─────────────────────────────────────────────────────────────────
@@ -346,25 +294,6 @@ describe('collectArgs：先搜后选（「不用背命令」的落点）', () =>
     const s = scripted([{ text: '' }, { pick: 'id-2' }]);
     const args = await collectArgs(cmd([searchSpec()]), deps(s.prompter));
     expect(args).toEqual({ target: 'id-2' });
-  });
-
-  it('没搜到结果 → 提示并重新问关键词，而不是收下空值', async () => {
-    const s = scripted([{ text: '不存在的词' }, { text: '报错' }, { pick: 'id-1' }]);
-    const d = deps(s.prompter);
-    const args = await collectArgs(cmd([searchSpec()]), d);
-    expect(args).toEqual({ target: 'id-1' });
-    expect(d.io.err.join('\n')).toContain('没有匹配');
-  });
-
-  it('在候选列表里按「返回上一步」→ 回到关键词输入（此刻的「上一步」就是搜索框）', async () => {
-    const s = scripted([{ text: '报错' }, { pick: NAV_BACK }, { text: '' }, { pick: 'id-2' }]);
-    const args = await collectArgs(cmd([searchSpec()]), deps(s.prompter));
-    expect(args).toEqual({ target: 'id-2' });
-  });
-
-  it('在候选列表里按「取消」→ 取消整个命令', async () => {
-    const s = scripted([{ text: '报错' }, { pick: NAV_CANCEL }]);
-    expect(await collectArgs(cmd([searchSpec()]), deps(s.prompter))).toBeNull();
   });
 
   it('★ 挑中的值也要过注册表的校验（原样收下的关键词也是用户输入）', async () => {

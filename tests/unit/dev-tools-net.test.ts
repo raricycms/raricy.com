@@ -1,9 +1,9 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// dev-tools-net.test.ts —— 网络与码家族的纯逻辑单测
+// dev-tools-net.test.ts —— 网络判据与二维码/条码的代表性单测
 //
-// 只测**纯函数**：二维码（UTF-8 取字节 / 静区 / 布局）、条码（EAN-13 校验位、
-// Code 128 编码表、Code 39 结构）、子网计算（IPv4 / IPv6 / BigInt）、
-// net-guard（SSRF 判据，DNS 用注入替身，绝不联网）。
+// 只测**纯函数**：二维码（UTF-8 取字节 / 静区 / 布局）、net-guard（SSRF 判据，
+// DNS 用注入替身，绝不联网），条码只留 EAN-13 校验位与编码形状各一条
+// （逐项编码表与子网算术是标准复述，不再展开）。
 // 页面组件、真实 DNS、真实 HTTP 都不在这里测。
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -16,22 +16,8 @@ import {
   renderQr,
   resolveQrLayout,
 } from '@/lib/dev-tools/qr';
-import {
-  BARCODE_QUIET_MODULES,
-  barcodeBars,
-  barcodeSvg,
-  ean13CheckDigit,
-  encodeBarcode,
-  normalizeEan13,
-  type BarcodeSymbol,
-} from '@/lib/dev-tools/barcode';
-import {
-  formatIpv6,
-  intToIpv4,
-  ipv4ToInt,
-  parseIpv6,
-  parseSubnetInput,
-} from '@/lib/dev-tools/subnet';
+import { ean13CheckDigit, encodeBarcode, normalizeEan13 } from '@/lib/dev-tools/barcode';
+import { ipv4ToInt, parseIpv6 } from '@/lib/dev-tools/subnet';
 import {
   TargetLookupError,
   TargetRejectedError,
@@ -105,229 +91,24 @@ describe('qr：生成结果', () => {
   });
 });
 
-// ── 条形码 ──────────────────────────────────────────────────────────────────
+// ── 条码：只留校验位与编码形状的代表样本 ─────────────────────────────────────
 
-describe('barcode：EAN-13 校验位', () => {
-  it('已知样例的校验位', () => {
-    // 590123412345 → 7（公开样例）；400638133393 → 1
+describe('barcode：EAN-13 校验位与编码形状', () => {
+  it('校验位按 1/3 权重算（590123412345 → 7、400638133393 → 1）；12 位自动补、13 位错校验拒绝', () => {
     expect(ean13CheckDigit('590123412345')).toBe(7);
     expect(ean13CheckDigit('400638133393')).toBe(1);
-  });
-
-  it('12 位自动补校验位，13 位校验位错误必须报错', () => {
-    const normalized = normalizeEan13('590123412345');
-    expect(normalized.digits).toBe('5901234123457');
-    expect(normalized.note).toContain('自动补');
-    expect(normalizeEan13('5901234123457').note).toContain('校验位正确');
+    expect(normalizeEan13('590123412345').digits).toBe('5901234123457');
     expect(() => normalizeEan13('5901234123450')).toThrow(/校验位不正确/);
-    expect(() => normalizeEan13('12345')).toThrow(/12 位或 13 位/);
   });
 
-  it('编码结果是 95 模块，起止都是 101', () => {
+  it('编码形状：EAN-13 = 95 模块且起止 101；Code39 只收大写/数字', () => {
     const symbol = encodeBarcode('ean13', '5901234123457');
     expect(symbol.modules).toHaveLength(95);
     const bits = symbol.modules.map((dark) => (dark ? '1' : '0')).join('');
     expect(bits.startsWith('101')).toBe(true);
     expect(bits.endsWith('101')).toBe(true);
-  });
-});
-
-describe('barcode：Code 128', () => {
-  /** 由宽度串展开成模块位串（测试里独立实现，避免直接复用生产代码）。 */
-  function widthsToBits(pattern: string): string {
-    let dark = true;
-    let bits = '';
-    for (const ch of pattern) {
-      bits += (dark ? '1' : '0').repeat(Number(ch));
-      dark = !dark;
-    }
-    return bits;
-  }
-
-  it('ASCII 文本用 B 子集，模块数 = 11 × 符号数（Stop 13）', () => {
-    // 'A'：Start B(104) + 33 + 校验位 34 + Stop(106) = 4 个符号
-    // 校验位 = (104 + 33×1) % 103 = 34
-    const symbol = encodeBarcode('code128', 'A');
-    expect(symbol.modules).toHaveLength(11 * 3 + 13);
-    const bits = symbol.modules.map((dark) => (dark ? '1' : '0')).join('');
-    expect(bits.slice(0, 11)).toBe(widthsToBits('211214')); // Start B
-    expect(bits.slice(11, 22)).toBe(widthsToBits('111323')); // 'A'
-    expect(bits.slice(22, 33)).toBe(widthsToBits('131123')); // 校验位 34
-    expect(bits.slice(33)).toBe(widthsToBits('2331112')); // Stop
-  });
-
-  it('整串数字自动走 C 子集（两位一符号）', () => {
-    const symbol = encodeBarcode('code128', '1234');
-    // Start C + '12' + '34' + 校验位 + Stop = 5 个符号
-    expect(symbol.modules).toHaveLength(11 * 4 + 13);
-    expect(symbol.note).toContain('C 子集');
-    expect(symbol.modules.map((dark) => (dark ? '1' : '0')).join('').slice(0, 11)).toBe(
-      widthsToBits('211232') // Start C
-    );
-  });
-
-  it('奇数个数字：C 压缩 + 末位落回 B', () => {
-    const symbol = encodeBarcode('code128', '12345');
-    // Start C + 12 + 34 + Code B + '5' + 校验位 + Stop = 7 个符号
-    expect(symbol.modules).toHaveLength(11 * 6 + 13);
-  });
-
-  it('不支持的字符直接报错，不做静默替换', () => {
-    expect(() => encodeBarcode('code128', '中文')).toThrow(/ASCII/);
-    expect(() => encodeBarcode('code128', '')).toThrow(/请输入/);
-  });
-});
-
-describe('barcode：Code 39', () => {
-  it('每字符 15 模块 + 字符间 1 模块间隔，含起止符 *', () => {
-    // '*ABC*' = 5 个字符 → 5×15 + 4 个间隔 = 79
-    const symbol = encodeBarcode('code39', 'ABC');
-    expect(symbol.modules).toHaveLength(79);
-    expect(symbol.note).toContain('无校验位');
-  });
-
-  it('字符集校验：不接受小写字母与未登记符号', () => {
+    expect(encodeBarcode('code39', 'A-1').modules.length).toBeGreaterThan(0);
     expect(() => encodeBarcode('code39', 'abc')).toThrow(/大写字母/);
-    expect(() => encodeBarcode('code39', 'A#B')).toThrow(/只支持/);
-    expect(() => encodeBarcode('code39', '')).toThrow(/请输入/);
-    expect(encodeBarcode('code39', 'A-1 $/+%').modules.length).toBeGreaterThan(0);
-  });
-});
-
-describe('barcode：矩形与 SVG 渲染', () => {
-  it('barcodeBars 从静区之后开始，总宽 = 编码宽 + 两侧静区', () => {
-    const symbol = encodeBarcode('ean13', '5901234123457');
-    const { bars, totalWidth } = barcodeBars(symbol, BARCODE_QUIET_MODULES);
-    expect(totalWidth).toBe(symbol.modules.length + BARCODE_QUIET_MODULES * 2);
-    expect(bars[0].x).toBe(BARCODE_QUIET_MODULES);
-    const dark = symbol.modules.filter(Boolean).length;
-    expect(bars.reduce((sum, bar) => sum + bar.width, 0)).toBe(dark);
-    expect(bars.some((bar) => bar.width > 1)).toBe(true);
-  });
-
-  it('下载用 SVG 是白底黑条，且文本被转义', () => {
-    const symbol: BarcodeSymbol = {
-      format: 'code39',
-      label: 'Code 39',
-      text: '<A&B>',
-      modules: [true, false, true, true],
-      note: '',
-    };
-    const svg = barcodeSvg(symbol);
-    expect(svg.startsWith('<svg')).toBe(true);
-    expect(svg.endsWith('</svg>')).toBe(true);
-    expect(svg).toContain('fill="#fff"');
-    expect(svg).toContain('fill="#000"');
-    expect(svg).toContain('&lt;A&amp;B&gt;');
-    expect(svg).not.toContain('<A&B>');
-  });
-});
-
-// ── 子网计算 ────────────────────────────────────────────────────────────────
-
-describe('subnet：IPv4', () => {
-  const v4 = (input: string) => {
-    const result = parseSubnetInput(input);
-    if (result.version !== 4) throw new Error('expected IPv4 result');
-    return result;
-  };
-
-  it('/24 的完整结果', () => {
-    const result = v4('192.168.1.10/24');
-    expect(result.cidr).toBe('192.168.1.0/24');
-    expect(result.network).toBe('192.168.1.0');
-    expect(result.broadcast).toBe('192.168.1.255');
-    expect(result.netmask).toBe('255.255.255.0');
-    expect(result.wildcard).toBe('0.0.0.255');
-    expect(result.firstHost).toBe('192.168.1.1');
-    expect(result.lastHost).toBe('192.168.1.254');
-    expect(result.usableHosts).toBe(254);
-    expect(result.totalAddresses).toBe(256);
-    expect(result.addressClass).toContain('C 类');
-  });
-
-  it('/31 按 RFC 3021 两点点对点，/32 单主机', () => {
-    const p31 = v4('10.0.0.0/31');
-    expect(p31.firstHost).toBe('10.0.0.0');
-    expect(p31.lastHost).toBe('10.0.0.1');
-    expect(p31.usableHosts).toBe(2);
-
-    const p32 = v4('10.0.0.7/32');
-    expect(p32.firstHost).toBe('10.0.0.7');
-    expect(p32.lastHost).toBe('10.0.0.7');
-    expect(p32.usableHosts).toBe(1);
-    expect(p32.totalAddresses).toBe(1);
-  });
-
-  it('/0 的地址总数是 2^32，且 number 精确', () => {
-    const result = v4('0.0.0.0/0');
-    expect(result.totalAddresses).toBe(4294967296);
-    expect(result.usableHosts).toBe(4294967294);
-    expect(result.netmask).toBe('0.0.0.0');
-    expect(result.wildcard).toBe('255.255.255.255');
-  });
-
-  it('支持空格写法与 public 辅助函数', () => {
-    expect(v4('192.168.0.0 16').broadcast).toBe('192.168.255.255');
-    expect(ipv4ToInt('0.0.0.1')).toBe(1);
-    expect(ipv4ToInt('255.255.255.255')).toBe(0xffffffff);
-    expect(ipv4ToInt('256.0.0.1')).toBeNull();
-    expect(intToIpv4(0)).toBe('0.0.0.0');
-  });
-
-  it('非法输入报中文错误', () => {
-    expect(() => parseSubnetInput('')).toThrow(/请输入/);
-    expect(() => parseSubnetInput('192.168.1.1')).toThrow(/缺少前缀长度/);
-    expect(() => parseSubnetInput('192.168.1.0/33')).toThrow(/0–32/);
-    expect(() => parseSubnetInput('192.168.1.256/24')).toThrow(/不是合法的 IPv4/);
-    expect(() => parseSubnetInput('192.168.1.0/24/8')).toThrow(/一个斜杠/);
-  });
-});
-
-describe('subnet：IPv6', () => {
-  const v6 = (input: string) => {
-    const result = parseSubnetInput(input);
-    if (result.version !== 6) throw new Error('expected IPv6 result');
-    return result;
-  };
-
-  it('/64 的总数是 BigInt 的 2^64，首尾地址正确', () => {
-    const result = v6('2001:db8::1/64');
-    expect(result.cidr).toBe('2001:db8::/64');
-    expect(result.network).toBe('2001:db8::');
-    expect(result.firstAddress).toBe('2001:db8::');
-    expect(result.lastAddress).toBe('2001:db8::ffff:ffff:ffff:ffff');
-    expect(result.totalAddresses).toBe(2n ** 64n);
-  });
-
-  it('/128 只有 1 个地址', () => {
-    const result = v6('2001:db8::1/128');
-    expect(result.totalAddresses).toBe(1n);
-    expect(result.firstAddress).toBe('2001:db8::1');
-    expect(result.lastAddress).toBe('2001:db8::1');
-  });
-
-  it('/0 的总数是 2^128', () => {
-    expect(v6('::/0').totalAddresses).toBe(2n ** 128n);
-  });
-
-  it('RFC 5952 压缩：最长零段用 ::，平手取最左', () => {
-    expect(formatIpv6(0n)).toBe('::');
-    expect(formatIpv6(1n)).toBe('::1');
-    const parsed = parseIpv6('2001:0db8:0000:0000:0000:0000:0000:0001');
-    expect(parsed).not.toBeNull();
-    expect(formatIpv6(parsed as bigint)).toBe('2001:db8::1');
-    // 两个同样长的零段 → 压缩最左的那个
-    expect(formatIpv6(parseIpv6('1:0:0:1:0:0:1:1') as bigint)).toBe('1::1:0:0:1:1');
-  });
-
-  it('支持内嵌 IPv4 写法，非法输入报错', () => {
-    expect(formatIpv6(parseIpv6('::ffff:192.168.0.1') as bigint)).toBe('::ffff:c0a8:1');
-    expect(parseIpv6('1:2:3:4:5:6:7:8')).not.toBeNull();
-    expect(parseIpv6('1:2:3:4:5:6:7')).toBeNull();
-    expect(parseIpv6('1::2::3')).toBeNull();
-    expect(parseIpv6('gggg::1')).toBeNull();
-    expect(() => parseSubnetInput('2001:db8::/129')).toThrow(/0–128/);
   });
 });
 

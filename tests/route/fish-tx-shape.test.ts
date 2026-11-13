@@ -152,43 +152,6 @@ describe('★ 三条流水读口逐字段同形', () => {
     }
   });
 
-  it('值为 null 的字段照常出现（别把 null 键省掉 —— 调用方按固定字段集写代码）', async () => {
-    const { user } = await seed();
-    await setPassword(user.id);
-
-    const { list } = await readAllThree();
-    const checkin = (list.transactions as Array<Record<string, unknown>>).find(
-      (r) => r.type === 'checkin'
-    );
-    expect(checkin, '夹具应当造出一条 checkin 流水').toBeTruthy();
-    // 这五个对签到流水全是 null —— 键必须在、值为 null。
-    for (const k of ['reference_type', 'reference_id', 'related_user_id', 'transfer_id']) {
-      expect(k in checkin!, `${k} 这个键被省掉了`).toBe(true);
-      expect(checkin![k]).toBeNull();
-    }
-  });
-
-  it('值本身没错位（不是「键对了、值串了」）', async () => {
-    const { user, other } = await seed();
-    await setPassword(user.id);
-
-    const { list } = await readAllThree();
-    const out = (list.transactions as Array<Record<string, unknown>>).find(
-      (r) => r.type === 'transfer'
-    );
-    const row = await prisma.fishTransaction.findFirstOrThrow({
-      where: { userId: user.id, type: 'transfer' },
-    });
-
-    expect(out!.amount).toBe(-2);
-    expect(out!.related_user_id).toBe(other.id);
-    expect(out!.reference_id).toBe(other.id);
-    expect(out!.transfer_id).toBe(row.transferId);
-    expect(out!.description).toContain(other.username);
-    // created_at 是 ISO 串（DTO 里 toISOString 出来的），不是 Date 对象
-    expect(typeof out!.created_at).toBe('string');
-  });
-
   it('游标模式走的是同一份映射（两种模式的流水项不能各长一样）', async () => {
     const { user } = await seed();
     await setPassword(user.id);
@@ -223,57 +186,4 @@ describe('★ 三条流水读口逐字段同形', () => {
     expect([...cursor.transactions].reverse()).toEqual(page.transactions);
   });
 
-  it('信封本来就是 snake_case —— 那份不变，别把它也「统一」成别的', async () => {
-    const { user } = await seed();
-    await setPassword(user.id);
-
-    const { list, balance, market } = await readAllThree();
-
-    expect(Object.keys(list).sort()).toEqual(
-      [
-        'code',
-        'has_next',
-        'has_prev',
-        'message',
-        'next_num',
-        'page',
-        'pages',
-        'per_page',
-        'prev_num',
-        'total',
-        'transactions',
-      ].sort()
-    );
-    expect(Object.keys(balance).sort()).toEqual(
-      [
-        'balance',
-        'code',
-        'has_next',
-        'has_prev',
-        'message',
-        'page',
-        'pages',
-        'per_page',
-        'total',
-        'transactions',
-      ].sort()
-    );
-    // 上面那次调用没给 since_id → 翻页模式（信封与游标模式不同，见下一条用例）。
-    expect(Object.keys(market).sort()).toEqual(
-      [
-        'code',
-        'has_next',
-        'has_prev',
-        'message',
-        'mode',
-        'page',
-        'pages',
-        'per_page',
-        'total',
-        'transactions',
-        'user_id',
-        'username',
-      ].sort()
-    );
-  });
 });

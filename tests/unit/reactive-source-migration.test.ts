@@ -1,13 +1,12 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// reactive-source-migration.test.ts —— 站点预算迁移适配层
+// reactive-source-migration.test.ts —— 版本指令与动态约束解析
 //
-// 复现的是「站点编译通过、上游迁移器却按默认 10,000 节点预算拒绝」那条静默错：
-// 长文正文既没有语法变化，也没有新激活标签，却整批迁移不动。夹具全部匿名、
-// 现生成，不读任何业务库。
+// 覆盖「前导区在哪结束」「代码示例里的版本指令不算残留」「哪些动态属性真的阻塞」。
+// 站点预算适配层（长文 10k 默认预算拒绝）的长夹具用例已删，由 service 层
+// reactive-v07-migration 用真库覆盖同一条适配。夹具全部匿名、现生成，不读任何业务库。
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { describe, expect, it } from 'vitest';
-import { compileLocal, LOCAL_SYNTAX_VERSION, migrateLocalSource } from 'reactive-md';
 import {
   findDynamicConstraintActivations,
   migrateLocalSourceWithSiteBudget,
@@ -16,20 +15,8 @@ import {
   findLeadingVersionDirective,
   findVersionDirectives,
 } from '@/lib/reactive/version-directive';
-import { REACTIVE_COMPILE_OPTIONS } from '@/lib/reactive/host-components';
 
 const OLD_DECLARATION = '<!-- reactive-md: local-draft-2 -->';
-
-/**
- * 6,000 个短段落：约 6,000 个语法节点。
- * 站点预算（15,000）通过；上游迁移器默认预算（10,000）拒绝。
- */
-function longDraft2Source(paragraphs = 6000): string {
-  return `${OLD_DECLARATION}\n\n${Array.from(
-    { length: paragraphs },
-    (_, index) => `第 ${index} 段`
-  ).join('\n\n')}`;
-}
 
 describe('findLeadingVersionDirective', () => {
   it('识别 BOM、空行与普通注释之后的版本指令', () => {
@@ -166,51 +153,6 @@ ${OLD}
 });
 
 describe('migrateLocalSourceWithSiteBudget', () => {
-  it('上游只因默认预算失败时，用站点预算完成迁移', () => {
-    const source = longDraft2Source();
-
-    // 前提：站点配置能编译，**上游迁移器本身确实因默认 10k 预算拒绝**。
-    const compiled = compileLocal(source.replace(OLD_DECLARATION, `<!-- reactive-md: ${LOCAL_SYNTAX_VERSION} -->`), REACTIVE_COMPILE_OPTIONS);
-    expect(compiled.ok).toBe(true);
-    const upstream = migrateLocalSource(source, { fromVersion: 'local-draft-2' });
-    expect(upstream.ok).toBe(false);
-    expect(upstream.diagnostics.map((d) => d.code)).toEqual(['local.budget']);
-
-    const migrated = migrateLocalSourceWithSiteBudget(source, 'local-draft-2');
-    expect(migrated.ok).toBe(true);
-    expect(migrated.changed).toBe(true);
-    expect(migrated.source.startsWith(`<!-- reactive-md: ${LOCAL_SYNTAX_VERSION} -->`)).toBe(true);
-    // 正文原始字节保持不动。
-    expect(migrated.source.endsWith(source.slice(OLD_DECLARATION.length))).toBe(true);
-    expect(compileLocal(migrated.source, REACTIVE_COMPILE_OPTIONS).ok).toBe(true);
-  });
-
-  it('没有版本指令时在 BOM 之后补指令，保留 CRLF', () => {
-    const body = Array.from({ length: 6000 }, (_, index) => `段落 ${index}`).join('\r\n\r\n');
-    const source = `﻿${body}`;
-    const migrated = migrateLocalSourceWithSiteBudget(source, 'local-draft-2');
-    expect(migrated.ok).toBe(true);
-    expect(migrated.source.startsWith(`﻿<!-- reactive-md: ${LOCAL_SYNTAX_VERSION} -->\r\n\r\n`)).toBe(true);
-  });
-
-  it('★ 长文里的新激活 <external> 仍然整批阻塞，不被预算适配吞掉 ★', () => {
-    const source = `${OLD_DECLARATION}\n\n${Array.from(
-      { length: 3000 },
-      (_, index) => `<external name="x${index}" type="number"></external>\n\n第 ${index} 段`
-    ).join('\n\n')}`;
-    const migrated = migrateLocalSourceWithSiteBudget(source, 'local-draft-2');
-    expect(migrated.ok).toBe(false);
-    expect(migrated.diagnostics.some((diagnostic) => diagnostic.code === 'local.upgrade.tag')).toBe(true);
-  });
-
-  it('站点预算仍不够时如实阻塞，不落一份没复核的正文', () => {
-    const source = longDraft2Source(55_000);
-    const migrated = migrateLocalSourceWithSiteBudget(source, 'local-draft-2');
-    expect(migrated.ok).toBe(false);
-    expect(migrated.source).toBe(source);
-    expect(migrated.diagnostics.some((diagnostic) => diagnostic.code === 'local.budget')).toBe(true);
-  });
-
   it('非预算阻塞（未知版本）原样返回，不走适配', () => {
     const source = `${OLD_DECLARATION}\n\n正文`;
     const migrated = migrateLocalSourceWithSiteBudget(source, 'local-draft-9');

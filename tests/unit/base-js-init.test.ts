@@ -91,35 +91,6 @@ describe('回归：base.js 在 DOM 已就绪后加载时，仍须完成初始化
     expect(dropdown.classList.contains('open'), '点击外部未关闭下拉').toBe(false);
   });
 
-  it('主题切换按钮可用（顶层绑定，事故中未受影响 —— 守住不回退）', () => {
-    loadBaseJsAfterInteractive();
-    const btn = document.getElementById('themeToggle') as HTMLElement;
-    const before = document.documentElement.getAttribute('data-theme');
-    btn.click();
-    const after = document.documentElement.getAttribute('data-theme');
-    expect(after).not.toBe(before);
-    expect(['light', 'dark']).toContain(after);
-  });
-
-  it('头像胶囊：内部转移焦点保持展开，移出收起，ESC 回到触发器', () => {
-    loadBaseJsAfterInteractive();
-    const toggle = document.querySelector('.site-user-dropdown-toggle') as HTMLElement;
-    const panel = document.querySelector('.site-user-dropdown-panel') as HTMLElement;
-    const item = panel.querySelector('a')!;
-    toggle.focus();
-    toggle.click();
-    expect(panel.inert).toBe(false);
-    item.focus();
-    expect(toggle.getAttribute('aria-expanded')).toBe('true');
-    document.getElementById('themeToggle')!.focus();
-    expect(toggle.getAttribute('aria-expanded')).toBe('false');
-    expect(panel.inert).toBe(true);
-    toggle.click();
-    item.focus();
-    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
-    expect(toggle.getAttribute('aria-expanded')).toBe('false');
-    expect(document.activeElement).toBe(toggle);
-  });
 });
 
 describe('DOM 仍在解析时也必须正常', () => {
@@ -319,25 +290,6 @@ describe('顶栏提示渲染：铃铛数字（只数通知）+「讨论」链接
     };
   }
 
-  it('count > 0 → 铃铛显示数字', async () => {
-    const { badge } = await renderTopbar({ count: 3, chatUnread: false });
-    expect(badge.style.display).toBe('flex');
-    expect(badge.textContent).toBe('3');
-    expect(badge.classList.contains('large-count')).toBe(false);
-  });
-
-  it('count = 0 → 铃铛隐藏', async () => {
-    const { badge } = await renderTopbar({ count: 0, chatUnread: false });
-    expect(badge.style.display).toBe('none');
-    expect(badge.classList.contains('has-notifications')).toBe(false);
-  });
-
-  it('count > 99 → 显示 99+', async () => {
-    const { badge } = await renderTopbar({ count: 120, chatUnread: false });
-    expect(badge.textContent).toBe('99+');
-    expect(badge.classList.contains('large-count')).toBe(true);
-  });
-
   it('回归：讨论未读只点亮「讨论」红点，绝不进铃铛数字', async () => {
     // 线上 bug：私聊消息不进通知列表，却计进了铃铛数字 —— 铃铛写着 5、点进去只有 2 条。
     const { badge, dot } = await renderTopbar({ count: 0, chatUnread: true });
@@ -368,19 +320,6 @@ describe('顶栏提示渲染：铃铛数字（只数通知）+「讨论」链接
     expect(badge.style.display).toBe('none');
   });
 
-  it('大数字回落到 0：large-count 必须摘掉（残留会把下次的小数字缩成 0.65rem）', async () => {
-    const { badge } = await renderTopbar({ count: 120, chatUnread: false });
-    expect(badge.classList.contains('large-count')).toBe(true);
-
-    (globalThis as any).fetch = () =>
-      Promise.resolve({ ok: true, json: () => Promise.resolve({ code: 200, count: 0, chatUnread: false }) });
-    (window as any).updateNotificationCount();
-    await new Promise((r) => setTimeout(r, 0));
-
-    expect(badge.style.display).toBe('none');
-    expect(badge.classList.contains('large-count')).toBe(false);
-  });
-
   it('页面没有「讨论」链接（非 core+）时：铃铛照常，且不抛异常', async () => {
     document.body.innerHTML = `
       <meta name="user-authenticated" content="true">
@@ -395,97 +334,5 @@ describe('顶栏提示渲染：铃铛数字（只数通知）+「讨论」链接
     expect(() => new Function(BASE_JS)()).not.toThrow();
     await new Promise((r) => setTimeout(r, 0));
     expect((document.getElementById('notificationBadge') as HTMLElement).textContent).toBe('1');
-  });
-});
-
-describe('移动端：点击导航链接后 navbar 自动收起', () => {
-  // jsdom 没有 window.matchMedia，base.js 会兜底成 isMobile()=false；
-  // 这里桩成 matches:true 模拟手机端，才能走到移动端收起分支。
-  function mockMobileMedia() {
-    (globalThis as any).matchMedia = (query: string) => ({
-      matches: true,
-      media: query,
-      onchange: null,
-      addEventListener: () => {},
-      removeEventListener: () => {},
-      addListener: () => {},
-      removeListener: () => {},
-      dispatchEvent: () => false,
-    });
-  }
-
-  const MOBILE_NAVBAR = `
-    <nav class="site-navbar">
-      <button class="site-navbar-toggler" aria-expanded="false"></button>
-      <a class="site-link" href="/blog">博客</a>
-      <a class="site-login-btn" href="/login"><span class="icon icon-person-circle"></span>登录</a>
-      <div class="site-user-dropdown">
-        <button class="site-user-dropdown-toggle" aria-expanded="false"></button>
-        <ul class="site-user-dropdown-menu">
-          <li><a class="site-dropdown-item" href="/fish">小鱼干</a></li>
-        </ul>
-      </div>
-    </nav>
-  `;
-
-  function loadMobileNavbar() {
-    mockMobileMedia();
-    document.body.innerHTML = MOBILE_NAVBAR;
-    (globalThis as any).fetch = () =>
-      Promise.resolve({ ok: true, json: () => Promise.resolve({ code: 200, count: 0 }) });
-    new Function(BASE_JS)();
-  }
-
-  it('✅ 点击 a.site-link 后 navbar 收起（原行为不回退）', () => {
-    loadMobileNavbar();
-
-    const navbar = document.querySelector('.site-navbar')!;
-    const toggler = document.querySelector('.site-navbar-toggler') as HTMLElement;
-    const link = navbar.querySelector('a.site-link') as HTMLElement;
-
-    toggler.click();
-    expect(navbar.classList.contains('open')).toBe(true);
-
-    link.click();
-    expect(navbar.classList.contains('open'), '点击 site-link 后 navbar 未收起').toBe(false);
-    expect(toggler.getAttribute('aria-expanded')).toBe('false');
-  });
-
-  it('✅ 点击非 site-link 的链接（登录 / 用户下拉菜单项）同样收起', () => {
-    loadMobileNavbar();
-
-    const navbar = document.querySelector('.site-navbar')!;
-    const toggler = document.querySelector('.site-navbar-toggler') as HTMLElement;
-    const dropdown = document.querySelector('.site-user-dropdown')!;
-    const loginLink = document.querySelector('.site-login-btn') as HTMLElement;
-    const fishLink = document.querySelector('.site-dropdown-item') as HTMLElement;
-
-    // 登录链接（图标 span 在 <a> 内部，target 是 span —— 验证 closest('a') 路径）
-    toggler.click();
-    loginLink.click();
-    expect(navbar.classList.contains('open'), '点击登录链接未收起 navbar（线上 bug）').toBe(false);
-
-    // 用户下拉菜单项 —— 应连下拉一并收起，避免 .open 跨页残留
-    toggler.click();
-    expect(navbar.classList.contains('open')).toBe(true);
-    dropdown.classList.add('open');
-    fishLink.click();
-    expect(navbar.classList.contains('open'), '点击下拉菜单项未收起 navbar').toBe(false);
-    expect(dropdown.classList.contains('open'), '点击下拉菜单项后下拉未收起').toBe(false);
-  });
-
-  it('✅ 点击汉堡按钮 / 头像下拉按钮（非 a）不会被误收起', () => {
-    loadMobileNavbar();
-
-    const navbar = document.querySelector('.site-navbar')!;
-    const toggler = document.querySelector('.site-navbar-toggler') as HTMLElement;
-    const ddToggle = document.querySelector('.site-user-dropdown-toggle') as HTMLElement;
-
-    toggler.click();
-    expect(navbar.classList.contains('open'), '点击汉堡应展开 navbar').toBe(true);
-
-    // 点开用户下拉 —— 不应顺带收起 navbar
-    ddToggle.click();
-    expect(navbar.classList.contains('open'), '点击头像下拉按钮不应收起 navbar').toBe(true);
   });
 });

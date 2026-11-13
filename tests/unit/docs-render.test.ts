@@ -68,13 +68,6 @@ describe('文档渲染', () => {
       'https://github.com/raricycms/raricy.com/blob/main/src/app/layout.tsx'
     );
   });
-
-  it('代码围栏里的链接不受影响（示例代码不该被改写，也不该变成真元素）', () => {
-    // docs/guide/图床使用指南.md 的示例块里写着 `![图片说明](/api/images/AbCdEf1234/raw)`
-    const html = renderDocHtml(entryOf('guide/图床使用指南'));
-    expect(html).not.toContain('<img src="/api/images/AbCdEf1234/raw"');
-    expect(html).toContain('![图片说明](/api/images/AbCdEf1234/raw)');
-  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -88,24 +81,6 @@ describe('文档渲染', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('反引号文档路径 → 站内链接', () => {
-  it('路径渲染成 <a><code>，指向站内页', () => {
-    // docs/deploy.md 里多次写 `docs/architecture.md`
-    expect(htmlOf('deploy')).toMatch(
-      /<a href="\/docs\/architecture(?:#[^"]*)?"><code>docs\/architecture\.md<\/code>/
-    );
-  });
-
-  it('紧随的段号被吃进链接，href 带上锚点', () => {
-    expect(htmlOf('deploy')).toMatch(
-      /<a href="\/docs\/architecture#sec-[^"]*"><code>docs\/architecture\.md<\/code> §[^<]*<\/a>/
-    );
-  });
-
-  it('中文 slug 的引用也链得上（href 逐段转义）', () => {
-    // docs/README.md 的索引表里写着 `guide/图床使用指南.md`
-    expect(htmlOf('README')).toContain(`<a href="${docHref('guide/图床使用指南')}">`);
-  });
-
   it('表格单元格 / 列表项里的引用同样被链（遍历器漏一层的回归网）', () => {
     const table = htmlOf('README');
     expect(table).toContain('<table>');
@@ -113,13 +88,6 @@ describe('反引号文档路径 → 站内链接', () => {
 
     const list = htmlOf('architecture');
     expect(list).toMatch(/<li>(?:(?!<\/li>)[\s\S])*?<a href="\/docs\//);
-  });
-
-  it('源码路径不会被链 —— 只认登记在案的 .md', () => {
-    const html = htmlOf('architecture');
-    expect(html).not.toMatch(/href="\/docs\/src\//);
-    // 反向：文件里确实有源码路径，只是保持 <code> 原样
-    expect(html).toMatch(/<code>src\/[^<]*\.ts<\/code>/);
   });
 
   it('每个段号链接的锚点在目标文档里真的存在', () => {

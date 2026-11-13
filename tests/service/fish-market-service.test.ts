@@ -34,7 +34,8 @@ import {
 import { fishToUnits, unitsToFish } from '@/lib/fish-units';
 import { WEBHOOK_EVENT_TRANSFER_RECEIVED } from '@/lib/fish-webhook-service';
 import { nowForDb } from '@/lib/db-time';
-import { __resetRateLimitStore, RULES } from '@/lib/rate-limit';
+import { __resetRateLimitStore, recordRateLimitHit, RULES } from '@/lib/rate-limit';
+import { SERVICE_QUOTA } from '@/lib/service-accounts';
 
 beforeEach(async () => {
   await resetDb();
@@ -82,6 +83,18 @@ const transferTxCount = () =>
   prisma.fishTransaction.count({
     where: { type: { in: [TRANSFER_OUT_TYPE, TRANSFER_IN_TYPE] } },
   });
+
+/**
+ * 直填转账限频桶（键与 service 一致：`transfer:h:`，见 fish-transfer-service.ts）。
+ *
+ * 【为什么预填而不真转】原用例为验证「第 101 笔 429 / 白名单 500 笔」真跑了约
+ * 340 笔转账，每笔都是一个 SQLite 事务 + 两条流水 + 通知。桶是进程内纯内存计数，
+ * 直接记命中与真转账对限频判定完全等价（service 路径本身用的就是 recordRateLimitHit
+ * 所在的同一套 store），所以只留首尾各一笔真实转账证明「限频挂在业务路径上」。
+ */
+function prefillTransferHourly(userId: string, hits: number) {
+  for (let i = 0; i < hits; i++) recordRateLimitHit(`transfer:h:${userId}`);
+}
 
 const balanceOf = async (id: string) =>
   unitsToFish(
@@ -436,13 +449,15 @@ describe('transferFish —— 限频（唯一有配额的鱼干写路径）', ()
     const { sender, recipient } = await scene(100, 0);
     const limit = RULES.transferHourly.limit;
 
-    for (let i = 0; i < limit; i++) {
-      const r = await transferFish(sender.id, recipient.id, 0.1);
-      expect(r.ok, `第 ${i + 1} 笔应当成功`).toBe(true);
-    }
+    // 首笔真转账：证明限频真的挂在业务路径上（且额度内仍可成交）。
+    prefillTransferHourly(sender.id, limit - 1);
+    const first = await transferFish(sender.id, recipient.id, 0.1);
+    expect(first.ok, `第 ${limit} 笔（额度内最后一笔）应当成功`).toBe(true);
+
     const balanceAfterQuota = await balanceOf(sender.id);
     const txCountAfterQuota = await transferTxCount();
 
+    // 尾笔真转账：超限被拒，且不产生任何写入。
     const res = await transferFish(sender.id, recipient.id, 0.1);
 
     expect(res.ok).toBe(false);
@@ -767,11 +782,8 @@ describe('客户端幂等键 —— 对外契约', () => {
     });
     expect(first.ok).toBe(true);
 
-    // 打满小时配额（上面那笔已经占了 1 次）
-    for (let i = 0; i < RULES.transferHourly.limit - 1; i++) {
-      const r = await transferFish(sender.id, recipient.id, 0.1);
-      expect(r.ok, `第 ${i + 2} 笔应当成功`).toBe(true);
-    }
+    // 打满小时配额（上面那笔已经占了 1 次；桶直接预填，不再真转 99 笔）
+    prefillTransferHourly(sender.id, RULES.transferHourly.limit - 1);
     // 新的一笔已经被挡住……
     const blocked = await transferFish(sender.id, recipient.id, 0.1);
     expect(blocked.ok).toBe(false);
@@ -793,38 +805,43 @@ describe('服务账号配额白名单', () => {
     const { sender, recipient } = await scene(100, 0);
     vi.stubEnv('FISH_SERVICE_ACCOUNTS', sender.id);
 
-    // 普通账号在 100 笔后会 429（上面那条用例钉着），白名单账号这里转 105 笔应当全过
-    for (let i = 0; i < 105; i++) {
-      const r = await transferFish(sender.id, recipient.id, 0.1);
-      expect(r.ok, `第 ${i + 1} 笔：白名单账号不该撞普通配额`).toBe(true);
-    }
-    expect(await balanceOf(recipient.id)).toBe(10.5);
+    // 普通账号在 100 笔后就会 429（上一条用例钉着）；白名单账号这里由预填桶越过 100，
+    // 再真转一笔应当仍然成功 —— 证明走的是 SERVICE_QUOTA 而不是 RULES。
+    prefillTransferHourly(sender.id, RULES.transferHourly.limit);
+    const overNormal = await transferFish(sender.id, recipient.id, 0.1);
+    expect(overNormal.ok, '白名单账号第 101 笔不该撞普通配额').toBe(true);
 
-    await expectLedgerConsistent('服务账号转 105 笔后');
-  });
+    // 再把桶填到服务账号档位的最后一格：第 500 笔仍成功。
+    // 此刻桶里已有 RULES.transferHourly.limit（预填）+ 1（上面那笔真转账），
+    // 故只补到 SERVICE_QUOTA.transferHourly.limit - 1。
+    prefillTransferHourly(
+      sender.id,
+      SERVICE_QUOTA.transferHourly.limit - RULES.transferHourly.limit - 2
+    );
+    const lastAllowed = await transferFish(sender.id, recipient.id, 0.1);
+    expect(lastAllowed.ok, `白名单账号第 ${SERVICE_QUOTA.transferHourly.limit} 笔应当成功`).toBe(
+      true
+    );
 
-  it('白名单之外的账号不受影响（同一进程内仍按 100 笔/时 限）', async () => {
-    const { sender, recipient } = await scene(100, 0);
-    const other = await makeUser({ driedFish: 100 });
-    vi.stubEnv('FISH_SERVICE_ACCOUNTS', other.id);
-
-    for (let i = 0; i < RULES.transferHourly.limit; i++) {
-      await transferFish(sender.id, recipient.id, 0.1);
-    }
+    // 越过服务账号档位 → 429（白名单不是无限额度）。
     const blocked = await transferFish(sender.id, recipient.id, 0.1);
-
     expect(blocked.ok).toBe(false);
     if (!blocked.ok) expect(blocked.code).toBe(429);
+
+    expect(await balanceOf(recipient.id)).toBe(0.2);
+    await expectLedgerConsistent('服务账号越过普通配额后');
   });
 
   it('config 里的空白与空项被忽略（`a, , b` 不会把空串当成账号）', async () => {
     const { sender, recipient } = await scene(100, 0);
     vi.stubEnv('FISH_SERVICE_ACCOUNTS', ` , ${sender.id} , `);
 
-    for (let i = 0; i < 32; i++) {
-      const r = await transferFish(sender.id, recipient.id, 0.1);
-      expect(r.ok, `第 ${i + 1} 笔`).toBe(true);
-    }
+    // 只留一笔真实转账：若解析没做 trim/filter，sender 就不在白名单里，
+    // 预填满普通配额后这一笔会 429 而不是成交。
+    prefillTransferHourly(sender.id, RULES.transferHourly.limit);
+    const res = await transferFish(sender.id, recipient.id, 0.1);
+    expect(res.ok, '带空白项的白名单仍应认出 sender').toBe(true);
+    expect(await balanceOf(recipient.id)).toBe(0.1);
   });
 });
 

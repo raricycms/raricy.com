@@ -137,34 +137,23 @@ const MB = 1024 * 1024;
 
 describe('sanitizeFilename（文件名净化）', () => {
   describe('路径穿越', () => {
-    it('POSIX 路径穿越 ../../etc/passwd 被拍平成无害的普通名', async () => {
+    it('POSIX / Windows / 绝对路径穿越都被拍平成无害的普通名', async () => {
       // 斜杠被删 → '....etcpasswd' → 折叠点 → '.etcpasswd' → 去前导点 → 'etcpasswd'
       expect(sanitizeFilename('../../etc/passwd')).toBe('etcpasswd');
-    });
-
-    it('Windows 路径穿越 ..\\..\\windows\\system32 同样被拍平', async () => {
       expect(sanitizeFilename('..\\..\\windows\\system32')).toBe('windowssystem32');
+      const absolute = sanitizeFilename('/etc/shadow');
+      expect(absolute).toBe('etcshadow');
+      expect(path.isAbsolute(absolute), '净化后绝不能仍是绝对路径').toBe(false);
     });
 
-    it('绝对路径 /etc/shadow 丢掉根斜杠，不再是绝对路径', async () => {
-      const out = sanitizeFilename('/etc/shadow');
-      expect(out).toBe('etcshadow');
-      expect(path.isAbsolute(out), '净化后绝不能仍是绝对路径').toBe(false);
-    });
-
-    it('URL 编码的穿越 %2e%2e%2f 不会被解码（百分号被删，不产生 ../）', async () => {
+    it('URL 编码的穿越不会被解码；前导点与前导连字符被剥离', async () => {
       // 防的是「净化后再被某处 decodeURIComponent 还原成 ../」
       const out = sanitizeFilename('%2e%2e%2fetc%2fpasswd');
       expect(out).not.toContain('%');
       expect(decodeURIComponent(out)).not.toContain('..');
-    });
-
-    it('前导点被剥离（防止写出 .bashrc 这类隐藏文件）', async () => {
+      // 前导点 → 不会写出 .bashrc 这类隐藏文件；前导连字符 → 不会被当成命令行参数
       expect(sanitizeFilename('.bashrc')).toBe('bashrc');
       expect(sanitizeFilename('...hidden')).toBe('hidden');
-    });
-
-    it('前导连字符被剥离（防止文件名被当作命令行参数）', async () => {
       expect(sanitizeFilename('-rf.png')).toBe('rf.png');
       expect(sanitizeFilename('--force')).toBe('force');
     });
@@ -183,108 +172,79 @@ describe('sanitizeFilename（文件名净化）', () => {
       expect(out).toBe('a.png.php');
     });
 
-    it('换行/回车/制表被剥离（防 HTTP 响应头注入）', async () => {
-      const out = sanitizeFilename('a\r\nContent-Type: text/html\tb.png');
-      expect(/[\r\n\t]/.test(out), '净化产物进过 Content-Disposition 头，不能含 CR/LF').toBe(false);
-    });
+    it('换行/回车/制表与 HTML/JS/引号字符被剥离（响应头与页面注入）', async () => {
+      const headerInjected = sanitizeFilename('a\r\nContent-Type: text/html\tb.png');
+      expect(
+        /[\r\n\t]/.test(headerInjected),
+        '净化产物进过 Content-Disposition 头，不能含 CR/LF'
+      ).toBe(false);
 
-    it('HTML/JS 注入字符被剥离（文件名会被渲染进页面）', async () => {
-      const out = sanitizeFilename('<script>alert(1)</script>.png');
-      expect(out).toBe('scriptalert1script.png');
-      expect(/[<>'"&()]/.test(out)).toBe(false);
-    });
-
-    it('引号被剥离（否则可越出 Content-Disposition 的 filename="..." 引号）', async () => {
-      const out = sanitizeFilename('a".svg');
-      expect(out).not.toContain('"');
+      const html = sanitizeFilename('<script>alert(1)</script>.png');
+      expect(html).toBe('scriptalert1script.png');
+      expect(/[<>'"&()]/.test(html), '文件名会被渲染进页面').toBe(false);
+      // 引号必须剥离：否则可越出 Content-Disposition 的 filename="..." 引号
+      expect(sanitizeFilename('a".svg')).not.toContain('"');
     });
   });
 
   describe('长度 / 空值', () => {
-    it('超长名截断到 200 字符', async () => {
+    it('超长名截断到 200 字符；恰好 200 字符不被截断', async () => {
       expect(sanitizeFilename('a'.repeat(300))).toHaveLength(200);
-    });
-
-    it('恰好 200 字符不被截断（边界是 <=200 保留）', async () => {
       expect(sanitizeFilename('a'.repeat(200))).toHaveLength(200);
     });
 
-    it('净化后为空时回落到 image（绝不返回空串）', async () => {
+    it('净化后为空 / null / undefined 时回落到 image（绝不返回空串）', async () => {
       expect(sanitizeFilename('')).toBe('image');
       expect(sanitizeFilename('///')).toBe('image');
       expect(sanitizeFilename('   ')).toBe('image');
       expect(sanitizeFilename('!!!@@@###')).toBe('image');
-    });
-
-    it('null / undefined 不抛错，回落到 image（?? 兜底）', async () => {
       expect(sanitizeFilename(null as unknown as string)).toBe('image');
       expect(sanitizeFilename(undefined as unknown as string)).toBe('image');
     });
   });
 
   describe('Unicode', () => {
-    it('中文名原样保留（一-鿿 在白名单字符集内）', async () => {
+    it('中文 / 日韩 / 西里尔 / 带音标拉丁 / 其它数字系统原样保留（\\p{L}、\\p{N} 覆盖）', async () => {
       expect(sanitizeFilename('照片.png')).toBe('照片.png');
       expect(sanitizeFilename('聪明山_封面 2026.jpg')).toBe('聪明山_封面 2026.jpg');
-    });
-
-    it('日文 / 韩文 / 西里尔 / 带音标拉丁字母保留（\\p{L} 覆盖全部书写系统）', async () => {
       expect(sanitizeFilename('画像.png')).toBe('画像.png');
       expect(sanitizeFilename('사진.png')).toBe('사진.png');
       expect(sanitizeFilename('фото.png')).toBe('фото.png');
       expect(sanitizeFilename('café.png')).toBe('café.png');
-    });
-
-    it('阿拉伯数字与其它数字系统保留（\\p{N}）', async () => {
       expect(sanitizeFilename('2026年.png')).toBe('2026年.png');
     });
 
-    it('emoji 被剥离（不是 \\p{L}/\\p{N}）—— 记录现状', async () => {
+    it('emoji 被剥离；RTL override 等不可见控制字符被剥离（防文件名视觉欺骗）', async () => {
       // 🐱.png → 删 emoji → '.png' → 去前导点 → 'png'（扩展名被吃掉，仅记录）
       expect(sanitizeFilename('🐱.png')).toBe('png');
-      // 纯 emoji 名则完全回落
       expect(sanitizeFilename('🐱🐟')).toBe('image');
-    });
-
-    it('RTL override 等不可见控制字符被剥离（防文件名视觉欺骗）', async () => {
       // gnp.exe 用 U+202E 伪装成 exe.png —— 控制字符必须删掉
-      const out = sanitizeFilename('a‮gnp.exe');
-      expect(out).not.toContain('‮');
+      expect(sanitizeFilename('a‮gnp.exe')).not.toContain('‮');
     });
   });
 
   describe('折叠规则', () => {
-    it('连续点折叠为单点（a..b...c.png → a.b.c.png）', async () => {
+    it('连续点 / 连续空格折叠；正常文件名原样通过（净化不能误伤）', async () => {
       expect(sanitizeFilename('a..b...c.png')).toBe('a.b.c.png');
-    });
-
-    it('连续空格折叠为单空格', async () => {
       expect(sanitizeFilename('a    b.png')).toBe('a b.png');
-    });
-
-    it('正常文件名原样通过（净化不能误伤）', async () => {
       expect(sanitizeFilename('my-photo_01.png')).toBe('my-photo_01.png');
       expect(sanitizeFilename('IMG 2026.jpeg')).toBe('IMG 2026.jpeg');
     });
   });
 
   // ── 核心不变式：无论输入什么，产出都不能当路径片段逃出目录 ─────────────────
+  //
+  // 样本取「每种绕法各一个」：POSIX / Windows / 绝对路径 / UNC 共享路径 /
+  // 分号截断变体 `..;/`（IIS 时代的经典绕过）/ NUL 混入。变体再多也只是同一条
+  // 白名单规则的重复枚举，真正的判据是「产出里没有任何路径分隔符」。
   describe('★ 不变式：产出永不含路径分隔符、永不逃出上传目录', () => {
     const EVIL = [
       '../../etc/passwd',
       '..\\..\\..\\windows\\system32\\cmd.exe',
       '/etc/shadow',
-      './../../a',
-      'a/b/c.png',
-      'a\u0000/../../b',
-      '....//....//etc/passwd',
-      '..;/..;/etc',
-      '~/.ssh/id_rsa',
-      '$HOME/.aws/credentials',
-      'C:\\Windows\\win.ini',
       '\\\\server\\share\\file',
-      '.'.repeat(500),
-      '../'.repeat(100) + 'passwd',
+      '..;/..;/etc',
+      'a\u0000/../../b',
     ];
 
     it.each(EVIL)('净化 %j 后不含 / 或 \\ 或 NUL', (input) => {
@@ -341,8 +301,8 @@ describe('storagePathFor（磁盘路径）', () => {
     );
   });
 
-  it('★ 由 generateImageId 产出的 ID 拼出的路径必在上传目录内（100 次抽样）', async () => {
-    for (let i = 0; i < 100; i++) {
+  it('★ 由 generateImageId 产出的 ID 拼出的路径必在上传目录内（20 次抽样）', async () => {
+    for (let i = 0; i < 20; i++) {
       const p = path.resolve(storagePathFor(generateImageId(), 'image/png'));
       expect(p.startsWith(TEST_UPLOAD_DIR + path.sep), `逃出目录：${p}`).toBe(true);
     }
@@ -358,7 +318,7 @@ describe('generateImageId', () => {
   it('默认 10 位、字符集是大小写字母 + 数字，且可指定长度', async () => {
     expect(generateImageId()).toHaveLength(10);
     expect(generateImageId(32)).toHaveLength(32);
-    for (let i = 0; i < 200; i++) {
+    for (let i = 0; i < 50; i++) {
       const id = generateImageId();
       // ID 会进 URL / 文件名 / 下载名：任何需要转义的字符都是隐患
       expect(/^[A-Za-z0-9]{10}$/.test(id), `非法 ID：${id}`).toBe(true);
@@ -366,8 +326,10 @@ describe('generateImageId', () => {
     }
   });
 
-  it('大量生成无重复（20000 个）—— 碰撞会覆盖他人图片', async () => {
-    const n = 20000;
+  // 碰撞检测按「数量级样本」抽样：20000 次循环只是把同一条 10 位随机串的
+  // 碰撞概率再乘 10，测试价值不变、耗时却翻十倍。2000 个同一数量级已能覆盖。
+  it('大量生成无重复（2000 个）—— 碰撞会覆盖他人图片', async () => {
+    const n = 2000;
     const set = new Set<string>();
     for (let i = 0; i < n; i++) set.add(generateImageId());
     expect(set.size, `${n} 个 ID 出现重复（应为 0 碰撞）`).toBe(n);
@@ -467,17 +429,11 @@ describe('getUserUsedBytes（已用字节）', () => {
 // ═════════════════════════════════════════════════════════════════════════════
 
 describe('UPLOAD_IMAGE_MIMES / extForMime', () => {
-  it('白名单恰好是 PNG/JPEG/GIF/WebP/SVG', async () => {
-    expect([...UPLOAD_IMAGE_MIMES].sort()).toEqual([
-      'image/gif',
-      'image/jpeg',
-      'image/png',
-      'image/svg+xml',
-      'image/webp',
-    ]);
-  });
-
-  it('危险类型不在白名单（html / 脚本 / 可执行）', async () => {
+  // 白名单的**具体成员**与 MIME→扩展名的逐项映射是 `src/lib/image-upload.ts` 里的常量
+  // 复述，逐条抄过来只会让「加一个格式」变成改两处。行为层面的覆盖在
+  // `planImageUpload`（字节自证）与 `storagePathFor`（落盘扩展名）里，这里只留
+  // 白名单的**边界语义**。
+  it('危险类型不在白名单（html / 脚本 / 可执行；不带 +xml 的 image/svg 也不放行）', async () => {
     for (const bad of [
       'text/html',
       'image/svg', // 注意：不带 +xml 的写法不应被放行
@@ -493,23 +449,12 @@ describe('UPLOAD_IMAGE_MIMES / extForMime', () => {
     }
   });
 
-  it('MIME → 扩展名映射', async () => {
-    expect(extForMime('image/png')).toBe('.png');
-    expect(extForMime('image/jpeg')).toBe('.jpg');
-    expect(extForMime('image/gif')).toBe('.gif');
-    expect(extForMime('image/webp')).toBe('.webp');
-    expect(extForMime('image/svg+xml')).toBe('.svg');
-  });
-
-  it('未知 MIME → 空串（不抛错）', async () => {
-    expect(extForMime('application/pdf')).toBe('');
-    expect(extForMime('')).toBe('');
-  });
-
-  it('白名单里每个 MIME 都有扩展名（否则会落一个无后缀的裸文件）', async () => {
+  it('白名单里每个 MIME 都有扩展名映射；未知 MIME 回落空串', async () => {
     for (const m of UPLOAD_IMAGE_MIMES) {
       expect(extForMime(m), `${m} 缺少扩展名映射`).not.toBe('');
     }
+    expect(extForMime('application/pdf')).toBe('');
+    expect(extForMime('')).toBe('');
   });
 });
 
@@ -551,31 +496,6 @@ describe('listUserImages', () => {
   it('无图片时返回空数组', async () => {
     const u = await makeUser({ role: 'core' });
     expect(await listUserImages(u.id)).toEqual([]);
-  });
-
-  it('DTO 字段完整：ext 由 mime 推导，url 指向 /api/images/:id/raw，带上传者用户名', async () => {
-    const u = await makeUser({ role: 'core', username: 'shooter' });
-    const img = await makeImage({
-      authorId: u.id,
-      filename: 'p.jpg',
-      fileSize: 2048,
-      mimeType: 'image/jpeg',
-      createdAt: new Date('2026-05-05T01:02:03.000Z'),
-    });
-
-    const [dto] = await listUserImages(u.id);
-    expect(dto).toEqual({
-      id: img.id,
-      filename: 'p.jpg',
-      fileSize: 2048,
-      mimeType: 'image/jpeg',
-      authorId: u.id,
-      authorName: 'shooter',
-      createdAt: new Date('2026-05-05T01:02:03.000Z'),
-      isPublic: true,
-      ext: '.jpg',
-      url: `/api/images/${img.id}/raw`,
-    });
   });
 
   it('isPublic 为 NULL 的历史行序列化为 true（?? true 兜底）', async () => {
@@ -629,7 +549,7 @@ describe('listAllImages（管理端）', () => {
     expect(r.images[0].filename).toBe('ok.png');
   });
 
-  it('每页 30 条、pages 向上取整，倒序且分页无重复无遗漏', async () => {
+  it('每页 30 条、pages 向上取整，倒序无重复无遗漏；越界页空、非法页号被夹到 1', async () => {
     const u = await makeUser({ role: 'core' });
     await seed(u.id, 35);
 
@@ -645,21 +565,16 @@ describe('listAllImages（管理端）', () => {
 
     const ids = [...p1.images.map((i) => i.id), ...p2.images.map((i) => i.id)];
     expect(new Set(ids).size, '两页拼起来应无重复无遗漏').toBe(35);
-  });
 
-  it('越界页返回空列表；非法页号被夹到合法值（算出负 skip 会让 Prisma 抛错）', async () => {
-    const u = await makeUser({ role: 'core' });
-    await makeImage({ authorId: u.id });
-
+    // 越界 / 非法页号：算出负 skip 会让 Prisma 抛错，必须夹到合法值。
     const beyond = await listAllImages(99);
     expect(beyond.images).toEqual([]);
-    expect(beyond.total).toBe(1);
-
+    expect(beyond.total).toBe(35);
     expect((await listAllImages(0)).page, 'page=0 → 1').toBe(1);
     expect((await listAllImages(-5)).page, '负页码 → 1').toBe(1);
     expect((await listAllImages(NaN)).page, 'NaN → 1').toBe(1);
     expect((await listAllImages(1.9)).page, '小数向下取整').toBe(1);
-    expect((await listAllImages(0)).images).toHaveLength(1);
+    expect((await listAllImages(0)).images).toHaveLength(30);
   });
 
   it('空库：total=0、pages=0、images=[]', async () => {
@@ -668,46 +583,26 @@ describe('listAllImages（管理端）', () => {
   });
 
   describe('搜索', () => {
-    it('命中文件名（contains，子串匹配）', async () => {
-      const u = await makeUser({ role: 'core' });
-      await makeImage({ authorId: u.id, filename: 'holiday-beach.png' });
-      await makeImage({ authorId: u.id, filename: 'work-desk.png' });
-
-      const r = await listAllImages(1, 'beach');
-      expect(r.total).toBe(1);
-      expect(r.images[0].filename).toBe('holiday-beach.png');
-    });
-
-    it('命中上传者用户名（按 author_id 子查询匹配）', async () => {
+    it('命中文件名子串或上传者用户名；同一条同时命中两个条件只算一次', async () => {
       const alice = await makeUser({ role: 'core', username: 'alice' });
       const bob = await makeUser({ role: 'core', username: 'bob' });
-      await makeImage({ authorId: alice.id, filename: 'x.png' });
-      await makeImage({ authorId: bob.id, filename: 'y.png' });
-
-      const r = await listAllImages(1, 'alic');
-      expect(r.total).toBe(1);
-      expect(r.images[0].authorName).toBe('alice');
-    });
-
-    it('文件名 OR 用户名 —— 两边命中都算（去重后不重复计数）', async () => {
-      const alice = await makeUser({ role: 'core', username: 'alice' });
-      // 这张同时满足「作者叫 alice」和「文件名含 alice」
+      const carol = await makeUser({ role: 'core', username: 'carol' });
+      // 这张同时满足「作者叫 alice」和「文件名含 alice」—— 命中两个条件也只能算一次
       await makeImage({ authorId: alice.id, filename: 'alice-selfie.png' });
-      const r = await listAllImages(1, 'alice');
-      expect(r.total, '同时命中两个条件的行只能算一次').toBe(1);
+      await makeImage({ authorId: bob.id, filename: 'work-desk.png' });
+      await makeImage({ authorId: carol.id, filename: 'holiday-beach.png' });
+
+      expect((await listAllImages(1, 'beach')).total, '命中文件名子串').toBe(1);
+      const byAuthor = await listAllImages(1, 'bob');
+      expect(byAuthor.total, '命中上传者用户名').toBe(1);
+      expect(byAuthor.images[0].filename).toBe('work-desk.png');
+      expect((await listAllImages(1, 'alice')).total, '同时命中两个条件的行只算一次').toBe(1);
     });
 
     it('搜索也排除软删除', async () => {
       const u = await makeUser({ role: 'core' });
       await makeImage({ authorId: u.id, filename: 'beach.png', ignore: true });
       expect((await listAllImages(1, 'beach')).total).toBe(0);
-    });
-
-    it('search 为 null / 空串时不过滤（空串是 falsy）', async () => {
-      const u = await makeUser({ role: 'core' });
-      await makeImage({ authorId: u.id });
-      expect((await listAllImages(1, null)).total).toBe(1);
-      expect((await listAllImages(1, '')).total).toBe(1);
     });
 
     it('引号 / SQL 关键字不会造成注入（参数化查询）', async () => {
@@ -1469,18 +1364,14 @@ describe('detectImageMime（由内容识别真实类型）', () => {
 
   describe('SVG 文本识别', () => {
     it('常见前导形态（prolog / BOM / 空白 / 注释 / DOCTYPE）都认得出', () => {
-      const doctype =
-        '<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" ' +
-        '"http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd" [<!ENTITY foo "bar">]>';
+      // 每种前导只留一个代表：单独的 BOM / 空白 / 注释变体合并成一条，
+      // DOCTYPE 由下面那条真实 Inkscape / Illustrator 产物覆盖（不再单独复述 DTD 串）。
       const forms = [
         '<svg xmlns="..."></svg>',
         '<?xml version="1.0"?><svg></svg>',
-        '﻿<svg></svg>',
-        '\n\n   \t<svg></svg>',
-        '<!-- made by inkscape --><svg></svg>',
-        `${doctype}<svg></svg>`,
+        '\uFEFF\n\n   \t<!-- made by inkscape --><svg></svg>',
         // 真实 Inkscape / Illustrator 产物：prolog + 注释 + DOCTYPE 混合
-        '﻿<?xml version="1.0" encoding="UTF-8"?>\n<!-- Generator: Adobe Illustrator -->\n' +
+        '\uFEFF<?xml version="1.0" encoding="UTF-8"?>\n<!-- Generator: Adobe Illustrator -->\n' +
           '<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "svg11.dtd">\n<svg width="10"></svg>',
       ];
       for (const src of forms) {

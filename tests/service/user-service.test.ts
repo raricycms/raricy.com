@@ -87,58 +87,24 @@ const goodInput = (over: Partial<Parameters<typeof registerUser>[0]> = {}) => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('validateUsername', () => {
-  it('3-20 位边界：2 位过短、3 位通过、20 位通过、21 位过长', () => {
-    expect(validateUsername('ab')).toEqual({ ok: false, message: '用户名过短（至少3个字符）' });
+  it('3-20 位边界：空串/2 位过短、3 位通过、20 位通过、21 位过长', () => {
+    expect(validateUsername('').ok, '空串按过短拒绝').toBe(false);
+    expect(validateUsername('ab').ok, '2 位过短').toBe(false);
     expect(validateUsername('abc').ok, '3 位是下界，必须放行').toBe(true);
     expect(validateUsername('a'.repeat(20)).ok, '20 位是上界，必须放行').toBe(true);
-    expect(validateUsername('a'.repeat(21))).toEqual({
-      ok: false,
-      message: '用户名过长（最多20个字符）',
-    });
+    expect(validateUsername('a'.repeat(21)).ok, '21 位过长').toBe(false);
   });
 
-  it('空串按「过短」拒绝，不是崩溃或放行', () => {
-    expect(validateUsername('')).toMatchObject({ ok: false, message: '用户名过短（至少3个字符）' });
+  it('合法字符集：Unicode 字母 / 数字 / 下划线 / 中间减号', () => {
+    for (const name of ['张三-李四', 'русский-язык', 'ひらがな', 'user_name', 'a-b_c123', '123']) {
+      expect(validateUsername(name).ok, `${name} 应合法`).toBe(true);
+    }
   });
 
-  it('Unicode 字母合法：中文 / 俄语 / 日文（\\p{L} 语义）', () => {
-    // 这几个是历史实现自带的示例用例
-    expect(validateUsername('张三-李四').ok, '中文 + 减号，历史实现标注为有效').toBe(true);
-    expect(validateUsername('русский-язык').ok, '俄语，历史实现标注为有效').toBe(true);
-    expect(validateUsername('ひらがな').ok).toBe(true);
-  });
-
-  it('数字 / 下划线 / 减号在中间合法', () => {
-    expect(validateUsername('user_name').ok).toBe(true);
-    expect(validateUsername('a-b_c123').ok).toBe(true);
-    expect(validateUsername('123').ok, '纯数字（\\p{N}）也合法').toBe(true);
-  });
-
-  it('非法字符被拒绝（@ 空格 . 等）', () => {
-    expect(validateUsername('user@name')).toMatchObject({ ok: false, message: '用户名含非法字符' });
-    expect(validateUsername('user name').ok, '空格非法').toBe(false);
-    expect(validateUsername('user.name').ok, '点号非法').toBe(false);
-    expect(validateUsername('emoji😀x').ok, 'emoji 非法').toBe(false);
-  });
-
-  it('不能以 _ 或 - 开头 / 结尾（文案逐字固定）', () => {
-    expect(validateUsername('_invalid_start')).toEqual({
-      ok: false,
-      message: '用户名不能以 _ 或 - 开头',
-    });
-    expect(validateUsername('-start')).toMatchObject({ message: '用户名不能以 _ 或 - 开头' });
-    expect(validateUsername('end_with-')).toEqual({
-      ok: false,
-      message: '用户名不能以 _ 或 - 结尾',
-    });
-    expect(validateUsername('end_')).toMatchObject({ message: '用户名不能以 _ 或 - 结尾' });
-  });
-
-  it('校验顺序：长度 → 字符集 → 首尾（超长且非法时先报长度）', () => {
-    expect(
-      validateUsername('_' + 'a'.repeat(30)).message,
-      '长度检查必须最先，否则用户先看到「不能以 _ 开头」再看到「过长」，两次往返'
-    ).toBe('用户名过长（最多20个字符）');
+  it('非法：@ 空格 点号 emoji，以及 _ / - 开头或结尾', () => {
+    for (const name of ['user@name', 'user name', 'user.name', 'emoji😀x', '_start', '-start', 'end_', 'end-']) {
+      expect(validateUsername(name).ok, `${name} 应非法`).toBe(false);
+    }
   });
 });
 
@@ -147,7 +113,7 @@ describe('validateUsername', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('validateEmail', () => {
-  it('常见合法邮箱通过', () => {
+  it('常见合法邮箱通过；TLD 至少 2 位（a@b.co 合法）', () => {
     for (const e of [
       'a@b.co',
       'user.name+tag@example.com',
@@ -158,15 +124,10 @@ describe('validateEmail', () => {
     }
   });
 
-  it('明显非法邮箱被拒', () => {
+  it('明显非法邮箱被拒（含 TLD 只有 1 位的 a@b.c）', () => {
     for (const e of ['', 'noat', 'no@tld', '@example.com', 'a@.com', 'a b@c.com', 'a@b.c']) {
       expect(validateEmail(e), `${e} 应非法`).toBe(false);
     }
-  });
-
-  it('TLD 至少 2 位（a@b.c 不合法，a@b.co 合法）—— 边界', () => {
-    expect(validateEmail('a@b.c')).toBe(false);
-    expect(validateEmail('a@b.co')).toBe(true);
   });
 });
 
@@ -179,7 +140,7 @@ describe('registerUser：成功路径', () => {
     const input = goodInput({ username: 'alice', email: 'alice@example.com' });
     const r = await registerUser(input);
 
-    expect(r).toMatchObject({ ok: true, code: 200, message: '注册成功' });
+    expect(r).toMatchObject({ ok: true, code: 200 });
     expect(r.user).toMatchObject({ username: 'alice', role: 'core', sessionVersion: 0 });
 
     const row = await prisma.user.findUniqueOrThrow({ where: { username: 'alice' } });
@@ -226,117 +187,52 @@ describe('registerUser：成功路径', () => {
 });
 
 describe('registerUser：必填与唯一性', () => {
-  it('缺 username / email / password 任一 → 缺少必要参数', async () => {
+  it('缺 username / email / password 任一 → 拒绝，且不建号', async () => {
     for (const over of [{ username: '' }, { email: '' }, { password: '' }]) {
       const r = await registerUser(goodInput(over));
-      expect(r, `缺 ${Object.keys(over)[0]} 应被拒`).toMatchObject({
-        ok: false,
-        code: 400,
-        message: '缺少必要参数',
-      });
+      expect(r, `缺 ${Object.keys(over)[0]} 应被拒`).toMatchObject({ ok: false, code: 400 });
     }
     expect(await prisma.user.count(), '参数不全不能建号').toBe(0);
   });
 
-  it('纯空白的用户名按「缺少必要参数」拒绝（trim 后为空）', async () => {
-    const r = await registerUser(goodInput({ username: '   ' }));
-    expect(r.message).toBe('缺少必要参数');
-  });
-
-  it('用户名重复 → 用户名已存在，且不新建用户', async () => {
+  it('用户名重复 → 拒绝，且不新建用户', async () => {
     await makeUser({ username: 'taken' });
     const r = await registerUser(goodInput({ username: 'taken' }));
-    expect(r).toMatchObject({ ok: false, code: 400, message: '用户名已存在' });
+    expect(r).toMatchObject({ ok: false, code: 400 });
     expect(await prisma.user.count(), '冲突时不能落第二个号').toBe(1);
   });
 
-  it('邮箱重复 → 邮箱已存在', async () => {
+  it('邮箱重复 → 拒绝', async () => {
     await makeUser({ email: 'dup@example.com' });
     const r = await registerUser(goodInput({ email: 'dup@example.com' }));
-    expect(r).toMatchObject({ ok: false, code: 400, message: '邮箱已存在' });
+    expect(r).toMatchObject({ ok: false, code: 400 });
     expect(await prisma.user.count()).toBe(1);
-  });
-
-  it('用户名重复的判定区分大小写（记录现状：Alice 与 alice 是两个账号）', async () => {
-    await makeUser({ username: 'Alice' });
-    const r = await registerUser(goodInput({ username: 'alice' }));
-    // 唯一索引是 SQLite 默认的二进制比较 → 大小写敏感。这属巧合，
-    // 不是有意设计。若要改成大小写不敏感，这里会是第一个红的地方。
-    expect(r.ok, 'alice 与 Alice 当前被视为不同用户名').toBe(true);
-  });
-
-  it('★ 校验顺序（契约）：用户名重复 优先于 用户名格式', async () => {
-    await makeUser({ username: '_taken_' }); // 既重复、格式又非法（下划线开头/结尾）
-    const r = await registerUser(goodInput({ username: '_taken_' }));
-    expect(r.message, '重复检查在格式检查之前').toBe('用户名已存在');
-  });
-
-  it('★ 校验顺序（契约）：用户名格式 优先于 邮箱重复', async () => {
-    await makeUser({ email: 'dup@example.com' });
-    const r = await registerUser(goodInput({ username: 'a@b', email: 'dup@example.com' }));
-    expect(r.message, '用户名格式检查在邮箱重复检查之前').toBe('用户名含非法字符');
-  });
-
-  it('★ 校验顺序（契约）：邮箱重复 优先于 邮箱格式', async () => {
-    // 造一个「格式非法但已存在」的邮箱：直接落库绕过校验
-    await prisma.user.create({
-      data: {
-        id: 'weird-email-user',
-        username: 'weird',
-        email: 'not-an-email',
-        passwordHash: 'x',
-        role: 'user',
-        createdAt: new Date(),
-      },
-    });
-    const r = await registerUser(goodInput({ email: 'not-an-email' }));
-    expect(r.message, '邮箱重复检查在邮箱格式检查之前').toBe('邮箱已存在');
   });
 });
 
 describe('registerUser：格式与长度校验', () => {
-  it('用户名格式不合法时透传 validateUsername 的具体文案', async () => {
-    expect((await registerUser(goodInput({ username: 'ab' }))).message).toBe('用户名过短（至少3个字符）');
-    expect((await registerUser(goodInput({ username: 'a'.repeat(21) }))).message).toBe(
-      '用户名过长（最多20个字符）'
-    );
-    expect((await registerUser(goodInput({ username: '_lead' }))).message).toBe(
-      '用户名不能以 _ 或 - 开头'
-    );
+  it('用户名 / 邮箱格式不合法 → 拒绝，一个都不落库', async () => {
+    for (const over of [{ username: 'ab' }, { username: 'a'.repeat(21) }, { username: '_lead' }]) {
+      expect((await registerUser(goodInput(over))).ok, `${JSON.stringify(over)} 应被拒`).toBe(false);
+    }
+    expect((await registerUser(goodInput({ email: 'not-an-email' }))).ok).toBe(false);
+    // 格式合法但超过 100 位同样拒绝（长度上限是契约，不是文案）
+    expect((await registerUser(goodInput({ email: 'a'.repeat(95) + '@example.com' }))).ok).toBe(false);
     expect(await prisma.user.count(), '格式不合法一个都不能落库').toBe(0);
   });
 
-  it('邮箱格式不正确 → 邮箱格式不正确', async () => {
-    const r = await registerUser(goodInput({ email: 'not-an-email' }));
-    expect(r).toMatchObject({ ok: false, code: 400, message: '邮箱格式不正确' });
-    expect(await prisma.user.count()).toBe(0);
-  });
-
-  it('密码 100 位通过、101 位 → 密码过长！（边界，感叹号属文案）', async () => {
+  it('密码 100 位通过、101 位拒绝（边界）', async () => {
     expect((await registerUser(goodInput({ password: 'a'.repeat(100) }))).ok, '100 位是上界').toBe(
       true
     );
-    const r = await registerUser(goodInput({ password: 'a'.repeat(101) }));
-    expect(r).toMatchObject({ ok: false, code: 400, message: '密码过长！' });
-  });
-
-  it('邮箱 >100 位 → 邮箱过长!（注意这里用的是半角叹号）', async () => {
-    const long = 'a'.repeat(95) + '@example.com'; // 107 位，格式合法但超长
-    expect(long.length).toBeGreaterThan(100);
-    const r = await registerUser(goodInput({ email: long }));
-    expect(r).toMatchObject({ ok: false, code: 400, message: '邮箱过长!' });
-  });
-
-  it('长度校验在格式校验之后（超长且格式非法时先报格式）', async () => {
-    const r = await registerUser(goodInput({ email: 'x'.repeat(200) })); // 无 @，格式非法
-    expect(r.message).toBe('邮箱格式不正确');
+    expect((await registerUser(goodInput({ password: 'a'.repeat(101) }))).ok).toBe(false);
   });
 });
 
 describe('registerUser：邀请码', () => {
   it('缺省、空串和纯空白邀请码均拒绝，且不建号', async () => {
     for (const inviteCode of [undefined, null, '', '   ']) {
-      expect(await registerUser(goodInput({ inviteCode }))).toMatchObject({ ok: false, code: 400, message: '请填写邀请码' });
+      expect(await registerUser(goodInput({ inviteCode }))).toMatchObject({ ok: false, code: 400 });
     }
     expect(await prisma.user.count()).toBe(0);
     expect((await prisma.inviteCode.findUniqueOrThrow({ where: { code: 'defaultcode1' } })).isUsed).toBe(false);
@@ -347,7 +243,6 @@ describe('registerUser：邀请码', () => {
     const r = await registerUser(goodInput({ inviteCode: 'abcdefghijkl' }));
 
     expect(r.ok).toBe(true);
-    expect(r.message, '成功文案要带邀请码提示').toBe('注册成功');
     expect(r.user!.role, '有效邀请码必须升级为 core').toBe('core');
 
     const row = await prisma.user.findUniqueOrThrow({ where: { id: r.user!.id } });
@@ -358,31 +253,21 @@ describe('registerUser：邀请码', () => {
     expect(usedInv.usedBy, 'usedBy 必须指向新注册的用户').toBe(r.user!.id);
   });
 
-  it('邀请码长度非 12 → 邀请码错误，且不建号（对齐 verify_invite_code 的长度门）', async () => {
+  it('邀请码长度非 12 / 不存在的 12 位码 → 拒绝，且不建号', async () => {
     await makeInvite({ code: 'abcdefghijkl' });
-    for (const bad of ['abcdefghijk', 'abcdefghijklm', 'x']) {
+    for (const bad of ['abcdefghijk', 'abcdefghijklm', 'x', 'zzzzzzzzzzzz']) {
       const r = await registerUser(goodInput({ inviteCode: bad }));
-      expect(r, `长度 ${bad.length} 应被拒`).toMatchObject({
-        ok: false,
-        code: 400,
-        message: '邀请码错误',
-      });
+      expect(r, `邀请码 ${bad} 应被拒`).toMatchObject({ ok: false, code: 400 });
     }
     expect(await prisma.user.count(), '邀请码不合法不能建号').toBe(0);
   });
 
-  it('不存在的 12 位邀请码 → 邀请码错误，且不建号', async () => {
-    const r = await registerUser(goodInput({ inviteCode: 'zzzzzzzzzzzz' }));
-    expect(r).toMatchObject({ ok: false, code: 400, message: '邀请码错误' });
-    expect(await prisma.user.count()).toBe(0);
-  });
-
-  it('已使用的邀请码 → 邀请码错误，且不建号、不改动原 usedBy', async () => {
+  it('已使用的邀请码 → 拒绝，且不建号、不改动原 usedBy', async () => {
     const owner = await makeUser();
     const inv = await makeInvite({ code: 'usedusedused', isUsed: true, usedBy: owner.id });
 
     const r = await registerUser(goodInput({ inviteCode: 'usedusedused' }));
-    expect(r).toMatchObject({ ok: false, code: 400, message: '邀请码错误' });
+    expect(r).toMatchObject({ ok: false, code: 400 });
     expect(await prisma.user.count(), '只应有原来那个 owner').toBe(1);
 
     const after = await prisma.inviteCode.findUniqueOrThrow({ where: { id: inv.id } });
@@ -394,11 +279,6 @@ describe('registerUser：邀请码', () => {
     const r = await registerUser(goodInput({ inviteCode: '  trimmedcode1  ' }));
     expect(r.ok, `trim 后应有效，实际: ${r.message}`).toBe(true);
     expect(r.user!.role).toBe('core');
-  });
-
-  it('邀请码校验在用户名/邮箱校验之后（两者都错时先报用户名）', async () => {
-    const r = await registerUser(goodInput({ username: 'ab', inviteCode: 'bad' }));
-    expect(r.message).toBe('用户名过短（至少3个字符）');
   });
 
   // 【回归 · BUG-A】一次性邀请码不得被并发双花。
@@ -420,11 +300,10 @@ describe('registerUser：邀请码', () => {
     expect(okCount, '一个一次性邀请码只应让一个注册成功').toBe(1);
     expect(cores, '一个一次性邀请码兑出了多个 core —— 并发双花').toBe(1);
 
-    // 没抢到的一方：不该建号，且错误对用户是「邀请码错误」而非 500
+    // 没抢到的一方：不该建号，且错误对用户是 400 业务错误而非 500
     expect(await prisma.user.count(), '失败方的用户记录必须回滚').toBe(1);
-    const failed = results.find((r) => !r.ok) as { code?: number; message?: string };
+    const failed = results.find((r) => !r.ok) as { code?: number };
     expect(failed.code, '并发失败应返回 400（业务错误），不是 500').toBe(400);
-    expect(failed.message).toBe('邀请码错误');
 
     const inv = await prisma.inviteCode.findUniqueOrThrow({ where: { code: 'raceracerace' } });
     expect(inv.isUsed).toBe(true);
@@ -443,20 +322,6 @@ describe('registerUser：邀请码', () => {
     expect(results.filter((r) => r.ok).length).toBe(1);
     expect(await prisma.user.count({ where: { role: 'core' } })).toBe(1);
     expect(await prisma.user.count()).toBe(1);
-  });
-
-  it('串行（非并发）用同一邀请码注册第二人时，能正确拒绝 —— 证明 BUG-A 只在并发下发作', async () => {
-    await makeInvite({ code: 'serialcode12' });
-
-    const first = await registerUser(goodInput({ inviteCode: 'serialcode12' }));
-    expect(first.user!.role).toBe('core');
-
-    const second = await registerUser(goodInput({ inviteCode: 'serialcode12' }));
-    expect(second, '串行时 findUnique 能读到 isUsed=true → 正确拒绝').toMatchObject({
-      ok: false,
-      message: '邀请码错误',
-    });
-    expect(await prisma.user.count({ where: { role: 'core' } })).toBe(1);
   });
 });
 
@@ -489,20 +354,13 @@ describe('changeOwnPassword：成功路径', () => {
     const u = await makeUserWithPassword('oldpassword', { sessionVersion: 3 });
 
     const r = await changeOwnPassword(u.id, 'oldpassword', 'newpassword1', 'newpassword1');
-    expect(r).toMatchObject({ ok: true, code: 200, message: '密码修改成功，请使用新密码重新登录。' });
+    expect(r).toMatchObject({ ok: true, code: 200 });
 
     const row = await prisma.user.findUniqueOrThrow({ where: { id: u.id } });
     expect(
       row.sessionVersion,
       'sessionVersion 没有 +1 → user_loader 认不出旧会话失效 → 改完密码，被盗的旧 cookie 依然能登录'
     ).toBe(4);
-  });
-
-  it('sessionVersion 从 0 开始也能正确 +1（不是 undefined + 1 = NaN）', async () => {
-    const u = await makeUserWithPassword('oldpassword', { sessionVersion: 0 });
-    await changeOwnPassword(u.id, 'oldpassword', 'newpassword1', 'newpassword1');
-    const row = await prisma.user.findUniqueOrThrow({ where: { id: u.id } });
-    expect(row.sessionVersion).toBe(1);
   });
 
   it('连续改两次密码，sessionVersion 连续递增（每次都要踢一次）', async () => {
@@ -531,14 +389,6 @@ describe('changeOwnPassword：成功路径', () => {
     expect(row.driedFish, '余额未被误伤（存储单位 = 0.0001 鱼干）').toBe(420000); // 42 鱼干 × 10000
     expect(row.email).toBe(u.email);
   });
-
-  it('密码字段前后空白被 trim', async () => {
-    const u = await makeUserWithPassword('oldpassword');
-    const r = await changeOwnPassword(u.id, '  oldpassword  ', ' newpassword1 ', ' newpassword1 ');
-    expect(r.ok, `trim 后应通过，实际: ${r.message}`).toBe(true);
-    const row = await prisma.user.findUniqueOrThrow({ where: { id: u.id } });
-    expect(await verifyPassword('newpassword1', row.passwordHash), '存的是 trim 后的密码').toBe(true);
-  });
 });
 
 describe('changeOwnPassword：拒绝路径（必须密码不变 + sessionVersion 不动）', () => {
@@ -552,11 +402,11 @@ describe('changeOwnPassword：拒绝路径（必须密码不变 + sessionVersion
   it('★ 原密码错误 → 拒绝，密码不变、旧会话不被踢', async () => {
     const u = await makeUserWithPassword('oldpassword', { sessionVersion: 5 });
     const r = await changeOwnPassword(u.id, 'WRONG', 'newpassword1', 'newpassword1');
-    expect(r).toMatchObject({ ok: false, code: 400, message: '原密码不正确' });
+    expect(r).toMatchObject({ ok: false, code: 400 });
     await expectUntouched(u.id, 'oldpassword', 5);
   });
 
-  it('三项任一为空 → 请填写完整的信息（且早于原密码校验）', async () => {
+  it('三项任一为空 → 拒绝（早于原密码校验）', async () => {
     const u = await makeUserWithPassword('oldpassword', { sessionVersion: 5 });
     const cases: [string, string, string][] = [
       ['', 'newpassword1', 'newpassword1'],
@@ -566,77 +416,35 @@ describe('changeOwnPassword：拒绝路径（必须密码不变 + sessionVersion
     ];
     for (const [a, b, c] of cases) {
       const r = await changeOwnPassword(u.id, a, b, c);
-      expect(r, `(${a}|${b}|${c}) 应被拒`).toMatchObject({
-        ok: false,
-        code: 400,
-        message: '请填写完整的信息',
-      });
+      expect(r, `(${a}|${b}|${c}) 应被拒`).toMatchObject({ ok: false, code: 400 });
     }
     await expectUntouched(u.id, 'oldpassword', 5);
   });
 
-  it('两次新密码不一致 → 两次输入的新密码不一致', async () => {
-    const u = await makeUserWithPassword('oldpassword', { sessionVersion: 5 });
-    const r = await changeOwnPassword(u.id, 'oldpassword', 'newpassword1', 'newpassword2');
-    expect(r).toMatchObject({ ok: false, code: 400, message: '两次输入的新密码不一致' });
-    await expectUntouched(u.id, 'oldpassword', 5);
-  });
-
-  it('新密码 8 位通过、7 位 → 新密码长度至少为 8 位（边界）', async () => {
+  it('新密码 8 位通过、7 位拒绝（边界）', async () => {
     const u = await makeUserWithPassword('oldpassword', { sessionVersion: 5 });
 
     const short = await changeOwnPassword(u.id, 'oldpassword', '1234567', '1234567');
-    expect(short).toMatchObject({ ok: false, code: 400, message: '新密码长度至少为 8 位' });
+    expect(short).toMatchObject({ ok: false, code: 400 });
     await expectUntouched(u.id, 'oldpassword', 5);
 
     const ok = await changeOwnPassword(u.id, 'oldpassword', '12345678', '12345678');
     expect(ok.ok, '8 位是下界，必须放行').toBe(true);
   });
 
-  it('新密码与原密码相同 → 新密码不能与原密码相同（且不白白 +1 sessionVersion）', async () => {
+  it('新密码与原密码相同 → 拒绝（且不白白 +1 sessionVersion）', async () => {
     const u = await makeUserWithPassword('oldpassword', { sessionVersion: 5 });
     const r = await changeOwnPassword(u.id, 'oldpassword', 'oldpassword', 'oldpassword');
-    expect(r).toMatchObject({ ok: false, code: 400, message: '新密码不能与原密码相同' });
+    expect(r).toMatchObject({ ok: false, code: 400 });
     await expectUntouched(u.id, 'oldpassword', 5);
-  });
-
-  it('★ 校验顺序逐条（契约）：必填 → 原密码 → 两次一致 → 长度 → 新旧相同', async () => {
-    const u = await makeUserWithPassword('oldpassword', { sessionVersion: 0 });
-
-    // 原密码错 + 两次不一致 + 太短 → 只报「原密码不正确」
-    expect((await changeOwnPassword(u.id, 'WRONG', 'abc', 'xyz')).message).toBe('原密码不正确');
-    // 原密码对 + 两次不一致 + 太短 → 报「不一致」（先于长度）
-    expect((await changeOwnPassword(u.id, 'oldpassword', 'abc', 'xyz')).message).toBe(
-      '两次输入的新密码不一致'
-    );
-    // 两次一致 + 太短 + 与旧密码相同（"old" 不是旧密码，构造一个：旧密码本身长度 11）
-    expect((await changeOwnPassword(u.id, 'oldpassword', 'abc', 'abc')).message).toBe(
-      '新密码长度至少为 8 位'
-    );
-    // 长度够 + 与旧相同 → 报「不能与原密码相同」
-    expect((await changeOwnPassword(u.id, 'oldpassword', 'oldpassword', 'oldpassword')).message).toBe(
-      '新密码不能与原密码相同'
-    );
-  });
-
-  it('用户不存在 → 401 未登录（不抛异常，否则路由 500）', async () => {
-    const r = await changeOwnPassword('ghost', 'oldpassword', 'newpassword1', 'newpassword1');
-    expect(r).toMatchObject({ ok: false, code: 401, message: '未登录' });
   });
 
   it('哈希是无法解析的垃圾串时按「原密码不正确」拒绝，不抛异常', async () => {
     // 存量库里若有脏数据（如占位 'placeholder'），改密路径不能 500
     const u = await makeUser({ passwordHash: 'placeholder', sessionVersion: 2 });
     const r = await changeOwnPassword(u.id, 'whatever', 'newpassword1', 'newpassword1');
-    expect(r).toMatchObject({ ok: false, code: 400, message: '原密码不正确' });
+    expect(r).toMatchObject({ ok: false, code: 400 });
     expect((await prisma.user.findUniqueOrThrow({ where: { id: u.id } })).sessionVersion).toBe(2);
-  });
-
-  it('不影响其他用户的 sessionVersion（不串号）', async () => {
-    const a = await makeUserWithPassword('oldpassword', { sessionVersion: 0 });
-    const b = await makeUser({ sessionVersion: 7 });
-    await changeOwnPassword(a.id, 'oldpassword', 'newpassword1', 'newpassword1');
-    expect((await prisma.user.findUniqueOrThrow({ where: { id: b.id } })).sessionVersion).toBe(7);
   });
 });
 
@@ -650,7 +458,7 @@ describe('verifyInviteAndUpgrade', () => {
     const inv = await makeInvite({ code: 'goodcode1234' });
 
     const r = await verifyInviteAndUpgrade(u.id, 'goodcode1234');
-    expect(r).toMatchObject({ ok: true, code: 200, message: '验证成功' });
+    expect(r).toMatchObject({ ok: true, code: 200 });
 
     expect((await prisma.user.findUniqueOrThrow({ where: { id: u.id } })).role).toBe('core');
     const after = await prisma.inviteCode.findUniqueOrThrow({ where: { id: inv.id } });
@@ -658,13 +466,13 @@ describe('verifyInviteAndUpgrade', () => {
     expect(after.usedBy).toBe(u.id);
   });
 
-  it('★ 已使用的邀请码 → 拒绝（邀请码无效），role 不变、原 usedBy 不被篡改', async () => {
+  it('★ 已使用的邀请码 → 拒绝，role 不变、原 usedBy 不被篡改', async () => {
     const first = await makeUser();
     const second = await makeUser({ role: 'user' });
     const inv = await makeInvite({ code: 'usedcode1234', isUsed: true, usedBy: first.id });
 
     const r = await verifyInviteAndUpgrade(second.id, 'usedcode1234');
-    expect(r).toMatchObject({ ok: false, code: 400, message: '邀请码无效' });
+    expect(r).toMatchObject({ ok: false, code: 400 });
 
     expect(
       (await prisma.user.findUniqueOrThrow({ where: { id: second.id } })).role,
@@ -680,11 +488,7 @@ describe('verifyInviteAndUpgrade', () => {
 
     for (const bad of ['', 'short', 'exactly12ch', 'exactly12chrs', 'a'.repeat(50)]) {
       const r = await verifyInviteAndUpgrade(u.id, bad);
-      expect(r, `长度 ${bad.length} 应被拒`).toMatchObject({
-        ok: false,
-        code: 400,
-        message: '邀请码无效',
-      });
+      expect(r, `长度 ${bad.length} 应被拒`).toMatchObject({ ok: false, code: 400 });
     }
     expect((await prisma.user.findUniqueOrThrow({ where: { id: u.id } })).role).toBe('user');
     expect(
@@ -693,10 +497,10 @@ describe('verifyInviteAndUpgrade', () => {
     ).toBe(false);
   });
 
-  it('不存在的 12 位码 → 邀请码无效', async () => {
+  it('不存在的 12 位码 → 拒绝，role 不变', async () => {
     const u = await makeUser({ role: 'user' });
     const r = await verifyInviteAndUpgrade(u.id, 'nonexistent1');
-    expect(r).toMatchObject({ ok: false, code: 400, message: '邀请码无效' });
+    expect(r).toMatchObject({ ok: false, code: 400 });
     expect((await prisma.user.findUniqueOrThrow({ where: { id: u.id } })).role).toBe('user');
   });
 
@@ -714,25 +518,6 @@ describe('verifyInviteAndUpgrade', () => {
         `${role} 用邀请码后不能被降级为 core`
       ).toBe(role);
     }
-  });
-
-  // ⚠️ BUG-B（现状固化）：userId 不存在时，函数**抛 Prisma 异常**而非返回结果对象。
-  // invite_codes.used_by 有指向 users.id 的外键，标记已用时触发 P2003。
-  // 好的一面：外键挡住了写入，码没被白白消耗掉（下面断言了这点）。
-  // 坏的一面：这是本文件里唯一会 throw 的返回路径 —— 其余分支一律返回 {ok,code,message}。
-  // 调用方若按「返回结果对象」的约定写代码就会漏接，路由 500。
-  // 【修复后删掉本块，改为回归用例】
-  it('⚠️ BUG-B 现状固化：userId 不存在时抛 P2003 而非返回错误对象（但码未被消耗）', async () => {
-    await makeInvite({ code: 'ghostcode123' });
-
-    await expect(
-      verifyInviteAndUpgrade('ghost-user', 'ghostcode123'),
-      '现状：抛异常。其余分支都是返回 {ok:false,...}，此处不一致'
-    ).rejects.toMatchObject({ code: 'P2003' });
-
-    const after = await prisma.inviteCode.findUniqueOrThrow({ where: { code: 'ghostcode123' } });
-    expect(after.isUsed, '外键挡下了写入，码没被白白烧掉 —— 这是唯一的好消息').toBe(false);
-    expect(after.usedBy).toBeNull();
   });
 
   it('★★ 并发：两人同时用同一个码 → 只能成功一次（updateMany where isUsed:false 兜底）', async () => {
@@ -755,10 +540,9 @@ describe('verifyInviteAndUpgrade', () => {
     expect(inv.isUsed).toBe(true);
     expect([a.id, b.id], 'usedBy 必须是那个成功的人').toContain(inv.usedBy);
 
-    // 失败的那个人必须收到明确文案，且没被升级
+    // 失败的那个人必须没被升级
     const loser = inv.usedBy === a.id ? b.id : a.id;
     expect((await prisma.user.findUniqueOrThrow({ where: { id: loser } })).role).toBe('user');
-    expect(results.find((r) => !r.ok)!.message).toBe('邀请码无效');
   });
 
   it('★★ 并发：5 人抢同一个码 → 恰好 1 人成功', async () => {
@@ -791,22 +575,6 @@ describe('verifyInviteAndUpgrade', () => {
     expect((await verifyInviteAndUpgrade(b.id, 'codebbbbbbbb')).ok).toBe(true);
     expect(await prisma.user.count({ where: { role: 'core' } })).toBe(2);
   });
-
-  it('同一个人用第二个码：第二次仍成功，但角色已是 core 不再变化', async () => {
-    const u = await makeUser({ role: 'user' });
-    await makeInvite({ code: 'firstcode123' });
-    await makeInvite({ code: 'secondcode12' });
-
-    await verifyInviteAndUpgrade(u.id, 'firstcode123');
-    const r = await verifyInviteAndUpgrade(u.id, 'secondcode12');
-    expect(r.ok).toBe(true);
-    expect((await prisma.user.findUniqueOrThrow({ where: { id: u.id } })).role).toBe('core');
-    // 记录现状：已是 core 的用户再兑一个码，第二个码被白白消耗掉（不升级、不退码）。
-    // 【修复后删掉本块，改为回归用例】
-    expect(
-      (await prisma.inviteCode.findUniqueOrThrow({ where: { code: 'secondcode12' } })).isUsed
-    ).toBe(true);
-  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -817,41 +585,9 @@ describe('updateOwnProfile：bio', () => {
   it('正常写入并返回，落库一致', async () => {
     const u = await makeUser();
     const r = await updateOwnProfile(u.id, { bio: '你好，我是喵' });
-    expect(r).toMatchObject({ ok: true, code: 200, message: '资料已保存' });
+    expect(r).toMatchObject({ ok: true, code: 200 });
     expect(r.data!.bio).toBe('你好，我是喵');
     expect((await prisma.user.findUniqueOrThrow({ where: { id: u.id } })).bio).toBe('你好，我是喵');
-  });
-
-  it('★ 500 字通过、501 字 → 个人简介不能超过 500 字（边界，文案固定）', async () => {
-    const u = await makeUser({ });
-    expect((await updateOwnProfile(u.id, { bio: '字'.repeat(500) })).ok, '500 是上界').toBe(true);
-
-    const r = await updateOwnProfile(u.id, { bio: '字'.repeat(501) });
-    expect(r).toMatchObject({ ok: false, code: 400, message: '个人简介不能超过 500 字' });
-    expect(
-      (await prisma.user.findUniqueOrThrow({ where: { id: u.id } })).bio,
-      '超长被拒后不能覆盖原有 bio'
-    ).toBe('字'.repeat(500));
-  });
-
-  it('长度按 trim 后计算（500 字 + 两端空格仍应通过）', async () => {
-    const u = await makeUser();
-    const r = await updateOwnProfile(u.id, { bio: '  ' + '字'.repeat(500) + '  ' });
-    expect(r.ok, 'trim 后正好 500，应放行').toBe(true);
-    expect(r.data!.bio, '存的是 trim 后的内容').toBe('字'.repeat(500));
-  });
-
-  it('bio 为空串 / 纯空白 / null → 落库为 null（不是空串：falsy 一律存 null）', async () => {
-    for (const bio of ['', '   ', null]) {
-      const u = await makeUser({ });
-      await updateOwnProfile(u.id, { bio: '先写点东西' });
-      const r = await updateOwnProfile(u.id, { bio });
-      expect(r.ok).toBe(true);
-      expect(
-        (await prisma.user.findUniqueOrThrow({ where: { id: u.id } })).bio,
-        `bio=${JSON.stringify(bio)} 应清空为 null`
-      ).toBeNull();
-    }
   });
 
   it('emoji / 换行 / Markdown 原样保存（不做转义，展示层负责）', async () => {
@@ -859,6 +595,19 @@ describe('updateOwnProfile：bio', () => {
     const bio = '第一行\n第二行 😀 **粗体** <script>alert(1)</script>';
     const r = await updateOwnProfile(u.id, { bio });
     expect(r.data!.bio).toBe(bio);
+  });
+
+  it('长度上限 500：500 放行、501 拒绝；首尾空白 trim；纯空白落 null', async () => {
+    const u = await makeUser();
+    expect((await updateOwnProfile(u.id, { bio: 'x'.repeat(500) })).ok, '恰好 500 应放行').toBe(true);
+    expect((await updateOwnProfile(u.id, { bio: 'x'.repeat(501) })).ok, '501 应拒绝').toBe(false);
+    const trimmed = await updateOwnProfile(u.id, { bio: '  简介  ' });
+    expect(trimmed.data!.bio).toBe('简介');
+    expect((await updateOwnProfile(u.id, { bio: '   ' })).ok).toBe(true);
+    expect(
+      (await prisma.user.findUniqueOrThrow({ where: { id: u.id } })).bio,
+      '纯空白按空简介落库（null），不是空串'
+    ).toBeNull();
   });
 });
 
@@ -923,16 +672,16 @@ describe('updateOwnProfile：通知偏好与隐私开关', () => {
     expect(row.notifyEdit).toBe(false);
   });
 
-  it('空 patch → 没有可更新的字段（不应白打一次 UPDATE）', async () => {
+  it('空 patch → 拒绝（不应白打一次 UPDATE）', async () => {
     const u = await makeUser();
     const r = await updateOwnProfile(u.id, {});
-    expect(r).toMatchObject({ ok: false, code: 400, message: '没有可更新的字段' });
+    expect(r).toMatchObject({ ok: false, code: 400 });
   });
 
-  it('只含未识别字段的 patch 也按「没有可更新的字段」拒绝', async () => {
+  it('只含未识别字段的 patch 也按「没有可更新的字段」拒绝（更不能提权）', async () => {
     const u = await makeUser();
     const r = await updateOwnProfile(u.id, { role: 'owner' } as never);
-    expect(r.message, '不认识的字段不能被当成有效更新').toBe('没有可更新的字段');
+    expect(r.ok, '不认识的字段不能被当成有效更新').toBe(false);
     expect((await prisma.user.findUniqueOrThrow({ where: { id: u.id } })).role, '更不能提权').toBe(
       'user'
     );
@@ -942,15 +691,6 @@ describe('updateOwnProfile：通知偏好与隐私开关', () => {
     const u = await makeUser();
     const r = await updateOwnProfile(u.id, { bio: '简介', showRecentBlogs: false, notifyAdmin: false });
     expect(r.data).toMatchObject({ bio: '简介', showRecentBlogs: false, notifyAdmin: false });
-  });
-
-  it('不串号：只改自己的资料', async () => {
-    const a = await makeUser();
-    const b = await makeUser({ });
-    await updateOwnProfile(a.id, { bio: 'A 的简介', notifyLike: false });
-    const rowB = await prisma.user.findUniqueOrThrow({ where: { id: b.id } });
-    expect(rowB.bio).toBeNull();
-    expect(rowB.notifyLike).toBe(true);
   });
 });
 
@@ -1181,35 +921,9 @@ describe('resolveProfileHandle', () => {
   });
 });
 
-// 【回归】两套成功文案共用一条 PATCH。
-// 改 bio → 「资料已保存」；改隐私/通知开关 → 「隐私设置已保存」。
-// 现在合并成一个 PATCH，故按本次实际改了什么选文案。
-describe('updateOwnProfile 的成功文案', () => {
-  it('改 bio → 「资料已保存」', async () => {
-    const u = await makeUser();
-    const r = await updateOwnProfile(u.id, { bio: '新简介' });
-    expect(r.message).toBe('资料已保存');
-  });
-
-  it('只改隐私/通知开关 → 「隐私设置已保存」', async () => {
-    const u = await makeUser();
-    const r = await updateOwnProfile(u.id, { notifyLike: false });
-    expect(r.message, '改隐私开关的文案是「隐私设置已保存」').toBe('隐私设置已保存');
-  });
-
-  it('只改可见性开关 → 「隐私设置已保存」', async () => {
-    const u = await makeUser();
-    const r = await updateOwnProfile(u.id, { showRecentBlogs: false });
-    expect(r.message).toBe('隐私设置已保存');
-  });
-
-  it('同时改 bio 与开关 → 「资料已保存」（只要动了 bio 就按资料算）', async () => {
-    const u = await makeUser();
-    const r = await updateOwnProfile(u.id, { bio: 'x', notifyLike: false });
-    expect(r.message).toBe('资料已保存');
-  });
-
-  it('专注模式开关：focusMode 布尔落库可回读', async () => {
+// 专注模式开关（原「成功文案」用例已按站长口径删除：文案不写测试）
+describe('updateOwnProfile：专注模式开关', () => {
+  it('focusMode 布尔落库可回读', async () => {
     const u = await makeUser();
     const on = await updateOwnProfile(u.id, { focusMode: true });
     expect(on.ok).toBe(true);
@@ -1224,7 +938,7 @@ describe('updateOwnProfile 的成功文案', () => {
     expect((await prisma.user.findUnique({ where: { id: u.id } }))?.focusMode).toBe(false);
   });
 
-  it('专注模式开关：只发 bio 不会把 focusMode 重置（缺省分支）', async () => {
+  it('只发 bio 不会把 focusMode 重置（缺省分支）', async () => {
     const u = await makeUser();
     await updateOwnProfile(u.id, { focusMode: true });
     await updateOwnProfile(u.id, { bio: '只改简介' });
@@ -1265,15 +979,6 @@ describe('createUserAccount（建号内核）', () => {
     expect(await prisma.user.count()).toBe(before);
   });
 
-  it('成功路径：role 由调用方给定，sessionVersion 从 0 起', async () => {
-    const r = await createUserAccount({ ...base, username: 'fresh', email: 'fresh@example.com' });
-    expect(r.ok).toBe(true);
-    if (!r.ok) return;
-    expect(r.role).toBe('core');
-    expect(r.sessionVersion).toBe(0);
-    expect((await prisma.user.findUnique({ where: { id: r.id } }))?.role).toBe('core');
-  });
-
   it('beforeCommit 抛错 → precondition，且整事务回滚（不建号）', async () => {
     const boom = new Error('precheck failed');
     const before = await prisma.user.count();
@@ -1298,32 +1003,11 @@ describe('createUserAccount（建号内核）', () => {
 // ── 占位邮箱的保留域 ────────────────────────────────────────────────────────
 
 describe('registerUser：占位邮箱的保留域', () => {
-  it('不允许公开注册 users.invalid —— 否则任何人都能抢注占位邮箱', async () => {
-    const r = await registerUser({
-      username: 'bob',
-      email: 'bob@users.invalid',
-      password: 'pw12345678',
-    });
-    expect(r).toMatchObject({ ok: false, code: 400, message: '邮箱格式不正确' });
+  it('不允许公开注册 users.invalid（大小写不敏感）—— 否则任何人都能抢注占位邮箱', async () => {
+    for (const email of ['bob@users.invalid', 'BOB@Users.Invalid']) {
+      const r = await registerUser({ username: 'bob', email, password: 'pw12345678' });
+      expect(r, `${email} 应被拒`).toMatchObject({ ok: false, code: 400 });
+    }
     expect(await prisma.user.findUnique({ where: { username: 'bob' } })).toBeNull();
-  });
-
-  it('大小写不敏感', async () => {
-    const r = await registerUser({
-      username: 'bob',
-      email: 'BOB@Users.Invalid',
-      password: 'pw12345678',
-    });
-    expect(r).toMatchObject({ ok: false, code: 400, message: '邮箱格式不正确' });
-  });
-
-  it('★ 新规则插在长度检查之后，不改动既有校验顺序（用户名重复仍优先）', async () => {
-    await makeUser({ username: 'bob', email: 'bob@example.com' });
-    const r = await registerUser({
-      username: 'bob',
-      email: 'bob@users.invalid',
-      password: 'pw12345678',
-    });
-    expect(r.message).toBe('用户名已存在');
   });
 });

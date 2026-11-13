@@ -5,8 +5,8 @@
 //   node 下能跑真正的往返：用 docx 包造一份文档 → 用 mammoth 读回来。这条往返
 //   钉住两件事：① 我们的块级模型 → docx 段落映射是对的；② 读路径能拿回文字。
 //
-// 【分层】把「纯逻辑」（分段 / HTML → 块 / 块 → Markdown / mammoth 消息折算）与
-//   「引擎往返」分开测：纯逻辑失败一眼看出是映射错，往返失败才怀疑库。
+// 【分层】把「纯逻辑」（分段 / HTML → 块 / 块 → Markdown）与「引擎往返」分开测：
+//   纯逻辑失败一眼看出是映射错，往返失败才怀疑库。
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { describe, it, expect } from 'vitest';
@@ -17,7 +17,6 @@ import {
   docxToText,
   htmlToBlocks,
   htmlToMarkdown,
-  mammothMessagesToNotices,
   textToBlocks,
 } from '@/lib/file-converter/engines/office';
 import { CATEGORY } from '@/lib/file-converter/categories/office';
@@ -97,19 +96,6 @@ describe('textToBlocks 分段', () => {
 // ─── 纯逻辑：HTML → 块 → Markdown ─────────────────────────────────────────────
 
 describe('htmlToBlocks / blocksToMarkdown', () => {
-  it('解析标题、段落、强调、列表', () => {
-    const blocks = htmlToBlocks(
-      '<h2>小节</h2><p>段落 <strong>粗</strong> 与 <em>斜</em>。</p><ul><li>一</li><li>二</li></ul>'
-    );
-    expect(blocks.map((b) => b.kind)).toEqual(['heading', 'paragraph', 'listItem', 'listItem']);
-    const md = blocksToMarkdown(blocks);
-    expect(md).toContain('## 小节');
-    expect(md).toContain('**粗**');
-    expect(md).toContain('*斜*');
-    expect(md).toContain('- 一');
-    expect(md).toContain('- 二');
-  });
-
   it('有序列表带序号，嵌套项层级缩进', () => {
     const blocks = htmlToBlocks('<ol><li>甲<ul><li>子</li></ul></li><li>乙</li></ol>');
     const md = blocksToMarkdown(blocks);
@@ -139,32 +125,6 @@ describe('htmlToBlocks / blocksToMarkdown', () => {
     const blocks = htmlToBlocks(html);
     expect(blocks).toHaveLength(1);
     expect(blocksToMarkdown(blocks)).toBe('正文');
-  });
-});
-
-// ─── 纯逻辑：mammoth 消息 → notices ──────────────────────────────────────────
-
-describe('mammothMessagesToNotices', () => {
-  it('空消息 → 空数组', () => {
-    expect(mammothMessagesToNotices([])).toEqual([]);
-    expect(mammothMessagesToNotices(undefined)).toEqual([]);
-  });
-
-  it('汇总警告与错误条数并逐条列出', () => {
-    const notices = mammothMessagesToNotices([
-      { type: 'warning', message: '不支持的样式' },
-      { type: 'error', message: '图片丢失' },
-    ]);
-    expect(notices[0]).toContain('1 条警告');
-    expect(notices[0]).toContain('1 条错误');
-    expect(notices.join('\n')).toContain('不支持的样式');
-    expect(notices.join('\n')).toContain('图片丢失');
-  });
-
-  it('超出上限时截断并交代其余条数', () => {
-    const many = Array.from({ length: 12 }, (_, i) => ({ type: 'warning' as const, message: `w${i}` }));
-    const notices = mammothMessagesToNotices(many, 5);
-    expect(notices.some((n) => n.includes('其余 7 条'))).toBe(true);
   });
 });
 

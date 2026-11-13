@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { scrypt as _scrypt } from 'node:crypto';
 import { resetDb, makeUser, prisma } from '../helpers/db';
 import { nowForDb } from '@/lib/db-time';
-import { __resetRateLimitStore } from '@/lib/rate-limit';
+import { __resetRateLimitStore, recordRateLimitHit } from '@/lib/rate-limit';
 import { hashPassword, verifyPassword } from '@/lib/password';
 import { createAuthorizationCode, validateAccessToken } from '@/lib/oauth';
 import { POST } from '@/app/api/oauth/token/route';
@@ -17,6 +17,18 @@ const verify = vi.mocked(verifyPassword);
 const CALLBACK = 'https://app.example.com/cb';
 const SECRET = 'test-client-secret';
 type Format = 'json' | 'form' | 'basic';
+
+/**
+ * 直填密码预算桶（OAuth 主体档：`password:oauth:<clientId>`，见 password-budget.ts）。
+ *
+ * 【为什么预填而不是真打满】真实窗额度是 60 次：原本每个用例循环 60 遍只为了把桶填满，
+ * 而每次 POST 都要解析请求、查应用、走路由。桶是进程内纯内存计数，直接记命中与
+ * 60 次真实请求对限频语义完全等价（`recordRateLimitHit` 就是路由路径用的那个函数）。
+ * 本文件仍保留少量真实请求来证明「限频挂在业务路径上」。
+ */
+function prefillPasswordBucket(subject: string, hits: number) {
+  for (let i = 0; i < hits; i++) recordRateLimitHit(`password:${subject}`);
+}
 
 function request(clientId: string, secret = 'wrong', format: Format = 'json', extra = {}) {
   const body = { client_id: clientId, client_secret: secret, grant_type: 'authorization_code', ...extra };
@@ -58,34 +70,38 @@ beforeEach(async () => {
 afterEach(() => vi.useRealTimers());
 
 describe('OAuth token 密码计算前限频', () => {
-  it.each<Format>(['json', 'form', 'basic'])('%s：错误密钥也计数，超额时不再验证密码', async (format) => {
+  it('json / form / basic 三种格式都计数且共用同一个桶；超额后不再验证密码', async () => {
     const { application } = await makeApp();
-    for (let i = 0; i < 60; i++) {
+    // 预填到只剩 3 个额度：三种格式各打一次，证明「换格式不换桶」也证明都计数。
+    prefillPasswordBucket(`oauth:${application.clientId}`, 60 - 3);
+    for (const format of ['json', 'form', 'basic'] as Format[]) {
       const res = await POST(request(application.clientId, 'wrong', format));
-      expect(res.status).toBe(401);
+      expect(res.status, format).toBe(401);
       expect(await res.json()).toMatchObject({ error: 'invalid_client' });
     }
-    for (let i = 0; i < 5; i++) {
-      const res = await POST(request(application.clientId, 'wrong', format));
-      // 沿用已有 OAuth 限频的 invalid_request / 400 形状。
-      expect(res.status).toBe(400);
-      expect(await res.json()).toMatchObject({ error: 'invalid_request', error_description: '请求过于频繁，请稍后再试' });
-      expect(res.headers.get('cache-control')).toBe('no-store');
-    }
-    expect(verify).toHaveBeenCalledTimes(60);
+    // 第 61 次（换回 json）被限频拦下：不再运行密码校验。
+    const blocked = await POST(request(application.clientId, 'wrong', 'json'));
+    // 沿用已有 OAuth 限频的 invalid_request / 400 形状。
+    expect(blocked.status).toBe(400);
+    expect(await blocked.json()).toMatchObject({
+      error: 'invalid_request',
+      error_description: '请求过于频繁，请稍后再试',
+    });
+    expect(blocked.headers.get('cache-control')).toBe('no-store');
+    expect(verify, '超限请求不能运行密码校验').toHaveBeenCalledTimes(3);
   });
 
   it('Basic 凭据优先；改变 body.client_id 或请求格式不能换桶', async () => {
     const { application } = await makeApp();
-    for (let i = 0; i < 60; i++) {
-      const res = await POST(request(application.clientId, 'wrong', i % 2 ? 'json' : 'form'));
-      expect(res.status).toBe(401);
-    }
+    prefillPasswordBucket(`oauth:${application.clientId}`, 60);
+    // Basic 头带的是真实 clientId，body 里换一个：桶必须按 Basic 解析出的 clientId 计。
+    // 若按 body.client_id 建桶，这里会落进一个全新的桶 → 反而会去验证密码（401）。
     const res = await POST(request(application.clientId, 'wrong', 'basic', {
-      client_id: 'a-different-body-client', client_secret: SECRET,
+      client_id: 'a-different-body-client',
+      client_secret: SECRET,
     }));
-    expect(await res.json()).toMatchObject({ error: 'invalid_request' });
-    expect(verify).toHaveBeenCalledTimes(60);
+    expect(await res.json()).toMatchObject({ error: 'invalid_request', error_description: '请求过于频繁，请稍后再试' });
+    expect(verify, '限频在密码计算之前生效').not.toHaveBeenCalled();
   });
 
   it('65 个并发错误请求最多运行 60 次密码校验', async () => {
@@ -98,25 +114,30 @@ describe('OAuth token 密码计算前限频', () => {
 
   it('正确密钥也计数；额度满后不能先烧密码计算再拒绝', async () => {
     const { application } = await makeApp();
-    for (let i = 0; i < 60; i++) {
-      // 密钥正确但缺少 code；校验通过后返回 invalid_request。
-      const res = await POST(request(application.clientId, SECRET));
-      expect(await res.json()).toMatchObject({ error: 'invalid_request', error_description: '缺少 code 或 redirect_uri' });
-    }
-    const res = await POST(request(application.clientId, SECRET));
-    expect(await res.json()).toMatchObject({ error_description: '请求过于频繁，请稍后再试' });
-    expect(verify).toHaveBeenCalledTimes(60);
+    // 预填到只剩 1 个额度：正确密钥的这一笔应当被验证（然后因缺 code 回 invalid_request）。
+    prefillPasswordBucket(`oauth:${application.clientId}`, 59);
+    // 密钥正确但缺少 code；校验通过后返回 invalid_request。
+    const allowed = await POST(request(application.clientId, SECRET));
+    expect(await allowed.json()).toMatchObject({
+      error: 'invalid_request',
+      error_description: '缺少 code 或 redirect_uri',
+    });
+    // 额度已满：不再运行密码校验。
+    const blocked = await POST(request(application.clientId, SECRET));
+    expect(await blocked.json()).toMatchObject({ error_description: '请求过于频繁，请稍后再试' });
+    expect(verify).toHaveBeenCalledTimes(1);
   });
 
   it('每个应用独立计数，60 秒窗口过去后恢复密码校验', async () => {
     const { application } = await makeApp();
     const { application: other } = await makeApp('other-client');
-    for (let i = 0; i < 60; i++) await POST(request(application.clientId));
-    expect((await POST(request(other.clientId))).status).toBe(401);
-    expect((await POST(request(application.clientId))).status).toBe(400);
+    // 用预填桶把本应用打满（窗口起点 = 测试时钟 12:00:00）。真实请求只留首尾各一笔。
+    prefillPasswordBucket(`oauth:${application.clientId}`, 60);
+    expect((await POST(request(other.clientId))).status, '另一个应用有自己的桶').toBe(401);
+    expect((await POST(request(application.clientId))).status, '本应用已满').toBe(400);
     vi.setSystemTime(new Date('2026-10-09T12:01:00Z'));
-    expect((await POST(request(application.clientId))).status).toBe(401);
-    expect(verify).toHaveBeenCalledTimes(62);
+    expect((await POST(request(application.clientId))).status, '窗口过去后恢复').toBe(401);
+    expect(verify).toHaveBeenCalledTimes(2);
   });
 
   it('额度内仍可正常兑换授权码，错误密钥不消费授权码', async () => {
@@ -133,10 +154,13 @@ describe('OAuth token 密码计算前限频', () => {
     expect(await prisma.oAuthAccessToken.count()).toBe(1);
   });
 
-  it('真实 scrypt：60 次错误密钥后停止运行哈希', async () => {
+  it('真实 scrypt：额度用满后停止运行哈希', async () => {
     const actual = await vi.importActual<typeof import('@/lib/password')>('@/lib/password');
     verify.mockImplementation(actual.verifyPassword);
     const { application } = await makeApp();
+    // 【保留这条的意义】上面的用例都是 mock 掉 verifyPassword 的；这一条让**真实**
+    // 的 verifyPassword 跑一遍，证明限频确实发生在真实的密码计算之前，而不是
+    // 只拦住了替身调用。
     // 【为什么用低 N 的 scrypt 哈希】生产参数 scrypt:32768:8:1 已被
     // `tests/unit/password.test.ts` 钉住；这条要验的是「限频在密码计算之前生效」，
     // 走的是同一段 verifyPassword 代码路径，单次 ~4ms（若用生产参数 ~123ms，
@@ -151,8 +175,10 @@ describe('OAuth token 密码计算前限频', () => {
       where: { id: application.id },
       data: { clientSecretHash: `scrypt:1024:8:1$${salt}$${derived.toString('hex')}` },
     });
-    for (let i = 0; i < 60; i++) expect((await POST(request(application.clientId))).status).toBe(401);
-    expect((await POST(request(application.clientId))).status).toBe(400);
-    expect(verify).toHaveBeenCalledTimes(60);
+    // 预填到只剩 1 个额度：额度内的那笔真的跑一次哈希（401），满额后那笔不再跑。
+    prefillPasswordBucket(`oauth:${application.clientId}`, 59);
+    expect((await POST(request(application.clientId))).status, '额度内真实 scrypt 验一次').toBe(401);
+    expect((await POST(request(application.clientId))).status, '额度满后限频').toBe(400);
+    expect(verify).toHaveBeenCalledTimes(1);
   }, 20000);
 });

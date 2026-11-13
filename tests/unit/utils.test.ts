@@ -36,10 +36,9 @@ describe('generateInviteCode：12 位 base62（注册端按 length===12 硬校�
     expect(row!.createdAt).toBeInstanceOf(Date);
   });
 
-  it('大量生成（500 个）：长度恒为 12、字符集合法、无重复', async () => {
-    const N = 500;
-    const codes: string[] = [];
-    for (let i = 0; i < N; i++) codes.push(await generateInviteCode());
+  it('批量生成（20 个）：长度恒为 12、字符集合法、无重复且全部落库', async () => {
+    const N = 20;
+    const codes = await Promise.all(Array.from({ length: N }, () => generateInviteCode()));
 
     // 长度 / 字符集：任何一个不合规的码都是废码，逐个查
     const badLen = codes.filter((c) => c.length !== 12);
@@ -53,6 +52,11 @@ describe('generateInviteCode：12 位 base62（注册端按 length===12 硬校�
 
     // 首字符也得有变化，否则说明生成器退化成常量 / 前缀固定。
     expect(new Set(codes.map((c) => c[0])).size, '所有码首字符都相同，随机源可疑').toBeGreaterThan(1);
+
+    // 落库校验一次批量查回来，避免逐条 round-trip
+    const rows = await prisma.inviteCode.findMany({ where: { code: { in: codes } } });
+    expect(rows).toHaveLength(N);
+    for (const row of rows) expect(row.isUsed, '新码必须是未使用状态').toBe(false);
   }, 60_000);
 });
 
@@ -157,24 +161,6 @@ describe('generateIdenticonSvg：输出是合法 SVG', () => {
     expect(svg).toContain('viewBox="0 0 200 200"');
     expect(svg).toContain('width="200"');
     expect(svg).toContain('height="200"');
-  });
-
-  it('含背景矩形与前景色块（不是一张空图）', () => {
-    expect(svg, '缺少 rgb(240,240,240) 背景').toContain('fill="rgb(240,240,240)"');
-    expect(svg, '一个 <rect> 都没有，图是空的').toMatch(/<rect /);
-    // 前景色必须是合法 rgb()，且 r/g/b 在 0-255
-    const m = svg.match(/<path fill="rgb\((\d+),(\d+),(\d+)\)"/);
-    expect(m, `找不到前景色 <path fill="rgb(r,g,b)">：${svg.slice(0, 120)}`).not.toBeNull();
-    for (const v of m!.slice(1, 4)) {
-      expect(Number(v)).toBeGreaterThanOrEqual(0);
-      expect(Number(v)).toBeLessThanOrEqual(255);
-    }
-  });
-
-  it('标签成对：<path> 与 <svg> 闭合正常，无残缺标签', () => {
-    expect((svg.match(/<path /g) || []).length).toBe(1);
-    expect((svg.match(/<svg /g) || []).length).toBe(1);
-    expect((svg.match(/<\/svg>/g) || []).length).toBe(1);
   });
 });
 

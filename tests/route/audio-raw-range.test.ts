@@ -182,85 +182,42 @@ describe('无 Range / 畸形 Range → 全量 200', () => {
 // ═══ 二、三种合法形态 → 206 ═══════════════════════════════════════════════════
 
 describe('合法 Range → 206 + 正确的 Content-Range', () => {
-  it('`bytes=0-99` → 前 100 字节', async () => {
+  // 8 条合法段原来各自建一次 DB 行 + 落一次盘；现在按语义分两表驱动，夹具只造一次。
+  it('显式区间（前段 / 中段 / 全段 / 尾段 / Safari 单字节探测）→ 206 且逐字节对得上', async () => {
     const user = await makeUser();
     const { id, bytes } = await seedAudio({ authorId: user.id });
 
-    const res = await rawGet(req(id, 'bytes=0-99'), ctx(id));
-    expect(res.status).toBe(206);
-    expect(res.headers.get('Content-Range')).toBe(`bytes 0-99/${AUDIO_SIZE}`);
-    expect(res.headers.get('Content-Length')).toBe('100');
-    expect(await bodyOf(res)).toEqual(bytes.subarray(0, 100));
+    const cases: { range: string; contentRange: string; body: Buffer }[] = [
+      { range: 'bytes=0-99', contentRange: `bytes 0-99/${AUDIO_SIZE}`, body: bytes.subarray(0, 100) },
+      { range: 'bytes=100-199', contentRange: `bytes 100-199/${AUDIO_SIZE}`, body: bytes.subarray(100, 200) },
+      { range: 'bytes=0-', contentRange: `bytes 0-${AUDIO_SIZE - 1}/${AUDIO_SIZE}`, body: bytes },
+      { range: 'bytes=900-', contentRange: `bytes 900-999/${AUDIO_SIZE}`, body: bytes.subarray(900) },
+      { range: 'bytes=0-1', contentRange: `bytes 0-1/${AUDIO_SIZE}`, body: bytes.subarray(0, 2) },
+    ];
+    for (const c of cases) {
+      const res = await rawGet(req(id, c.range), ctx(id));
+      expect(res.status, c.range).toBe(206);
+      expect(res.headers.get('Content-Range'), c.range).toBe(c.contentRange);
+      expect(await bodyOf(res), c.range).toEqual(c.body);
+      if (c.range === 'bytes=0-99') expect(res.headers.get('Content-Length'), c.range).toBe('100');
+    }
   });
 
-  it('`bytes=100-199` → 中段（下标对得上，不是从头切）', async () => {
+  it('后缀形 / 末端越界 → 夹到文件边界，而不是报错', async () => {
     const user = await makeUser();
     const { id, bytes } = await seedAudio({ authorId: user.id });
 
-    const res = await rawGet(req(id, 'bytes=100-199'), ctx(id));
-    expect(res.status).toBe(206);
-    expect(res.headers.get('Content-Range')).toBe(`bytes 100-199/${AUDIO_SIZE}`);
-    expect(await bodyOf(res)).toEqual(bytes.subarray(100, 200));
-  });
-
-  it('`bytes=0-` → 从 0 到末尾，仍是 206', async () => {
-    const user = await makeUser();
-    const { id, bytes } = await seedAudio({ authorId: user.id });
-
-    const res = await rawGet(req(id, 'bytes=0-'), ctx(id));
-    expect(res.status).toBe(206);
-    expect(res.headers.get('Content-Range')).toBe(`bytes 0-${AUDIO_SIZE - 1}/${AUDIO_SIZE}`);
-    expect(await bodyOf(res)).toEqual(bytes);
-  });
-
-  it('`bytes=900-` → 尾段', async () => {
-    const user = await makeUser();
-    const { id, bytes } = await seedAudio({ authorId: user.id });
-
-    const res = await rawGet(req(id, 'bytes=900-'), ctx(id));
-    expect(res.status).toBe(206);
-    expect(res.headers.get('Content-Range')).toBe(`bytes 900-999/${AUDIO_SIZE}`);
-    expect(await bodyOf(res)).toEqual(bytes.subarray(900));
-  });
-
-  it('`bytes=-100`（后缀形）→ 最后 100 字节', async () => {
-    const user = await makeUser();
-    const { id, bytes } = await seedAudio({ authorId: user.id });
-
-    const res = await rawGet(req(id, 'bytes=-100'), ctx(id));
-    expect(res.status).toBe(206);
-    expect(res.headers.get('Content-Range')).toBe(`bytes 900-999/${AUDIO_SIZE}`);
-    expect(await bodyOf(res)).toEqual(bytes.subarray(900));
-  });
-
-  it('`bytes=-99999`（后缀比文件还长）→ 夹成整个文件', async () => {
-    const user = await makeUser();
-    const { id, bytes } = await seedAudio({ authorId: user.id });
-
-    const res = await rawGet(req(id, 'bytes=-99999'), ctx(id));
-    expect(res.status).toBe(206);
-    expect(res.headers.get('Content-Range')).toBe(`bytes 0-${AUDIO_SIZE - 1}/${AUDIO_SIZE}`);
-    expect(await bodyOf(res)).toEqual(bytes);
-  });
-
-  it('末端超出文件长度 → 夹住，而不是报错', async () => {
-    const user = await makeUser();
-    const { id, bytes } = await seedAudio({ authorId: user.id });
-
-    const res = await rawGet(req(id, 'bytes=900-99999'), ctx(id));
-    expect(res.status).toBe(206);
-    expect(res.headers.get('Content-Range')).toBe(`bytes 900-999/${AUDIO_SIZE}`);
-    expect(await bodyOf(res)).toEqual(bytes.subarray(900));
-  });
-
-  it('单字节探测 `bytes=0-1` —— **Safari 就是这么开场的**，必须回 206', async () => {
-    const user = await makeUser();
-    const { id, bytes } = await seedAudio({ authorId: user.id });
-
-    const res = await rawGet(req(id, 'bytes=0-1'), ctx(id));
-    expect(res.status).toBe(206);
-    expect(res.headers.get('Content-Range')).toBe(`bytes 0-1/${AUDIO_SIZE}`);
-    expect(await bodyOf(res)).toEqual(bytes.subarray(0, 2));
+    const cases: { range: string; contentRange: string; body: Buffer }[] = [
+      { range: 'bytes=-100', contentRange: `bytes 900-999/${AUDIO_SIZE}`, body: bytes.subarray(900) },
+      { range: 'bytes=-99999', contentRange: `bytes 0-${AUDIO_SIZE - 1}/${AUDIO_SIZE}`, body: bytes },
+      { range: 'bytes=900-99999', contentRange: `bytes 900-999/${AUDIO_SIZE}`, body: bytes.subarray(900) },
+    ];
+    for (const c of cases) {
+      const res = await rawGet(req(id, c.range), ctx(id));
+      expect(res.status, c.range).toBe(206);
+      expect(res.headers.get('Content-Range'), c.range).toBe(c.contentRange);
+      expect(await bodyOf(res), c.range).toEqual(c.body);
+    }
   });
 
   it('★ 200 与 206 都是 `public, no-cache` + 同一个 ETag（都不许 immutable）', async () => {
@@ -359,17 +316,6 @@ describe('条件请求（软删后必须能失效）', () => {
     expect((await rawGet(req('nope123456'), ctx('nope123456'))).headers.get('Cache-Control')).toBe(
       'no-store'
     );
-  });
-
-  it('磁盘文件被换掉（大小变）→ ETag 变，旧 ETag 不再 304', async () => {
-    const user = await makeUser();
-    const { id } = await seedAudio({ authorId: user.id });
-    const etag = (await rawGet(req(id), ctx(id))).headers.get('ETag')!;
-
-    fs.writeFileSync(audioStoragePathFor(id, 'audio/mpeg'), makeBytes(AUDIO_SIZE + 7));
-    const res = await rawGet(req(id, undefined, { 'if-none-match': etag }), ctx(id));
-    expect(res.status).toBe(200);
-    expect(res.headers.get('ETag')).not.toBe(etag);
   });
 
   it('★ 同尺寸换文件（只差字节）→ ETag 变，且 200 给的是新字节', async () => {

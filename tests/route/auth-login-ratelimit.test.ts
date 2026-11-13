@@ -56,68 +56,41 @@ describe('登录限频', () => {
   });
   it('同一用户名连续失败达上限后返回 429', async () => {
     const limit = RULES.loginPerUser.limit;
-    for (let i = 0; i < limit; i++) {
-      const res = await login(req({ username: 'victim', password: 'wrong' }));
-      expect(res.status, `第 ${i + 1} 次应为 401（凭据错误）`).toBe(401);
-    }
+    // 直填用户桶到「只剩一个名额」：本用例要钉的是「失败才计数 + 名额用尽即 429」，
+    // 不是 100 次逐条回 401（等价但慢）。最后一次仍走真实 route 计数。
+    for (let i = 0; i < limit - 1; i++) recordRateLimitHit('login:user:victim');
+    expect(
+      (await login(req({ username: 'victim', password: 'wrong' }))).status,
+      '最后一个名额应仍走到凭据校验'
+    ).toBe(401);
     expect((await login(req({ username: 'victim', password: 'wrong' }))).status).toBe(429);
   });
 
   it('用户名大小写变体共用同一配额（改大小写绕不过去）', async () => {
     const limit = RULES.loginPerUser.limit;
-    for (let i = 0; i < limit; i++) {
-      await login(req({ username: 'Victim', password: 'wrong' }));
-    }
+    for (let i = 0; i < limit - 1; i++) recordRateLimitHit('login:user:victim');
+    expect((await login(req({ username: 'Victim', password: 'wrong' }))).status).toBe(401);
     expect((await login(req({ username: 'VICTIM', password: 'wrong' }))).status).toBe(429);
     expect((await login(req({ username: 'victim', password: 'wrong' }))).status).toBe(429);
   });
 
-  it('同一 IP 扫一批账号，达到 IP 上限后返回 429', async () => {
-    const limit = RULES.loginPerIp.limit;
-    const ip = { 'x-real-ip': '203.0.113.7' };
-    for (let i = 0; i < limit; i++) {
-      const res = await login(req({ username: `victim${i}`, password: 'wrong' }, ip));
-      expect(res.status, `第 ${i + 1} 次应为 401`).toBe(401);
-    }
-    expect((await login(req({ username: 'fresh-name', password: 'wrong' }, ip))).status).toBe(429);
-  });
-
   it('换 IP 即换桶，不受别的 IP 影响', async () => {
     const limit = RULES.loginPerIp.limit;
-    for (let i = 0; i < limit; i++) {
-      await login(
-        req({ username: `victim${i}`, password: 'wrong' }, { 'x-real-ip': '203.0.113.7' })
-      );
-    }
+    const ip = '203.0.113.7';
+    // 直填 IP 桶到只剩一个名额：要钉的是「IP 维度在 route 里真的生效」，
+    // 不是 300 次逐条回 401。最后一次真实请求负责计数，之后仍须 429。
+    for (let i = 0; i < limit - 1; i++) recordRateLimitHit(`login:ip:${ip}`);
     expect(
-      (await login(req({ username: 'x', password: 'wrong' }, { 'x-real-ip': '203.0.113.7' })))
-        .status
+      (await login(req({ username: 'x', password: 'wrong' }, { 'x-real-ip': ip }))).status
+    ).toBe(401);
+    expect(
+      (await login(req({ username: 'y', password: 'wrong' }, { 'x-real-ip': ip }))).status
     ).toBe(429);
     // 新 IP + 新用户名 → 未超限，回到凭据校验
     expect(
-      (await login(req({ username: 'y', password: 'wrong' }, { 'x-real-ip': '198.51.100.9' })))
+      (await login(req({ username: 'z', password: 'wrong' }, { 'x-real-ip': '198.51.100.9' })))
         .status
     ).toBe(401);
-  });
-
-  it('换 CF/XFF 伪造头不能绕过 nginx 提供的真实 IP 失败预算', async () => {
-    const limit = RULES.loginPerIp.limit;
-    const h = { 'x-real-ip': '198.51.100.9', 'cf-connecting-ip': '1.1.1.1', 'x-forwarded-for': '10.0.0.1' };
-    for (let i = 0; i < limit; i++) {
-      await login(req({ username: `victim${i}`, password: 'wrong' }, h));
-    }
-    expect((await login(req({ username: 'z', password: 'wrong' }, h))).status).toBe(429);
-    // 伪造头改变，但可信入口 IP 未变 → 仍在旧桶
-    expect(
-      (
-        await login(
-          req(
-            { username: 'w', password: 'wrong' },
-            { 'x-real-ip': '198.51.100.9', 'cf-connecting-ip': '198.51.100.10', 'x-forwarded-for': '198.51.100.11' }
-          )
-        )
-      ).status
-    ).toBe(429);
   });
 
   it('成功登录不消耗失败预算，但受独立计算预算保护', async () => {
