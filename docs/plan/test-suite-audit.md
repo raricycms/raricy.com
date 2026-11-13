@@ -2,8 +2,9 @@
 
 > 审计日期：2026-11-13。基线是当日 `npx vitest run` 全量（272 文件中 2 个红：
 > `tests/service/migrate-entry.test.ts` 与 `tests/route/oauth-token-ratelimit.test.ts` 的
-> 真实 scrypt 用例，原因见 `docs/known-red.md` 同批记录）。本清单是**建议**，执行与否、
-> 删到哪里，由站长逐档确认；未执行前本文不改变任何测试行为。
+> 真实 scrypt 用例，原因见 `docs/known-red.md` 同批记录）。
+> **本清单已于同日执行完毕**（站长两条口径 + 四档处置），执行结果见 §8；§1–§7 保留
+> 审计当时的判断与预估，方便回溯「为什么这么裁」。
 
 ## 1. 结论
 
@@ -187,6 +188,35 @@ tests/unit/fish-credential-list-cli.test.ts     tests/unit/audit-log-cli.test.ts
 - 估算 ±20%：TRIM 的节省按 30–70% 估的，实际以批次实测为准；本清单不把估算写成承诺。
 - 不做：加 retries 掩盖超时、为了绿删安全网、把全量当每次改动的默认门禁、
   在同一个提交里混做删/裁/搬（无法定位回归来源）。
+
+## 8. 执行记录（2026-11-13，已完成）
+
+本清单与站长两条口径已全部执行；下面是执行后实测（同日、同一台机器），与 §3 的预估并列对照。
+
+| 项 | 审计预估 | 执行结果 |
+|---|---|---|
+| 全量 `npm test` | 审计后约 8 分钟 | **219 文件 / 4,181 条 / 4 worker 193s（3.2 分钟），连续两轮全绿** |
+| 静态守卫 | 19 文件约 53s | `npm run guards`：19 文件 / 139 条 / 约 15s，全绿 |
+| 迁移验收 | 300s 级 | `npm run test:migrations`：2 文件（migrate-entry）/ 约 200s 级，独立入口 |
+| 慢车道 | — | `npm run test:slow`：2 文件 / 7 条 / 约 6s |
+| 快层 | 34 文件 122s → ≤90s | `npm run test:fast`：34 文件 / 574 条 / **30.4s** |
+| worker 数 | 4→6 | 实测 6 worker 只有 179.5s（−7%），但工作量从 329s 涨到 412s；**默认保持 4**，需要时用 `VITEST_MAX_WORKERS` 覆盖 |
+
+执行明细：
+
+- **P0**：修掉三条全量红（oauth 低 N scrypt、fish outbox 两态断言、image 显式用户名），
+  `migrate-entry` 移出默认门禁。见 `docs/known-red.md` §12。
+- **P1**：新增 `vitest.shared.ts` 与 guards / migrations / slow 三套配置；`npm test` 的
+  exclude 清单与各入口一一对应（新增守卫/慢用例要同步加入口，只加 exclude 等于静默删）。
+- **P2**：删除 31 个 vitest 文件（玩具区 26 + 展示层 5）与 14 个玩具 e2e spec；
+  `playwright.config.ts` 的 `RESPONSIVE_SPECS` 同步移除游戏 spec。
+- **P3**：42 个 TRIM 文件全部裁剪完（2,006 → 1,446 条，删/并 560 条），42 文件一次调用
+  1,446 条全绿；其中三处按分片复核意见回补：notification batch 401、user-service bio
+  500/501 边界、comment 三层已删祖链；条码保留 EAN-13 校验位 + 编码形状各 1 条。
+- **P4**：`resetDb` 改为单事务批量 DELETE（实测 10ms 级 vs 39–139ms）；**重文件拆分未做**——
+  实测最慢文件 `blog-service` 38.7s，只有墙钟的 1/5，拆薄不改善总耗时，改由并行消化。
+- **未执行**：全量 e2e（只删 spec 与改 `RESPONSIVE_SPECS`；`npx playwright test --list`
+  已通过：628 tests / 71 files）。需要真跑时先 `npm run build`。
 
 ## 附录 A：完整清单（272 个文件）
 

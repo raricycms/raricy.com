@@ -104,6 +104,33 @@ npx playwright test tests/e2e/<失败spec> --project=desktop   # 或 --project=m
 | 其它分散的 `expect(...).toBeVisible()` / 超时 | 单库串行长跑的顺序/状态依赖；`reactive-ssr-cold` 在全量时进程已预热（文件头写明只验「关 JS 仍可读」，真冷启动要单跑该文件） | 单跑复核；确认顺序依赖后按 `docs/testing.md` §4 收紧用例，而不是加 retries |
 | `chat-image.spec.ts` 的「网络失败自动重试」 | 已在 `ee8efe1d` 修复（对齐 R3-373「失败不自动重发」）；若再出现先确认构建与 HEAD 一致 | 不要恢复自动重发用例 |
 
+## 12. 全量测试的入口拆分（2026-11-13）
+
+全量不再是一条命令跑到底：`npm test` 只含行为测试，另外四个入口在 `package.json` 与
+`vitest*.config.ts`（口径与取舍见 `docs/testing.md` §1.1 与 `docs/plan/test-suite-audit.md`）。
+
+| 命令 | 内容 | 何时跑 |
+|---|---|---|
+| `npm test` | 行为测试全量（219 文件 / 4,181 条，4 worker 实测 ~193s） | 高风险改动、任务完成时 |
+| `npm run test:fast` | 精选风险面（34 文件 / 574 用例，实测 ~30s） | 每次改动后的日常门禁 |
+| `npm run guards` | 静态守卫 19 文件 / 139 条（扫源码 / 文档 / 素材，实测 ~15s） | 改文档、schema、台账、素材后 |
+| `npm run test:migrations` | 空库全量迁移验收（实测 ~132s） | 改 schema / migrations 后 |
+| `npm run test:slow` | 启动生命周期 / 子进程（2 文件 / 7 条，实测 ~6s） | CI / 发布前 |
+
+排查「某个文件不在 `npm test` 里」时先看 `vitest.config.ts` 的 `exclude` 与对应入口，
+**不要当成用例被误删**。新增守卫/慢用例时要同时加进对应入口，只加 exclude 等于静默删测试。
+
+同日修掉并验证的三条全量红（提交 `d97a57d0`）：
+
+- `migrate-entry` 的 `spawnSync ... ETIMEDOUT`：该文件已移出 `npm test`，改跑
+  `npm run test:migrations`（单文件 300s 上限仍保留，用于发现真挂起）。
+- oauth 的「真实 scrypt：60 次」超时：测试改用低 N 的 scrypt 哈希跑同一段
+  `verifyPassword` 路径（60 次约 1s），生产参数 `scrypt:32768:8:1` 仍由
+  `tests/unit/password.test.ts` 钉住。
+- fish outbox 读到 `sending` 与 image 搜索随机词命中：前者是事务提交后
+  `void deliverWebhook` 的竞态（断言改为 `pending|sending`），后者是自动用户名随机串
+  恰好含搜索词（改显式用户名）。两者都只在负载高时偶发。
+
 ## 维护这一页
 
 保留能指导下一步排查的症状、核对方法和处理方式；脚本修复后同步更新当前入口。

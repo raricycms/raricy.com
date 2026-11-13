@@ -108,7 +108,7 @@ GitHub 上仍是原来的反引号，两边不冲突。
 | `plan/editor-plan.md` | 编辑器换代方案：M0–M2 与导出已实施；M3 就地装饰、M4 表格辅助 / 大纲未做；剩余验收见 §7.2 |
 | `plan/format-converter-roadmap.md` | 格式转换器长期规划：八个能力区已有首轮功能；剩余验收、功能缺口与长期候选见 §16；路线图不作为支持清单 |
 | `plan/maintenance-plan.md` | 样式容器 / 类名整理、翻译入口取舍与站长可见性完整轨迹视图 |
-| `plan/test-suite-audit.md` | 测试套件价值审计：272 个测试文件分四档（保 177 / 裁 42 / 搬 22 / 删 31），预计省 40% 工作量，执行未开始 |
+| `plan/test-suite-audit.md` | 测试套件价值审计与精简：已实施（2026-11-13），门禁拆成五入口，全量 193s / 4,181 用例全绿 |
 | `plan/page-transition-plan.md` | 切页动画 P0–P2 方案：全站淡入、页面内过渡、路由交叉溶解实验；含风险、验收与单文件 P0 demo |
 | `plan/reactive-md-unification-plan.md` | ReactiveMD 统一渲染与四入口编辑器的实施记录：PR #20、Markdown 兼容、博客与云剪贴板全量切换；目标已达成，持久快照要求已由简化方案撤销 |
 | `plan/reactive-md-migration-plan.md` | ReactiveMD 早期接入（0.5.3–0.6.1）与实施记录：数据层、引用组件、SSR、编辑器与回滚；现行规则见简化方案，剩余事项见 §12 |
