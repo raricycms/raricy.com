@@ -38,7 +38,11 @@
 | 相关测试 | `npm run test:related -- <源码文件>`；已知用例时直接 `npx vitest run <测试文件>` |
 | 类型检查 | `npm run typecheck`；不读取 `.next/types`，不要为单纯类型检查先 build |
 | 完整构建 | `npm run build`；自动清理 `.next/types`、生成 Prisma client 并构建两个服务 |
-| 全量单测 | `npm test`；触发条件见下节 |
+| 快速反馈 | 先 `npm run test:related -- <源码文件>`；日常门禁用 `npm run test:fast`（精选风险面，≤90s） |
+| 全量单测 | `npm test`；触发条件见下节。静态守卫 / 迁移验收 / 慢车道不在其中，走各自入口 |
+| 静态守卫 | `npm run guards`；扫源码、文档、素材与台账。改文档、schema、约定或素材后必跑 |
+| 迁移验收 | `npm run test:migrations`；改了 `prisma/schema.prisma` 或 `prisma/migrations/` 后跑 |
+| 慢车道 | `npm run test:slow`；启动生命周期与子进程用例，CI / 发布前跑 |
 | e2e | `npm run e2e` 使用现有构建；构建相关源码或配置变化后先 build，或用 `npm run e2e:ci -- <spec>` |
 | 页面查看 | `npm run probe:page -- <路径>`，可加 `--as core`、`--wait <sel>`、`--shot <名>` |
 | 运维 CLI | `npm run cli`；命令式调用加 `-- <cmd>`，见 `docs/cli.md` |
@@ -54,11 +58,11 @@
 
 | 改动 | 默认验证 |
 | --- | --- |
-| 文档、指引、文档目录登记 | 跑对应文档守卫（如 docs-xref、docs-catalog、agent-instructions）；不默认 typecheck / build / 全量 |
+| 文档、指引、文档目录登记 | `npm run guards`（docs-xref / docs-catalog / guide-docs / agent-instructions 等都已收进该入口）；不默认 typecheck / build / 全量 |
 | 简单样式、文案 | 受影响页面与视口的实际检查；纯样式不新增、不运行样式守卫，不默认 typecheck / build / 全量 / e2e |
 | TS / TSX 逻辑或类型 | 先相关测试，再一次 `npm run typecheck`；交互改动补受影响的页面或 e2e 验证 |
-| 鉴权、账目、迁移、共享渲染、跨模块逻辑、依赖或测试基建 | 相关测试 + typecheck，再全量单测；按风险补 build / 相关 e2e |
-| 构建、启动或部署配置 | 验证受影响的构建 / 启动路径；按影响范围选择单测与 e2e |
+| 鉴权、账目、迁移、共享渲染、跨模块逻辑、依赖或测试基建 | 相关测试 + typecheck，再全量单测；动过 schema / 迁移时补 `npm run test:migrations`；按风险补 build / 相关 e2e |
+| 构建、启动或部署配置 | 验证受影响的构建 / 启动路径；按影响范围选择单测与 e2e；启动/子进程改动补 `npm run test:slow` |
 
 - 全量一般在任务完成时跑一次。修改后重跑受影响检查；只有新修改或失败表明需全量时再跑。
 - 相关测试通过不能证明全量一定通过，typecheck 也不能代替行为验证。范围不清时扩大验证范围。
@@ -80,6 +84,9 @@
 - 怀疑并发或他人 WIP 时先查进程及 diff；不得只凭存在未提交文件就断言失败与本次改动无关。
 - 测试按行为需求和风险新增，不把每个功能或修改机械配对成新用例；运行已有测试不等于新增测试。
   用户审核通过不自动构成新增样式测试的理由；确需长期保护特定视觉约束时，由用户明确提出。
+- **测试范围两条硬口径（2026-11-13 站长确认，详见 `docs/plan/test-suite-audit.md` §2.1）**：
+  玩具区（`/game` 及其下一切）不写测试；前端文案（按钮 / 提示 / 标题 / aria / 占位符）不写测试。
+  文案相关只验状态码、错误码、数据落库与权限语义。不许为这两类新增用例。
 - 纯样式变更（颜色、圆角、间距、装饰布局）不新增或运行样式守卫，不通过单元测试、源码扫描、
   外观 e2e 或截图快照固定视觉实现；已有此类检查逐步清理。样式通过受影响页面和视口检查，
   交付说明如实写「待用户视觉审核」。

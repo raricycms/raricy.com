@@ -78,19 +78,6 @@ const RESPONSIVE_SPECS: RegExp[] = [
   // 这是真视口属性：390px 的窄屏才会把操作行撑出视口，桌面那一遍几乎恒真。故保留双跑。
   /daily-quote\.spec\.ts$/,
   /blog-directory\.spec\.ts$/,
-  /public-space\.spec\.ts$/,
-  /wand\.spec\.ts$/,
-  /wand2(?:-controls)?\.spec\.ts$/,
-  /game\.spec\.ts$/,
-  // 双影：移动端的方向键可点、以及「棋盘 / 浮层不撑宽文档」都要真视口才量得到。
-  // 桌面那一遍同样保留 —— 另外几条用例（键盘通关、关卡选择、刷新续关）在两个
-  // project 里都该跑，而 testMatch 只能到文件粒度（见上方注释）。
-  /twinshade\.spec\.ts$/,
-  /lumen\.spec\.ts$/,
-  /lumen2\.spec\.ts$/,
-  // 手工间三款都靠真实指针在 SVG / canvas 上作画，窄屏的工作台高度与触控可用性
-  // 只有 mobile 那一遍量得到；导出也必须在两种视口都能下载。
-  /craft-games\.spec\.ts$/,
   // 首页山景的窄屏构图、SVG 视差与减少动态效果偏好。
   /home-hero\.spec\.ts$/,
   /chat-features\.spec\.ts$/,
