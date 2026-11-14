@@ -90,7 +90,7 @@
 .md-toolbar__entry-caret {
   flex: none;
   opacity: .6;
-  transition: transform .25s ease;
+  transition: transform v.$motion-duration v.$motion-easing;
 }
 
 .is-open .md-toolbar__entry-caret {
@@ -528,7 +528,7 @@
   font: inherit;
   font-size: .78rem;
   cursor: pointer;
-  transition: color .2s ease, background-color .2s ease;
+  transition: color v.$feedback-duration v.$feedback-easing, background-color v.$feedback-duration v.$feedback-easing;
 
   &:hover {
     background: var(--color-background-content);
@@ -999,7 +999,7 @@
     }
 
     svg {
-      transition: transform .18s ease;
+      transition: transform v.$motion-duration v.$motion-easing;
     }
   }
 
@@ -1220,7 +1220,7 @@
     border-radius: v.$radius-max;
     background: var(--color-background-page);
     color: var(--color-text-secondary);
-    transition: box-shadow .2s ease;
+    transition: box-shadow v.$feedback-duration v.$feedback-easing;
 
     &:focus-within {
       box-shadow: var(--shadow-focus-brand);

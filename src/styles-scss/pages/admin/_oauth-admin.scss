@@ -58,7 +58,7 @@
   padding: 16px 18px;
   border-radius: 20px;
   background: var(--color-background-content);
-  animation: admin-rise v.$motion-expand-duration v.$motion-expand-easing backwards;
+  animation: admin-rise v.$motion-duration v.$motion-easing backwards;
 }
 
 .admin-app-row__head {

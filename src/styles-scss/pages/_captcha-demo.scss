@@ -488,7 +488,7 @@
 }
 
 .vdm__scene-wrap--shake {
-  animation: vdmShake 0.36s ease-in-out;
+  animation: vdmShake $motion-duration $motion-easing;
 }
 
 .vdm__scene {
@@ -549,7 +549,7 @@
   /* 居中不依赖动画终态：vdmPop 的 translate(-50%,-50%) 原本只在 keyframes 里，
      减少动态效果关掉动画后对勾会跳位。基态先写死，动画只负责缩放/淡入。 */
   transform: translate(-50%, -50%);
-  animation: vdmPop $motion-expand-duration $motion-expand-easing both;
+  animation: vdmPop $motion-duration $motion-easing both;
 }
 
 .vdm__mark--ok {
@@ -606,7 +606,7 @@
   background: var(--color-background-card);
   border: 1px solid var(--color-border);
   border-left-width: 4px;
-  animation: vdmRise $motion-expand-duration $motion-expand-easing both;
+  animation: vdmRise $motion-duration $motion-easing both;
 }
 
 .vdm__result--good {

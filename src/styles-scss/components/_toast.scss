@@ -1,3 +1,5 @@
+@use '../abstracts/variables' as v;
+
 /* Toasts (no Bootstrap) */
 .toast-container {
   position: fixed;
@@ -38,7 +40,7 @@
   margin: 8px 0;
   opacity: 0;
   transform: translateY(-6px);
-  transition: opacity 160ms ease, transform 160ms ease;
+  transition: opacity v.$feedback-duration v.$feedback-easing, transform v.$motion-duration v.$motion-easing;
 }
 .toast.show {
   opacity: 1;

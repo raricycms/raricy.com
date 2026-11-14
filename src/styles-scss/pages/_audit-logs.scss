@@ -1,3 +1,5 @@
+@use '../abstracts/variables' as v;
+
 // 管理操作日志的共用零件：/audit（公示）、/audit/<id>（详情）、/admin/logs 共用。
 //
 // 版面原语（.admin-filter-bar / .admin-field / .admin-table / .admin-panel …）在
@@ -72,7 +74,7 @@
   white-space: nowrap;
   cursor: pointer;
   user-select: none;
-  transition: background-color 0.2s ease;
+  transition: background-color v.$feedback-duration v.$feedback-easing;
 
   &:hover {
     background: var(--color-background-subtle);
@@ -87,7 +89,7 @@
     border-radius: 50%;
     background: var(--color-background-content);
     cursor: pointer;
-    transition: background-color 0.25s ease, box-shadow 0.25s ease;
+    transition: background-color v.$feedback-duration v.$feedback-easing, box-shadow v.$feedback-duration v.$feedback-easing;
 
     &:checked {
       background: var(--color-brand-primary);

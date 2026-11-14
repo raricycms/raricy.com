@@ -46,7 +46,7 @@
   border-radius: v.$radius-max;
   background: var(--color-brand-secondary);
   transform: translateX(calc(var(--seg-i, 0) * 100%));
-  transition: transform 0.25s ease;
+  transition: transform v.$motion-duration v.$motion-easing;
   pointer-events: none;
 }
 
@@ -61,7 +61,7 @@
   font: inherit;
   cursor: pointer;
   white-space: nowrap;
-  transition: color 0.25s ease;
+  transition: color v.$feedback-duration v.$feedback-easing;
 
   // 当前项 = 「最高级按钮的空闲态」的文字色（底色由滑块承担）。
   //

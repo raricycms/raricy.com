@@ -14,6 +14,7 @@
 // （幽灵工具条 → 自动加高文本框 → 底条：左侧提示 + 右下角提交）。
 // ─────────────────────────────────────────────────────────────────────────────
 
+@use '../abstracts/variables' as v;
 @use '../abstracts/mixins' as m;
 
 .mention-input {
@@ -164,7 +165,7 @@
     border-radius: 20px;
     background: var(--color-background-page);
     padding: 4px 8px 8px;
-    transition: box-shadow 0.2s ease;
+    transition: box-shadow v.$feedback-duration v.$feedback-easing;
   }
   .#{$p}__panel:focus-within {
     box-shadow: var(--shadow-focus-brand);
@@ -190,7 +191,7 @@
     align-items: center;
     justify-content: center;
     padding: 0;
-    transition: background-color 0.25s ease, color 0.25s ease;
+    transition: background-color v.$feedback-duration v.$feedback-easing, color v.$feedback-duration v.$feedback-easing;
   }
   .#{$p}__icon-btn:hover:not(:disabled) {
     background: var(--color-brand-secondary);

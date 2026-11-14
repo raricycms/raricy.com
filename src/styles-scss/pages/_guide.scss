@@ -11,6 +11,7 @@
 // 指南正文就贴住屏幕边。只写 `padding-block` 便不会再碰横向；别改回四边简写，
 // 也别在这里补写横向值 —— 两个类都在同一节点上，只该各管一轴。
 
+@use '../abstracts/variables' as v;
 @use '../components/doc-prose' as prose;
 
 .guide {
@@ -25,7 +26,7 @@
   font-size: 0.875rem;
   display: inline-block;
   margin-bottom: 2rem;
-  transition: color 0.2s ease;
+  transition: color v.$feedback-duration v.$feedback-easing;
 
   &:hover {
     color: var(--color-brand-primary);

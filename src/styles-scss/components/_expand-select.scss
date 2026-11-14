@@ -53,7 +53,7 @@
     width: 16px;
     height: 16px;
     color: var(--color-text-secondary);
-    transition: transform v.$motion-expand-duration v.$motion-expand-easing;
+    transition: transform v.$motion-duration v.$motion-easing;
   }
 
   // 浮层是「另一档」：常驻 --shadow-card-brand，见 docs/frontend-styles.md §3.6。
@@ -83,7 +83,7 @@
     padding: 6px;
     opacity: 0;
     transform: translateY(-8px);
-    transition: opacity .18s ease, transform v.$motion-expand-duration v.$motion-expand-easing;
+    transition: opacity v.$motion-duration v.$motion-easing, transform v.$motion-duration v.$motion-easing;
   }
 
   &__group-label {

@@ -159,7 +159,7 @@ a {
         color: var(--color-brand-primary);
         text-decoration: none;
         border-bottom: 1px solid transparent;
-        transition: border-bottom 0.3s ease;
+        transition: border-bottom v.$feedback-duration v.$feedback-easing;
         &:hover {
             color: var(--color-brand-primary);
             border-bottom: 1px solid var(--color-brand-primary);
@@ -346,7 +346,7 @@ a {
     font-weight: bold;
     cursor: pointer;
     /* opacity: 0.8; */
-    transition: all 0.2s ease;
+    transition: all v.$feedback-duration v.$feedback-easing;
     font-family: var(--font-body);
     z-index: 10;
     user-select: none;
@@ -454,11 +454,11 @@ a {
     opacity: 0;
     // 数字使用等宽字体，按位数伸缩；间距也包含在宽度内，零值时整段收回。
     // 变宽（有计数）走展开节奏，收回（零值）走收起节奏 —— 过渡取变化后那一侧。
-    transition: width v.$motion-collapse-duration v.$motion-collapse-easing, opacity .2s ease;
+    transition: width v.$motion-duration v.$motion-easing, opacity v.$feedback-duration v.$feedback-easing;
 
     &--visible {
         opacity: 1;
-        transition: width v.$motion-expand-duration v.$motion-expand-easing, opacity .2s ease;
+        transition: width v.$motion-duration v.$motion-easing, opacity v.$feedback-duration v.$feedback-easing;
     }
 
     > span {
@@ -475,7 +475,7 @@ a {
     border-radius: 24px;
     background: var(--color-background-content);
     // 收起方向用收起节奏；展开方向在 .is-open 里换成展开节奏。
-    transition: grid-template-columns v.$motion-collapse-duration v.$motion-collapse-easing;
+    transition: grid-template-columns v.$motion-duration v.$motion-easing;
 
     &__toggle {
         @include m.btn-secondary;
@@ -493,7 +493,7 @@ a {
         .icon {
             width: 20px;
             height: 20px;
-            transition: transform v.$motion-expand-duration v.$motion-expand-easing;
+            transition: transform v.$motion-duration v.$motion-easing;
         }
     }
 
@@ -501,12 +501,12 @@ a {
         min-width: 0;
         overflow: hidden;
         visibility: hidden;
-        transition: visibility 0s v.$motion-collapse-duration;
+        transition: visibility 0s v.$motion-duration;
     }
 
     &.is-open {
         grid-template-columns: 48px 1fr;
-        transition: grid-template-columns v.$motion-expand-duration v.$motion-expand-easing;
+        transition: grid-template-columns v.$motion-duration v.$motion-easing;
 
         .manage-control__panel {
             visibility: visible;
@@ -518,9 +518,9 @@ a {
         .manage-menu__item {
             opacity: 1;
             transform: translateX(0);
-            transition: color .25s ease, background-color .25s ease, filter .15s ease,
-                        opacity .18s ease,
-                        transform v.$motion-expand-duration v.$motion-expand-easing;
+            transition: color v.$feedback-duration v.$feedback-easing, background-color v.$feedback-duration v.$feedback-easing, filter v.$feedback-duration v.$feedback-easing,
+                        opacity v.$feedback-duration v.$feedback-easing,
+                        transform v.$motion-duration v.$motion-easing;
 
             @for $i from 1 through 5 {
                 &:nth-child(#{$i}) { transition-delay: 55ms + ($i - 1) * 28ms; }
@@ -555,9 +555,9 @@ a {
         opacity: 0;
         transform: translateX(-8px);
         // 收起方向（管理菜单收回）走收起节奏；展开方向在 .is-open 里换成展开节奏。
-        transition: color .25s ease, background-color .25s ease, filter .15s ease,
-                    opacity .18s ease,
-                    transform v.$motion-collapse-duration v.$motion-collapse-easing;
+        transition: color v.$feedback-duration v.$feedback-easing, background-color v.$feedback-duration v.$feedback-easing, filter v.$feedback-duration v.$feedback-easing,
+                    opacity v.$feedback-duration v.$feedback-easing,
+                    transform v.$motion-duration v.$motion-easing;
 
         .icon { width: 20px; height: 20px; flex: none; }
 
@@ -581,9 +581,9 @@ a {
             overflow: hidden;
             visibility: visible;
             opacity: 1;
-            transition: grid-template-columns v.$motion-expand-duration v.$motion-expand-easing,
-                        margin-inline-end v.$motion-expand-duration v.$motion-expand-easing,
-                        opacity .18s ease, visibility 0s;
+            transition: grid-template-columns v.$motion-duration v.$motion-easing,
+                        margin-inline-end v.$motion-duration v.$motion-easing,
+                        opacity v.$feedback-duration v.$feedback-easing, visibility 0s;
 
             &:last-child { margin-inline-end: 0; }
         }
@@ -596,9 +596,9 @@ a {
             opacity: 0;
             visibility: hidden;
             // 进入管理模式 = 收起互动区（收起节奏）；退出时回到基础态（展开节奏）。
-            transition: grid-template-columns v.$motion-collapse-duration v.$motion-collapse-easing,
-                        margin-inline-end v.$motion-collapse-duration v.$motion-collapse-easing,
-                        opacity .18s ease, visibility 0s v.$motion-collapse-duration;
+            transition: grid-template-columns v.$motion-duration v.$motion-easing,
+                        margin-inline-end v.$motion-duration v.$motion-easing,
+                        opacity v.$feedback-duration v.$feedback-easing, visibility 0s v.$motion-duration;
         }
     }
 
@@ -671,7 +671,7 @@ a {
     padding: 8px 16px;
 }
 //     border-radius: 20px;
-//     transition: all 0.3s ease;
+//     transition: all v.$motion-duration v.$motion-easing;
 //     margin-top: 15px;
 // }
 
@@ -684,7 +684,7 @@ a {
     height: 3px;
     background: var(--color-brand-primary);
     z-index: 1000;
-    transition: width 0.1s ease;
+    transition: width v.$motion-duration v.$motion-easing;
 }
 
 /* 940px 是**阅读行宽上限**（同 .blog-content-container 的 900px），页边距则是 16px ——
@@ -812,6 +812,6 @@ a {
 body {
     background-color: var(--color-background-page);
     color: var(--color-text-primary);
-    transition: background-color 0.3s ease, color 0.3s ease;
+    transition: background-color v.$feedback-duration v.$feedback-easing, color v.$feedback-duration v.$feedback-easing;
 }
 

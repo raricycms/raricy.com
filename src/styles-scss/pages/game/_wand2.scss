@@ -1,3 +1,4 @@
+@use '../../abstracts/variables' as v;
 @use '../../abstracts/mixins' as m;
 
 .wand2-page { max-width: 1280px; padding-top: 24px; padding-bottom: 40px; }
@@ -35,7 +36,7 @@
     &:nth-of-type(4) { right: 7px; top: calc(50% - 8px); } }
   &[data-active='true']:not(:disabled) { background: var(--color-brand-secondary); color: var(--color-brand-primary); }
   &[data-active='true'] .wand2-joystick-knob { transition: none; } }
-.wand2-joystick-knob { position: absolute; left: 28%; top: 28%; width: 44%; height: 44%; border-radius: 50%; background: var(--color-brand-primary); transition: transform .12s ease-out; }
+.wand2-joystick-knob { position: absolute; left: 28%; top: 28%; width: 44%; height: 44%; border-radius: 50%; background: var(--color-brand-primary); transition: transform v.$motion-duration v.$motion-easing; }
 .wand2-touchhelp { color: var(--color-text-secondary); font-size: .65rem; white-space: nowrap; }
 .wand2-keyhelp { margin: 0; font-size: .75rem; line-height: 2; color: var(--color-text-secondary);
   kbd { font-family: inherit; font-size: .7rem; display: inline-block; margin-right: 3px; padding: 0 5px; border-radius: 4px; background: var(--color-background-content); color: var(--color-text-primary); } }
