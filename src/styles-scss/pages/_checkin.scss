@@ -185,7 +185,7 @@
   cursor: pointer;
   background: var(--color-brand-secondary);
   color: var(--color-brand-primary);
-  transition: background 0.25s ease, color 0.25s ease, transform 0.2s ease, box-shadow 0.25s ease;
+  transition: background $feedback-duration $feedback-easing, color $feedback-duration $feedback-easing, transform $motion-duration $motion-easing, box-shadow $feedback-duration $feedback-easing;
   overflow: visible;
   isolation: isolate;
 
@@ -209,7 +209,7 @@
     z-index: 1;
     pointer-events: none;
     opacity: 0;
-    transition: opacity 0.3s;
+    transition: opacity $feedback-duration $feedback-easing;
     will-change: transform;
   }
 
@@ -393,7 +393,7 @@
   min-width: 0;
   padding: 10px 14px;
   border-radius: $radius-large;
-  transition: background 0.15s ease;
+  transition: background $feedback-duration $feedback-easing;
 
   &:hover {
     background: var(--color-background-subtle);

@@ -25,7 +25,7 @@
   color: var(--color-brand-primary);
   font-weight: bold;
   cursor: pointer;
-  transition: color .25s ease, background-color .25s ease, filter .15s ease;
+  transition: color v.$feedback-duration v.$feedback-easing, background-color v.$feedback-duration v.$feedback-easing, filter v.$feedback-duration v.$feedback-easing;
 
   &:hover:not(:disabled) {
     background-color: var(--color-brand-primary);
@@ -50,7 +50,7 @@
   background-color: transparent;
   color: var(--color-text-secondary);
   cursor: pointer;
-  transition: color .25s ease, background-color .25s ease;
+  transition: color v.$feedback-duration v.$feedback-easing, background-color v.$feedback-duration v.$feedback-easing;
 
   // 触屏会保留模拟的 :hover；状态按钮可要求真实鼠标悬停，避免松手后仍亮着。
   @if $pointer-hover-only {
@@ -113,7 +113,7 @@
   border: none;
   color: var(--color-text-primary);
   background-color: var(--color-background-page);
-  transition: box-shadow .2s ease;
+  transition: box-shadow v.$feedback-duration v.$feedback-easing;
 
   // 聚焦反馈只用 box-shadow：border 会参与布局，字段随焦点长高、下方内容位移。
   &:focus {
@@ -129,11 +129,11 @@
 // 「展开面板」的共享动画：grid-template-rows 0fr → 1fr 按**实际内容高度**伸展。
 // 博客目录的栏目下拉（外壳 / 二级子组）与通用下拉 ExpandSelect 共用这一份节奏。
 //
-// 节奏就是顶栏那两条（见 abstracts/_variables.scss 的 $motion-*）：收起方向用
-// 收起档，展开方向在 expand-panel-open 里换成展开档。CSS 过渡取「变化到哪一侧」
-// 的声明，所以两条都要写 —— 只写一条的话另一个方向会静默退回默认曲线。
+// 节奏就是全站唯一的交互动效节奏（见 abstracts/_variables.scss 的 $motion-*）。
+// 展开与收起同一条曲线、同一个时长，CSS 过渡取「变化到哪一侧」的声明，所以两条都要写 ——
+// 只写一条的话另一个方向会静默退回默认曲线。
 // 调用方负责给内层 `min-height: 0; overflow: hidden` 的裁剪壳。
-@mixin expand-panel($duration: v.$motion-collapse-duration, $easing: v.$motion-collapse-easing) {
+@mixin expand-panel($duration: v.$motion-duration, $easing: v.$motion-easing) {
   display: grid;
   grid-template-rows: 0fr;
   visibility: hidden;
@@ -144,11 +144,11 @@
   }
 }
 
-/// 展开态。visibility 立刻切到可见（收起时则等动画走完），外壳走展开档节奏。
+/// 展开态。visibility 立刻切到可见（收起时则等动画走完），外壳走同一条节奏。
 @mixin expand-panel-open {
   grid-template-rows: 1fr;
   visibility: visible;
-  transition: grid-template-rows v.$motion-expand-duration v.$motion-expand-easing,
+  transition: grid-template-rows v.$motion-duration v.$motion-easing,
               visibility 0s;
 }
 

@@ -51,7 +51,7 @@ export default function BlogPersonalSidebar({ user, summary, scope }: {
     if (!open) return;
     measurePanel();
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) { setSettled(true); return; }
-    const timer = window.setTimeout(() => setSettled(true), 450);
+    const timer = window.setTimeout(() => setSettled(true), 540);
     return () => window.clearTimeout(timer);
   }, [open, measurePanel]);
 

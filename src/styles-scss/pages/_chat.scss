@@ -56,8 +56,8 @@
   flex-direction: column;
   // 展开方向用公共展开节奏（480ms）；收起方向写在 --collapsed 那一侧（220ms）——
   // transition 取「变化后那一侧」的声明，所以两份各写一份（§6.2 / §7.4）。
-  transition: width v.$motion-expand-duration v.$motion-expand-easing,
-    flex-basis v.$motion-expand-duration v.$motion-expand-easing;
+  transition: width v.$motion-duration v.$motion-easing,
+    flex-basis v.$motion-duration v.$motion-easing;
   overflow: hidden;
 }
 
@@ -65,8 +65,8 @@
   flex-basis: 60px;
   width: 60px;
   // 收起方向：短、快、加速进入（§6.2 的收起节奏）
-  transition: width v.$motion-collapse-duration v.$motion-collapse-easing,
-    flex-basis v.$motion-collapse-duration v.$motion-collapse-easing;
+  transition: width v.$motion-duration v.$motion-easing,
+    flex-basis v.$motion-duration v.$motion-easing;
 }
 
 .chat-sidebar__head {
@@ -89,8 +89,8 @@
   // 折叠按钮就瞬间从最右跳到最左；收宽度能让它随右边界平滑左移。
   // 宽度展开方向 480ms（外壳节奏），淡出 180ms（展开内容淡入那一档，见 §6.2）；
   // 收起方向由 --collapsed 那一侧覆盖成 220ms（transition 取变化后那一侧）。
-  transition: max-width v.$motion-expand-duration v.$motion-expand-easing,
-    opacity 0.18s ease;
+  transition: max-width v.$motion-duration v.$motion-easing,
+    opacity v.$feedback-duration v.$feedback-easing;
 }
 
 // 折叠开关：密集桌面工具条里的次要图标钮（§5.1）—— 空闲无底色、悬停品牌淡底、
@@ -111,7 +111,7 @@
     width: 16px;
     height: 16px;
     // 箭头随折叠方向旋转（§3.7）：旋转走展开节奏（480ms），方向同外壳伸展。
-    transition: transform v.$motion-expand-duration v.$motion-expand-easing;
+    transition: transform v.$motion-duration v.$motion-easing;
   }
 
   &:focus-visible {
@@ -127,8 +127,8 @@
   max-width: 0;
   opacity: 0;
   // 收起方向：宽度 220ms；透明度仍是 180ms 的短反馈，不跟着拉长。
-  transition: max-width v.$motion-collapse-duration v.$motion-collapse-easing,
-    opacity 0.18s ease;
+  transition: max-width v.$motion-duration v.$motion-easing,
+    opacity v.$feedback-duration v.$feedback-easing;
 }
 
 .chat-sidebar__list {
@@ -165,8 +165,8 @@
   text-align: left;
   // padding 也参与折叠动画：12px → 5px 与宽度收缩同步，图标不跳。
   // 展开方向 480ms（与侧栏同一条外壳节奏），收起方向在 --collapsed 那侧 220ms。
-  transition: background-color 0.25s ease, color 0.25s ease,
-    padding v.$motion-expand-duration v.$motion-expand-easing;
+  transition: background-color v.$feedback-duration v.$feedback-easing, color v.$feedback-duration v.$feedback-easing,
+    padding v.$motion-duration v.$motion-easing;
 
   &:focus-visible {
     outline: 2px solid var(--color-brand-primary);
@@ -217,7 +217,7 @@
   justify-content: center;
   cursor: pointer;
   opacity: 0;
-  transition: opacity 0.18s ease, background-color 0.25s ease, color 0.25s ease;
+  transition: opacity v.$feedback-duration v.$feedback-easing, background-color v.$feedback-duration v.$feedback-easing, color v.$feedback-duration v.$feedback-easing;
 }
 .chat-chan__more svg {
   width: 16px;
@@ -344,8 +344,8 @@
 .chat-page--collapsed .chat-chan {
   padding: 8px 5px;
   // 收起方向 220ms（transition 取变化后那一侧）；颜色反馈保持 250ms。
-  transition: background-color 0.25s ease, color 0.25s ease,
-    padding v.$motion-collapse-duration v.$motion-collapse-easing;
+  transition: background-color v.$feedback-duration v.$feedback-easing, color v.$feedback-duration v.$feedback-easing,
+    padding v.$motion-duration v.$motion-easing;
 }
 
 .chat-chan__main {
@@ -544,7 +544,7 @@
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  transition: background-color 0.25s ease, color 0.25s ease;
+  transition: background-color v.$feedback-duration v.$feedback-easing, color v.$feedback-duration v.$feedback-easing;
 
   &:hover {
     background: var(--color-brand-secondary);
@@ -631,10 +631,10 @@
   animation: none;
 }
 ::view-transition-old(chat-list) {
-  animation: chat-list-out 0.16s ease both;
+  animation: chat-list-out v.$feedback-duration v.$feedback-easing both;
 }
 ::view-transition-new(chat-list) {
-  animation: chat-list-in 0.16s ease both;
+  animation: chat-list-in v.$feedback-duration v.$feedback-easing both;
 }
 @keyframes chat-list-out {
   to {
@@ -721,7 +721,7 @@
   gap: 10px;
   max-width: 78%;
   border-radius: 10px;
-  transition: background-color 0.15s ease;
+  transition: background-color v.$feedback-duration v.$feedback-easing;
 }
 .chat-msg--mine {
   align-self: flex-end;
@@ -744,7 +744,7 @@
 // 仅在键盘聚焦时淡入（鼠标悬停**不**显示：悬停反馈只落在气泡上）；触屏常显。
 .chat-msg--grouped .chat-msg__avatar {
   opacity: 0;
-  transition: opacity 0.15s ease;
+  transition: opacity v.$feedback-duration v.$feedback-easing;
 }
 .chat-msg--grouped .chat-msg__avatar:focus-visible {
   opacity: 1;
@@ -811,7 +811,7 @@
   overflow: hidden;
   background: var(--color-background-content);
   cursor: pointer;
-  transition: box-shadow 0.15s ease;
+  transition: box-shadow v.$feedback-duration v.$feedback-easing;
 }
 .chat-msg__avatar img {
   width: 100%;
@@ -1089,7 +1089,7 @@
 }
 .chat-msg__image,
 .chat-msg__md img {
-  transition: filter 0.15s ease;
+  transition: filter v.$feedback-duration v.$feedback-easing;
 }
 .chat-msg--pressed .chat-msg__image,
 .chat-msg--pressed .chat-msg__md img {
@@ -1154,7 +1154,7 @@
   border-radius: 8px;
   cursor: default;
   // 档位切换要有个过渡，否则「啪」地跳一下；拖动时关掉（见 .is-dragging）
-  transition: transform 0.18s ease;
+  transition: transform v.$motion-duration v.$motion-easing;
   // 放大后可拖动平移；1× 时是普通图片（default）
   user-select: none;
   -webkit-user-drag: none;
@@ -1275,7 +1275,7 @@
   max-width: 320px;
   /* transition 必须写：同族的可点卡（.blog-item / .vote-item / .comment-blog）都有，
      少了它这张卡 hover 的光晕是**瞬间弹出**的，跟别处不一致。 */
-  transition: box-shadow 0.2s ease;
+  transition: box-shadow v.$feedback-duration v.$feedback-easing;
 }
 // 整卡可点（整块是 <a>→/blog/{id}）：常态不描边、不投影，hover 才出品牌蓝光晕。
 .chat-msg__blog:hover {
@@ -1344,7 +1344,7 @@
   font-size: 0.78rem;
   color: var(--color-text-secondary);
   border-radius: 999px;
-  transition: background-color 0.15s ease;
+  transition: background-color v.$feedback-duration v.$feedback-easing;
   text-align: center;
   word-break: break-word;
 }
@@ -1483,16 +1483,16 @@
 // 桌面单击正文也落到这里。外壳沿用站内弹窗（.modal-overlay / .modal-dialog /
 // .modal-content），面板自己只管版式与入场动画。
 //
-// 【入场】对齐个人主页 .bento-modal（pages/_profile.scss）：遮罩 180ms ease 淡入、
+// 【入场】对齐个人主页 .bento-modal（pages/_profile.scss）：遮罩 540ms 淡入、
 // 面板轻抬 8px + 0.98 缩放，节奏引用 §6.2 的「入场」档；减少动态效果下两者
 // 都直接到终态（见文件末尾的 reduced-motion 区块）。
 .chat-detail-overlay {
-  animation: chat-detail-fade 180ms ease;
+  animation: chat-detail-fade v.$feedback-duration v.$feedback-easing;
 }
 .chat-detail {
   width: calc(100vw - 40px);
   max-width: 560px;
-  animation: chat-detail-rise v.$motion-expand-duration v.$motion-expand-easing;
+  animation: chat-detail-rise v.$motion-duration v.$motion-easing;
 
   // 打开时焦点落在对话框本身（见组件注释），容器不该画 outline；
   // 键盘焦点仍在内部按钮上，各自的 :focus-visible 照常可见。
@@ -1839,7 +1839,7 @@
   color: var(--color-text-primary);
   cursor: pointer;
   text-align: left;
-  transition: background-color 0.25s ease, color 0.25s ease;
+  transition: background-color v.$feedback-duration v.$feedback-easing, color v.$feedback-duration v.$feedback-easing;
 
   // 悬停 / 按下都停在品牌淡底（同 btn-tab 的按下语义：不闪成实底，
   // 两行文字里还有一档次要色，实底会把它压没）。
@@ -1869,7 +1869,7 @@
   justify-content: center;
   background: var(--color-brand-secondary);
   color: var(--color-brand-primary);
-  transition: background-color 0.25s ease;
+  transition: background-color v.$feedback-duration v.$feedback-easing;
 }
 .chat-blog-item__main {
   flex: 1;
@@ -1909,7 +1909,7 @@
   text-align: left;
   cursor: pointer;
   color: var(--color-text-primary);
-  transition: background-color 0.25s ease, color 0.25s ease;
+  transition: background-color v.$feedback-duration v.$feedback-easing, color v.$feedback-duration v.$feedback-easing;
 
   &:hover,
   &:active {
@@ -2010,7 +2010,7 @@
     flex-basis: 300px;
     transform: translateX(-100%);
     // 关抽屉 = 收起方向（220ms）；开抽屉的方向写在 --drawer-open 那一侧（480ms）。
-    transition: transform v.$motion-collapse-duration v.$motion-collapse-easing;
+    transition: transform v.$motion-duration v.$motion-easing;
     // 抽屉浮起时用品牌蓝光晕（浮层阴影，不是用来补分栏线）。
     box-shadow: var(--shadow-card-brand);
   }
@@ -2030,7 +2030,7 @@
     flex-basis: 300px;
     width: 300px;
     // 关抽屉方向：收起节奏（覆盖桌面那条 width/flex-basis 的 transition）
-    transition: transform v.$motion-collapse-duration v.$motion-collapse-easing;
+    transition: transform v.$motion-duration v.$motion-easing;
   }
   .chat-page--collapsed .chat-chan__main {
     display: flex;
@@ -2059,7 +2059,7 @@
   // 0-2-0，靠顺序决胜；否则「桌面折叠过、手机再打开抽屉」会拿到收起节奏。
   .chat-page--drawer-open .chat-sidebar {
     transform: translateX(0);
-    transition: transform v.$motion-expand-duration v.$motion-expand-easing;
+    transition: transform v.$motion-duration v.$motion-easing;
   }
 }
 

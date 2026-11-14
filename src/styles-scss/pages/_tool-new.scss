@@ -113,7 +113,7 @@
        深浅差；hover 只提品牌蓝光晕，不位移 —— 与博客首页 .blog-item 一致。
        过渡只跟 box-shadow（与 .blog-item 同一条）：写 all 会把内距、字号这些
        布局属性也做成动画。 */
-    transition: box-shadow 0.2s ease;
+    transition: box-shadow $feedback-duration $feedback-easing;
     height: 100%;
     display: flex;
     flex-direction: column;
@@ -234,7 +234,7 @@
     svg {
       width: 16px;
       height: 16px;
-      transition: transform 0.2s ease;
+      transition: transform $motion-duration $motion-easing;
     }
 
     &[aria-expanded='true'] svg {
@@ -287,7 +287,7 @@
   padding: 20px;
   background: var(--color-background-card);
   border-radius: $radius-field;
-  transition: box-shadow 0.2s ease;
+  transition: box-shadow $feedback-duration $feedback-easing;
 
   // 页面里同时挂了 .p-3；工具类的 !important 会盖掉上面的内距，这里按面板档位收回来。
   &.p-3 {

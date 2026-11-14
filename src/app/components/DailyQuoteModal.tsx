@@ -8,9 +8,9 @@ import type { DailyQuoteView, TodayQuoteState } from '@/lib/daily-quote';
 import DailyQuoteCard from './DailyQuoteCard';
 import DailyQuoteForm from './DailyQuoteForm';
 
-// 与 abstracts/_variables.scss 的 $motion-collapse-duration 同值：关闭时内容先退（150ms），
-// 外壳与遮罩随后收（220ms），收完才真正 close()。
-const CLOSE_MS = 220;
+// 与 abstracts/_variables.scss 的 $feedback-duration 同值：关闭时内容、外壳与遮罩
+// 只改透明度，走反馈档 360ms，收完才真正 close()。
+const CLOSE_MS = 360;
 
 export default function DailyQuoteModal({ onClose, returnFocus }: { onClose: () => void; returnFocus?: RefObject<HTMLButtonElement | null> }) {
   const dialog = useRef<HTMLDialogElement>(null);

@@ -1,3 +1,4 @@
+@use '../../abstracts/variables' as v;
 @use '../../abstracts/mixins' as m;
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -112,7 +113,7 @@
   white-space: nowrap;
   text-decoration: none;
   cursor: pointer;
-  transition: color .25s ease, background-color .25s ease, filter .15s ease;
+  transition: color v.$feedback-duration v.$feedback-easing, background-color v.$feedback-duration v.$feedback-easing, filter v.$feedback-duration v.$feedback-easing;
 
   svg {
     flex: none;
@@ -262,7 +263,7 @@
     stroke: currentColor;
     stroke-width: 1.8;
     opacity: .35;
-    transition: opacity .2s ease, color .2s ease;
+    transition: opacity v.$feedback-duration v.$feedback-easing, color v.$feedback-duration v.$feedback-easing;
   }
 }
 
@@ -305,7 +306,7 @@
   color: var(--color-text-secondary);
   font-size: .85rem;
   line-height: 1.6;
-  transition: color .2s ease;
+  transition: color v.$feedback-duration v.$feedback-easing;
 
   &[data-tone='warn'] {
     color: var(--color-warning-primary);
@@ -391,7 +392,7 @@
 // 只加这一层淡青，格子本身的圆角与尺寸不动 —— 亮的是一整格，不是一条描边。
 .tw-board[data-solved='true'] .tw-cell--goal:not([fill]) {
   fill: rgba(125, 211, 252, .22);
-  transition: fill .3s ease;
+  transition: fill v.$feedback-duration v.$feedback-easing;
 }
 
 .tw-ice-sheen:not([fill]) {
@@ -407,7 +408,7 @@
   fill: none;
   stroke-width: 3;
   stroke-opacity: .85;
-  transition: stroke-opacity .25s ease, stroke-width .25s ease;
+  transition: stroke-opacity v.$feedback-duration v.$feedback-easing, stroke-width v.$motion-duration v.$motion-easing;
 }
 
 .tw-goal-halo:not([fill]) {
@@ -416,7 +417,7 @@
 
 .tw-goal-halo {
   fill-opacity: .2;
-  transition: fill-opacity .25s ease;
+  transition: fill-opacity v.$feedback-duration v.$feedback-easing;
 }
 
 .tw-goal--lit {
@@ -722,7 +723,7 @@
   color: var(--color-text-primary);
   font: inherit;
   text-align: left;
-  transition: background-color .25s ease, color .25s ease;
+  transition: background-color v.$feedback-duration v.$feedback-easing, color v.$feedback-duration v.$feedback-easing;
 
   &:focus-visible {
     outline: 2px solid var(--color-brand-primary);

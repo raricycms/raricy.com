@@ -1,6 +1,7 @@
 /* 注：本文件顶部原本有 `* { transition / -webkit-tap-highlight-color }`，
    已收敛到 base/_reset.scss（全局规则只留一处定义）。 */
 
+@use '../../abstracts/variables' as v;
 @use '../../abstracts/mixins' as m;
 
 a {
@@ -76,7 +77,7 @@ a {
         width: 28px;
         height: 28px;
         color: var(--color-brand-primary);
-        transition: all 0.3s ease;
+        transition: all v.$feedback-duration v.$feedback-easing;
     }
     &:hover {
         .icon {
@@ -132,7 +133,7 @@ a {
     background: var(--color-background-page);
     color: var(--color-text-primary);
     font-size: 0.95rem;
-    transition: box-shadow 0.2s ease;
+    transition: box-shadow v.$feedback-duration v.$feedback-easing;
     min-width: 0;
 
     &:focus {
@@ -184,7 +185,7 @@ a {
     font-size: 0.9rem;
     text-decoration: none;
     white-space: nowrap;
-    transition: color 0.2s ease;
+    transition: color v.$feedback-duration v.$feedback-easing;
 
     &:hover {
         color: var(--color-warning-primary);
@@ -234,7 +235,7 @@ a {
     justify-content: space-between;
     cursor: pointer;
     user-select: none;
-    transition: color 0.3s ease;
+    transition: color v.$feedback-duration v.$feedback-easing;
     &:hover {
         color: var(--color-brand-primary);
     }
@@ -242,7 +243,7 @@ a {
 
 .sidebar-title .toggle-icon {
     font-size: 1rem;
-    transition: transform 0.3s ease;
+    transition: transform v.$motion-duration v.$motion-easing;
 }
 
 .sidebar-title.collapsed .toggle-icon {
@@ -253,7 +254,7 @@ a {
     list-style: none;
     padding: 0;
     margin: 0;
-    transition: all 0.3s ease;
+    transition: all v.$motion-duration v.$motion-easing;
     overflow: hidden;
 }
 
@@ -316,7 +317,7 @@ a {
 .category-toggle {
     font-size: 0.8rem;
     margin-left: 8px;
-    transition: transform 0.3s ease;
+    transition: transform v.$motion-duration v.$motion-easing;
     color: var(--color-text-secondary);
 }
 
@@ -334,7 +335,7 @@ a {
     list-style: none;
     padding: 0;
     margin: 8px 0 0 24px;
-    transition: all 0.3s ease;
+    transition: all v.$motion-duration v.$motion-easing;
     overflow: hidden;
 }
 
@@ -395,7 +396,7 @@ a {
     margin-bottom: 16px;
     cursor: pointer;
     /* 常态不描边、不托阴影（全站卡片口径），只有 hover 才亮光晕，故保留这条过渡。 */
-    transition: box-shadow 0.2s ease;
+    transition: box-shadow v.$feedback-duration v.$feedback-easing;
 
     /* 整卡可点（.blog-item-cover 拉伸链接铺满整卡）：hover 亮品牌蓝光晕提示可点。
        原先的 --shadow-card-hover 是黑色阴影，已按全站口径退役。 */

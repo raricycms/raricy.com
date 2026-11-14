@@ -32,7 +32,7 @@
     z-index: -1;
     pointer-events: none;
     opacity: 0;
-    transition: opacity .18s ease;
+    transition: opacity v.$feedback-duration v.$feedback-easing;
     top: -12px;
     bottom: -48px;
     left: calc(-1 * var(--filters-left, 0px));
@@ -69,10 +69,10 @@
   // 「全部栏目」按钮先显示成 120px、再缩短到内容宽度的一段动画。
   // 收起方向用收起节奏，展开方向在 .is-open 里换成展开节奏（过渡取变化后那一侧）。
   &.is-ready {
-    transition: width v.$motion-collapse-duration v.$motion-collapse-easing;
+    transition: width v.$motion-duration v.$motion-easing;
   }
   &.is-open {
-    transition: width v.$motion-expand-duration v.$motion-expand-easing;
+    transition: width v.$motion-duration v.$motion-easing;
   }
 
   &__shell {
@@ -82,7 +82,7 @@
     background: var(--color-background-page);
     border-radius: 21px;
     overflow: hidden;
-    transition: width v.$motion-collapse-duration v.$motion-collapse-easing, box-shadow .25s ease;
+    transition: width v.$motion-duration v.$motion-easing, box-shadow v.$feedback-duration v.$feedback-easing;
   }
 
   &__toggle {
@@ -97,7 +97,7 @@
     font-size: .9rem;
 
     span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    svg { width: 16px; height: 16px; flex: none; transition: transform v.$motion-expand-duration v.$motion-expand-easing; }
+    svg { width: 16px; height: 16px; flex: none; transition: transform v.$motion-duration v.$motion-easing; }
     &:focus-visible { box-shadow: var(--shadow-focus-brand); }
   }
 
@@ -127,7 +127,7 @@
     width: 36px;
     height: 36px;
     padding: 0;
-    svg { width: 16px; height: 16px; transition: transform v.$motion-expand-duration v.$motion-expand-easing; }
+    svg { width: 16px; height: 16px; transition: transform v.$motion-duration v.$motion-easing; }
     &[aria-expanded='true'] svg { transform: rotate(180deg); }
   }
   &__children {
@@ -140,7 +140,7 @@
     padding: 4px 6px 8px;
     opacity: 0;
     transform: translateY(-8px);
-    transition: opacity .18s ease, transform v.$motion-collapse-duration v.$motion-collapse-easing;
+    transition: opacity v.$feedback-duration v.$feedback-easing, transform v.$motion-duration v.$motion-easing;
   }
 
   &__option {
@@ -160,14 +160,14 @@
     .blog-category-select__shell {
       background: var(--color-background-card);
       box-shadow: var(--shadow-card-brand);
-      transition: width v.$motion-expand-duration v.$motion-expand-easing, box-shadow .25s ease;
+      transition: width v.$motion-duration v.$motion-easing, box-shadow v.$feedback-duration v.$feedback-easing;
     }
     .blog-category-select__panel { @include m.expand-panel-open; }
     .blog-category-select__options {
       opacity: 1;
       transform: translateY(0);
-      transition: opacity .18s ease 55ms,
-                  transform v.$motion-expand-duration v.$motion-expand-easing 55ms;
+      transition: opacity v.$feedback-duration v.$feedback-easing 55ms,
+                  transform v.$motion-duration v.$motion-easing 55ms;
     }
     .blog-category-select__toggle svg { transform: rotate(180deg); }
   }
@@ -282,8 +282,8 @@
       overflow: clip;
       box-shadow: var(--shadow-card-brand);
       // 收起方向用收起节奏；展开方向在 .is-open 里换成展开节奏。
-      transition: width v.$motion-collapse-duration v.$motion-collapse-easing,
-                  border-radius v.$motion-collapse-duration v.$motion-collapse-easing;
+      transition: width v.$motion-duration v.$motion-easing,
+                  border-radius v.$motion-duration v.$motion-easing;
     }
     // 展开时的全屏暗色蒙版。色值取站内**模态遮罩**统一的那一个：
     //   .modal / .modal-overlay / .bento-detail__backdrop / .oauth-modal-overlay
@@ -308,7 +308,7 @@
       // 触屏在蒙版上拖动会滚动底下那一页：暗层纹丝不动、页面却在暗层底下滑，
       // 看着像坏了。touch-action 只拦手势，不拦点击（点蒙版收起照常）。
       touch-action: none;
-      transition: opacity .18s ease;
+      transition: opacity v.$feedback-duration v.$feedback-easing;
     }
     &__avatar {
       top: 13px;
@@ -319,10 +319,10 @@
       // 收起方向用收起节奏；展开方向在 .is-open 里换成展开节奏。宽度/高度与外壳
       // 宽度、面板高度必须是同一条时间线 —— 任一属性另用一套曲线，屏幕上的合成
       // 轨迹就会折一下（e2e 用「到首尾连线的最大垂距」钉住）。
-      transition: top v.$motion-collapse-duration v.$motion-collapse-easing,
-                  left v.$motion-collapse-duration v.$motion-collapse-easing,
-                  width v.$motion-collapse-duration v.$motion-collapse-easing,
-                  height v.$motion-collapse-duration v.$motion-collapse-easing;
+      transition: top v.$motion-duration v.$motion-easing,
+                  left v.$motion-duration v.$motion-easing,
+                  width v.$motion-duration v.$motion-easing,
+                  height v.$motion-duration v.$motion-easing;
     }
     // 收起时它是盖在头像上的「点头像」热区 —— 与展开后右上角的 X 是同一颗按钮，
     // 只是随外壳移动、换位置。图标在收起态透明，所以看起来就是一颗头像球。
@@ -344,12 +344,12 @@
       width: 44px;
       height: 44px;
       padding: 0;
-      transition: top v.$motion-collapse-duration v.$motion-collapse-easing,
-                  right v.$motion-collapse-duration v.$motion-collapse-easing,
-                  width v.$motion-collapse-duration v.$motion-collapse-easing,
-                  height v.$motion-collapse-duration v.$motion-collapse-easing,
-                  background-color .25s ease;
-      svg { width: 18px; height: 18px; opacity: 0; transition: opacity .18s ease; }
+      transition: top v.$motion-duration v.$motion-easing,
+                  right v.$motion-duration v.$motion-easing,
+                  width v.$motion-duration v.$motion-easing,
+                  height v.$motion-duration v.$motion-easing,
+                  background-color v.$feedback-duration v.$feedback-easing;
+      svg { width: 18px; height: 18px; opacity: 0; transition: opacity v.$feedback-duration v.$feedback-easing; }
     }
     // 面板高度用显式 height 而不是 grid-template-rows 0fr→1fr：浏览器把 fr 内插成
     // 「进度²」的高度，而头像的 top/left 是按进度线性走的，叠起来头像在视觉上就是
@@ -363,8 +363,8 @@
       height: 70px;
       overflow: hidden;
       visibility: hidden;
-      transition: height v.$motion-collapse-duration v.$motion-collapse-easing,
-                  visibility 0s v.$motion-collapse-duration;
+      transition: height v.$motion-duration v.$motion-easing,
+                  visibility 0s v.$motion-duration;
     }
     &__inner {
       min-height: 0;
@@ -398,11 +398,11 @@
       justify-content: flex-start;
       // 底色就是 `.upload-button`（btn-primary）的二级主题色，这里不再覆写成透明
       // —— 收起态也要保留那颗浅底圆形容器，和面板里的创建按钮同一档。
-      transition: left v.$motion-collapse-duration v.$motion-collapse-easing,
-                  bottom v.$motion-collapse-duration v.$motion-collapse-easing,
-                  width v.$motion-collapse-duration v.$motion-collapse-easing,
-                  gap v.$motion-collapse-duration v.$motion-collapse-easing,
-                  background-color .25s ease, color .25s ease;
+      transition: left v.$motion-duration v.$motion-easing,
+                  bottom v.$motion-duration v.$motion-easing,
+                  width v.$motion-duration v.$motion-easing,
+                  gap v.$motion-duration v.$motion-easing,
+                  background-color v.$feedback-duration v.$feedback-easing, color v.$feedback-duration v.$feedback-easing;
     }
     &__create-label {
       max-width: 0;
@@ -413,7 +413,7 @@
       opacity: 0;
       overflow: hidden;
       white-space: nowrap;
-      transition: opacity .18s ease, max-width v.$motion-collapse-duration v.$motion-collapse-easing;
+      transition: opacity v.$feedback-duration v.$feedback-easing, max-width v.$motion-duration v.$motion-easing;
     }
     // 图标圆盘宽度固定：让它跟着文案一起被 flex 压缩的话，mask 画的圆盘会在中段帧
     // 拿到小数边长（见 pages/blog/_menu.scss 里整数 px 那条注释），看起来会变形。
@@ -431,7 +431,7 @@
     &__identity, &__stats, &__range {
       opacity: 0;
       transform: translateY(-8px);
-      transition: opacity .18s ease, transform v.$motion-collapse-duration v.$motion-collapse-easing;
+      transition: opacity v.$feedback-duration v.$feedback-easing, transform v.$motion-duration v.$motion-easing;
     }
 
     &.is-open {
@@ -442,18 +442,18 @@
       .blog-personal__shell {
         width: min(280px, calc(100vw - 32px));
         border-radius: 30px;
-        transition: width v.$motion-expand-duration v.$motion-expand-easing,
-                    border-radius v.$motion-expand-duration v.$motion-expand-easing;
+        transition: width v.$motion-duration v.$motion-easing,
+                    border-radius v.$motion-duration v.$motion-easing;
       }
       .blog-personal__avatar {
         top: 24px;
         left: 20px;
         width: 48px;
         height: 48px;
-        transition: top v.$motion-expand-duration v.$motion-expand-easing,
-                    left v.$motion-expand-duration v.$motion-expand-easing,
-                    width v.$motion-expand-duration v.$motion-expand-easing,
-                    height v.$motion-expand-duration v.$motion-expand-easing;
+        transition: top v.$motion-duration v.$motion-easing,
+                    left v.$motion-duration v.$motion-easing,
+                    width v.$motion-duration v.$motion-easing,
+                    height v.$motion-duration v.$motion-easing;
       }
       .blog-personal__toggle {
         top: 28px;
@@ -461,17 +461,17 @@
         width: 36px;
         height: 36px;
         padding: 0;
-        transition: top v.$motion-expand-duration v.$motion-expand-easing,
-                    right v.$motion-expand-duration v.$motion-expand-easing,
-                    width v.$motion-expand-duration v.$motion-expand-easing,
-                    height v.$motion-expand-duration v.$motion-expand-easing,
-                    background-color .25s ease;
+        transition: top v.$motion-duration v.$motion-easing,
+                    right v.$motion-duration v.$motion-easing,
+                    width v.$motion-duration v.$motion-easing,
+                    height v.$motion-duration v.$motion-easing,
+                    background-color v.$feedback-duration v.$feedback-easing;
         svg { opacity: 1; transition-delay: 55ms; }
       }
       .blog-personal__panel {
         height: var(--blog-personal-panel-height, auto);
         visibility: visible;
-        transition: height v.$motion-expand-duration v.$motion-expand-easing,
+        transition: height v.$motion-duration v.$motion-easing,
                     visibility 0s;
       }
       .blog-personal__create {
@@ -484,22 +484,22 @@
         width: 105px;
         gap: 10px;
         background-color: var(--color-brand-secondary);
-        transition: left v.$motion-expand-duration v.$motion-expand-easing,
-                    bottom v.$motion-expand-duration v.$motion-expand-easing,
-                    width v.$motion-expand-duration v.$motion-expand-easing,
-                    gap v.$motion-expand-duration v.$motion-expand-easing,
-                    background-color .25s ease, color .25s ease;
+        transition: left v.$motion-duration v.$motion-easing,
+                    bottom v.$motion-duration v.$motion-easing,
+                    width v.$motion-duration v.$motion-easing,
+                    gap v.$motion-duration v.$motion-easing,
+                    background-color v.$feedback-duration v.$feedback-easing, color v.$feedback-duration v.$feedback-easing;
       }
       .blog-personal__create-label {
         max-width: 60px;
         opacity: 1;
-        transition: opacity .18s ease 55ms,
-                    max-width v.$motion-expand-duration v.$motion-expand-easing 55ms;
+        transition: opacity v.$feedback-duration v.$feedback-easing 55ms,
+                    max-width v.$motion-duration v.$motion-easing 55ms;
       }
       .blog-personal__identity, .blog-personal__stats, .blog-personal__range {
         opacity: 1;
         transform: translateY(0);
-        transition: opacity .18s ease, transform v.$motion-expand-duration v.$motion-expand-easing;
+        transition: opacity v.$feedback-duration v.$feedback-easing, transform v.$motion-duration v.$motion-easing;
         transition-delay: 55ms;
       }
       .blog-personal__range {

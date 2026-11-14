@@ -130,7 +130,7 @@
     background: var(--color-background-card);
     border-radius: $radius-large;
     padding: $space-4;
-    transition: all 0.3s ease;
+    transition: all $feedback-duration $feedback-easing;
     cursor: pointer;
     text-decoration: none;
     color: inherit;
@@ -174,7 +174,7 @@
       font-size: 0.8125rem;
       color: var(--color-text-secondary);
       cursor: pointer;
-      transition: all 0.2s ease;
+      transition: all $feedback-duration $feedback-easing;
       user-select: none;
 
       code {
@@ -264,7 +264,7 @@
         font-size: 0.75rem;
         font-family: inherit;
         cursor: pointer;
-        transition: all 0.2s ease;
+        transition: all $feedback-duration $feedback-easing;
         white-space: nowrap;
         user-select: none;
 
@@ -408,7 +408,7 @@
         color: var(--color-text-primary);
         font-size: 1rem;
         box-sizing: border-box;
-        transition: box-shadow 0.2s ease;
+        transition: box-shadow $feedback-duration $feedback-easing;
 
         &:focus {
           outline: none;
@@ -433,7 +433,7 @@
         font-family: inherit;
         line-height: 1.6;
         box-sizing: border-box;
-        transition: box-shadow 0.2s ease;
+        transition: box-shadow $feedback-duration $feedback-easing;
 
         &:focus {
           outline: none;
@@ -482,7 +482,7 @@
       line-height: 1.6;
       font-family: var(--font-mono);
       box-sizing: border-box;
-      transition: box-shadow 0.2s ease;
+      transition: box-shadow $feedback-duration $feedback-easing;
 
       &:focus {
         outline: none;

@@ -47,7 +47,7 @@
   color: var(--color-text-secondary);
   font-size: 0.875rem;
   text-decoration: none;
-  transition: color 0.2s ease;
+  transition: color $feedback-duration $feedback-easing;
 
   svg {
     width: 18px;

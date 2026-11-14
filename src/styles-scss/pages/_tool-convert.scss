@@ -151,7 +151,7 @@
     border-radius: $radius-field;
     background: var(--color-background-page);
     text-align: center;
-    transition: background-color .2s ease;
+    transition: background-color $feedback-duration $feedback-easing;
 
     &--over { background: var(--color-brand-secondary); }
 

@@ -5,6 +5,7 @@
  *   · .favorite-embed —— 正文里 `[@六位ID]` 展开出来的收藏夹卡片
  */
 
+@use '../abstracts/variables' as v;
 @use '../abstracts/mixins' as m;
 
 /* ── 详情页的收藏按钮（参照 .like-btn / .fish-btn 的 pill 形态）─────────────
@@ -337,7 +338,7 @@
   border-radius: 999px;
   background: var(--color-background-page);
   color: var(--color-text-primary);
-  transition: box-shadow 0.2s ease;
+  transition: box-shadow v.$feedback-duration v.$feedback-easing;
 
   &:focus {
     outline: none;

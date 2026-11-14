@@ -1,3 +1,4 @@
+@use '../../abstracts/variables' as v;
 @use '../../abstracts/mixins' as m;
 
 .hy-game {
@@ -28,11 +29,11 @@
 .hy-slot, .hy-room { position: absolute; width: calc(100% / var(--hy-columns)); height: calc(100% / var(--hy-rows)); }
 .hy-slot { padding: 5px; color: var(--color-text-secondary); opacity: .4; pointer-events: none; svg { width: 100%; height: 100%; } }
 .hy-connections { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
-.hy-room { padding: 3px; border: 0; border-radius: 8px; background: transparent; cursor: pointer; transition: left .22s ease, top .22s ease; color: inherit; }
+.hy-room { padding: 3px; border: 0; border-radius: 8px; background: transparent; cursor: pointer; transition: left v.$motion-duration v.$motion-easing, top v.$motion-duration v.$motion-easing; color: inherit; }
 .hy-room[data-kind='slide'] { cursor: grab; touch-action: none; }
 .hy-room--dragging { cursor: grabbing; z-index: 2; filter: brightness(1.06); }
 .hy-room-art { display: block; width: 100%; height: 100%; }
-.hy-room-paper { transform-origin: 50px 50px; transition: transform .24s ease; }
+.hy-room-paper { transform-origin: 50px 50px; transition: transform v.$motion-duration v.$motion-easing; }
 .hy-toolbar { display: flex; gap: 2px; flex-wrap: wrap; margin-top: 16px; }
 .hy-hint-button { margin-left: auto; }
 .hy-feedback { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 56px; margin-top: 8px; font-size: .8rem; line-height: 1.8; color: var(--color-text-secondary); strong { display: flex; gap: 6px; align-items: center; font-size: .9rem; } p { margin: 4px 0 0; } > button { flex-shrink: 0; } }

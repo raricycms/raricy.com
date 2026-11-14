@@ -25,16 +25,20 @@ $space-4: 16px;
 $space-6: 24px;
 $space-8: 32px;
 
-// 形变动效只留两条节奏，参数取自顶栏展开/收起（见 layout/_header.scss 的
-// 移动导航与 docs/frontend-styles.md §6.2）。形变（伸缩、位移、旋转、网格展开）
-// 一律引用这两个值，不再各写一条 cubic-bezier；颜色/阴影/透明度的短反馈仍用
-// 各组件自己的 150–250ms ease。
-// 注意：动效试验台（/game/motion）里的交互动画 540ms 是**对照结论**，不是这两个值
-// 的替代 —— 全站形变节奏就是下面这两条，改这里要同步那个页面的说明。
-$motion-expand-duration: 480ms;
-$motion-expand-easing: cubic-bezier(0.16, 1, 0.3, 1);
-$motion-collapse-duration: 220ms;
-$motion-collapse-easing: cubic-bezier(0.4, 0, 0.2, 1);
+// 全站交互动效只有一条节奏：540ms / cubic-bezier(0.16, 1, 0.3, 1)。
+// 曲线前段极快（前 25% 已走完 60% 以上），所以 540ms 观感上并不迟滞，拉长的是收尾。
+// 展开、收起、悬停、按下、聚焦、滑块位移、入场与退场都引用这两个值，颜色、底色、
+// 阴影、透明度也走同一条 —— 不再按用途各写一条速记。取值来自动效试验台的对照结论
+// （/game/motion，那里只演示不参与统一），说明见 docs/frontend-styles.md §6.2。
+$motion-duration: 540ms;
+$motion-easing: cubic-bezier(0.16, 1, 0.3, 1);
+
+// 与运动无关的反馈（颜色、底色、描边、阴影、透明度、滤镜）另走一档：360ms + `ease-out`。
+// 形变那条曲线前段太急，颜色会在一帧里跳掉大半、只剩尾巴慢慢收，看起来像"闪一下"；
+// `ease-out` 起步中速、末段减速，收尾方向与形变那条一致，360ms 又比形变短一截，
+// 让"看得见的值在变"这件事比位移先落定。
+$feedback-duration: 360ms;
+$feedback-easing: ease-out;
 
 $container-max: 1140px;
 

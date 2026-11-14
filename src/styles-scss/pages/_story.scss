@@ -1,5 +1,6 @@
 // pages/_story.scss — 故事模块样式
 
+@use '../abstracts/variables' as v;
 @use '../abstracts/breakpoints' as bp;
 @use '../abstracts/mixins' as m;
 
@@ -40,7 +41,7 @@
   a {
     color: var(--color-text-secondary);
     text-decoration: none;
-    transition: color 0.2s;
+    transition: color v.$feedback-duration v.$feedback-easing;
 
     &:hover {
       color: var(--color-brand-primary);
@@ -68,7 +69,7 @@
     color: var(--color-text-secondary);
     font-size: 0.95rem;
     text-decoration: none;
-    transition: color 0.2s ease;
+    transition: color v.$feedback-duration v.$feedback-easing;
 
     &:hover {
       color: var(--color-brand-primary);
@@ -129,7 +130,7 @@
   background: var(--color-background-card);
   border-radius: 24px;
   padding: 32px 34px;
-  transition: all 0.3s ease;
+  transition: all v.$feedback-duration v.$feedback-easing;
   display: flex;
   flex-direction: column;
 
@@ -233,7 +234,7 @@
   border-radius: 999px;
   padding: 10px 24px;
   text-decoration: none;
-  transition: all 0.3s ease;
+  transition: all v.$feedback-duration v.$feedback-easing;
 
   &:hover {
     background: var(--color-brand-primary);
@@ -293,7 +294,7 @@
   background: var(--color-brand-primary);
   opacity: 0.7;
   z-index: 1050;
-  transition: width 0.1s ease;
+  transition: width v.$motion-duration v.$motion-easing;
 }
 
 // 正文卡：无边框、无常态阴影，阅读层级由卡片色与圆角给出。
@@ -310,7 +311,7 @@
     color: var(--color-brand-primary);
     text-decoration: none;
     border-bottom: 1px solid transparent;
-    transition: border-bottom 0.3s ease;
+    transition: border-bottom v.$feedback-duration v.$feedback-easing;
     &:hover {
       color: var(--color-brand-primary);
       border-bottom: 1px solid var(--color-brand-primary);
@@ -426,7 +427,7 @@
     font-size: 0.9rem;
     font-weight: bold;
     cursor: pointer;
-    transition: all 0.2s ease;
+    transition: all v.$feedback-duration v.$feedback-easing;
     font-family: var(--font-body);
     z-index: 10;
     user-select: none;

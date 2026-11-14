@@ -92,7 +92,7 @@
   padding: 16px 18px;
   background: var(--color-background-card);
   border-radius: 22px;
-  animation: admin-rise v.$motion-expand-duration v.$motion-expand-easing backwards;
+  animation: admin-rise v.$motion-duration v.$motion-easing backwards;
 
   + .article-card {
     margin-top: 10px;

@@ -1,3 +1,4 @@
+@use '../abstracts/variables' as v;
 @use '../abstracts/mixins' as m;
 
 .pagination {
@@ -41,7 +42,7 @@
     text-align: center;
     background: var(--color-background-content);
     color: var(--color-text-primary);
-    transition: box-shadow 0.2s ease;
+    transition: box-shadow v.$feedback-duration v.$feedback-easing;
     -moz-appearance: textfield;
 
     &:focus {
