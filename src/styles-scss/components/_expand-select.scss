@@ -119,7 +119,10 @@
 
   &.is-open {
     // 面板是绝对定位的；给根节点一个层级，避免被同一行里后出现的兄弟盖住。
-    z-index: 1;
+    // 2 而不是 1：内容编辑器的工具条占 1（见 components/_markdown-editor.scss），
+    // 而编辑器总是排在栏目 / 可见范围之后、展开面板正下方 —— 同为 1 时它按 DOM
+    // 顺序赢，「栏目」向下展开的那半截就被工具条盖住了。
+    z-index: 2;
 
     .expand-select__panel {
       @include m.expand-panel-open;
