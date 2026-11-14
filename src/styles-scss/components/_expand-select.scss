@@ -4,40 +4,61 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // 通用下拉列表（ExpandSelect）—— 列表型字段的展开动画与浮层外观。
 //
-// 触发钮走与 .form-control / .form-select 同一份表面（mixins.field-surface），
-// 面板是**绝对定位浮层**：展开时只按内容高度向下伸展，不挤动下方表单。
-// 0fr → 1fr 的动画本体来自 mixins.expand-panel（博客目录的栏目下拉共用同一份）。
+// 骨架与博客目录的栏目下拉（BlogCategorySelect）同一套：**触发钮和面板装在同一个
+// 外壳里**（mixins.expand-shell），收起时外壳就是一颗胶囊，展开时外壳自己变成
+// 卡片（页面底 → 卡片底 + 浮层阴影），触发钮留在卡片顶部。面板不再是从按钮下方
+// 6px 浮起来的第二张卡 —— 那会让「按下的这颗按钮」和「选项」看起来是两件东西。
 //
-// 宽度跟触发钮走（width: 100%）：这些字段都排在同一列 / 同一个网格里，没有目录页
-// 那种「按最长选项横向伸缩」的诉求 —— 那一个是 BlogCategorySelect 的专属几何。
+// 几何按字段来：宽度跟触发钮走（width: 100%），这些字段都排在同一列 / 同一个
+// 网格里，没有目录页那种「按最长选项横向伸缩」的诉求（那是 BlogCategorySelect
+// 的专属几何）。高度由上下文给 --expand-select-height（默认 42、管理页 44），
+// 外壳曲率取它的一半并保持不动（frontend-styles §3.3）。
+//
+// 外壳是绝对定位的：展开只长外壳自己的高度，不挤动下方表单 / 工具条。
 // ─────────────────────────────────────────────────────────────────────────────
 
 .expand-select {
+  --expand-select-height: 42px;
+  --expand-select-radius: calc(var(--expand-select-height) / 2);
+
   position: relative;
-  display: flex;
+  height: var(--expand-select-height);
   min-width: 0;
+
+  &__shell {
+    @include m.expand-shell(var(--expand-select-radius));
+    position: absolute;
+    top: 0;
+    right: 0;
+    left: 0;
+    display: flex;
+    flex-direction: column;
+    transition: background-color .25s ease, box-shadow .25s ease;
+  }
 
   &__toggle {
     @include m.field-surface;
+    // 底色与聚焦光晕都归外壳：展开时外壳换成卡片底，按钮再铺一层页面底会把
+    // 外壳切成两块；光晕则会被外壳的 overflow: hidden 裁掉（见下面 :focus-within）。
+    background-color: transparent;
     display: flex;
-    flex: 1;
+    flex: none;
     align-items: center;
     justify-content: space-between;
     gap: 8px;
+    width: 100%;
+    height: var(--expand-select-height);
     min-width: 0;
-    min-height: 42px;
-    padding: 10px 16px;
-    border-radius: 999px;
+    padding: 0 16px;
     font-family: inherit;
     font-size: 0.9rem;
     line-height: 1.5;
     text-align: left;
     cursor: pointer;
 
-    &:disabled {
-      opacity: 0.5;
-      cursor: not-allowed;
-    }
+    &:focus { box-shadow: none; }
+
+    &:disabled { cursor: not-allowed; }
   }
 
   // 与 .form-select 一样：单行文字，超长省略。
@@ -56,23 +77,14 @@
     transition: transform v.$motion-expand-duration v.$motion-expand-easing;
   }
 
-  // 浮层是「另一档」：常驻 --shadow-card-brand，见 docs/frontend-styles.md §3.6。
+  // 面板在外壳内部按内容高度伸展（节奏与博客栏目共用 expand-panel）。
   &__panel {
     @include m.expand-panel;
-    position: absolute;
-    z-index: 20;
-    top: calc(100% + 6px);
-    right: 0;
-    left: 0;
-    border-radius: 20px;
-    background: var(--color-background-card);
-    box-shadow: var(--shadow-card-brand);
   }
 
   &__clip {
     min-height: 0;
     overflow: hidden;
-    border-radius: inherit;
   }
 
   &__list {
@@ -117,12 +129,23 @@
     }
   }
 
+  // 聚焦光晕挂外壳：触发钮自己的那枚会被外壳裁掉，而字段本来就是「整格聚焦」。
+  // 展开态不再叠这一圈：与博客目录的栏目下拉一致，展开后外壳只有浮层阴影 ——
+  // 再套一层聚焦光晕会让两张卡看起来不是同一档。选项自己的聚焦光晕仍各自保留。
+  &:not(.is-open):focus-within .expand-select__shell {
+    box-shadow: var(--shadow-focus-brand);
+  }
+
   &.is-open {
     // 面板是绝对定位的；给根节点一个层级，避免被同一行里后出现的兄弟盖住。
     // 2 而不是 1：内容编辑器的工具条占 1（见 components/_markdown-editor.scss），
     // 而编辑器总是排在栏目 / 可见范围之后、展开面板正下方 —— 同为 1 时它按 DOM
     // 顺序赢，「栏目」向下展开的那半截就被工具条盖住了。
     z-index: 2;
+
+    .expand-select__shell {
+      @include m.expand-shell-open;
+    }
 
     .expand-select__panel {
       @include m.expand-panel-open;
@@ -139,15 +162,22 @@
     }
   }
 
-  // 下方空间不够（表单底部的字段）：贴着触发钮上方向上展开。
-  &.is-up .expand-select__panel {
+  // 下方空间不够（表单 / 弹窗底部的字段）：外壳底边钉在触发钮原来的位置，内容
+  // 反向排列、向上伸展 —— 触发钮不跟着跳到面板上方去。
+  &.is-up .expand-select__shell {
     top: auto;
-    bottom: calc(100% + 6px);
+    bottom: 0;
+    flex-direction: column-reverse;
+  }
+
+  // disabled 时整块外壳一起变淡：底色在外壳、字在触发钮上，只晕按钮会「看着还能点」。
+  &.is-disabled .expand-select__shell {
+    opacity: .5;
   }
 }
 
 // 触屏字段字号（iOS 聚焦 <16px 字段时会强制放大整页）。与 .form-select 同一条
-// 阈值，见 components/_form-controls.scss 末尾。
+// 阈值，见 components/_form-controls.scss 末尾。触发钮是定高的，字号不改变高度。
 @media (hover: none) and (pointer: coarse) {
   .expand-select__toggle {
     font-size: 1rem;

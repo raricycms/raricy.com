@@ -76,12 +76,12 @@
   }
 
   &__shell {
+    // 外壳表面与通用下拉（ExpandSelect）共用 expand-shell：页面底 → 卡片底 +
+    // 浮层阴影，曲率取收起高度的一半、展开后保持不动。
+    @include m.expand-shell(calc(var(--filter-control-height, 42px) / 2));
     position: absolute;
     width: 100%;
     right: 0;
-    background: var(--color-background-page);
-    border-radius: 21px;
-    overflow: hidden;
     transition: width v.$motion-collapse-duration v.$motion-collapse-easing, box-shadow .25s ease;
   }
 
@@ -158,8 +158,7 @@
     z-index: 1;
     width: var(--category-open-width, var(--category-closed-width, 120px));
     .blog-category-select__shell {
-      background: var(--color-background-card);
-      box-shadow: var(--shadow-card-brand);
+      @include m.expand-shell-open;
       transition: width v.$motion-expand-duration v.$motion-expand-easing, box-shadow .25s ease;
     }
     .blog-category-select__panel { @include m.expand-panel-open; }
