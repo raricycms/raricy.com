@@ -723,6 +723,9 @@ describe('getPublicProfile', () => {
         // 头像框贴图地址。它**不是**身份信息 —— 框是站点素材，本来就对所有人显示，
         // 所以不跟 role 一样按查看者档位收敛（见 PublicProfile.frameUrl 的注释）
         'frameUrl',
+        // 主页身份条底色（null = 默认纸白）。它是访客看得见的外观，不是本人资料；
+        // 已过 isHeroTone 白名单，渲染层拿到的一定是合法 id 或 null。
+        'heroTone',
         'id',
         'recentBlogs',
         'recentComments',
@@ -743,6 +746,20 @@ describe('getPublicProfile', () => {
     const u = await makeUser();
     const p = await getPublicProfile(u.id, null);
     expect(p!.createdAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+  });
+
+  it('heroTone 过身份条白名单：合法值原样给，脏值回落 null', async () => {
+    const u = await makeUser();
+    expect((await getPublicProfile(u.id, null))!.heroTone).toBeNull();
+
+    await prisma.user.update({ where: { id: u.id }, data: { profileHeroTone: 'mint' } });
+    expect((await getPublicProfile(u.id, null))!.heroTone).toBe('mint');
+
+    // 石墨是卡片色、不是身份条色；库里被手改成乱码也不能拼进 className。
+    for (const bad of ['graphite', 'neon', '']) {
+      await prisma.user.update({ where: { id: u.id }, data: { profileHeroTone: bad } });
+      expect((await getPublicProfile(u.id, null))!.heroTone).toBeNull();
+    }
   });
 
   // ── 档位：谁能看到「内容」 ────────────────────────────────────────────────

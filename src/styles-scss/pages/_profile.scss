@@ -4,20 +4,49 @@
 // ============================================================
 // Profile page —— 对外名片 + 积木墙（bento）
 //
-// 两块：.profile-hero（固定身份条，不可定制）与 .bento（用户自己摆的网格）。
+// 两块：.profile-hero（身份条：内容固定，底色可换）与 .bento（用户自己摆的网格）。
 // 卡片沿用全站总则：不描边、常态不托阴影、大圆角；只有整卡可点时 hover 才亮
 // --shadow-card-brand。文字内容一律纯文本（渲染层不做 Markdown）。
+//
+// 【色调（tone）】用户可给每块卡 / 身份条挑一个装饰底色。它是「换底色」而不是
+// 「换皮肤」：圆角、内距、阴影、可点反馈一律不动；卡片内文字色改读 `--bento-ink`
+// / `--bento-ink-2`（默认就是全站 text-primary / secondary），只有浅色主题下的石墨
+// 深色块需要另给一组。色值全部来自 base/_root.scss 的 `--color-tone-*`。
 // ============================================================
 
 .profile-page {
   padding: $space-8 0;
+  /* 身份条底色。空 tone = 默认卡片底色；其余档由下面的修饰类覆盖。 */
+  --profile-hero-bg: var(--color-background-card);
 
   @media (max-width: 768px) {
     padding: $space-6 0;
   }
 }
 
-// --- 身份条（固定） ---
+// 身份条底色档位（与 src/lib/profile-blocks.ts 的 HERO_TONES 一一对应，不含石墨：
+// 深色块会压掉身份条上的用户名 / 简介 / 按钮文字）。
+.profile-page--hero-tone-blue {
+  --profile-hero-bg: var(--color-tone-blue);
+}
+
+.profile-page--hero-tone-mint {
+  --profile-hero-bg: var(--color-tone-mint);
+}
+
+.profile-page--hero-tone-apricot {
+  --profile-hero-bg: var(--color-tone-apricot);
+}
+
+.profile-page--hero-tone-violet {
+  --profile-hero-bg: var(--color-tone-violet);
+}
+
+.profile-page--hero-tone-rose {
+  --profile-hero-bg: var(--color-tone-rose);
+}
+
+// --- 身份条 ---
 
 // 无常态阴影：靠主题卡色与页面底色分层。
 .profile-hero {
@@ -25,7 +54,7 @@
   align-items: flex-start;
   gap: $space-8;
   flex-wrap: wrap;
-  background: var(--color-background-card);
+  background: var(--profile-hero-bg);
   border-radius: 30px;
   padding: $space-8;
   margin-bottom: $space-6;
@@ -208,6 +237,11 @@
 
 .bento {
   position: relative;
+  /* 编辑器 chrome（工具栏 / 检查器 / 面板 / 弹窗）也读这一对 token，默认就是全站
+     文字色；卡片自己再覆盖。这样「卡片内」与「编辑界面」共用一个名字，却各吃各的
+     底色 —— 深色卡片上的控件不会被误染成浅色文字。 */
+  --bento-ink: var(--color-text-primary);
+  --bento-ink-2: var(--color-text-secondary);
 }
 
 .bento-stage {
@@ -277,7 +311,14 @@
   grid-row: calc(var(--gy) + 1) / span var(--gh);
   min-width: 0;
   border-radius: 24px;
-  background: var(--color-background-card);
+  /* 卡片级 token：底色 / 主文字 / 辅助文字。没有 tone 时就是全站默认值；
+     tone 类只覆盖这三条，卡片内容里所有文字色都必须读它们（别直接读 --color-text-*，
+     否则深色块上会看不清）。 */
+  --bento-bg: var(--color-background-card);
+  --bento-ink: var(--color-text-primary);
+  --bento-ink-2: var(--color-text-secondary);
+  background: var(--bento-bg);
+  color: var(--bento-ink);
   overflow: hidden;
   transition: box-shadow $feedback-duration $feedback-easing, transform $motion-duration $motion-easing;
 
@@ -318,6 +359,87 @@
     --bento-soft: var(--color-success-secondary);
   }
 
+  /* ── 用户挑的底色（tone）──
+     与 src/lib/profile-blocks.ts 的 TONES 一一对应（纸白 = 没有这个类）。
+     只换底色；文字色只在石墨（浅色主题下的深色块）需要另给一组。 */
+  &--tone-blue {
+    --bento-bg: var(--color-tone-blue);
+  }
+
+  &--tone-mint {
+    --bento-bg: var(--color-tone-mint);
+  }
+
+  &--tone-apricot {
+    --bento-bg: var(--color-tone-apricot);
+  }
+
+  &--tone-violet {
+    --bento-bg: var(--color-tone-violet);
+  }
+
+  &--tone-rose {
+    --bento-bg: var(--color-tone-rose);
+  }
+
+  &--tone-graphite {
+    --bento-bg: var(--color-tone-graphite);
+    --bento-ink: var(--color-tone-graphite-ink);
+    --bento-ink-2: var(--color-tone-graphite-ink-2);
+
+    /* 卡内浮层（左上角拖拽徽标、手机把手、选中后的操作条）本身是白 / 浅色表面，
+       不能继续吃卡片文字色，否则图标与按钮会「浅字压白底」。 */
+    .bento-card__grip {
+      color: var(--color-text-secondary);
+    }
+
+    .bento-card__tools {
+      --bento-ink: var(--color-text-primary);
+      --bento-ink-2: var(--color-text-secondary);
+    }
+
+    .bento-audio__placeholder {
+      background: rgba(255, 255, 255, 0.12);
+      color: var(--color-tone-graphite-ink-2);
+    }
+
+    /* 可点文字块的 hover 是「浅底提亮」；深色卡上用白色微光代替浅灰底。 */
+    .bento-text.is-tappable:hover {
+      background: rgba(255, 255, 255, 0.08);
+    }
+  }
+
+  /* 通栏（4×1）：横向空间是 2×1 的两倍，数字 / 标题按「一条」排版，别把三列
+     拉成三根孤立的窄柱。文字卡纵向居中 —— 265px 高的通栏如果内容停在顶部，
+     下半张就是一块空色板。 */
+  &.is-full {
+    .bento-blog__title {
+      font-size: 1.25rem;
+    }
+
+    .bento-stats {
+      justify-content: center;
+      gap: $space-8;
+    }
+
+    .bento-stats__num {
+      font-size: 1.85rem;
+    }
+
+    &.bento-card--text .bento-card__body {
+      justify-content: center;
+    }
+
+    &.bento-card--text .bento-text__title {
+      font-size: 1.25rem;
+    }
+
+    &.bento-card--text .bento-text__body {
+      font-size: 1.05rem;
+      max-width: 820px;
+    }
+  }
+
   &:hover {
     box-shadow: var(--bento-glow);
   }
@@ -333,7 +455,7 @@
     overflow: hidden;
   }
 
-  &.is-compact &__body {
+  &.is-compact:not(.bento-card--image) &__body {
     padding: $space-4;
   }
 }
@@ -359,7 +481,7 @@
   font-size: 1.05rem;
   font-weight: 700;
   line-height: 1.35;
-  color: var(--color-text-primary);
+  color: var(--bento-ink);
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
@@ -370,7 +492,7 @@
   margin: 0;
   font-size: 0.85rem;
   line-height: 1.5;
-  color: var(--color-text-secondary);
+  color: var(--bento-ink-2);
   display: -webkit-box;
   -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
@@ -384,7 +506,7 @@
   margin: 0;
   font-size: 0.82rem;
   line-height: 1.55;
-  color: var(--color-text-secondary);
+  color: var(--bento-ink-2);
   white-space: pre-line;
   display: -webkit-box;
   -webkit-line-clamp: 4;
@@ -408,13 +530,13 @@
   justify-content: space-between;
   gap: $space-2;
   font-size: 0.8rem;
-  color: var(--color-text-secondary);
+  color: var(--bento-ink-2);
 }
 
 // 日期是等宽数字（.numeric 已给 font-variant），这里只补一行垂直对齐。
 .bento-blog__date {
   font-size: 0.8rem;
-  color: var(--color-text-secondary);
+  color: var(--bento-ink-2);
 }
 
 // --- 图片卡 ---
@@ -490,7 +612,7 @@
     gap: 6px;
     font-size: 0.9rem;
     font-weight: 600;
-    color: var(--color-text-primary);
+    color: var(--bento-ink);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -507,7 +629,7 @@
     padding: 2px 10px;
     border-radius: $radius-max;
     background: var(--color-background-subtle);
-    color: var(--color-text-secondary);
+    color: var(--bento-ink-2);
     font-size: 0.8rem;
     align-self: flex-start;
   }
@@ -521,14 +643,14 @@
   &__title {
     font-size: 1rem;
     font-weight: 700;
-    color: var(--color-text-primary);
+    color: var(--bento-ink);
   }
 
   &__body {
     margin: 0;
     font-size: 0.9rem;
     line-height: 1.6;
-    color: var(--color-text-secondary);
+    color: var(--bento-ink-2);
     white-space: pre-line;
     overflow: hidden;
     display: -webkit-box;
@@ -557,7 +679,7 @@
   align-items: flex-start;
   justify-content: flex-end;
   gap: $space-2;
-  color: var(--color-text-primary);
+  color: var(--bento-ink);
 
   svg {
     color: var(--bento-accent);
@@ -602,7 +724,7 @@
 
   &__label {
     font-size: 0.75rem;
-    color: var(--color-text-secondary);
+    color: var(--bento-ink-2);
   }
 }
 
@@ -641,12 +763,12 @@
     font-size: 2rem;
     font-weight: 700;
     line-height: 1;
-    color: var(--color-text-primary);
+    color: var(--bento-ink);
   }
 
   &__label {
     font-size: 0.8rem;
-    color: var(--color-text-secondary);
+    color: var(--bento-ink-2);
   }
 }
 
@@ -736,7 +858,7 @@
   padding: 2px 6px;
   border-radius: $radius-max;
   background: var(--color-background-subtle);
-  color: var(--color-text-secondary);
+  color: var(--bento-ink-2);
   z-index: 2;
   pointer-events: none;
 }
@@ -781,7 +903,7 @@
   border: none;
   border-radius: $radius-max;
   background: var(--color-background-subtle);
-  color: var(--color-text-secondary);
+  color: var(--bento-ink-2);
   font-size: 0.75rem;
   cursor: pointer;
 
@@ -803,6 +925,80 @@
   }
 }
 
+// --- 底色选择器（检查器 / 手机工具条共用）---
+//
+// 一颗按钮 = 一个色点。色点用内描边兜住纸白（浅色卡片与浅色主题几乎同色）；
+// 选中态只加一圈品牌色 outline —— 与全站「选中用淡底 + 同色文字、不加装饰」一致，
+// 这里是色板，需要一个可辨认的选中环。按钮尺寸 ≥30px，手机工具条里放大到 40px。
+
+.bento-tones {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-wrap: wrap;
+}
+
+.bento-tone {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  cursor: pointer;
+
+  &__dot {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: var(--tone-swatch);
+    box-shadow: inset 0 0 0 1px rgba(100, 116, 139, 0.45);
+    transition: box-shadow $feedback-duration $feedback-easing;
+  }
+
+  &:hover {
+    .bento-tone__dot {
+      box-shadow: inset 0 0 0 1px rgba(100, 116, 139, 0.75);
+    }
+  }
+
+  &.is-active {
+    outline: 2px solid var(--color-brand-primary);
+    outline-offset: 0;
+  }
+
+  &--paper {
+    --tone-swatch: var(--color-background-card);
+  }
+
+  &--blue {
+    --tone-swatch: var(--color-tone-blue);
+  }
+
+  &--mint {
+    --tone-swatch: var(--color-tone-mint);
+  }
+
+  &--apricot {
+    --tone-swatch: var(--color-tone-apricot);
+  }
+
+  &--violet {
+    --tone-swatch: var(--color-tone-violet);
+  }
+
+  &--rose {
+    --tone-swatch: var(--color-tone-rose);
+  }
+
+  &--graphite {
+    --tone-swatch: var(--color-tone-graphite);
+  }
+}
+
 .bento-mini {
   display: inline-flex;
   align-items: center;
@@ -813,7 +1009,7 @@
   border: none;
   border-radius: $radius-max;
   background: var(--color-background-subtle);
-  color: var(--color-text-secondary);
+  color: var(--bento-ink-2);
   font-size: 0.75rem;
   cursor: pointer;
 
@@ -836,7 +1032,7 @@
   gap: $space-2;
   height: 100%;
   padding: $space-4;
-  color: var(--color-text-secondary);
+  color: var(--bento-ink-2);
   font-size: 0.85rem;
   text-align: center;
 }
@@ -862,13 +1058,26 @@
     display: inline-flex;
     align-items: center;
     gap: $space-2;
-    color: var(--color-text-secondary);
+    color: var(--bento-ink-2);
     font-size: 0.875rem;
+  }
+
+  /* 名片底色：常驻工具条（桌面）。色点很小，紧跟在提示后面，不抢保存按钮。 */
+  &__tones {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  &__sublabel {
+    flex-shrink: 0;
+    font-size: 0.8rem;
+    color: var(--bento-ink-2);
   }
 
   &__dirty {
     font-size: 0.8rem;
-    color: var(--color-text-secondary);
+    color: var(--bento-ink-2);
 
     &.is-dirty {
       color: var(--color-warning-primary);
@@ -910,7 +1119,7 @@
 
   &__label {
     font-size: 0.875rem;
-    color: var(--color-text-primary);
+    color: var(--bento-ink);
     font-weight: 600;
   }
 
@@ -919,10 +1128,15 @@
     gap: 4px;
   }
 
+  &__sublabel {
+    font-size: 0.8rem;
+    color: var(--bento-ink-2);
+  }
+
   &__hint {
     margin-left: auto;
     font-size: 0.8rem;
-    color: var(--color-text-secondary);
+    color: var(--bento-ink-2);
   }
 }
 
@@ -946,7 +1160,7 @@
     gap: 4px;
     font-size: 0.875rem;
     font-weight: 600;
-    color: var(--color-text-primary);
+    color: var(--bento-ink);
   }
 
   &__items {
@@ -964,7 +1178,7 @@
     border: none;
     border-radius: $radius-max;
     background: var(--color-background-subtle);
-    color: var(--color-text-primary);
+    color: var(--bento-ink);
     font-size: 0.875rem;
     cursor: pointer;
 
@@ -977,7 +1191,7 @@
   &__free {
     margin-left: auto;
     font-size: 0.8rem;
-    color: var(--color-text-secondary);
+    color: var(--bento-ink-2);
   }
 }
 
@@ -1002,13 +1216,13 @@
     margin: 0 0 $space-2;
     font-size: 1.1rem;
     font-weight: 700;
-    color: var(--color-text-primary);
+    color: var(--bento-ink);
   }
 
   &__steps {
     margin: 0;
     padding-left: 1.2em;
-    color: var(--color-text-secondary);
+    color: var(--bento-ink-2);
     font-size: 0.9rem;
     line-height: 1.7;
   }
@@ -1019,12 +1233,12 @@
   padding: $space-8 $space-6;
   background: var(--color-background-card);
   border-radius: 24px;
-  color: var(--color-text-secondary);
+  color: var(--bento-ink-2);
 
   &__title {
     margin: 0 0 $space-2;
     font-size: 1.05rem;
-    color: var(--color-text-primary);
+    color: var(--bento-ink);
   }
 
   &__text {
@@ -1189,14 +1403,14 @@
   font-size: 1.15rem;
   font-weight: 700;
   line-height: 1.4;
-  color: var(--color-text-primary);
+  color: var(--bento-ink);
 }
 
 .bento-detail__text {
   margin: 0;
   font-size: 0.95rem;
   line-height: 1.75;
-  color: var(--color-text-secondary);
+  color: var(--bento-ink-2);
   white-space: pre-line;
   overflow-wrap: anywhere;
 }
@@ -1278,7 +1492,7 @@
   border: none;
   border-radius: 14px;
   background: var(--color-background-subtle);
-  color: var(--color-text-primary);
+  color: var(--bento-ink);
   font-size: 0.9rem;
   text-align: left;
   cursor: pointer;
@@ -1297,7 +1511,7 @@
   &__meta {
     flex-shrink: 0;
     font-size: 0.75rem;
-    color: var(--color-text-secondary);
+    color: var(--bento-ink-2);
   }
 }
 
@@ -1334,7 +1548,7 @@
   gap: 6px;
   margin-bottom: $space-4;
   font-size: 0.875rem;
-  color: var(--color-text-secondary);
+  color: var(--bento-ink-2);
 
   .form-control {
     width: 100%;
@@ -1386,9 +1600,11 @@
     padding-top: 40px;
   }
 
-  /* 底部固定工具条不占文档流，给页面尾部留出它的高度，否则最后一块永远压在它下面。 */
+  /* 底部固定工具条不占文档流，给页面尾部留出它的高度，否则最后一块永远压在它下面。
+     选中卡片时工具条是「底色行 + 尺寸/方向行」两行（实测 198px），比旧的单行更高；
+     220px = 工具条 + 底部 12px 间距 + 余量，多了只是留白，少了会遮住最后一块。 */
   .bento.is-editing {
-    padding-bottom: 164px;
+    padding-bottom: 220px;
   }
 
   .bento-pick-grid {
@@ -1430,7 +1646,7 @@
   &__label {
     font-size: 0.875rem;
     font-weight: 600;
-    color: var(--color-text-primary);
+    color: var(--bento-ink);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -1446,7 +1662,7 @@
     border: none;
     border-radius: $radius-max;
     background: var(--color-background-subtle);
-    color: var(--color-text-secondary);
+    color: var(--bento-ink-2);
     font-size: 0.8rem;
     cursor: pointer;
   }
@@ -1456,6 +1672,24 @@
     align-items: center;
     gap: 6px;
     flex-wrap: wrap;
+  }
+
+  /* 底色行：色点 + 小标签，单独一行，别和尺寸 / 方向键挤在一起。 */
+  &__row--tones {
+    align-items: center;
+    margin-bottom: 6px;
+  }
+
+  &__sublabel {
+    flex-shrink: 0;
+    font-size: 0.8rem;
+    color: var(--bento-ink-2);
+  }
+
+  /* 手机是触摸设备：色点按钮的触达区补到 40px（视觉圆点仍 20px）。 */
+  .bento-tone {
+    width: 40px;
+    height: 40px;
   }
 
   &__rowgap {

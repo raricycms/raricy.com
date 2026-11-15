@@ -7,6 +7,7 @@ import { ymd } from '@/lib/format';
 import Avatar from '@/app/components/Avatar';
 import PosterModal from '@/app/components/PosterModal';
 import ProfileBoard from './ProfileBoard';
+import ProfileTheme from './ProfileTheme';
 
 // 个人主页 —— 对外名片 + 可自由布置的「积木墙」。
 //
@@ -72,9 +73,10 @@ export default async function PublicProfilePage({
   const startEditing = rawEdit === '1' && canEdit;
 
   return (
-    <div className="profile-page">
+    <ProfileTheme initialTone={profile.heroTone}>
       <div className="container">
-        {/* 身份条：整页唯一不可定制的部分。二维码落地时第一眼必须知道这是谁。 */}
+        {/* 身份条：内容不可定制（二维码落地时第一眼必须知道这是谁）；底色可换，
+            由 ProfileTheme 把 tone 变成根元素的类，编辑器里即时预览。 */}
         <section className="profile-hero">
           <Avatar
             userId={profile.id}
@@ -155,6 +157,6 @@ export default async function PublicProfilePage({
           </p>
         )}
       </div>
-    </div>
+    </ProfileTheme>
   );
 }

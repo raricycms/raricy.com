@@ -5,7 +5,7 @@
 范围：`src/lib` 根目录下全部 `*.ts`，不含 `md-editor/`、`reactive/` 等子目录。
 
 - 文件数：146
-- 合计行数：31903（含空行）
+- 合计行数：32045（含空行）
 
 | 文件 | 行数 | 导出数 | 一句话职责 |
 | --- | ---: | ---: | --- |
@@ -123,8 +123,8 @@
 | `password.ts` | 151 | 4 | 与 werkzeug 完全兼容的密码哈希校验/生成 |
 | `poster-render.ts` | 165 | 4 | 取数据 → 拼 SVG → sharp 光栅化成 PNG |
 | `poster.ts` | 851 | 28 | 画报 / 收款码的 SVG 构造（**纯函数**：不碰 prisma、不碰 sharp、不碰 fs） |
-| `profile-blocks.ts` | 589 | 40 | 个人主页「积木」的词汇表与校验（零依赖） |
-| `profile-service.ts` | 492 | 7 | 个人主页「积木」的读写 |
+| `profile-blocks.ts` | 677 | 48 | 个人主页「积木」的词汇表与校验（零依赖） |
+| `profile-service.ts` | 534 | 7 | 个人主页「积木」的读写 |
 | `public-blog-search.ts` | 131 | 9 | 公开正文检索：写入时编译并提取自身静态可见文字，读取时仅查 FTS 候选。 |
 | `rate-limit.ts` | 431 | 9 | 限频（进程内 limiter + 快照持久化） |
 | `realtime-auth.ts` | 15 | 2 | （文件头未注明职责） |
@@ -151,7 +151,7 @@
 | `upload-quota.ts` | 34 | 3 | 网络上传落库时的存储配额拒绝；路由映射为现有的 400 文案。 |
 | `user-archive-service.ts` | 107 | 2 | 归档/恢复仅限后台 CLI。状态、清余额、撤赞、撤凭据与审计必须一次提交。 |
 | `user-refs.ts` | 288 | 12 | 用户名片引用语法 [@用户/<用户名>] 的**纯逻辑**（零依赖，可直接单测） |
-| `user-service.ts` | 321 | 7 | 用户公开资料 / 本人资料更新。 |
+| `user-service.ts` | 333 | 7 | 用户公开资料 / 本人资料更新。 |
 | `vote-service.ts` | 323 | 14 | 投票业务逻辑 |
 | `webhook-drainer.ts` | 102 | 4 | 回调投递的**进程内**定时驱动 |
 | `webhook-url.ts` | 372 | 10 | 回调地址的校验与「钉住 IP」的投递 |

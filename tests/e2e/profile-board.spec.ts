@@ -135,6 +135,42 @@ test('点身份条「布置主页」编辑栏立刻出现；保存后不刷新�
   await expect(page.locator('.bento-toolbar')).toHaveCount(0);
 });
 
+test('每卡底色与名片底色：编辑态即时生效，保存后刷新仍保持', async ({ page, isMobile }) => {
+  const u = await registerFreshUser(page, { core: true });
+  const saved = await saveBlocks(page, [textBlock('底色测试', 0, 0, 2, 1)]);
+  expect(saved.status, JSON.stringify(saved.body)).toBe(200);
+
+  await freezeMotion(page);
+  await page.goto(`/u/${u.id}?edit=1`);
+  await expect(page.locator('.bento-toolbar')).toBeVisible();
+  // 手机的名片底色在底部工具条里（桌面在工具条上）；两处都等 isMobile 同步后才挂上
+  // 各自的色板，先等底部工具条出现，避免同时命中两份同名 role=group。
+  if (isMobile) await expect(page.locator('.bento-dock')).toBeVisible();
+
+  // 没选中卡片时是「名片底色」：换的是整条身份条，并且要进「未保存改动」状态。
+  const heroPicker = page.getByRole('group', { name: '名片底色' });
+  await expect(heroPicker).toBeVisible();
+  await heroPicker.getByRole('button', { name: '名片底色：雾蓝' }).click();
+  await expect(page.locator('.profile-page')).toHaveClass(/profile-page--hero-tone-blue/);
+  await expect(page.locator('.bento-toolbar__dirty')).toHaveText('有未保存的修改');
+
+  // 选中卡片后，同一位置换成「卡片底色」，只影响这一块。
+  await tapCard(textCard(page, '底色测试'));
+  const cardPicker = page.getByRole('group', { name: '卡片底色' });
+  await expect(cardPicker).toBeVisible();
+  await cardPicker.getByRole('button', { name: '卡片底色：胭粉' }).click();
+  await expect(textCard(page, '底色测试')).toHaveClass(/bento-card--tone-rose/);
+
+  await page.getByRole('button', { name: '保存', exact: true }).click();
+  await expect(page.locator('.bento-notice')).toHaveText('已保存');
+  await expect(page).not.toHaveURL(/edit=1/);
+
+  // 两层底色都随整页保存落库：刷新后仍是同一份（不用重新进编辑态）。
+  await page.reload();
+  await expect(page.locator('.profile-page')).toHaveClass(/profile-page--hero-tone-blue/);
+  await expect(textCard(page, '底色测试')).toHaveClass(/bento-card--tone-rose/);
+});
+
 test('非核心用户：能看自己的主页，但没有布置入口、进不了编辑、接口 403', async ({ page }) => {
   const u = await registerFreshUser(page); // 默认 role=user
 

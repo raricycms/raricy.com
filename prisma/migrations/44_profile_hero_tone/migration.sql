@@ -1,0 +1,11 @@
+-- 44_profile_hero_tone —— 个人主页身份条底色（2026-11「第一刀」：每卡色调 + 名片底色）。
+--
+-- 为什么是 users 的一列，而不是某一块积木的 config：
+--   · 底色属于「这张名片」，不属于任何一块；积木保存是**整页替换**（少掉的块翻墓碑），
+--     把底色塞进块里会被一次保存顺手丢掉，而用户完全看不出是哪一步丢的。
+--   · 卡片自己的色调仍走 config.tone（块内字段，随块整页保存），这里只管身份条。
+--
+-- 空串 = 默认（卡片底色）。白名单在 src/lib/profile-blocks.ts 的 TONES（且必须
+-- hero=true：石墨是深色块，会压掉身份条上的用户名 / 简介 / 按钮）。**不建 CHECK**：
+-- 增删色调只该改代码与样式，读路径用 isHeroTone 收敛，存量脏值回落默认、不报错。
+ALTER TABLE "users" ADD COLUMN "profile_hero_tone" TEXT NOT NULL DEFAULT '';

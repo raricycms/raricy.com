@@ -46,16 +46,18 @@ import { EXTERNAL_VISIBLE_BLOG_WHERE } from './blog-service';
 import { ymd } from './format';
 import {
   isBlockKind,
+  isHeroTone,
   normalizeBlocks,
   type BlockCatalog,
   type BlockKind,
   type BlockView,
   type ProfileBlock,
   type StoredBlock,
+  type Tone,
 } from './profile-blocks';
 
-/** 默认布局：最近三篇对外可读的文章。用户没布置过时用它。 */
-const DEFAULT_BLOG_TAKES = 3;
+/** 默认布局：最近四篇对外可读的文章。用户没布置过时用它。 */
+const DEFAULT_BLOG_TAKES = 4;
 const CATALOG_BLOG_TAKES = 100;
 const CATALOG_IMAGE_TAKES = 60;
 const CATALOG_AUDIO_TAKES = 30;
@@ -98,11 +100,14 @@ function toStored(row: {
   };
 }
 
-/** 默认布局的位置：两篇并排，第三篇另起一行。 */
+/**
+ * 默认布局的位置：两行铺满（4 块 2×1，左上 → 右上 → 左下 → 右下）。
+ *
+ * 旧版是「两上一下」，右下 2×1 永远空着 —— 第一眼像还没排完。默认布局是用户看到
+ * 的第一份名片，它自己就该是满的；对外文章不足 4 篇时右下留白，属正常。
+ */
 function defaultPositions(index: number): { x: number; y: number; w: number; h: number } {
-  if (index === 0) return { x: 0, y: 0, w: 2, h: 1 };
-  if (index === 1) return { x: 2, y: 0, w: 2, h: 1 };
-  return { x: 0, y: index - 1, w: 2, h: 1 };
+  return { x: (index % 2) * 2, y: Math.floor(index / 2), w: 2, h: 1 };
 }
 
 /** 统计块与签到块共用的那一组数（也作为本人编辑器的预览值）。 */
@@ -314,7 +319,7 @@ async function resolveViews(
 /**
  * 主页要渲染的全部内容。
  *
- * 没有存过任何块 = 用默认布局（最近三篇对外可读的文章）。**不落库** —— 一旦落库，
+ * 没有存过任何块 = 用默认布局（最近四篇对外可读的文章）。**不落库** —— 一旦落库，
  * 「默认」就变成了一份需要迁移的数据；而且用户第一次打开编辑器时看到的就是这份
  * 默认布局，保存才真正落库。
  */
@@ -334,7 +339,7 @@ export async function getProfilePageData(
   const isDefault = stored.length === 0;
 
   // 默认布局尊重「展示最近文章」这个旧开关：关掉它的人不该因为「还没布置」
-  // 就被自动挂上三篇最近文章。**只影响默认布局** —— 亲手加的文章块照常显示。
+  // 就被自动挂上四篇最近文章。**只影响默认布局** —— 亲手加的文章块照常显示。
   // 不传 = 按默认展示（测试与内部调用方少传一个参数时行为不变）。
   if (isDefault && (opts.showRecentBlogs ?? true)) {
     const recent = await prisma.blog.findMany({
@@ -403,11 +408,26 @@ export async function getProfilePageData(
   return { blocks, catalog, isDefault };
 }
 
-export type SaveResult = { ok: true; count: number } | { ok: false; message: string };
+export type SaveResult =
+  | { ok: true; count: number; /** 仅在本次请求带了 heroTone 时回传 */ heroTone?: Tone | null }
+  | { ok: false; message: string };
+
+/** 请求体里的 heroTone：缺省 = 不动；'' / null = 回默认；其余必须是身份条白名单。 */
+function parseHeroToneInput(
+  raw: unknown
+): { ok: true; value: Tone | null } | { ok: false } {
+  if (raw === null || raw === '') return { ok: true, value: null };
+  if (isHeroTone(raw)) return { ok: true, value: raw };
+  return { ok: false };
+}
 
 /**
  * 保存整页布局。**服务端最后一道闸**：客户端做过一次 normalizeBlocks 只是体验，
  * 这里才是防线（请求可以被手工构造）。
+ *
+ * 【heroTone】可选第三参：给了就校验白名单并要求「身份条可用的色」，与积木在**同一个
+ * 事务**里落库 —— 一次保存要么都成，要么都不成。缺省（`undefined`）表示这次请求只改
+ * 积木、不动底色（旧客户端 / 直接构请求的脚本仍然能存布局）。
  *
  * 写入策略：软删「这次没带的块」，其余按 id 更新（必要时复活墓碑行）。
  * ⚠️ 不要改成「全删再全插」—— 会撞主键，且会留下一堆没必要的墓碑。
@@ -415,10 +435,22 @@ export type SaveResult = { ok: true; count: number } | { ok: false; message: str
  * 客户端数组顺序**不再参与布局**（手机顺序由 (x, y) 投影，见文件头）：它现在只是
  * 这个循环的遍历顺序。别把它再写进数据库当布局用 —— 那会让两种顺序同时存在。
  */
-export async function saveProfileBlocks(userId: string, raw: unknown): Promise<SaveResult> {
+export async function saveProfileBlocks(
+  userId: string,
+  raw: unknown,
+  heroTone?: unknown
+): Promise<SaveResult> {
   const parsed = normalizeBlocks(raw);
   if (!parsed.ok) return { ok: false, message: parsed.message };
   const blocks = parsed.blocks;
+
+  // 底色先校验（写库前）：非法值不该让整页积木白白跑一遍归属查询与事务。
+  let nextHeroTone: Tone | null | undefined;
+  if (heroTone !== undefined) {
+    const parsedTone = parseHeroToneInput(heroTone);
+    if (!parsedTone.ok) return { ok: false, message: '名片底色不合法' };
+    nextHeroTone = parsedTone.value;
+  }
 
   // 归属校验：指针必须指向**自己的、未软删**的对象。
   //
@@ -486,7 +518,17 @@ export async function saveProfileBlocks(userId: string, raw: unknown): Promise<S
         await tx.profileBlock.create({ data: { id: b.id, userId, createdAt: now, ...data } });
       }
     }
+
+    // 身份条底色与积木同事务：保存一次 = 这张名片整体换版，不出现「积木新了、底色还是旧的」。
+    if (nextHeroTone !== undefined) {
+      await tx.user.update({
+        where: { id: userId },
+        data: { profileHeroTone: nextHeroTone ?? '' },
+      });
+    }
   });
 
-  return { ok: true, count: blocks.length };
+  return nextHeroTone === undefined
+    ? { ok: true, count: blocks.length }
+    : { ok: true, count: blocks.length, heroTone: nextHeroTone };
 }

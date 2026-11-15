@@ -66,7 +66,7 @@ async function makeAudio(authorId: string, isPublic: boolean) {
 }
 
 describe('默认布局', () => {
-  it('没布置过 = 最近三篇对外可读文章，internal 不出现', async () => {
+  it('没布置过 = 最近四篇对外可读文章，internal 不出现', async () => {
     const u = await makeUser({ role: 'core' });
     const now = nowForDb();
     const older = await makeBlog({ authorId: u.id, visibility: 'link', title: '凭链接', createdAt: new Date(now.getTime() - 60_000) });
@@ -79,6 +79,28 @@ describe('默认布局', () => {
     expect(data.blocks.map((b) => (b.view?.kind === 'blog' ? b.view.title : ''))).toEqual([
       newer.title,
       older.title,
+    ]);
+  });
+
+  it('默认布局铺满两行：4 块 2×1 不留右下角的洞', async () => {
+    const u = await makeUser({ role: 'core' });
+    const now = nowForDb();
+    for (let i = 0; i < 4; i++) {
+      await makeBlog({
+        authorId: u.id,
+        visibility: 'public',
+        title: `文章 ${i}`,
+        createdAt: new Date(now.getTime() - i * 60_000),
+      });
+    }
+
+    const data = await getProfilePageData(u.id, { isOwner: false });
+    expect(data.isDefault).toBe(true);
+    expect(data.blocks.map((b) => [b.x, b.y, b.w, b.h])).toEqual([
+      [0, 0, 2, 1],
+      [2, 0, 2, 1],
+      [0, 1, 2, 1],
+      [2, 1, 2, 1],
     ]);
   });
 
@@ -271,6 +293,46 @@ describe('文章摘要（只给 h≥2 的块，读时现算）', () => {
     const guest = await getProfilePageData(u.id, { isOwner: false });
     expect(guest.blocks).toEqual([]);
     expect(JSON.stringify(guest)).not.toContain(secret);
+  });
+});
+
+describe('底色（名片 / 卡片）', () => {
+  it('名片底色与积木同一次保存：缺省不动、空串回默认、非白名单与石墨拒绝', async () => {
+    const u = await makeUser({ role: 'core' });
+    const heroToneOf = async () =>
+      (await prisma.user.findUnique({ where: { id: u.id } }))!.profileHeroTone;
+
+    // 带底色保存：同一次事务里写 users.profile_hero_tone，响应回传真值。
+    const saved = await saveProfileBlocks(u.id, [block('text', { text: '你好' })], 'blue');
+    expect(saved.ok).toBe(true);
+    if (saved.ok) expect(saved.heroTone).toBe('blue');
+    expect(await heroToneOf()).toBe('blue');
+
+    // 缺省 = 这次没提：旧客户端 / 脚本只存积木时不能把底色顺手清掉。
+    expect((await saveProfileBlocks(u.id, [block('text', { text: '改一下' })])).ok).toBe(true);
+    expect(await heroToneOf()).toBe('blue');
+
+    // 空串 = 明确回默认。
+    expect((await saveProfileBlocks(u.id, [block('text', { text: '你好' })], '')).ok).toBe(true);
+    expect(await heroToneOf()).toBe('');
+
+    // 石墨是卡片色，身份条不收；非法值整页拒绝，且失败不写库。
+    for (const bad of ['graphite', 'neon', 42]) {
+      const res = await saveProfileBlocks(u.id, [block('text', { text: '你好' })], bad);
+      expect(res.ok).toBe(false);
+      expect(await heroToneOf()).toBe('');
+    }
+  });
+
+  it('卡片色调随 config 落库，访客视图也带（渲染层要用）', async () => {
+    const u = await makeUser({ role: 'core' });
+    expect(
+      (await saveProfileBlocks(u.id, [block('text', { text: '带底色的一句话', tone: 'rose' }, { x: 0, y: 0, w: 2, h: 1 })])).ok
+    ).toBe(true);
+
+    const guest = await getProfilePageData(u.id, { isOwner: false });
+    expect(guest.blocks).toHaveLength(1);
+    expect(guest.blocks[0].config.tone).toBe('rose');
   });
 });
 

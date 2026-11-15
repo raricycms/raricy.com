@@ -4,7 +4,13 @@
 // ProfileBoard —— 个人主页的「积木墙」（客户端）
 //
 // 【职责切分】服务端已经把每块的内容解析成 BlockView（能看的才给），这里**不查库、
-// 不判权限**，只负责：画、拖、改尺寸、增删、保存。唯一的网络动作是 PUT 整页布局。
+// 不判权限**，只负责：画、拖、改尺寸、改底色、增删、保存。唯一的网络动作是 PUT 整页
+// 布局（body = `{ blocks, heroTone }`，名片底色与积木同一次提交）。
+//
+// 【底色分两层】卡片底色在 `config.tone`，跟着块一起进 draft / 保存；名片底色由
+// ProfileTheme 持有（它是整页根元素上的类，身份条跟着变），这里只读写它的 context。
+// 两层都从同一个白名单取值（profile-blocks 的 TONES / HERO_TONES），渲染时用
+// blockTone() 再过一遍，不把库里的脏值拼进 className。
 //
 // 【为什么整个 board 是客户端组件】只读时它本来可以全在服务端渲染；但「编辑模式」
 // 要复用同一套卡片渲染，拆成两个组件必然漂移（一边能拖、一边不能，样式也会分叉）。
@@ -46,13 +52,17 @@ import {
   X,
 } from 'lucide-react';
 import ImageLightbox from '@/app/components/ImageLightbox';
+import { useProfileTone } from './ProfileTheme';
 import {
   BLOCK_DEFS,
   BLOCK_KINDS,
   BLOCK_SIZES,
   GRID_COLUMNS,
+  HERO_TONES,
   MAX_BLOCKS,
   MOBILE_HALF,
+  TONES,
+  blockTone,
   findFreeSpot,
   mobileNeighbors,
   moveInMobileOrder,
@@ -63,11 +73,14 @@ import {
   rectsOverlap,
   sizeKey,
   swapBlockPositions,
+  withTone,
   type BlockCatalog,
   type BlockKind,
   type BlockView,
   type ProfileBlock,
   type StoredBlock,
+  type Tone,
+  type ToneDef,
 } from '@/lib/profile-blocks';
 
 /** 桌面网格 gap。行高 = 列宽（方格），拖拽换算格距时只用这一个常量。 */
@@ -134,6 +147,14 @@ export default function ProfileBoard({
 }) {
   const router = useRouter();
   const gridRef = useRef<HTMLDivElement | null>(null);
+
+  // 名片底色由 ProfileTheme 持有（它是整页根元素上的类，身份条跟着变色）；这里只读写
+  // 它的状态。「放弃」回到哪一版、有没有未保存改动，都要跟服务端那次的值比。
+  const {
+    tone: heroTone,
+    initialTone: initialHeroTone,
+    setTone: setHeroTone,
+  } = useProfileTone();
 
   // 服务端给的是「上次保存的结果」。保存成功后要**立刻**显示新版，所以本地留一份；
   // PUT 响应里的 blocks 先写进来，props 一旦更新（router.replace 带回新 RSC）再覆盖。
@@ -304,10 +325,12 @@ export default function ProfileBoard({
   const draftById = useMemo(() => new Map(draft.map((b) => [b.id, b])), [draft]);
 
   // 「有没有还没保存的改动」—— 给工具栏一颗状态，避免用户以为拖完就已经生效了。
-  const dirty = useMemo(
+  // 积木（位置 / 尺寸 / 内容 / 卡片色调）与名片底色任一变化都算。
+  const blocksDirty = useMemo(
     () => JSON.stringify(draft) !== JSON.stringify(boardBlocks.map(stripView)),
     [draft, boardBlocks]
   );
+  const dirty = blocksDirty || heroTone !== initialHeroTone;
 
   // 有未保存改动时离开页面要拦一下（只在编辑态）。beforeunload 是浏览器唯一
   // 会给确认框的钩子；移动端标签页被杀时它不触发，但那种情况本来就救不回来。
@@ -547,6 +570,13 @@ export default function ProfileBoard({
     });
   }
 
+  /** 改一块的底色。空 = 回落纸白（withTone 会把键删掉，别让 `{ tone: '' }` 进库）。 */
+  function applyTone(id: string, tone: Tone | null) {
+    setDraft((prev) =>
+      prev.map((b) => (b.id === id ? { ...b, config: withTone(b.config, tone) } : b))
+    );
+  }
+
   function moveBy(id: string, dx: number, dy: number) {
     setDraft((prev) => {
       const me = prev.find((b) => b.id === id);
@@ -747,8 +777,12 @@ export default function ProfileBoard({
   }
 
   function submitField(kind: 'text' | 'link' | 'image' | 'audio', id: string | null, values: Record<string, string>) {
+    // 字段弹窗只改内容，不该把这块已经选好的底色顺手清掉：按 id 把原 tone 带回来。
+    // （图片 / 音频那条走 `{ ...b.config, ...values }`，本来就带 tone，不用这支。）
+    const keepTone = (config: Record<string, unknown> | null) =>
+      config ? withTone(config, id ? blockTone(draftById.get(id)?.config ?? {}) : null) : null;
     if (kind === 'text') {
-      const config = normalizeConfig('text', values);
+      const config = keepTone(normalizeConfig('text', values));
       if (!config) {
         setNotice('写点内容再保存');
         return;
@@ -759,7 +793,7 @@ export default function ProfileBoard({
         addBlock('text', config);
       }
     } else if (kind === 'link') {
-      const config = normalizeConfig('link', values);
+      const config = keepTone(normalizeConfig('link', values));
       if (!config) {
         setNotice('只支持 http / https 地址');
         return;
@@ -798,6 +832,8 @@ export default function ProfileBoard({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           blocks: draft.map(({ id, kind, x, y, w, h, config }) => ({ id, kind, x, y, w, h, config })),
+          // 名片底色与积木同一次提交：空串 = 回默认（服务端认 '' / null 两种写法）。
+          heroTone: heroTone ?? '',
         }),
       });
       // apiOk 把 data 摊平在顶层（见 src/lib/format.ts）：字段是 json.blocks /
@@ -808,6 +844,7 @@ export default function ProfileBoard({
         count?: number;
         blocks?: ProfileBlock[];
         isDefault?: boolean;
+        heroTone?: string | null;
       };
       if (!res.ok || json.code !== 200) {
         setError(json.message || '保存失败，请稍后再试');
@@ -821,6 +858,8 @@ export default function ProfileBoard({
         setDraft(json.blocks.map(stripView));
       }
       if (typeof json.isDefault === 'boolean') setIsDefaultLayout(json.isDefault);
+      // 服务端是底色的最终判据（白名单 / 升降档）；回了就按它对齐本地预览值。
+      if ('heroTone' in json) setHeroTone(blockTone({ tone: json.heroTone ?? undefined }));
       setSaving(false);
       setEditing(false);
       setSelected(null);
@@ -837,6 +876,8 @@ export default function ProfileBoard({
 
   function cancel() {
     setDraft(boardBlocks.map(stripView));
+    // 底色也回到服务端那一次的值（它就是「上次保存 / 打开时」的样子）。
+    setHeroTone(initialHeroTone);
     setEditing(false);
     setSelected(null);
     setError(null);
@@ -874,8 +915,16 @@ export default function ProfileBoard({
             <GripVertical size={16} aria-hidden="true" />
             {isMobile
               ? '按住卡片左上角把手拖到另一张卡上可换位；点卡片选中后可调尺寸、左右或上下移动。'
-              : '拖动卡片换位置；选中卡片后可调尺寸、改内容。'}
+              : '拖动卡片换位置；选中卡片后可调尺寸、改内容与底色。'}
           </div>
+          {/* 名片底色常驻工具条：它是「整张名片」的属性，不该藏在网格下方的检查器里
+              （一页四行时用户要滚很久才看得到）。卡片自己的底色在选中后的检查器里。 */}
+          {!isMobile && (
+            <div className="bento-toolbar__tones">
+              <span className="bento-toolbar__sublabel">名片底色</span>
+              <TonePicker label="名片底色" tones={HERO_TONES} value={heroTone} onChange={setHeroTone} />
+            </div>
+          )}
           <span className={`bento-toolbar__dirty${dirty ? ' is-dirty' : ''}`}>
             {dirty ? '有未保存的修改' : '已保存'}
           </span>
@@ -899,7 +948,7 @@ export default function ProfileBoard({
             <h2 className="bento-guide__title">这是你的名片</h2>
             <ol className="bento-guide__steps">
               <li>从文章、图片、文字、链接里挑几块</li>
-              <li>拖到喜欢的位置，四档尺寸可调</li>
+              <li>拖到喜欢的位置，五档尺寸可调，每块还能单独挑底色</li>
               <li>保存后，二维码和链接打开的访客看到的就是这一页</li>
             </ol>
           </div>
@@ -949,8 +998,12 @@ export default function ProfileBoard({
             const compact = block.w === 1 && block.h === 1;
             const short = block.h === 1;
             const tall = block.h >= 2;
-            const wide = block.w === 2;
+            // 宽 ≥2（2×1 / 2×2 / 4×1）在手机上通栏，桌面排版也按「宽块」处理；
+            // 4×1 另挂 is-full 只为「一条」版式（更大标题、居中统计）。
+            const wide = block.w >= 2;
             const large = wide && block.h === 2;
+            const full = block.w === 4;
+            const tone = blockTone(block.config);
             const unavailable = editing && !view;
             return (
               <article
@@ -959,11 +1012,13 @@ export default function ProfileBoard({
                 className={[
                   'bento-card',
                   `bento-card--${block.kind}`,
+                  tone ? `bento-card--tone-${tone}` : '',
                   compact ? 'is-compact' : '',
                   short ? 'is-short' : '',
                   tall ? 'is-tall' : '',
                   wide ? 'is-wide' : '',
                   large ? 'is-large' : '',
+                  full ? 'is-full' : '',
                   selected === block.id && editing ? 'is-selected' : '',
                   draggingId === block.id ? 'is-dragging' : '',
                   dragOverId === block.id ? 'is-drop-target' : '',
@@ -1103,7 +1158,9 @@ export default function ProfileBoard({
         </div>
       </div>
 
-      {/* 桌面：检查器 + 加块面板都在正常文档流里（面板吸底，滚到底就能完整操作）。 */}
+      {/* 桌面：检查器 + 加块面板都在正常文档流里（面板吸底，滚到底就能完整操作）。
+          检查器只服务「选中的那一块」；名片底色常驻上方工具条 —— 两者位置固定，
+          用户不用先记住「先在哪儿取消选中才能改名片」。 */}
       {editing && !isMobile && selectedBlock && (
         <div className="bento-inspector">
           <span className="bento-inspector__label">
@@ -1116,11 +1173,19 @@ export default function ProfileBoard({
                 type="button"
                 className={`bento-size${s.w === selectedBlock.w && s.h === selectedBlock.h ? ' is-active' : ''}`}
                 onClick={() => applySize(selectedBlock.id, s.w, s.h)}
+                title={`${s.label}（${s.w}×${s.h}）`}
               >
                 {s.label}
               </button>
             ))}
           </div>
+          <span className="bento-inspector__sublabel">底色</span>
+          <TonePicker
+            label="卡片底色"
+            tones={TONES}
+            value={blockTone(selectedBlock.config)}
+            onChange={(tone) => applyTone(selectedBlock.id, tone)}
+          />
           <span className="bento-inspector__hint">方向键可微调位置，Delete 删除</span>
         </div>
       )}
@@ -1141,6 +1206,15 @@ export default function ProfileBoard({
                   <X size={16} aria-hidden="true" />
                   完成
                 </button>
+              </div>
+              <div className="bento-dock__row bento-dock__row--tones">
+                <span className="bento-dock__sublabel">底色</span>
+                <TonePicker
+                  label="卡片底色"
+                  tones={TONES}
+                  value={blockTone(selectedBlock.config)}
+                  onChange={(tone) => applyTone(selectedBlock.id, tone)}
+                />
               </div>
               <div className="bento-dock__row">
                 {BLOCK_SIZES.map((s) => (
@@ -1212,7 +1286,13 @@ export default function ProfileBoard({
               </div>
             </>
           ) : (
-            <Palette draftCount={draft.length} onAdd={startAdd} compact />
+            <>
+              <div className="bento-dock__row bento-dock__row--tones">
+                <span className="bento-dock__sublabel">名片底色</span>
+                <TonePicker label="名片底色" tones={HERO_TONES} value={heroTone} onChange={setHeroTone} />
+              </div>
+              <Palette draftCount={draft.length} onAdd={startAdd} compact />
+            </>
           )}
         </div>
       )}
@@ -1274,6 +1354,55 @@ export default function ProfileBoard({
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// ── 底色选择器（卡片 / 名片共用）──────────────────────────────────────────────
+
+/**
+ * 一排颜色圆点。第一颗是「默认」（纸白，值为 null），后面是白名单里的色调。
+ *
+ * 【为什么不用 <select>】底色是外观选择，颜色本身要可见；圆点 + aria-pressed 对键盘
+ * 也是可操作的（Tab 进入、Enter / Space 选中）。名称用 title + aria-label，不靠颜色
+ * 单独传达信息（色盲用户也能从可访问名读出来）。
+ */
+function TonePicker({
+  label,
+  tones,
+  value,
+  onChange,
+}: {
+  label: string;
+  tones: readonly ToneDef[];
+  value: Tone | null;
+  onChange: (tone: Tone | null) => void;
+}) {
+  return (
+    <div className="bento-tones" role="group" aria-label={label}>
+      <button
+        type="button"
+        className={`bento-tone bento-tone--paper${value === null ? ' is-active' : ''}`}
+        aria-label={`${label}：默认`}
+        aria-pressed={value === null}
+        title="默认"
+        onClick={() => onChange(null)}
+      >
+        <span className="bento-tone__dot" aria-hidden="true" />
+      </button>
+      {tones.map((tone) => (
+        <button
+          key={tone.id}
+          type="button"
+          className={`bento-tone bento-tone--${tone.id}${value === tone.id ? ' is-active' : ''}`}
+          aria-label={`${label}：${tone.label}`}
+          aria-pressed={value === tone.id}
+          title={tone.label}
+          onClick={() => onChange(tone.id)}
+        >
+          <span className="bento-tone__dot" aria-hidden="true" />
+        </button>
+      ))}
     </div>
   );
 }

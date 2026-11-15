@@ -297,7 +297,7 @@ export default function SettingsPage() {
         <div className="settings-toggle-row">
           <div className="settings-toggle-row__label">
             <span className="settings-toggle-row__title">默认展示最近文章</span>
-            <span className="settings-toggle-row__desc">还没布置主页时，自动展示最近三篇对外可读的文章；关掉后默认为空。亲手加的文章块不受影响</span>
+            <span className="settings-toggle-row__desc">还没布置主页时，自动展示最近四篇对外可读的文章；关掉后默认为空。亲手加的文章块不受影响</span>
           </div>
           <label className="settings-toggle">
             <input

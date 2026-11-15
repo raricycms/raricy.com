@@ -19,11 +19,12 @@ import { getProfilePageData, saveProfileBlocks } from '@/lib/profile-service';
 // 【客户端校验不是防线】请求可以被手工构造，saveProfileBlocks 内部会再跑一遍
 // normalizeBlocks + 归属/可见性校验。
 //
-// 【响应回传保存后的整页数据】`{ count, blocks, isDefault }`：
+// 【响应回传保存后的整页数据】`{ count, blocks, isDefault, heroTone? }`：
 //   · blocks 是**刚写进库的那份**经 resolveViews 解析后的形状（含 view、含 h≥2 的
 //     excerpt），客户端拿到就能立刻重画，不必等路由缓存刷新 —— 页面是 Server
 //     Component，路由器缓存里那份是旧的，等它回来之前会闪一帧旧布局；
 //   · isDefault 跟着回传，客户端据此决定空态引导显不显示（保存过 = 不再是默认布局）；
+//   · heroTone 只在请求带了它时回传（请求没提 = 这次没改，别让客户端以为被清空）；
 //   · **catalog 不回传**：可挑清单是编辑器打开时那一份，保存不必再背 100 篇标题。
 // 三者在同一个响应里，客户端就不会出现「块是新的、isDefault 是旧的」这种撕裂。
 export async function PUT(req: Request) {
@@ -34,19 +35,30 @@ export async function PUT(req: Request) {
   const gate = rateLimit(`profile:save:${user.id}`, RULES.profileSave);
   if (!gate.allowed) return apiErr(429, '保存太频繁了，请稍后再试');
 
-  let body: { blocks?: unknown };
+  let body: { blocks?: unknown; heroTone?: unknown };
   try {
-    body = (await req.json()) as { blocks?: unknown };
+    body = (await req.json()) as { blocks?: unknown; heroTone?: unknown };
   } catch {
     return apiErr(400, '请求体格式错误');
   }
   if (!body || !('blocks' in body)) return apiErr(400, '请提供 blocks');
 
-  const result = await saveProfileBlocks(user.id, body.blocks);
+  // heroTone 可选：缺省 = 这次只改积木（旧客户端 / 脚本照常能存）；
+  // '' 或 null = 回默认；其余值由 saveProfileBlocks 过身份条白名单。
+  const result = await saveProfileBlocks(user.id, body.blocks, body.heroTone);
   if (!result.ok) return apiErr(400, result.message);
 
   // 保存后重读一遍：此时读路径看到的就是刚刚提交的那一页（同一请求内，无并发歧义）。
   const data = await getProfilePageData(user.id, { isOwner: true });
 
-  return apiOk({ count: result.count, blocks: data.blocks, isDefault: data.isDefault }, '主页已保存');
+  return apiOk(
+    {
+      count: result.count,
+      blocks: data.blocks,
+      isDefault: data.isDefault,
+      // 同样在顶层回传：客户端保存后立刻用这份值同步本地底色（不必等 RSC 重取）。
+      ...(result.heroTone !== undefined ? { heroTone: result.heroTone } : {}),
+    },
+    '主页已保存'
+  );
 }

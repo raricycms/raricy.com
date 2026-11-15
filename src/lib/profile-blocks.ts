@@ -5,11 +5,12 @@
 // 必须与它用**同一份规则**。任何 import prisma / fs 都会让客户端包炸掉，所以这里
 // 只允许纯函数 + safe-url（那也是零依赖的）。
 //
-// 【它管四件事】
-//   1. 白名单：允许哪些块（BLOCK_KINDS）、每块允许哪些尺寸
+// 【它管五件事】
+//   1. 白名单：允许哪些块（BLOCK_KINDS）、每块允许哪些尺寸、卡片可用的底色（TONES）
 //   2. 形状校验：config 的规范化（normalizeConfig）与整页校验（normalizeBlocks）
 //   3. 网格算术：重叠判定、找空位（编辑器与保存校验共用）
 //   4. 渲染契约：BlockView —— 服务端解析好的「可渲染数据」，客户端只负责画
+//   5. 底色取值：blockTone / isHeroTone —— 读路径与渲染层都从这一份白名单收敛
 //
 // 【为什么存指针不存快照】config 里只有 blogId / imageId / audioId。渲染时按当前
 // 库里那几行重新解析：目标被删、档位降回 internal、作者归档 → 整块不渲染。把标题
@@ -35,6 +36,75 @@ export const MAX_Y = 200;
 
 export type BlockKind = 'blog' | 'image' | 'audio' | 'text' | 'link' | 'stats' | 'checkin';
 
+/**
+ * 卡片 / 身份条可选的底色（「色调」）。
+ *
+ * 【为什么是白名单而不是自由取色】自由 hex 在深色主题下必然出现读不清的组合，也会把
+ * 一页排成调色盘；这里每个 id 在样式里对应一组浅 / 深两套 token（含卡片内文字色），
+ * 对比度由设计保证。增删色调时同步 `_root.scss` 的 `--color-tone-*` 与 `_profile.scss`
+ * 的 `.bento-card--tone-*`，不需要数据库迁移。
+ *
+ * 【存在哪】卡片色调进 `config.tone`（与块内容一起整页保存）；身份条底色是「这张名片」
+ * 的属性，单独存 `users.profile_hero_tone`（迁移 44）—— 积木保存是整页替换，塞进块里会
+ * 被一次保存顺手丢掉。
+ */
+export type Tone = 'blue' | 'mint' | 'apricot' | 'violet' | 'rose' | 'graphite';
+
+export interface ToneDef {
+  id: Tone;
+  label: string;
+  /**
+   * 能不能用作身份条底色。石墨是深色块，放在身份条上会把用户名 / 简介 / 按钮的
+   * 文字色压成一团，所以只留给内容卡。白名单由 `isHeroTone` 收口。
+   */
+  hero: boolean;
+}
+
+export const TONES: readonly ToneDef[] = [
+  { id: 'blue', label: '雾蓝', hero: true },
+  { id: 'mint', label: '薄荷', hero: true },
+  { id: 'apricot', label: '杏', hero: true },
+  { id: 'violet', label: '藕紫', hero: true },
+  { id: 'rose', label: '胭粉', hero: true },
+  { id: 'graphite', label: '石墨', hero: false },
+];
+
+/** 身份条能用的那几档（不含石墨）。 */
+export const HERO_TONES: readonly ToneDef[] = TONES.filter((t) => t.hero);
+
+const TONE_IDS = new Set<string>(TONES.map((t) => t.id));
+
+/** 合法的卡片色调。注意：空缺省（纸白）用 null / 不写，不占一个 id。 */
+export function isTone(v: unknown): v is Tone {
+  return typeof v === 'string' && TONE_IDS.has(v);
+}
+
+/** 合法的身份条底色。石墨不在其中（见 ToneDef.hero）。 */
+export function isHeroTone(v: unknown): v is Tone {
+  return isTone(v) && HERO_TONES.some((t) => t.id === v);
+}
+
+/**
+ * 从一块的 config 里读出色调。**读路径唯一的取法**：库里是旧值 / 被人手改成乱码时
+ * 一律回落 null（纸白），而不是把未知字符串拼进 className。
+ */
+export function blockTone(config: Record<string, unknown>): Tone | null {
+  const v = config.tone;
+  return isTone(v) ? v : null;
+}
+
+/** 写回一块的 config：tone 为空时删掉键，避免 `{ tone: '' }` 这种半状态进库。 */
+export function withTone(
+  config: Record<string, unknown>,
+  tone: Tone | null
+): Record<string, unknown> {
+  if (tone) return { ...config, tone };
+  if (!('tone' in config)) return config;
+  const next = { ...config };
+  delete next.tone;
+  return next;
+}
+
 export interface BlockSize {
   w: number;
   h: number;
@@ -43,14 +113,19 @@ export interface BlockSize {
 }
 
 /**
- * 尺寸只开放四档。理由：每个块都得在每一档下好看，自由像素 resize 等于要设计并
- * 测试无限种版式；四档已经足够「好玩」，而且手机上能直接映射（2×2 压通栏）。
+ * 尺寸只开放五档。理由：每个块都得在每一档下好看，自由像素 resize 等于要设计并
+ * 测试无限种版式；五档已经足够「好玩」，而且手机上能直接映射（宽 ≥2 压通栏）。
+ *
+ * 「通栏」是 2026-11 加的一档：四列网格里再没有比 2 更宽的块，导致一页永远排成
+ * 「两列大块」，没有封面 / 一句话横条的节奏。4×1 在手机上和 2×1 一样通栏，
+ * 投影规则（宽 ≥2 通栏）本来就成立，所以只多一条白名单，不动坐标体系。
  */
 export const BLOCK_SIZES: readonly BlockSize[] = [
   { w: 1, h: 1, label: '小', hint: '一格' },
   { w: 2, h: 1, label: '宽', hint: '横两格' },
   { w: 1, h: 2, label: '高', hint: '竖两格' },
   { w: 2, h: 2, label: '大', hint: '四个格' },
+  { w: 4, h: 1, label: '通栏', hint: '横四格' },
 ];
 
 export interface BlockDef {
@@ -252,12 +327,25 @@ function isPlainObject(v: unknown): v is Record<string, unknown> {
 /**
  * 按块类型规范化 config。返回 null = 这块的内容不合法（调用方决定是丢弃还是报错）。
  * ⚠️ 每加一类块，这里必须加一支 —— 漏了就是「保存成功、刷新后块消失」。
+ *
+ * 底色（tone）是所有块共用的可选字段：先按类型整理内容，再统一挂上白名单里的 tone。
+ * 未知 tone **静默丢弃**（回落纸白），与「块内容不合法就整页拒绝」不同 —— 底色只是
+ * 外观，为一个手改的乱码值把整页保存卡住没有意义。
  */
 export function normalizeConfig(
   kind: BlockKind,
   raw: unknown
 ): Record<string, unknown> | null {
   const c = isPlainObject(raw) ? raw : {};
+  const base = normalizeBaseConfig(kind, c);
+  if (!base) return null;
+  return withTone(base, isTone(c.tone) ? c.tone : null);
+}
+
+function normalizeBaseConfig(
+  kind: BlockKind,
+  c: Record<string, unknown>
+): Record<string, unknown> | null {
   switch (kind) {
     case 'blog': {
       const blogId = typeof c.blogId === 'string' ? c.blogId : '';

@@ -3,10 +3,13 @@ import {
   BLOCK_SIZES,
   GRID_COLUMNS,
   MAX_BLOCKS,
+  blockTone,
+  isHeroTone,
   normalizeBlocks,
   normalizeConfig,
   sanitizeInline,
   sanitizeText,
+  withTone,
 } from '@/lib/profile-blocks';
 
 // profile-blocks 是**零依赖的共享校验层**：编辑器与服务端 API 都跑它。
@@ -37,7 +40,7 @@ describe('normalizeBlocks 整页校验', () => {
     if (!r.ok) expect(r.message).toContain('重叠');
   });
 
-  it('尺寸只认四档白名单', () => {
+  it('尺寸只认白名单档位（新增的通栏 4×1 在内）', () => {
     for (const s of BLOCK_SIZES) {
       expect(normalizeBlocks([text({ w: s.w, h: s.h, x: 0 })]).ok).toBe(true);
     }
@@ -95,6 +98,49 @@ describe('normalizeConfig', () => {
     expect(normalizeConfig('image', {})).toBeNull();
     expect(normalizeConfig('audio', {})).toBeNull();
     expect(normalizeConfig('blog', {})).toBeNull();
+  });
+});
+
+describe('底色（tone）', () => {
+  // 底色是外观，不是内容：未知值必须**静默丢弃**（回落纸白），不能像坏内容那样把整页
+  // 保存拒掉 —— 库里被手改出来的乱码不该锁住用户保存。
+  it('合法的卡片色调保留在 config，未知值丢弃且不落空键', () => {
+    expect(normalizeConfig('text', { text: '你好', tone: 'rose' })).toEqual({
+      title: '',
+      text: '你好',
+      tone: 'rose',
+    });
+    expect(normalizeConfig('text', { text: '你好', tone: 'neon' })).toEqual({
+      title: '',
+      text: '你好',
+    });
+    // 图片 / 音频 / 统计这些块同样吃 tone（不是只有文字卡能用）。
+    expect(normalizeConfig('blog', { blogId: 'b1', tone: 'mint' })).toEqual({
+      blogId: 'b1',
+      tone: 'mint',
+    });
+    expect(normalizeConfig('stats', { tone: 'graphite' })).toEqual({ tone: 'graphite' });
+  });
+
+  it('身份条只收 hero 色调：石墨是深色块，会把身份条上的文字压没', () => {
+    expect(isHeroTone('blue')).toBe(true);
+    expect(isHeroTone('graphite')).toBe(false);
+    expect(isHeroTone('neon')).toBe(false);
+    expect(isHeroTone(null)).toBe(false);
+  });
+
+  it('读路径遇未知 tone 回落 null（不把乱码拼进 className）', () => {
+    expect(blockTone({ tone: 'rose' })).toBe('rose');
+    expect(blockTone({ tone: 'neon' })).toBeNull();
+    expect(blockTone({})).toBeNull();
+  });
+
+  it('withTone 清空时删键，避免 { tone: "" } 这种半状态进库', () => {
+    expect(withTone({ tone: 'mint', blogId: 'b1' }, null)).toEqual({ blogId: 'b1' });
+    expect(withTone({ blogId: 'b1' }, 'rose')).toEqual({ blogId: 'b1', tone: 'rose' });
+    // 本来就没有 key 时不无谓地复制对象。
+    const same = { blogId: 'b1' };
+    expect(withTone(same, null)).toBe(same);
   });
 });
 

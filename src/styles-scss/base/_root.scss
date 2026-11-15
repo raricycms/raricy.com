@@ -59,6 +59,22 @@
     --color-accent-cyan-soft: rgba(6, 182, 212, 0.12);
     --color-accent-violet: #8b5cf6;
     --color-accent-violet-soft: rgba(139, 92, 246, 0.12);
+    /* ── 个人主页可选底色（tone）────────────────────────────────────────────
+       用户在自己的主页上给卡片 / 身份条挑的装饰底色，**不承担语义**（不是成功 / 危险）。
+       它也不是「分类强调色」那种小面积色相：整块卡片表面换成它，所以必须足够浅
+       （浅色主题）/ 足够深（深色主题），让 `--color-text-primary / secondary` 仍然可读。
+       卡片自己的文字色由 _profile.scss 的 `--bento-ink / -ink-2` 接住，只有石墨
+       （浅色主题下的深色块）需要单独给文字色 —— 见 `--color-tone-graphite-ink*`。
+       增删色调时同步 src/lib/profile-blocks.ts 的 TONES。 */
+    --color-tone-blue: #eaf1ff;
+    --color-tone-mint: #e8f6ef;
+    --color-tone-apricot: #fff3e2;
+    --color-tone-violet: #f2ecff;
+    --color-tone-rose: #ffedf0;
+    --color-tone-graphite: #1f242b;
+    /* 石墨块里的文字与辅助文字（深色块在浅色主题下也要读得清）。 */
+    --color-tone-graphite-ink: #f1f5f9;
+    --color-tone-graphite-ink-2: #a8b3c2;
     /* 全站只有三束阴影，都是品牌色（蓝）：
        · --shadow-card-brand —— 「抬起」：整块可点的卡片 hover、以及浮层（弹窗 /
          下拉 / 贴边面板）。偏移 2px，读作「浮起来」。
@@ -133,6 +149,19 @@
     --color-accent-cyan-soft: rgba(34, 211, 238, 0.16);
     --color-accent-violet: #a78bfa;
     --color-accent-violet-soft: rgba(167, 139, 250, 0.16);
+    /* 个人主页可选底色：深色主题下各降一档，卡片文字继续用全站 text-primary / secondary
+       （浅色卡片在深色主题里是「一块浅色」，文字色会读不动，所以不能沿用浅色那张表）。
+       石墨在深色主题下反而要比页面底色略亮，否则认不出是一块卡。 */
+    --color-tone-blue: #16233b;
+    --color-tone-mint: #142a24;
+    --color-tone-apricot: #2e2619;
+    --color-tone-violet: #241f38;
+    --color-tone-rose: #2f1c23;
+    --color-tone-graphite: #2a3038;
+    /* 深色主题下石墨已是普通深色卡，文字回到全站主 / 辅色即可（这里显式写死，
+       免得「浅色主题的深色块」与「深色主题的深色块」两套判据漂移）。 */
+    --color-tone-graphite-ink: #f1f5f9;
+    --color-tone-graphite-ink-2: #94a3b8;
     /* 同浅色那份：中性阴影四条已退役，深色只覆写品牌色的三条。 */
     --shadow-card-brand: 0 2px 20px rgba(35, 165, 255, 0.1);
     // 深色品牌蓝更亮，同样模糊半径下给到 0.32 就够醒目了（见浅色那份的说明）

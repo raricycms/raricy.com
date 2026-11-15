@@ -14,6 +14,7 @@ import { prisma } from './db';
 import { frameUrlFor } from './frame-service';
 import { kickUser } from './chat-bus';
 import { publishToUser } from './topbar-bus';
+import { isHeroTone, type Tone } from './profile-blocks';
 import {
   isFocusLobbyBlocked,
   parseFocusHiddenCategories,
@@ -77,6 +78,15 @@ export interface PublicProfile {
   createdAt: string | null;
   /** 档位不足时**为 null** —— 别拿它当「一定有」。渲染前必须挡空。 */
   role: string | null;
+  /**
+   * 个人主页身份条底色（`null` = 默认纸白）。
+   *
+   * 【为什么在这里】它是**访客能看见**的展示偏好（主页上半截的底色），不是本人资料；
+   * 页面与 `/api/users/:id` 共用这一份 DTO 就够，不必为它多查一次 users。
+   * 取值已过白名单（`isHeroTone`）：库里是旧值 / 手改成乱码时一律回落 null，
+   * 渲染层拿到的一定是五个合法 id 之一或 null。
+   */
+  heroTone: Tone | null;
   showRecentBlogs: boolean;
   showRecentComments: boolean;
   recentBlogs: { id: string; title: string; createdAt: string | null; likesCount: number }[];
@@ -121,6 +131,7 @@ export async function getPublicProfile(
       role: true,
       showRecentBlogs: true,
       showRecentComments: true,
+      profileHeroTone: true,
       equippedFrameKey: true,
       equippedFrameExpiresAt: true,
     },
@@ -170,6 +181,7 @@ export async function getPublicProfile(
     bio: user.bio,
     createdAt: user.createdAt ? user.createdAt.toISOString() : null,
     role: canSeeContent ? user.role : null,
+    heroTone: isHeroTone(user.profileHeroTone) ? user.profileHeroTone : null,
     showRecentBlogs: user.showRecentBlogs,
     showRecentComments: user.showRecentComments,
     recentBlogs: recentBlogs.map((b) => ({

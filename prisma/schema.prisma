@@ -60,6 +60,13 @@ model User {
   showRecentBlogs    Boolean @default(true) @map("show_recent_blogs")
   showRecentComments Boolean @default(true) @map("show_recent_comments")
 
+  /// 个人主页身份条底色（空串 = 默认纸白）。取值白名单在 src/lib/profile-blocks.ts
+  /// 的 TONES（还要求 hero=true）。**不建 CHECK**：增删色调是纯代码 + 样式的事，
+  /// 读路径用 isHeroTone 收敛，存量脏值只会回落默认，不会报错。
+  /// 为什么单独一列：积木保存是整页替换，把底色塞进某一块的 config 会被一次保存
+  /// 顺手丢掉；它属于「这张名片」，不属于任何一块。
+  profileHeroTone String @default("") @map("profile_hero_tone")
+
   // 专注模式：账号级浏览偏好（默认关）。开启后按下面四个子项分别生效：
   // 博客列表/侧栏隐藏自选栏目（focusHideCategories）、讨论大区、玩具区、
   // 鱼干练手盘。登出/游客不生效（见 docs/architecture.md 偏好约定）。
