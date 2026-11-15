@@ -1,53 +1,50 @@
+// `npm test` —— 日常门禁。只含「改了代码跑一遍」的用例；
+// 静态守卫、迁移验收、启动生命周期走各自入口（见 package.json 的 guards / test:migrations /
+// test:slow，口径见 `docs/plan/test-suite-audit.md` §2/§5）。
 import { defineConfig } from 'vitest/config';
-import path from 'node:path';
+import { sharedTestOptions, sharedResolve, sharedEsbuild, MAX_WORKERS } from './vitest.shared';
 
 export default defineConfig({
   test: {
-    // 默认 node 环境；需要 DOM 的用例在文件顶部用 // @vitest-environment jsdom 覆盖
-    environment: 'node',
-    globals: false,
+    ...sharedTestOptions,
     include: ['tests/**/*.test.ts', 'tests/**/*.test.tsx'],
-    // E2E 用 Playwright 跑（npm run e2e），它的用例引的是 @playwright/test 的 API，
+    // E2E 用 Playwright 跑（`npm run e2e`），它的用例引的是 @playwright/test 的 API，
     // 被 vitest 吸进来必崩。两套 runner 共用 tests/ 目录，故显式排除。
-    // `tests/.tmp/` 是测试基建的临时目录（数据库副本、审计残留），
-    // 里面的 *.test.ts 不属于本项目用例 —— 不排除的话会被当成本仓测试跑。
-    exclude: ['tests/e2e/**', 'tests/.tmp/**', 'node_modules/**'],
-    // 文件级并行。曾经是 false，因为 service 层用例会互相 rmSync + db push 同一个库
-    // （报 "table users already exists" / "readonly database"）。
-    //
-    // 那个坑的根因是**共享库文件名**，不是并行本身：tests/setup.ts 给每个测试文件发
-    // 唯一的库名（pid + 随机串），各文件再从模板库复制自己的副本（见 tests/global-setup.ts），
-    // 不存在两个文件写同一 inode 的情况 —— 并行安全。
-    //
-    // 实测 8 核：串行 175s → 并行 63s。
-    fileParallelism: true,
-    // 8 核留出余量。每个 worker 都带一个 Prisma client + 独立 SQLite，拉满只会让
-    // 本来就在跑真实计时的用例（登录限频的 bcrypt 等）撞超时，收益也早已饱和。
-    // minWorkers 必须显式给：它默认取 CPU 数，不写就会 > maxWorkers 而直接抛
-    // 「options.minThreads and options.maxThreads must not conflict」。
+    // `tests/.tmp/` 是测试基建的临时目录（数据库副本、审计残留），里面的 *.test.ts 不属于
+    // 本项目用例 —— 不排除的话会被当成本仓测试跑。
+    exclude: [
+      'tests/e2e/**',
+      'tests/.tmp/**',
+      'node_modules/**',
+      // 静态守卫：`npm run guards`（实时扫描源码/文档/素材，属仓库守卫而非行为测试）
+      'tests/unit/agent-instructions.test.ts',
+      'tests/unit/anonymous-read-guard.test.ts',
+      'tests/unit/audit-action-guard.test.ts',
+      'tests/unit/audit-json-column-guard.test.ts',
+      'tests/unit/avatar-sites-guard.test.ts',
+      'tests/unit/blog-visibility-guard.test.ts',
+      'tests/unit/cli-docs.test.ts',
+      'tests/unit/cli-guards.test.ts',
+      'tests/unit/db-reset-tables.test.ts',
+      'tests/unit/db-time-guard.test.ts',
+      'tests/unit/docs-catalog.test.ts',
+      'tests/unit/docs-xref.test.ts',
+      'tests/unit/explore-visibility-guard.test.ts',
+      'tests/unit/fish-scale-guard.test.ts',
+      'tests/unit/frame-assets.test.ts',
+      'tests/unit/frame-guard.test.ts',
+      'tests/unit/guide-docs.test.ts',
+      'tests/unit/lib-index-guard.test.ts',
+      'tests/unit/pwa-metadata.test.ts',
+      // 空库全量迁移验收：`npm run test:migrations`（300s 级，不该占默认门禁）
+      'tests/service/migrate-entry.test.ts',
+      // 启动生命周期 / 子进程慢车道：`npm run test:slow`
+      'tests/unit/app-start.test.ts',
+      'tests/unit/reactive-corpus-cli.test.ts',
+    ],
     minWorkers: 1,
-    maxWorkers: 4,
-    // 【为什么必须显式给超时】vitest 默认 5000ms。这台机器上真实计时的用例单条就
-    // 1.4–2.4s（配额类：bcrypt + 连建 200 个号；见 tests/service/favorite-service.test.ts
-    // 的「配额只数未删除的」实测 2357ms），4 个 worker 并行时集体撞线，报出来是
-    // 19 条 "Test timed out in 5000ms" —— 全被误读成「本来就有问题的测试」。
-    // 实测：同一批文件加 --testTimeout=30000 后 94/94 全绿，一行代码没改。
-    testTimeout: 30_000,
-    hookTimeout: 30_000,
-    // 建模板库（一次性）。各测试文件的库副本由 tests/helpers/db.ts 的 ensureSchema() 拷。
-    globalSetup: ['tests/global-setup.ts'],
-    coverage: {
-      provider: 'v8',
-      include: ['src/lib/**/*.ts', 'src/middleware.ts'],
-      exclude: ['src/lib/db.ts'],
-    },
-    setupFiles: ['tests/setup.ts'],
+    maxWorkers: MAX_WORKERS,
   },
-  // 组件用 JSX。esbuild 默认是 classic 运行时（要 React 在作用域里），而 Next 走的是
-  // automatic —— 不加这一行，任何 import 组件的用例都会在渲染时抛 "React is not defined"。
-  // 已有的用例（use-move-selection 等）用 createElement 绕开了它，组件用例绕不开。
-  esbuild: { jsx: 'automatic' },
-  resolve: {
-    alias: { '@': path.resolve(import.meta.dirname, 'src') },
-  },
+  esbuild: sharedEsbuild,
+  resolve: sharedResolve,
 });

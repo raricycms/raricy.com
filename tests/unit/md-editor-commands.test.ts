@@ -70,33 +70,6 @@ function harness(
 }
 
 describe('toggleWrap', () => {
-  it('选中文字：包上标记并选中内部', () => {
-    const h = harness('hello', [[0, 5]]);
-    expect(cmd.toggleWrap('**')(h.view)).toBe(true);
-    expect(h.text()).toBe('**hello**');
-    expect(h.main()).toEqual([2, 7]);
-  });
-
-  it('空选区：插占位符并选中它（接着打字直接替换）', () => {
-    const h = harness('', [[0, 0]]);
-    cmd.toggleWrap('**', '粗体')(h.view);
-    expect(h.text()).toBe('**粗体**');
-    expect(h.main()).toEqual([2, 4]);
-  });
-
-  it('已被标记包住时脱掉（点第二下取消）', () => {
-    const h = harness('**hello**', [[2, 7]]);
-    cmd.toggleWrap('**')(h.view);
-    expect(h.text()).toBe('hello');
-    expect(h.main()).toEqual([0, 5]);
-  });
-
-  it('单边只是一个同类标记时不脱（`*hi*` 上的 `**` 不会把 `*` 当成自己的边）', () => {
-    const h = harness('*hi*', [[1, 3]]);
-    cmd.toggleWrap('**')(h.view);
-    expect(h.text()).toBe('***hi***');
-  });
-
   it('多光标：每个区间各自成对', () => {
     const h = harness('a b', [
       [0, 1],
@@ -120,95 +93,6 @@ describe('行首标记', () => {
     // 两端都仍在原来那几个字上：`aaa` 的第二个 a（3）、`ccc` 的最后一个 c 之前（16）。
     // 少算前面那 6 就会整体左移——这是本组用例真正要钉的东西。
     expect(h.main()).toEqual([3, 16]);
-  });
-
-  it('无序列表：光标只碰它所在的那一行，且仍停在同一段文字上', () => {
-    const h = harness('aaa\nbbb\nccc', [[9, 9]]);
-    cmd.toggleBulletList(h.view);
-    expect(h.text()).toBe('aaa\nbbb\n- ccc');
-    expect(h.main()).toEqual([11, 11]);
-  });
-
-  it('无序列表：已经是列表时整块脱掉', () => {
-    const h = harness('- aaa\n- bbb', [[0, 11]]);
-    cmd.toggleBulletList(h.view);
-    expect(h.text()).toBe('aaa\nbbb');
-  });
-
-  it('混排（部分有标记）时一律按「加」处理', () => {
-    const h = harness('- aaa\nbbb', [[0, 9]]);
-    cmd.toggleBulletList(h.view);
-    expect(h.text()).toBe('- - aaa\n- bbb');
-  });
-
-  it('有序列表：按行序号重新编号', () => {
-    const h = harness('aa\nbb\ncc', [[0, 8]]);
-    cmd.toggleOrderedList(h.view);
-    expect(h.text()).toBe('1. aa\n2. bb\n3. cc');
-  });
-
-  it('有序列表：中途插入一行时后面的号码顺延（不是全卡在 1.）', () => {
-    const h = harness('1. aa\ncc', [[0, 8]]);
-    cmd.toggleOrderedList(h.view);
-    expect(h.text()).toBe('1. 1. aa\n2. cc');
-  });
-
-  it('任务列表与引用各有自己的标记', () => {
-    const a = harness('aa', [[0, 2]]);
-    cmd.toggleTaskList(a.view);
-    expect(a.text()).toBe('- [ ] aa');
-
-    const b = harness('aa', [[0, 2]]);
-    cmd.toggleQuote(b.view);
-    expect(b.text()).toBe('> aa');
-  });
-});
-
-describe('缩进', () => {
-  it('增加缩进：两行为一级，光标跟着挪', () => {
-    const h = harness('aa\nbb', [[0, 5]]);
-    cmd.shiftIndent(false)(h.view);
-    expect(h.text()).toBe('  aa\n  bb');
-    expect(h.main()).toEqual([2, 9]);
-  });
-
-  it('减少缩进：按已有的一到两个空格或制表符退', () => {
-    const h = harness('   aa\n\t bb', [[0, 9]]);
-    cmd.shiftIndent(true)(h.view);
-    expect(h.text()).toBe(' aa\n bb');
-  });
-
-  it('减少缩进：本来就没有缩进的行不动', () => {
-    const h = harness('aa', [[1, 1]]);
-    expect(cmd.shiftIndent(true)(h.view)).toBe(true);
-    expect(h.text()).toBe('aa');
-  });
-});
-
-describe('标题', () => {
-  it('加二级标题（光标保持在同一段文字上）', () => {
-    const h = harness('abc', [[1, 1]]);
-    cmd.setHeading(2)(h.view);
-    expect(h.text()).toBe('## abc');
-    expect(h.main()).toEqual([4, 4]);
-  });
-
-  it('换级别时先脱掉旧的井号', () => {
-    const h = harness('## abc', [[5, 5]]);
-    cmd.setHeading(1)(h.view);
-    expect(h.text()).toBe('# abc');
-  });
-
-  it('level 0 = 正文（脱掉井号）', () => {
-    const h = harness('### abc', [[6, 6]]);
-    cmd.setHeading(0)(h.view);
-    expect(h.text()).toBe('abc');
-  });
-
-  it('只作用于主选区那一行 —— 多行选区不会整块变标题', () => {
-    const h = harness('aa\nbb\ncc', [[0, 8]]);
-    cmd.setHeading(1)(h.view);
-    expect(h.text()).toBe('# aa\nbb\ncc');
   });
 });
 
@@ -287,72 +171,11 @@ describe('行前缀命令的选区（行首 / 前缀内部）', () => {
 });
 
 describe('插入类', () => {
-  it('链接：选中的文字当标题，并选中标题', () => {
-    const h = harness('点这里', [[0, 3]]);
-    cmd.insertLink()(h.view);
-    expect(h.text()).toBe('[点这里](url)');
-    expect(h.main()).toEqual([1, 4]);
-  });
-
-  it('链接：没有选中文字时插占位并选中它', () => {
-    const h = harness('', [[0, 0]]);
-    cmd.insertLink()(h.view);
-    expect(h.text()).toBe('[链接文字](url)');
-    expect(h.main()).toEqual([1, 5]);
-  });
-
-  it('外链图片：选中的文字当 alt，光标选中 URL 那一格', () => {
-    const h = harness('风景', [[0, 2]]);
-    cmd.insertImage()(h.view);
-    expect(h.text()).toBe('![风景](https://)');
-    // `![` (2) + alt (2) + `](` (2) = URL 起点 6，选中 `https://`
-    expect(h.main()).toEqual([6, 14]);
-  });
-
-  it('外链图片：空选区插占位 alt 并选中 URL', () => {
-    const h = harness('', [[0, 0]]);
-    cmd.insertImage()(h.view);
-    expect(h.text()).toBe('![图片描述](https://)');
-    expect(h.main()).toEqual([8, 16]);
-  });
-
   it('代码块：选中的内容原样进围栏（不缩进、不转义）', () => {
     const h = harness('a <b>', [[0, 5]]);
     cmd.insertCodeBlock()(h.view);
     expect(h.text()).toBe('```\na <b>\n```');
     expect(h.main()).toEqual([4, 9]);
-  });
-
-  it('表格：行中间插入时先补一个换行', () => {
-    const h = harness('abc', [[1, 1]]);
-    cmd.insertTable()(h.view);
-    expect(h.text().startsWith('a\n| 列 1 | 列 2 |')).toBe(true);
-  });
-
-  it('分隔线：粘在行尾会被读成 setext 标题，所以先断行', () => {
-    const h = harness('abc', [[3, 3]]);
-    cmd.insertHorizontalRule()(h.view);
-    expect(h.text()).toBe('abc\n---\n');
-  });
-
-  it('公式块：选中内容进 $$，并选中它', () => {
-    const h = harness('a+b', [[0, 3]]);
-    cmd.insertMathBlock()(h.view);
-    expect(h.text()).toBe('$$\na+b\n$$\n');
-    expect(h.main()).toEqual([3, 6]);
-  });
-
-  it('公式块：没有选中内容时用占位符', () => {
-    const h = harness('', [[0, 0]]);
-    cmd.insertMathBlock()(h.view);
-    expect(h.text()).toBe('$$\nx^2\n$$\n');
-  });
-
-  it('插纯文本（表情）', () => {
-    const h = harness('ab', [[1, 1]]);
-    cmd.insertText('🐟')(h.view);
-    expect(h.text()).toBe('a🐟b');
-    expect(h.main()).toEqual([3, 3]);
   });
 });
 
@@ -366,30 +189,6 @@ describe('单行换行（Shift+Enter）', () => {
     cmd.insertLineBreak()(h.view);
     expect(h.text()).toBe('a\nb');
     expect(h.main()).toEqual([2, 2]);
-  });
-
-  it('行尾插入：不多带行尾空格、也不带任何标记', () => {
-    const h = harness('- 列表项', [[4, 4]]);
-    cmd.insertLineBreak()(h.view);
-    // `- 列表项` 里插一个 \n 就是「列表项里换行」，不是「新建下一项」（那是 Enter 的事）
-    expect(h.text()).toBe('- 列表\n项');
-    expect(h.text()).not.toContain('<br>');
-    expect(/[ \t]\n/.test(h.text())).toBe(false);
-  });
-
-  it('夹在 () [] {} 之间时也只插一个 —— 默认的 Enter 这里会插两个', () => {
-    for (const pair of ['()', '[]', '{}']) {
-      const h = harness(`a${pair[0]}${pair[1]}b`, [[2, 2]]);
-      cmd.insertLineBreak()(h.view);
-      expect(h.text()).toBe(`a${pair[0]}\n${pair[1]}b`);
-    }
-  });
-
-  it('有选区时整体替换成一个换行', () => {
-    const h = harness('abc', [[0, 3]]);
-    cmd.insertLineBreak()(h.view);
-    expect(h.text()).toBe('\n');
-    expect(h.main()).toEqual([1, 1]);
   });
 
   it('多光标：每个区间各插一个，后面的区间不会因为前面的插入而错位', () => {

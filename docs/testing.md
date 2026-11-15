@@ -11,6 +11,30 @@
 | vitest（unit / service / route） | `npx vitest run <文件>`、`npm run test:related -- <源码>` | 每进程一个 `tests/.tmp/test-<pid>-<rand>.db` | 进程内并行，进程间互不共享库 |
 | Playwright e2e | `npm run e2e`（读现有 `.next`）、`npm run e2e:ci -- <spec>` | 每轮一个 `tests/.tmp/e2e-<pid>-<rand>.db` | `workers: 1`，串行 |
 
+### 1.1 vitest 的五个入口
+
+全量按「日常门禁 / 精选快层 / 静态守卫 / 迁移验收 / 慢车道」拆开，配置见仓库根的
+`vitest*.config.ts`；不要把它们当同一件事反复全跑（详细取舍见 `docs/plan/test-suite-audit.md`）。
+
+| 命令 | 跑什么 | 何时跑 |
+|---|---|---|
+| `npm test` | 行为测试全量（不含下面四类） | 跨模块 / 鉴权 / 账目 / 测试基建等高风险改动，任务完成时 |
+| `npm run test:fast` | 精选风险面（钱、鉴权、可见性、迁移、限流、时间语义、净化、对外契约） | 每次改动后的日常门禁；目标 ≤90s |
+| `npm run guards` | 扫源码 / 文档 / 素材的静态守卫 | 改文档、schema、台账、素材、约定后 |
+| `npm run test:migrations` | 空库全量 SQL 迁移验收（300s 级） | 改 `prisma/schema.prisma` 或 `prisma/migrations/` 后 |
+| `npm run test:slow` | 启动生命周期 / 子进程（真起 node、`vite-node`） | CI 或发布前 |
+
+`npm test` 的默认排除清单在 `vitest.config.ts` 里，新增守卫 / 慢用例时同步加进对应入口；
+**只加排除、不加进任何入口**等于静默删测试。
+
+### 1.2 测试范围的两条硬口径（2026-11-13 站长确认）
+
+1. **玩具区（`/game` 下全部，含联机玩具）不写测试。** 现有用例已按
+   `docs/plan/test-suite-audit.md` 整档删除；游戏回归靠试玩与发布前检查。与安全相关的
+   共享机制（中间件协议闸、启动票据、CSRF）仍保留。
+2. **前端文案不写测试。** 按钮 / 提示 / 标题 / aria / 占位符等逐字文案不写用例；只验
+   状态码、错误码、数据落库与权限语义 —— 那些是契约，不是文案。
+
 vitest 的库名带 **pid + 随机串**（`tests/setup.ts`）：固定名会让同机并行的两个 vitest
 进程互相覆盖，症状是「单跑绿、并行红」。e2e 用 `e2e-` 前缀，与 `test-` 不重叠，两套
 runner 同时跑也不会互删临时库。

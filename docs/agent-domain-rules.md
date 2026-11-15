@@ -44,7 +44,7 @@
     页面连同 e2e 里点开的游戏都会），而这只在真跑起来时才看得见（单测用不到真服务器，全绿）。
   - **私网 / 拿不到 Host 时宁可回 403，也不拼跳转地址**：308 会被浏览器**永久**缓存，
     跳到上游地址（`127.0.0.1:3000`）之后只能清缓存，而服务端一切正常、不报错。
-  判据与理由的唯一说明处是 `src/lib/https-guard.ts` 文件头；展开见 `docs/architecture.md` §6.4。matcher 与
+  判据的唯一说明处是 `src/lib/https-guard.ts` 文件头，设计理由与实测见 `docs/source-design-notes.md` §4；展开见 `docs/architecture.md` §6.4。matcher 与
   路径清单**没有编译期关系**（matcher 必须是构建期字面量），`tests/unit/https-guard.test.ts`
   拿文件系统双向对账 —— 新增 `/api/game/<x>/launch` 而没进表，那个接口就在明文下照发票据。
 - **表情包语法的正则里一个 `\s*` 都不能有**，字符集必须是白名单 —— 宽一点就是
@@ -233,7 +233,7 @@ SQL 入口。`status` / `verify` 仍只读。
 - **展示缓存（含 K 线、以及行情流那一份）挂在 `globalThis` 上，别改回模块级变量** ——
   Next 把 `instrumentation.ts` 编进**独立的 compilation**，`market-price.ts` 于是在
   同一份产物里有两份模块实例（轮询器一份、两个页面与四个接口一份）。模块级变量 = 「轮询器刷
-  自己那份、页面上冻住另一份」，**不报任何错**。展开见 `src/lib/market-price.ts` 头部。
+  自己那份、页面上冻住另一份」，**不报任何错**。展开见 `docs/market-design-notes.md` §5 与 `src/lib/market-price.ts` 头部。
   K 线那一格的键是 `${symbol}:${interval}:${limit}`（见上面那条）。
 - **杠杆与方向有七条静默错**（杠杆 1–100 的**整数自由输入**、方向 `long`/`short`；
   `LEVERAGE_PRESETS` 只是页面的快捷档，**不是合法集**）：

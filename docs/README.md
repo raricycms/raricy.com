@@ -84,6 +84,10 @@ GitHub 上仍是原来的反引号，两边不冲突。
 | `instance-restore.md` | 从 `instance.zip` 还原数据目录与数据库（灾备） |
 | `legacy-constraints.md` | 历史遗留约束：哪些不能删、为什么（含「不是框架痕迹」的辨析）；注释清理口径与已解决问题记录 |
 | `format-converter-implementation.md` | 格式转换器首轮实施记录：原始方案、八个能力区的交付与历史验证（**功能已交付，全部验收条件尚未满足**；剩余项在 `plan/`） |
+| `source-header-style.md` | 源码头注释约定：头里只留职责 / 唯一出口 / 改动注意，长背景抽到设计说明；含抽取判断与 `npm run lib:headers` |
+| `source-design-notes.md` | 从 `src/lib` 文件头抽出的设计背景、踩坑与取舍（当前规则仍以文件头为准） |
+| `market-design-notes.md` | 从 `market-*.ts` 文件头抽出的行情源、结算、强平与统计的设计背景 |
+| `src-lib-index.md` | `src/lib` 根目录 TS 文件索引：行数、职责与导出（`npm run lib:index` 生成，勿手改） |
 
 ## plan/ —— 计划、维护待办与相关实施记录
 
@@ -104,6 +108,7 @@ GitHub 上仍是原来的反引号，两边不冲突。
 | `plan/editor-plan.md` | 编辑器换代方案：M0–M2 与导出已实施；M3 就地装饰、M4 表格辅助 / 大纲未做；剩余验收见 §7.2 |
 | `plan/format-converter-roadmap.md` | 格式转换器长期规划：八个能力区已有首轮功能；剩余验收、功能缺口与长期候选见 §16；路线图不作为支持清单 |
 | `plan/maintenance-plan.md` | 样式容器 / 类名整理、翻译入口取舍与站长可见性完整轨迹视图 |
+| `plan/test-suite-audit.md` | 测试套件价值审计与精简：已实施（2026-11-13），门禁拆成五入口，全量 193s / 4,181 用例全绿 |
 | `plan/page-transition-plan.md` | 切页动画 P0–P2 方案：全站淡入、页面内过渡、路由交叉溶解实验；含风险、验收与单文件 P0 demo |
 | `plan/reactive-md-unification-plan.md` | ReactiveMD 统一渲染与四入口编辑器的实施记录：PR #20、Markdown 兼容、博客与云剪贴板全量切换；目标已达成，持久快照要求已由简化方案撤销 |
 | `plan/reactive-md-migration-plan.md` | ReactiveMD 早期接入（0.5.3–0.6.1）与实施记录：数据层、引用组件、SSR、编辑器与回滚；现行规则见简化方案，剩余事项见 §12 |

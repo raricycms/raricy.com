@@ -32,10 +32,16 @@
 
 // ── 工具条 ──────────────────────────────────────────────────────────────────
 .md-toolbar {
-  // 浮层必须整体盖在 .md-editor__body 之上：body 是 position:relative，
+  // 浮层必须整体盖在 .md-editor__body 之上：body 是 position:relative（z-index: 0），
   // 不抬工具条的话它会盖住 Insert / Components 菜单（DOM 在、却点不到）。
+  //
+  // ⚠️ 这是**编辑器内部**的层级，高过 body 的 0 就够，**别再写 1000 这种页面级数字**：
+  // 那会跑进整页的层叠里，把比编辑器更早出现的表单浮层压住 —— 博客发布页的「栏目」
+  // 下拉（.expand-select.is-open，见 components/_expand-select.scss）展开后整块落在
+  // 工具条底下，就是这么来的。编辑器里再高的内部浮层请靠 `isolation: isolate` 收在
+  // 这一层里，别让它参与页面级比较。
   position: relative;
-  z-index: 1000;
+  z-index: 1;
   isolation: isolate;
   display: flex;
   flex-wrap: wrap;

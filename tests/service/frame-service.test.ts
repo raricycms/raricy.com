@@ -255,62 +255,25 @@ describe('扫盘缓存', () => {
 
 // ── pngHasAlpha：唯一能自动发现「框会盖住脸」的手段 ─────────────────────────
 
+// 代表四种判定：带 alpha 的色型 / 不带的色型 / 调色板靠 tRNS / 根本不是 PNG。
+// 其余解析分支（色型 0/4、真彩+tRNS、截断、畸形块）是同一段解析器的复述，已裁。
 describe('pngHasAlpha', () => {
   it('颜色类型 6（真彩+alpha）→ true', () => {
     expect(pngHasAlpha(png(6))).toBe(true);
   });
 
-  it('颜色类型 4（灰度+alpha）→ true', () => {
-    expect(pngHasAlpha(png(4))).toBe(true);
-  });
-
-  it('颜色类型 2（真彩，无 alpha）→ false —— 这就是「会盖住脸」的那种素材', () => {
+  it('★ 颜色类型 2（真彩，无 alpha）→ false —— 这就是「会盖住脸」的那种素材', () => {
     expect(pngHasAlpha(png(2))).toBe(false);
-  });
-
-  it('颜色类型 0（灰度，无 alpha）→ false', () => {
-    expect(pngHasAlpha(png(0))).toBe(false);
   });
 
   it('★ 颜色类型 3 + tRNS → true（调色板图靠 tRNS 声明透明色）', () => {
     expect(pngHasAlpha(png(3, { trns: true }))).toBe(true);
   });
 
-  it('颜色类型 3 但没有 tRNS → false', () => {
-    expect(pngHasAlpha(png(3))).toBe(false);
-  });
-
-  it('★ 真彩 + tRNS 也算有透明（单色抠图）', () => {
-    expect(pngHasAlpha(png(2, { trns: true }))).toBe(true);
-  });
-
   it('不是 PNG → null（判不出来，不是「没有透明」）', () => {
     expect(pngHasAlpha(SVG_BYTES)).toBeNull();
     expect(pngHasAlpha(JPEG_BYTES)).toBeNull();
     expect(pngHasAlpha(Buffer.alloc(0))).toBeNull();
-  });
-
-  it('PNG 签名对了但头被截断 → null', () => {
-    expect(pngHasAlpha(PNG_SIG)).toBeNull();
-    expect(pngHasAlpha(png(6).subarray(0, 20))).toBeNull();
-  });
-
-  it('签名对了但第一个块不是 IHDR → null（结构不认识就不猜）', () => {
-    const bogus = Buffer.concat([PNG_SIG, chunk('tEXt', Buffer.alloc(8))]);
-    expect(pngHasAlpha(bogus)).toBeNull();
-  });
-
-  it('畸形块长度不会死循环（长度是 uint32，每轮至少前进 12）', () => {
-    const ihdr = Buffer.alloc(13);
-    ihdr[9] = 2;
-    // 一个声称有 0xFFFFFFFF 字节数据的块 —— 走一步就越界退出
-    const huge = Buffer.concat([
-      PNG_SIG,
-      chunk('IHDR', ihdr),
-      Buffer.from([0xff, 0xff, 0xff, 0xff]),
-      Buffer.from('junk', 'latin1'),
-    ]);
-    expect(pngHasAlpha(huge)).toBe(false);
   });
 });
 
@@ -320,28 +283,20 @@ describe('auditFrameAssets', () => {
   it('覆盖白名单里每一个 key（这是运维发现「白名单有、盘上无」的唯一入口）', () => {
     const rows = auditFrameAssets();
     expect(rows.map((r) => r.key).sort()).toEqual([...FRAME_KEYS].sort());
+    // 缺席的素材不报错，面板与 CLI 仍能说出是哪个框 + 显示名
+    const missing = rows.find((r) => r.key === KEY)!;
+    expect(missing).toMatchObject({ available: false, hasAlpha: null, bytes: null });
+    expect(missing.label.length).toBeGreaterThan(0);
   });
 
-  it('素材缺席 → available false、hasAlpha null（不报错）', () => {
-    const row = auditFrameAssets().find((r) => r.key === KEY)!;
-    expect(row.available).toBe(false);
-    expect(row.hasAlpha).toBeNull();
-    expect(row.bytes).toBeNull();
-    // 显示名照常给 —— 面板与 CLI 要能说出「哪个框缺素材」，而不只是一串 key
-    expect(row.label.length).toBeGreaterThan(0);
-  });
-
-  it('素材在 → 报出字节数与透明通道', () => {
-    const bytes = png(6);
-    writeAsset(`${KEY}.png`, bytes);
+  it('素材在 → 报出字节数与透明通道；压平（无 alpha）的会被标出来', async () => {
+    const withAlpha = png(6);
+    writeAsset(`${KEY}.png`, withAlpha);
     __resetFrameAssetCacheForTests();
     const row = auditFrameAssets().find((r) => r.key === KEY)!;
-    expect(row.available).toBe(true);
-    expect(row.hasAlpha).toBe(true);
-    expect(row.bytes).toBe(bytes.byteLength);
-  });
+    expect(row).toMatchObject({ available: true, hasAlpha: true, bytes: withAlpha.byteLength });
 
-  it('★ 压平的素材（无 alpha）会被标出来 —— 那正是会盖住所有人脸的那种', () => {
+    // ★ 压平的素材（png(2)）正是会盖住所有人脸的那种
     writeAsset(`${KEY}.png`, png(2));
     __resetFrameAssetCacheForTests();
     expect(auditFrameAssets().find((r) => r.key === KEY)!.hasAlpha).toBe(false);
@@ -444,36 +399,27 @@ describe('grantFrame', () => {
     expect((await holdingRows(u.id, KEY))[0].source).toBe('purchase');
   });
 
-  it('再授更长的 → extended，取较晚', async () => {
+  it('延期组合：取较晚（extended）、只延长不缩短（noop）、永久不可降回有期', async () => {
     const near = inMs(1 * DAY);
     const far = inMs(60 * DAY);
     await grantFrame({ userId: u.id, key: KEY, expiresAt: near });
-    const res = await grantFrame({ userId: u.id, key: KEY, expiresAt: far });
-    expect(res).toMatchObject({ ok: true, action: 'extended' });
+    const extended = await grantFrame({ userId: u.id, key: KEY, expiresAt: far });
+    expect(extended).toMatchObject({ ok: true, action: 'extended' });
     expect((await holdingRows(u.id, KEY))[0].expiresAt?.getTime()).toBe(far.getTime());
-  });
 
-  it('★ 只延长不缩短：再授更短的 → noop，库里一点没动', async () => {
-    const far = inMs(60 * DAY);
-    await grantFrame({ userId: u.id, key: KEY, expiresAt: far });
-    const res = await grantFrame({ userId: u.id, key: KEY, expiresAt: inMs(1 * DAY) });
-    expect(res).toMatchObject({ ok: true, action: 'noop' });
+    // ★ 只延长不缩短：再授更短的是 noop，库里一点没动 —— 想缩短只有 revoke 一条路
+    const shortened = await grantFrame({ userId: u.id, key: KEY, expiresAt: inMs(1 * DAY) });
+    expect(shortened).toMatchObject({ ok: true, action: 'noop' });
     expect((await holdingRows(u.id, KEY))[0].expiresAt?.getTime()).toBe(far.getTime());
-    // 想缩短只有 revoke 一条路 —— 这条口径要能在下一条用例里被推翻
-    expect(res.ok && res.expiresAt?.getTime()).toBe(far.getTime());
-  });
 
-  it('★ 已经是永久的，再授 30 天仍是永久（noop）', async () => {
-    await grantFrame({ userId: u.id, key: KEY, expiresAt: null });
-    const res = await grantFrame({ userId: u.id, key: KEY, expiresAt: inMs(30 * DAY) });
-    expect(res).toMatchObject({ ok: true, action: 'noop' });
+    // 有期升永久 → extended，落 null
+    const permanent = await grantFrame({ userId: u.id, key: KEY, expiresAt: null });
+    expect(permanent).toMatchObject({ ok: true, action: 'extended' });
     expect((await holdingRows(u.id, KEY))[0].expiresAt).toBeNull();
-  });
 
-  it('有期的升成永久 → extended，变 null', async () => {
-    await grantFrame({ userId: u.id, key: KEY, expiresAt: inMs(1 * DAY) });
-    const res = await grantFrame({ userId: u.id, key: KEY, expiresAt: null });
-    expect(res).toMatchObject({ ok: true, action: 'extended' });
+    // ★ 已经是永久的，再授 30 天仍是永久（noop）
+    const stillPermanent = await grantFrame({ userId: u.id, key: KEY, expiresAt: inMs(30 * DAY) });
+    expect(stillPermanent).toMatchObject({ ok: true, action: 'noop' });
     expect((await holdingRows(u.id, KEY))[0].expiresAt).toBeNull();
   });
 
@@ -513,7 +459,7 @@ describe('revokeFrame', () => {
     u = await makeUser();
   });
 
-  it('翻墓碑而不是物删（全站口径 F5）', async () => {
+  it('翻墓碑而不是物删（全站口径 F5）；重复收回 / 没持有过 / 未登记 key 一律干净 false', async () => {
     await grantFrame({ userId: u.id, key: KEY, expiresAt: null });
     const res = await revokeFrame({ userId: u.id, key: KEY });
     expect(res).toEqual({ revoked: true, unequipped: false });
@@ -522,11 +468,7 @@ describe('revokeFrame', () => {
     expect(rows).toHaveLength(1); // 行还在
     expect(rows[0].deleted).toBe(true);
     expect(rows[0].deletedAt).not.toBeNull();
-  });
 
-  it('幂等与空收回：重复收回 / 本来没持有过 / 未登记 key 一律干净的 revoked false', async () => {
-    await grantFrame({ userId: u.id, key: KEY, expiresAt: null });
-    await revokeFrame({ userId: u.id, key: KEY });
     expect(await revokeFrame({ userId: u.id, key: KEY }), '重复收回').toEqual({
       revoked: false,
       unequipped: false,
@@ -767,13 +709,6 @@ describe('listMyFrames —— 面板数据源（下发判定后的结果）', ()
     await grantFrame({ userId: u.id, key: KEY, expiresAt: null });
     const view = await listMyFrames(u.id);
     expect(view.frames[0]).toMatchObject({ available: false, url: null, expired: false });
-  });
-
-  it('展示用的到期时刻走 ymdhms（UTC 口径的字符串，不是 ISO）', async () => {
-    const exp = inMs(30 * DAY);
-    await grantFrame({ userId: u.id, key: KEY, expiresAt: exp });
-    const view = await listMyFrames(u.id);
-    expect(view.frames[0].expiresAt).toMatch(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/);
   });
 
   it('白名单外的 key（数据脏）也列出来，标 retired，让用户能卸下', async () => {

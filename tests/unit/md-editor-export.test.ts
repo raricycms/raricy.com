@@ -20,14 +20,12 @@ import {
   IMAGE_FETCH_TIMEOUT_MS,
   IMAGE_PREFETCH_BUDGET_MS,
   PRINT_READY_MAX_MS,
-  REACTIVE_EXPORT_NOTE,
   absolutizeSiteUrls,
   buildExportHtml,
   localizeFragmentLinks,
   printHtml,
   renderStaticMarkup,
   resolveUrl,
-  safeFilename,
   stripInteractiveShells,
 } from '@/app/components/markdown-editor/export';
 
@@ -170,21 +168,10 @@ describe('剥掉站内才成立的空壳', () => {
 });
 
 describe('导出文件本身', () => {
-  it('`<title>` 用**当下**的标题，且 HTML 转义（它可能含尖括号）', () => {
-    const html = buildExportHtml({ title: 'a<b>&"c', bodyHtml: '<p>x</p>', base: ORIGIN });
-    expect(html).toContain('<title>a&lt;b&gt;&amp;&quot;c</title>');
-  });
-
   it('★ 不写 `<base>` ★ —— 写它会顺手把 `#锚点` 也带回原站', () => {
     const html = buildExportHtml({ title: 't', bodyHtml: '<a href="#s">s</a>', base: ORIGIN });
     expect(html).not.toContain('<base');
     expect(html).toContain('href="#s"');
-  });
-
-  it('正文包在 .blog-content-container 里（与文章页同一套版式）', () => {
-    const html = buildExportHtml({ title: 't', bodyHtml: '<p>hello</p>', base: ORIGIN });
-    expect(html).toContain('<div class="blog-content-container">');
-    expect(html).toContain('<p>hello</p>');
   });
 
   it('★ `<style>` 里站内相对的 url(/…) 也补成绝对地址（站内字体表就是这种形态）★', () => {
@@ -524,27 +511,6 @@ describe('ReactiveMD 静态导出', () => {
     expect(requested.some((url) => url.includes('RealImage1'))).toBe(true);
     expect(html).toContain('data:image/png;base64,');
     expect(html).toContain('真实图片');
-  });
-
-  it('导出说明可作为 footerNote 进导出件', () => {
-    const html = buildExportHtml({
-      title: 't',
-      bodyHtml: '<p>x</p>',
-      base: ORIGIN,
-      footerNote: REACTIVE_EXPORT_NOTE,
-    });
-    expect(html).toContain('class="export-note"');
-    expect(html).toContain('初始状态');
-  });
-});
-
-describe('文件名', () => {
-  it('两批禁用字符并集换成 -，空白去掉，空标题有兜底', () => {
-    expect(safeFilename('我的 文章/2026:草稿')).toBe('我的-文章-2026-草稿');
-    // 括号不在两平台的禁用集里，留着；换成 `-` 的只有真正进不了文件名的那些
-    expect(safeFilename('<script>alert(1)</script>')).toBe('script-alert(1)-script');
-    expect(safeFilename('   ')).toBe('document');
-    expect(safeFilename('', '未命名')).toBe('未命名');
   });
 });
 

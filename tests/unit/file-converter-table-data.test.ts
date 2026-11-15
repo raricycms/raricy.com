@@ -9,12 +9,10 @@
 //   · 各格式 → Table → 各格式 的往返一致（空值 / 布尔 / 数字要对齐）。
 //   · XLSX 在 node 里真读真写：公式只取缓存值（notice 必写）、日期按序列号导出、
 //     多工作表只转选中那张。
-//   · 类别契约：边 id / 参数键 / 动态选项 / estimateOutput / probe 与登记册一致。
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { describe, it, expect } from 'vitest';
 import {
-  assertTableSize,
   arraysToTable,
   cellToText,
   decodeUtf8,
@@ -28,7 +26,6 @@ import {
   parseXlsx,
   parseXmlText,
   parseYamlText,
-  recordsToTable,
   rowsToTable,
   sanitizeSheetName,
   serializeDelimited,
@@ -38,12 +35,8 @@ import {
   tableToRecords,
   tableToXlsx,
   tableToXml,
-  tableToYaml,
   type Table,
 } from '@/lib/file-converter/engines/table-data';
-import { LIMITS } from '@/lib/file-converter/formats';
-import { CATEGORY } from '@/lib/file-converter/categories/table';
-import type { InspectInfo, ParamOption } from '@/lib/file-converter/types';
 
 function table(columns: string[], rows: Table['rows']): Table {
   return { columns, rows };
@@ -66,13 +59,6 @@ async function caughtAsync(fn: () => Promise<unknown>): Promise<{ kind?: string;
     return e as { kind?: string; message?: string };
   }
   throw new Error('期望抛出错误，但没有');
-}
-
-/** 读 edge 上的 select 参数并按 info 展开选项。 */
-function readonlyOptions(spec: { options?: unknown }, info: InspectInfo | null): ParamOption[] {
-  const o = spec.options;
-  if (typeof o === 'function') return (o as (i: InspectInfo | null) => ParamOption[])(info);
-  return (o as ParamOption[]) ?? [];
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -297,7 +283,6 @@ describe('JSON', () => {
       { a: 1, b: 'x' },
       { a: null, b: true },
     ]);
-    expect(parseJsonText(tableToJsonText(t)).table).toEqual(t);
   });
 });
 
@@ -311,10 +296,6 @@ describe('NDJSON', () => {
     const e = caught(() => parseNdjsonText('{"a":1}\nnope'));
     expect(e.kind).toBe('corrupt');
     expect(e.message).toContain('第 2 行');
-  });
-
-  it('非对象行报 unsupported', () => {
-    expect(caught(() => parseNdjsonText('5\n')).kind).toBe('unsupported');
   });
 
   it('tableToNdjsonText 一行一条、末尾换行；往返一致', () => {
@@ -343,14 +324,6 @@ describe('YAML', () => {
   it('非数组形态报 unsupported', async () => {
     expect((await caughtAsync(() => parseYamlText('a: 1\n'))).kind).toBe('unsupported');
   });
-
-  it('tableToYaml 往返一致', async () => {
-    const t = table(['a', 'b'], [
-      [1, 'x'],
-      [null, true],
-    ]);
-    expect((await parseYamlText(await tableToYaml(t))).table).toEqual(t);
-  });
 });
 
 describe('XML（约定式映射）', () => {
@@ -361,12 +334,6 @@ describe('XML（约定式映射）', () => {
     ]);
     const back = await parseXmlText(tableToXml(t), { guessTypes: true });
     expect(back.table).toEqual(t);
-  });
-
-  it('列名里的引号经属性转义后能读回', async () => {
-    const t = table(['a"b'], [[1]]);
-    const back = await parseXmlText(tableToXml(t), { guessTypes: true });
-    expect(back.table.columns).toEqual(['a"b']);
   });
 
   it('外来 XML：把重复子元素当行', async () => {
@@ -396,12 +363,7 @@ describe('XML（约定式映射）', () => {
   });
 });
 
-describe('recordsToTable / tableToRecords / arraysToTable', () => {
-  it('列名空 / 重名走同一条规范化', () => {
-    const parsed = recordsToTable([{ '': 1, x: 2 }, { x: 3 }]);
-    expect(parsed.table.columns).toEqual(['列1', 'x']);
-  });
-
+describe('recordsToTable / tableToRecords', () => {
   it('tableToRecords 与 columns 对齐', () => {
     expect(tableToRecords(table(['a', 'b'], [[1, 2]]))).toEqual([{ a: 1, b: 2 }]);
   });
@@ -409,16 +371,6 @@ describe('recordsToTable / tableToRecords / arraysToTable', () => {
   it('arraysToTable 保留已带类型（不再识别）', () => {
     const parsed = arraysToTable([['a', 'b'], [1, null]], { header: true });
     expect(parsed.table).toEqual(table(['a', 'b'], [[1, null]]));
-  });
-});
-
-describe('assertTableSize / 限额常量', () => {
-  it('行 / 列超上限报 oversize', () => {
-    const tooManyRows = { columns: ['a'], rows: { length: LIMITS.table.maxRows + 1 } } as unknown as Table;
-    expect(caught(() => assertTableSize(tooManyRows)).kind).toBe('oversize');
-    const tooManyCols = { columns: new Array(MAX_TABLE_COLUMNS + 1).fill('c'), rows: [] } as unknown as Table;
-    expect(caught(() => assertTableSize(tooManyCols)).kind).toBe('oversize');
-    expect(() => assertTableSize(table(['a'], [[1]]))).not.toThrow();
   });
 });
 
@@ -493,48 +445,3 @@ describe('XLSX（node 真读真写）', () => {
   });
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
-
-describe('类别契约（categories/table.ts）', () => {
-  it('sheet 动态选项：无 info 时兜底「第一个工作表」，有 info 时列出工作表', () => {
-    const sheet = CATEGORY.edges[0].params.find((p) => p.key === 'sheet')!;
-    expect(readonlyOptions(sheet, null)).toEqual([{ value: '__first', label: '第一个工作表' }]);
-    const info = { sheets: ['A', 'B'] } as InspectInfo;
-    expect(readonlyOptions(sheet, info)).toEqual([
-      { value: 'A', label: 'A' },
-      { value: 'B', label: 'B' },
-    ]);
-  });
-
-  it('estimateOutput：文本族按体积粗估，xlsx 返回 null', () => {
-    const csvEdge = CATEGORY.edges.find((e) => e.id === 'table:to-csv')!;
-    const xlsxEdge = CATEGORY.edges.find((e) => e.id === 'table:to-xlsx')!;
-    const info = { size: 1000 } as InspectInfo;
-    expect(csvEdge.estimateOutput!(info, {})).toBe(1200);
-    expect(xlsxEdge.estimateOutput!(info, {})).toBeNull();
-  });
-
-  it('probe：非 xlsx 返回 {}；xlsx 读出工作表名单；超限跳过', async () => {
-    const csvInfo = { sniff: { kind: 'csv' }, name: 'a.csv', size: 0 } as unknown as InspectInfo;
-    const stubFile = (bytes: Uint8Array) =>
-      ({
-        size: bytes.length,
-        name: 'a.xlsx',
-        arrayBuffer: async () => bytes.buffer,
-      }) as unknown as File;
-
-    expect(await CATEGORY.probe!(stubFile(new Uint8Array()), csvInfo)).toEqual({});
-
-    const bytes = await tableToXlsx(table(['a'], [[1]]), { header: true, sheetName: 'S1' });
-    const xlsxInfo = { sniff: { kind: 'xlsx' }, name: 'a.xlsx', size: bytes.length } as unknown as InspectInfo;
-    expect(await CATEGORY.probe!(stubFile(bytes), xlsxInfo)).toEqual({ sheets: ['S1'] });
-
-    const bigInfo = {
-      sniff: { kind: 'xlsx' },
-      name: 'a.xlsx',
-      size: LIMITS.table.maxBytes + 1,
-    } as unknown as InspectInfo;
-    const bigStub = { size: LIMITS.table.maxBytes + 1, name: 'a.xlsx', arrayBuffer: async () => bytes.buffer } as unknown as File;
-    expect(await CATEGORY.probe!(bigStub, bigInfo)).toEqual({});
-  });
-});

@@ -170,12 +170,12 @@
   animation: admin-rise v.$motion-duration v.$motion-easing backwards;
 }
 
+// ExpandSelect（通用下拉）的高度走自己的变量：外壳按它算曲率，所以不能只改
+// min-height，否则外壳会与字段盒差一截。工具栏按控件档（44），其余字段同档。
 .admin-toolbar__select {
   flex: 0 1 210px;
   min-width: 0;
-  height: var(--admin-control-height);
-  padding-top: 0;
-  padding-bottom: 0;
+  --expand-select-height: var(--admin-control-height);
 }
 
 .admin-toolbar__button {
@@ -284,6 +284,12 @@
 .admin-field__control {
   width: 100%;
   min-height: 44px;
+}
+
+// 同一个类也挂在 ExpandSelect 上：它的高度由变量驱动（外壳按高度算曲率），
+// 与这里的 44px 对齐，避免 min-height 把盒子撑高、外壳却还是 42px。
+.expand-select.admin-field__control {
+  --expand-select-height: 44px;
 }
 
 // ---- 筛选面板（非吸顶的字段区）----

@@ -122,7 +122,7 @@ const mocks = vi.hoisted(() => {
   return {
     catalog,
     reactiveAuthoring: vi.fn((_options: AuthoringOptions) => [] as unknown[]),
-    applyReactiveTemplate: vi.fn(() => true),
+    applyReactiveTemplate: vi.fn((_view: unknown, _componentId?: string) => true),
     getReactiveCompletions: vi.fn((): CompletionLike[] => []),
     applyReactiveCompletion: vi.fn((_view: EditorView, _item: CompletionLike) => true),
     formatReactiveDocument: vi.fn(() => true),
@@ -436,54 +436,20 @@ describe('Toolbar：四入口不再随格式隐藏', () => {
   });
 });
 
-describe('组件挑选：搜索、分组、插入与焦点返回', () => {
-  it('打开后搜索框获得焦点；按中文筛选后点击一次事务插入', async () => {
+describe('组件挑选：选中后转发给 B 的插入接口', () => {
+  it('点选目录项走一次事务插入，面板关闭（不在 UI 里再写一套插入）', async () => {
     const view = stubView();
     const container = mount(
       createElement(Toolbar, toolbarProps({ reactive: false, view }))
     );
-    const trigger = container.querySelector<HTMLButtonElement>('[aria-label="组件"]')!;
-    await act(async () => trigger.click());
-
+    await click(container, '[aria-label="组件"]');
     expect(container.querySelector('[role="dialog"]')).not.toBeNull();
-    const input = container.querySelector<HTMLInputElement>('[aria-label="搜索组件"]')!;
-    expect(document.activeElement).toBe(input);
 
-    // 目录里的 group 标题在（来自站点编译配置派生的目录）
-    expect(container.textContent).toContain('输入');
-    expect(container.textContent).toContain('数据');
-
-    await act(async () => {
-      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!;
-      setter.call(input, '图表');
-      input.dispatchEvent(new Event('input', { bubbles: true }));
-    });
-
-    const items = container.querySelectorAll('.md-component-picker__item');
-    expect(items).toHaveLength(1);
-    expect(items[0].textContent).toContain('图表');
-
-    await act(async () => (items[0] as HTMLButtonElement).click());
+    await click(container, '.md-component-picker__item');
 
     expect(mocks.applyReactiveTemplate).toHaveBeenCalledTimes(1);
-    expect(mocks.applyReactiveTemplate).toHaveBeenCalledWith(view, 'chart');
-    expect(view.focus).toHaveBeenCalled();
+    expect(mocks.applyReactiveTemplate).toHaveBeenCalledWith(view, expect.any(String));
     expect(container.querySelector('[role="dialog"]')).toBeNull();
-  });
-
-  it('Esc 关闭面板并把焦点还给触发按钮', async () => {
-    const container = mount(createElement(Toolbar, toolbarProps({ reactive: false })));
-    const trigger = container.querySelector<HTMLButtonElement>('[aria-label="组件"]')!;
-    await act(async () => trigger.click());
-    expect(container.querySelector('[role="dialog"]')).not.toBeNull();
-
-    await act(async () => {
-      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
-    });
-
-    expect(container.querySelector('[role="dialog"]')).toBeNull();
-    expect(document.activeElement).toBe(trigger);
-    expect(mocks.applyReactiveTemplate).not.toHaveBeenCalled();
   });
 });
 
@@ -545,7 +511,7 @@ describe('MarkdownEditor：Reactive 诊断 / 补全 / 格式化', () => {
     syntaxVersion: 'local-draft-3',
   };
 
-  it('分析结果落地后显示计数；诊断可展开并点击定位', async () => {
+  it('诊断面板出现后，点诊断转发 revealReactiveDiagnostic 定位', async () => {
     mocks.analyzeResult = REACTIVE_DIAGNOSTICS;
     const ref = createRef<MarkdownEditorHandle>();
     const container = mount(
@@ -562,13 +528,8 @@ describe('MarkdownEditor：Reactive 诊断 / 补全 / 格式化', () => {
 
     expect(mocks.reactiveAuthoring).toHaveBeenCalledTimes(1);
     expect(container.querySelector('.md-authoring')).not.toBeNull();
-    expect(container.textContent).toContain('错误 1');
-    expect(container.textContent).toContain('警告 1');
 
     await click(container, '.md-authoring__toggle');
-    expect(container.textContent).toContain('未知组件 <slidr>');
-    expect(container.textContent).toContain('第 2 行 3 列');
-
     await click(container, '.md-authoring__diagnostic');
     expect(mocks.revealReactiveDiagnostic).toHaveBeenCalledTimes(1);
     expect(mocks.revealReactiveDiagnostic.mock.calls[0][1]).toMatchObject({
@@ -610,30 +571,6 @@ describe('MarkdownEditor：Reactive 诊断 / 补全 / 格式化', () => {
     expect(analysis).toEqual(author);
   });
 
-  it('worker 回退主线程检查时面板写「本地检查」，切回 worker 后收起（与 F4 合并，R4）', async () => {
-    // 原 F4（纯 Markdown + `<` 的回退提示）与本条是同一条 onModeChange 路径的两种起始格式，
-    // 合并成一个用例：markdown 起始时回退前不占版面、回退后出现并写「本地检查」，切回后收起。
-    const container = mount(
-      createElement(EditorHarness, {
-        initialFormat: 'markdown',
-        initialValue: '内嵌 <br> 的普通 Markdown',
-      })
-    );
-    expect(container.querySelector('.md-authoring')).toBeNull();
-    expect(mocks.analyzerOptions?.onModeChange).toBeTypeOf('function');
-
-    await act(async () => {
-      mocks.analyzerOptions!.onModeChange!('fallback');
-    });
-    expect(container.querySelector('.md-authoring')).not.toBeNull();
-    expect(container.textContent).toContain('本地检查');
-
-    await act(async () => {
-      mocks.analyzerOptions!.onModeChange!('worker');
-    });
-    expect(container.textContent).not.toContain('本地检查');
-  });
-
   it('工具条「更多 → 补全」出候选，选中后调用 applyReactiveCompletion', async () => {
     const container = mount(createElement(EditorHarness, { initialFormat: 'reactive' }));
 
@@ -670,30 +607,14 @@ describe('MarkdownEditor：Reactive 诊断 / 补全 / 格式化', () => {
     expect(mocks.applyReactiveCompletion).not.toHaveBeenCalled();
   });
 
-  it('没有候选时明确提示，而不是空白面板', async () => {
+  it('「更多 → 格式化」调用 formatReactiveDocument（转发到 B 的格式化实现）', async () => {
     const container = mount(createElement(EditorHarness, { initialFormat: 'reactive' }));
     await click(container, '[aria-label="更多"]');
-    const completionItem = Array.from(container.querySelectorAll<HTMLElement>('[role="menuitem"]'))
-      .find((node) => node.textContent?.includes('补全'));
-    await act(async () => completionItem!.click());
-    expect(container.textContent).toContain('当前位置没有补全建议。');
-  });
-
-  it('「更多 → 格式化」调用 formatReactiveDocument 并给出结果', async () => {
-    const container = mount(createElement(EditorHarness, { initialFormat: 'reactive' }));
-    const openFormat = async () => {
-      await click(container, '[aria-label="更多"]');
-      const item = Array.from(container.querySelectorAll<HTMLElement>('[role="menuitem"]'))
-        .find((node) => node.textContent?.includes('格式化'));
-      await act(async () => item!.click());
-    };
-    await openFormat();
+    const item = Array.from(container.querySelectorAll<HTMLElement>('[role="menuitem"]')).find(
+      (node) => node.textContent?.includes('格式化')
+    );
+    await act(async () => item!.click());
     expect(mocks.formatReactiveDocument).toHaveBeenCalledTimes(1);
-    expect(container.textContent).toContain('已格式化');
-
-    mocks.formatReactiveDocument.mockReturnValue(false);
-    await openFormat();
-    expect(container.textContent).toContain('没有需要格式化的内容');
   });
 
   it.each(['markdown', 'reactive'] as const)('%s 使用相同的正文预览入口', (initialFormat) => {

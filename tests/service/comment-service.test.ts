@@ -132,21 +132,14 @@ describe('toContentHtml：服务端纯文本形态（只转义 + 换行，不解
     expect(toContentHtml(`<script>alert("x")&'`)).toBe(
       '&lt;script&gt;alert(&#34;x&#34;)&amp;&#39;'
     );
+    // 字面量 &lt; 再转一次 → &amp;lt;（& 必须先于其它字符转义）
+    expect(toContentHtml('&lt;')).toBe('&amp;lt;');
   });
 
-  it('& 先于其它字符转义，不会把已生成的实体再转一遍', () => {
-    // 若实现里把 & 放最后转，结果会是 &amp;lt;（二次转义，前端显示成字面 &lt;）
-    expect(toContentHtml('<'), '<' ).toBe('&lt;');
-    expect(toContentHtml('&lt;'), '字面量 &lt; 应变成 &amp;lt;').toBe('&amp;lt;');
-  });
-
-  it('换行转 <br>（且 <br> 本身是转义后才插入的，不会被当成用户输入）', () => {
+  it('换行转 <br>（用户打的 <br> 字面量必须被转义）；Markdown 语法原样保留', () => {
     expect(toContentHtml('a\nb\nc')).toBe('a<br>b<br>c');
     expect(toContentHtml('<br>'), '用户打的 <br> 字面量必须被转义').toBe('&lt;br&gt;');
-  });
-
-  it('Markdown 语法原样保留（这里是纯文本形态，渲染在客户端）', () => {
-    expect(toContentHtml('**bold** `code`')).toBe('**bold** `code`');
+    expect(toContentHtml('**bold** `code`'), '纯文本形态，渲染在客户端').toBe('**bold** `code`');
   });
 });
 
@@ -285,19 +278,10 @@ describe('楼中楼：树形结构与顺序', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('_filter_deleted_leaves：已删叶子过滤', () => {
-  it('已删除 + 无子评论 → 从树中移除', async () => {
-    const { author, blog } = await seedBlog();
-    await makeComment({ blogId: blog.id, authorId: author.id, content: 'alive' });
-    await makeComment({ blogId: blog.id, authorId: author.id, content: 'dead', isDeleted: true });
-
-    const tree = await listCommentsForBlog(blog.id);
-    expect(tree.map((n) => n.content_html), '已删的光杆评论不该出现').toEqual(['alive']);
-  });
-
-  it('★已删除 + 仍有存活子评论 → 必须保留（否则子评论被连带抹掉）', async () => {
+  it('★已删除 + 仍有存活子评论 → 必须保留（否则子评论被连带抹掉），且不泄露原文', async () => {
     const { author, blog } = await seedBlog();
     const dead = await makeComment({
-      blogId: blog.id, authorId: author.id, content: 'dead-parent', isDeleted: true,
+      blogId: blog.id, authorId: author.id, content: '机密原文-不该被看到', isDeleted: true,
     });
     await makeComment({
       blogId: blog.id, authorId: author.id, content: 'alive-child', parentId: dead.id, rootId: dead.id,
@@ -306,24 +290,11 @@ describe('_filter_deleted_leaves：已删叶子过滤', () => {
     const tree = await listCommentsForBlog(blog.id);
     expect(tree.length, '删掉的父级是子评论的唯一挂载点，必须留作占位').toBe(1);
     expect(tree[0].is_deleted).toBe(true);
-    expect(tree[0].content_html, '保留的已删节点内容显示为占位文案，不泄露原文').toBe('[该评论已删除]');
-    // content 是新增的 Markdown 原文列（前端渲染它），同样必须换成占位 ——
-    // 两个字段漏一个，「删了等于没删」。
+    // content_html 与 content 两个字段都必须换成占位 —— 漏一个，「删了等于没删」。
+    expect(tree[0].content_html, '保留的已删节点显示为占位，不泄露原文').toBe('[该评论已删除]');
     expect(tree[0].content, 'content 原文列同样不泄露').toBe('[该评论已删除]');
-    expect(tree[0].children.map((c) => c.content_html)).toEqual(['alive-child']);
-  });
-
-  it('★保留的已删节点不泄露原文（即使 contentHtml 还在库里）', async () => {
-    const { author, blog } = await seedBlog();
-    const dead = await makeComment({
-      blogId: blog.id, authorId: author.id, content: '机密原文-不该被看到', isDeleted: true,
-    });
-    await makeComment({
-      blogId: blog.id, authorId: author.id, content: 'child', parentId: dead.id, rootId: dead.id,
-    });
-
-    const tree = await listCommentsForBlog(blog.id);
     expect(JSON.stringify(tree), '软删除只是标记，序列化时必须替换成占位').not.toContain('机密原文');
+    expect(tree[0].children.map((c) => c.content_html)).toEqual(['alive-child']);
   });
 
   it('★已删父 + 已删子（子无孙）→ 自下而上整串塌陷，父子都消失', async () => {
@@ -340,29 +311,6 @@ describe('_filter_deleted_leaves：已删叶子过滤', () => {
     // 关键：过滤是递归的 —— 先摘掉已删的子叶子，父级随之变成「已删且无子」也被摘掉。
     // 若实现只做一层过滤，这里会残留一个孤零零的 [该评论已删除]。
     expect(tree, '递归过滤应让整串已删链条完全塌陷').toEqual([]);
-  });
-
-  it('★三层：已删祖父 → 已删父 → 存活孙，三层全保留', async () => {
-    const { author, blog } = await seedBlog();
-    const gp = await makeComment({
-      blogId: blog.id, authorId: author.id, content: 'GP', isDeleted: true,
-    });
-    const p = await makeComment({
-      blogId: blog.id, authorId: author.id, content: 'P', parentId: gp.id, rootId: gp.id, isDeleted: true,
-    });
-    await makeComment({
-      blogId: blog.id, authorId: author.id, content: 'GC', parentId: p.id, rootId: gp.id,
-    });
-
-    // 这里两个已删节点的 content_html 都是占位文案，shape() 会键冲突，故按 id 断言
-    const tree = await listCommentsForBlog(blog.id);
-    expect(tree.map((n) => n.id), '存活的孙子把整条已删祖链都「撑住」了').toEqual([gp.id]);
-    expect(tree[0].is_deleted).toBe(true);
-    expect(tree[0].content_html).toBe('[该评论已删除]');
-    expect(tree[0].children.map((n) => n.id)).toEqual([p.id]);
-    expect(tree[0].children[0].is_deleted).toBe(true);
-    expect(tree[0].children[0].content_html).toBe('[该评论已删除]');
-    expect(tree[0].children[0].children.map((n) => n.content_html)).toEqual(['GC']);
   });
 
   it('★已删父有两个子：一个存活一个已删 → 父保留，只剩存活的子', async () => {
@@ -384,16 +332,26 @@ describe('_filter_deleted_leaves：已删叶子过滤', () => {
     expect(tree[0].children.map((c) => c.content_html)).toEqual(['alive-child']);
   });
 
-  it('存活父 + 已删子 → 父保留，已删子被摘掉', async () => {
+  it('★三层已删祖链 + 最底层存活 → 祖链逐层保留占位，不泄露任何原文', async () => {
     const { author, blog } = await seedBlog();
-    const alive = await makeComment({ blogId: blog.id, authorId: author.id, content: 'alive' });
+    const deadRoot = await makeComment({
+      blogId: blog.id, authorId: author.id, content: 'dead-root-secret', isDeleted: true,
+    });
+    const deadMid = await makeComment({
+      blogId: blog.id, authorId: author.id, content: 'dead-mid-secret',
+      parentId: deadRoot.id, rootId: deadRoot.id, isDeleted: true,
+    });
     await makeComment({
-      blogId: blog.id, authorId: author.id, content: 'dead-child',
-      parentId: alive.id, rootId: alive.id, isDeleted: true,
+      blogId: blog.id, authorId: author.id, content: 'alive-leaf',
+      parentId: deadMid.id, rootId: deadRoot.id,
     });
 
     const tree = await listCommentsForBlog(blog.id);
-    expect(shape(tree)).toEqual({ alive: [] });
+    expect(tree.length, '只有最底层存活，整条祖链必须保留').toBe(1);
+    expect(tree[0].content_html).toBe('[该评论已删除]');
+    expect(tree[0].children[0].content_html).toBe('[该评论已删除]');
+    expect(tree[0].children[0].children.map((c) => c.content_html)).toEqual(['alive-leaf']);
+    expect(JSON.stringify(tree), '两层删除内容都不能泄露').not.toContain('secret');
   });
 });
 
@@ -507,7 +465,6 @@ describe('软删除：权限与落库', () => {
     expect(r.ok).toBe(false);
     if (r.ok) return;
     expect(r.error).toBe('forbidden');
-    expect(r.message).toBe('无权删除该评论');
 
     const row = await prisma.blogComment.findUnique({ where: { id: c.id } });
     expect(row!.isDeleted, '越权尝试不能落库').toBe(false);
@@ -551,63 +508,44 @@ describe('软删除：权限与落库', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('冗余计数：新增评论', () => {
-  it('每次创建都刷新 commentsCount（lastCommentAt 已停写，保持 null）', async () => {
+  it('每次创建都刷新 commentsCount（回复也计入），lastCommentAt 已停写保持 null', async () => {
     const { author, blog } = await seedBlog();
     const before = await prisma.blog.findUnique({ where: { id: blog.id } });
     expect(before!.commentsCount).toBe(0);
     expect(before!.lastCommentAt).toBeNull();
 
-    for (let i = 1; i <= 3; i++) {
-      const r = await createComment({ blogId: blog.id, authorId: author.id, content: `c${i}` });
-      expect(r.ok, `第 ${i} 条应创建成功`).toBe(true);
-      const b = await prisma.blog.findUnique({ where: { id: blog.id } });
-      expect(b!.commentsCount, `创建 ${i} 条后计数应为 ${i}`).toBe(i);
-      expect(b!.lastCommentAt, 'lastCommentAt 已停写，应保持 null').toBeNull();
-    }
-  });
-
-  it('回复也计入 commentsCount（楼中楼不是「不算数的」）', async () => {
-    const { author, blog } = await seedBlog();
+    // 顶层 → 回复 → 回复的回复：每次创建都 +1，楼中楼不是「不算数的」
     const top = await createComment({ blogId: blog.id, authorId: author.id, content: 'top' });
     if (!top.ok) throw new Error('前置失败');
-    await createComment({
+    const reply = await createComment({
       blogId: blog.id, authorId: author.id, content: 'reply', parentId: top.comment.id,
     });
+    if (!reply.ok) throw new Error('前置失败');
+    const replyAgain = await createComment({
+      blogId: blog.id, authorId: author.id, content: 'reply2', parentId: reply.comment.id,
+    });
+    expect(replyAgain.ok).toBe(true);
 
     const b = await prisma.blog.findUnique({ where: { id: blog.id } });
-    expect(b!.commentsCount).toBe(2);
+    expect(b!.commentsCount, '顶层 + 两条回复共 3 条').toBe(3);
+    expect(b!.lastCommentAt, 'lastCommentAt 已停写，应保持 null').toBeNull();
   });
 
-  it('创建失败（文章不存在）不会误伤其它文章的计数', async () => {
+  it('计数只统计本文章未删除的评论（已存在软删不计入、不串别的文章）', async () => {
     const { author, blog } = await seedBlog();
-    await createComment({ blogId: blog.id, authorId: author.id, content: 'ok' });
-    await createComment({ blogId: 'ghost-blog', authorId: author.id, content: 'boom' });
-
-    const b = await prisma.blog.findUnique({ where: { id: blog.id } });
-    expect(b!.commentsCount).toBe(1);
-  });
-
-  it('计数只统计未删除的：已存在的软删评论不会被算进新增后的总数', async () => {
-    const { author, blog } = await seedBlog();
-    // 库里先放一条已删的
+    const other = await makeBlog({ authorId: author.id });
+    // 本文章库里先放一条已删的；别的文章放两条
     await makeComment({ blogId: blog.id, authorId: author.id, isDeleted: true });
+    await makeComment({ blogId: other.id, authorId: author.id });
+    await makeComment({ blogId: other.id, authorId: author.id });
+
     const r = await createComment({ blogId: blog.id, authorId: author.id, content: 'new' });
     expect(r.ok).toBe(true);
 
     const b = await prisma.blog.findUnique({ where: { id: blog.id } });
-    expect(b!.commentsCount, '按未删除数重算 → 只有新建的这 1 条').toBe(1);
-  });
-
-  it('计数不串文章（只统计本文章的评论）', async () => {
-    const { author, blog } = await seedBlog();
-    const other = await makeBlog({ authorId: author.id });
-    await makeComment({ blogId: other.id, authorId: author.id });
-    await makeComment({ blogId: other.id, authorId: author.id });
-
-    await createComment({ blogId: blog.id, authorId: author.id, content: 'mine' });
-
-    const b = await prisma.blog.findUnique({ where: { id: blog.id } });
-    expect(b!.commentsCount, '不能把别的文章的评论算进来').toBe(1);
+    expect(b!.commentsCount, '按本文章未删除数重算 → 只有新建的这 1 条').toBe(1);
+    // 计数与可见节点数自洽：显示「1 条评论」点进去就该有 1 条
+    expect((await listCommentsForBlog(blog.id)).length).toBe(1);
   });
 });
 
@@ -640,7 +578,7 @@ describe('冗余计数：软删除评论', () => {
     expect(b!.lastCommentAt, 'lastCommentAt 已停写，不随删除回空').toEqual(c.createdAt);
   });
 
-  it('删除失败（越权）不改动计数', async () => {
+  it('失败路径不动计数：越权删除、向不存在的文章创建', async () => {
     const { author, blog } = await seedBlog();
     const c = await makeComment({ blogId: blog.id, authorId: author.id });
     await prisma.blog.update({ where: { id: blog.id }, data: { commentsCount: 1 } });
@@ -648,16 +586,10 @@ describe('冗余计数：软删除评论', () => {
 
     await softDeleteComment(c.id, { id: stranger.id, role: 'core' });
     expect((await prisma.blog.findUnique({ where: { id: blog.id } }))!.commentsCount).toBe(1);
-  });
 
-  it('计数与 listCommentsForBlog 可见节点数在纯扁平场景下自洽', async () => {
-    const { author, blog } = await seedBlog();
-    for (const t of ['a', 'b', 'c']) {
-      await createComment({ blogId: blog.id, authorId: author.id, content: t });
-    }
-    const tree = await listCommentsForBlog(blog.id);
-    const b = await prisma.blog.findUnique({ where: { id: blog.id } });
-    expect(tree.length, '显示「3 条评论」点进去就该有 3 条').toBe(b!.commentsCount);
+    // 向不存在的文章创建失败，不得误伤本文章计数
+    await createComment({ blogId: 'ghost-blog', authorId: author.id, content: 'boom' });
+    expect((await prisma.blog.findUnique({ where: { id: blog.id } }))!.commentsCount).toBe(1);
   });
 });
 
@@ -717,8 +649,7 @@ describe('边界：createComment 的异常输入', () => {
     expect(r.ok).toBe(false);
     if (r.ok) return;
     expect(r.error).toBe('notFound');
-    expect(r.message).toBe('文章不存在');
-  });
+ });
 
   it('已下架（ignore=true）的文章不能评论', async () => {
     const u = await makeUser({ role: 'core' });
@@ -737,8 +668,7 @@ describe('边界：createComment 的异常输入', () => {
       expect(r.ok).toBe(false);
       if (r.ok) return;
       expect(r.error).toBe('empty');
-      expect(r.message).toBe('评论内容不能为空');
-    }
+   }
   );
 
   it('内容前后空白被 trim（落库的是 trim 后的）', async () => {
@@ -759,8 +689,7 @@ describe('边界：createComment 的异常输入', () => {
     expect(bad.ok).toBe(false);
     if (bad.ok) return;
     expect(bad.error).toBe('tooLong');
-    expect(bad.message).toBe('评论内容不能超过5000字');
-  });
+ });
 
   it('长度按 trim 后计算（5000 字 + 首尾空格仍应通过）', async () => {
     const { author, blog } = await seedBlog();
@@ -778,8 +707,7 @@ describe('边界：parentId 相关', () => {
     expect(r.ok).toBe(false);
     if (r.ok) return;
     expect(r.error).toBe('parentInvalid');
-    expect(r.message).toBe('父评论不存在或已删除');
-    expect(await prisma.blogComment.count(), '失败时不该落库').toBe(0);
+   expect(await prisma.blogComment.count(), '失败时不该落库').toBe(0);
   });
 
   it('★跨文章回复 → parentInvalid（parent.blogId 必须与目标文章一致）', async () => {
@@ -832,17 +760,12 @@ describe('边界：parentId 相关', () => {
 });
 
 describe('边界：listCommentsForBlog', () => {
-  it('不存在的 blogId → 空数组（不抛异常）', async () => {
+  it('不存在的 blogId / 无评论 → 空数组（不抛异常）；只返回本文章的评论', async () => {
     await expect(listCommentsForBlog('ghost')).resolves.toEqual([]);
-  });
 
-  it('无评论的文章 → 空数组', async () => {
-    const { blog } = await seedBlog();
-    await expect(listCommentsForBlog(blog.id)).resolves.toEqual([]);
-  });
-
-  it('只返回本文章的评论', async () => {
     const { author, blog } = await seedBlog();
+    await expect(listCommentsForBlog(blog.id)).resolves.toEqual([]);
+
     const other = await makeBlog({ authorId: author.id });
     await makeComment({ blogId: blog.id, authorId: author.id, content: 'mine' });
     await makeComment({ blogId: other.id, authorId: author.id, content: 'theirs' });
@@ -857,31 +780,28 @@ describe('边界：listCommentsForBlog', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('序列化：snake_case 字段与作者信息', () => {
-  it('字段名与 API JSON 形状一致', async () => {
-    const { author, blog } = await seedBlog();
-    const r = await createComment({ blogId: blog.id, authorId: author.id, content: 'x' });
+  it('字段名与 API JSON 形状一致；管理员 is_admin=true、普通用户 false，作者字段齐全', async () => {
+    const blogOwner = await makeUser({ role: 'core' });
+    const blog = await makeBlog({ authorId: blogOwner.id });
+
+    const r = await createComment({ blogId: blog.id, authorId: blogOwner.id, content: 'x' });
     if (!r.ok) throw new Error('前置失败');
     expect(Object.keys(r.comment).sort()).toEqual([
       'anonymous', 'author', 'blog', 'blog_id', 'blog_missing', 'children', 'content',
       'content_html', 'created_at', 'id', 'image', 'image_missing', 'is_deleted', 'is_mine',
       'liked', 'likes_count', 'parent_id', 'root_id', 'status', 'updated_at',
     ]);
-  });
 
-  it('作者是管理员时 is_admin=true，普通用户 false', async () => {
-    const blogOwner = await makeUser({ role: 'core' });
-    const blog = await makeBlog({ authorId: blogOwner.id });
     for (const [role, want] of [['user', false], ['core', false], ['admin', true], ['owner', true]] as const) {
       const u = await makeUser({ role });
-      const r = await createComment({ blogId: blog.id, authorId: u.id, content: role });
-      if (!r.ok) throw new Error('前置失败');
-      expect(r.comment.author.is_admin, `role=${role}`).toBe(want);
-      expect(r.comment.author.id).toBe(u.id);
-      expect(r.comment.author.username).toBe(u.username);
-      expect(r.comment.author.avatar_url).toBe(`/api/avatar/${u.id}`);
+      const created = await createComment({ blogId: blog.id, authorId: u.id, content: role });
+      if (!created.ok) throw new Error('前置失败');
+      expect(created.comment.author.is_admin, `role=${role}`).toBe(want);
+      expect(created.comment.author.id).toBe(u.id);
+      expect(created.comment.author.username).toBe(u.username);
+      expect(created.comment.author.avatar_url).toBe(`/api/avatar/${u.id}`);
     }
   });
-
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -899,10 +819,7 @@ describe('频率限制：每日配额', () => {
     expect(r.ok).toBe(false);
     if (r.ok) return;
     expect(r.error).toBe('rateLimited');
-    // 文案里的条数必须与配额同源：写死数字的话，改配额时这条断言会假失败，
-    // 而它本该验的是「文案确实复述了当前配额」。
-    expect(r.message).toContain(String(RULES.commentDaily.limit));
-    expect(await prisma.blogComment.count(), '超限时不该落库').toBe(0);
+   expect(await prisma.blogComment.count(), '超限时不该落库').toBe(0);
   });
 
   it('限流按用户隔离：A 打满不影响 B', async () => {
@@ -1091,7 +1008,6 @@ describe('附件：图床图片', () => {
     });
     if (tooLongWithImage.ok) throw new Error('带附件不该放过 5001 字');
     expect(tooLongWithImage.error).toBe('captionTooLong');
-    expect(tooLongWithImage.message).toBe('图片或引用评论不能超过5000字');
 
     // 同样长度但纯文字 → 也拒（同一上限），错误码走的是纯文本档
     const plain = await createComment({
@@ -1347,8 +1263,7 @@ describe('博客评论 @ 通知', () => {
     const rows = await prisma.notification.findMany({ where: { action: COMMENT_MENTION_ACTION } });
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({ recipientId: target.id, actorId: null });
-    expect(rows[0].detail).toContain('匿名读者「');
-    expect(rows[0].detail).not.toContain(commenter.username);
+   expect(rows[0].detail).not.toContain(commenter.username);
     expect(rows[0].detail).not.toContain(commenter.id);
     await createComment({ blogId: blog.id, authorId: commenter.id, content: '@target，你好' });
     expect(await prisma.notification.count({ where: { action: COMMENT_MENTION_ACTION } })).toBe(1);

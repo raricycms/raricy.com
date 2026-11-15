@@ -152,6 +152,26 @@
               visibility 0s;
 }
 
+// 「列表型下拉」的共用外壳（博客目录的栏目下拉 / 通用下拉 ExpandSelect）：
+// 触发器与展开面板装在**同一个外壳**里，收起时外壳是页面底色的胶囊，展开时整块
+// 换成卡片底色 + 浮层阴影 —— 按下的按钮和选项因此始终是同一张卡，而不是按钮
+// 下面再浮一张卡。
+//
+// 曲率由调用方按**收起高度的一半**传入（42px → 21px）：展开后保持这一档不动，
+// 不能继续用 999px 把长面板变成椭圆（frontend-styles §3.3）。
+// 背景 / 阴影 / 宽度的过渡由调用方声明，两边的宽度时间线不同，不能写死在这里。
+@mixin expand-shell($radius) {
+  overflow: hidden;
+  background-color: var(--color-background-page);
+  border-radius: $radius;
+}
+
+/// expand-shell 的展开态：外壳整体换成卡片表面。
+@mixin expand-shell-open {
+  background-color: var(--color-background-card);
+  box-shadow: var(--shadow-card-brand);
+}
+
 // 容器宽度阶梯。顶栏（.site-container）与正文（.container）共用同一档，
 // 两者的左边缘才会对齐 —— 此前 .container 只在 ≥1200px 才有 max-width，
 // 992–1199px 区间正文是全幅、顶栏是 960px，一眼就能看出错位。

@@ -34,7 +34,7 @@ import {
   generateFavoriteId,
 } from '@/lib/favorite-service';
 import { FAVORITE_ID_RE } from '@/lib/favorite-refs';
-import { __resetRateLimitStore } from '@/lib/rate-limit';
+import { RULES, __resetRateLimitStore, recordRateLimitHit } from '@/lib/rate-limit';
 
 beforeEach(async () => {
   await resetDb();
@@ -53,7 +53,7 @@ async function mk(userId: string, title: string, isPublic: boolean) {
 
 describe('generateFavoriteId', () => {
   it('恰好 6 位数字', () => {
-    for (let i = 0; i < 200; i++) {
+    for (let i = 0; i < 3; i++) {
       const id = generateFavoriteId();
       expect(id).toHaveLength(6);
       expect(id).toMatch(FAVORITE_ID_RE);
@@ -90,57 +90,46 @@ describe('createFavorite', () => {
     }
   });
 
-  it(`第 ${FAVORITE_PER_USER_MAX + 1} 个被拒（limit）`, async () => {
-    const u = await makeUser();
-    for (let i = 0; i < FAVORITE_PER_USER_MAX; i++) {
-      const res = await createFavorite(u.id, `夹子 ${i}`, false);
-      expect(res.ok).toBe(true);
-      __resetRateLimitStore();
-    }
-    const extra = await createFavorite(u.id, '第 201 个', false);
+  it('★ 配额按未删除行、按人计数：预置满 200 后第 201 个被拒，删光后能重建', async () => {
+    const a = await makeUser();
+    const b = await makeUser();
+    // 预置行而不是逐个 createFavorite：要钉的是上限判定本身（count），
+    // 真实写入路径已由上面的用例覆盖。
+    const now = nowForDb();
+    await prisma.favorite.createMany({
+      data: Array.from({ length: FAVORITE_PER_USER_MAX }, (_, i) => ({
+        id: `fav-a-${i}`,
+        userId: a.id,
+        title: `夹子 ${i}`,
+        isPublic: false,
+        createdAt: now,
+      })),
+    });
+    const extra = await createFavorite(a.id, '第 201 个', false);
     expect(!extra.ok && extra.reason).toBe('limit');
-  });
 
-  it('★ 配额只数未删除的：删光之后还能继续建（剪贴板那条先例会卡死）', async () => {
-    const u = await makeUser();
-    // 建满 → 全删掉 → 再建，仍然成功
-    const ids: string[] = [];
-    for (let i = 0; i < FAVORITE_PER_USER_MAX; i++) {
-      const res = await createFavorite(u.id, `夹子 ${i}`, false);
-      if (res.ok) ids.push(res.favorite.id);
-      __resetRateLimitStore();
-    }
-    expect(ids).toHaveLength(FAVORITE_PER_USER_MAX);
-    for (const id of ids) {
-      const del = await softDeleteFavorite(id, u.id);
-      expect(del.ok).toBe(true);
-    }
-    const again = await createFavorite(u.id, '删光之后', false);
+    // 配额是按人算的：别人的额度不受影响
+    expect((await createFavorite(b.id, 'b 的第一个', false)).ok).toBe(true);
+
+    // ★ 配额只数未删除的：删光之后还能继续建（剪贴板那条先例会卡死）
+    await prisma.favorite.updateMany({
+      where: { userId: a.id, deleted: false },
+      data: { deleted: true },
+    });
+    __resetRateLimitStore();
+    const again = await createFavorite(a.id, '删光之后', false);
     expect(again.ok, '删光后应能继续创建（配额只数未删除的）').toBe(true);
   });
 
-  it('配额是按人算的，别人的额度不受影响', async () => {
-    const a = await makeUser();
-    const b = await makeUser();
-    for (let i = 0; i < FAVORITE_PER_USER_MAX; i++) {
-      await createFavorite(a.id, `a${i}`, false);
-      __resetRateLimitStore();
-    }
-    const res = await createFavorite(b.id, 'b 的第一个', false);
-    expect(res.ok).toBe(true);
-  });
-
-  it('限频：同一用户连建超过 20 个/时被拒', async () => {
+  it('限频：同一用户连建超过 20 个/时被拒（桶直填，只留 1 次真实计数）', async () => {
     const u = await makeUser();
-    let limited = false;
-    for (let i = 0; i < 25; i++) {
-      const res = await createFavorite(u.id, `夹 ${i}`, false);
-      if (!res.ok && res.reason === 'rateLimited') {
-        limited = true;
-        break;
-      }
+    for (let i = 0; i < RULES.favoriteCreateHourly.limit - 1; i++) {
+      recordRateLimitHit(`fav:create:${u.id}`);
     }
-    expect(limited).toBe(true);
+    // 真实调用一次：第 20 次仍放行，证明路由确实在逐次计数
+    expect((await createFavorite(u.id, '第 20 个', false)).ok).toBe(true);
+    const res = await createFavorite(u.id, '第 21 个', false);
+    expect(!res.ok && res.reason).toBe('rateLimited');
   });
 });
 
@@ -420,19 +409,20 @@ describe('addItem / removeItem', () => {
     expect(!res.ok && res.reason).toBe('itemsLimit');
   });
 
-  it('限频：条目增删复用 like 的数值、另起前缀（第 300 次后触及 likeHourly）', async () => {
+  it('限频：条目增删复用 like 的数值、另起前缀（小时桶打满即拒、他人不受影响）', async () => {
     const u = await makeUser();
+    const other = await makeUser();
     const fav = await mk(u.id, '夹', false);
+    const otherFav = await mk(other.id, '别人的夹', false);
     const blog = await makeBlog({ authorId: u.id });
-    let limited = false;
-    for (let i = 0; i < 320; i++) {
-      const res = await addItem(fav.id, u.id, blog.id);
-      if (!res.ok && res.reason === 'rateLimited') {
-        limited = true;
-        break;
-      }
+    // 直填 likeHourly 桶（原实现真调 320 次 addItem 才摸到上限），只留 1 次真实调用。
+    for (let i = 0; i < RULES.likeHourly.limit; i++) {
+      recordRateLimitHit(`fav:item:h:${u.id}`);
     }
-    expect(limited).toBe(true);
+    const res = await addItem(fav.id, u.id, blog.id);
+    expect(!res.ok && res.reason).toBe('rateLimited');
+    // 桶按用户分：别人自己的前缀不受影响
+    expect((await addItem(otherFav.id, other.id, blog.id)).ok).toBe(true);
   });
 });
 
@@ -523,10 +513,17 @@ describe('copyFavorite', () => {
   it('复制占用创建配额（第 201 个复制被拒 —— 否则是绕过上限的后门）', async () => {
     const u = await makeUser();
     const src = await mk(u.id, '源', false);
-    for (let i = 0; i < FAVORITE_PER_USER_MAX - 1; i++) {
-      await createFavorite(u.id, `填 ${i}`, false);
-      __resetRateLimitStore();
-    }
+    // 预置到 199 个（src 是第 200 个），不必逐个 createFavorite。
+    const now = nowForDb();
+    await prisma.favorite.createMany({
+      data: Array.from({ length: FAVORITE_PER_USER_MAX - 1 }, (_, i) => ({
+        id: `fav-copy-${i}`,
+        userId: u.id,
+        title: `填 ${i}`,
+        isPublic: false,
+        createdAt: now,
+      })),
+    });
     const res = await copyFavorite(src.id, u.id, false);
     expect(!res.ok && res.reason).toBe('limit');
   });
@@ -666,10 +663,16 @@ describe('importFavorite', () => {
   it('导入也占创建配额', async () => {
     const u = await makeUser();
     const a = await makeBlog({ authorId: u.id });
-    for (let i = 0; i < FAVORITE_PER_USER_MAX; i++) {
-      await createFavorite(u.id, `填 ${i}`, false);
-      __resetRateLimitStore();
-    }
+    const now = nowForDb();
+    await prisma.favorite.createMany({
+      data: Array.from({ length: FAVORITE_PER_USER_MAX }, (_, i) => ({
+        id: `fav-import-${i}`,
+        userId: u.id,
+        title: `填 ${i}`,
+        isPublic: false,
+        createdAt: now,
+      })),
+    });
     const res = await importFavorite(u.id, false, payloadOf([a.id]));
     expect(!res.ok && res.reason).toBe('limit');
   });

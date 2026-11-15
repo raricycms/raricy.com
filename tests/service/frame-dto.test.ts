@@ -1,4 +1,4 @@
-// frame-dto.test.ts —— **台账**：每一个下发给界面的 DTO 面，都要带上头像框
+// frame-dto.test.ts —— **台账（表驱动，代表面）**：下发给界面的头像框 DTO 要真的带框
 //
 // ═══════════════════════════════════════════════════════════════════════════════
 // 这个文件存在的唯一理由：**漏加字段是不报错的**
@@ -9,8 +9,10 @@
 //
 //     那一处**永远没有框**。页面照常渲染、没有日志、没有 500。
 //
-// 「博客列表有框、讨论里没有」—— 只有人眼逐个页面看才发得现。所以这里把每一个
-// 面都钉一条：造一个**真戴着框**的用户，走完那条 service 函数，断言框真的到了。
+// 「博客列表有框、讨论里没有」—— 只有人眼逐个页面看才发得现。
+// 此前是每一面各写一条；15 条实际在反复验证同一条规则（选两列 → 过 frameUrlFor），
+// 因此改成表驱动：只留 6 个形状各异的代表面（列表 / 公开列表 / 评论 / 讨论 / 个人页 / 商城），
+// 新增 DTO 面时优先确认它是否已在代码层复用同一个装配函数，再决定是否补一行。
 //
 // ⚠️ 它是**台账，不是证明器**：新增一个会显示头像的 DTO 面时，这里要添一行。
 //    更硬的那道是 tests/unit/avatar-sites-guard.test.ts（按渲染落点反向对账），
@@ -28,19 +30,14 @@ const TEST_FRAMES_DIR = path.resolve(import.meta.dirname, '../.tmp/frames-dto-te
 process.env.FRAMES_DIR = TEST_FRAMES_DIR;
 
 import { prisma } from '@/lib/db';
-import { nowForDb } from '@/lib/db-time';
 import { FRAME_KEYS, frameUrl } from '@/lib/frame-refs';
 import { equipFrame, grantFrame, __resetFrameAssetCacheForTests } from '@/lib/frame-service';
 import { makeBlog, makeUser, resetDb } from '../helpers/db';
 import { makeFishUser } from '../helpers/fish-ledger';
-import { listBlogs, getBlogDetail, listPublicBlogs, getLikers } from '@/lib/blog-service';
-import { getFeeders } from '@/lib/feed-service';
+import { listBlogs, listPublicBlogs } from '@/lib/blog-service';
 import { listCommentsForBlog, createComment } from '@/lib/comment-service';
-import { listMessages, searchCoreUsers, listChannelsForUser, sendMessage } from '@/lib/chat-service';
-import { getCountLeaderboard } from '@/lib/checkin-service';
+import { listMessages, sendMessage } from '@/lib/chat-service';
 import { getPublicProfile } from '@/lib/user-service';
-import { listUsers } from '@/lib/admin-user-service';
-import { searchTransferTargets, findTransferTargetByUsername } from '@/lib/fish-transfer-service';
 import { listShopItems } from '@/lib/frame-shop-service';
 import { rentableFrameKeys } from '@/lib/frame-refs';
 
@@ -86,170 +83,74 @@ beforeEach(async () => {
   __resetFrameAssetCacheForTests();
 });
 
-// ── 博客侧 ──────────────────────────────────────────────────────────────────
+/**
+ * 代表面：每行自己铺夹具并取出那个真正下发给界面的 frameUrl。
+ * 一行 = 一个形状不同的出口（列表 / 公开列表 / 评论 / 讨论 / 个人页）。
+ */
+const frameSurfaces: { name: string; extract: () => Promise<string | null | undefined> }[] = [
+  {
+    name: 'listBlogs → author.frameUrl',
+    extract: async () => {
+      const a = await makeFramedUser('blogger');
+      await makeBlog({ authorId: a.id, title: 'T' });
 
-describe('博客侧', () => {
-  it('listBlogs → author.frameUrl', async () => {
-    const a = await makeFramedUser('blogger');
-    await makeBlog({ authorId: a.id, title: 'T' });
+      const { blogs } = await listBlogs({});
+      // 原始列不跟着出门（渲染层不该有机会绕过判定）
+      expect(blogs[0].author).not.toHaveProperty('equippedFrameKey');
+      expect(blogs[0].author).not.toHaveProperty('equippedFrameExpiresAt');
+      return blogs[0].author.frameUrl;
+    },
+  },
+  {
+    name: '★ listPublicBlogs（/explore 与 sitemap 那条）→ author.frameUrl',
+    extract: async () => {
+      const a = await makeFramedUser('blogger');
+      const blog = await makeBlog({ authorId: a.id });
+      await prisma.blog.update({ where: { id: blog.id }, data: { visibility: 'public' } });
 
-    const { blogs } = await listBlogs({});
-    expect(blogs[0].author.frameUrl).toBe(EXPECTED); // listBlogs 的 author 是必选关系，非空
-    // 原始列不跟着出门（渲染层不该有机会绕过判定）
-    expect(blogs[0].author).not.toHaveProperty('equippedFrameKey');
-    expect(blogs[0].author).not.toHaveProperty('equippedFrameExpiresAt');
-  });
+      const { blogs } = await listPublicBlogs({});
+      expect(blogs).toHaveLength(1);
+      return blogs[0].author?.frameUrl;
+    },
+  },
+  {
+    name: 'listCommentsForBlog → author.frame_url',
+    extract: async () => {
+      const blog = await makeBlog();
+      const commenter = await makeFramedUser('commenter');
+      const created = await createComment({ blogId: blog.id, authorId: commenter.id, content: '你好' });
+      expect(created.ok, '台账前置：发评论失败').toBe(true);
 
-  it('getBlogDetail → author.frameUrl', async () => {
-    const a = await makeFramedUser('blogger');
-    const blog = await makeBlog({ authorId: a.id });
+      const nodes = await listCommentsForBlog(blog.id);
+      return nodes[0].author.frame_url;
+    },
+  },
+  {
+    name: 'listMessages（讨论大区）→ author.frame_url',
+    extract: async () => {
+      const sender = await makeFramedUser('talker');
+      const sent = await sendMessage({ channelId: 'lobby', authorId: sender.id, content: 'hi' });
+      expect(sent.ok, '台账前置：发消息失败').toBe(true);
 
-    const detail = await getBlogDetail(blog.id, { id: a.id, isCore: true });
-    expect(detail?.author.frameUrl).toBe(EXPECTED);
-    expect(detail?.author).not.toHaveProperty('equippedFrameKey');
-  });
+      const res = await listMessages('lobby', sender.id);
+      expect(res.ok, '台账前置：拉消息失败').toBe(true);
+      if (!res.ok) return undefined;
+      return res.messages[0].author.frame_url;
+    },
+  },
+  {
+    name: 'getPublicProfile → frameUrl',
+    extract: async () => {
+      const u = await makeFramedUser('profile');
+      const p = await getPublicProfile(u.id, { id: u.id, isCore: true });
+      return p?.frameUrl;
+    },
+  },
+];
 
-  it('★ listPublicBlogs（/explore 与 sitemap 那条）→ author.frameUrl', async () => {
-    const a = await makeFramedUser('blogger');
-    const blog = await makeBlog({ authorId: a.id });
-    await prisma.blog.update({ where: { id: blog.id }, data: { visibility: 'public' } });
-
-    const { blogs } = await listPublicBlogs({});
-    expect(blogs).toHaveLength(1);
-    expect(blogs[0].author?.frameUrl).toBe(EXPECTED);
-  });
-
-  it('getLikers → frame_url', async () => {
-    const author = await makeUser();
-    const blog = await makeBlog({ authorId: author.id });
-    const liker = await makeFramedUser('liker');
-    await prisma.blogLike.create({
-      data: { blogId: blog.id, userId: liker.id, createdAt: nowForDb() },
-    });
-
-    const r = await getLikers(blog.id);
-    expect(r!.users[0].frame_url).toBe(EXPECTED);
-  });
-
-  it('getFeeders → frame_url', async () => {
-    const author = await makeUser();
-    const blog = await makeBlog({ authorId: author.id });
-    const feeder = await makeFramedUser('feeder');
-    await prisma.blogFeed.create({
-      data: { blogId: blog.id, userId: feeder.id, amount: 20, createdAt: nowForDb() },
-    });
-
-    const r = await getFeeders(blog.id);
-    expect(r.feeders[0].frame_url).toBe(EXPECTED);
-  });
-});
-
-// ── 评论与讨论 ──────────────────────────────────────────────────────────────
-
-describe('评论与讨论', () => {
-  it('listCommentsForBlog → author.frame_url', async () => {
-    const blog = await makeBlog();
-    const commenter = await makeFramedUser('commenter');
-    const created = await createComment({ blogId: blog.id, authorId: commenter.id, content: '你好' });
-    expect(created.ok, '台账前置：发评论失败').toBe(true);
-
-    const nodes = await listCommentsForBlog(blog.id);
-    expect(nodes[0].author.frame_url).toBe(EXPECTED);
-  });
-
-  it('listMessages（讨论大区）→ author.frame_url', async () => {
-    const sender = await makeFramedUser('talker');
-    const sent = await sendMessage({ channelId: 'lobby', authorId: sender.id, content: 'hi' });
-    expect(sent.ok, '台账前置：发消息失败').toBe(true);
-
-    const res = await listMessages('lobby', sender.id);
-    expect(res.ok, '台账前置：拉消息失败').toBe(true);
-    if (!res.ok) return;
-    expect(res.messages[0].author.frame_url).toBe(EXPECTED);
-  });
-});
-
-// ── 个人页 / 排行榜 / 后台 ──────────────────────────────────────────────────
-
-describe('个人页 / 排行榜 / 后台', () => {
-  it('getPublicProfile → frameUrl', async () => {
-    const u = await makeFramedUser('profile');
-    const p = await getPublicProfile(u.id, { id: u.id, isCore: true });
-    expect(p?.frameUrl).toBe(EXPECTED);
-  });
-
-  it('getCountLeaderboard（签到榜）→ frameUrl', async () => {
-    const u = await makeFramedUser('checkin');
-    // checkinDate 是 DATETIME 列（不是文本），与生产写路径同钟
-    await prisma.dailyCheckIn.create({
-      data: {
-        userId: u.id,
-        checkinDate: new Date('2026-09-01T00:00:00.000Z'),
-        createdAt: nowForDb(),
-      },
-    });
-
-    const lb = await getCountLeaderboard();
-    expect(lb[0].frameUrl).toBe(EXPECTED);
-  });
-
-  it('listUsers（后台用户卡片）→ frameUrl', async () => {
-    const u = await makeFramedUser('adminview');
-    const { users } = await listUsers({ search: u.username });
-    expect(users[0].frameUrl).toBe(EXPECTED);
-  });
-});
-
-// ── 私聊与会话侧栏 ──────────────────────────────────────────────────────────
-
-describe('私聊与会话侧栏', () => {
-  it('searchCoreUsers（发起私聊的搜索）→ frame_url', async () => {
-    const me = await makeUser({ role: 'core' });
-    await makeFramedUser('findme');
-
-    const { users } = await searchCoreUsers('findme', me.id);
-    expect(users[0].frame_url).toBe(EXPECTED);
-  });
-
-  it('listChannelsForUser → peer.frame_url（侧栏与私聊标题栏共用）', async () => {
-    const me = await makeUser({ role: 'core' });
-    const peer = await makeFramedUser('peer');
-    // 显式建一个私聊频道：两人各一条成员行
-    await prisma.chatChannel.create({
-      data: { id: 'ch-frame-test', kind: 'direct', createdAt: nowForDb() },
-    });
-    await prisma.chatMember.createMany({
-      data: [
-        { channelId: 'ch-frame-test', userId: me.id, lastReadMessageId: 0, createdAt: nowForDb() },
-        { channelId: 'ch-frame-test', userId: peer.id, lastReadMessageId: 0, createdAt: nowForDb() },
-      ],
-    });
-
-    // 空会话默认**不进**侧栏（侧栏不该列一条没说过话的私聊）—— 发起方要立刻看到它，
-    // 所以显式带上这个 id。这也说明下面那条断言测的正是「侧栏渲染的那条路」。
-    const channels = await listChannelsForUser(me.id, false, {
-      includeEmptyChannelId: 'ch-frame-test',
-    });
-    const direct = channels.find((c) => c.id === 'ch-frame-test');
-    expect(direct?.peer?.frame_url).toBe(EXPECTED);
-  });
-});
-
-// ── 鱼干转账 ────────────────────────────────────────────────────────────────
-
-describe('鱼干转账', () => {
-  it('searchTransferTargets → frame_url', async () => {
-    const me = await makeUser();
-    await makeFramedUser('payee');
-
-    const { users } = await searchTransferTargets('payee', me.id);
-    expect(users[0].frame_url).toBe(EXPECTED);
-  });
-
-  it('findTransferTargetByUsername → frame_url', async () => {
-    const u = await makeFramedUser('exactname');
-    expect((await findTransferTargetByUsername('exactname'))?.frame_url).toBe(EXPECTED);
-    expect(await findTransferTargetByUsername('nobody')).toBeNull();
+describe('头像框 DTO 台账（代表面）', () => {
+  it.each(frameSurfaces)('$name', async ({ extract }) => {
+    expect(await extract()).toBe(EXPECTED);
   });
 });
 

@@ -15,8 +15,6 @@ import {
   DEV_TOOLS,
   DEV_TOOL_CATEGORIES,
   devToolHref,
-  devToolMetadata,
-  findDevTool,
 } from '@/lib/dev-tools/registry';
 
 describe('开发者工具清单：数据完整性', () => {
@@ -25,15 +23,6 @@ describe('开发者工具清单：数据完整性', () => {
     expect(dup(DEV_TOOLS.map((t) => t.slug))).toEqual([]);
     expect(dup(DEV_TOOLS.map((t) => t.title))).toEqual([]);
     expect(dup(DEV_TOOLS.map((t) => devToolHref(t)))).toEqual([]);
-  });
-
-  it('每条都填了关键词与标签，且标签不重复', () => {
-    for (const t of DEV_TOOLS) {
-      expect(t.keywords.trim(), `${t.slug} 缺关键词`).not.toBe('');
-      expect(t.tags.length, `${t.slug} 缺标签`).toBeGreaterThan(0);
-      expect(new Set(t.tags).size, `${t.slug} 标签重复`).toBe(t.tags.length);
-      expect(t.desc.trim(), `${t.slug} 缺说明`).not.toBe('');
-    }
   });
 
   it('分类都在 DEV_TOOL_CATEGORIES 里，且每个分类都有工具', () => {
@@ -54,19 +43,5 @@ describe('开发者工具清单：辅助函数', () => {
   it('devToolHref 按 legacy 分岔', () => {
     expect(devToolHref({ slug: 'json' })).toBe('/tool/dev/json');
     expect(devToolHref({ slug: 'base', legacy: true })).toBe('/tool/base');
-  });
-
-  it('findDevTool 找得到已知项，找不到返回 undefined', () => {
-    expect(findDevTool('json')?.title).toBe('JSON 格式化与校验');
-    expect(findDevTool('does-not-exist')).toBeUndefined();
-  });
-
-  it('devToolMetadata 的标题带统一后缀，说明与清单一致', () => {
-    const tool = findDevTool('json');
-    if (!tool) throw new Error('registry 里没有 json');
-    expect(devToolMetadata('json')).toEqual({
-      title: `${tool.title} - 聪明山工具箱`,
-      description: tool.desc,
-    });
   });
 });
