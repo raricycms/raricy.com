@@ -32,6 +32,7 @@ import AvatarMenu, { type AvatarMenuAnchor } from './AvatarMenu';
 import ChatMessageMenu, { type MessageMenuAnchor } from './ChatMessageMenu';
 import ChatMessageDetail from './ChatMessageDetail';
 import ImageLightbox from '../components/ImageLightbox';
+import { releaseSmoothWheelScroll } from '../components/SmoothWheelScroll';
 import { isMentioned, markGroupedMessages } from './ChatMessageItem';
 import ChatMessageList from './ChatMessageList';
 import ChatSidebar from './ChatSidebar';
@@ -554,7 +555,11 @@ export default function ChatApp({
 
   const scrollToBottom = useCallback((behavior: ScrollBehavior = 'auto') => {
     const el = listRef.current;
-    if (el) el.scrollTo({ top: el.scrollHeight, behavior });
+    if (!el) return;
+    // 滚轮缓动逐帧写 scrollTop，会把这次平滑滚动中止在第一帧之前（见 SmoothWheelScroll
+    // 的 releaseSmoothWheelScroll）。「回到最新」与自动到底都走这里，必须先让位。
+    releaseSmoothWheelScroll(el);
+    el.scrollTo({ top: el.scrollHeight, behavior });
   }, []);
 
   /** 命中高亮：亮 2 秒后自动清除（跳转的收尾动作，见 jumpToMessage）。 */
@@ -622,6 +627,7 @@ export default function ChatApp({
       const row = el.getBoundingClientRect();
       const box = list.getBoundingClientRect();
       if (row.top >= box.top && row.bottom <= box.bottom) return; // 落位了
+      releaseSmoothWheelScroll();
       el.scrollIntoView({ block: 'center' });
     }, 400);
   }, []);
@@ -637,6 +643,7 @@ export default function ChatApp({
         `[data-message-id="${jump.messageId}"]`
       );
       if (el) {
+        releaseSmoothWheelScroll();
         el.scrollIntoView({ block: 'center', behavior: 'smooth' });
         flashHighlight(jump.messageId);
         ensureJumpLands(el);
@@ -1552,6 +1559,7 @@ export default function ChatApp({
     (messageId: number) => {
       const hit = listRef.current?.querySelector<HTMLElement>(`[data-message-id="${messageId}"]`);
       if (hit) {
+        releaseSmoothWheelScroll();
         hit.scrollIntoView({ block: 'center', behavior: 'smooth' });
         flashHighlight(messageId);
         return;

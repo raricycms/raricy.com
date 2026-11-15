@@ -11,6 +11,14 @@ import { useEffect } from 'react';
 //     这里看到 defaultPrevented 就直接退出；
 //   · 键盘翻页与拖动滚动条要立刻生效，命中时停掉进行中的动画。
 // 系统开启「减少动态效果」时完全不介入，保留浏览器原生滚动。
+//
+// 另有三条边界，改这里时容易踩：
+//   · 锁滚看的是「视口还能不能被滚轮滚」：body{overflow:hidden} 只是把视口锁住，
+//     根节点仍接受程序化写入，所以根节点兜底必须先和原生一样看视口的 overflow；
+//   · Shift+滚轮在 Chromium 里仍报 deltaY，只是按横向解释；按轴选错就会把
+//     窄表格 / HEX 查看器的横向滚动变成整页纵向滚动；
+//   · 程序化平滑滚动（scrollTo / scrollIntoView）必须显式让位，见
+//     releaseSmoothWheelScroll：一次 scrollTop 写入就会中止它。
 
 const DURATION = 540;
 const CURVE = [0.16, 1, 0.3, 1] as const;
@@ -24,6 +32,8 @@ interface Anim {
   to: number;
   /** 本帧写下的位置：用来识别「位置被别的东西改了」 */
   written: number;
+  /** 最近一次输入的方向（±1）：反向输入要从当前可见位置重新起算 */
+  direction: number;
   startedAt: number;
 }
 
@@ -79,24 +89,36 @@ function hasRoom(el: Element, axis: Axis, delta: number): boolean {
   return delta > 0 ? readOffset(el, axis) + view < total - 1 : readOffset(el, axis) > 1;
 }
 
+// 视口这一轴还能不能被滚轮滚动。html 的 overflow 不是 visible 时由它决定；否则
+// body 的 overflow 会传给视口 —— DailyQuoteModal 与窄屏博客侧栏正是靠
+// body{overflow:hidden} 锁滚，原生滚轮此时什么都不做，本组件也不能写 scrollTop。
+function viewportScrollable(axis: Axis): boolean {
+  const html = getComputedStyle(document.documentElement);
+  let overflow = axis === 'y' ? html.overflowY : html.overflowX;
+  if (overflow === 'visible' && document.body) {
+    const body = getComputedStyle(document.body);
+    overflow = axis === 'y' ? body.overflowY : body.overflowX;
+  }
+  return overflow !== 'hidden' && overflow !== 'clip';
+}
+
 // 从指针下的元素往上找第一个能朝这个方向滚动的区域，走到文档根用整页兜底。
 // 遇到 overscroll-behavior: contain / none 的边界就停下 —— 滚动不往外交给外层。
+// 边界检查不依赖「内容是否溢出」：HEX 查看器载入短文件时同样没有可滚距离，
+// Chromium 仍会在它这里截住滚动链。
 function findTarget(start: EventTarget | null, axis: Axis, delta: number): Element | null {
   let node = start instanceof Element ? start : null;
   while (node) {
     if (acceptsWheel(node, axis)) {
-      const { view, total } = offsetRange(node, axis);
-      if (total - view > 1) {
-        if (hasRoom(node, axis, delta)) return node;
-        const style = getComputedStyle(node);
-        const chain = axis === 'y' ? style.overscrollBehaviorY : style.overscrollBehaviorX;
-        if (chain === 'contain' || chain === 'none') return null;
-      }
+      if (hasRoom(node, axis, delta)) return node;
+      const style = getComputedStyle(node);
+      const chain = axis === 'y' ? style.overscrollBehaviorY : style.overscrollBehaviorX;
+      if (chain === 'contain' || chain === 'none') return null;
     }
     node = node.parentElement;
   }
   const root = document.scrollingElement;
-  return root && hasRoom(root, axis, delta) ? root : null;
+  return root && viewportScrollable(axis) && hasRoom(root, axis, delta) ? root : null;
 }
 
 // 键盘翻页用的键：命中时把滚动权立刻交还浏览器
@@ -113,6 +135,23 @@ const SCROLL_KEYS = new Set([
   'Spacebar',
 ]);
 
+// 让位入口的当前实现（组件挂载时填）。模块级是为了让组件外的按钮 / 自动到底
+// 不用拿到组件实例就能先清掉动画。
+let releaseImpl: ((target: Element | null) => void) | null = null;
+
+/**
+ * 让滚轮缓动给程序化滚动让位。
+ *
+ * 【为什么需要】scrollTo({behavior:'smooth'}) 还没更新出第一帧时，本组件一次
+ * scrollTop 写入就会中止它（程序化赋值按规范会取消平滑滚动），而此时列表还没
+ * 移动过，onScroll 的位置偏差识别也看不到任何异常 —— 讨论页「回到最新」就会
+ * 停在半路，提示却已经消失。所以发起这类滚动之前先调这里清掉相关动画。
+ * 不传 target 清全部（scrollIntoView 会滚到祖先滚动区，无法事先知道是谁）。
+ */
+export function releaseSmoothWheelScroll(target?: Element | null): void {
+  releaseImpl?.(target ?? null);
+}
+
 export default function SmoothWheelScroll() {
   useEffect(() => {
     const reduce = window.matchMedia('(prefers-reduced-motion: reduce)');
@@ -125,6 +164,18 @@ export default function SmoothWheelScroll() {
       let alive = false;
       for (const [el, anim] of anims) {
         if (!el.isConnected) {
+          anims.delete(el);
+          continue;
+        }
+        // 两次写入之间位置被别的东西改了（原生平滑滚动、锚点、拖动滚动条、
+        // 列表自动到底）：立刻让位，别用下一帧把新位置拽回去。
+        if (Math.abs(readOffset(el, anim.axis) - anim.written) > 2) {
+          anims.delete(el);
+          continue;
+        }
+        // 动画进行中视口被锁（弹窗 / 窄屏侧栏把 body 设为 overflow:hidden）：
+        // 根节点仍接受程序化写入，继续写就是绕过锁滚滚背景。
+        if (el === document.scrollingElement && !viewportScrollable(anim.axis)) {
           anims.delete(el);
           continue;
         }
@@ -142,7 +193,7 @@ export default function SmoothWheelScroll() {
       if (alive) frame = requestAnimationFrame(step);
     };
 
-    // 连续滚动时新输入从当前可见位置起算、目标在原目标上累加，
+    // 连续滚动时新输入从当前可见位置起算、同向目标在原目标上累加，
     // 手感是「追着走」而不是一格一停。
     const onWheel = (event: WheelEvent) => {
       if (event.ctrlKey || event.defaultPrevented || reduce.matches) return;
@@ -150,7 +201,10 @@ export default function SmoothWheelScroll() {
       // 下拉框用滚轮改选项，那不是滚动
       if (start?.closest('select')) return;
 
-      const axis: Axis = Math.abs(event.deltaX) > Math.abs(event.deltaY) ? 'x' : 'y';
+      // Shift+滚轮：Chromium 不交换 delta，只把 deltaY 解释成横向。按轴选错就会把
+      // 横向容器（窄表格、HEX 查看器）的滚动变成整页纵向滚动。
+      const shifted = event.shiftKey && Math.abs(event.deltaX) <= Math.abs(event.deltaY);
+      const axis: Axis = shifted || Math.abs(event.deltaX) > Math.abs(event.deltaY) ? 'x' : 'y';
       const unit =
         event.deltaMode === 1
           ? 16
@@ -159,7 +213,8 @@ export default function SmoothWheelScroll() {
               ? window.innerHeight
               : window.innerWidth
             : 1;
-      const delta = (axis === 'y' ? event.deltaY : event.deltaX) * unit;
+      const raw = axis === 'y' ? event.deltaY : event.deltaX || event.deltaY;
+      const delta = raw * unit;
       if (!delta) return;
 
       const el = findTarget(start, axis, delta);
@@ -168,10 +223,22 @@ export default function SmoothWheelScroll() {
 
       const current = readOffset(el, axis);
       const pending = anims.get(el);
-      const base = pending && pending.axis === axis ? pending.to : current;
+      // 同向输入在旧目标上累加；反向输入从当前可见位置重新起算，否则旧目标会把
+      // 页面继续朝原方向拽（实测：下滚到 278px 后上滚 100px，仍走到 500px）。
+      const sameDirection =
+        pending !== undefined && pending.axis === axis && Math.sign(delta) === pending.direction;
+      const base = sameDirection ? pending.to : current;
       const { view, total } = offsetRange(el, axis);
       const to = Math.max(0, Math.min(total - view, base + delta));
-      anims.set(el, { el, axis, from: current, to, written: current, startedAt: performance.now() });
+      anims.set(el, {
+        el,
+        axis,
+        from: current,
+        to,
+        written: current,
+        direction: Math.sign(delta),
+        startedAt: performance.now(),
+      });
       if (!frame) frame = requestAnimationFrame(step);
     };
 
@@ -192,6 +259,15 @@ export default function SmoothWheelScroll() {
       if (SCROLL_KEYS.has(event.key)) anims.clear();
     };
 
+    const release = (target: Element | null) => {
+      if (!target) {
+        anims.clear();
+        return;
+      }
+      anims.delete(target);
+    };
+    releaseImpl = release;
+
     window.addEventListener('wheel', onWheel, { passive: false });
     window.addEventListener('scroll', onScroll, { capture: true, passive: true });
     window.addEventListener('keydown', onKeyDown);
@@ -201,6 +277,7 @@ export default function SmoothWheelScroll() {
       window.removeEventListener('keydown', onKeyDown);
       if (frame) cancelAnimationFrame(frame);
       anims.clear();
+      if (releaseImpl === release) releaseImpl = null;
     };
   }, []);
 

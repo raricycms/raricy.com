@@ -33,7 +33,7 @@
     left: 0;
     display: flex;
     flex-direction: column;
-    transition: background-color .25s ease, box-shadow .25s ease;
+    transition: background-color v.$feedback-duration v.$feedback-easing, box-shadow v.$feedback-duration v.$feedback-easing;
   }
 
   &__toggle {
@@ -95,7 +95,8 @@
     padding: 6px;
     opacity: 0;
     transform: translateY(-8px);
-    transition: opacity v.$motion-duration v.$motion-easing, transform v.$motion-duration v.$motion-easing;
+    // 透明度属于反馈档，位移保持形变档 —— 两类属性分别计时
+    transition: opacity v.$feedback-duration v.$feedback-easing, transform v.$motion-duration v.$motion-easing;
   }
 
   &__group-label {

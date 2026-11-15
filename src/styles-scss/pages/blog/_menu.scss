@@ -254,7 +254,10 @@ a {
     list-style: none;
     padding: 0;
     margin: 0;
-    transition: all v.$motion-duration v.$motion-easing;
+    // 透明度属于反馈档，不跟高度一起走形变档
+    transition: max-height v.$motion-duration v.$motion-easing,
+        margin-bottom v.$motion-duration v.$motion-easing,
+        opacity v.$feedback-duration v.$feedback-easing;
     overflow: hidden;
 }
 
@@ -335,7 +338,10 @@ a {
     list-style: none;
     padding: 0;
     margin: 8px 0 0 24px;
-    transition: all v.$motion-duration v.$motion-easing;
+    // 透明度属于反馈档，不跟高度一起走形变档
+    transition: max-height v.$motion-duration v.$motion-easing,
+        margin-top v.$motion-duration v.$motion-easing,
+        opacity v.$feedback-duration v.$feedback-easing;
     overflow: hidden;
 }
 
