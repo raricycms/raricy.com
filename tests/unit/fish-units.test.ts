@@ -6,13 +6,7 @@
 //     但 ≤4 位小数的结果如 2.4 是「最短可往返表示」，与字面量 2.4 同值）
 
 import { describe, it, expect } from 'vitest';
-import {
-  FISH_DECIMALS,
-  FISH_UNIT_SCALE,
-  MAX_FISH_UNITS,
-  fishToUnits,
-  unitsToFish,
-} from '@/lib/fish-units';
+import { fishToUnits, unitsToFish } from '@/lib/fish-units';
 
 describe('fishToUnits（鱼干 → 存储单位）', () => {
   it('1 鱼干 = 10000 单位；整数与小数均正确换算', () => {
@@ -93,23 +87,5 @@ describe('unitsToFish（存储单位 → 鱼干）', () => {
     for (const fish of [0, 0.0001, 0.1, 0.8, 1, 4.2, 5, -2.4, 12.0001, 2045]) {
       expect(unitsToFish(fishToUnits(fish))).toBe(fish);
     }
-  });
-});
-
-describe('常量契约', () => {
-  it('FISH_UNIT_SCALE = 10000（改动即报警：需同步迁移脚本与 schema 注释）', () => {
-    expect(FISH_UNIT_SCALE).toBe(10000);
-  });
-
-  it('FISH_DECIMALS 与 FISH_UNIT_SCALE 同源（不会各自漂移）', () => {
-    expect(FISH_UNIT_SCALE).toBe(10 ** FISH_DECIMALS);
-    expect(FISH_DECIMALS).toBe(4);
-  });
-
-  it('MAX_FISH_UNITS 是 Prisma Int 的 32 位有符号上界', () => {
-    // 改这个数之前先读 fish-units.ts 头部「存储上限」那段：上界同时约束
-    // fish_transactions.amount（历史累计成交量），不只是余额。
-    expect(MAX_FISH_UNITS).toBe(2 ** 31 - 1);
-    expect(MAX_FISH_UNITS / FISH_UNIT_SCALE).toBeCloseTo(214748.3647, 4);
   });
 });

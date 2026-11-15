@@ -17,6 +17,7 @@
 // 内部一致性就是唯一的证明（见 tests/helpers/fish-ledger.ts）。
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { scryptSync } from 'node:crypto';
 
 // 会话由 cookie 决定：单测里没有请求上下文，用可变 holder 模拟「有 / 没有会话」。
 const { session } = vi.hoisted(() => ({ session: { token: undefined as string | undefined } }));
@@ -31,7 +32,6 @@ vi.mock('next/headers', () => ({
 
 import { resetDb, makeUser, prisma } from '../helpers/db';
 import { makeFishUser, expectLedgerConsistent } from '../helpers/fish-ledger';
-import { hashPassword } from '@/lib/password';
 import * as passwordWork from '@/lib/password';
 import { createSessionToken } from '@/lib/session';
 import { __resetRateLimitStore, RULES, isRateLimited, recordRateLimitHit } from '@/lib/rate-limit';
@@ -67,7 +67,22 @@ const balanceOf = async (id: string) =>
   );
 
 /**
- * 造一个能登录的用户（真密码哈希，走 verifyPassword）。
+ * 夹具用的**低 N** werkzeug scrypt 哈希：格式仍是 `scrypt:N:r:p$salt$hex`，
+ * verifyPassword 从串里读参数 —— 校验路径（含真实 node:crypto scrypt）一字不差，
+ * 只是把 N 从生产值 32768 降到 1024。本文件每条无状态用例都要真跑一次校验，
+ * 用生产 N 的话单次约 0.5s，几十条全花在夹具成本上；N 只影响成本、不影响被测语义。
+ */
+function lowCostPasswordHash(password: string): string {
+  const N = 1024;
+  const r = 8;
+  const p = 1;
+  const salt = 'fishBotSalt00001';
+  const derived = scryptSync(password, salt, 64, { N, r, p });
+  return `scrypt:${N}:${r}:${p}$${salt}$${derived.toString('hex')}`;
+}
+
+/**
+ * 造一个能登录的用户（werkzeug 兼容哈希，走 verifyPassword）。
  *
  * 初始鱼干用 makeFishUser 造：它让余额**经由记账内核**进入（一条 admin_grant 流水），
  * 与线上同构 —— 而 expectLedgerConsistent 断的是「余额 == 该用户所有流水之和」，
@@ -75,7 +90,7 @@ const balanceOf = async (id: string) =>
  */
 async function makeLoginableUser(opts: { driedFish?: number; isBanned?: boolean } = {}) {
   return makeFishUser(opts.driedFish ?? 100, {
-    passwordHash: await hashPassword(PASSWORD),
+    passwordHash: lowCostPasswordHash(PASSWORD),
     isBanned: opts.isBanned ?? false,
     banUntil: null,
   });
@@ -343,17 +358,18 @@ describe('会话路径不受影响', () => {
 describe('无状态路径的限频', () => {
   it(`成功也计数：超过 ${RULES.fishApiPerUser.limit} 次/分 → 429`, async () => {
     const sender = await makeLoginableUser({ driedFish: 100 });
-    const limit = RULES.fishApiPerUser.limit;
+    const key = `fish-api:${sender.username.toLowerCase()}`;
 
-    for (let i = 0; i < limit; i++) {
-      const res = await transferReq({
-        username: sender.username,
-        password: PASSWORD,
-        to_user_id: sender.id, // 自己转自己（400），但**凭据校验已经跑过**、配额要计
-        amount: 1,
-      });
-      expect(res.status, `第 ${i + 1} 次应当过凭据校验`).toBe(400);
-    }
+    // 直填桶到「只剩一个名额」：本用例要钉的是「配额在凭据校验之前就计、成功也计」，
+    // 不是 20 次逐条回 400。最后一次仍走真实 secret 校验 + 真实计数。
+    for (let i = 0; i < RULES.fishApiPerUser.limit - 1; i++) recordRateLimitHit(key);
+    const last = await transferReq({
+      username: sender.username,
+      password: PASSWORD,
+      to_user_id: sender.id, // 自己转自己（400），但**凭据校验已经跑过**、配额要计
+      amount: 1,
+    });
+    expect(last.status, '最后一个名额仍应过凭据校验').toBe(400);
 
     const blocked = await transferReq({
       username: sender.username,
@@ -365,20 +381,20 @@ describe('无状态路径的限频', () => {
   });
 
   it('同一 IP 扫多个账号，达到 IP 上限 → 429', async () => {
-    const ip = { 'x-real-ip': '203.0.113.9' };
-    const limit = RULES.fishApiPerIp.limit;
+    const ip = '203.0.113.9';
+    const key = `fish-api:ip:${ip}`;
+    for (let i = 0; i < RULES.fishApiPerIp.limit - 1; i++) recordRateLimitHit(key);
+    const ipHeader = { 'x-real-ip': ip };
 
-    for (let i = 0; i < limit; i++) {
-      const res = await transferReq(
-        { username: `nobody${i}`, password: 'wrong', to_username: 'nobody', amount: 1 },
-        ip
-      );
-      expect(res.status, `第 ${i + 1} 次应为 401（账号不存在）`).toBe(401);
-    }
+    const last = await transferReq(
+      { username: 'nobody0', password: 'wrong', to_username: 'nobody', amount: 1 },
+      ipHeader
+    );
+    expect(last.status, '最后一个名额仍应过 IP 配额、回到凭据校验').toBe(401);
 
     const blocked = await transferReq(
       { username: 'fresh-name', password: 'wrong', to_username: 'nobody', amount: 1 },
-      ip
+      ipHeader
     );
     expect(blocked.status).toBe(429);
   });
@@ -419,7 +435,7 @@ describe('无状态路径的限频', () => {
 // ── 另两个接口：余额 / 流水 ────────────────────────────────────────────────
 
 describe('POST /api/fish/market/balance', () => {
-  it('凭据有效 → 返回该账号余额（无会话）', async () => {
+  it('凭据有效 → 返回该账号余额（无会话）；带会话且空 body 也走同一形状', async () => {
     const user = await makeLoginableUser({ driedFish: 12.5 });
 
     const res = await balanceApi(
@@ -429,6 +445,12 @@ describe('POST /api/fish/market/balance', () => {
     expect(res.status).toBe(200);
     const json = await res.json();
     expect(json).toMatchObject({ user_id: user.id, username: user.username, balance: 12.5 });
+
+    // 网页（会话 + 空 body）与脚本（body 凭据）共用同一形状 —— 不能各长一样。
+    session.token = await createSessionToken({ uid: user.id, sv: 0 });
+    const viaSession = await balanceApi(makeReq('/api/fish/market/balance', {}));
+    expect(viaSession.status).toBe(200);
+    expect((await viaSession.json()).balance).toBe(12.5);
   });
 
   it('凭据错误 → 401，不泄露余额', async () => {
@@ -441,16 +463,6 @@ describe('POST /api/fish/market/balance', () => {
     expect(res.status).toBe(401);
     expect(await res.text()).not.toContain('12.5');
   });
-
-  it('带会话且空 body → 也能用（网页/脚本共用同一形状）', async () => {
-    const user = await makeLoginableUser({ driedFish: 3 });
-    session.token = await createSessionToken({ uid: user.id, sv: 0 });
-
-    const res = await balanceApi(makeReq('/api/fish/market/balance', {}));
-
-    expect(res.status).toBe(200);
-    expect((await res.json()).balance).toBe(3);
-  });
 });
 
 describe('只读凭据（Authorization: Bearer）—— 第三道门', () => {
@@ -462,7 +474,7 @@ describe('只读凭据（Authorization: Bearer）—— 第三道门', () => {
   }
   const bearer = (t: string) => ({ authorization: `Bearer ${t}` });
 
-  it('★ 只读凭据能查余额（不跑 scrypt、不要密码）', async () => {
+  it('★ 只读凭据能查余额与流水（不跑 scrypt、不要密码）', async () => {
     const { user, token } = await withToken({ driedFish: 12.5 });
 
     const res = await balanceApi(makeReq('/api/fish/market/balance', {}, bearer(token)));
@@ -473,13 +485,10 @@ describe('只读凭据（Authorization: Bearer）—— 第三道门', () => {
       username: user.username,
       balance: 12.5,
     });
-  });
 
-  it('只读凭据能查流水', async () => {
-    const { token } = await withToken();
-    const res = await transactionsApi(makeReq('/api/fish/market/transactions', {}, bearer(token)));
-    expect(res.status).toBe(200);
-    expect((await res.json()).mode).toBe('page');
+    const tx = await transactionsApi(makeReq('/api/fish/market/transactions', {}, bearer(token)));
+    expect(tx.status).toBe(200);
+    expect((await tx.json()).mode).toBe('page');
   });
 
   it('★ 只读凭据**不能转账** → 403，且零写入', async () => {
@@ -542,23 +551,21 @@ describe('只读凭据（Authorization: Bearer）—— 第三道门', () => {
     const { user, token } = await withToken();
     const key = `fish-api:${user.username.toLowerCase()}`;
 
-    // 打满远超 20 次/分（那条是 scrypt 的 CPU 闸门，与凭据无关）
-    for (let i = 0; i < RULES.fishApiPerUser.limit + 5; i++) {
-      const res = await balanceApi(makeReq('/api/fish/market/balance', {}, bearer(token)));
-      expect(res.status).toBe(200);
-    }
+    // 直填到「只剩一个名额」：凭据路径若偷偷消费了这条桶（哪怕一次），这一发就会顶满，
+    // 下面的 isRateLimited 立刻变红 —— 不用再真打 25 次才看得出偏差。
+    for (let i = 0; i < RULES.fishApiPerUser.limit - 1; i++) recordRateLimitHit(key);
+    const res = await balanceApi(makeReq('/api/fish/market/balance', {}, bearer(token)));
+    expect(res.status).toBe(200);
     expect(isRateLimited(key, RULES.fishApiPerUser), '凭据不该吃 scrypt 的额度').toBe(false);
   });
 
   it('凭据自己有配额：超过 fishTokenPerUser → 429', async () => {
     const { user, token } = await withToken();
-    for (let i = 0; i < RULES.fishTokenPerUser.limit; i++) {
-      expect((await balanceApi(makeReq('/api/fish/market/balance', {}, bearer(token)))).status).toBe(
-        200
-      );
-    }
-    const res = await balanceApi(makeReq('/api/fish/market/balance', {}, bearer(token)));
-    expect(res.status).toBe(429);
+    const key = `fish-token:${user.id}`;
+    for (let i = 0; i < RULES.fishTokenPerUser.limit - 1; i++) recordRateLimitHit(key);
+    const balance = () => balanceApi(makeReq('/api/fish/market/balance', {}, bearer(token)));
+    expect((await balance()).status, '最后一个名额仍放行').toBe(200);
+    expect((await balance()).status).toBe(429);
     expect(user.id).toBeTruthy();
   });
 
@@ -616,6 +623,18 @@ describe('POST /api/fish/market/transactions', () => {
     expect(json.transactions[0].related_user_id).toBe(recipient.id);
     expect(json.has_prev).toBe(false);
     expect(json.has_next).toBe(false);
+
+    // 同一读口的兼容形状：非法页码回落默认值而不是 400（分区页的输入不值得报错）。
+    const fallback = await transactionsApi(
+      makeReq('/api/fish/market/transactions', {
+        username: sender.username,
+        password: PASSWORD,
+        page: 'abc',
+        per_page: -5,
+      })
+    );
+    expect(fallback.status).toBe(200);
+    expect((await fallback.json()).page).toBe(1);
 
     await expectLedgerConsistent('流水接口读取的这笔转账之后');
   });
@@ -677,22 +696,6 @@ describe('POST /api/fish/market/transactions', () => {
       );
       expect(res.status, `since_id=${bad}`).toBe(400);
     }
-  });
-
-  it('非法页码回落默认值而不是 400（分区页的输入不值得报错）', async () => {
-    const user = await makeLoginableUser({ driedFish: 1 });
-
-    const res = await transactionsApi(
-      makeReq('/api/fish/market/transactions', {
-        username: user.username,
-        password: PASSWORD,
-        page: 'abc',
-        per_page: -5,
-      })
-    );
-
-    expect(res.status).toBe(200);
-    expect((await res.json()).page).toBe(1);
   });
 });
 
@@ -769,9 +772,15 @@ describe('POST /api/fish/market/pay（收银台）', () => {
     const sender = await makeLoginableUser({ driedFish: 0 });
     const recipient = await makeUser();
     session.token = await createSessionToken({ uid: sender.id, sv: 0 });
-    for (let i = 0; i < RULES.passwordPerUser.limit; i++) {
-      expect((await payReq({ to_user_id: recipient.id, amount: 1, password: PASSWORD })).status).toBe(400);
-    }
+    // 直填计算预算到「只剩一个名额」：要钉的是「付款的 step-up 也算计算预算」，
+    // 不是 20 次逐条真跑 scrypt。最后一次仍走真实校验 + 真实计数。
+    const budgetKey = `password:user:${sender.id}`;
+    for (let i = 0; i < RULES.passwordPerUser.limit - 1; i++) recordRateLimitHit(budgetKey);
+
+    expect(
+      (await payReq({ to_user_id: recipient.id, amount: 1, password: PASSWORD })).status,
+      '最后一个名额仍应跑密码计算（余额不足 → 400）'
+    ).toBe(400);
     expect((await payReq({ to_user_id: recipient.id, amount: 1, password: PASSWORD })).status).toBe(429);
     expect(await txCount()).toBe(0);
     await expectLedgerConsistent('正确密码计算被限频后');

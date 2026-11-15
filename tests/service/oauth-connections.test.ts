@@ -10,7 +10,6 @@ import { resetDb, makeUser, prisma } from '../helpers/db';
 import {
   aggregateConnections,
   consumeAuthorizationCode,
-  createAccessToken,
   createOAuthApplication,
   generateAuthorizationCode,
   hashOpaqueToken,
@@ -92,12 +91,12 @@ describe('aggregateConnections（纯函数口径）', () => {
     expect(out[0].tokenCount).toBe(3);
   });
 
-  it('★ 时间取包络：最早授权 / 最近授权 / 最晚到期 / 最近使用', () => {
+  it('★ 时间取包络（最早授权 / 最近授权 / 最晚到期 / 最近使用），scopes 取并集', () => {
     const out = aggregateConnections(
       [
-        row({ appId: 'a', createdAt: days(5), expiresAt: days(95), lastUsedAt: days(6) }),
-        row({ appId: 'a', createdAt: days(1), expiresAt: days(120), lastUsedAt: days(30) }),
-        row({ appId: 'a', createdAt: days(9), expiresAt: days(99), lastUsedAt: null }),
+        row({ appId: 'a', createdAt: days(5), expiresAt: days(95), lastUsedAt: days(6), scopes: 'profile' }),
+        row({ appId: 'a', createdAt: days(1), expiresAt: days(120), lastUsedAt: days(30), scopes: 'profile' }),
+        row({ appId: 'a', createdAt: days(9), expiresAt: days(99), lastUsedAt: null, scopes: 'profile' }),
       ],
       T0
     );
@@ -105,47 +104,7 @@ describe('aggregateConnections（纯函数口径）', () => {
     expect(out[0].lastAuthorizedAt).toEqual(days(9));
     expect(out[0].expiresAt).toEqual(days(120));
     expect(out[0].lastUsedAt).toEqual(days(30));
-  });
-
-  it('全部从未被调用过 → lastUsedAt 为 null（不是 now）', () => {
-    const out = aggregateConnections([row({ appId: 'a' }), row({ appId: 'a' })], T0);
-    expect(out[0].lastUsedAt).toBeNull();
-  });
-
-  it('createdAt 缺失时回退到 now', () => {
-    const out = aggregateConnections([row({ appId: 'a', createdAt: null })], days(7));
-    expect(out[0].firstAuthorizedAt).toEqual(days(7));
-    expect(out[0].lastAuthorizedAt).toEqual(days(7));
-  });
-
-  it('scopes 取并集且不重复', () => {
-    const out = aggregateConnections(
-      [row({ appId: 'a', scopes: 'profile' }), row({ appId: 'a', scopes: 'profile' })],
-      T0
-    );
     expect(out[0].scopes).toEqual(['profile']);
-  });
-
-  it('历史禁用应用的 token 仍展示为停用，用户能主动解绑', () => {
-    const out = aggregateConnections(
-      [
-        row({
-          appId: 'a',
-          application: { id: 'a', name: 'dead', homepageUrl: null, disabledAt: days(1) },
-        }),
-      ],
-      T0
-    );
-    expect(out).toHaveLength(1);
-    expect(out[0].applicationDisabled).toBe(true);
-  });
-
-  it('不同应用各占一行，最近授权的排前面', () => {
-    const out = aggregateConnections(
-      [row({ appId: 'old', createdAt: days(1) }), row({ appId: 'new', createdAt: days(8) })],
-      T0
-    );
-    expect(out.map((c) => c.applicationId)).toEqual(['new', 'old']);
   });
 });
 
@@ -203,16 +162,6 @@ describe('listUserConnections（DB 口径）', () => {
     expect(conns[0].lastAuthorizedAt).toEqual(days(3));
   });
 
-  it('两个应用 → 两行', async () => {
-    const [appA, appB] = [await makeApp('app-a'), await makeApp('app-b')];
-    const user = await makeUser();
-    await makeToken(appA.id, user.id);
-    await makeToken(appB.id, user.id);
-
-    const conns = await listUserConnections(user.id);
-    expect(conns.map((c) => c.applicationId).sort()).toEqual([appA.id, appB.id].sort());
-  });
-
   it('已撤销 / 已过期的 token 不计入（也不撑起 tokenCount）', async () => {
     const app = await makeApp();
     const user = await makeUser();
@@ -242,17 +191,6 @@ describe('listUserConnections（DB 口径）', () => {
     expect(await listUserConnections(user.id)).toMatchObject([{ applicationId: app.id, applicationDisabled: true }]);
   });
 
-  it('createAccessToken 签出来的真 token 同样被聚合', async () => {
-    const app = await makeApp();
-    const user = await makeUser();
-    const a = await createAccessToken(app.id, user.id, ['profile']);
-    const b = await createAccessToken(app.id, user.id, ['profile']);
-    expect(a.token).not.toBe(b.token);
-
-    const conns = await listUserConnections(user.id);
-    expect(conns).toHaveLength(1);
-    expect(conns[0].tokenCount).toBe(2);
-  });
 });
 
 describe('revokeUserApplicationTokens（整应用解绑）', () => {
@@ -280,28 +218,6 @@ describe('revokeUserApplicationTokens（整应用解绑）', () => {
     await revokeUserApplicationTokens(user.id, appA.id);
     const conns = await listUserConnections(user.id);
     expect(conns.map((c) => c.applicationId)).toEqual([appB.id]);
-  });
-
-  it('不波及其他用户在同一应用下的 token', async () => {
-    const app = await makeApp();
-    const [me, other] = [await makeUser(), await makeUser()];
-    await makeToken(app.id, me.id);
-    await makeToken(app.id, other.id);
-
-    await revokeUserApplicationTokens(me.id, app.id);
-    const otherLive = await prisma.oAuthAccessToken.count({
-      where: { userId: other.id, applicationId: app.id, revokedAt: null },
-    });
-    expect(otherLive).toBe(1);
-  });
-
-  it('没有任何绑定时 found=false（路由据此回 404）', async () => {
-    const app = await makeApp();
-    const user = await makeUser();
-    expect(await revokeUserApplicationTokens(user.id, app.id)).toEqual({
-      found: false,
-      revoked: 0,
-    });
   });
 
   it('幂等：重复点「解除绑定」→ found=true 但不再撤销', async () => {

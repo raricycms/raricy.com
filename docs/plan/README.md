@@ -16,6 +16,7 @@
 | `docs/plan/yiwen-chapter-two.md` | 关卡设计与规则原型已完成；镜映、章节和多底稿交互未接入，玩家试玩待完成（2026-10-26） |
 | `docs/plan/page-transition-plan.md` | 仅方案与 P0 概念 demo；P0–P2 落地与验收未完成（2026-10-18） |
 | `docs/plan/maintenance-plan.md` | 样式整理与完整可见性轨迹待处理；翻译跳转入口待决策，具体事项及各自校对日期见正文 |
+| `docs/plan/test-suite-audit.md` | 全量测试价值审计**已实施**（2026-11-13）：272 文件分四档，删除 31 个 vitest + 14 个 e2e 玩具 spec、裁 42 个文件、门禁拆成 test / test:fast / guards / test:migrations / test:slow；最终全量 219 文件 / 4,181 用例 / 4 worker 193s 全绿。剩余：e2e 全量未跑 |
 
 ### 部分交付，仍有后续工作
 

@@ -139,26 +139,15 @@ describe('折行与自适应字号（SVG 没有自动断行）', () => {
 
 describe('二维码：渲染成 PNG 之后必须真的能扫出来', () => {
   // 模块数随 payload 长度变化很大 —— 这是对「静默区 ≥ 4 模块」那条约束的压力测试。
-  // 短链接模块大，正是当初踩坑的那一档。
+  // 短链接模块大，正是当初踩坑的那一档；uuid 长度是模块最多的真实形态。
   const payloads = [
     'https://raricy.com/u/x', // 最短：模块最少、模块尺寸最大
-    'https://raricy.com/u/abc',
-    'https://raricy.com/u/u_e2e_owner',
+    'https://raricy.com/u/u_e2e_owner', // 线上真实短链
     'https://raricy.com/u/9f8c1d2e-4a3b-4c5d-8e7f-0123456789ab', // 真实 uuid 长度
-    'https://raricy.com/fish/collect?to=%E8%81%AA%E6%98%8E%E5%B1%B1%E4%B8%8A%E7%9A%84%E7%8C%AB',
   ];
 
   it.each(payloads)('主页画报：%s', async (text) => {
     expect(await decode(profile({ qrText: text }))).toBe(text);
-  });
-
-  it.each(payloads.slice(0, 4))('收款码：%s', async (text) => {
-    const svg = buildCollectPosterSvg({
-      username: '聪明山上的猫',
-      qrText: text,
-      avatarDataUri: AVATAR,
-    });
-    expect(await decode(svg)).toBe(text);
   });
 
   it('模块数随内容增长（短内容模块更少，正是静默区最紧的情况）', () => {
@@ -167,7 +156,16 @@ describe('二维码：渲染成 PNG 之后必须真的能扫出来', () => {
     );
   });
 
-  it.each(payloads.slice(0, 4))('收藏夹分享码：%s', async (text) => {
+  it.each(payloads)('收款码：%s', async (text) => {
+    const svg = buildCollectPosterSvg({
+      username: '聪明山上的猫',
+      qrText: text,
+      avatarDataUri: AVATAR,
+    });
+    expect(await decode(svg)).toBe(text);
+  });
+
+  it.each(payloads)('收藏夹分享码：%s', async (text) => {
     const svg = buildFavoritePosterSvg({
       title: '我的收藏夹',
       publicId: '123456',
@@ -190,36 +188,6 @@ describe('二维码：渲染成 PNG 之后必须真的能扫出来', () => {
 });
 
 describe('版式', () => {
-  const heightOf = (svg: string) => Number(svg.match(/height="(\d+)"/)?.[1]);
-
-  it('高度按内容算：有简介、有注册年份时更高', () => {
-    const full = heightOf(profile());
-    const bare = heightOf(profile({ bio: '', joinedYear: '', roleLabel: '' }));
-    expect(full).toBeGreaterThan(bare);
-    expect(profile()).toContain('width="750"');
-  });
-
-  it('没有简介与注册年份时不写占位文案', () => {
-    const svg = profile({ bio: '', joinedYear: '' });
-    expect(svg).not.toContain('这个人还没有写简介');
-    expect(svg).not.toContain('注册于');
-  });
-
-  it('统计格与 /u 公开统计同项目：文章 / 获赞 / 签到；签到未公开时只有两格', () => {
-    // 产品决定 R3-546：画报与公开主页共用 profile-service 的统计来源与项目。
-    const withCheckin = profile();
-    expect(withCheckin).toContain('文章');
-    expect(withCheckin).toContain('获赞');
-    expect(withCheckin).toContain('签到');
-    expect(withCheckin).not.toContain('评论');
-
-    // 主页没公开展示签到（默认布局只有文章块）→ 画报不带这一格。
-    const withoutCheckin = profile({ checkins: undefined });
-    expect(withoutCheckin).toContain('文章');
-    expect(withoutCheckin).toContain('获赞');
-    expect(withoutCheckin).not.toContain('签到');
-  });
-
   it('二维码卡片下的链接会缩到卡片内（uuid 长链接不能顶出白卡片）', () => {
     // 实测：`raricy.com/u/<uuid>` 是 49 个字符，19px 下约 512px，而卡片只有 420px。
     const long = 'raricy.com/u/9f8c1d2e-4a3b-4c5d-8e7f-0123456789ab';

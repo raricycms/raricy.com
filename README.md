@@ -90,7 +90,11 @@ npm run dev                              # http://localhost:3000
 | `npm run dev` / `start` | 本地开发 / 生产启动，主站与实时服务共同启停 |
 | `npm run build` | 生产构建。**会先删 `.next/types`** 再 build —— 陈旧的路由类型会让类型检查报幻影错误，而「跑一次 build」这个解药正好就是它本身（见 `scripts/build.mjs` 头部） |
 | `npm run typecheck` | 只查源码类型（`tsconfig.typecheck.json`，**不读 `.next/types`**）。想确认自己改的代码对不对时用这个，别用 `npx tsc --noEmit` —— 后者会读构建产物、对已删路由报错 |
-| `npm test` | vitest 单测 |
+| `npm test` | vitest 单测（日常门禁：行为测试全量；不含静态守卫 / 迁移验收 / 慢车道） |
+| `npm run test:fast` | 精选风险面快层（钱 / 鉴权 / 可见性 / 迁移 / 限流 / 时间语义 / 净化 / 对外契约），改一次代码后的日常门禁，目标 ≤90s |
+| `npm run guards` | 静态守卫：扫源码 / 文档 / 素材与台账；改文档、schema、约定或素材后跑 |
+| `npm run test:migrations` | 空库全量 SQL 迁移验收（300s 级）；改 `prisma/schema.prisma` 或 `prisma/migrations/` 后跑 |
+| `npm run test:slow` | 启动生命周期 / 子进程慢车道；CI 或发布前跑 |
 | `npm run test:related` | 只跑与改动文件相关的用例（`vitest related --run`）。改一个功能时用它，全量留给提交前 |
 | `npm run e2e` | 端到端（直接跑 Playwright，**不**自动 build —— 见下方警告） |
 | `npm run e2e:ci` | 同上，但先 build（CI / 全新环境用） |

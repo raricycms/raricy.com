@@ -8,9 +8,12 @@
 // 「全部栏目」（BlogCategorySelect）早就有一版按内容高度伸展的展开动画。
 // 这个组件把那一档体验抽成通用件，供**所有列表型字段**复用。
 //
-// 【与 BlogCategorySelect 的分工】后者是筛选条里的特例：宽度还要随最长选项伸缩、
-// 父栏目旁边有独立的二级展开钮，所以保留自己的组件与几何。两者的共同点 ——
-// 展开动画的节奏 —— 收在 abstracts/_mixins.scss 的 expand-panel，别各写一份。
+// 【与 BlogCategorySelect 的关系】两者同一套骨架：触发钮和面板装在**同一个外壳**
+// 里（abstracts/_mixins.scss 的 expand-shell），收起时外壳就是一颗胶囊，展开时
+// 外壳自己变成卡片、触发钮留在卡片顶部（伸展节奏共用 expand-panel）。差别只在
+// 几何：目录筛选条里的栏目下拉要按最长选项横向伸缩、父栏目旁边还有独立的二级
+// 展开钮；本组件的宽度跟随字段，高度由上下文给（--expand-select-height），
+// 下方空间不够时向上展开。别让「按下的按钮」和「选项」变成两张卡。
 //
 // 【表单语义】给了 `name` 就渲染一枚隐藏 input，GET 表单 / FormData 读到的仍是
 // 原来那个字段名。选择时**先同步写 DOM** 再回调 onChange —— 调用方可能在 onChange
@@ -28,6 +31,9 @@
 // 选项是 option。打开后方向键在选项间移动、Home / End 到首尾、Enter / 空格选中、
 // Escape 收起并把焦点还给触发钮、Tab 正常离开；收起的面板挂 inert，不会进入焦点序列。
 // 外部点击与焦点移出同样收起。
+// 触发钮和面板同在一个 overflow: hidden 的外壳里，按钮自己的聚焦光晕会被裁掉，
+// 所以收起态的聚焦反馈由外壳（:focus-within）承担；展开态与博客栏目同档，只有
+// 浮层阴影（见 components/_expand-select.scss）。
 
 import {
   Fragment,
@@ -237,76 +243,79 @@ export default function ExpandSelect({
     <div
       ref={hostRef}
       className={`expand-select${open ? ' is-open' : ''}${placement === 'up' ? ' is-up' : ''}${
-        className ? ` ${className}` : ''
-      }`}
+        disabled ? ' is-disabled' : ''
+      }${className ? ` ${className}` : ''}`}
       onBlur={(event) => {
         if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setOpen(false);
       }}
     >
-      <button
-        ref={toggleRef}
-        type="button"
-        id={id}
-        className="expand-select__toggle"
-        disabled={disabled}
-        aria-label={ariaLabel}
-        aria-haspopup="listbox"
-        aria-expanded={open}
-        aria-controls={panelId}
-        onClick={() => {
-          if (open) close(false);
-          else openPanel();
-        }}
-        onKeyDown={onToggleKeyDown}
-      >
-        <span className="expand-select__label">{selectedLabel}</span>
-        <ChevronDown className="expand-select__chevron" aria-hidden="true" />
-      </button>
+      {/* 触发钮与面板同在外壳里：展开时外壳整体变成卡片，触发钮留在顶部（见文件头）。 */}
+      <div className="expand-select__shell">
+        <button
+          ref={toggleRef}
+          type="button"
+          id={id}
+          className="expand-select__toggle"
+          disabled={disabled}
+          aria-label={ariaLabel}
+          aria-haspopup="listbox"
+          aria-expanded={open}
+          aria-controls={panelId}
+          onClick={() => {
+            if (open) close(false);
+            else openPanel();
+          }}
+          onKeyDown={onToggleKeyDown}
+        >
+          <span className="expand-select__label">{selectedLabel}</span>
+          <ChevronDown className="expand-select__chevron" aria-hidden="true" />
+        </button>
 
-      <div className="expand-select__panel" inert={!open}>
-        <div className="expand-select__clip">
-          <div
-            className="expand-select__list"
-            id={panelId}
-            role="listbox"
-            aria-label={ariaLabel ?? '选项'}
-          >
-            {groups.map((group, groupIndex) => {
-              const options = group.options.map((option) => {
-                const index = nextIndex;
-                nextIndex += 1;
-                return (
-                  <div
-                    key={`${option.value}-${index}`}
-                    ref={(element) => {
-                      optionRefs.current[index] = element;
-                    }}
-                    role="option"
-                    aria-selected={option.value === currentValue}
-                    aria-disabled={option.disabled || undefined}
-                    tabIndex={-1}
-                    className={`expand-select__option${option.depth ? ' expand-select__option--child' : ''}${
-                      option.value === currentValue ? ' is-active' : ''
-                    }`}
-                    onClick={() => choose(option)}
-                    onKeyDown={(event) => onOptionKeyDown(event, option)}
-                  >
-                    {option.label}
+        <div className="expand-select__panel" inert={!open}>
+          <div className="expand-select__clip">
+            <div
+              className="expand-select__list"
+              id={panelId}
+              role="listbox"
+              aria-label={ariaLabel ?? '选项'}
+            >
+              {groups.map((group, groupIndex) => {
+                const options = group.options.map((option) => {
+                  const index = nextIndex;
+                  nextIndex += 1;
+                  return (
+                    <div
+                      key={`${option.value}-${index}`}
+                      ref={(element) => {
+                        optionRefs.current[index] = element;
+                      }}
+                      role="option"
+                      aria-selected={option.value === currentValue}
+                      aria-disabled={option.disabled || undefined}
+                      tabIndex={-1}
+                      className={`expand-select__option${option.depth ? ' expand-select__option--child' : ''}${
+                        option.value === currentValue ? ' is-active' : ''
+                      }`}
+                      onClick={() => choose(option)}
+                      onKeyDown={(event) => onOptionKeyDown(event, option)}
+                    >
+                      {option.label}
+                    </div>
+                  );
+                });
+                // 有标题的分组给 role=group（读屏能把标题念出来）；没有标题的别套空壳。
+                return group.label ? (
+                  <div key={`group-${groupIndex}`} role="group" aria-label={group.label}>
+                    <div className="expand-select__group-label" aria-hidden="true">
+                      {group.label}
+                    </div>
+                    {options}
                   </div>
+                ) : (
+                  <Fragment key={`group-${groupIndex}`}>{options}</Fragment>
                 );
-              });
-              // 有标题的分组给 role=group（读屏能把标题念出来）；没有标题的别套空壳。
-              return group.label ? (
-                <div key={`group-${groupIndex}`} role="group" aria-label={group.label}>
-                  <div className="expand-select__group-label" aria-hidden="true">
-                    {group.label}
-                  </div>
-                  {options}
-                </div>
-              ) : (
-                <Fragment key={`group-${groupIndex}`}>{options}</Fragment>
-              );
-            })}
+              })}
+            </div>
           </div>
         </div>
       </div>

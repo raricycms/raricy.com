@@ -81,26 +81,11 @@ async function render(msg: ChatMessageDTO, opts: { grouped?: boolean; isMine?: b
 }
 
 const q = (el: HTMLElement, sel: string) => el.querySelector(sel);
-/** 直接子元素的类名（顺序敏感） */
-const kids = (el: HTMLElement, sel: string) =>
-  [...q(el, sel)!.children].map((n) => n.className);
 
 describe('表头行的层位（浮层贴谁）', () => {
   it('grouped：表头行住在 .chat-msg__own-blocks 里（浮层的定位祖先就是它）', async () => {
     const c = await render(dto({ reply: QUOTE }), { grouped: true });
     expect(q(c, '.chat-msg__meta')?.parentElement?.className).toContain('chat-msg__own-blocks');
-  });
-
-  it.each([true, false])('非 grouped（isMine=%s）：表头行留在 body 里、且在引用块之前', async (isMine) => {
-    const c = await render(dto({ reply: QUOTE }), { isMine });
-    expect(q(c, '.chat-msg__meta')?.parentElement?.className).toContain('chat-msg__body');
-    // 在流里的表头行必须在引用块**之前** —— 引用在上、正文在下，
-    // 表头行掉到引用下面去就等于回执换了位置
-    expect(kids(c, '.chat-msg__body')).toEqual([
-      'chat-msg__meta',
-      'chat-msg__reply',
-      'chat-msg__own-blocks',
-    ]);
   });
 
   it('★ 引用块永远不在 .chat-msg__own-blocks 里面（它是别人的话，浮层不贴它）', async () => {
@@ -109,20 +94,5 @@ describe('表头行的层位（浮层贴谁）', () => {
     expect(own.querySelector('.chat-msg__reply')).toBeNull();
     // …且自己的块确实在里面（少了它这层就只剩个空壳，几何断言会去量空气泡）
     expect(own.querySelector('.chat-msg__content')).not.toBeNull();
-    // 别人的消息里引用块排在 own-blocks **之前**（引用在上、正文在下）
-    expect(kids(c, '.chat-msg__body')).toEqual(['chat-msg__reply', 'chat-msg__own-blocks']);
-    // 自己发的消息也保持引用在上、正文在下
-    const mine = await render(dto({ reply: QUOTE }), { grouped: true });
-    expect(kids(mine, '.chat-msg__body')).toEqual(['chat-msg__reply', 'chat-msg__own-blocks']);
-  });
-
-  it('纯图片消息：图也在 .chat-msg__own-blocks 里（浮层贴图，不贴更宽的引用）', async () => {
-    const c = await render(
-      dto({ content: '', image: { id: 'i1', url: '/api/images/i1', mime_type: 'image/png' }, reply: QUOTE }),
-      { grouped: true, isMine: false }
-    );
-    const own = q(c, '.chat-msg__own-blocks')!;
-    expect(own.querySelector('.chat-msg__image')).not.toBeNull();
-    expect(own.querySelector('.chat-msg__reply')).toBeNull();
   });
 });

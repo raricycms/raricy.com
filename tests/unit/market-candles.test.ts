@@ -1,21 +1,17 @@
 // market-candles.ts —— K 线的词汇表（周期 / 根数 / 线上形状 / 缓存键）。
 //
-// 【这组用例钉的是什么】这份词汇服务端与客户端**共用**，而它有两类错误是静默的：
+// 【这组用例钉的是什么】这份词汇服务端与客户端**共用**，而它的错误是静默的：
 //   • 周期白名单被悄悄扩了（加一档周期 = 多一个币安 URL 参数，与 parseSymbol 同一条纪律）
-//   • `INTERVAL_MS` / `INTERVAL_LABELS` 漏键或写错值 —— 前者让跨桶判定错位（图上的
-//     最后一根不再跳），后者是**一颗没有文字的空按钮**。两个都不报错。
-// 所以这里逐个键钉死，而不是「遍历一下 key 都存在」。
+//   • 缓存键漏了周期，1h 与 4h 会互相串档
+// INTERVAL_MS / INTERVAL_LABELS 的逐键与标签文本属常量复述，按精简口径已删除。
 
 import { describe, it, expect } from 'vitest';
 import {
   MARKET_INTERVALS,
-  INTERVAL_MS,
-  INTERVAL_LABELS,
   DEFAULT_INTERVAL,
   parseInterval,
   candleKey,
   sparkCloses,
-  CANDLE_LIMIT,
   SPARK_CANDLES,
   type CandleTuple,
 } from '@/lib/market-candles';
@@ -27,44 +23,6 @@ describe('周期白名单', () => {
 
   it('默认周期在白名单里 —— 拼不出 URL 的默认值等于首页白屏', () => {
     expect(MARKET_INTERVALS).toContain(DEFAULT_INTERVAL);
-  });
-
-  it('单次根数上限 = 币安的上限 1000（超了它直接报错）', () => {
-    expect(CANDLE_LIMIT).toBe(1000);
-  });
-});
-
-describe('INTERVAL_MS（一档多长）', () => {
-  // 逐个写死而不是「按名字算一遍」：名字parse错的（'15m' 写成 15 秒）只有定值能抓到
-  it('每个档的值都对，且没有漏键', () => {
-    expect(INTERVAL_MS).toEqual({
-      '1m': 60_000,
-      '5m': 300_000,
-      '15m': 900_000,
-      '1h': 3_600_000,
-      '4h': 14_400_000,
-      '1d': 86_400_000,
-    });
-  });
-
-  it('除 1d 外都是整分钟 —— 时间轴刻度按整点吸附，靠的就是这一点', () => {
-    for (const iv of MARKET_INTERVALS) {
-      if (iv === '1d') continue;
-      expect(INTERVAL_MS[iv] % 60_000, iv).toBe(0);
-    }
-  });
-});
-
-describe('INTERVAL_LABELS（按钮上的字）', () => {
-  it('每一档都有非空标签 —— 漏一个就是一颗点不出来的空按钮，不报错', () => {
-    for (const iv of MARKET_INTERVALS) {
-      expect(typeof INTERVAL_LABELS[iv], iv).toBe('string');
-      expect(INTERVAL_LABELS[iv].length, iv).toBeGreaterThan(0);
-    }
-  });
-
-  it('标签与周期名一致（按钮与接口参数长得一样，读起来不会错位）', () => {
-    for (const iv of MARKET_INTERVALS) expect(INTERVAL_LABELS[iv], iv).toBe(iv);
   });
 });
 

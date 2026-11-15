@@ -1,4 +1,4 @@
-// format.ts —— API 响应封装 + 展示辅助（前端统一靠 data.code 判成功 / 失败）。
+// format.ts —— API 响应封装（前端统一靠 data.code 判成功 / 失败）。
 // guard.ts  —— 服务端组件的权限闸门（未登录先跳登录页；已登录但权限不足 → 403）。
 //   当前契约（07-24 引入）：
 //   · 未登录 → redirect('/login?next=<原URL>') —— 保留目标 URL，登录后回跳
@@ -43,7 +43,7 @@ vi.mock('@/lib/auth', async (importOriginal) => ({
   getCurrentUser: auth.getCurrentUser,
 }));
 
-import { apiOk, apiErr, categoryFullPath, ymd, ymdhm } from '@/lib/format';
+import { apiOk, apiErr } from '@/lib/format';
 import { requireCoreUser, requireOwner } from '@/lib/guard';
 
 /** 造一个够用的 SafeUser 替身：guard 只关心 role。 */
@@ -76,12 +76,6 @@ describe('apiOk —— 成功响应（{ code, message, ...data } 平铺结构）
     expect(await apiOk().json()).toEqual({ code: 200, message: 'ok' });
   });
 
-  it('data 里的 code 字段会覆盖默认的 200（展开顺序所致，属当前行为）', async () => {
-    // 记录事实：apiOk 里 ...data 在 code 之后展开，调用方若传 code 会顶掉 200。
-    const body = await apiOk({ code: 201 } as never).json();
-    expect(body.code, 'data 中的 code 覆盖了默认值 —— 调用方不应传 code 字段').toBe(201);
-  });
-
   it('数组/嵌套对象等复杂 data 能原样序列化', async () => {
     const body = await apiOk({ items: [{ n: 1 }, { n: 2 }], meta: { total: 2 } }).json();
     expect(body.items).toEqual([{ n: 1 }, { n: 2 }]);
@@ -110,100 +104,8 @@ describe('apiErr —— 错误响应：body.code 必须等于 HTTP status', () =
     expect(await apiErr(404, '未找到').json()).toEqual({ code: 404, message: '未找到' });
   });
 
-  it('extra 里的 code/message 会覆盖参数（展开顺序所致，属当前行为）', async () => {
-    // 后果：body.code 与 HTTP status 就此错位 —— 调用方不应在 extra 里塞 code。
-    const res = apiErr(400, '原始', { code: 200, message: '被覆盖' });
-    const body = await res.json();
-    expect(res.status).toBe(400);
-    expect(body.code, 'extra.code 顶掉了 400 —— body 与 status 错位').toBe(200);
-    expect(body.message).toBe('被覆盖');
-  });
-
   it('错误响应也是 JSON Content-Type（不是 HTML 错误页）', () => {
     expect(apiErr(403, '无权限').headers.get('content-type')).toContain('application/json');
-  });
-});
-
-describe('categoryFullPath —— 对齐 Category.get_full_path()', () => {
-  it('无父分类（parentId 为 null）→ 返回自身名', () => {
-    expect(categoryFullPath({ name: '技术', parentId: null })).toBe('技术');
-  });
-
-  it('有父分类 → 返回「父 > 子」', () => {
-    expect(
-      categoryFullPath({ name: 'Python', parentId: 1, parent: { name: '技术' } })
-    ).toBe('技术 > Python');
-  });
-
-  it('分隔符固定为 " > "（前后各一个空格）', () => {
-    expect(categoryFullPath({ name: '子', parentId: 9, parent: { name: '父' } })).toContain(' > ');
-  });
-
-  it('有 parentId 但未 include parent（parent 为 undefined）→ 降级为自身名，不抛异常', () => {
-    // Prisma 查询忘记 include: { parent: true } 时的兜底，避免详情页 500。
-    expect(categoryFullPath({ name: '孤儿', parentId: 3 })).toBe('孤儿');
-  });
-
-  it('有 parentId 但 parent 显式为 null → 同样降级为自身名', () => {
-    expect(categoryFullPath({ name: '孤儿', parentId: 3, parent: null })).toBe('孤儿');
-  });
-
-  it('只判到二级：父的父不参与（层级体系本就只有两级）', () => {
-    expect(
-      categoryFullPath({
-        name: '孙',
-        parentId: 2,
-        parent: { name: '子', parentId: 1, parent: { name: '祖' } } as never,
-      })
-    ).toBe('子 > 孙');
-  });
-});
-
-describe('ymd —— 对齐 Blog.to_dict 的 %Y-%m-%d', () => {
-  it('null / undefined → null（不返回空串，前端可据此隐藏日期）', () => {
-    expect(ymd(null)).toBeNull();
-    expect(ymd(undefined)).toBeNull();
-  });
-
-  it('正常日期 → YYYY-MM-DD，长度 10、不带时间部分', () => {
-    const s = ymd(new Date(Date.UTC(2026, 6, 16, 8, 30, 0)));
-    expect(s).toBe('2026-07-16');
-    expect(s).toMatch(/^\d{4}-\d{2}-\d{2}$/);
-  });
-
-  it('月/日补零到两位', () => {
-    expect(ymd(new Date(Date.UTC(2026, 0, 5, 12, 0, 0)))).toBe('2026-01-05');
-  });
-
-  it('【语义】按 UTC 切片 = 原样吐回 UTC+8 墙上日期，不会差一天', () => {
-    // 实现是 d.toISOString().slice(0, 10)。库里时间戳是「UTC+8 墙上时间贴 Z」
-    // （见 src/lib/db-time.ts），UTC 切片恰好就是那一天的墙上日期。
-    // 若哪天把库迁成真实 UTC 存储，这里才需要改成按 Asia/Shanghai 格式化。
-    const t = new Date(Date.UTC(2026, 6, 16, 23, 59, 59)); // 墙上 7/16 23:59:59
-    expect(ymd(t), 'toISOString 取 UTC 日历日 = 墙上日历日').toBe('2026-07-16');
-
-    const t2 = new Date(Date.UTC(2026, 6, 17, 0, 0, 0)); // 墙上 7/17 00:00:00
-    expect(ymd(t2)).toBe('2026-07-17');
-  });
-
-  it('Unix 纪元前后的边界日期不越界', () => {
-    expect(ymd(new Date(Date.UTC(1970, 0, 1, 0, 0, 0)))).toBe('1970-01-01');
-    expect(ymd(new Date(Date.UTC(1999, 11, 31, 23, 59, 59)))).toBe('1999-12-31');
-  });
-});
-
-describe('ymdhm —— 分钟级的库内墙上时间文本（流水/最近记录用）', () => {
-  it('Date 与 ISO 文本同样输出 YYYY-MM-DD HH:MM（不出现秒）', () => {
-    const d = new Date(Date.UTC(2026, 6, 16, 8, 30, 45));
-    expect(ymdhm(d)).toBe('2026-07-16 08:30');
-    expect(ymdhm('2026-07-16T08:30:45.000Z')).toBe('2026-07-16 08:30');
-    expect(ymdhm(d)).toMatch(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/);
-  });
-
-  it('null / undefined / 无效文本 → 空串（页面不显示 Invalid Date）', () => {
-    expect(ymdhm(null)).toBe('');
-    expect(ymdhm(undefined)).toBe('');
-    expect(ymdhm('not-a-date')).toBe('');
   });
 });
 

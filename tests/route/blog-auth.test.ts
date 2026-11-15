@@ -27,7 +27,7 @@
 // 一切之前，id 无所谓；放行方向要的也只是「过了档位」这一件事，落进业务后的 404
 // 正合适 —— 那恰好证明它没被挡在档位上。
 
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeAll, beforeEach, vi } from 'vitest';
 
 const { session } = vi.hoisted(() => ({ session: { token: undefined as string | undefined } }));
 
@@ -152,12 +152,24 @@ const cases: { name: string; call: () => Promise<Response> }[] = [
   { name: 'GET    /api/stickers', call: () => listStickers() },
 ];
 
-beforeEach(async () => {
-  await resetDb();
+// 全局只清会话：库的清空按组共享（见各 describe 的 beforeAll / beforeEach）。
+// 本文件用例一律用不存在的 id，档位三连只读不写；所以 45 条三连可以共用一份夹具。
+beforeEach(() => {
   session.token = undefined;
 });
 
 describe('博客 / 评论 / 表情的档位（15 个 core+ handler）', () => {
+  // 57 次 resetDb/建用户里的大头来自 45 条三连。它们只读、互不污染，提成共享夹具：
+  // 一个空库 + 一个普通用户 + 一个 core 用户，跑完整组。
+  let plain: Awaited<ReturnType<typeof makeUser>>;
+  let core: Awaited<ReturnType<typeof makeUser>>;
+
+  beforeAll(async () => {
+    await resetDb();
+    plain = await makeUser({ role: 'user' });
+    core = await makeUser({ role: 'core' });
+  });
+
   it('清单要盖住这一域的**全部** handler（漏一条 = 漏一个免检的口子）', async () => {
     // 真的去扫盘，不是断言我自己写的数组长度 —— 新增一条本域路由而忘了补进 cases 时，
     // 它必须变红。否则那条路由在「有没有测试保护」这件事上是隐形的。
@@ -186,7 +198,6 @@ describe('博客 / 评论 / 表情的档位（15 个 core+ handler）', () => {
     });
 
     it(`${c.name}：非 core → 被守卫挡下`, async () => {
-      const plain = await makeUser({ role: 'user' });
       await login(plain.id);
       const res = await c.call();
       expect(res.status, '非 core 必须 403').toBe(403);
@@ -194,7 +205,6 @@ describe('博客 / 评论 / 表情的档位（15 个 core+ handler）', () => {
     });
 
     it(`${c.name}：core → 过档位`, async () => {
-      const core = await makeUser({ role: 'core' });
       await login(core.id);
       const res = await c.call();
       expect(await isGuardRejection(res), 'core 不该被档位挡住').toBe(false);
@@ -226,6 +236,10 @@ async function seedBlogWith(visibility: string | null, ignore = false): Promise<
 }
 
 describe('对外读口：GET /api/og/blog/:id（分享卡片）', () => {
+  beforeEach(async () => {
+    await resetDb();
+  });
+
   it('public：匿名 200，是 PNG，且 X-Robots-Tag 为 all、可缓存', async () => {
     const id = await seedBlogWith('public');
     const res = await blogOgImage(url('/x'), ctx(id));
@@ -276,6 +290,11 @@ describe('对外读口：GET /api/og/blog/:id（分享卡片）', () => {
 });
 
 describe('PATCH /api/blogs/:id —— 可见性只能由**作者本人**改', () => {
+  // 这一组会写库（建用户 / 建文 / 改可见性），每个用例自己清库。
+  beforeEach(async () => {
+    await resetDb();
+  });
+
   // 上面那张 cases 表钉的是「谁能进这个 handler」（档位）。这一组钉的是**进了之后
   // 能动谁的文章**（归属）—— 两层不是一回事，见 src/lib/blog-service.ts 的
   // 「档位 vs 归属是两层」。

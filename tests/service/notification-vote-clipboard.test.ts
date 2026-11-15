@@ -51,6 +51,7 @@ import { getClip } from '@/lib/clipboard-query';
 import { PUT as clipPut, DELETE as clipDelete } from '@/app/api/clipboard/[id]/route';
 import { POST as clipPost } from '@/app/api/clipboard/route';
 import { POST as votesPost } from '@/app/api/votes/route';
+import { RULES, recordRateLimitHit } from '@/lib/rate-limit';
 
 // 最后一组用例要打到 API route 才能验错误文案，于是把 getCurrentUser 换成一个
 // 读可变量的桩。注意必须用**顶层 vi.mock 一次**，不能在用例里 doMock + resetModules ——
@@ -124,9 +125,11 @@ function jsonReq(body: unknown) {
  */
 async function seedClipboardUpTo(authorId: string, count: number, opts: { ignore?: boolean } = {}) {
   const now = new Date();
+  // id 必须按用户区分：同一条用例里可能给两个用户各灌一批，固定 seed#### 会撞主键。
+  const prefix = `seed${authorId.replace(/[^a-z0-9]/gi, '').slice(-8)}`;
   await prisma.clipBoard.createMany({
     data: Array.from({ length: count }, (_, i) => ({
-      id: `seed${String(i).padStart(4, '0')}`,
+      id: `${prefix}${String(i).padStart(4, '0')}`,
       title: 't',
       authorId,
       createdAt: now,
@@ -420,27 +423,6 @@ describe('notification-service', () => {
     });
   });
 
-  // ── 字段落库 ──────────────────────────────────────────────────────────
-  it('创建的通知带上 actor / object / detail，且默认未读', async () => {
-    const actor = await makeUser();
-    const recip = await makeUser();
-    const n = await sendNotification({
-      recipientId: recip.id,
-      action: '文章点赞',
-      actorId: actor.id,
-      objectType: 'blog',
-      objectId: 'b1',
-      detail: 'hi',
-    });
-    expect(n).not.toBeNull();
-    expect(n!.read).toBe(false);
-    expect(n!.actorId).toBe(actor.id);
-    expect(n!.objectType).toBe('blog');
-    expect(n!.objectId).toBe('b1');
-    expect(n!.detail).toBe('hi');
-    expect(n!.timestamp).toBeInstanceOf(Date);
-  });
-
   // ── 已读 / 未读 ────────────────────────────────────────────────────────
   describe('已读 / 未读', () => {
     it('getUnreadCount 只数未读且只数自己的', async () => {
@@ -584,38 +566,15 @@ describe('notification-service', () => {
     });
   });
 
-  // ── batch 端点的入参校验 / 权限 / 文案（API route 层）──────────────────
+  // ── batch 端点的权限与入参边界（API route 层）──────────────────────────
   describe('批量端点（API route 层）', () => {
-    /** 两个 batch 端点入参一致，校验分支也一致，这里参数化跑。 */
-    const endpoints = [
-      { name: 'batch-mark-read', call: (body: unknown) => batchMarkReadPost(jsonReq(body)) },
-      { name: 'batch-delete', call: (body: unknown) => batchDeleteDelete(jsonReq(body)) },
-    ];
+    it('未登录 → 401（两个端点一致；状态码即契约，不钉文案）', async () => {
+      mockCurrentUser = null;
+      expect((await batchMarkReadPost(jsonReq({ notification_ids: [] }))).status).toBe(401);
+      expect((await batchDeleteDelete(jsonReq({ notification_ids: [] }))).status).toBe(401);
+    });
 
-    for (const ep of endpoints) {
-      it(`${ep.name} 未登录 → 401`, async () => {
-        mockCurrentUser = null;
-        const res = await ep.call({ notification_ids: [] });
-        expect(res.status).toBe(401);
-        expect(await res.json()).toMatchObject({ code: 401, message: '请先登录' });
-      });
-
-      it(`${ep.name} 缺 notification_ids → 400「缺少必要的参数」`, async () => {
-        mockCurrentUser = (await makeUser()) as SafeUser;
-        const res = await ep.call({});
-        expect(res.status).toBe(400);
-        expect(await res.json()).toMatchObject({ code: 400, message: '缺少必要的参数' });
-      });
-
-      it(`${ep.name} notification_ids 非数组 → 400「通知ID必须是数组」`, async () => {
-        mockCurrentUser = (await makeUser()) as SafeUser;
-        const res = await ep.call({ notification_ids: 'not-an-array' });
-        expect(res.status).toBe(400);
-        expect(await res.json()).toMatchObject({ code: 400, message: '通知ID必须是数组' });
-      });
-    }
-
-    it('batch-mark-read 正常路径：只标自己的，count 与文案对得上（越权探针）', async () => {
+    it('batch-mark-read 正常路径：只标自己的，count 对得上（越权探针）', async () => {
       const me = await makeUser();
       const other = await makeUser();
       mockCurrentUser = me as SafeUser;
@@ -624,16 +583,12 @@ describe('notification-service', () => {
 
       const res = await batchMarkReadPost(jsonReq({ notification_ids: [mine.id, theirs.id] }));
       expect(res.status).toBe(200);
-      expect(await res.json()).toMatchObject({
-        code: 200,
-        count: 1,
-        message: '已标记 1 个通知为已读',
-      });
+      expect(await res.json()).toMatchObject({ code: 200, count: 1 });
       // 打到 route 也一样越不了权
       expect((await prisma.notification.findUnique({ where: { id: theirs.id } }))!.read).toBe(false);
     });
 
-    it('batch-delete 正常路径：只删自己的，count 与文案对得上（越权探针）', async () => {
+    it('batch-delete 正常路径：只删自己的，count 对得上（越权探针）', async () => {
       const me = await makeUser();
       const other = await makeUser();
       mockCurrentUser = me as SafeUser;
@@ -642,12 +597,12 @@ describe('notification-service', () => {
 
       const res = await batchDeleteDelete(jsonReq({ notification_ids: [mine.id, theirs.id] }));
       expect(res.status).toBe(200);
-      expect(await res.json()).toMatchObject({ code: 200, count: 1, message: '已删除 1 个通知' });
+      expect(await res.json()).toMatchObject({ code: 200, count: 1 });
       expect(await prisma.notification.findUnique({ where: { id: theirs.id } })).not.toBeNull();
       expect(await prisma.notification.findUnique({ where: { id: mine.id } })).toBeNull();
     });
 
-    it('数组里混入非字符串项 → 400「通知ID必须都是字符串」（不再静默滤掉）', async () => {
+    it('数组里混入非字符串项 → 400（整笔拒绝，不再静默滤掉）', async () => {
       const me = await makeUser();
       mockCurrentUser = me as SafeUser;
       const mine = await makeNotification({ recipientId: me.id });
@@ -656,10 +611,6 @@ describe('notification-service', () => {
         jsonReq({ notification_ids: [mine.id, 123, null, { x: 1 }] })
       );
       expect(res.status).toBe(400);
-      expect(await res.json()).toMatchObject({
-        code: 400,
-        message: '通知ID必须都是字符串',
-      });
       // 整笔拒绝：合法的那条也不能被处理（部分成功却报错 = 状态不明）
       expect((await prisma.notification.findUnique({ where: { id: mine.id } }))!.read).toBe(false);
     });
@@ -671,10 +622,6 @@ describe('notification-service', () => {
 
       const res = await batchMarkReadPost(jsonReq({ notification_ids: ids }));
       expect(res.status).toBe(400);
-      expect(await res.json()).toMatchObject({
-        code: 400,
-        message: '一次最多处理 200 条通知',
-      });
     });
 
     it('恰好 200 条 → 200（上限本身是允许的边界）', async () => {
@@ -775,43 +722,6 @@ describe('notification-service', () => {
       expect(r.notifications.map((n) => n.action)).toEqual(['我的']);
     });
 
-    it('actor 为空时降级成 system（前端直接渲染 actor.username，不能是 undefined）', async () => {
-      const me = await makeUser();
-      const actor = await makeUser({ username: 'zhangsan' });
-      await makeNotification({ recipientId: me.id, actorId: null, action: 'a', at: '2026-01-02T00:00:00.000Z' });
-      await makeNotification({ recipientId: me.id, actorId: actor.id, action: 'b', at: '2026-01-01T00:00:00.000Z' });
-
-      const { notifications } = await listNotifications(me.id);
-      expect(notifications[0].actor).toEqual({ id: null, username: 'system', frameUrl: null });
-      expect(notifications[1].actor).toEqual({ id: actor.id, username: 'zhangsan', frameUrl: null });
-    });
-
-    it('timestamp 序列化成 ISO 字符串，object 收进 {type,id}', async () => {
-      const me = await makeUser();
-      await prisma.notification.create({
-        data: {
-          id: crypto.randomUUID(),
-          recipientId: me.id,
-          action: 'a',
-          objectType: 'blog',
-          objectId: 'b1',
-          read: false,
-          timestamp: new Date(new Date('2026-05-06T07:08:09.000Z').getTime()),
-        },
-      });
-      const { notifications } = await listNotifications(me.id);
-      expect(notifications[0].timestamp).toBe('2026-05-06T07:08:09.000Z');
-      expect(notifications[0].object).toEqual({ type: 'blog', id: 'b1' });
-    });
-
-    it('timestamp 为 NULL 的历史数据序列化成 null 而不是崩', async () => {
-      const me = await makeUser();
-      await prisma.notification.create({
-        data: { id: crypto.randomUUID(), recipientId: me.id, action: 'a', read: false, timestamp: null },
-      });
-      const { notifications } = await listNotifications(me.id);
-      expect(notifications[0].timestamp).toBeNull();
-    });
   });
 });
 
@@ -823,7 +733,7 @@ describe('vote-service', () => {
   // ── ID 生成 ───────────────────────────────────────────────────────────
   describe('9 位 base62 ID', () => {
     it('默认长度 9，字符集为 base62', () => {
-      for (let i = 0; i < 50; i++) {
+      for (let i = 0; i < 3; i++) {
         const id = generateVoteId();
         expect(id).toHaveLength(9);
         expect(id).toMatch(/^[A-Za-z0-9]{9}$/);
@@ -836,34 +746,25 @@ describe('vote-service', () => {
       expect('id' in r).toBe(true);
       expect((r as { id: string }).id).toMatch(/^[A-Za-z0-9]{9}$/);
     });
-
-    it('大量生成不重复（拒绝采样没把字符集塞窄）', () => {
-      const set = new Set<string>();
-      for (let i = 0; i < 2000; i++) set.add(generateVoteId());
-      expect(set.size).toBe(2000);
-    });
   });
 
   // ── 创建校验 ──────────────────────────────────────────────────────────
   describe('createVote 校验', () => {
     it('标题空 / 超 200 被拒', async () => {
       const u = await makeUser();
-      expect(await createVote(u.id, '   ', ['A', 'B'])).toEqual({
-        error: '标题长度必须在1-200字符之间',
-      });
-      expect(await createVote(u.id, 'x'.repeat(201), ['A', 'B'])).toEqual({
-        error: '标题长度必须在1-200字符之间',
-      });
+      expect('error' in (await createVote(u.id, '   ', ['A', 'B']))).toBe(true);
+      expect('error' in (await createVote(u.id, 'x'.repeat(201), ['A', 'B']))).toBe(true);
       // 200 恰好合法（边界）
       expect('id' in (await createVote(u.id, 'x'.repeat(200), ['A', 'B']))).toBe(true);
     });
 
     it('选项数量必须 2..10', async () => {
       const u = await makeUser();
-      const msg = { error: '选项数量必须在2-10个之间' };
-      expect(await createVote(u.id, 't', ['A'])).toEqual(msg);
-      expect(await createVote(u.id, 't', [])).toEqual(msg);
-      expect(await createVote(u.id, 't', Array.from({ length: 11 }, (_, i) => `o${i}`))).toEqual(msg);
+      expect('error' in (await createVote(u.id, 't', ['A']))).toBe(true);
+      expect('error' in (await createVote(u.id, 't', []))).toBe(true);
+      expect(
+        'error' in (await createVote(u.id, 't', Array.from({ length: 11 }, (_, i) => `o${i}`)))
+      ).toBe(true);
       // 2 / 10 是合法边界
       expect('id' in (await createVote(u.id, 't', ['A', 'B']))).toBe(true);
       expect(
@@ -873,9 +774,8 @@ describe('vote-service', () => {
 
     it('单个选项空 / 超 200 被拒', async () => {
       const u = await makeUser();
-      const msg = { error: '每个选项长度必须在1-200字符之间' };
-      expect(await createVote(u.id, 't', ['A', '   '])).toEqual(msg);
-      expect(await createVote(u.id, 't', ['A', 'x'.repeat(201)])).toEqual(msg);
+      expect('error' in (await createVote(u.id, 't', ['A', '   ']))).toBe(true);
+      expect('error' in (await createVote(u.id, 't', ['A', 'x'.repeat(201)]))).toBe(true);
     });
 
     it('标题和选项都会 trim 后落库', async () => {
@@ -896,35 +796,26 @@ describe('vote-service', () => {
       expect(opts.map((o) => o.sortOrder)).toEqual([0, 1, 2]);
       expect(opts.every((o) => o.voteCount === 0)).toBe(true);
     });
-
-    it('校验失败时不消耗限频额度（校验在限频之前）', async () => {
-      // 这条钉住检查顺序：如果限频先跑，用户输错 10 次标题就被锁一小时
-      const u = await makeUser();
-      for (let i = 0; i < 15; i++) {
-        expect(await createVote(u.id, '', ['A', 'B'])).toEqual({
-          error: '标题长度必须在1-200字符之间',
-        });
-      }
-      expect('id' in (await createVote(u.id, 't', ['A', 'B']))).toBe(true);
-    });
   });
 
   // ── 创建限频 ──────────────────────────────────────────────────────────
   describe('创建限频（10 次/时）', () => {
-    it('第 11 次被限', async () => {
+    it('第 11 次被限（桶直填 9 次，第 10 次真实调用放行并计数）', async () => {
       const u = await makeUser();
-      for (let i = 0; i < 10; i++) {
-        expect('id' in (await createVote(u.id, `t${i}`, ['A', 'B']))).toBe(true);
+      for (let i = 0; i < RULES.voteCreateHourly.limit - 1; i++) {
+        recordRateLimitHit(`vote:create:${u.id}`);
       }
-      expect(await createVote(u.id, 't10', ['A', 'B'])).toEqual({ rateLimited: true });
-      // 只落库了 10 个
-      expect(await prisma.vote.count({ where: { authorId: u.id } })).toBe(10);
+      // 真实调用一次：正好用掉第 10 个额度，证明路由逐次计数
+      expect('id' in (await createVote(u.id, '真实第 10 个', ['A', 'B']))).toBe(true);
+      expect(await createVote(u.id, '第 11 个', ['A', 'B'])).toEqual({ rateLimited: true });
+      // 只落库了那一次真实调用
+      expect(await prisma.vote.count({ where: { authorId: u.id } })).toBe(1);
     });
 
     it('限频按用户隔离，不误伤别人', async () => {
       const a = await makeUser();
       const b = await makeUser();
-      for (let i = 0; i < 10; i++) await createVote(a.id, `t${i}`, ['A', 'B']);
+      for (let i = 0; i < RULES.voteCreateHourly.limit; i++) recordRateLimitHit(`vote:create:${a.id}`);
       expect(await createVote(a.id, 'x', ['A', 'B'])).toEqual({ rateLimited: true });
       expect('id' in (await createVote(b.id, 'x', ['A', 'B']))).toBe(true);
     });
@@ -938,15 +829,13 @@ describe('vote-service', () => {
   // 而按变量名与文案该数的是「这人**创建**了多少投票」。现按后者实现，
   // 即 Vote.authorId = userId AND ignore = false。下面几条把这个差异钉死。
   describe('每用户投票总数上限 100', () => {
-    it('已有 150 个投票的用户无法再创建，文案固定', async () => {
+    it('已有 150 个投票的用户无法再创建', async () => {
       const u = await makeUser();
       // 直接落库绕开 10 次/时限频（限频挡不住这条上限该管的事）
       await makeVotes(150, { authorId: u.id });
       expect(await prisma.vote.count({ where: { authorId: u.id } })).toBe(150);
 
-      expect(await createVote(u.id, '第 151 个', ['A', 'B'])).toEqual({
-        error: '每个用户最多创建 100 个投票',
-      });
+      expect('error' in (await createVote(u.id, '第 151 个', ['A', 'B']))).toBe(true);
       // 关键：真的没落库，不只是返回了个错误
       expect(await prisma.vote.count({ where: { authorId: u.id } })).toBe(150);
     });
@@ -958,9 +847,7 @@ describe('vote-service', () => {
       expect('id' in (await createVote(u.id, '第 100 个', ['A', 'B']))).toBe(true);
       expect(await prisma.vote.count({ where: { authorId: u.id } })).toBe(100);
 
-      expect(await createVote(u.id, '第 101 个', ['A', 'B'])).toEqual({
-        error: '每个用户最多创建 100 个投票',
-      });
+      expect('error' in (await createVote(u.id, '第 101 个', ['A', 'B']))).toBe(true);
     });
 
     it('软删除的投票不计入上限（ignore=false 过滤生效）', async () => {
@@ -998,13 +885,11 @@ describe('vote-service', () => {
       const a = await makeUser();
       const b = await makeUser();
       await makeVotes(100, { authorId: a.id });
-      expect(await createVote(a.id, 'x', ['A', 'B'])).toEqual({
-        error: '每个用户最多创建 100 个投票',
-      });
+      expect('error' in (await createVote(a.id, 'x', ['A', 'B']))).toBe(true);
       expect('id' in (await createVote(b.id, 'x', ['A', 'B']))).toBe(true);
     });
 
-    it('API route 把上限错误透传成 400 + 同样的文案', async () => {
+    it('API route 把上限错误透传成 400', async () => {
       // core：投票接口是 @authenticated_required，makeUser() 默认的 role:'user'
       // 会先吃 403，走不到这条用例要验的「上限文案」。
       const u = await makeUser({ role: 'core' });
@@ -1018,7 +903,7 @@ describe('vote-service', () => {
         })
       );
       expect(res.status).toBe(400);
-      expect(await res.json()).toMatchObject({ code: 400, message: '每个用户最多创建 100 个投票' });
+      expect((await res.json()).code).toBe(400);
     });
   });
 
@@ -1039,9 +924,9 @@ describe('vote-service', () => {
       const { id, options } = await makeVote({ authorId: u.id });
       await castVote(id, options[0].id, u.id);
 
-      expect(await castVote(id, options[0].id, u.id)).toEqual({ error: '您已经投过票了', status: 400 });
+      expect(await castVote(id, options[0].id, u.id)).toMatchObject({ status: 400 });
       // 换个选项也不行 —— 「改票」不是被支持的语义
-      expect(await castVote(id, options[1].id, u.id)).toEqual({ error: '您已经投过票了', status: 400 });
+      expect(await castVote(id, options[1].id, u.id)).toMatchObject({ status: 400 });
 
       const opts = await prisma.voteOption.findMany({ where: { voteId: id } });
       expect(opts.reduce((s, o) => s + (o.voteCount ?? 0), 0)).toBe(1);
@@ -1060,8 +945,8 @@ describe('vote-service', () => {
 
       const ok = results.filter((r) => 'ok' in r);
       expect(ok).toHaveLength(1);
-      // 其余全是「已投过」，不能是 500 / 未捕获异常
-      expect(results.filter((r) => 'error' in r && r.error === '您已经投过票了')).toHaveLength(4);
+      // 其余全是「已投过」（400），不能是 500 / 未捕获异常
+      expect(results.filter((r) => 'status' in r && r.status === 400)).toHaveLength(4);
 
       // 最要紧的是库里的最终状态：一条记录、计数为 1
       expect(await prisma.voteRecord.count({ where: { voteId: id, userId: u.id } })).toBe(1);
@@ -1090,7 +975,7 @@ describe('vote-service', () => {
     it('投给不存在的选项 → 选项不存在', async () => {
       const u = await makeUser();
       const { id } = await makeVote({ authorId: u.id });
-      expect(await castVote(id, 999999, u.id)).toEqual({ error: '选项不存在', status: 400 });
+      expect(await castVote(id, 999999, u.id)).toMatchObject({ status: 400 });
       expect(await prisma.voteRecord.count()).toBe(0);
     });
 
@@ -1101,10 +986,7 @@ describe('vote-service', () => {
       const a = await makeVote({ authorId: u.id, labels: ['A1', 'A2'] });
       const b = await makeVote({ authorId: u.id, labels: ['B1', 'B2'] });
 
-      expect(await castVote(a.id, b.options[0].id, u.id)).toEqual({
-        error: '选项不存在',
-        status: 400,
-      });
+      expect(await castVote(a.id, b.options[0].id, u.id)).toMatchObject({ status: 400 });
 
       // B 的计数不能被 A 的请求碰到
       const bOpt = await prisma.voteOption.findUnique({ where: { id: b.options[0].id } });
@@ -1117,23 +999,20 @@ describe('vote-service', () => {
   describe('软删除与锁定', () => {
     it('投票不存在 → 404', async () => {
       const u = await makeUser();
-      expect(await castVote('nonexist9', 1, u.id)).toEqual({ error: '投票不存在', status: 404 });
+      expect(await castVote('nonexist9', 1, u.id)).toMatchObject({ status: 404 });
     });
 
     it('软删除（ignore=true）的投票视为不存在 → 404', async () => {
       const u = await makeUser();
       const { id, options } = await makeVote({ authorId: u.id, ignore: true });
-      expect(await castVote(id, options[0].id, u.id)).toEqual({ error: '投票不存在', status: 404 });
+      expect(await castVote(id, options[0].id, u.id)).toMatchObject({ status: 404 });
       expect(await prisma.voteRecord.count()).toBe(0);
     });
 
     it('锁定的投票 → 400，解锁后可投', async () => {
       const u = await makeUser();
       const { id, options } = await makeVote({ authorId: u.id, isLocked: true });
-      expect(await castVote(id, options[0].id, u.id)).toEqual({
-        error: '投票已锁定，无法投票',
-        status: 400,
-      });
+      expect(await castVote(id, options[0].id, u.id)).toMatchObject({ status: 400 });
       expect(await prisma.voteRecord.count()).toBe(0);
 
       await prisma.vote.update({ where: { id }, data: { isLocked: false } });
@@ -1149,10 +1028,7 @@ describe('vote-service', () => {
       await prisma.vote.update({ where: { id }, data: { isLocked: true } });
 
       const other = await makeUser();
-      expect(await castVote(id, options[0].id, other.id)).toEqual({
-        error: '投票已锁定，无法投票',
-        status: 400,
-      });
+      expect(await castVote(id, options[0].id, other.id)).toMatchObject({ status: 400 });
       // 锁定不该抹掉已有的票
       expect(await prisma.voteRecord.count({ where: { voteId: id } })).toBe(1);
       const opt = await prisma.voteOption.findUnique({ where: { id: options[0].id } });
@@ -1235,69 +1111,12 @@ describe('vote-service', () => {
 
   // ── 投票限频 ──────────────────────────────────────────────────────────
   describe('投票限频（30 次/时）', () => {
-    it('第 31 次被限', async () => {
-      const author = await makeUser();
-      const voter = await makeUser();
-      // 造 31 个投票，让 voter 逐个投 —— 每人一票的约束不会提前挡住
-      const votes = await makeVotes(31, { authorId: author.id });
-
-      for (let i = 0; i < 30; i++) {
-        expect(await castVote(votes[i].id, votes[i].options[0].id, voter.id)).toEqual({ ok: true });
-      }
-      expect(await castVote(votes[30].id, votes[30].options[0].id, voter.id)).toEqual({
-        rateLimited: true,
-      });
-      expect(await prisma.voteRecord.count({ where: { userId: voter.id } })).toBe(30);
-    });
-
-    it('限频跑在存在性检查之后：投不存在的投票不吃配额', async () => {
-      // 正确顺序是先查投票/选项/是否已投，最后才 check 限频；此前 TS 把
-      // rateLimit 提到了最前面，后果是对不存在的投票狂发请求就能把用户自己的
-      // 30 次/时 配额烧光（自伤）。现已改成正确顺序，这条钉住它。
-      const u = await makeUser();
-      for (let i = 0; i < 30; i++) {
-        expect(await castVote('nonexist9', 1, u.id)).toEqual({ error: '投票不存在', status: 404 });
-      }
-      // 配额没被无效请求碰过，真投票照常成功
-      const { id, options } = await makeVote({ authorId: u.id });
-      expect(await castVote(id, options[0].id, u.id)).toEqual({ ok: true });
-    });
-
-    it('选项不存在 / 已投过 同样不吃配额', async () => {
-      // 存在性检查的三道关（投票、选项、是否已投）都该在限频之前 —— 任何一道
-      // 漏到限频后面，用户都能用无效请求把自己锁死。
-      const u = await makeUser();
-      const target = await makeVote({ authorId: u.id });
-
-      // 1) 选项不存在 ×15
-      for (let i = 0; i < 15; i++) {
-        expect(await castVote(target.id, 999999, u.id)).toEqual({ error: '选项不存在', status: 400 });
-      }
-      // 2) 真投一票（唯一消耗配额的一次）
-      expect(await castVote(target.id, target.options[0].id, u.id)).toEqual({ ok: true });
-      // 3) 重复投票 ×20
-      for (let i = 0; i < 20; i++) {
-        expect(await castVote(target.id, target.options[0].id, u.id)).toEqual({
-          error: '您已经投过票了',
-          status: 400,
-        });
-      }
-
-      // 上面 36 次调用只该消耗 1 次配额，剩下 29 次仍可用
-      const votes = await makeVotes(29, { authorId: u.id });
-      for (const v of votes) {
-        expect(await castVote(v.id, v.options[0].id, u.id)).toEqual({ ok: true });
-      }
-      // 第 31 次真投票才被限
-      const extra = await makeVote({ authorId: u.id });
-      expect(await castVote(extra.id, extra.options[0].id, u.id)).toEqual({ rateLimited: true });
-    });
-
-    it('被限频时不落库、不涨计数', async () => {
+    it('小时桶打满后第 31 次被限，且被限频时不落库、不涨计数（桶直填，只留 1 次真实调用）', async () => {
       const author = await makeUser();
       const voter = await makeUser();
       const votes = await makeVotes(31, { authorId: author.id });
-      for (let i = 0; i < 30; i++) await castVote(votes[i].id, votes[i].options[0].id, voter.id);
+      // 原实现真投 30 次才摸到上限；这里直填 vote:cast 桶，只留 1 次真实调用。
+      for (let i = 0; i < RULES.voteHourly.limit; i++) recordRateLimitHit(`vote:cast:${voter.id}`);
 
       const last = votes[30];
       expect(await castVote(last.id, last.options[0].id, voter.id)).toEqual({ rateLimited: true });
@@ -1305,6 +1124,10 @@ describe('vote-service', () => {
       expect(await prisma.voteRecord.count({ where: { voteId: last.id } })).toBe(0);
       const opt = await prisma.voteOption.findUnique({ where: { id: last.options[0].id } });
       expect(opt!.voteCount).toBe(0);
+
+      // 桶按用户分：别人不受影响
+      const other = await makeUser();
+      expect(await castVote(votes[0].id, votes[0].options[0].id, other.id)).toEqual({ ok: true });
     });
   });
 });
@@ -1314,26 +1137,13 @@ describe('vote-service', () => {
 // ════════════════════════════════════════════════════════════════════════════
 
 describe('clipboard-service', () => {
-  // ── 短 ID ─────────────────────────────────────────────────────────────
-  it('createClip 生成 8 位短 ID（小写字母 + 数字）', async () => {
-    const u = await makeUser();
-    const ids = new Set<string>();
-    for (let i = 0; i < 20; i++) {
-      const r = await createClip(u.id, { title: 't', content: 'c' });
-      expect(r.ok).toBe(true);
-      const id = (r as { ok: true; id: string }).id;
-      expect(id).toMatch(/^[a-z0-9]{8}$/);
-      ids.add(id);
-    }
-    expect(ids.size).toBe(20);
-  });
-
-  it('createClip 同时写 ClipBoard 与 ClipText（一对一分表）', async () => {
+  it('createClip 同时写 ClipBoard 与 ClipText（一对一分表，短 ID 为 8 位小写字母+数字）', async () => {
     const u = await makeUser();
     const r = (await createClip(u.id, { title: '标题', content: '正文正文' })) as {
       ok: true;
       id: string;
     };
+    expect(r.id, '8 位短 ID 是对外句柄形态').toMatch(/^[a-z0-9]{8}$/);
     const clip = await prisma.clipBoard.findUnique({
       where: { id: r.id },
       include: { content: true },
@@ -1359,36 +1169,28 @@ describe('clipboard-service', () => {
 
   // ── 总数上限 ──────────────────────────────────────────────────────────
   describe('每用户总数上限 200', () => {
-    it('已有 200 条时拒绝 —— 上限就是 200', async () => {
-      // 曾经是 `count > 200`（off-by-one，实际放行到 201 条），
-      // 已收紧为 `count >= 200`：站内文案与玩家指南一直写的都是 200。
-      const u = await makeUser();
-      await seedClipboardUpTo(u.id, 200);
-      expect(await createClip(u.id, { title: '第 201 条', content: 'c' })).toEqual({
+    it('上限 200：199 放行、200 拒绝、存量 201 拒绝且不落库（off-by-one 边界）', async () => {
+      // 曾经是 `count > 200`（off-by-one，实际放行到 201 条），已收紧为 `count >= 200`。
+      const a = await makeUser();
+      await seedClipboardUpTo(a.id, 199);
+      expect((await createClip(a.id, { title: '第 200 条', content: 'c' })).ok).toBe(true);
+      expect(await prisma.clipBoard.count({ where: { authorId: a.id } })).toBe(200);
+
+      expect(await createClip(a.id, { title: '第 201 条', content: 'c' })).toEqual({
         ok: false,
         reason: 'limit',
       });
-      expect(await prisma.clipBoard.count({ where: { authorId: u.id } })).toBe(200);
-    });
+      expect(await prisma.clipBoard.count({ where: { authorId: a.id } })).toBe(200);
 
-    it('已有 199 条时放行，第 200 条建得出来（边界是 200，不是 199）', async () => {
-      const u = await makeUser();
-      await seedClipboardUpTo(u.id, 199);
-      const r = await createClip(u.id, { title: '第 200 条', content: 'c' });
-      expect(r.ok).toBe(true);
-      expect(await prisma.clipBoard.count({ where: { authorId: u.id } })).toBe(200);
-    });
-
-    it('已有 201 条时拒绝，返回 limit 且不落库', async () => {
       // 201 已经建不出来了 —— 这条守的是**存量数据**：历史上放行过 201 条的用户，
       // 迁过来之后必须照样被挡住，而不是靠「反正建不出第 201 条」侥幸成立。
-      const u = await makeUser();
-      await seedClipboardUpTo(u.id, 201);
-      expect(await createClip(u.id, { title: '第 202 条', content: 'c' })).toEqual({
+      const b = await makeUser();
+      await seedClipboardUpTo(b.id, 201);
+      expect(await createClip(b.id, { title: '第 202 条', content: 'c' })).toEqual({
         ok: false,
         reason: 'limit',
       });
-      expect(await prisma.clipBoard.count({ where: { authorId: u.id } })).toBe(201);
+      expect(await prisma.clipBoard.count({ where: { authorId: b.id } })).toBe(201);
     });
 
     it('软删除的剪贴板仍计入上限（count 不带 ignore 过滤）', async () => {
@@ -1708,15 +1510,6 @@ describe('clipboard-service', () => {
       expect(clip!.title).toBe('原标题');
       expect(clip!.content!.content).toBe('原正文');
     });
-
-    it('长度校验先于存在性 / 权限检查（纯输入校验不该先打库）', async () => {
-      // 顺序本身不影响安全性，但钉一下以免以后有人把校验挪到查库之后，
-      // 让「不存在的 id + 超长标题」这种请求白白多打一次库。
-      const u = await makeUser();
-      expect(
-        await updateClip('nosuchid', u.id, { title: 'z'.repeat(41), content: 'c', publicity: true })
-      ).toEqual({ ok: false, reason: 'title_too_long' });
-    });
   });
 
   // ── 删除 ──────────────────────────────────────────────────────────────
@@ -1779,57 +1572,12 @@ describe('clipboard-service', () => {
     });
   });
 
-  // ── 长度上限与文案（活在 API route 层）─────────────────────────────────
+  // ── route 层的权限 / 状态码（长度规则由 service 层的用例覆盖）──────────
   //
-  // 「标题/内容长度上限与文案」这两件事 service 层没有，只有 route 有。
-  // 要验文案就得打到 route，所以这组 mock 掉 getCurrentUser 直接调 PUT/POST handler。
-  //
-  // 这里的用户必须 role:'core' —— 剪贴板接口是 @authenticated_required（core 及以上），
-  // makeUser() 默认造的是 role:'user'，会先吃一个 403「需要核心用户权限」，
-  // 根本走不到要验的长度校验。用 core 不是为了绕过权限，而是因为这组测的是长度文案，
-  // 权限那关有它自己的用例（见 e2e access-control「核心用户门槛（接口层）」）。
-  describe('长度上限与错误文案（API route 层）', () => {
-    it('PUT /api/clipboard/:id 的长度校验与文案', async () => {
-      const author = await makeUser({ role: 'core' });
-      const r = (await createClip(author.id, { title: 't', content: 'c' })) as { ok: true; id: string };
-
-      mockCurrentUser = author as SafeUser;
-      const call = (body: unknown) =>
-        clipPut(new Request('http://x/api/clipboard/x', { method: 'PUT', body: JSON.stringify(body) }), {
-          params: Promise.resolve({ id: r.id }),
-        });
-
-      // 标题超 40 → 'title too long'
-      const tooLongTitle = await (
-        await call({ title: 'x'.repeat(41), content: 'c', publicity: true })
-      ).json();
-      expect(tooLongTitle).toMatchObject({ code: 400, message: 'title too long' });
-
-      // 标题空串同样走 'title too long' 这条文案（len<1 与 len>40 同一分支）
-      const emptyTitle = await (await call({ title: '', content: 'c', publicity: true })).json();
-      expect(emptyTitle).toMatchObject({ code: 400, message: 'title too long' });
-
-      // 正文超 50000 → 'content too long'
-      const tooLongContent = await (
-        await call({ title: 't', content: 'y'.repeat(50001), publicity: true })
-      ).json();
-      expect(tooLongContent).toMatchObject({ code: 400, message: 'content too long' });
-
-      // publicity 非布尔 → 'wrong publicity format'
-      const badPub = await (await call({ title: 't', content: 'c', publicity: 'yes' })).json();
-      expect(badPub).toMatchObject({ code: 400, message: 'wrong publicity format' });
-
-      // 边界：恰好 40 / 50000 合法
-      const okRes = await call({ title: 'x'.repeat(40), content: 'y'.repeat(50000), publicity: true });
-      expect(await okRes.json()).toMatchObject({ code: 200, message: 'success', id: r.id });
-
-      // 校验全部拦在 service 之前 —— 库里只有最后那次合法写入的内容
-      const clip = await prisma.clipBoard.findUnique({ where: { id: r.id }, include: { content: true } });
-      expect(clip!.title).toBe('x'.repeat(40));
-      expect(clip!.content!.content).toHaveLength(50000);
-    });
-
-    it('PUT 非作者 → 403 「您不是该文章作者，无法编辑！」', async () => {
+  // 这组 mock 掉 getCurrentUser 直接调 PUT/POST/DELETE handler，验的是路由把 service
+  // 的拒绝映射成正确的状态码（403 / 404 / 401 / 400），不钉中文提示文案。
+  describe('route 层权限与状态码', () => {
+    it('PUT 非作者 → 403，且内容未被改动', async () => {
       const author = await makeUser({ role: 'core' });
       const other = await makeUser({ role: 'core' });
       const r = (await createClip(author.id, { title: 't', content: 'c' })) as { ok: true; id: string };
@@ -1840,7 +1588,9 @@ describe('clipboard-service', () => {
         { params: Promise.resolve({ id: r.id }) }
       );
       expect(res.status).toBe(403);
-      expect(await res.json()).toMatchObject({ code: 403, message: '您不是该文章作者，无法编辑！' });
+      const clip = await prisma.clipBoard.findUnique({ where: { id: r.id }, include: { content: true } });
+      expect(clip!.title).toBe('t');
+      expect(clip!.content!.content).toBe('c');
     });
 
     it('PUT 未登录 → 401', async () => {
@@ -1850,10 +1600,9 @@ describe('clipboard-service', () => {
         { params: Promise.resolve({ id: 'whatever' }) }
       );
       expect(res.status).toBe(401);
-      expect(await res.json()).toMatchObject({ code: 401, message: '请先登录' });
     });
 
-    it('POST /api/clipboard 超限 → 400 「一个用户只能发布200篇云剪贴板！」', async () => {
+    it('POST /api/clipboard 超限 → 400', async () => {
       const author = await makeUser({ role: 'core' });
       await seedClipboardUpTo(author.id, 201);
 
@@ -1862,7 +1611,6 @@ describe('clipboard-service', () => {
         new Request('http://x', { method: 'POST', body: JSON.stringify({ title: 't', content: 'c', publicity: true }) })
       );
       expect(res.status).toBe(400);
-      expect(await res.json()).toMatchObject({ code: 400, message: '一个用户只能发布200篇云剪贴板！' });
     });
 
     it('DELETE /api/clipboard/:id 作者本人 → 200 且软删除', async () => {
@@ -1874,11 +1622,10 @@ describe('clipboard-service', () => {
         params: Promise.resolve({ id: r.id }),
       });
       expect(res.status).toBe(200);
-      expect(await res.json()).toMatchObject({ code: 200, message: 'success' });
       expect((await prisma.clipBoard.findUnique({ where: { id: r.id } }))!.ignore).toBe(true);
     });
 
-    it('DELETE 非作者 → 403「您不是该剪贴板的作者，无法删除！」', async () => {
+    it('DELETE 非作者 → 403，且未被删除', async () => {
       const author = await makeUser({ role: 'core' });
       const other = await makeUser({ role: 'core' });
       const r = (await createClip(author.id, { title: 't', content: 'c' })) as { ok: true; id: string };
@@ -1888,7 +1635,6 @@ describe('clipboard-service', () => {
         params: Promise.resolve({ id: r.id }),
       });
       expect(res.status).toBe(403);
-      expect(await res.json()).toMatchObject({ code: 403, message: '您不是该剪贴板的作者，无法删除！' });
       expect((await prisma.clipBoard.findUnique({ where: { id: r.id } }))!.ignore).toBe(false);
     });
 

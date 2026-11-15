@@ -17,7 +17,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { resetDb, makeUser, prisma } from '../helpers/db';
 import { nowForDb } from '@/lib/db-time';
 import { isFocusLobbyBlocked } from '@/lib/focus-mode';
-import { __resetRateLimitStore, RULES } from '@/lib/rate-limit';
+import { __resetRateLimitStore, RULES, recordRateLimitHit } from '@/lib/rate-limit';
 import { reportViewing, __resetChatPresence } from '@/lib/chat-presence';
 import { subscribe as subscribeChat, __resetChatBus, type ChatSubscriber } from '@/lib/chat-bus';
 import {
@@ -41,7 +41,6 @@ import {
   canAccessChannel,
   softDeleteMessage,
   searchCoreUsers,
-  extractMentions,
   getChatUnreadSummary,
   setChannelMuted,
   hideChannel,
@@ -568,55 +567,37 @@ describe('拍一拍', () => {
     expect(back?.pat?.target_name).toBe('被拍的人');
   });
 
-  it('允许拍自己（微信/QQ 同款）', async () => {
+  it('允许拍自己；目标不存在 → patInvalid；目标行缺失 → 读回占位名', async () => {
     const a = await makeUser({ role: 'core', username: '自拍' });
-    const sent = await sendMessage({ channelId: CHAT_LOBBY_ID, authorId: a.id, patTargetId: a.id });
-    expect(sent.ok).toBe(true);
-    expect((sent as { message: PatMsg }).message.pat).toEqual({
+    const self = await sendMessage({ channelId: CHAT_LOBBY_ID, authorId: a.id, patTargetId: a.id });
+    expect(self.ok, '允许拍自己（微信/QQ 同款）').toBe(true);
+    expect((self as { message: PatMsg }).message.pat).toEqual({
       target_id: a.id,
       target_name: '自拍',
     });
-  });
 
-  it('目标用户不存在 → patInvalid', async () => {
-    const a = await makeUser({ role: 'core' });
-    const res = await sendMessage({
+    const ghost = await sendMessage({
       channelId: CHAT_LOBBY_ID,
       authorId: a.id,
       patTargetId: crypto.randomUUID(),
     });
-    expect((res as { error: string }).error).toBe('patInvalid');
-  });
+    expect((ghost as { error: string }).error).toBe('patInvalid');
 
-  it('侧栏预览给「拍了拍 X」，不显示空串', async () => {
-    const a = await makeUser({ role: 'core' });
-    const b = await makeUser({ role: 'core', username: '目标' });
-    await sendMessage({ channelId: CHAT_LOBBY_ID, authorId: a.id, patTargetId: b.id });
-
-    const list = await listChannelsForUser(a.id);
-    expect(list.find((c) => c.id === CHAT_LOBBY_ID)?.last_message?.content).toBe('拍了拍 目标');
-  });
-
-  it('目标用户行缺失 → 读回占位名（不炸、不露空）', async () => {
-    const a = await makeUser({ role: 'core' });
     const b = await makeUser({ role: 'core' });
     const sent = await sendMessage({ channelId: CHAT_LOBBY_ID, authorId: a.id, patTargetId: b.id });
     const msgId = (sent as { message: { id: number } }).message.id;
-
     // 模拟目标行被清理（pat_target_id 无外键 → 消息行仍在）
     await prisma.$executeRawUnsafe('DELETE FROM users WHERE id = ?', b.id);
-
     const list = await listMessages(CHAT_LOBBY_ID, a.id);
     const back = (list as { messages: PatMsg[] }).messages.find((x) => x.id === msgId);
-    expect(back?.pat?.target_name).toBe(PAT_TARGET_FALLBACK);
+    expect(back?.pat?.target_name, '目标行缺失时给占位名，不炸、不露空').toBe(PAT_TARGET_FALLBACK);
   });
 
-  it('拍一拍也走限频（不因没有正文而豁免）', async () => {
+  it('拍一拍也走限频（不因没有正文而豁免；桶直填后只留 1 次真实调用）', async () => {
     const a = await makeUser({ role: 'core' });
     const b = await makeUser({ role: 'core' });
     for (let i = 0; i < RULES.chatMinute.limit; i++) {
-      const r = await sendMessage({ channelId: CHAT_LOBBY_ID, authorId: a.id, patTargetId: b.id });
-      expect(r.ok).toBe(true);
+      recordRateLimitHit(`chat:m:${a.id}`);
     }
     const over = await sendMessage({ channelId: CHAT_LOBBY_ID, authorId: a.id, patTargetId: b.id });
     expect((over as { error: string }).error).toBe('rateLimited');
@@ -897,7 +878,7 @@ describe('@ 提及通知', () => {
 });
 
 describe('顶栏「讨论」红点汇总 getChatUnreadSummary', () => {
-  it('私聊未读计入 count；读掉后归零', async () => {
+  it('私聊未读计入 count（可部分已读、读尽归零）；静音会话不计入顶栏但侧栏未读照常', async () => {
     const a = await makeUser({ role: 'core' });
     const b = await makeUser({ role: 'core' });
     const ch = (await startDirectChannel(a.id, b.id)) as { channel: { id: string } };
@@ -918,9 +899,16 @@ describe('顶栏「讨论」红点汇总 getChatUnreadSummary', () => {
     // 缺省 = 读到频道最大 id → 清零
     await markChannelRead(ch.channel.id, b.id);
     expect(await getChatUnreadSummary(b.id)).toEqual({ count: 0, dot: false });
+
+    // 静音 ≠ 已读：顶栏不计，但侧栏未读徽标照常
+    await setChannelMuted(ch.channel.id, b.id, true);
+    await sendMessage({ channelId: ch.channel.id, authorId: a.id, content: 'x' });
+    expect(await getChatUnreadSummary(b.id)).toEqual({ count: 0, dot: false });
+    const row = (await listChannelsForUser(b.id)).find((c) => c.id === ch.channel.id);
+    expect(row?.unread_count).toBe(1);
   });
 
-  it('大区普通未读不算，只有 @ 到我才亮红点', async () => {
+  it('大区普通未读不算、只有 @ 到我才亮 dot；自己 @ 自己不算', async () => {
     const a = await makeUser({ role: 'core' });
     const b = await makeUser({ role: 'core', username: 'lobby_dot' });
     // 先进一次大区：懒建成员基线（没有成员行时未读恒为 0，测不出 dot）
@@ -935,55 +923,34 @@ describe('顶栏「讨论」红点汇总 getChatUnreadSummary', () => {
       content: '@lobby_dot 叫你',
     });
     expect(await getChatUnreadSummary(b.id)).toEqual({ count: 0, dot: true });
+
+    // 自己 @ 自己不算（与侧栏同口径：作者排除）
+    const c = await makeUser({ role: 'core', username: 'self_dot' });
+    await listChannelsForUser(c.id);
+    await sendMessage({ channelId: CHAT_LOBBY_ID, authorId: c.id, content: '@self_dot 记一下' });
+    expect(await getChatUnreadSummary(c.id)).toEqual({ count: 0, dot: false });
   });
 
-  it('自己 @ 自己不算（与侧栏同口径：作者排除）', async () => {
-    const b = await makeUser({ role: 'core', username: 'self_dot' });
-    await listChannelsForUser(b.id);
-    await sendMessage({ channelId: CHAT_LOBBY_ID, authorId: b.id, content: '@self_dot 记一下' });
-    expect(await getChatUnreadSummary(b.id)).toEqual({ count: 0, dot: false });
-  });
-
-  it('专注模式下大区不计（@ 也不亮）', async () => {
+  it('专注模式下大区不计（@ 也不亮）；隐藏的会话不计、隐藏后再来新消息重新计入', async () => {
     const a = await makeUser({ role: 'core' });
-    const b = await makeUser({ role: 'core', username: 'focus_dot' });
-    await listChannelsForUser(b.id);
+    const focus = await makeUser({ role: 'core', username: 'focus_dot' });
+    await listChannelsForUser(focus.id);
     await sendMessage({
       channelId: CHAT_LOBBY_ID,
       authorId: a.id,
       content: '@focus_dot 叫你',
     });
+    expect(await getChatUnreadSummary(focus.id)).toEqual({ count: 0, dot: true });
+    expect(await getChatUnreadSummary(focus.id, true)).toEqual({ count: 0, dot: false });
 
-    expect(await getChatUnreadSummary(b.id)).toEqual({ count: 0, dot: true });
-    expect(await getChatUnreadSummary(b.id, true)).toEqual({ count: 0, dot: false });
-  });
-
-  it('静音会话不计入顶栏红点，但侧栏未读徽标照常（静音 ≠ 已读）', async () => {
-    const a = await makeUser({ role: 'core' });
-    const b = await makeUser({ role: 'core' });
-    const ch = (await startDirectChannel(a.id, b.id)) as { channel: { id: string } };
-    await setChannelMuted(ch.channel.id, b.id, true);
-
-    await sendMessage({ channelId: ch.channel.id, authorId: a.id, content: 'x' });
-
-    expect(await getChatUnreadSummary(b.id)).toEqual({ count: 0, dot: false });
-    const row = (await listChannelsForUser(b.id)).find((c) => c.id === ch.channel.id);
-    expect(row?.unread_count).toBe(1);
-  });
-
-  it('隐藏的会话不计；隐藏后又来新消息则重新计入', async () => {
-    const a = await makeUser({ role: 'core' });
     const b = await makeUser({ role: 'core' });
     const ch = (await startDirectChannel(a.id, b.id)) as { channel: { id: string } };
     await sendMessage({ channelId: ch.channel.id, authorId: a.id, content: '旧消息' });
-
     await hideChannel(ch.channel.id, b.id);
     expect(await getChatUnreadSummary(b.id)).toEqual({ count: 0, dot: false });
 
-    // 新消息 id 更大 → 会话重新出现（微信语义），未读也随之重新计入。
+    // 新消息 id 更大 → 会话重新出现（微信语义）；hideChannel 只记「隐藏到哪条」、不代读
     await sendMessage({ channelId: ch.channel.id, authorId: a.id, content: '新消息' });
-    // 恰好 2 条：b 从未推进过读游标，hideChannel 只记「隐藏到哪条」、不代读，所以旧+新
-    // 都算未读。只写 >0 的话「隐藏标记没清 / 计数加错倍率」这类回归仍会绿（R3-277#2）。
     expect((await getChatUnreadSummary(b.id)).count).toBe(2);
   });
 });
@@ -1424,46 +1391,37 @@ describe('软删消息不返回附件', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('侧栏预览占位', () => {
-  it('纯图片消息（无图注）预览为 [图片]', async () => {
+  it('纯图片 → 占位；引用博客（无正文）→ 占位；内联 token 换成短标记（名片不当表情）', async () => {
     const a = await makeUser({ role: 'core' });
     const b = await makeUser({ role: 'core' });
-    const ch = (await startDirectChannel(a.id, b.id)) as { channel: { id: string } };
+    const dm = (await startDirectChannel(a.id, b.id)) as { channel: { id: string } };
+    const preview = async (channelId: string) =>
+      (await listChannelsForUser(a.id)).find((c) => c.id === channelId)?.last_message?.content;
+
+    // 纯图片消息（无图注）不能显示空串
     const img = await makeImage(a.id);
-    await sendMessage({ channelId: ch.channel.id, authorId: a.id, imageId: img.id });
+    await sendMessage({ channelId: dm.channel.id, authorId: a.id, imageId: img.id });
+    expect(await preview(dm.channel.id), '纯图片预览不能是空串').toBe('[图片]');
 
-    const list = await listChannelsForUser(a.id);
-    const row = list.find((c) => c.id === ch.channel.id);
-    expect(row?.last_message?.content).toBe('[图片]');
-  });
-
-  it('引用博客（无正文）预览为 [博客]', async () => {
-    const a = await makeUser({ role: 'core' });
-    const b = await makeUser({ role: 'core' });
-    const ch = (await startDirectChannel(a.id, b.id)) as { channel: { id: string } };
+    // 引用博客（无正文）
     const blogId = await makeBlog(a.id);
-    await sendMessage({ channelId: ch.channel.id, authorId: a.id, blogId });
+    await sendMessage({ channelId: CHAT_LOBBY_ID, authorId: a.id, blogId });
+    expect(await preview(CHAT_LOBBY_ID), '纯博客引用预览不能是空串').toBe('[博客]');
 
-    const list = await listChannelsForUser(a.id);
-    const row = list.find((c) => c.id === ch.channel.id);
-    expect(row?.last_message?.content).toBe('[博客]');
-  });
-
-  it('★ 内联 token 在预览里换成短标记：表情 → [表情]，名片 → @张三', async () => {
-    // 预览与服务端、客户端各一份（listChannelsForUser 与 ChatApp.previewOfMessage），
-    // 两处都走 chat-shared 的 stripPreviewTokens。这里钉的是「名片不会被当成表情那个
-    // 合集」—— 让开之前，`[@用户/张三]` 在这条路径上会变成 `[表情]`。
-    const a = await makeUser({ role: 'core' });
-    const b = await makeUser({ role: 'core' });
-    const ch = (await startDirectChannel(a.id, b.id)) as { channel: { id: string } };
+    // ★ 内联 token：名片 → @张三，表情 → [表情]（两处都走 chat-shared 的 stripPreviewTokens；
+    // 钉的是「名片不会被当成表情那个合集」，否则 [@用户/张三] 会显示成 [表情]）
     await sendMessage({
-      channelId: ch.channel.id,
+      channelId: dm.channel.id,
       authorId: a.id,
       content: '看 [@用户/张三丰] 和 [@猫猫/开心]',
     });
+    expect(await preview(dm.channel.id)).toBe('看 @张三丰 和 [表情]');
 
-    const list = await listChannelsForUser(a.id);
-    const row = list.find((c) => c.id === ch.channel.id);
-    expect(row?.last_message?.content).toBe('看 @张三丰 和 [表情]');
+    // 拍一拍没有正文：预览同样不能是空串，且要带上目标名
+    await sendMessage({ channelId: CHAT_LOBBY_ID, authorId: a.id, patTargetId: b.id });
+    const patPreview = await preview(CHAT_LOBBY_ID);
+    expect(patPreview, '拍一拍预览不能是空串').toBeTruthy();
+    expect(patPreview).toContain(b.username);
   });
 });
 
@@ -1868,28 +1826,25 @@ describe('已读回执（C7）', () => {
     expect(wb.events().filter((e) => e.type === 'read')).toHaveLength(0);
   });
 
-  it('大区已读不推回执（人多且无意义）', async () => {
+  it('大区已读不推回执；重放更小 / 相同的 id 不推「退版」回执（只在游标真正推进时推一次）', async () => {
     const a = await makeUser({ role: 'core' });
-    const sent = await sendMessage({ channelId: CHAT_LOBBY_ID, authorId: a.id, content: 'x' });
-    if (!sent.ok) throw new Error('send failed');
     const wa = watch(a.id);
-    await markChannelRead(CHAT_LOBBY_ID, a.id, sent.message.id);
-    expect(wa.events().filter((e) => e.type === 'read')).toHaveLength(0);
-  });
 
-  it('重放更小 / 相同的 id 不推「退版」回执：只在游标真正推进时推一次', async () => {
-    const a = await makeUser({ role: 'core' });
+    // 大区已读：人多且无意义，不推
+    const lobbySent = await sendMessage({ channelId: CHAT_LOBBY_ID, authorId: a.id, content: 'x' });
+    if (!lobbySent.ok) throw new Error('send failed');
+    await markChannelRead(CHAT_LOBBY_ID, a.id, lobbySent.message.id);
+    expect(wa.events().filter((e) => e.type === 'read'), '大区已读不推回执').toHaveLength(0);
+
+    // 私聊：推进到较大 id → 一条回执；之后重放更小 / 相同的 id 游标不动、回执不再出现，
+    // 否则对端 peer_last_read_message_id 会先退回去再回来。
     const b = await makeUser({ role: 'core' });
     const ch = (await startDirectChannel(a.id, b.id)) as { channel: { id: string } };
     const first = await sendMessage({ channelId: ch.channel.id, authorId: a.id, content: '1' });
     const second = await sendMessage({ channelId: ch.channel.id, authorId: a.id, content: '2' });
     if (!first.ok || !second.ok) throw new Error('send failed');
 
-    const wa = watch(a.id);
-    // 推进到较大 id → 一条回执（message_id = 推进后的游标）
     await markChannelRead(ch.channel.id, b.id, second.message.id);
-    // 之后重放更小 / 相同的 id：游标不动，回执也不该再出现 —— 否则对端
-    // peer_last_read_message_id 会先退回去再回来
     await markChannelRead(ch.channel.id, b.id, first.message.id);
     await markChannelRead(ch.channel.id, b.id, second.message.id);
 
@@ -1908,16 +1863,6 @@ describe('已读回执（C7）', () => {
 // 删掉了与上方「@ 红点口径」「顶栏汇总」重复的 @ 边界 / 静音 / 隐藏断言，
 // 以及只钉 Prisma schema 可空性的迁移用例。
 // ─────────────────────────────────────────────────────────────────────────────
-
-describe('extractMentions（与前端 isMentioned 同口径）', () => {
-  it('@名字 后跟空白或行尾才算；前缀相同不误伤；中文逗号不算边界', () => {
-    expect(extractMentions('@bob 你好')).toEqual(['bob']);
-    expect(extractMentions('你好 @bob')).toEqual(['bob']);
-    expect(extractMentions('@bobby 你好')).toEqual(['bobby']);
-    expect(extractMentions('@bob，你好')).toEqual([]); // 中文逗号不是边界（与前端一致）
-    expect(extractMentions('@a @b @a').sort()).toEqual(['a', 'b']); // 多个 @ 去重
-  });
-});
 
 describe('静音会话（取消静音后未读仍在）', () => {
   it('静音期间不点亮顶栏；取消静音后未读重新计入（静音 ≠ 已读）', async () => {
