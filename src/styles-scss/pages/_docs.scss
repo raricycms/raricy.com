@@ -4,6 +4,7 @@
 // 本文件只管索引页的目录版式、正文页的外壳（返回条 / 来源行 / 同组文档），
 // 以及正文页那条**行宽上限**。
 
+@use '../abstracts/variables' as v;
 @use '../abstracts/mixins' as m;
 @use '../components/doc-prose' as prose;
 
@@ -110,7 +111,7 @@
   border-radius: 10px;
   padding: 0.85rem 1rem;
   text-decoration: none;
-  transition: all 0.2s ease;
+  transition: all v.$feedback-duration v.$feedback-easing;
 
   /* 整卡是可点链接：hover 只加品牌蓝光晕，不位移、不换描边
      —— 与 .blog-item / .vote-item 一致。 */
@@ -141,7 +142,7 @@
   text-decoration: none;
   font-size: 0.875rem;
   margin-bottom: 1.5rem;
-  transition: color 0.2s ease;
+  transition: color v.$feedback-duration v.$feedback-easing;
 
   &:hover {
     color: var(--color-brand-primary);

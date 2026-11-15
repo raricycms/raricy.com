@@ -1,3 +1,4 @@
+@use '../../abstracts/variables' as v;
 @use '../../abstracts/mixins' as m;
 
 .l2-game {
@@ -26,15 +27,15 @@
 .l2-board { position: relative; width: 100%; max-width: min(100%, clamp(320px, calc(100dvh - 420px), 520px)); margin: 0 auto; aspect-ratio: 1; border-radius: 24px; overflow: hidden; user-select: none; -webkit-tap-highlight-color: transparent; }
 .l2-art { display: block; width: 100%; height: 100%; }
 .l2-socket {
-  position: absolute; transform: translate(-50%, -50%); padding: 0; border: 0; border-radius: 50%; background: transparent; cursor: pointer; transition: background .2s ease, box-shadow .2s ease;
-  > span { display: grid; place-items: center; width: 100%; height: 100%; color: #e2f1ec; font-size: 1.6rem; opacity: 0; transition: opacity .2s ease; }
+  position: absolute; transform: translate(-50%, -50%); padding: 0; border: 0; border-radius: 50%; background: transparent; cursor: pointer; transition: background v.$feedback-duration v.$feedback-easing, box-shadow v.$feedback-duration v.$feedback-easing;
+  > span { display: grid; place-items: center; width: 100%; height: 100%; color: #e2f1ec; font-size: 1.6rem; opacity: 0; transition: opacity v.$feedback-duration v.$feedback-easing; }
   &:hover { background: rgb(170 221 239 / 10%); }
   &:focus-visible { outline: 2px solid #c3efff; outline-offset: 1px; }
 }
 @media (hover: hover) and (pointer: fine) { .l2-socket[data-state='0']:hover > span { opacity: .4; } }
 .l2-coordinate { position: absolute; top: 90%; left: 80%; color: #8ca6b2; font-family: var(--font-mono); font-size: 8px; line-height: 1; font-weight: 400; pointer-events: none; }
-.l2-mirror { transition: transform 220ms cubic-bezier(.4, 0, .2, 1); }
-.l2-socket-ring { transition: fill-opacity .2s ease, stroke-opacity .2s ease; }
+.l2-mirror { transition: transform v.$motion-duration v.$motion-easing; }
+.l2-socket-ring { transition: fill-opacity v.$feedback-duration v.$feedback-easing, stroke-opacity v.$feedback-duration v.$feedback-easing; }
 .l2-flow { animation: l2-flow 3s linear infinite; }
 @keyframes l2-flow { to { stroke-dashoffset: -48; } }
 .l2-tray { justify-content: space-between; margin-top: 20px; gap: 8px; }

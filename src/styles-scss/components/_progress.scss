@@ -20,7 +20,7 @@
 .progress-bar {
   height: 100%;
   background: var(--color-brand-primary);
-  transition: width 0.3s ease;
+  transition: width v.$motion-duration v.$motion-easing;
 }
 
 .progress-bar-striped {

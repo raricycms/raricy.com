@@ -1,3 +1,4 @@
+@use '../../abstracts/variables' as v;
 @use '../../abstracts/mixins' as m;
 
 .h3-game {
@@ -42,9 +43,9 @@
 .h3-target--matched { .h3-target-corners { stroke: #5b8b75; } .h3-glyph { opacity: 0; } }
 .h3-target--wrong .h3-target-corners { stroke: #b94d43; stroke-width: .028; }
 .h3-target-check { fill: none; stroke: #5b8b75; stroke-width: .035; stroke-linecap: round; stroke-linejoin: round; }
-.h3-crease { cursor: pointer; .h3-crease-hit { stroke: transparent; stroke-width: .3; } .h3-crease-line { stroke: #b8aa8e; stroke-width: .013; stroke-dasharray: .09 .085; } circle { fill: #e5d9bf; transition: fill .2s; } text { font-size: .18px; fill: #8f7859; text-anchor: middle; } &.is-selected, &:hover, &:focus-visible { .h3-crease-line { stroke: #a7784c; stroke-width: .019; } circle { fill: #ddc39b; } } &:focus-visible { outline: none; .h3-crease-line { stroke-width: .05; } } }
+.h3-crease { cursor: pointer; .h3-crease-hit { stroke: transparent; stroke-width: .3; } .h3-crease-line { stroke: #b8aa8e; stroke-width: .013; stroke-dasharray: .09 .085; } circle { fill: #e5d9bf; transition: fill v.$feedback-duration v.$feedback-easing; } text { font-size: .18px; fill: #8f7859; text-anchor: middle; } &.is-selected, &:hover, &:focus-visible { .h3-crease-line { stroke: #a7784c; stroke-width: .019; } circle { fill: #ddc39b; } } &:focus-visible { outline: none; .h3-crease-line { stroke-width: .05; } } }
 .h3-fold-grip { cursor: grab; touch-action: none; outline: none; .h3-fold-grip-hit { fill: transparent; } .h3-fold-grip-disc { fill: #ecdfc3; stroke: #b59b75; stroke-width: .012; } path { fill: none; stroke: #92734e; stroke-width: .022; stroke-linecap: round; stroke-linejoin: round; } text { fill: #92734e; font-size: .14px; text-anchor: middle; } &:hover .h3-fold-grip-disc, &:focus-visible .h3-fold-grip-disc { fill: #d7b681; } &:active { cursor: grabbing; } }
-.h3-press-pad { cursor: pointer; rect { fill: #ddd0b1; transition: fill .2s; } text { fill: #806846; font-size: .14px; text-anchor: middle; } &:hover rect, &:focus-visible rect { fill: #d4b382; } &:focus-visible { outline: none; rect { stroke: #806846; stroke-width: .025; } } }
+.h3-press-pad { cursor: pointer; rect { fill: #ddd0b1; transition: fill v.$feedback-duration v.$feedback-easing; } text { fill: #806846; font-size: .14px; text-anchor: middle; } &:hover rect, &:focus-visible rect { fill: #d4b382; } &:focus-visible { outline: none; rect { stroke: #806846; stroke-width: .025; } } }
 .h3-paper-caption { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px 20px; padding: 0 20px 16px; color: var(--color-text-secondary); font-size: .62rem; span { display: inline-flex; align-items: center; gap: 5px; } i { display: inline-block; width: 7px; height: 7px; } }
 .h3-legend-wet { background: #b94d43; border-radius: 50%; }
 .h3-legend-dry { background: #b94d43; opacity: .37; border-radius: 50%; }
@@ -62,7 +63,7 @@
 .h3-main-action { width: 100%; min-height: 48px; justify-content: center; }
 .h3-unfold { width: 100%; margin-top: 8px; }
 .h3-contact-note { margin: 16px 0 0; font-size: .72rem; color: var(--color-text-secondary); line-height: 1.85; }
-.h3-rule-toggle { align-self: flex-start; font-size: .72rem; padding-block: 8px; min-height: 36px; margin-top: -8px; svg { transition: transform .2s; } .is-open { transform: rotate(180deg); } }
+.h3-rule-toggle { align-self: flex-start; font-size: .72rem; padding-block: 8px; min-height: 36px; margin-top: -8px; svg { transition: transform v.$motion-duration v.$motion-easing; } .is-open { transform: rotate(180deg); } }
 .h3-rules { background: var(--color-background-card); border-radius: 20px; padding: 20px; color: var(--color-text-secondary); font-size: .75rem; line-height: 1.9; p { margin: 0 0 10px; &:last-child { margin-bottom: 0; } } }
 .h3-save-note { color: var(--color-text-secondary); font-size: .65rem; line-height: 1.8; margin: -8px 16px 0; &.is-error { color: var(--color-warning-primary); } }
 @media (max-width: 991px) {

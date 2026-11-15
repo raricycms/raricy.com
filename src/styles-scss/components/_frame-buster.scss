@@ -106,7 +106,7 @@
   white-space: nowrap;
   text-decoration: none;
   cursor: pointer;
-  transition: background-color 0.3s ease, color 0.3s ease;
+  transition: background-color v.$feedback-duration v.$feedback-easing, color v.$feedback-duration v.$feedback-easing;
 
   &:hover {
     background: var(--color-background-content);

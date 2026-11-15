@@ -328,7 +328,7 @@ function transitionTheme(themeName) {
     //
     // 每个目标都会拿到一条独立的 WAAPI 动画，代价落在**每一帧**上：这一帧要把这些
     // 元素的颜色重新算一遍再重绘。博客目录一页 50 篇，实测 810 个目标，其中 630 多个
-    // 在视口外（屏幕里只放得下 4 张卡）—— 白算。帧间隔被拖到 100ms 以上时，480ms 的
+    // 在视口外（屏幕里只放得下 4 张卡）—— 白算。帧间隔被拖到 100ms 以上时，360ms 的
     // 时间线只画得出 2~4 帧，观感就是「整页直接跳色、没有过渡」；同一时刻打开轻页面
     // （通讯录、设置）却是平滑的，差别只在目标数量。
     //
@@ -364,10 +364,11 @@ function transitionTheme(themeName) {
             if (before[name] !== style[name]) { from[name] = before[name]; to[name] = style[name]; }
         }
         if (!Object.keys(to).length) continue;
-        // 480ms / 顶栏展开曲线：与样式里的形变动效同一条（$motion-expand-*，
-        // 见 _home.scss 的日月旋转与 docs/frontend-styles.md §6.2/§6.4）。首页
-        // 日月与整页换色必须同一条时间线，改一处要改两处。
-        const effect = new KeyframeEffect(element, [from, to], { duration: 480, easing: 'cubic-bezier(0.16, 1, 0.3, 1)', pseudoElement: pseudo });
+        // 360ms / ease-out：整页换色属于反馈档（颜色、底色、描边、阴影、透明度），
+        // 见 _variables.scss 的 $feedback-duration / $feedback-easing 与
+        // docs/frontend-styles.md §6.2/§6.4。日月旋转变形仍走 540ms 那条曲线，
+        // 两者时长不同，改一处要看清另一处。
+        const effect = new KeyframeEffect(element, [from, to], { duration: 360, easing: 'ease-out', pseudoElement: pseudo });
         const animation = new Animation(effect, document.timeline);
         animation.id = 'theme-colors';
         animations.push(animation);
@@ -377,7 +378,7 @@ function transitionTheme(themeName) {
     // 起跑时刻是**下一帧**，不是现在。
     // 上面两圈同步循环（采样 + 建动画）在重页面上要几百毫秒，而
     // `document.timeline.currentTime` 读到的是**最近一次绘制**的时间戳：把它当
-    // startTime，等于让这段阻塞先消耗掉一段 480ms 的时间线。放到 rAF 里读，拿到的
+    // startTime，等于让这段阻塞先消耗掉一段 360ms 的时间线。放到 rAF 里读，拿到的
     // 就是即将绘制的那一帧自己的时刻，进度从 0 开始 —— 阻塞再久也不吃掉渐变。
     for (const animation of animations) animation.play();
     requestAnimationFrame(function () {
@@ -659,7 +660,7 @@ function initSiteChrome() {
         : { matches: false, addEventListener: function () {}, removeEventListener: function () {} };
     function isMobile() { return mqMobile.matches; }
 
-    // 收起方向现在也有动画（_header.scss：面板 220ms 收回，期间 visibility 仍是
+    // 收起方向现在也有动画（_header.scss：面板 540ms 收回，期间 visibility 仍是
     // visible）—— 但里面的链接要**立即**退出焦点序列，同 .site-user-dropdown-panel
     // 的处理，靠 inert 而不是等 visibility 那一刀。
     // ⚠️ 只在移动端置 inert：桌面端的 collapse 是常显的，误置等于整条顶栏点不动。

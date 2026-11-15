@@ -26,7 +26,7 @@
    .blog-likes / .blog-comments / .blog-fish 三个统计胶囊同一套观感 ——
    原先它们是「透明底 + 1px 描边 + Bootstrap 原始色」，既不在主题体系内，
    暗色下也不跟着变。 */
-.home-btn { display: inline-block; padding: 6px 14px; border-radius: 999px; font-weight: 500; text-decoration: none; cursor: pointer; border: none; transition: all 0.2s ease; }
+.home-btn { display: inline-block; padding: 6px 14px; border-radius: 999px; font-weight: 500; text-decoration: none; cursor: pointer; border: none; transition: all v.$feedback-duration v.$feedback-easing; }
 .home-btn--sm { padding: 6px 12px; font-size: 0.9rem; }
 .home-btn--outline-primary { color: var(--color-brand-primary); background: var(--color-brand-secondary); }
 .home-btn--outline-secondary { color: var(--color-text-secondary); background: var(--color-background-subtle); }
@@ -129,17 +129,16 @@
     transform-box: view-box;
     transform-origin: 1375px 480px;
     // 与 public/static/js/core/base.js 的 theme-colors 时间线**同一条**（那里
-    // `KeyframeEffect(…, { duration: 480, easing: 'cubic-bezier(0.16, 1, 0.3, 1)' })`）：
+    // `KeyframeEffect(…, { duration: 540, easing: 'cubic-bezier(0.16, 1, 0.3, 1)' })`）：
     // 日月转过半圈的同时底色/文字/山体也在换色，两边差一截就会出现
     // 「景已经换完了、天还在转」的割裂。**改一处要改两处。**
-    // 节奏取顶栏展开那一条（$motion-expand-*）：起始就有速度、末段平滑落定，
-    // 半圈行程读起来是「翻过去」而不是「滑过去」。
-    transition: transform v.$motion-expand-duration v.$motion-expand-easing,
-                opacity v.$motion-expand-duration v.$motion-expand-easing;
+    // 起始就有速度、末段平滑落定，半圈行程读起来是「翻过去」而不是「滑过去」。
+    transition: transform v.$motion-duration v.$motion-easing,
+                opacity v.$feedback-duration v.$feedback-easing;
 
-    // circle 的 fill/stroke 与 base.js 那条换色动画同速（480ms / 同一条曲线），
+    // circle 的 fill/stroke 与 base.js 那条换色动画同档（反馈档 360ms / ease-out），
     // 留长了自己这份过渡会在 WAAPI 动画结束后再拖一截。
-    circle { transition: fill v.$motion-expand-duration v.$motion-expand-easing, stroke v.$motion-expand-duration v.$motion-expand-easing; }
+    circle { transition: fill v.$feedback-duration v.$feedback-easing, stroke v.$feedback-duration v.$feedback-easing; }
   }
 
   &__sun { transform: rotate(var(--hero-orbit-angle)); opacity: 1; }
@@ -158,7 +157,7 @@
 
 // 动画结束后释放 opacity/transform，按钮的背景模糊才能采样下方山景。
 // 禁用 JS 时直接展示静态文字。入场位移与全站形变动效同一条节奏（§6.2）。
-.js .hero-content { animation: fadeInUp v.$motion-expand-duration v.$motion-expand-easing backwards; }
+.js .hero-content { animation: fadeInUp v.$motion-duration v.$motion-easing backwards; }
 
 .hero-eyebrow {
   margin: 0 0 32px;
@@ -248,7 +247,7 @@
    不是浮在背景上的浮层，压一圈阴影只会让四块各自「浮」起来、把首页切碎。
    鼠标悬浮时才亮起主题蓝光晕（--shadow-card-brand，与顶栏常驻阴影同色系），
    即「指到哪儿哪儿才浮起来」。 */
-.feature-card { display: block; transition: box-shadow 0.3s ease; cursor: pointer;  border-radius: 30px; overflow: hidden; position: relative; height: 100%; background-color: var(--color-background-card); box-shadow: none; border: none;  }
+.feature-card { display: block; transition: box-shadow v.$feedback-duration v.$feedback-easing; cursor: pointer;  border-radius: 30px; overflow: hidden; position: relative; height: 100%; background-color: var(--color-background-card); box-shadow: none; border: none;  }
 .feature-card:hover { box-shadow: 0 2px 25px var(--card-glow); }
 
 .feature-card .card-body { padding: 2rem; position: relative; z-index: 2; display: flex; flex-direction: column; align-items: center; height: 100%; ; border: none;}
@@ -276,7 +275,7 @@
   height: 3rem;
   display: inline-block;
   margin-bottom: 1rem;
-  transition: transform 0.3s ease;
+  transition: transform v.$motion-duration v.$motion-easing;
   background-color: currentColor;
   -webkit-mask-repeat: no-repeat;
   mask-repeat: no-repeat;
@@ -352,7 +351,7 @@
   from { opacity: 0; transform: translateY(30px); }
   to { opacity: 1; transform: translateY(0); }
 }
-.fade-in-up { animation: fadeInUp v.$motion-expand-duration v.$motion-expand-easing }
+.fade-in-up { animation: fadeInUp v.$motion-duration v.$motion-easing }
 
 /* 此处原有 `.btn-custom`：紫色渐变按钮，没有任何 TSX 使用它。
    渐变两端 #667eea / #764ba2 都不在站内色板里。已删。 */

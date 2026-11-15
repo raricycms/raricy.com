@@ -1,3 +1,4 @@
+@use '../../abstracts/variables' as v;
 @use '../../abstracts/mixins' as m;
 
 .lm-game { padding-top: 32px; padding-bottom: 32px; }
@@ -40,7 +41,7 @@
   &--hint { background: rgb(175 220 255 / 12%); }
 }
 .lm-hint-marker { position: absolute; right: 0; top: 0; display: grid; place-items: center; width: 25px; height: 25px; font-size: 22px; line-height: 1; background: #d1f0ff; color: #14293c; border-radius: 50%; animation: lm-hint-pulse 1.8s ease-in-out infinite; }
-.lm-mirror-line { transition: transform 180ms ease; }
+.lm-mirror-line { transition: transform v.$motion-duration v.$motion-easing; }
 .lm-ray-flow { animation: lm-flow 2s linear infinite; }
 .lm-receiver-lit { animation: lm-light-on .45s ease-out; }
 .lm-bench-footer { display: flex; justify-content: space-between; gap: 8px; margin: 14px 0 18px; color: var(--color-text-secondary); font-size: .75rem; span { display: inline-flex; align-items: center; gap: 6px; } }
@@ -58,7 +59,7 @@
 .lm-result { padding: 24px; border-radius: 30px; background: var(--color-brand-secondary); h3 { font-size: 1.3rem; margin: 12px 0 8px; } p { font-size: .875rem; line-height: 1.8; color: var(--color-text-secondary); margin: 0 0 16px; } .lm-primary { width: 100%; } > .lm-stars svg { width: 24px; height: 24px; } }
 .lm-stars { display: inline-flex; gap: 4px; color: var(--color-text-secondary); svg { opacity: .3; } .is-earned { color: var(--color-accent-amber); fill: currentColor; opacity: 1; } }
 .lm-journey { padding: 20px 24px; > div:first-child { display: flex; align-items: center; justify-content: space-between; h3 { font-size: .875rem; margin: 0; } > span { font-size: .8rem; color: var(--color-text-secondary); } } .lm-secondary { margin-left: -12px; padding-left: 12px; font-size: .8rem; } }
-.lm-progress-track { height: 5px; background: var(--color-background-content); border-radius: 999px; margin: 16px 0 8px; overflow: hidden; > span { display: block; height: 100%; border-radius: inherit; background: var(--color-accent-cyan); transition: width .3s ease; } }
+.lm-progress-track { height: 5px; background: var(--color-background-content); border-radius: 999px; margin: 16px 0 8px; overflow: hidden; > span { display: block; height: 100%; border-radius: inherit; background: var(--color-accent-cyan); transition: width v.$motion-duration v.$motion-easing; } }
 .lm-save-note { font-size: .75rem; color: var(--color-text-secondary); text-align: center; margin: 24px 0 0; }
 .lm-dialog { border: 0; border-radius: 30px; background: var(--color-background-card); color: var(--color-text-primary); box-shadow: var(--shadow-card-brand); width: min(720px, calc(100vw - 32px)); max-height: calc(100dvh - 48px); padding: 28px; margin: auto; overscroll-behavior: contain; &::backdrop { background: rgb(0 0 0 / 50%); } }
 body:has(.lm-dialog[open]) { overflow: hidden; }

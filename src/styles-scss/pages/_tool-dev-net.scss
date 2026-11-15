@@ -57,7 +57,7 @@
   color: var(--color-text-secondary);
   text-align: center;
   cursor: pointer;
-  transition: border-color 0.15s ease, background-color 0.15s ease, color 0.15s ease;
+  transition: border-color v.$feedback-duration v.$feedback-easing, background-color v.$feedback-duration v.$feedback-easing, color v.$feedback-duration v.$feedback-easing;
 
   &:hover,
   &:focus-visible {

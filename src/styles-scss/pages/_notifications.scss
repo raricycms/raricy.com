@@ -211,7 +211,7 @@ body {
     margin-bottom: 12px;
     border: none;
     box-shadow: none;
-    transition: background-color 0.25s ease;
+    transition: background-color $feedback-duration $feedback-easing;
 }
 
 .notifications-page .notification-card:last-child {
@@ -408,7 +408,7 @@ a.notification-actor:hover {
     background: transparent;
     color: var(--color-text-secondary);
     cursor: pointer;
-    transition: color 0.2s ease, background-color 0.2s ease, opacity 0.2s ease;
+    transition: color $feedback-duration $feedback-easing, background-color $feedback-duration $feedback-easing, opacity $feedback-duration $feedback-easing;
 
     &:hover:not(:disabled) {
         background: var(--color-brand-secondary);

@@ -526,7 +526,7 @@
 .mo-expand {
   display: grid;
   grid-template-rows: 0fr;
-  transition: grid-template-rows var(--mo-duration, #{v.$motion-expand-duration}) var(--mo-easing, #{v.$motion-expand-easing});
+  transition: grid-template-rows var(--mo-duration, #{v.$motion-duration}) var(--mo-easing, #{v.$motion-easing});
 
   &.is-open {
     grid-template-rows: 1fr;
@@ -556,7 +556,7 @@
   padding: v.$space-3;
   border-radius: v.$radius-large;
   background: var(--color-background-content);
-  animation: mo-rise var(--mo-duration, #{v.$motion-expand-duration}) var(--mo-easing, #{v.$motion-expand-easing}) backwards;
+  animation: mo-rise var(--mo-duration, #{v.$motion-duration}) var(--mo-easing, #{v.$motion-easing}) backwards;
 }
 
 .mo-rise__dot {
@@ -582,7 +582,7 @@
   border-radius: v.$radius-small;
   background: var(--color-background-content);
   font-size: 0.8125rem;
-  animation: mo-rise var(--mo-duration, #{v.$motion-expand-duration}) var(--mo-easing, #{v.$motion-expand-easing}) backwards;
+  animation: mo-rise var(--mo-duration, #{v.$motion-duration}) var(--mo-easing, #{v.$motion-easing}) backwards;
   animation-delay: var(--mo-delay, 0ms);
 }
 
@@ -599,7 +599,7 @@
   inset: 0;
   border-radius: v.$radius-large;
   background: var(--color-brand-secondary);
-  animation: mo-fade var(--mo-duration, #{v.$motion-collapse-duration}) var(--mo-easing, #{v.$motion-collapse-easing}) backwards;
+  animation: mo-fade var(--mo-duration, #{v.$motion-duration}) var(--mo-easing, #{v.$motion-easing}) backwards;
 }
 
 .mo-overlay__panel {
@@ -614,7 +614,7 @@
   font-size: 0.8125rem;
   text-align: center;
   translate: -50% -50%;
-  animation: mo-pop var(--mo-duration, #{v.$motion-collapse-duration}) var(--mo-easing, #{v.$motion-collapse-easing}) backwards;
+  animation: mo-pop var(--mo-duration, #{v.$motion-duration}) var(--mo-easing, #{v.$motion-easing}) backwards;
 }
 
 // 悬停光晕：只改 box-shadow。
@@ -683,7 +683,7 @@
   position: relative;
   width: 164px;
   height: 36px;
-  transition: width var(--mo-duration, #{v.$motion-expand-duration}) var(--mo-easing, #{v.$motion-expand-easing});
+  transition: width var(--mo-duration, #{v.$motion-duration}) var(--mo-easing, #{v.$motion-easing});
 
   &.is-open {
     width: 100%;
@@ -730,7 +730,7 @@
     width: 16px;
     height: 16px;
     flex: none;
-    transition: transform var(--mo-duration, #{v.$motion-expand-duration}) var(--mo-easing, #{v.$motion-expand-easing});
+    transition: transform var(--mo-duration, #{v.$motion-duration}) var(--mo-easing, #{v.$motion-easing});
   }
 
   &:focus-visible {
@@ -746,14 +746,14 @@
   display: grid;
   grid-template-rows: 0fr;
   visibility: hidden;
-  transition: grid-template-rows var(--mo-duration, #{v.$motion-expand-duration}) var(--mo-easing, #{v.$motion-expand-easing}),
-    visibility 0s var(--mo-duration, #{v.$motion-expand-duration});
+  transition: grid-template-rows var(--mo-duration, #{v.$motion-duration}) var(--mo-easing, #{v.$motion-easing}),
+    visibility 0s var(--mo-duration, #{v.$motion-duration});
 }
 
 .mo-cat.is-open .mo-cat__panel {
   grid-template-rows: 1fr;
   visibility: visible;
-  transition: grid-template-rows var(--mo-duration, #{v.$motion-expand-duration}) var(--mo-easing, #{v.$motion-expand-easing}),
+  transition: grid-template-rows var(--mo-duration, #{v.$motion-duration}) var(--mo-easing, #{v.$motion-easing}),
     visibility 0s;
 }
 
@@ -766,14 +766,14 @@
   padding: v.$space-1 v.$space-2 v.$space-2;
   opacity: 0;
   transform: translateY(-8px);
-  transition: opacity 0.18s ease, transform var(--mo-duration, #{v.$motion-expand-duration}) var(--mo-easing, #{v.$motion-expand-easing});
+  transition: opacity 0.18s ease, transform var(--mo-duration, #{v.$motion-duration}) var(--mo-easing, #{v.$motion-easing});
 }
 
 .mo-cat.is-open .mo-cat__options {
   opacity: 1;
   transform: translateY(0);
   transition: opacity 0.18s ease 55ms,
-    transform var(--mo-duration, #{v.$motion-expand-duration}) var(--mo-easing, #{v.$motion-expand-easing}) 55ms;
+    transform var(--mo-duration, #{v.$motion-duration}) var(--mo-easing, #{v.$motion-easing}) 55ms;
 }
 
 .mo-cat__option {

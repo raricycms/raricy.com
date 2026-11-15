@@ -20,7 +20,6 @@ a {
   z-index: 1030;
   background: var(--color-background-card);
   // backdrop-filter: blur(10px);
-  // transition: background 0.3s ease;
   box-shadow: var(--shadow-card-brand);
   /* 安全区：viewport-fit=cover 之后顶栏背景铺到状态栏/刘海之下（这正是 cover 的意图
      —— 顶栏底色延伸满整条），但**内容**要用 padding 让开。左右那两条是为横屏刘海：
@@ -95,9 +94,9 @@ a {
     width: 22px;
     height: 2px;
     background: var(--color-text-primary);
-    // 收起节奏（220ms / 收起曲线）：点完汉堡，X 的形变和菜单退场一起收完。
-    transition: transform v.$motion-collapse-duration v.$motion-collapse-easing,
-                opacity v.$motion-collapse-duration ease;
+    // 与全站交互动效同一条时间线：点完汉堡，X 的形变和菜单退场一起收完。
+    transition: transform v.$motion-duration v.$motion-easing,
+                opacity v.$feedback-duration v.$feedback-easing;
   }
 }
 
@@ -221,7 +220,7 @@ a {
     background: var(--color-background-card);
     border-radius: 24px;
     overflow: hidden;
-    transition: box-shadow .25s ease;
+    transition: box-shadow v.$feedback-duration v.$feedback-easing;
   }
 
   &:hover &-shell,
@@ -251,17 +250,17 @@ a {
     height: 18px;
     flex: none;
     color: var(--color-text-secondary);
-    transition: transform v.$motion-expand-duration v.$motion-expand-easing;
+    transition: transform v.$motion-duration v.$motion-easing;
   }
 
   // 固定顶栏只占第一行的高度；同一个外壳在其下延伸，避免挤动整条导航。
-  // 收起方向用收起节奏，展开方向在 .open 里换成展开节奏。
+  // 展开与收起走同一条节奏，两侧都要写。
   &-panel {
     display: grid;
     grid-template-rows: 0fr;
     visibility: hidden;
-    transition: grid-template-rows v.$motion-collapse-duration v.$motion-collapse-easing,
-                visibility 0s v.$motion-collapse-duration;
+    transition: grid-template-rows v.$motion-duration v.$motion-easing,
+                visibility 0s v.$motion-duration;
   }
 
   &-menu {
@@ -276,7 +275,7 @@ a {
       padding: 0 10px 5px;
       opacity: 0;
       transform: translateY(-8px);
-      transition: opacity .18s ease, transform v.$motion-expand-duration v.$motion-expand-easing;
+      transition: opacity v.$feedback-duration v.$feedback-easing, transform v.$motion-duration v.$motion-easing;
 
       &:last-child { padding-bottom: 8px; }
     }
@@ -286,7 +285,7 @@ a {
     .site-user-dropdown-panel {
       grid-template-rows: 1fr;
       visibility: visible;
-      transition: grid-template-rows v.$motion-expand-duration v.$motion-expand-easing,
+      transition: grid-template-rows v.$motion-duration v.$motion-easing,
                   visibility 0s;
     }
 
@@ -384,7 +383,7 @@ a {
   justify-content: center; 
   padding: 14px 14px !important; 
   border-radius: 999px; 
-  transition: all 0.3s ease; 
+  transition: all v.$feedback-duration v.$feedback-easing; 
 
   &:hover { 
     background: var(--color-brand-secondary); 
@@ -433,7 +432,7 @@ a {
   background: none;
   color: var(--color-text-primary);
   padding: 14px 14px !important;
-  transition: all 0.3s ease;
+  transition: all v.$feedback-duration v.$feedback-easing;
   cursor: pointer;
 
   &:hover {
@@ -446,8 +445,8 @@ a {
     font-size: 1.2rem;
     color: var(--color-text-primary);
     // 点击切换主题时，base.js 用内联 transform 累加 180°，靠这里的过渡产生动画。
-    // 旋转属于状态切换型形变，与顶栏展开同一条 480ms 节奏（§6.2）。
-    transition: transform v.$motion-expand-duration v.$motion-expand-easing;
+    // 旋转属于状态切换型形变，走全站同一条交互节奏（§6.2）。
+    transition: transform v.$motion-duration v.$motion-easing;
   }
 }
 
@@ -460,7 +459,7 @@ a {
   background: none;
   color: var(--color-text-primary);
   padding: 14px 14px !important;
-  transition: all 0.3s ease;
+  transition: all v.$feedback-duration v.$feedback-easing;
 
   &:hover {
     background: var(--color-brand-secondary);
@@ -546,8 +545,8 @@ body {
       top: 0;
       right: 0;
       width: 80px;
-      transition: width v.$motion-collapse-duration v.$motion-collapse-easing,
-                  box-shadow .25s ease;
+      transition: width v.$motion-duration v.$motion-easing,
+                  box-shadow v.$feedback-duration v.$feedback-easing;
     }
 
     // 菜单按展开后的宽度排版，再由外壳裁剪，避免伸缩过程中挤压文字。
@@ -569,7 +568,7 @@ body {
       margin-right: 0;
       opacity: 0;
       visibility: hidden;
-      transition: opacity .18s ease, visibility 0s .18s;
+      transition: opacity v.$feedback-duration v.$feedback-easing, visibility 0s v.$motion-duration;
     }
     .site-user-avatar { margin-left: 0; }
 
@@ -577,8 +576,8 @@ body {
     &.open {
       .site-user-dropdown-shell {
         width: 200px;
-        transition: width v.$motion-expand-duration v.$motion-expand-easing,
-                    box-shadow .25s ease;
+        transition: width v.$motion-duration v.$motion-easing,
+                    box-shadow v.$feedback-duration v.$feedback-easing;
       }
 
       .site-user-name {
@@ -622,14 +621,14 @@ body {
     // 收起方向：面板收回比展开快（220ms vs 480ms）—— 内容是 150ms 就退干净的，
     // 剩下的空面板若再拖一截，读起来正是 23dadd6a 修掉的「点完汉堡菜单还赖着
     // 不走」；220ms 是「看得出是收，但点完立刻让位」的那一档。缓动取
-    // cubic-bezier(0.4, 0, 0.2, 1)：起步就有速度、末段收得干净（ease-in-out 那种
-    // 对称曲线会让前半段几乎不动，读起来仍是「点了没反应」）。
+    // 与全站交互动效同一条时间线（$motion-duration / $motion-easing，§6.2）：
+    // 前段就快、末段收得干净 —— 对称曲线会让前半段几乎不动，读起来像是「点了没反应」。
     // `visibility` 必须**延迟到收完再切**：第一帧就 hidden 的话整段收起
     // 根本看不见（它没动画时就是这么写的）。
     // 过渡声明在**折叠态**、展开态那一侧自带 0s 延迟 —— 与 .site-user-dropdown-panel
     // 同一套路：CSS 过渡取的是「变到哪一侧」的声明，那一侧写了才算数。
-    transition: grid-template-rows v.$motion-collapse-duration v.$motion-collapse-easing,
-                visibility 0s v.$motion-collapse-duration;
+    transition: grid-template-rows v.$motion-duration v.$motion-easing,
+                visibility 0s v.$motion-duration;
   }
 
   .site-navbar-collapse-inner {
@@ -645,14 +644,14 @@ body {
     grid-template-rows: 1fr;
     visibility: visible;
     // visibility 那格是 0s：展开时面板要立刻可见（延迟只属于收起方向）。
-    transition: grid-template-rows v.$motion-expand-duration v.$motion-expand-easing,
+    transition: grid-template-rows v.$motion-duration v.$motion-easing,
                 visibility 0s;
   }
 
   .site-navbar.open .site-navbar-collapse-inner {
     // 仅在展开过程中裁剪；完成后释放 overflow，用户胶囊仍能向下伸出顶栏。
     overflow: visible;
-    animation: navbar-unfold-clip 480ms;
+    animation: navbar-unfold-clip v.$motion-duration v.$motion-easing;
   }
 
   .site-nav > li,
@@ -665,8 +664,8 @@ body {
     // 「菜单让开了」，而不是字和面板一起赖到 220ms 才同时消失。
     // ⚠️ 这一条必须写在折叠态：过渡取的是「变化后」那一侧的声明，写进
     //    .site-navbar.open 里就只管入场，收起会静默地瞬间消失。
-    transition: opacity 150ms ease-in,
-                transform v.$motion-collapse-duration v.$motion-collapse-easing;
+    transition: opacity v.$feedback-duration v.$feedback-easing,
+                transform v.$motion-duration v.$motion-easing;
   }
 
   .site-navbar.open {
@@ -674,8 +673,8 @@ body {
     .site-actions > * {
       opacity: 1;
       transform: none;
-      transition: opacity 240ms ease-out,
-                  transform v.$motion-expand-duration v.$motion-expand-easing;
+      transition: opacity v.$feedback-duration v.$feedback-easing,
+                  transform v.$motion-duration v.$motion-easing;
     }
 
     @for $i from 1 through 5 {

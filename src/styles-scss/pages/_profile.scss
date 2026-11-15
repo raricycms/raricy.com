@@ -173,7 +173,7 @@
   font-size: 0.9rem;
   font-weight: 500;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all $feedback-duration $feedback-easing;
   border: none;
   background: var(--color-background-subtle);
   color: var(--color-text-primary);
@@ -271,7 +271,7 @@
 
 .bento-card {
   position: relative;
-  animation: bento-rise $motion-expand-duration $motion-expand-easing backwards;
+  animation: bento-rise $motion-duration $motion-easing backwards;
   animation-delay: calc(var(--i, 0) * 45ms);
   grid-column: calc(var(--gx) + 1) / span var(--gw);
   grid-row: calc(var(--gy) + 1) / span var(--gh);
@@ -279,7 +279,7 @@
   border-radius: 24px;
   background: var(--color-background-card);
   overflow: hidden;
-  transition: box-shadow 0.2s ease, transform 0.2s ease;
+  transition: box-shadow $feedback-duration $feedback-easing, transform $motion-duration $motion-easing;
 
   /* 浏览器原生图片拖拽会抢走 pointer 事件（拖卡片变成拖图片），HTML 侧已加
      draggable={false}，这里再兜一层 WebKit 的默认行为。 */
@@ -694,7 +694,7 @@
     transform: translateY(-2px) scale(1.012);
     box-shadow: var(--shadow-card-brand);
     outline-color: transparent;
-    transition: transform 0.12s ease;
+    transition: transform $motion-duration $motion-easing;
   }
 
   .bento-card.is-selected {
@@ -1143,7 +1143,7 @@
   align-items: center;
   justify-content: center;
   padding: $space-4;
-  animation: bento-fade 0.18s ease;
+  animation: bento-fade $feedback-duration $feedback-easing;
 }
 
 .bento-detail__backdrop {
@@ -1158,7 +1158,7 @@
 
   .bento-detail__backdrop {
     opacity: 0;
-    transition: opacity 0.22s ease;
+    transition: opacity $feedback-duration $feedback-easing;
   }
 }
 
@@ -1210,7 +1210,7 @@
 
 .bento-modal {
   position: fixed;
-  animation: bento-fade 0.18s ease;
+  animation: bento-fade $feedback-duration $feedback-easing;
   inset: 0;
   z-index: 1050;
   display: flex;
@@ -1220,7 +1220,7 @@
   background: rgba(0, 0, 0, 0.45);
 
   &__box {
-    animation: bento-pop $motion-expand-duration $motion-expand-easing;
+    animation: bento-pop $motion-duration $motion-easing;
     display: flex;
     flex-direction: column;
     width: min(560px, 100%);
@@ -1417,7 +1417,7 @@
   border-radius: 20px;
   background: var(--color-background-card);
   box-shadow: var(--shadow-card-brand);
-  animation: bento-dock-in $motion-expand-duration $motion-expand-easing;
+  animation: bento-dock-in $motion-duration $motion-easing;
 
   &__head {
     display: flex;

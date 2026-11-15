@@ -34,7 +34,7 @@
   color: var(--color-text-secondary);
   font-size: 0.9rem;
   text-decoration: none;
-  transition: color 0.2s ease;
+  transition: color $feedback-duration $feedback-easing;
 
   &:hover {
     color: var(--color-brand-primary);
@@ -114,7 +114,7 @@
   line-height: 1.7;
   resize: vertical;
   caret-color: var(--color-brand-primary);
-  transition: box-shadow 0.2s ease;
+  transition: box-shadow $feedback-duration $feedback-easing;
 
   &:focus {
     outline: none;

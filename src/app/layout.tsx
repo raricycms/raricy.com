@@ -9,6 +9,7 @@ import Navbar from './components/Navbar';
 import Footer from './components/Footer';
 import FooterGate from './components/FooterGate';
 import NotificationHeartbeat from './components/NotificationHeartbeat';
+import SmoothWheelScroll from './components/SmoothWheelScroll';
 import FrameBuster from './components/FrameBuster';
 import { getCurrentUser, isCoreUser } from '@/lib/auth';
 import { frameUrlFor } from '@/lib/frame-service';
@@ -87,6 +88,8 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         <Navbar user={user} frameUrl={frameUrlFor(user)} />
         {/* 切页/bfcache 恢复时即时刷新顶栏未读数（实时值走 SSE，两档兜底轮询在 base.js） */}
         <NotificationHeartbeat />
+        {/* 滚轮平滑滚动：全站生效，内部滚动区域同样适用（见组件内说明） */}
+        <SmoothWheelScroll />
         <main>{children}</main>
         {/* /chat 是满屏工作台，不渲染页脚（见 FooterGate） */}
         <FooterGate>

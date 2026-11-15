@@ -30,7 +30,7 @@
   overflow-y: auto;
   background: var(--color-background-card);
   border-radius: 30px;
-  animation: admin-rise v.$motion-expand-duration v.$motion-expand-easing both;
+  animation: admin-rise v.$motion-duration v.$motion-easing both;
 }
 
 .admin-sidebar__brand {
@@ -101,7 +101,7 @@
   line-height: 1.3;
   color: var(--color-text-secondary);
   text-decoration: none;
-  transition: background-color 0.2s ease, color 0.2s ease;
+  transition: background-color v.$feedback-duration v.$feedback-easing, color v.$feedback-duration v.$feedback-easing;
 
   &:hover {
     background: var(--color-brand-secondary);

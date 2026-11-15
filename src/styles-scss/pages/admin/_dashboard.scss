@@ -22,8 +22,8 @@
   background: var(--color-background-card);
   color: inherit;
   text-decoration: none;
-  transition: box-shadow 0.25s ease, background-color 0.25s ease;
-  animation: admin-rise v.$motion-expand-duration v.$motion-expand-easing backwards;
+  transition: box-shadow v.$feedback-duration v.$feedback-easing, background-color v.$feedback-duration v.$feedback-easing;
+  animation: admin-rise v.$motion-duration v.$motion-easing backwards;
   animation-delay: calc(var(--i, 0) * 45ms);
 
   &:hover {
@@ -117,14 +117,14 @@ a.admin-kpi:hover {
   font-size: 0.9rem;
   font-weight: 600;
   text-decoration: none;
-  transition: background-color 0.2s ease, color 0.2s ease;
+  transition: background-color v.$feedback-duration v.$feedback-easing, color v.$feedback-duration v.$feedback-easing;
 
   svg {
     width: 16px;
     height: 16px;
     flex: none;
     color: var(--color-brand-primary);
-    transition: color 0.2s ease;
+    transition: color v.$feedback-duration v.$feedback-easing;
   }
 
   &:hover {

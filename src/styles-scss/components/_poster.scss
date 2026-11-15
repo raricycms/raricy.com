@@ -1,4 +1,6 @@
 // ─────────────────────────────────────────────────────────────────────────────
+@use '../abstracts/variables' as v;
+
 // 画报 / 收款码预览弹窗（PosterModal）
 //
 // 图是服务端渲染好的 PNG（/api/poster/...），这里只有弹窗、预览框与两个按钮。
@@ -97,7 +99,7 @@
   text-decoration: none;
   background: var(--color-background-subtle);
   color: var(--color-text-primary);
-  transition: background-color 0.2s, color 0.2s;
+  transition: background-color v.$feedback-duration v.$feedback-easing, color v.$feedback-duration v.$feedback-easing;
 
   &:hover {
     background: var(--color-background-highlight);

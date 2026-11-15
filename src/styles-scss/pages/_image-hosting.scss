@@ -60,7 +60,7 @@
     height: 100%;
     background: var(--color-brand-primary);
     border-radius: $radius-max;
-    transition: width .4s ease;
+    transition: width $motion-duration $motion-easing;
 
     &--warn {
       background: var(--color-warning-primary);
@@ -77,7 +77,7 @@
   padding: $space-8;
   text-align: center;
   cursor: pointer;
-  transition: border-color .2s, background .2s;
+  transition: border-color $feedback-duration $feedback-easing, background $feedback-duration $feedback-easing;
   margin-bottom: $space-6;
 
   &:hover,
@@ -136,7 +136,7 @@
     background: var(--color-brand-primary);
     border-radius: $radius-max;
     width: 0%;
-    transition: width .3s ease;
+    transition: width $motion-duration $motion-easing;
   }
 }
 
@@ -230,7 +230,7 @@
     background: var(--color-background-card);
     color: var(--color-text-secondary);
     cursor: pointer;
-    transition: background .15s, color .15s, border-color .15s;
+    transition: background $feedback-duration $feedback-easing, color $feedback-duration $feedback-easing, border-color $feedback-duration $feedback-easing;
 
     &:hover {
       background: var(--color-brand-secondary);
@@ -321,7 +321,7 @@
     background: var(--color-background-page);
     color: var(--color-text-primary);
     font-size: .9rem;
-    transition: box-shadow 0.2s ease;
+    transition: box-shadow $feedback-duration $feedback-easing;
 
     &::placeholder {
       color: var(--color-text-secondary);

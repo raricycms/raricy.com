@@ -27,7 +27,7 @@
   padding: 4px;
   background: var(--color-background-page);
   border-radius: v.$radius-max;
-  transition: box-shadow 0.2s ease;
+  transition: box-shadow v.$feedback-duration v.$feedback-easing;
 
   /* 聚焦环走 box-shadow：常态无边框，改成 border 会让字段随焦点变高、下方内容位移
      （§4.2 的硬规则）。焦点落在 sr-only 的 input 上时由 :focus-within 接住。 */
@@ -96,7 +96,7 @@
   font-size: 1.1rem;
   line-height: 1;
   cursor: pointer;
-  transition: color 0.15s ease, background-color 0.15s ease;
+  transition: color v.$feedback-duration v.$feedback-easing, background-color v.$feedback-duration v.$feedback-easing;
 
   &:hover {
     color: var(--color-warning-primary);

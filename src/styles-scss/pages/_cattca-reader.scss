@@ -398,17 +398,17 @@
 }
 
 .cattca-reader__spread.is-single .cattca-reader__page {
-  animation: cattca-reader-page-in 0.2s ease both;
+  animation: cattca-reader-page-in $motion-duration $motion-easing both;
 }
 
 .cattca-reader--book .cattca-reader__spread.is-spread .cattca-reader__page.is-left {
   transform-origin: 100% 50%;
-  animation: cattca-reader-turn-left $motion-expand-duration $motion-expand-easing both;
+  animation: cattca-reader-turn-left $motion-duration $motion-easing both;
 }
 
 .cattca-reader--book .cattca-reader__spread.is-spread .cattca-reader__page.is-right {
   transform-origin: 0 50%;
-  animation: cattca-reader-turn-right $motion-expand-duration $motion-expand-easing both;
+  animation: cattca-reader-turn-right $motion-duration $motion-easing both;
 }
 
 @keyframes cattca-reader-page-in {
@@ -647,7 +647,7 @@
   color: var(--color-text-primary);
   font-size: 0.82rem;
   text-align: center;
-  transition: box-shadow 0.2s ease;
+  transition: box-shadow $feedback-duration $feedback-easing;
   appearance: textfield;
 
   &:focus {
@@ -878,7 +878,7 @@
   background: var(--color-background-page);
   color: var(--color-text-primary);
   font-size: 0.95rem;
-  transition: box-shadow 0.2s ease;
+  transition: box-shadow $feedback-duration $feedback-easing;
 
   &:focus {
     box-shadow: var(--shadow-focus-brand);

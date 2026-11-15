@@ -6,6 +6,7 @@
 //     态），改为空闲态的品牌浅底；--ghost 原为描边，改次级（无底色）。
 //     两者的 hover 不再是 `translateY(-2px)` —— 全站按钮不做垂直位移。
 
+@use '../abstracts/variables' as v;
 @use '../abstracts/mixins' as m;
 
 .nf {
@@ -220,7 +221,7 @@
   border-radius: 999px;
   font-size: 0.95rem;
   font-weight: 600;
-  transition: box-shadow 0.2s ease, background-color 0.2s ease, color 0.2s ease;
+  transition: box-shadow v.$feedback-duration v.$feedback-easing, background-color v.$feedback-duration v.$feedback-easing, color v.$feedback-duration v.$feedback-easing;
 
   .icon {
     width: 1.05rem;

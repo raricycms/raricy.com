@@ -31,7 +31,7 @@
   padding: 16px 18px;
   background: var(--color-background-card);
   border-radius: 22px;
-  animation: admin-rise v.$motion-expand-duration v.$motion-expand-easing backwards;
+  animation: admin-rise v.$motion-duration v.$motion-easing backwards;
   // 逐条错开入场；--i 由页面按列表下标给（与 .admin-row 同一节奏）。
   animation-delay: calc(var(--i, 0) * 26ms);
 

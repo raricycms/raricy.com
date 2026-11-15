@@ -61,12 +61,12 @@
   overflow-y: auto;
   overscroll-behavior: contain;
   opacity: 0;
-  transition: opacity .2s ease;
+  transition: opacity v.$feedback-duration v.$feedback-easing;
 
   &::backdrop {
     background: rgba(0, 0, 0, .5);
     opacity: 0;
-    transition: opacity .2s ease;
+    transition: opacity v.$feedback-duration v.$feedback-easing;
   }
 
   &.is-open {
@@ -85,16 +85,16 @@
   // 关闭：内容先退场，外壳与遮罩随后收起。两条时间线同一条收起节奏。
   &.is-closing {
     opacity: 0;
-    transition: opacity v.$motion-collapse-duration v.$motion-collapse-easing;
+    transition: opacity v.$feedback-duration v.$feedback-easing;
 
     &::backdrop {
       opacity: 0;
-      transition: opacity v.$motion-collapse-duration v.$motion-collapse-easing;
+      transition: opacity v.$feedback-duration v.$feedback-easing;
     }
 
     .daily-quote-dialog__body {
       opacity: 0;
-      transition: opacity .15s ease;
+      transition: opacity v.$feedback-duration v.$feedback-easing;
       transition-delay: 0s;
     }
   }
@@ -102,7 +102,7 @@
   &__body {
     padding: 28px;
     opacity: 0;
-    transition: opacity .18s ease;
+    transition: opacity v.$feedback-duration v.$feedback-easing;
   }
 
   &__header {
@@ -120,7 +120,7 @@
       margin: 0;
       font-size: 1.35rem;
       line-height: 1.3;
-      animation: daily-quote-content-in .18s ease;
+      animation: daily-quote-content-in v.$feedback-duration v.$feedback-easing;
     }
   }
 
@@ -134,12 +134,12 @@
 
     span {
       display: inline-block;
-      animation: daily-quote-content-in .18s ease;
+      animation: daily-quote-content-in v.$feedback-duration v.$feedback-easing;
     }
   }
 
   &__stage {
-    animation: daily-quote-content-in .18s ease .055s both;
+    animation: daily-quote-content-in v.$feedback-duration v.$feedback-easing .055s both;
   }
 
   &__footer {
@@ -164,7 +164,7 @@
       color: var(--color-text-secondary);
       font-size: .875rem;
       text-decoration: none;
-      transition: color .25s ease;
+      transition: color v.$feedback-duration v.$feedback-easing;
 
       &:hover {
         color: var(--color-brand-primary);
@@ -371,7 +371,7 @@
   }
 
   &__count {
-    animation: daily-quote-content-in .18s ease;
+    animation: daily-quote-content-in v.$feedback-duration v.$feedback-easing;
   }
 
   &__hint {
@@ -397,7 +397,7 @@
 
     span {
       display: inline-block;
-      animation: daily-quote-content-in .18s ease;
+      animation: daily-quote-content-in v.$feedback-duration v.$feedback-easing;
     }
   }
 

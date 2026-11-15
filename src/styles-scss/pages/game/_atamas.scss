@@ -1,3 +1,4 @@
+@use '../../abstracts/variables' as v;
 @use '../../abstracts/mixins' as m;
 
 // 页面与按钮跟随全站主题；画布和数字圆盘是游戏配色，保留固定的蓝色背景。
@@ -38,7 +39,7 @@
 .atamas-warning-dot.red { background: var(--color-warning-primary); }
 .atamas-language-select { position: relative; }
 .atamas-language-btn { @include m.btn-secondary; display: flex; align-items: center; justify-content: center; gap: 6px; padding: 10px 12px; min-height: 44px; }
-.atamas-language-btn .arrow { display: inline-flex; transition: transform .2s ease; }
+.atamas-language-btn .arrow { display: inline-flex; transition: transform v.$motion-duration v.$motion-easing; }
 .atamas-language-select.open .arrow { transform: rotate(180deg); }
 .atamas-language-dropdown { display: none; position: absolute; top: calc(100% + 8px); right: 0; min-width: 160px; max-height: min(400px, 60vh); overflow-y: auto; padding: 8px; border-radius: 20px; background: var(--color-background-card); box-shadow: var(--shadow-card-brand); z-index: 10; }
 .atamas-language-select.open .atamas-language-dropdown { display: grid; gap: 4px; }

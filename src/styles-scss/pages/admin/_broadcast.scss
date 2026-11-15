@@ -1,4 +1,6 @@
 // ─────────────────────────────────────────────────────────────────────────────
+@use '../../abstracts/variables' as v;
+
 // 通知发送中心（/admin/broadcast）
 //
 // 一张 `.admin-panel` 装下整页工作台：顶部是 `.admin-seg` 的发送方式切换，
@@ -96,7 +98,7 @@
   font-size: 0.88rem;
   text-align: left;
   cursor: pointer;
-  transition: background-color 0.2s ease;
+  transition: background-color v.$feedback-duration v.$feedback-easing;
 
   &:hover {
     background: var(--color-background-subtle);

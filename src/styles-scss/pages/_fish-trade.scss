@@ -176,7 +176,7 @@
   font: inherit;
   text-align: left;
   cursor: pointer;
-  transition: background-color 0.2s ease;
+  transition: background-color $feedback-duration $feedback-easing;
 
   &:hover:not(:disabled) {
     background: var(--color-background-subtle);
@@ -622,7 +622,7 @@
   background: transparent;
   color: var(--color-text-secondary);
   cursor: pointer;
-  transition: background-color 0.2s ease, color 0.2s ease;
+  transition: background-color $feedback-duration $feedback-easing, color $feedback-duration $feedback-easing;
 
   &:hover {
     background: var(--color-background-subtle);
@@ -770,7 +770,7 @@
   font-weight: 700;
   text-align: center;
   font-variant-numeric: tabular-nums;
-  transition: box-shadow 0.2s ease;
+  transition: box-shadow $feedback-duration $feedback-easing;
 
   &:focus {
     outline: none;
@@ -803,7 +803,7 @@
   background: var(--color-background-page);
   border: none;
   border-radius: $radius-max;
-  transition: box-shadow 0.2s ease;
+  transition: box-shadow $feedback-duration $feedback-easing;
 
   &:focus-within {
     box-shadow: var(--shadow-focus-brand);
@@ -1248,7 +1248,7 @@
   font-size: 0.95rem;
   font-weight: 700;
   cursor: pointer;
-  transition: filter 0.2s ease;
+  transition: filter $feedback-duration $feedback-easing;
 
   &:hover:not(:disabled) {
     filter: brightness(0.92);

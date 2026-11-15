@@ -256,7 +256,7 @@
   font-size: 0.9rem;
   font-weight: 500;
   border-radius: $radius-max;
-  transition: background-color 0.2s;
+  transition: background-color $feedback-duration $feedback-easing;
 
   svg {
     flex: none;
@@ -318,7 +318,7 @@
   border-radius: $radius-large * 2;
   color: var(--color-text-primary);
   text-decoration: none;
-  transition: background-color 0.2s ease;
+  transition: background-color $feedback-duration $feedback-easing;
 
   &:hover {
     background: var(--color-brand-secondary);
@@ -537,7 +537,7 @@
   color: var(--color-text-secondary);
   text-decoration: none;
   background: var(--color-background-subtle);
-  transition: background-color 0.2s, color 0.2s;
+  transition: background-color $feedback-duration $feedback-easing, color $feedback-duration $feedback-easing;
 
   &:hover {
     background: var(--color-brand-secondary);
@@ -691,7 +691,7 @@
   width: 90%;
   text-align: center;
   box-shadow: var(--shadow-card-brand);
-  animation: feedFadeIn 0.3s ease;
+  animation: feedFadeIn $motion-duration $motion-easing;
 
   @media (max-width: 480px) {
     padding: $space-6 $space-4 $space-4;
@@ -745,7 +745,7 @@
   font-size: 1.1rem;
   font-weight: 700;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all $feedback-duration $feedback-easing;
 
   &:hover:not(:disabled) {
     border-color: var(--color-brand-primary);
@@ -787,7 +787,7 @@
   color: var(--color-text-secondary);
   font-size: 0.9rem;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all $feedback-duration $feedback-easing;
 
   &:hover {
     background: var(--color-text-tertiary);
