@@ -32,6 +32,8 @@ interface Anim {
   to: number;
   /** 本帧写下的位置：用来识别「位置被别的东西改了」 */
   written: number;
+  /** 是否已经写过一帧：没写过时的位置偏差不说明「别人动了它」 */
+  hasWritten: boolean;
   /** 最近一次输入的方向（±1）：反向输入要从当前可见位置重新起算 */
   direction: number;
   startedAt: number;
@@ -169,7 +171,9 @@ export default function SmoothWheelScroll() {
         }
         // 两次写入之间位置被别的东西改了（原生平滑滚动、锚点、拖动滚动条、
         // 列表自动到底）：立刻让位，别用下一帧把新位置拽回去。
-        if (Math.abs(readOffset(el, anim.axis) - anim.written) > 2) {
+        // 自己还没写过一帧时不做这个判定：那说明外部滚动在首帧前就动了位置，
+        // 此时删动画等于吞掉这一格、还不会写一下去取消对方（见 hasWritten）。
+        if (anim.hasWritten && Math.abs(readOffset(el, anim.axis) - anim.written) > 2) {
           anims.delete(el);
           continue;
         }
@@ -188,6 +192,7 @@ export default function SmoothWheelScroll() {
         const value = anim.from + (anim.to - anim.from) * ease(progress);
         writeOffset(el, anim.axis, value);
         anim.written = value;
+        anim.hasWritten = true;
         alive = true;
       }
       if (alive) frame = requestAnimationFrame(step);
@@ -213,7 +218,14 @@ export default function SmoothWheelScroll() {
               ? window.innerHeight
               : window.innerWidth
             : 1;
-      const raw = axis === 'y' ? event.deltaY : event.deltaX || event.deltaY;
+      // 取主分量：Shift+斜向输入时 Chromium 仍只给 deltaY，但力度小/带倾斜的
+      // 设备可能同时给一个很小的 deltaX —— 用 `deltaX || deltaY` 会把它当整次输入。
+      const raw =
+        axis === 'y'
+          ? event.deltaY
+          : Math.abs(event.deltaX) >= Math.abs(event.deltaY)
+            ? event.deltaX
+            : event.deltaY;
       const delta = raw * unit;
       if (!delta) return;
 
@@ -236,6 +248,7 @@ export default function SmoothWheelScroll() {
         from: current,
         to,
         written: current,
+        hasWritten: false,
         direction: Math.sign(delta),
         startedAt: performance.now(),
       });
@@ -249,7 +262,7 @@ export default function SmoothWheelScroll() {
       for (const [el, anim] of anims) {
         const sameOwner = event.target === el || (el === document.scrollingElement && event.target === document);
         if (!sameOwner) continue;
-        if (Math.abs(readOffset(el, anim.axis) - anim.written) > 2) anims.delete(el);
+        if (anim.hasWritten && Math.abs(readOffset(el, anim.axis) - anim.written) > 2) anims.delete(el);
       }
     };
 
