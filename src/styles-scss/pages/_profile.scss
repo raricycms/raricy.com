@@ -10,14 +10,18 @@
 //
 // 【色调（tone）】用户可给每块卡 / 身份条挑一个装饰底色。它是「换底色」而不是
 // 「换皮肤」：圆角、内距、阴影、可点反馈一律不动；卡片内文字色改读 `--bento-ink`
-// / `--bento-ink-2`（默认就是全站 text-primary / secondary），只有浅色主题下的石墨
-// 深色块需要另给一组。色值全部来自 base/_root.scss 的 `--color-tone-*`。
+// / `--bento-ink-2`，无底色时等于全站 text-primary / secondary，换底色后辅助文字
+// 改用 `--color-tone-ink-2`（浅色 tint 上需要比全站 secondary 深一档才达 AA）；
+// 只有浅色主题下的石墨深色块另给一组。色值全部来自 base/_root.scss 的 `--color-tone-*`。
 // ============================================================
 
 .profile-page {
   padding: $space-8 0;
   /* 身份条底色。空 tone = 默认卡片底色；其余档由下面的修饰类覆盖。 */
   --profile-hero-bg: var(--color-background-card);
+  /* 身份条里的辅助文字（简介 / 注册日期）。默认同全站 secondary；换底色后由
+     hero-tone 修饰类改成 `--color-tone-ink-2`，浅色 tint 上才够读。 */
+  --profile-hero-ink-2: var(--color-text-secondary);
 
   @media (max-width: 768px) {
     padding: $space-6 0;
@@ -28,22 +32,27 @@
 // 深色块会压掉身份条上的用户名 / 简介 / 按钮文字）。
 .profile-page--hero-tone-blue {
   --profile-hero-bg: var(--color-tone-blue);
+  --profile-hero-ink-2: var(--color-tone-ink-2);
 }
 
 .profile-page--hero-tone-mint {
   --profile-hero-bg: var(--color-tone-mint);
+  --profile-hero-ink-2: var(--color-tone-ink-2);
 }
 
 .profile-page--hero-tone-apricot {
   --profile-hero-bg: var(--color-tone-apricot);
+  --profile-hero-ink-2: var(--color-tone-ink-2);
 }
 
 .profile-page--hero-tone-violet {
   --profile-hero-bg: var(--color-tone-violet);
+  --profile-hero-ink-2: var(--color-tone-ink-2);
 }
 
 .profile-page--hero-tone-rose {
   --profile-hero-bg: var(--color-tone-rose);
+  --profile-hero-ink-2: var(--color-tone-ink-2);
 }
 
 // --- 身份条 ---
@@ -139,7 +148,7 @@
 }
 
 .profile-hero__bio {
-  color: var(--color-text-secondary);
+  color: var(--profile-hero-ink-2);
   font-size: 0.95rem;
   line-height: 1.6;
   margin-bottom: $space-3;
@@ -159,7 +168,7 @@
   display: flex;
   flex-wrap: wrap;
   gap: $space-4;
-  color: var(--color-text-secondary);
+  color: var(--profile-hero-ink-2);
   font-size: 0.875rem;
 
   @media (max-width: 768px) {
@@ -361,25 +370,31 @@
 
   /* ── 用户挑的底色（tone）──
      与 src/lib/profile-blocks.ts 的 TONES 一一对应（纸白 = 没有这个类）。
-     只换底色；文字色只在石墨（浅色主题下的深色块）需要另给一组。 */
+     只换底色；辅助文字在浅色 tint 上改用 `--color-tone-ink-2`（全站 secondary 在 tint
+     上只有 4.1–4.4:1），石墨（浅色主题下的深色块）另给一组。 */
   &--tone-blue {
     --bento-bg: var(--color-tone-blue);
+    --bento-ink-2: var(--color-tone-ink-2);
   }
 
   &--tone-mint {
     --bento-bg: var(--color-tone-mint);
+    --bento-ink-2: var(--color-tone-ink-2);
   }
 
   &--tone-apricot {
     --bento-bg: var(--color-tone-apricot);
+    --bento-ink-2: var(--color-tone-ink-2);
   }
 
   &--tone-violet {
     --bento-bg: var(--color-tone-violet);
+    --bento-ink-2: var(--color-tone-ink-2);
   }
 
   &--tone-rose {
     --bento-bg: var(--color-tone-rose);
+    --bento-ink-2: var(--color-tone-ink-2);
   }
 
   &--tone-graphite {
@@ -398,9 +413,15 @@
       --bento-ink-2: var(--color-text-secondary);
     }
 
+    /* 内容不可用时的「换一个 / 编辑」也吃 `.bento-mini` 的浅灰底：只把文字拉回
+       全站 secondary 仍有 4.3:1（小字不达 AA），要深一档的 tone 辅助色才够。 */
+    .bento-card__missing .bento-mini {
+      color: var(--color-tone-ink-2);
+    }
+
     .bento-audio__placeholder {
-      background: rgba(255, 255, 255, 0.12);
-      color: var(--color-tone-graphite-ink-2);
+      background: var(--color-tone-inset);
+      color: var(--bento-ink-2);
     }
 
     /* 可点文字块的 hover 是「浅底提亮」；深色卡上用白色微光代替浅灰底。 */
@@ -1674,16 +1695,31 @@
     flex-wrap: wrap;
   }
 
-  /* 底色行：色点 + 小标签，单独一行，别和尺寸 / 方向键挤在一起。 */
+  /* 底色行：色点 + 小标签，单独一行，别和尺寸 / 方向键挤在一起。
+     窄屏（约 360px）放不下 7 颗 40px 色点，**不许换行** —— 换行会把 dock 撑高、
+     越过下面 220px 的尾部留白，最后一块被固定工具条盖住；改成横向滚动，高度恒定。 */
   &__row--tones {
     align-items: center;
     margin-bottom: 6px;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    /* 触屏只用手势滑，不显示滚动条（否则 40px 行里多一条高光带）。 */
+    scrollbar-width: none;
+
+    &::-webkit-scrollbar {
+      display: none;
+    }
   }
 
   &__sublabel {
     flex-shrink: 0;
     font-size: 0.8rem;
     color: var(--bento-ink-2);
+  }
+
+  /* 色点组本身也不许折行（它的默认 flex-wrap 是 wrap）。 */
+  .bento-tones {
+    flex-wrap: nowrap;
   }
 
   /* 手机是触摸设备：色点按钮的触达区补到 40px（视觉圆点仍 20px）。 */

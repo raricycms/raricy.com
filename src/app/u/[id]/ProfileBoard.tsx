@@ -73,6 +73,7 @@ import {
   rectsOverlap,
   sizeKey,
   swapBlockPositions,
+  swapBlockRows,
   withTone,
   type BlockCatalog,
   type BlockKind,
@@ -531,8 +532,11 @@ export default function ProfileBoard({
     setDraggingId(null);
     setDragOverId(null);
     if (!d || !over || over === d.id) return;
-    // 换位会撞到第三块时 helper 返回 null —— 保持原样，别自作主张找空位。
-    setDraft((prev) => swapBlockPositions(prev, d.id, over) ?? prev);
+    // 完整换位越界（通栏块只有 x=0 合法）或撞到第三块时：先退到「只换行、保留列」，
+    // 仍不成立就保持原样 —— 不自作主张找空位。
+    setDraft(
+      (prev) => swapBlockPositions(prev, d.id, over) ?? swapBlockRows(prev, d.id, over) ?? prev
+    );
   }
 
   // ── 增删改 ────────────────────────────────────────────────────────────────

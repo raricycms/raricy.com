@@ -109,6 +109,7 @@ export interface PublicProfile {
  * 【分档口径】`/u/:id` 是**匿名可达**的页面（主页画报的二维码会把站外人引到这里），
  * 所以 profile 里能对游客露什么必须逐项想清楚：
  *   · 一律可见：username / avatarPath / bio / createdAt + 两个开关的当前值（那是页面的主体）
+ *     + heroTone（主页身份条底色，访客看得见的外观）
  *   · 仅本人或 core+ 可见：role 徽章、recentBlogs、recentComments
  * 后者三项此前对全互联网开着 —— 而「最后登录时间」还不在本函数里，由 `src/app/u/[id]/page.tsx`
  * 单独查，同样要按查看者收（连同统计行的计数与文章/评论标签区）。

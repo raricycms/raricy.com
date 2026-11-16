@@ -5,10 +5,14 @@ import {
   MAX_BLOCKS,
   blockTone,
   isHeroTone,
+  mobileNeighbors,
+  moveInMobileOrder,
   normalizeBlocks,
   normalizeConfig,
   sanitizeInline,
   sanitizeText,
+  swapBlockPositions,
+  swapBlockRows,
   withTone,
 } from '@/lib/profile-blocks';
 
@@ -51,6 +55,9 @@ describe('normalizeBlocks 整页校验', () => {
   it('超出右边界拒绝（x + w > 列数）', () => {
     expect(normalizeBlocks([text({ x: GRID_COLUMNS - 2 })]).ok).toBe(true);
     expect(normalizeBlocks([text({ x: GRID_COLUMNS - 1 })]).ok).toBe(false);
+    // 通栏只有 x=0 一个合法位置：越界一行（x=1）必须拒绝。
+    expect(normalizeBlocks([text({ x: 0, w: 4 })]).ok).toBe(true);
+    expect(normalizeBlocks([text({ x: 1, w: 4 })]).ok).toBe(false);
   });
 
   it('块数上限', () => {
@@ -141,6 +148,42 @@ describe('底色（tone）', () => {
     // 本来就没有 key 时不无谓地复制对象。
     const same = { blogId: 'b1' };
     expect(withTone(same, null)).toBe(same);
+  });
+});
+
+describe('换位：越界拒绝与通栏只换行', () => {
+  // 4×1 只有 x=0 合法，所以「完整换位」与右侧块互换必然越界；手机上下移 / 把手拖拽
+  // 必须退到只换行，否则会产出「渲染得出来、保存被 normalizeBlocks 拒掉」的坐标。
+  const full = text({ id: 'cccccccccccc', x: 0, y: 0, w: 4, h: 1 });
+  const right = text({ id: 'dddddddddddd', x: 2, y: 1, w: 2, h: 1 });
+
+  it('swapBlockPositions 拒绝越界结果（4×1 换到右侧）', () => {
+    expect(swapBlockPositions([full, right], full.id, right.id)).toBeNull();
+  });
+
+  it('swapBlockRows 只换 y、保留 x，结果是合法布局', () => {
+    const next = swapBlockRows([full, right], full.id, right.id);
+    expect(next?.map((b) => [b.id, b.x, b.y])).toEqual([
+      [full.id, 0, 1],
+      [right.id, 2, 0],
+    ]);
+    expect(next && normalizeBlocks(next).ok).toBe(true);
+  });
+
+  it('mobileNeighbors 把 4×1 与 2×1 当同列；下移走「只换行」且不越界', () => {
+    expect(mobileNeighbors([full, right], full.id).next).toBe(right.id);
+    const next = moveInMobileOrder([full, right], full.id, 1);
+    expect(next?.map((b) => [b.id, b.x, b.y])).toEqual([
+      [full.id, 0, 1],
+      [right.id, 2, 0],
+    ]);
+    expect(next && normalizeBlocks(next).ok).toBe(true);
+  });
+
+  it('同一行的两块没有先后可换（换了等于没换）', () => {
+    const a = text({ id: 'eeeeeeeeeeee', x: 0, y: 3, w: 4, h: 1 });
+    const b = text({ id: 'ffffffffffff', x: 2, y: 3, w: 2, h: 1 });
+    expect(swapBlockRows([a, b], a.id, b.id)).toBeNull();
   });
 });
 

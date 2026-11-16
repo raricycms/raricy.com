@@ -92,7 +92,7 @@
 | `/api/audio/admin/[id]` | API | 音频床**站长硬删**（物理删文件 + 删行）。用户侧那条 `DELETE /api/audio/:id` 一律软删 |
 | `/api/frames/[key]` | API | **头像框素材字节**（`public/static/frames/<key>.png`）。**刻意匿名** —— 与表情字节路由同性质：素材不属于任何账号、不随会话变化。**到期不在这里判、也不该判**：到期的是一条**引用**（谁在戴），不是这些字节（见 §6.14） |
 | `/api/users/me/frame` | API | **我的头像框**：`GET` 回持有列表 + 当前装备（都是**判定后的结果**），`PUT` 装备 / 换框 / 卸下（`{ frame_key: string \| null }`）。用户侧唯一的写口，见 §6.14 |
-| `/u/[id]` | page | 公开用户主页（**段名是用户 id（UUID），不是 username**）。**匿名可达**（主页画报的二维码把站外人引到这里）：上半截是固定身份条（头像 + 框 / 用户名 / 简介 / 注册日期，role 徽章按查看者分档 —— `user-service.getPublicProfile`），下半截是用户自己布置的**积木墙**。墙上只挂**本来就对外可读**的内容（public / link 文章、isPublic 图与音频），目标降档后整块不渲染；页面 `noindex`。见 §6.21 |
+| `/u/[id]` | page | 公开用户主页（**段名是用户 id（UUID），不是 username**）。**匿名可达**（主页画报的二维码把站外人引到这里）：上半截是身份条（内容固定、底色可换；头像 + 框 / 用户名 / 简介 / 注册日期，role 徽章按查看者分档 —— `user-service.getPublicProfile`），下半截是用户自己布置的**积木墙**。墙上只挂**本来就对外可读**的内容（public / link 文章、isPublic 图与音频），目标降档后整块不渲染；页面 `noindex`。见 §6.21 |
 
 ## 5. 业务逻辑层（src/lib/）
 
@@ -1858,15 +1858,22 @@ bot 接口，私密夹也能**复制成公开**、能导出 JSON —— 它的�
 
 - 卡片可用六档（雾蓝 / 薄荷 / 杏 / 藕紫 / 胭粉 / 石墨）；身份条只收前五档 —— 石墨是
   深色块，会把身份条上的用户名 / 简介 / 按钮文字压成一团（`isHeroTone` 收口）。
-- 未知值**静默丢弃**（回落纸白），不像坏内容那样整页拒绝：底色只是外观，库里被手改成
-  乱码不该锁住保存。读路径再用 `blockTone` 收敛一次，不把脏字符串拼进 className。
+- **三种入口三种处理，别互相套用**：① 卡片 `config.tone` 的未知值在 `normalizeConfig`
+  里**静默丢弃**（回落纸白）—— 底色只是外观，库里被手改成乱码不该锁住整页保存；
+  ② 请求体里的 `heroTone` 非法则**整包 400**（见下方 PUT 行，调用方是明确的写请求）；
+  ③ 两处读路径各收敛一次（`blockTone` / `isHeroTone`），不把脏字符串拼进 className。
 - 色值全部是 `base/_root.scss` 的 `--color-tone-*` token（浅 / 深各一套），卡片内文字色
-  改读 `--bento-ink / -ink-2`，只有浅色主题下的石墨块另给一组。**不开放自由 hex**：
-  深色主题与对比度没法靠用户保证，且一页排下来会花。增删色调只动代码与样式，不迁移。
+  改读 `--bento-ink / -ink-2`；浅色 tint 上的辅助文字再取 `--color-tone-ink-2`（全站
+  secondary 在 tint 上只有 4.1–4.4:1，不达 AA），只有浅色主题下的石墨块另给一组。
+  **不开放自由 hex**：深色主题与对比度没法靠用户保证，且一页排下来会花。增删色调只动
+  代码与样式，不迁移。
 
 **尺寸**从四档加到五档：1×1 / 2×1 / 1×2 / 2×2 / **4×1（通栏）**。四列网格里此前没有比 2
 更宽的块，一页永远排成「两列大块」，没有封面 / 一句话横条的节奏；通栏在手机上同样
-满足「宽 ≥2 通栏」的既有投影规则，所以只多一条白名单，不动坐标体系。
+满足「宽 ≥2 通栏」的既有投影规则，所以只多一条白名单，不动坐标体系。唯一新增的几何
+约束在**换位**：4×1 只有 x=0 合法，完整换位会越界，所以手机上下移 / 把手拖拽在完整
+换位不成立时退回 `swapBlockRows`（只换行、保留列）；`swapBlockPositions` 也会拒绝越界
+结果，避免出现「渲染得出来、保存被 normalizeBlocks 拒掉」的坐标。
 
 **同一份坐标：桌面 4 列是唯一真相，手机 2 列是它的投影**（`src/lib/profile-blocks.ts`
 的 `projectMobile` / `mobileColumn` / `mobileOrder`；这里就是「4 列和 2 列怎么对齐」的
@@ -1909,30 +1916,30 @@ bot 接口，私密夹也能**复制成公开**、能导出 JSON —— 它的�
 | 路径 | 说明 |
 |------|------|
 | `/u/[id]` | **匿名可达**（主页画报二维码把站外人引到这里）。`generateMetadata` 给 `robots: noindex, nofollow` —— `link` 档的语义是「可读、不列举、不索引」，主页可被二维码传播，不能顺带把它挂的文章带进索引 |
-| `PUT /api/profile/blocks` | 整页保存（body `{ blocks, heroTone? }`；heroTone 缺省 = 这次只改积木，`''` / `null` = 名片底色回默认，其余值必须是身份条白名单，非法值 400）。只认会话、只对 core+ 开（产品决定：2026-10 先只开核心用户）；**不判禁言** —— 改的是自己的展示数据，与剪贴板 / 投票同族（禁言是「不能说话」，不该连自己的主页都改不了）；限频 `RULES.profileSave`（30/分）—— 整页替换一个事务里最多 16 次写。**成功响应 `{ count, blocks, isDefault, heroTone? }`**（`apiOk` 把 data 摊平，所以字段在**顶层**，不是 `data.blocks`）：`blocks` 是刚写进库那份经 `resolveViews` 解析后的形状（含 view / 含高卡片 excerpt / 含卡片 tone），客户端拿它**保存后立刻重画**、不必等路由缓存；`isDefault` 同一响应回传，避免「块是新的、isDefault 是旧的」；`heroTone` 只在请求带了它时回传（请求没提 = 这次没改）；catalog 不回传（编辑器打开时那一份足够）。 |
+| `PUT /api/profile/blocks` | 整页保存（body `{ blocks, heroTone? }`；heroTone 缺省 = 这次只改积木，`''` / `null` = 名片底色回默认，其余值必须是身份条白名单，非法值 400）。只认会话、只对 core+ 开（产品决定：2026-10 先只开核心用户）；**不判禁言** —— 改的是自己的展示数据，与剪贴板 / 投票同族（禁言是「不能说话」，不该连自己的主页都改不了）；限频 `RULES.profileSave`（30/分）—— 整页替换一个事务里最多 18 条写语句（16 块写 + 墓碑批量 + 名片底色）。**成功响应 `{ count, blocks, isDefault, heroTone? }`**（`apiOk` 把 data 摊平，所以字段在**顶层**，不是 `data.blocks`）：`blocks` 是刚写进库那份经 `resolveViews` 解析后的形状（含 view / 含高卡片 excerpt / 含卡片 tone），客户端拿它**保存后立刻重画**、不必等路由缓存；`isDefault` 同一响应回传，避免「块是新的、isDefault 是旧的」；`heroTone` 只在请求带了它时回传（请求没提 = 这次没改）；catalog 不回传（编辑器打开时那一份足够）。 |
 
 **词汇表 `src/lib/profile-blocks.ts` 是零依赖的**：块类型 / 五档尺寸 / 底色白名单
 （`TONES` / `isTone` / `isHeroTone` / `blockTone` / `withTone`）/ 单块与整页校验 /
 网格找空位 / 手机投影与换位（`projectMobile` / `mobileColumn` / `mobileOrder` /
-`mobileNeighbors` / `swapBlockPositions` / `moveToOtherHalf` / `moveInMobileOrder`）/
+`mobileNeighbors` / `swapBlockPositions` / `swapBlockRows` / `moveToOtherHalf` /
+`moveInMobileOrder`）/
 渲染契约 `BlockView`。编辑器要 import 它，而 `profile-service` 拖着 prisma 进不了客户端包；
 两端用**同一份**校验，客户端那份只是体验，服务端才是防线。
 
 **测试**：
 
-- `tests/unit/profile-blocks.test.ts` —— 白名单 / 重叠 / 越界 / 配置清洗 / 底色白名单
-  （未知 tone 丢弃、`isHeroTone` 不收石墨、`withTone` 清空删键）；手机投影
-  （宽 2 通栏、跨中线 2×1 仍通栏、宽 1 左右半、`(y,x)` 紧排填洞、`mobileOrder` /
-  `mobileNeighbors`）、`swapBlockPositions` 合法与「压到第三块」拒绝、`moveToOtherHalf` /
-  `moveInMobileOrder`。
+- `tests/unit/profile-blocks.test.ts` —— 白名单 / 重叠 / 越界（含 4×1 只能 x=0）/ 配置清洗 /
+  底色白名单（未知 tone 丢弃、`isHeroTone` 不收石墨、`withTone` 清空删键）；换位的越界
+  拒绝、通栏「只换行」兜底与 `moveInMobileOrder`。手机投影 / 落位由 e2e 覆盖。
 - `tests/service/profile-service.test.ts` —— 对外可见 / 指针重解析 / 墓碑 / 越权 id /
   降档后可保存；读序 = `(y, x)` 且 `sort` 不读不写；摘要只给 h≥2、矮卡片为空、internal
   正文不外泄；默认布局四块铺满两行；名片底色随保存落库（缺省不动 / 空串回默认 /
   石墨与非法值拒绝）、卡片 tone 对访客下发。
 - `tests/e2e/profile-board.spec.ts`（登记在 `RESPONSIVE_SPECS`，desktop + mobile 两轮）——
   身份条入口点进编辑、保存后**不刷新**看到新版；每卡底色与名片底色即时生效且保存后
-  保持；手机按投影列落位 / 宽块通栏 / 左右移 / 同列上下移 / 把手拖动换位；固定工具条
-  遮挡；高卡片摘要；文字块详情层与 Esc / 背景关闭。
+  保持，放弃会回滚底色、改内容不丢卡片底色；手机按投影列落位 / 宽块通栏 / 左右移 /
+  同列上下移（含通栏只换行）/ 把手拖动换位；固定工具条遮挡；高卡片摘要；文字块详情层
+  与 Esc / 背景关闭。
 
 ### 6.22 每日一言
 

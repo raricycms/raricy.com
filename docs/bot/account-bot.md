@@ -432,6 +432,7 @@ GET /api/users/u_xxx
     "bio": "你好",
     "createdAt": "2026-01-01T00:00:00.000Z",
     "role": null,
+    "heroTone": null,
     "showRecentBlogs": true,
     "showRecentComments": true,
     "recentBlogs": [],
@@ -444,6 +445,7 @@ GET /api/users/u_xxx
 |------|----------|
 | `id` / `username` / `avatarPath` / `bio` / `createdAt` | **所有人**（含游客） |
 | `frameUrl` | 所有人；头像框贴图地址（`null` = 没戴框或已过期）。**已含到期判定**，别自己再算 |
+| `heroTone` | 所有人；个人主页身份条底色，合法 id（`blue` / `mint` / `apricot` / `violet` / `rose`）或 `null`（默认纸白）。公开外观字段，不是本人资料；库列名是 `profile_hero_tone` |
 | `showRecentBlogs` / `showRecentComments` | 所有人（这是资料接口自己的字段） |
 | `role` | **仅本人或 core+**；否则是 `null` |
 | `recentBlogs` / `recentComments` | **仅本人或 core+**；否则是空数组 |

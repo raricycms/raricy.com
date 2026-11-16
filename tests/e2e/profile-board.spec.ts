@@ -143,8 +143,8 @@ test('每卡底色与名片底色：编辑态即时生效，保存后刷新仍�
   await freezeMotion(page);
   await page.goto(`/u/${u.id}?edit=1`);
   await expect(page.locator('.bento-toolbar')).toBeVisible();
-  // 手机的名片底色在底部工具条里（桌面在工具条上）；两处都等 isMobile 同步后才挂上
-  // 各自的色板，先等底部工具条出现，避免同时命中两份同名 role=group。
+  // 手机的名片底色在底部工具条里（桌面在工具条上）；等 isMobile 生效、dock 挂上
+  // 自己那一份色板后再操作，避免抢在桌面工具条还没换下的首帧上点。
   if (isMobile) await expect(page.locator('.bento-dock')).toBeVisible();
 
   // 没选中卡片时是「名片底色」：换的是整条身份条，并且要进「未保存改动」状态。
@@ -169,6 +169,84 @@ test('每卡底色与名片底色：编辑态即时生效，保存后刷新仍�
   await page.reload();
   await expect(page.locator('.profile-page')).toHaveClass(/profile-page--hero-tone-blue/);
   await expect(textCard(page, '底色测试')).toHaveClass(/bento-card--tone-rose/);
+});
+
+test('底色改动放弃回滚；改文字内容不丢这张卡的底色', async ({ page, isMobile }) => {
+  const u = await registerFreshUser(page, { core: true });
+  const saved = await saveBlocks(page, [textBlock('回滚测试', 0, 0, 2, 1)]);
+  expect(saved.status, JSON.stringify(saved.body)).toBe(200);
+
+  await freezeMotion(page);
+  await page.goto(`/u/${u.id}?edit=1`);
+  await expect(page.locator('.bento-toolbar')).toBeVisible();
+  if (isMobile) await expect(page.locator('.bento-dock')).toBeVisible();
+
+  // 改名片底色 → 放弃：预览类名撤掉，回到服务端那一次的值（默认纸白）。
+  const heroPicker = page.getByRole('group', { name: '名片底色' });
+  await heroPicker.getByRole('button', { name: '名片底色：薄荷' }).click();
+  await expect(page.locator('.profile-page')).toHaveClass(/profile-page--hero-tone-mint/);
+  await page.getByRole('button', { name: '放弃', exact: true }).click();
+  await expect(page.locator('.profile-page')).not.toHaveClass(/profile-page--hero-tone-mint/);
+  await expect(page.locator('.bento-toolbar')).toHaveCount(0);
+
+  // 再进编辑：给卡片选胭粉，再改文字内容 —— 字段弹窗只改内容，不该把底色清掉。
+  await page.goto(`/u/${u.id}?edit=1`);
+  await expect(page.locator('.bento-toolbar')).toBeVisible();
+  if (isMobile) await expect(page.locator('.bento-dock')).toBeVisible();
+  await tapCard(textCard(page, '回滚测试'));
+  const cardPicker = page.getByRole('group', { name: '卡片底色' });
+  await cardPicker.getByRole('button', { name: '卡片底色：胭粉' }).click();
+  await expect(textCard(page, '回滚测试')).toHaveClass(/bento-card--tone-rose/);
+
+  // 桌面卡内操作条写「编辑」，手机底部工具条写「编辑内容」（读屏名）。
+  await page.getByRole('button', { name: /^(编辑|编辑内容)$/ }).click();
+  const dialog = page.locator('.bento-modal');
+  await expect(dialog).toBeVisible();
+  await dialog.locator('textarea').fill('回滚测试改');
+  await dialog.getByRole('button', { name: '确定', exact: true }).click();
+  // 卡面正文用的是服务端解析后的 view，编辑态不会即时变；保存后的响应才把正文换新。
+  // 这里先确认「改内容」没有顺手把卡片底色清掉。
+  await expect(textCard(page, '回滚测试')).toHaveClass(/bento-card--tone-rose/);
+
+  await page.getByRole('button', { name: '保存', exact: true }).click();
+  await expect(page.locator('.bento-notice')).toHaveText('已保存');
+  await expect(page).not.toHaveURL(/edit=1/);
+  await expect(textCard(page, '回滚测试改')).toHaveClass(/bento-card--tone-rose/);
+  await page.reload();
+  await expect(textCard(page, '回滚测试改')).toHaveClass(/bento-card--tone-rose/);
+});
+
+test('手机：通栏与右侧宽块上下移只换行，不会把块换到越界坐标', async ({ page, isMobile }) => {
+  test.skip(!isMobile, '底部固定工具条只在窄屏存在');
+
+  const u = await registerFreshUser(page, { core: true });
+  const saved = await saveBlocks(page, [
+    textBlock('通栏', 0, 0, 4, 1),
+    textBlock('右侧', 2, 1, 2, 1),
+  ]);
+  expect(saved.status, JSON.stringify(saved.body)).toBe(200);
+
+  await freezeMotion(page);
+  await page.goto(`/u/${u.id}?edit=1`);
+  await expect(page.locator('.bento-dock')).toBeVisible();
+
+  // 通栏的下方同列是右侧 2×1；完整换位会越界（4×1 只能 x=0），应退到只换行。
+  await tapCard(textCard(page, '通栏'));
+  await page.getByRole('button', { name: '下移一块' }).click();
+  await expect
+    .poll(async () => (await boxOf(textCard(page, '通栏'))).y > (await boxOf(textCard(page, '右侧'))).y)
+    .toBe(true);
+
+  // 关键：这次保存不能被客户端校验拦下（越界坐标会在 save() 里直接报错）。
+  await page.getByRole('button', { name: '保存', exact: true }).click();
+  await expect(page.locator('.bento-notice')).toHaveText('已保存');
+  await expect(page).not.toHaveURL(/edit=1/);
+  await page.reload();
+  await expect(page.locator('.bento-toolbar')).toHaveCount(0);
+  const tong = await boxOf(textCard(page, '通栏'));
+  const you = await boxOf(textCard(page, '右侧'));
+  expect(tong.y).toBeGreaterThan(you.y);
+  expect(Math.abs(tong.x - you.x)).toBeLessThan(2); // 两个通栏块左缘对齐
 });
 
 test('非核心用户：能看自己的主页，但没有布置入口、进不了编辑、接口 403', async ({ page }) => {

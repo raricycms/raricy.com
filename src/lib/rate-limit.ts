@@ -410,9 +410,9 @@ export const RULES = {
    */
   exploreSearchPerIp: { limit: 120, windowMs: 60 * 1000 },
   /**
-   * 个人主页布局保存（PUT /api/profile/blocks）。整页替换 = 一个事务里最多 16 次
-   * 写，而正常人是「拖几下、保存一次」。30/分对正常使用绰绰有余，挡的是脚本
-   * 反复重排把库写热。桶键：profile:save:{用户 id}。
+   * 个人主页布局保存（PUT /api/profile/blocks）。整页替换 = 一个事务里最多 18 条写
+   * 语句（16 块写 + 墓碑批量 + 名片底色），而正常人是「拖几下、保存一次」。30/分
+   * 对正常使用绰绰有余，挡的是脚本反复重排把库写热。桶键：profile:save:{用户 id}。
    */
   profileSave: { limit: 30, windowMs: 60 * 1000 },
   /**

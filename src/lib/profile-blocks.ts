@@ -599,9 +599,18 @@ function hasOverlap(blocks: readonly { x: number; y: number; w: number; h: numbe
   return false;
 }
 
+/** 整页坐标是否都在网格内。换位只换 (x,y)，不换尺寸，所以越界只能靠这一步兜住。 */
+function fitsGrid(blocks: readonly { x: number; y: number; w: number; h: number }[]): boolean {
+  return blocks.every((b) => b.x >= 0 && b.y >= 0 && b.x + b.w <= GRID_COLUMNS);
+}
+
 /**
- * 交换两块**位置**（尺寸不动）。换完与第三块重叠就返回 null —— 调用方什么都不做，
- * 别自作主张找空位：手机上拖到哪一块头上，用户期待的是「两块换位」，不是「随机弹开」。
+ * 交换两块**位置**（尺寸不动）。换完越界或与第三块重叠就返回 null —— 调用方什么都不做
+ * （或退到 `swapBlockRows`），别自作主张找空位：手机上拖到哪一块头上，用户期待的是
+ * 「两块换位」，不是「随机弹开」。
+ *
+ * ⚠️ **必须同时查边界**：换位只换 (x,y) 不换尺寸，`4×1` 只有 x=0 一个合法位置；漏查时
+ * 会产出「渲染得出来、保存被 normalizeBlocks 拒掉」的坐标（手机上下移曾踩过）。
  */
 export function swapBlockPositions<T extends { id: string; x: number; y: number; w: number; h: number }>(
   blocks: readonly T[],
@@ -615,6 +624,30 @@ export function swapBlockPositions<T extends { id: string; x: number; y: number;
   const next = blocks.map((it) =>
     it.id === idA ? { ...it, x: b.x, y: b.y } : it.id === idB ? { ...it, x: a.x, y: a.y } : it
   );
+  if (!fitsGrid(next)) return null;
+  return hasOverlap(next) ? null : next;
+}
+
+/**
+ * 只交换两块的 **y**（行），各自保留 x。
+ *
+ * 【为什么需要】`4×1` 只有 x=0 合法，与任何右侧块做完整换位都会越界；但手机上下移的
+ * 语义本来就是「换先后、不换列」，把手拖拽在完整换位越界时退到这一步也不会丢操作。
+ * 同一行内的两块没有先后可换（换了等于没换），返回 null 让调用方保持原样。
+ */
+export function swapBlockRows<T extends { id: string; x: number; y: number; w: number; h: number }>(
+  blocks: readonly T[],
+  idA: string,
+  idB: string
+): T[] | null {
+  if (idA === idB) return null;
+  const a = blocks.find((b) => b.id === idA);
+  const b = blocks.find((x) => x.id === idB);
+  if (!a || !b || a.y === b.y) return null;
+  const next = blocks.map((it) =>
+    it.id === idA ? { ...it, y: b.y } : it.id === idB ? { ...it, y: a.y } : it
+  );
+  if (!fitsGrid(next)) return null;
   return hasOverlap(next) ? null : next;
 }
 
@@ -664,6 +697,9 @@ export function moveToOtherHalf<T extends { id: string; x: number; y: number; w:
  * 手机端「上移 / 下移」：与**同列**的上一块 / 下一块换位（见 mobileNeighbors）。
  * 换位改变的是桌面坐标 —— 两端是同一份布局，这是刻意的；不同列之间不换，所以不会
  * 出现「移这块、隔壁那块也跟着跳列」。
+ *
+ * 先试完整换位；`4×1` 与右侧宽块做完整换位会越界（它只有 x=0 合法），此时退到
+ * `swapBlockRows`：只换行、各自保留列。上下移本来要的就是先后，不是换列。
  */
 export function moveInMobileOrder<T extends { id: string; x: number; y: number; w: number; h: number }>(
   blocks: readonly T[],
@@ -673,5 +709,5 @@ export function moveInMobileOrder<T extends { id: string; x: number; y: number; 
   const { prev, next } = mobileNeighbors(blocks, id);
   const target = dir < 0 ? prev : next;
   if (!target) return null;
-  return swapBlockPositions(blocks, id, target);
+  return swapBlockPositions(blocks, id, target) ?? swapBlockRows(blocks, id, target);
 }
