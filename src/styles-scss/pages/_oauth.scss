@@ -113,26 +113,16 @@
 }
 
 // ---------- 创建成功弹窗 ----------
+// 外壳与卡片取全站模态那一套（abstracts/_mixins.scss）。表单是单列，宽度用默认 500px；
+// 内容比视口高时整层可滚，不把卡片自身的 max-height 当滚动容器（那会把顶部挤出可视区）。
 .oauth-modal-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 10000;
+  @include m.modal-scrim;
   display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: $space-4;
-  background: rgba(0, 0, 0, 0.5);
 }
 
 .oauth-modal {
-  width: 100%;
-  max-width: 560px;
-  max-height: 90vh;
-  overflow-y: auto;
+  @include m.modal-card;
   padding: $space-8;
-  border-radius: 30px;
-  background: var(--color-background-card);
-  box-shadow: var(--shadow-card-brand);
 
   h2 {
     margin: 0 0 $space-2;

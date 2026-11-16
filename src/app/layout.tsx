@@ -86,6 +86,10 @@ export default async function RootLayout({ children }: { children: React.ReactNo
       </head>
       <body>
         <Navbar user={user} frameUrl={frameUrlFor(user)} />
+        {/* 移动端展开顶栏时的暗色蒙版。必须挂在 header 的**紧邻兄弟**上：放进 header
+            内部的话，fixed 子元素再低的 z-index 也画在 header 背景之上，会把整条顶栏
+            一起压暗（_header.scss 的 .site-navbar-scrim）。 */}
+        <div className="site-navbar-scrim" aria-hidden="true" />
         {/* 切页/bfcache 恢复时即时刷新顶栏未读数（实时值走 SSE，两档兜底轮询在 base.js） */}
         <NotificationHeartbeat />
         {/* 滚轮平滑滚动：全站生效，内部滚动区域同样适用（见组件内说明） */}

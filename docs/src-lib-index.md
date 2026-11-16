@@ -4,8 +4,8 @@
 
 范围：`src/lib` 根目录下全部 `*.ts`，不含 `md-editor/`、`reactive/` 等子目录。
 
-- 文件数：146
-- 合计行数：31903（含空行）
+- 文件数：147
+- 合计行数：31908（含空行）
 
 | 文件 | 行数 | 导出数 | 一句话职责 |
 | --- | ---: | ---: | --- |
@@ -114,6 +114,7 @@
 | `market-stream.ts` | 308 | 6 | 练手盘行情的**常驻 WebSocket 消费端**（只喂展示缓存） |
 | `mention-service.ts` | 45 | 1 | @ 选人读路径：只返回当前评论区 / 会话里可被提及的用户，不暴露角色或成员状态。 |
 | `mention-shared.ts` | 24 | 4 | 评论与讨论共用的 @ 词汇；零依赖，客户端也可直接使用。 |
+| `motion.ts` | 5 | 2 | 脚本侧要用的两档时长：样式在 src/styles-scss/abstracts/_variables.scss |
 | `navigation-back.ts` | 48 | 4 | 文章页「返回上页」的落点判据（纯函数，**零依赖**） |
 | `notification-service.ts` | 332 | 14 | 通知业务逻辑 |
 | `oauth.ts` | 651 | 45 | OAuth 2.0 Authorization Code 核心库（raricy 作为 IdP） |

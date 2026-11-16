@@ -8,9 +8,12 @@
 // 站内既有那套，见 components/_modal.scss；这里只写网格与卡片。
 // ─────────────────────────────────────────────────────────────────────────────
 
+@use '../abstracts/mixins' as m;
+
 .image-picker-modal {
-  max-width: 560px;
-  width: calc(100vw - 40px);
+  // 「一列条目 + 一个搜索框」的并排宽度；横向内距与溢出交给 modal-frame 与外壳的
+  // 安全区内边距，不再自己写 calc(100vw - 40px)。
+  @include m.modal-frame(560px);
 }
 
 // 列表可滚，但弹窗整体仍可滚（超高时整层滚，见 .modal-overlay 的注释）

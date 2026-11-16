@@ -1081,39 +1081,15 @@
   }
 }
 
-@keyframes bento-fade {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
-}
-
-@keyframes bento-pop {
-  from {
-    opacity: 0;
-    transform: translateY(8px) scale(0.98);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
-}
-
 @media (prefers-reduced-motion: reduce) {
   .bento-spin {
     animation: none;
   }
 
-  .bento-card,
-  .bento-modal,
-  .bento-modal__box,
-  .bento-detail {
-    animation: none;
+  .bento-card {
+    transition: none;
   }
 
-  .bento-card,
   .bento-card.is-dragging {
     transition: none;
   }
@@ -1132,24 +1108,20 @@
 // --- 文字块详情层 -----------------------------------------------------------
 //
 // 面板从源卡片的位置与大小 FLIP 到居中（起始帧在组件 effect 里写成 inline
-// transform）。这里只负责终态与背景。z-index 与全站 .modal 同档（1050）：
-// 要盖住固定顶栏（1030），否则模态的遮罩缺一条、顶栏还能点。
+// transform）。这里只负责终态与背景。外壳取全站模态那一套（$z-modal），
+// 遮罩与卡片跟着同一份配方走；面板自己不加入场动画 —— 它会盖掉 FLIP 的起始帧。
 
 .bento-detail {
-  position: fixed;
-  inset: 0;
-  z-index: 1050;
+  @include m.modal-scrim;
   display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: $space-4;
-  animation: bento-fade $feedback-duration $feedback-easing;
+  background: none;
+  // 遮罩由 __backdrop 单独承担：关闭时 JS 反向 FLIP 面板，那层要能自己淡出。
 }
 
 .bento-detail__backdrop {
   position: absolute;
   inset: 0;
-  background: rgba(0, 0, 0, 0.5);
+  background: $scrim-modal;
 }
 
 // 关闭：面板在 JS 里反向 FLIP 回源卡片，遮罩必须同步淡出 —— 否则背景会一下子变亮。
@@ -1163,16 +1135,13 @@
 }
 
 .bento-detail__panel {
+  @include m.modal-card(560px);
   position: relative;
   z-index: 1;
   display: flex;
   flex-direction: column;
-  width: min(560px, 100%);
   max-height: min(80vh, 640px);
   padding: $space-6;
-  border-radius: 24px;
-  background: var(--color-background-card);
-  box-shadow: var(--shadow-card-brand);
   overflow: auto;
 }
 
@@ -1203,31 +1172,19 @@
 
 // --- 弹窗 ---
 //
-// z-index 与 `.modal` / `.bento-detail` 同档（1050）：必须盖住固定顶栏（1030），
-// 否则遮罩缺一条、顶栏还能点。曾写成 60（一个不属于本站层级表的数）→ 顶栏压住遮罩。
-// 「选择要添加的内容」与 `.bento-detail` 由 ProfileBoard 的互斥条件保证不同时开，
-// 同层不会打架。
+// 外壳、遮罩、卡片与全站模态同一套（abstracts/_mixins.scss 的 modal-scrim / modal-card）。
+// 「选择要添加的内容」与 `.bento-detail` 由 ProfileBoard 的互斥条件保证不同时开。
+// 头、脚不画分隔线（§3.6）：两段之间的层级由留白与底色给出。
 
 .bento-modal {
-  position: fixed;
-  animation: bento-fade $feedback-duration $feedback-easing;
-  inset: 0;
-  z-index: 1050;
+  @include m.modal-scrim;
   display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: $space-4;
-  background: rgba(0, 0, 0, 0.45);
 
   &__box {
-    animation: bento-pop $motion-duration $motion-easing;
+    @include m.modal-card(560px);
     display: flex;
     flex-direction: column;
-    width: min(560px, 100%);
     max-height: min(80vh, 640px);
-    border-radius: 24px;
-    background: var(--color-background-card);
-    box-shadow: var(--shadow-card-brand);
     overflow: hidden;
   }
 
@@ -1237,7 +1194,6 @@
     justify-content: space-between;
     gap: $space-3;
     padding: $space-4 $space-4;
-    border-bottom: 1px solid var(--color-border);
 
     h3 {
       margin: 0;
@@ -1255,7 +1211,6 @@
     justify-content: flex-end;
     gap: $space-2;
     padding: $space-4 $space-4;
-    border-top: 1px solid var(--color-border);
   }
 }
 

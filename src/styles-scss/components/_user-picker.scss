@@ -8,13 +8,8 @@
 //
 // 弹窗外壳（.modal-overlay / .modal-dialog / .modal-content / .modal-header）沿用站内
 // 既有那套，见 components/_modal.scss 与 _image-picker.scss 的说明；这里只写搜索框
-// 下面那一列结果。
+// 下面那一列结果。宽度走 .modal-dialog 的默认 500px 参照，不再单独约束。
 // ─────────────────────────────────────────────────────────────────────────────
-
-.user-picker {
-  max-width: 420px;
-  width: calc(100vw - 40px);
-}
 
 .user-picker__list {
   max-height: 46vh;

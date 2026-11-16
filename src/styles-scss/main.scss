@@ -8,7 +8,7 @@
 //   ④ components/markdown-editor（:37）早于 pages/chat（:124）—— 聊天里 `.md-body` 的
 //      覆写要晚于编辑器基态（见 _chat.scss 的注释）；
 //   ⑤ components/avatar（:42）与 pages/blog/blog（:74）声明不相交，不争，别误并；
-//   ⑥ pages/blog/menu（:79）必须在 pages/blog/blog（:74）之后（侧栏覆写列表）；
+//   ⑥ pages/blog/menu（:79）必须在 pages/blog/blog（:74）之后（目录筛选条的覆写列表）；
 //   ⑦ layout/header（:14）早于所有 pages —— 顶栏是外壳，页面只补自身留白；
 //   ⑧ base/root（:8）最早：CSS 变量是其余一切规则的前置；
 //   ⑨ pages/home（:52）只写 .home-* / .hero-*，与外壳不重叠，无顺序依赖（列在此只为

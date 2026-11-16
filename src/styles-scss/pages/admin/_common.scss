@@ -12,7 +12,7 @@
 //   · 面板 (.admin-panel) 常态不描边、不托阴影，层级靠背景色阶。
 //   · 只有整块可点的卡才允许 hover 亮 --shadow-card-brand；这里的行卡不是整块
 //     可点的，选中态一律用品牌淡底，不画左侧竖条、不描边。
-//   · 所有入场动效统一走 v.$motion-duration / v.$motion-easing（540ms）；
+//   · 所有入场动效统一走 v.$motion-duration / v.$motion-easing（720ms）；
 //     prefers-reduced-motion 下整体关掉。
 // ─────────────────────────────────────────────────────────────────────────────
 

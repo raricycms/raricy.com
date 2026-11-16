@@ -24,6 +24,9 @@ test('禁用 JavaScript 时山景和探索链接仍可使用', async ({ browser,
     await page.goto('/');
     await expect(page.locator('.hero-scene')).toBeVisible();
     await expect(page.getByRole('heading', { name: '聪明山', exact: true })).toBeVisible();
+    // 卡片区不能在 SSR 里带 inert：无 JS 时它是文档流里的真链接，
+    // 惰性属性会让「看得见的卡」变成点不动的死链（版面回退管不了 inert）。
+    await expect(page.locator('.home-features')).not.toHaveAttribute('inert');
     await page.getByRole('link', { name: '开始探索' }).click();
     await expect(page).toHaveURL(/#features$/);
   } finally {

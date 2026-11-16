@@ -200,7 +200,8 @@ textarea、正文编辑区与多行组合面板为固定圆角。
 | 浮层与固定顶栏 | `--shadow-card-brand` | 保持可见时显示 |
 | 字段与键盘聚焦 | `--shadow-focus-brand` | 聚焦时显示 |
 | 开启态的控件光晕 | `--shadow-glow-brand` | 开关 / 勾选项处于开启时显示 |
-| 普通模态遮罩 | `rgba(0,0,0,.5)` | 模态面板展开时显示 |
+| 普通模态遮罩 | `$scrim-modal`，即 `rgba(0,0,0,.5)` | 模态面板展开时显示 |
+| 内容查看器遮罩 | `$scrim-viewer`，即 `rgba(0,0,0,.8)` | 图片放大、图床预览时显示 |
 
 普通卡片常态无阴影，卡内只有局部按钮可点时，不能让整卡悬停发光。
 不用黑色 `box-shadow`；内容分类明确的功能卡可用 §3.1 的同色光晕。
@@ -222,6 +223,22 @@ textarea、正文编辑区与多行组合面板为固定圆角。
 遮罩属于背景，不是投影。遮罩的层级由模态范围决定：
 博客目录的移动个人面板只遮页面内容，顶栏保持在其上方；
 全局弹窗覆盖自己的完整交互范围。不能把某页的 z-index 数字直接当成全站层级。
+
+浮层层级只有四档，取 `abstracts/_variables.scss` 的 `$z-header / $z-modal / $z-viewer / $z-alert`：
+
+| 档位 | 取值 | 用途 |
+|---|---|---|
+| `$z-header` | 1030 | 固定顶栏 |
+| `$z-modal` | 1050 | 模态：`.modal`、`.modal-overlay`、`.bento-*`、`.feed-modal`、`.oauth-modal-overlay`、`.frame-buster` 的基态 |
+| `$z-viewer` | 1060 | 内容查看器：图片放大、图床预览，从模态里点开的图也能放大 |
+| `$z-alert` | 1100 | 系统级提示，必须盖住一切（跨站 iframe 提示） |
+
+新浮层从这四档里选，不写任何不属于表的数字；需要更高时先确认它属于哪一类范围，
+再改表，不能就地写一个更大的值。
+
+两个已知的从属取值，不属于新的档位：顶栏在移动端展开时的页面蒙版取 `$z-header - 1`（1029），
+它必须压在顶栏之下、又要盖住页面内容；`base.js` 注入的跨站提示是第三方页面里的临时节点
+（9999），不参与本站浮层分层，别照它取数。
 
 ### 3.7 图标
 
@@ -410,9 +427,27 @@ textarea、正文编辑区与多行组合面板为固定圆角。
 
 普通弹窗采用主题卡片底色、30px 圆角与品牌浮层阴影，
 默认内容宽度以 500px 为参照，窄屏限制在视口内并保留边距。
-内容过长时在合适的内部区域滚动，标题和关闭操作保持可达。
-内容分两段到达（先占位、后正文）的弹窗，窄屏把上沿钉死：高度变化只向下长，
+外壳与卡片的实现只有一份：`abstracts/_mixins.scss` 的 `modal-scrim`（遮罩 / 整层可滚 /
+安全区留白）、`modal-frame`（宽度与居中）、`modal-card`（宽度 + 卡片表面）。
+类名不同的弹窗（`.modal-overlay`、`.bento-modal`、`.feed-modal`、`.oauth-modal-overlay`、
+`.frame-buster`）各自 `@include` 这两个 mixin，不复制属性块。
+
+宽度只有两档：单列内容取 500px，需要并排内容或上下三段的面板取 560px。
+竖幅图片卡片（画报）按图片比例单独收窄。除此之外不再为单个弹窗写宽度。
+内容过长时整层滚动，卡片靠 `margin: auto` 居中；只有带固定标题栏与操作栏的三段式面板
+才让内部区域滚动，保证标题和关闭操作始终可达。
+内容分两段到达（先占位、后正文）的弹窗，窄屏把上沿固定：高度变化只向下长，
 盒子不跟着上下跳半个高度差；其余弹窗仍是 `margin: auto` 居中。
+
+`.modal` 这一套（博客管理、点赞者 / 投喂者名单、收藏夹选择、评论删除）的外壳常驻在
+页面里，关闭只摘 `.is-open`，所以有完整的出现与离开：卡片入场自视口底部飞入、离场
+飞出底部，走 §6.2 的形变档（720ms / `cubic-bezier(0.16, 1, 0.3, 1)`）；遮罩用标准
+反馈档（240ms / `ease-out`）淡入淡出，画在 `::before` 上而不是给容器设 opacity ——
+后者会把卡片一起弄透明。关闭时遮罩先淡完，容器等卡片飞完（720ms）再 `visibility:
+hidden`；退场期间 `pointer-events: none`，页面立刻可以继续操作。
+
+`.modal-overlay` 的弹窗由组件在关闭时卸载，摘 `.show` 与移除节点是同一帧，没有可播
+退场的时刻，保持无动画。`prefers-reduced-motion` 下两套都直接切换。
 
 模态使用 §3.6 的遮罩，阻止背景交互和穿透滚动；
 焦点进入弹窗并在关闭后回到触发入口。非模态下拉不额外遮暗整页。
@@ -473,16 +508,16 @@ Toast 用于短暂结果反馈，不承载唯一的错误详情或必须完成�
 
 全站交互动效分两档，区别只在“变的是不是看得见的值本身”。
 
-形变档：**540ms / `cubic-bezier(0.16, 1, 0.3, 1)`**。
-曲线前段极快（前 25% 已走完 60% 以上），所以 540ms 观感上并不迟滞，拉长的是收尾。
+形变档：**720ms / `cubic-bezier(0.16, 1, 0.3, 1)`**。
+曲线前段极快（前 25% 已走完 60% 以上），所以 720ms 观感上并不迟滞，拉长的是收尾。
 位移、尺寸、宽度、旋转、网格展开、展开与收起的伸缩、入场与退场的位移、滑块位置，
 都引用 `abstracts/_variables.scss` 的 `$motion-duration` / `$motion-easing`。
 
-反馈档：**360ms / `ease-out`**。
+反馈档：**240ms / `ease-out`**。
 颜色、底色、描边、阴影、透明度、滤镜这类与运动无关的属性，引用
 `$feedback-duration` / `$feedback-easing`。形变那条曲线起步太急，颜色按它跑会在前
 一帧里跳掉大半、只剩尾巴慢慢收，看起来像“闪一下”；`ease-out` 起步中速、末段减速，
-收尾方向与形变那条一致，360ms 又比形变短一截，让值的变化比位移先落定。
+收尾方向与形变那条一致，240ms 又比形变短一半以上，让值的变化明显先于位移落定。
 
 一条 `transition` 里同时出现形变与反馈属性时，按属性分别写这两档，
 不使用一条 `transition: all` 统管所有变化。
@@ -534,9 +569,9 @@ Toast 用于短暂结果反馈，不承载唯一的错误详情或必须完成�
 
 手动主题切换由 `public/static/js/core/base.js` 统一协调文字、底色、
 阴影与 SVG 颜色，局部组件不另跑一套主题动画。换色属于反馈档，
-时间线是 360ms、`ease-out`（`$feedback-duration` / `$feedback-easing`）。
-首页日月的旋转仍走形变档 540ms 与同一条贝塞尔曲线，天体填色与透明度走反馈档
-360ms；主题换色的 WAAPI 动画与 `circle` 的填色过渡必须同档，改一处要改两处。
+时间线是 240ms、`ease-out`（`$feedback-duration` / `$feedback-easing`）。
+首页日月的旋转仍走形变档 720ms 与同一条贝塞尔曲线，天体填色与透明度走反馈档
+240ms；主题换色的 WAAPI 动画与 `circle` 的填色过渡必须同档，改一处要改两处。
 离开视口的内容直接更新到终态，避免大量不可见元素占用动画开销。
 全局颜色过渡只由 `src/styles-scss/base/_reset.scss` 定义，
 形变、位移和缩放限定在对应组件，不能扩大到全局 `*` 选择器。
@@ -576,8 +611,11 @@ Toast 用于短暂结果反馈，不承载唯一的错误详情或必须完成�
 
 这组具体几何由目录组件持有，其他列表复用其关系，
 不要求每页都有个人侧栏或悬浮入口。
-公开列表 `/explore` 与站内目录有不同的信息组织，
-不能把其旧栏目侧栏当成新的全站基准。
+公开列表 `/explore` 与站内目录共用同一副骨架：同一个 hero、同一条工具栏（搜索 + 栏目下拉）、
+同一张左侧信息卡；差别只在数据与能力 —— 已登录用户看到自己的身份与统计，
+core+ 另有文章范围与创建入口（范围链接回站内目录 `/blog`，`/explore` 本身没有 scope 过滤），
+访客看到「未登录」与登录后可见范围说明，卡片里不放按钮（登录入口在顶栏），
+窄屏不显示这张卡。
 
 ### 7.2 阅读与读者操作
 
@@ -801,6 +839,7 @@ e2e 读取现有构建产物；修改源码后先构建，或使用 `npm run e2e
 |---|---|
 | 主题、字体、安全区 | `src/styles-scss/base/_root.scss`、`src/styles-scss/base/_fonts.scss` |
 | 尺度与公共配方 | `src/styles-scss/abstracts/_variables.scss`、`src/styles-scss/abstracts/_mixins.scss` |
+| 模态外壳、遮罩与入场 | `src/styles-scss/components/_modal.scss`、`src/styles-scss/components/_frame-buster.scss`、`src/styles-scss/pages/_oauth.scss` |
 | 博客目录卡片与搜索 | `src/styles-scss/pages/blog/_menu.scss` |
 | 目录筛选与个人面板 | `src/styles-scss/pages/blog/_directory.scss`、`src/app/blog/BlogCategorySelect.tsx`、`src/app/blog/BlogPersonalSidebar.tsx` |
 | 字段、分段切换、展开选择 | `src/styles-scss/components/_form-controls.scss`、`src/styles-scss/components/_segmented.scss`、`src/app/components/ExpandSelect.tsx` |

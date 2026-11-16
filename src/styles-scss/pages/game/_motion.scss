@@ -788,6 +788,11 @@
   text-align: left;
   cursor: pointer;
 
+  // 相邻选项的淡底在圆角处会粘成一条（选中项与悬停项分不开）。
+  & + & {
+    margin-top: 4px;
+  }
+
   span {
     display: block;
     width: max-content;
