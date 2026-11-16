@@ -9,10 +9,12 @@ import { listPublicBlogs, listPublicCategoryFacets } from '@/lib/blog-service';
 import Avatar from '@/app/components/Avatar';
 import BlogTimestamps from '@/app/components/BlogTimestamps';
 import { categoryFullPath } from '@/lib/format';
-// 侧栏与搜索框与站内 `/blog` 共用同一份实现（两条列表的差别是数据与去处，不是交互）。
-// 它们住在 app/blog/ 下，是因为先有的站内列表；跨路由 import 没问题 ——
-// 这两个文件不是 Next 的特殊文件，不会被当成路由。
-import BlogSidebar from '@/app/blog/BlogSidebar';
+// 侧栏、筛选条、搜索框与栏目下拉都与站内 `/blog` 共用同一份实现（两条列表的差别是
+// 数据与去处）。它们住在 app/blog/ 下，是因为先有的站内列表；跨路由 import 没问题 ——
+// 这些文件不是 Next 的特殊文件，不会被当成路由。
+import BlogPersonalSidebar from '@/app/blog/BlogPersonalSidebar';
+import BlogFilters from '@/app/blog/BlogFilters';
+import BlogCategorySelect from '@/app/blog/BlogCategorySelect';
 import SearchForm from '@/app/blog/SearchForm';
 import SitePager from '@/app/components/SitePager';
 
@@ -117,7 +119,7 @@ export default async function ExplorePage({
     ? null
     : listPublicBlogs({ page, perPage: PER_PAGE, categorySlug: category, search });
 
-  // 侧栏：从**公开集合**反推出来的栏目，不是站内栏目树的照搬。
+  // 栏目下拉：从**公开集合**反推出来的栏目，不是站内栏目树的照搬。
   // 数据与列表并行取；两件事互不依赖。
   const [facets, categories] = await Promise.all([
     listPublicCategoryFacets(),
@@ -173,36 +175,39 @@ export default async function ExplorePage({
               不是「公开 / 非公开」——见下面 ExploreListSection 的空态分支。 */}
           <h1>博客</h1>
           <p>分享思考与见解</p>
-
-          <div className="blog-search">
-            {/* featured / sort 恒为假值 —— 对外列表没有精选，也不带排序偏好 */}
-            <SearchForm
-              basePath="/explore"
-              currentSlug={category}
-              featured={false}
-              search={search ?? ''}
-              clearHref={clearHref}
-              sort={null}
-            />
-          </div>
         </div>
       </section>
 
       <div className="container">
-        <div className="blog-layout">
-          <BlogSidebar
-            basePath="/explore"
-            showFeatured={false}
-            categories={publicCategories}
-            currentSlug={category}
-            featured={false}
-            sort={null}
-          />
+        <div className="blog-layout blog-directory">
+          {/* 访客没有会话：侧栏固定走「未登录」那一支（user 与 summary 都是 null），
+              表单与栏目下拉也都不带排序偏好。 */}
+          <BlogPersonalSidebar user={null} summary={null} basePath="/explore" />
 
           {/* 不能是 <main>：根 layout 已经有一个 <main>，嵌套 main 会让读屏读出两个
               主内容地标（AdminShell 文件头有同一禁令）。版面靠 .blog-content 的
               `flex: 1`（_menu.scss），不依赖 main 的全局 flex 声明。 */}
           <div className="blog-content">
+            <BlogFilters>
+              {/* featured / sort 恒为假值 —— 对外列表没有精选，也不带排序偏好。
+                  搜索框随栏目 / 搜索词换一份（key），否则软导航后输入框仍留着上一次的词。 */}
+              <SearchForm
+                key={`${category}:${search ?? ''}`}
+                basePath="/explore"
+                currentSlug={category}
+                featured={false}
+                search={search ?? ''}
+                clearHref={clearHref}
+                sort={null}
+              />
+              {/* 访客版本的栏目下拉没有「精选文章」这一项（showFeatured=false）。 */}
+              <BlogCategorySelect
+                basePath="/explore"
+                showFeatured={false}
+                categories={publicCategories}
+                currentSlug={category}
+              />
+            </BlogFilters>
             {result === null ? (
               <SearchRateLimited />
             ) : (

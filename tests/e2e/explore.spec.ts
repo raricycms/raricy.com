@@ -95,9 +95,13 @@ test.describe('对外列表 /explore', () => {
     const res = await page.goto('/explore');
     expect(res?.status()).toBe(200);
     await expect(page.locator('.blogs-hero h1')).toHaveText('博客');
-    // 侧栏与搜索框都该在（这是页面结构，不是「有没有内容」）
-    await expect(page.locator('.sidebar-title')).toHaveCount(1);
-    await expect(page.locator('.search-form')).toHaveCount(1);
+    // 侧栏、工具栏与搜索框都该在（这是页面结构，不是「有没有内容」）。
+    // 访客侧栏与站内目录同一副信息卡：身份是「未登录」，登录入口就在卡里。
+    await expect(page.locator('.blog-personal'), '访客也要有左侧信息卡').toHaveCount(1);
+    await expect(page.locator('.blog-personal a[href^="/login"]'), '访客侧栏要给出登录入口').toHaveCount(1);
+    await expect(page.locator('.blog-filters')).toHaveCount(1);
+    await expect(page.locator('.blog-filters .search-form')).toHaveCount(1);
+    await expect(page.locator('.blog-filters .blog-category-select')).toHaveCount(1);
     // 对外列表没有「精选」—— 那是站内的编辑口径，回答的是「站长推荐了哪几篇」。
     // 按 href 断言而不是按文案：栏目名里出现「精选」二字是合法的，那样断会误伤。
     await expect(page.locator('a[href*="featured=1"]'), '对外列表不该有精选筛选').toHaveCount(0);

@@ -1,7 +1,7 @@
 @use '../../abstracts/mixins' as m;
 @use '../../abstracts/variables' as v;
 
-// 站内目录独立于 /explore 的旧栏目侧栏；桌面保持 280px 栏宽。
+// 博客目录（站内 `/blog` 与对外 `/explore` 共用）；桌面保持 280px 栏宽。
 .blog-directory {
   align-items: flex-start;
   margin-top: 24px;
@@ -18,6 +18,9 @@
   z-index: 40;
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto auto;
+  // 没有排序条时（对外列表只有搜索与栏目）第三列不存在 —— 空着的 auto 列会留下一条
+  // 10px 列间距，栏目下拉就不贴着工具条右边界了。
+  &:not(:has(.blog-sort)) { grid-template-columns: minmax(0, 1fr) auto; }
   align-items: center;
   gap: 10px;
   padding: 12px;
@@ -135,6 +138,12 @@
     &.is-expanded { @include m.expand-panel-open; }
   }
   &__options {
+    display: flex;
+    flex-direction: column;
+    // 选项是胶囊（圆角 999px），彼此紧贴时两块的淡底会在圆角处粘成一条 ——
+    // 选中项与悬停项相邻时看成一个长条，读不出这是两个选项。4px 与站内其他
+    // 纵向选项列表（chat-new-list、atamas 语言下拉）同一档。
+    gap: 4px;
     max-height: min(420px, calc(100dvh - 240px));
     overflow-y: auto;
     padding: 4px 6px 8px;
@@ -193,6 +202,14 @@
     .avatar { width: 100%; height: 100%; }
     &:focus-visible { border-radius: 50%; outline: none; box-shadow: var(--shadow-focus-brand); }
   }
+  // 访客的头像格：同一个位置、同一个尺寸，放通用的人像图标（没有头像可加载，
+  // 也没有主页可去，所以不套链接）。图标是 mask + currentColor，取次要文字色。
+  &__avatar--guest {
+    display: grid;
+    place-items: center;
+    color: var(--color-text-secondary);
+    .icon { width: 100%; height: 100%; }
+  }
   &__toggle { display: none; }
   &__inner { padding: 24px 20px 20px; }
   &__identity {
@@ -216,6 +233,22 @@
     dd { margin: 0; font-weight: 700; }
   }
   &__ranges { display: grid; gap: 6px; }
+  // 访客卡片的两行：一句登录说明 + 一个注册入口（登录由面板底部那颗按钮承担）。
+  &__note {
+    margin: 12px 0 0;
+    font-size: .82rem;
+    line-height: 1.6;
+    color: var(--color-text-secondary);
+  }
+  &__register {
+    @include m.btn-secondary;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    margin-top: 12px;
+    padding: 8px 14px;
+    font-size: .85rem;
+  }
   &__range {
     @include m.btn-tab;
     display: flex;
@@ -284,10 +317,11 @@
       transition: width v.$motion-duration v.$motion-easing,
                   border-radius v.$motion-duration v.$motion-easing;
     }
-    // 展开时的全屏暗色蒙版。色值取站内**模态遮罩**统一的那一个：
-    //   .modal / .modal-overlay / .bento-detail__backdrop / .oauth-modal-overlay
-    // 都是 rgba(0, 0, 0, .5)。更深的那几档留给内容本身就是深色场景的查看器
-    // （.chat-lightbox 0.8、.feed-modal__backdrop 0.65），面板蒙版不跟它们对齐。
+    // 展开时的全屏暗色蒙版。色值取站内**模态遮罩**统一的那一个（$scrim-modal）：
+    //   .modal / .modal-overlay / .bento-detail__backdrop / .bento-modal
+    //   / .oauth-modal-overlay / .feed-modal__backdrop 都是 rgba(0, 0, 0, .5)。
+    // 更深的那一档（$scrim-viewer 0.8）留给遮罩后面没有卡片、本身是观看环境的
+    // 内容查看器（.chat-lightbox、.image-hosting-preview），面板蒙版不跟它对齐。
     // 别在这里调深浅，否则同一次会话里打开两个浮层，一个深一个浅。
     // （docs/frontend-styles.md §3.6：写死的 rgba 只允许作遮罩底色。）
     // 它挂在 aside 里面而不是 portal：移动端 aside 自己就是 fixed，蒙版跟着它一起
@@ -301,7 +335,7 @@
       position: fixed;
       inset: 0;
       z-index: 0;
-      background: rgba(0, 0, 0, 0.5);
+      background: v.$scrim-modal;
       opacity: 0;
       pointer-events: none;
       // 触屏在蒙版上拖动会滚动底下那一页：暗层纹丝不动、页面却在暗层底下滑，
@@ -427,7 +461,7 @@
     }
     &.is-settled .blog-personal__inner { overflow-y: auto; scrollbar-width: none; &::-webkit-scrollbar { display: none; } }
     // 加号（创建）不参加入场淡入：它在收起态就是可见的入口，不是面板内容。
-    &__identity, &__stats, &__range {
+    &__identity, &__stats, &__range, &__note, &__register {
       opacity: 0;
       transform: translateY(-8px);
       transition: opacity v.$feedback-duration v.$feedback-easing, transform v.$motion-duration v.$motion-easing;
@@ -495,7 +529,8 @@
         transition: opacity v.$feedback-duration v.$feedback-easing 55ms,
                     max-width v.$motion-duration v.$motion-easing 55ms;
       }
-      .blog-personal__identity, .blog-personal__stats, .blog-personal__range {
+      .blog-personal__identity, .blog-personal__stats, .blog-personal__range,
+      .blog-personal__note, .blog-personal__register {
         opacity: 1;
         transform: translateY(0);
         transition: opacity v.$feedback-duration v.$feedback-easing, transform v.$motion-duration v.$motion-easing;
