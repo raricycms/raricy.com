@@ -67,8 +67,11 @@ export default function HomeStage({ blogHref, gamesBlocked }: Props) {
     window.scrollTo({ top: Math.round(window.innerHeight * 0.55), behavior: 'auto' });
     window.history.replaceState(null, '', '#features');
     setExpanded(true);
-    // 焦点跟着视图走：否则键盘用户还停在已经淡出的「开始探索」上。
-    document.getElementById('features-title')?.focus({ preventScroll: true });
+    // 焦点跟着视图走：否则键盘用户还停在已经淡出的「开始探索」上。等一帧 ——
+    // 卡片区这一帧还带着 inert，立即调用 focus 会被浏览器忽略。
+    window.requestAnimationFrame(() => {
+      document.getElementById('features-title')?.focus({ preventScroll: true });
+    });
   };
 
   return (
