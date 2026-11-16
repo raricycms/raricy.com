@@ -181,8 +181,8 @@ export default async function ExplorePage({
       <div className="container">
         <div className="blog-layout blog-directory">
           {/* 访客没有会话：侧栏固定走「未登录」那一支（user 与 summary 都是 null），
-              表单与栏目下拉也都不带排序偏好。 */}
-          <BlogPersonalSidebar user={null} summary={null} basePath="/explore" />
+              卡片里不放按钮；表单与栏目下拉也都不带排序偏好。 */}
+          <BlogPersonalSidebar user={null} />
 
           {/* 不能是 <main>：根 layout 已经有一个 <main>，嵌套 main 会让读屏读出两个
               主内容地标（AdminShell 文件头有同一禁令）。版面靠 .blog-content 的

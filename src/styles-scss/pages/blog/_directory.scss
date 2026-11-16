@@ -233,21 +233,12 @@
     dd { margin: 0; font-weight: 700; }
   }
   &__ranges { display: grid; gap: 6px; }
-  // 访客卡片的两行：一句登录说明 + 一个注册入口（登录由面板底部那颗按钮承担）。
+  // 访客卡片的一行说明（登录后可见哪些范围）。卡片里不放按钮，入口在顶栏。
   &__note {
     margin: 12px 0 0;
     font-size: .82rem;
     line-height: 1.6;
     color: var(--color-text-secondary);
-  }
-  &__register {
-    @include m.btn-secondary;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    margin-top: 12px;
-    padding: 8px 14px;
-    font-size: .85rem;
   }
   &__range {
     @include m.btn-tab;
@@ -384,6 +375,13 @@
                   background-color v.$feedback-duration v.$feedback-easing;
       svg { width: 18px; height: 18px; opacity: 0; transition: opacity v.$feedback-duration v.$feedback-easing; }
     }
+    // 访客胶囊没有创建钮，只剩一颗头像球：20 + 44 + 20 = 84 宽，头像落在 left 20 ——
+    // 与展开态面板左上角同一位置，所以展开时它只放大、不横移（.is-open 的宽度更大，
+    // 特异性也更高，这一条只负责收起态）。
+    &--guest {
+      .blog-personal__shell { width: 84px; }
+      .blog-personal__avatar { left: 20px; }
+    }
     // 面板高度用显式 height 而不是 grid-template-rows 0fr→1fr：浏览器把 fr 内插成
     // 「进度²」的高度，而头像的 top/left 是按进度线性走的，叠起来头像在视觉上就是
     // 一条折线。展开高度由组件量出内容高度后写进 --blog-personal-panel-height
@@ -461,7 +459,7 @@
     }
     &.is-settled .blog-personal__inner { overflow-y: auto; scrollbar-width: none; &::-webkit-scrollbar { display: none; } }
     // 加号（创建）不参加入场淡入：它在收起态就是可见的入口，不是面板内容。
-    &__identity, &__stats, &__range, &__note, &__register {
+    &__identity, &__stats, &__range, &__note {
       opacity: 0;
       transform: translateY(-8px);
       transition: opacity v.$feedback-duration v.$feedback-easing, transform v.$motion-duration v.$motion-easing;
@@ -530,7 +528,7 @@
                     max-width v.$motion-duration v.$motion-easing 55ms;
       }
       .blog-personal__identity, .blog-personal__stats, .blog-personal__range,
-      .blog-personal__note, .blog-personal__register {
+      .blog-personal__note {
         opacity: 1;
         transform: translateY(0);
         transition: opacity v.$feedback-duration v.$feedback-easing, transform v.$motion-duration v.$motion-easing;

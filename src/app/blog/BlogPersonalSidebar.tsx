@@ -18,15 +18,16 @@ export interface BlogPersonalSummary {
  * 目录页左侧的信息侧栏。两个列表共用这一副外壳，内容按登录状态分两种：
  *   · 登录用户 —— 头像、昵称、获得统计、五个文章范围、创建入口
  *   · 访客（`user` 为 null）—— 头像位换成通用图标，身份写「未登录」，
- *     正文给一条登录说明与注册去向，胶囊左端那颗「创建」换成「登录」
- * 几何与交互（桌面 280px 卡片、窄屏悬浮胶囊）两种状态完全相同，
- * 所以访客那一支只换内容，外壳、蒙版、测量与过渡都由下面这份代码统一承担。
+ *     正文一句登录后可见的范围说明；统计、个人范围与创建入口都没有，
+ *     卡片里也不放按钮（登录入口在顶栏）
+ * 几何与交互（桌面 280px 卡片、窄屏悬浮胶囊）两种状态同一套代码承担；
+ * 访客的胶囊没有创建钮，只剩一颗头像球，宽度由 `.blog-personal--guest` 单独给。
  */
 export default function BlogPersonalSidebar({ user, summary = null, scope = 'all', basePath = '/blog' }: {
   user: { id: string; username: string; frameUrl: string | null } | null;
   summary?: BlogPersonalSummary | null;
   scope?: BlogScope;
-  /** 范围链接与登录回跳指向哪个目录页；`/explore` 传自己的路径。 */
+  /** 文章范围的链接指向哪个目录页；默认站内目录 `/blog`。 */
   basePath?: string;
 }) {
   const [open, setOpen] = useState(false);
@@ -129,7 +130,6 @@ export default function BlogPersonalSidebar({ user, summary = null, scope = 'all
     return p.size ? `${basePath}?${p}` : basePath;
   }
 
-  const loginHref = `/login?next=${encodeURIComponent(basePath)}`;
   const toggleLabel = user
     ? (open ? '收起我的博客' : '展开我的博客')
     : (open ? '收起访客信息' : '展开访客信息');
@@ -137,7 +137,7 @@ export default function BlogPersonalSidebar({ user, summary = null, scope = 'all
   return (
     <aside
       ref={host}
-      className={`blog-personal${open ? ' is-open' : ''}${open && settled ? ' is-settled' : ''}`}
+      className={`blog-personal${user ? '' : ' blog-personal--guest'}${open ? ' is-open' : ''}${open && settled ? ' is-settled' : ''}`}
       aria-label={user ? '我的博客' : '访客信息'}
       onBlur={(event) => {
         if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setOpen(false);
@@ -218,19 +218,17 @@ export default function BlogPersonalSidebar({ user, summary = null, scope = 'all
                 </nav>
               </>
             ) : (
+              /* 访客没有身份可链、没有统计、也没有个人范围：这张卡只报「未登录」和一句
+                 登录后可见的范围说明。登录入口留给顶栏，卡片里不放按钮。 */
               <>
-                {/* 访客没有身份可链、没有统计、也没有个人范围：这一格只报「未登录」，
-                    并把注册这条去向写在卡片里（窄屏展开后同样点得到）。 */}
                 <span className="blog-personal__identity"><span>未登录</span></span>
                 <p className="blog-personal__note">登录后可查看「我发布的」「我赞过的」等文章范围。</p>
-                <Link className="blog-personal__register" href={`/register?next=${encodeURIComponent(basePath)}`}>
-                  注册
-                </Link>
               </>
             )}
-            {/* 绝对定位的「创建 / 登录」占位：桌面不占位（CSS 里 display:none），窄屏展开时
-                在面板内容下方空出按钮那一格，见 _directory.scss 的 __create-space 说明。 */}
-            <span className="blog-personal__create-space" aria-hidden="true" />
+            {/* 绝对定位的「创建」占位：桌面不占位（CSS 里 display:none），窄屏展开时
+                在面板内容下方空出按钮那一格，见 _directory.scss 的 __create-space 说明。
+                访客没有那颗按钮，就不会留这一格。 */}
+            {user && <span className="blog-personal__create-space" aria-hidden="true" />}
           </div>
         </div>
         {/*
@@ -240,18 +238,13 @@ export default function BlogPersonalSidebar({ user, summary = null, scope = 'all
           ⚠️ 它必须在 `.blog-personal__panel` **外面**：面板收起时整块 0 高，放进去
           加号会跟着被裁掉；而它是收起态唯一的创建入口。
 
-          访客这一格换成登录：几何一字不变（窄屏左端圆钮、展开后长成 105px 的实底按钮），
-          所以胶囊与面板的动画在两种状态下完全一致。
+          访客没有这一格：卡片里不放按钮，收起态的胶囊只剩一颗头像球
+          （几何见 _directory.scss 的 `.blog-personal--guest`）。
         */}
-        {user ? (
+        {user && (
           <Link href="/blog/upload" className="upload-button blog-personal__create">
             <span className="icon icon-add" aria-hidden="true" />
             <span className="blog-personal__create-label">创建</span>
-          </Link>
-        ) : (
-          <Link href={loginHref} className="upload-button blog-personal__create">
-            <span className="icon icon-person-circle" aria-hidden="true" />
-            <span className="blog-personal__create-label">登录</span>
           </Link>
         )}
       </div>

@@ -98,7 +98,12 @@ test.describe('对外列表 /explore', () => {
     // 侧栏、工具栏与搜索框都该在（这是页面结构，不是「有没有内容」）。
     // 访客侧栏与站内目录同一副信息卡：身份是「未登录」，登录入口就在卡里。
     await expect(page.locator('.blog-personal'), '访客也要有左侧信息卡').toHaveCount(1);
-    await expect(page.locator('.blog-personal a[href^="/login"]'), '访客侧栏要给出登录入口').toHaveCount(1);
+    // 访客侧栏只报身份：登录 / 注册的入口留在顶栏，卡片里不放按钮。
+    await expect(
+      page.locator('.blog-personal a[href^="/login"], .blog-personal a[href^="/register"]'),
+      '访客侧栏不该带登录 / 注册入口'
+    ).toHaveCount(0);
+    await expect(page.locator('.blog-personal__create'), '访客侧栏没有创建入口').toHaveCount(0);
     await expect(page.locator('.blog-filters')).toHaveCount(1);
     await expect(page.locator('.blog-filters .search-form')).toHaveCount(1);
     await expect(page.locator('.blog-filters .blog-category-select')).toHaveCount(1);
