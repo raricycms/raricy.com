@@ -24,13 +24,20 @@ export interface BlogPersonalSummary {
  * 几何与交互（桌面 280px 卡片、窄屏悬浮胶囊）两种状态同一套代码承担；
  * 访客的胶囊没有创建钮，只剩一颗头像球；`.blog-personal--guest` 在窄屏整颗隐藏
  * （手机上它会压住内容，登录入口本来就在顶栏）。
+ *
+ * 「文章范围」与「创建」只对能进站内目录（core+）的人有意义：/explore 复用本卡时
+ * 传 showRanges={false} / showCreate={false}，避免链到进不去的 /blog。
  */
-export default function BlogPersonalSidebar({ user, summary = null, scope = 'all', basePath = '/blog' }: {
+export default function BlogPersonalSidebar({ user, summary = null, scope = 'all', basePath = '/blog', showRanges = true, showCreate = true }: {
   user: { id: string; username: string; frameUrl: string | null } | null;
   summary?: BlogPersonalSummary | null;
   scope?: BlogScope;
   /** 文章范围的链接指向哪个目录页；默认站内目录 `/blog`。 */
   basePath?: string;
+  /** 是否显示「我发布的」等文章范围（只有写路径在 /blog 的 core+ 需要）。 */
+  showRanges?: boolean;
+  /** 是否显示「创建」入口（指向 /blog/upload，core+ 才能用）。 */
+  showCreate?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [narrow, setNarrow] = useState(false);
@@ -140,7 +147,7 @@ export default function BlogPersonalSidebar({ user, summary = null, scope = 'all
   return (
     <aside
       ref={host}
-      className={`blog-personal${user ? '' : ' blog-personal--guest'}${open ? ' is-open' : ''}${open && settled ? ' is-settled' : ''}`}
+      className={`blog-personal${user ? '' : ' blog-personal--guest'}${showCreate ? '' : ' blog-personal--no-create'}${open ? ' is-open' : ''}${open && settled ? ' is-settled' : ''}`}
       aria-label={user ? '我的博客' : '访客信息'}
       onBlur={(event) => {
         if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setOpen(false);
@@ -202,6 +209,7 @@ export default function BlogPersonalSidebar({ user, summary = null, scope = 'all
                   <div className="blog-comments" title="收到评论"><dt><span className="icon icon-chat-dots_new" aria-hidden="true" /><span className="visually-hidden">收到评论</span></dt><dd className="numeric">+{summary?.commentsReceived ?? 0}</dd></div>
                   <div className="blog-fish" title="收获鱼干"><dt><span className="icon icon-fish" aria-hidden="true" /><span className="visually-hidden">收获鱼干</span></dt><dd className="numeric">+{summary?.fishReceived ?? 0}</dd></div>
                 </dl>
+                {showRanges && (
                 <nav className="blog-personal__ranges" aria-label="文章范围">
                   {BLOG_SCOPES.map((item) => (
                     <Link
@@ -219,6 +227,7 @@ export default function BlogPersonalSidebar({ user, summary = null, scope = 'all
                     </Link>
                   ))}
                 </nav>
+                )}
               </>
             ) : (
               /* 访客没有身份可链、没有统计、也没有个人范围：这张卡只报「未登录」和一句
@@ -231,7 +240,7 @@ export default function BlogPersonalSidebar({ user, summary = null, scope = 'all
             {/* 绝对定位的「创建」占位：桌面不占位（CSS 里 display:none），窄屏展开时
                 在面板内容下方空出按钮那一格，见 _directory.scss 的 __create-space 说明。
                 访客没有那颗按钮，就不会留这一格。 */}
-            {user && <span className="blog-personal__create-space" aria-hidden="true" />}
+            {user && showCreate && <span className="blog-personal__create-space" aria-hidden="true" />}
           </div>
         </div>
         {/*
@@ -244,7 +253,7 @@ export default function BlogPersonalSidebar({ user, summary = null, scope = 'all
           访客没有这一格：卡片里不放按钮，收起态的胶囊只剩一颗头像球
           （几何见 _directory.scss 的 `.blog-personal--guest`）。
         */}
-        {user && (
+        {user && showCreate && (
           <Link href="/blog/upload" className="upload-button blog-personal__create">
             <span className="icon icon-add" aria-hidden="true" />
             <span className="blog-personal__create-label">创建</span>

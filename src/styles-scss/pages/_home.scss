@@ -733,7 +733,11 @@ html:not(.js) {
   .home-stage.is-expanded .home-stage__copy { display: none; }
 
   .home-stage.is-expanded .home-features {
-    position: static;
+    // 必须定位在蒙层之上：absolute + z-index:1 的 .home-stage__scrim 是定位元素，
+    // 这一层若写 static，卡片表面会被蒙层压暗/模糊（而卡片内容的 z-index:2 又浮在
+    // 蒙层上，读起来是半张卡被盖住）。relative 不改变普通流位置，只把整层抬上去。
+    position: relative;
+    z-index: 3;
     min-height: 100%;
     justify-content: flex-start;
     padding: 24px 18px 40px;
@@ -741,8 +745,9 @@ html:not(.js) {
 }
 
 /* 没有脚本时日月也要看得见：天空层在窄画幅里被裁到右边缘之外，这里把它挪回
-   画幅右上。有脚本时 layoutSky 用内联样式覆盖（内联优先），两处目标一致。 */
-@media (max-width: 1023px) {
+   画幅右上。有脚本时 layoutSky 用内联样式覆盖（内联优先），两处目标一致。
+   1024 宽是竖屏 iPad Pro 的视口宽，一并纳入，避免再差一像素被裁。 */
+@media (max-width: 1024px) {
   .hero-scene__layer[data-depth='0.12'] { translate: -430px -30px; }
   .hero-scene__sun circle,
   .hero-scene__moon circle { scale: 0.5; }

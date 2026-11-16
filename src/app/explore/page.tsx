@@ -5,7 +5,7 @@ import type { Metadata } from 'next';
 import { prisma } from '@/lib/db';
 import { rateLimit, RULES } from '@/lib/rate-limit';
 import { clientIp } from '@/lib/request-ip';
-import { getCurrentUser } from '@/lib/auth';
+import { getCurrentUser, isCoreUser } from '@/lib/auth';
 import { frameUrlFor } from '@/lib/frame-service';
 import { getBlogDirectorySummary, listPublicBlogs, listPublicCategoryFacets } from '@/lib/blog-service';
 import Avatar from '@/app/components/Avatar';
@@ -103,9 +103,11 @@ export default async function ExplorePage({
 }) {
   const sp = await searchParams;
   const { page, category, search } = readParams(sp);
-  // 这一页对所有人开放，会话可有可无：登录用户看到的侧栏要在身份、统计与「创建」
-  // 入口上与顶栏一致，只有访客才走「未登录」那一支。
+  // 这一页对所有人开放，会话可有可无：登录用户看到的侧栏要在身份与统计上与顶栏一致，
+  // 只有访客才走「未登录」那一支。文章范围与「创建」入口只对能进站内目录的 core+ 成立
+  // —— /blog 有 requireCoreUser，普通登录用户点了只会被挡回来。
   const viewer = await getCurrentUser();
+  const viewerCanOpenDirectory = isCoreUser(viewer);
 
   // ── 搜索限频 ────────────────────────────────────────────────────────────────
   // 只对**真的带搜索词**的请求计数。写成无条件计数的话，光是翻页 / 换栏目就把额度
@@ -185,12 +187,15 @@ export default async function ExplorePage({
 
       <div className="container">
         <div className="blog-layout blog-directory">
-          {/* 侧栏按会话分两支：登录用户给身份、统计与「创建」（与站内目录同一份数据），
-              访客给「未登录」与可见范围说明，卡片里不放按钮。 */}
+          {/* 侧栏按会话分两支：登录用户给身份与统计，访客给「未登录」与可见范围说明。
+              文章范围与「创建」只在 core+ 时给，且范围链接指回站内目录 /blog ——
+              /explore 本身不实现 scope 参数，指到本页会变成点不动的死链。 */}
           <BlogPersonalSidebar
             user={viewer ? { id: viewer.id, username: viewer.username, frameUrl: frameUrlFor(viewer) } : null}
             summary={viewer ? await getBlogDirectorySummary(viewer.id, []) : null}
-            basePath="/explore"
+            basePath="/blog"
+            showRanges={viewerCanOpenDirectory}
+            showCreate={viewerCanOpenDirectory}
           />
 
           {/* 不能是 <main>：根 layout 已经有一个 <main>，嵌套 main 会让读屏读出两个

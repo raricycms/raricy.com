@@ -154,7 +154,7 @@ export default function HeroLandscape() {
     const sky = scene.querySelector<SVGGElement>('.hero-scene__layer[data-depth="0.12"]');
     function layoutSky() {
       if (!scene || !sky) return;
-      if (!window.matchMedia('(max-width: 1023px)').matches) {
+      if (!window.matchMedia('(max-width: 1024px)').matches) {
         sky.style.removeProperty('translate');
         sky.querySelectorAll('circle').forEach((c) => c.style.removeProperty('scale'));
         return;

@@ -380,6 +380,12 @@
     &--guest {
       display: none;
     }
+    // 没有「创建」时（/explore 的非 core 登录用户）胶囊不再保留左端那一格：
+    // 宽度回到 20 + 44 + 20 的一颗头像球，头像与展开态同一位置（left 20）。
+    &--no-create {
+      .blog-personal__shell { width: 84px; }
+      .blog-personal__avatar { left: 20px; }
+    }
     // 面板高度用显式 height 而不是 grid-template-rows 0fr→1fr：浏览器把 fr 内插成
     // 「进度²」的高度，而头像的 top/left 是按进度线性走的，叠起来头像在视觉上就是
     // 一条折线。展开高度由组件量出内容高度后写进 --blog-personal-panel-height

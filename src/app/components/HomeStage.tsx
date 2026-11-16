@@ -17,6 +17,14 @@ type Props = {
 export default function HomeStage({ blogHref, gamesBlocked }: Props) {
   const stageRef = useRef<HTMLDivElement>(null);
   const [expanded, setExpanded] = useState(false);
+  // inert 只能等挂载后再加：SSR 里没有「展开态」这个概念，若把 inert 写进首屏 HTML，
+  // 禁用 JS 的访客会看到卡片却点不动（`html:not(.js)` 只负责版面回退，管不了惰性）。
+  // 挂载后客户端接管，收起态卡片与展开态文字层才真正退出焦点序列。
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   useEffect(() => {
     const stage = stageRef.current;
@@ -81,7 +89,7 @@ export default function HomeStage({ blogHref, gamesBlocked }: Props) {
           <HeroLandscape />
           <div className="home-stage__scrim" aria-hidden="true" />
 
-          <div className="home-container home-stage__copy" inert={expanded}>
+          <div className="home-container home-stage__copy" inert={mounted && expanded}>
             <div className="hero-content">
               <p className="hero-eyebrow">Raricy.com</p>
               <h1 className="hero-title" id="hero-title">聪明山</h1>
@@ -91,7 +99,7 @@ export default function HomeStage({ blogHref, gamesBlocked }: Props) {
             </div>
           </div>
 
-          <section className="home-features" id="features" aria-labelledby="features-title" inert={!expanded}>
+          <section className="home-features" id="features" aria-labelledby="features-title" inert={mounted && !expanded}>
             <h2 className="home-display" id="features-title" tabIndex={-1}>探索</h2>
             <div className="home-grid">
               <div className="home-grid-item">
