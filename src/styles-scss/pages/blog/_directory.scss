@@ -375,12 +375,10 @@
                   background-color v.$feedback-duration v.$feedback-easing;
       svg { width: 18px; height: 18px; opacity: 0; transition: opacity v.$feedback-duration v.$feedback-easing; }
     }
-    // 访客胶囊没有创建钮，只剩一颗头像球：20 + 44 + 20 = 84 宽，头像落在 left 20 ——
-    // 与展开态面板左上角同一位置，所以展开时它只放大、不横移（.is-open 的宽度更大，
-    // 特异性也更高，这一条只负责收起态）。
+    // 未登录访客的悬浮球在窄屏整颗去掉：它只承载「未登录」与登录后可见范围的说明，
+    // 手机上固定在右下角会压住内容，而登录入口本来就在顶栏。
     &--guest {
-      .blog-personal__shell { width: 84px; }
-      .blog-personal__avatar { left: 20px; }
+      display: none;
     }
     // 面板高度用显式 height 而不是 grid-template-rows 0fr→1fr：浏览器把 fr 内插成
     // 「进度²」的高度，而头像的 top/left 是按进度线性走的，叠起来头像在视觉上就是

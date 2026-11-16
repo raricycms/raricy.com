@@ -189,6 +189,8 @@ export default function AdminUserActions({
   // 四个弹窗仍渲染在这个根节点里（它们 position:fixed，不参与这排按钮的排版）。
   // 入场动画统一用 `animation-fill-mode: backwards`：播完 transform 回到 none，
   // 不会给 fixed 后代留下包含块（见 pages/admin/_common.scss 的说明）。
+  //
+  // 每个弹窗的关闭入口只有标题栏那颗 ×，footer 只放会提交的操作。
   return (
     <div className="user-card__buttons">
       <Link href={`/u/${user.id}`} className="btn btn-sm btn-info">
@@ -344,9 +346,6 @@ export default function AdminUserActions({
                 </div>
               </div>
               <div className="modal-footer">
-                <button type="button" className="btn btn-secondary" disabled={busy} onClick={() => setModal(null)}>
-                  取消
-                </button>
                 <button type="button" className="btn btn-warning" disabled={busy} onClick={confirmBan}>
                   确认禁言
                 </button>
@@ -388,9 +387,6 @@ export default function AdminUserActions({
                 </div>
               </div>
               <div className="modal-footer">
-                <button type="button" className="btn btn-secondary" disabled={busy} onClick={() => setModal(null)}>
-                  取消
-                </button>
                 <button type="button" className="btn btn-success" disabled={busy} onClick={confirmUnban}>
                   确认解除
                 </button>
@@ -446,9 +442,6 @@ export default function AdminUserActions({
                 </div>
               </div>
               <div className="modal-footer">
-                <button type="button" className="btn btn-secondary" disabled={busy} onClick={() => setModal(null)}>
-                  取消
-                </button>
                 <button type="button" className="btn btn-primary" disabled={busy} onClick={sendNotification}>
                   发送
                 </button>
@@ -501,11 +494,6 @@ export default function AdminUserActions({
                 ) : (
                   <p className="user-modal-note">暂无禁言记录</p>
                 )}
-              </div>
-              <div className="modal-footer">
-                <button type="button" className="btn btn-secondary" onClick={() => setModal(null)}>
-                  关闭
-                </button>
               </div>
             </div>
           </div>

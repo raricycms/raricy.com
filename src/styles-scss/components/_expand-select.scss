@@ -92,6 +92,10 @@
     // 的 measurePlacement），写死的 420px 只是给 JS 未跑到时的兜底。
     max-height: var(--expand-select-max-height, min(420px, calc(100dvh - 240px)));
     overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    // 选项是胶囊：相邻两块紧贴时淡底会在圆角处连成一条，选中项与悬停项分不开。
+    gap: 4px;
     padding: 6px;
     opacity: 0;
     transform: translateY(-8px);
@@ -100,11 +104,19 @@
   }
 
   &__group-label {
-    padding: 8px 12px 4px;
+    // 底部留白交给 .expand-select__group 的 gap：原本 4px 会与 gap 叠成 8px。
+    padding: 8px 12px 0;
     color: var(--color-text-secondary);
     font-size: 0.72rem;
     font-weight: 600;
     letter-spacing: 0.02em;
+  }
+
+  // 有标题的分组：组内选项自己也要 4px 间距（列表的 gap 只作用于组与组之间）。
+  &__group {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
   }
 
   &__option {

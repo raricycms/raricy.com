@@ -1135,11 +1135,11 @@
 .chat-lightbox {
   position: fixed;
   inset: 0;
-  z-index: 9999;
+  z-index: v.$z-viewer;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(0, 0, 0, 0.8);
+  background: v.$scrim-viewer;
   // 固定层覆盖整个视口，图片也要避开刘海与 Home Indicator。
   padding: var(--safe-top) var(--safe-right) var(--safe-bottom) var(--safe-left);
   cursor: zoom-out;
@@ -1472,43 +1472,19 @@
 }
 
 // ── 发起私聊弹窗 ─────────────────────────────────────────────────────────────
-
-.chat-new-modal {
-  max-width: 420px;
-  width: calc(100vw - 40px);
-}
+// 宽度走 .modal-dialog 的默认 500px 参照，这里不再单独约束。
 
 // ── 消息详情浮层 ─────────────────────────────────────────────────────────────
 // 触屏在列表里关掉了原生选字（长按要留给操作面板），选字 / 复制改在这里做；
 // 桌面单击正文也落到这里。外壳沿用站内弹窗（.modal-overlay / .modal-dialog /
-// .modal-content），面板自己只管版式与入场动画。
-//
-// 【入场】对齐个人主页 .bento-modal（pages/_profile.scss）：遮罩 540ms 淡入、
-// 面板轻抬 8px + 0.98 缩放，节奏引用 §6.2 的「入场」档；减少动态效果下两者
-// 都直接到终态（见文件末尾的 reduced-motion 区块）。
-.chat-detail-overlay {
-  animation: chat-detail-fade v.$feedback-duration v.$feedback-easing;
-}
+// .modal-content）。
 .chat-detail {
-  width: calc(100vw - 40px);
   max-width: 560px;
-  animation: chat-detail-rise v.$motion-duration v.$motion-easing;
 
   // 打开时焦点落在对话框本身（见组件注释），容器不该画 outline；
   // 键盘焦点仍在内部按钮上，各自的 :focus-visible 照常可见。
   &:focus {
     outline: none;
-  }
-}
-@keyframes chat-detail-fade {
-  from {
-    opacity: 0;
-  }
-}
-@keyframes chat-detail-rise {
-  from {
-    opacity: 0;
-    transform: translateY(8px) scale(0.98);
   }
 }
 
@@ -2301,11 +2277,6 @@
   }
   ::view-transition-old(chat-list),
   ::view-transition-new(chat-list) {
-    animation: none;
-  }
-  // 消息详情的遮罩淡入 / 面板轻抬直接到终态。
-  .chat-detail-overlay,
-  .chat-detail {
     animation: none;
   }
 }

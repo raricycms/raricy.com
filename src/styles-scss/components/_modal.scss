@@ -1,77 +1,121 @@
-// Bootstrap-like modal (no Bootstrap required)
+@use '../abstracts/variables' as v;
+@use '../abstracts/mixins' as m;
+
+// 弹窗外壳：全站模态的基态。
 //
-// 小屏（或内容高的弹窗）必须能滚：早期 overlay 是 overflow:visible + 垂直居中，
+// `.modal` 与 `.modal-overlay` 是同一套外壳的两个历史类名（Bootstrap 风格的标记由本站
+// 自己实现，不加载 Bootstrap），差别只在开关类：
+//   .modal          —— 开关类是 .is-open，博客管理、读者可见性、收藏等窄弹窗手写
+//   .modal-overlay  —— 开关类是 .show，讨论、图床 / 表情 / 选人、练手盘、栏目编辑等十来处共用
+// 两者共用 modal-scrim / modal-frame 两个 mixin（abstracts/_mixins.scss），不再各写一份。
+//
+// 小屏（或内容高的弹窗）必须能滚：早期 overlay 是 overflow: visible + 垂直居中，
 // 内容比视口高时上下同时溢出、又没有滚动容器 —— 「保存」这类底部按钮永远点不到。
-// 实测 390×664（iPhone 13）下栏目编辑弹窗高 823px，按钮整条在屏外；桌面 720px 高
-// 也只是按钮中心恰好卡在 707px 才侥幸能点。
+// 实测 390×664（iPhone 13）下栏目编辑弹窗高 823px，按钮整条在屏外。
 //
-// 两个坑：
-//   1. flex 容器里 align-items:center 会把超高内容的**顶部**挤出可滚区域（滚不上去），
-//      所以垂直定位交给子元素的 margin:auto —— 空间不足时 auto 边距退化为 0，
-//      从顶部开始排布，两端都滚得到；空间足够时仍是居中。
-//   2. 容器要留 padding，滚动到两端时不贴边。
+// 垂直定位交给卡片的 margin: auto，不用 flex 的 align-items: center 收尾：居中会把
+// 超高内容的顶部挤出可滚区域（滚不上去），auto 边距在空间不足时退化为 0，从顶部排布，
+// 两端都滚得到。安全区由外壳的内边距让出，卡片不再自己让。
+
+// `.modal-overlay` 的开关：显示/隐藏就是 display 切换（元素随组件卸载，没有退场）。
+// `.modal` 的基态写在下面的「出现与离开」一节 —— 它是常驻元素，靠 visibility 切换。
+.modal-overlay {
+  @include m.modal-scrim;
+  display: none;
+}
+
+.modal-overlay.show {
+  display: flex;
+}
+
+.modal-dialog {
+  @include m.modal-frame;
+}
+
+// ── 出现与离开 ──────────────────────────────────────────────────────────────
+//
+// 只有 `.modal`（开关类 `.is-open`）做动画：它的四个使用者（点赞者 / 投喂者名单、
+// 可见性、删除确认、收藏夹选择）都把外壳常驻在页面里，关闭只是摘掉 `.is-open`，
+// 元素还在文档里，退场才有时间播完。
+//
+// `.modal-overlay` 由组件在关闭时直接卸载，摘掉 `.show` 与移除节点是同一帧，
+// 没有可播退场的时刻 —— 它保持 display 开关、不加动画。
+//
+// 卡片：入场从视口底部飞入，离场飞出底部，曲线用全站形变档（540ms）。
+// 遮罩：标准反馈档（透明度，240ms ease-out），画在 ::before 上 —— 直接给容器设
+// opacity 会把卡片一起变透明。关闭时遮罩先淡完（240ms），卡片继续飞到 540ms 再
+// 整体 visibility: hidden，两段时间线各自独立，互不牵连。
+
 .modal {
-  position: fixed;
-  inset: 0;
-  display: none;
-  align-items: center;
-  justify-content: center;
-  background: rgba(0, 0, 0, 0.5);
-  z-index: 1050;
-  overflow-y: auto;
-}
+  @include m.modal-scrim;
+  display: flex;
+  background: none;
+  visibility: hidden;
+  // 关闭瞬间就放开指针：退场期间遮罩已经透明，但容器还占着整个视口 540ms，
+  // 不关掉的话这段时间里页面点不动。
+  pointer-events: none;
+  // 关闭：等卡片飞完（540ms）再隐藏，否则退场会被掐断。
+  transition: visibility 0s v.$motion-duration;
 
-/* 两套固定遮罩共用安全区留白：.modal-overlay 也用于讨论、资源选择和后台表单。
-   它们不受 main 的内距保护；上下保留 1rem 滚动边距，左右再由 dialog 留出 1rem。 */
-.modal,
-.modal-overlay {
-  padding: calc(1rem + var(--safe-top)) var(--safe-right) calc(1rem + var(--safe-bottom))
-    var(--safe-left);
-}
-
-/* 全站 .modal-overlay 基态（R3-646 从 pages/admin/_users.scss 归位到本文件）：
-   讨论、图床 / 表情 / 帖子选择器、练手盘、栏目编辑等十来处都用这一个类定位遮罩；
-   它不属于管理端用户页，删了这些弹窗会退化成页面流里的一块透明 div。
-   与 .modal 同一套「可滚弹窗」约定：内容比视口高时整层可滚，垂直定位交给子元素
-   margin:auto（flex 的 align-items:center 会把超高内容的顶部挤出可滚区域）。
-   z-index 10000 与 .modal 的 1050 是两套壳的既有层级，是否统一待视觉决定。 */
-.modal-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background: rgba(0, 0, 0, 0.5);
-  z-index: 10000;
-  display: none;
-  align-items: center;
-  justify-content: center;
-  overflow-y: auto;
-
-  &.show {
-    display: flex;
+  &::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background: v.$scrim-modal;
+    opacity: 0;
+    transition: opacity v.$feedback-duration v.$feedback-easing;
   }
 }
 
-.modal-overlay .modal-dialog { margin: auto; }
+.modal.is-open {
+  visibility: visible;
+  pointer-events: auto;
+  transition: visibility 0s;
 
-.modal.is-open { display: flex; }
+  &::before {
+    opacity: 1;
+  }
+}
 
-.modal-dialog {
-  width: calc(100% - 2rem);
-  max-width: 500px;
-  margin: auto;
+.modal .modal-dialog {
+  // 遮罩是 fixed 的 ::before，绘制在普通流之上；卡片必须自己站起来一层，
+  // 否则入场结束后会被压在遮罩下面（点到的是遮罩，卡片也变暗）。
+  position: relative;
+  z-index: 1;
+  // 终点用固定的 80vh，不掺百分比：`calc(50vh + 125%)` 里的百分比相对卡片自身高度，
+  // 而收藏夹 / 名单这类弹窗打开瞬间还在加载列表，高度会从「加载中」涨到「有内容」——
+  // 起点随之变大，卡片在动画中途突然向下跳一格，读起来就是「顿一下」。
+  // 80vh 对 150~320px 高的卡片都足以整张出屏，观感与原来的 50vh + 125% 基本一致。
+  transform: translateY(80vh);
+  transition: transform v.$motion-duration v.$motion-easing;
+}
+
+.modal.is-open .modal-dialog {
+  transform: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .modal,
+  .modal::before,
+  .modal .modal-dialog {
+    transition: none;
+  }
+
+  .modal .modal-dialog {
+    transform: none;
+  }
 }
 
 .modal-content {
   padding: 10px;
   background: var(--color-background-card);
   color: var(--color-text-primary);
-  border-radius: 30px;
+  border-radius: v.$radius-card;
   box-shadow: var(--shadow-card-brand);
   overflow: hidden;
 }
 
+// 结构性线条一律不画（§3.6）：标题区与操作区靠留白分段，不靠横线。
 .modal-header,
 .modal-footer {
   display: flex;
@@ -80,18 +124,13 @@
   padding: 1rem;
 }
 
-// .modal-header {
-//   border-bottom: 1px solid var(--color-background-content);
-// }
-
-// .modal-footer {
-//   border-top: 1px solid var(--color-background-content);
-//   gap: .5rem;
-// }
-
 .modal-title { margin: 0; font-size: 1.25rem; }
 
 .modal-body { padding: 1rem; }
+
+// 弹窗的出现动画暂时关掉：遮罩与卡片都直接到终态。
+// 需要恢复时，把 modal-fade（遮罩 240ms 反馈档）与 modal-rise（卡片上抬 8px + 0.98
+// 缩放，540ms 形变档）挂回 .modal / .modal-overlay 与卡片根，并在 reduced-motion 里关掉。
 
 // List group styles used inside modal
 //
@@ -119,3 +158,16 @@
 }
 .list-group .list-group-item:last-child { border-bottom: none; }
 
+// 列表的空态 / 加载 / 失败行。
+// 此前这两个弹窗（点赞者、投喂者名单）直接把 `.text-muted` 塞进 `.list-group`：
+// `.text-muted` 只给颜色，零内距，整块只有一行字的高（实测 448×21）、文字贴着圆角
+// 边缘，看起来像一条被压扁的灰条。这里补上与 `.list-group-item` 同一套内距与底色，
+// 空态才像列表里的一格，而不是漏排的一行。
+.list-group__empty {
+  padding: 1.25rem 0.75rem;
+  background: var(--color-background-card);
+  color: var(--color-text-secondary);
+  font-size: 0.9rem;
+  line-height: 1.6;
+  text-align: center;
+}

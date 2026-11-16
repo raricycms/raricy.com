@@ -663,13 +663,11 @@
 //  投喂弹窗
 // ═══════════════════════════════════════════════════════
 
+// 外壳、遮罩、卡片取全站模态那一套（abstracts/_mixins.scss）。遮罩独立成层是因为
+// 它要接点击关闭；用 fixed 定位，不跟着外壳的安全区内边距缩进。
 .feed-modal {
+  @include m.modal-scrim;
   display: none;
-  position: fixed;
-  inset: 0;
-  z-index: 3000;
-  align-items: center;
-  justify-content: center;
 
   &--open {
     display: flex;
@@ -677,36 +675,19 @@
 }
 
 .feed-modal__backdrop {
-  position: absolute;
+  position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.65);
+  background: $scrim-modal;
 }
 
 .feed-modal__content {
+  @include m.modal-card;
   position: relative;
-  background: var(--color-background-card);
-  border-radius: 30px;
   padding: $space-8 $space-8 $space-6;
-  max-width: 380px;
-  width: 90%;
   text-align: center;
-  box-shadow: var(--shadow-card-brand);
-  animation: feedFadeIn $motion-duration $motion-easing;
 
   @media (max-width: 480px) {
     padding: $space-6 $space-4 $space-4;
-    border-radius: 24px;
-  }
-}
-
-@keyframes feedFadeIn {
-  from {
-    opacity: 0;
-    transform: translateY(20px) scale(0.95);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0) scale(1);
   }
 }
 

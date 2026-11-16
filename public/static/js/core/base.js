@@ -328,7 +328,7 @@ function transitionTheme(themeName) {
     //
     // 每个目标都会拿到一条独立的 WAAPI 动画，代价落在**每一帧**上：这一帧要把这些
     // 元素的颜色重新算一遍再重绘。博客目录一页 50 篇，实测 810 个目标，其中 630 多个
-    // 在视口外（屏幕里只放得下 4 张卡）—— 白算。帧间隔被拖到 100ms 以上时，360ms 的
+    // 在视口外（屏幕里只放得下 4 张卡）—— 白算。帧间隔被拖到 100ms 以上时，240ms 的
     // 时间线只画得出 2~4 帧，观感就是「整页直接跳色、没有过渡」；同一时刻打开轻页面
     // （通讯录、设置）却是平滑的，差别只在目标数量。
     //
@@ -364,11 +364,11 @@ function transitionTheme(themeName) {
             if (before[name] !== style[name]) { from[name] = before[name]; to[name] = style[name]; }
         }
         if (!Object.keys(to).length) continue;
-        // 360ms / ease-out：整页换色属于反馈档（颜色、底色、描边、阴影、透明度），
+        // 240ms / ease-out：整页换色属于反馈档（颜色、底色、描边、阴影、透明度），
         // 见 _variables.scss 的 $feedback-duration / $feedback-easing 与
         // docs/frontend-styles.md §6.2/§6.4。日月旋转变形仍走 540ms 那条曲线，
         // 两者时长不同，改一处要看清另一处。
-        const effect = new KeyframeEffect(element, [from, to], { duration: 360, easing: 'ease-out', pseudoElement: pseudo });
+        const effect = new KeyframeEffect(element, [from, to], { duration: 240, easing: 'ease-out', pseudoElement: pseudo });
         const animation = new Animation(effect, document.timeline);
         animation.id = 'theme-colors';
         animations.push(animation);
@@ -378,7 +378,7 @@ function transitionTheme(themeName) {
     // 起跑时刻是**下一帧**，不是现在。
     // 上面两圈同步循环（采样 + 建动画）在重页面上要几百毫秒，而
     // `document.timeline.currentTime` 读到的是**最近一次绘制**的时间戳：把它当
-    // startTime，等于让这段阻塞先消耗掉一段 360ms 的时间线。放到 rAF 里读，拿到的
+    // startTime，等于让这段阻塞先消耗掉一段 240ms 的时间线。放到 rAF 里读，拿到的
     // 就是即将绘制的那一帧自己的时刻，进度从 0 开始 —— 阻塞再久也不吃掉渐变。
     for (const animation of animations) animation.play();
     requestAnimationFrame(function () {
@@ -680,6 +680,11 @@ function initSiteChrome() {
         toggler.addEventListener('click', function () {
             setNavbarOpen(!siteNavbar.classList.contains('open'));
         }, { signal });
+        // 展开时的暗色蒙版：点它收起，与点汉堡同一路（层级在顶栏之下，见 _header.scss）。
+        const navbarScrim = document.querySelector('.site-navbar-scrim');
+        if (navbarScrim) {
+            navbarScrim.addEventListener('click', closeNavbar, { signal });
+        }
         // 跨断点（如桌面端缩放 / 旋转）：离开 mobile 时清掉 .open，避免
         // aria-expanded 与 .site-navbar-collapse 的折叠状态错位。
         // ⚠️ 这里**不能**只调 closeNavbar()：已经收起时会早退，而移动端那次收起

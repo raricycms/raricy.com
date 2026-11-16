@@ -1629,9 +1629,6 @@ function FieldDialog({
           )}
         </div>
         <div className="bento-modal__foot">
-          <button type="button" className="bento-btn" onClick={onClose}>
-            取消
-          </button>
           <button
             type="button"
             className="bento-btn bento-btn--primary"
@@ -1654,4 +1651,3 @@ function FieldDialog({
     </div>
   );
 }
-

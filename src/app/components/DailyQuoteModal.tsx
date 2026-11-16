@@ -9,8 +9,8 @@ import DailyQuoteCard from './DailyQuoteCard';
 import DailyQuoteForm from './DailyQuoteForm';
 
 // 与 abstracts/_variables.scss 的 $feedback-duration 同值：关闭时内容、外壳与遮罩
-// 只改透明度，走反馈档 360ms，收完才真正 close()。
-const CLOSE_MS = 360;
+// 只改透明度，走反馈档 240ms，收完才真正 close()。
+const CLOSE_MS = 240;
 
 export default function DailyQuoteModal({ onClose, returnFocus }: { onClose: () => void; returnFocus?: RefObject<HTMLButtonElement | null> }) {
   const dialog = useRef<HTMLDialogElement>(null);

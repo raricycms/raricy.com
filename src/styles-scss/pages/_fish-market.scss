@@ -454,10 +454,7 @@
 }
 
 // ── 确认转账弹窗 ────────────────────────────────────────────────────────────
-
-.market-confirm {
-  max-width: 380px;
-}
+// 宽度走 .modal-dialog 的默认 500px 参照，这里不再单独约束。
 
 .market-confirm__to {
   display: flex;

@@ -8,12 +8,12 @@
 //   • 创建 / 编辑（弹出表单）/ 删除（阻断有子栏目或文章的）/ 启用切换。
 //   • 所有写操作走 /api/admin/categories[...]，成功后 router.refresh() 重新拉服务端数据。
 //
-// 【钉死的结构】栏目行根节点必须保留 `.article-card`，标题是 `.article-card__title`，
+// 【固定的结构】栏目行根节点必须保留 `.article-card`，标题是 `.article-card__title`，
 // slug 用 `<code>` —— tests/e2e/admin-permissions.spec.ts 按这三个选择器断言。
 // 编辑弹窗必须是 .modal-overlay.show > .modal-dialog > .modal-content > .modal-header /
 // .modal-body / .modal-footer，且字段顺序 名称 → slug → 父栏目 → 图标 → 排序权重 → 描述
 // （表单里 input.form-control 的第 0 / 1 个分别是名称与 slug）—— admin-permissions.spec 与
-// ios-app.spec 的长弹窗安全区用例都按它取元素。
+// ios-app.spec 的长弹窗安全区用例都按它取元素。关闭入口只有标题栏那颗 ×。
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { Fragment, useState, type CSSProperties } from 'react';
@@ -492,9 +492,6 @@ export default function AdminCategoryEditor({ initialCategories, initialParents 
                 {error && <p className="admin-cat-error">{error}</p>}
               </div>
               <div className="modal-footer">
-                <button type="button" className="btn btn-secondary" disabled={busy} onClick={() => setForm(null)}>
-                  取消
-                </button>
                 <button type="button" className="btn btn-primary" disabled={busy} onClick={save}>
                   {busy ? '保存中…' : '保存'}
                 </button>

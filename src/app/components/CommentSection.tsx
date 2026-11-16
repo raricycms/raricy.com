@@ -557,7 +557,7 @@ export default function CommentSection({
           src/styles-scss/components/_modal.scss 那套（.modal{display:none} +
           .modal.is-open{display:flex}），`.fade`/`.show` 只控透明度、不控显隐。
           写成 `show` 的话弹窗永远 display:none，删除按钮点了没反应 —— 评论删不掉。
-          同页 BlogManageDialogs 的删除框即此写法，保持同构。 */}
+          同页 BlogManageDialogs 的删除框即此写法，保持同构。关闭入口只有标题栏那颗 ×。 */}
       <div
         className={`modal${deleteTarget ? ' is-open' : ''}`}
         id="commentDeleteModal"
@@ -591,9 +591,6 @@ export default function CommentSection({
               )}
             </div>
             <div className="modal-footer">
-              <button type="button" className="button button-primary" onClick={() => setDeleteTarget(null)}>
-                取消
-              </button>
               <button
                 type="button"
                 id="comment-confirm-delete-btn"
