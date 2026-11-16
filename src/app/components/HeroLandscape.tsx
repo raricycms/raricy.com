@@ -6,6 +6,37 @@ type OrientationEventConstructor = typeof DeviceOrientationEvent & {
   requestPermission?: () => Promise<'granted' | 'denied'>;
 };
 
+// 镜头推进：每层放大率 = 1 + depth × LENS_ZOOM，近层大、远层小 —— 读起来是相机
+// 朝山的方向推过去，而不是整幅画被均匀拉近。
+const LENS_ZOOM = 1.8;
+// 横移、纵移都乘上各自的放大率：主峰到画幅中心的距离正好是 430，所以不论哪层、
+// 不论放多大，峰顶都钉在屏幕中央；近层因为放大率高，位移也更大，纵深由此出来。
+const LENS_SHIFT_X = -430;
+const LENS_SHIFT_Y = 20.5;
+const LENS_MS = 720;
+
+// 与 $motion-easing 同一条 cubic-bezier(0.16, 1, 0.3, 1)。CSS 那边拿不到曲线求值，
+// 这里用牛顿法由 x 解 t 再取 y。
+const easeMotion = (() => {
+  const x1 = 0.16;
+  const y1 = 1;
+  const x2 = 0.3;
+  const y2 = 1;
+  const curve = (a: number, b: number, t: number) =>
+    3 * a * t * (1 - t) ** 2 + 3 * b * t ** 2 * (1 - t) + t ** 3;
+  return (p: number) => {
+    let t = p;
+    for (let i = 0; i < 5; i += 1) {
+      const dx = curve(x1, x2, t) - p;
+      if (Math.abs(dx) < 1e-4) break;
+      const slope = 3 * x1 * (1 - t) ** 2 + 6 * (x2 - x1) * t * (1 - t) + 3 * (1 - x2) * t ** 2;
+      if (Math.abs(slope) < 1e-6) break;
+      t = Math.min(1, Math.max(0, t - dx / slope));
+    }
+    return curve(y1, y2, t);
+  };
+})();
+
 // 原创矢量山景：各层共享同一画幅，远山移动最少，近景移动和放大最多。
 // SVG 本身参与 SSR；无 JS 或减少动态效果偏好下仍是一幅完整的插画。
 export default function HeroLandscape() {
@@ -19,7 +50,12 @@ export default function HeroLandscape() {
     if (!scene || !hero) return;
 
     const layers = Array.from(scene.querySelectorAll<SVGGElement>('[data-depth]'))
-      .map((element) => ({ element, depth: Number(element.dataset.depth) }));
+      .map((element) => ({
+        element,
+        depth: Number(element.dataset.depth),
+        // 天空层（含日月）包在世界层之外，不参与镜头推进 —— 天体在远处，不会跟着变大。
+        inWorld: Boolean(element.closest('.hero-scene__world')),
+      }));
     // 触屏倾斜的位移上限刻意比鼠标视差大一档：窄屏把整幅画按 940/1800 缩到一半，
     // 用户单位换算成屏幕像素后又打对折，而手持可倾斜的角度也远小于鼠标的横扫范围 ——
     // 两样一叠，沿用鼠标那套幅度时层与层只差几个像素，分层就看不出来了。
@@ -43,6 +79,15 @@ export default function HeroLandscape() {
     let x = 0;
     let y = 0;
     let scroll = 0;
+    // 视差的滚动基准：展开瞬间把当前滚动位置记成零点，之后只算增量 ——
+    // 点「开始探索」会一次性跳半屏，若按绝对位置算，层会被这一跳顶飞。
+    let scrollBaseY = 0;
+    let scrollSpanY = 1;
+    // 镜头推进进度 0→1：由 .home-stage 的 is-expanded 触发，时间驱动，走 540ms 贝塞尔。
+    let lens = 0;
+    let lensTarget = 0;
+    let lensFrom = 0;
+    let lensStart = -Infinity;
     let currentTheme = document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light';
     let orbitAngle = currentTheme === 'dark' ? -180 : 0;
     hero.style.setProperty('--hero-orbit-angle', `${orbitAngle}deg`);
@@ -56,6 +101,19 @@ export default function HeroLandscape() {
     });
     themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
 
+    function paint() {
+      for (const { element, depth, inWorld } of layers) {
+        const push = inWorld ? lens : 0;
+        // 视差（滚动/指针）与镜头推进共用同一个缩放，横向位移按放大率等比放大，
+        // 峰顶因此在任何倍率下都落在画面中央。
+        const scale = 1 + scroll * depth * 0.085 + depth * LENS_ZOOM * push;
+        const shiftX = LENS_SHIFT_X * scale * push;
+        const shiftY = LENS_SHIFT_Y * scale * push;
+        element.style.transform =
+          `translate(${x * depth * 12 + shiftX}px, ${y * depth * 8 - scroll * depth * 70 + shiftY}px) scale(${scale})`;
+      }
+    }
+
     function animate() {
       frame = 0;
       x += (targetX - x) * 0.085;
@@ -67,13 +125,14 @@ export default function HeroLandscape() {
         y = targetY;
         scroll = targetScroll;
       }
-      for (const { element, depth } of layers) {
-        const scale = 1 + scroll * depth * 0.085;
-        // 页面向下滚动时景物上移，近景的位移和放大都比远景明显。
-        element.style.transform = `translate(${x * depth * 22}px, ${y * depth * 14 - scroll * depth * 260}px) scale(${scale})`;
+      if (lens !== lensTarget) {
+        const t = Math.min(1, (performance.now() - lensStart) / LENS_MS);
+        lens = lensFrom + (lensTarget - lensFrom) * easeMotion(t);
+        if (t >= 1) lens = lensTarget;
       }
+      paint();
       // 只在输入变化或缓动尚未收敛时画下一帧，静止时不占用动画循环。
-      if (settling) schedule();
+      if (settling || lens !== lensTarget) schedule();
     }
 
     function schedule() {
@@ -82,9 +141,71 @@ export default function HeroLandscape() {
 
     function updateScroll() {
       const rect = hero!.getBoundingClientRect();
-      targetScroll = Math.max(0, Math.min(1, -rect.top / rect.height));
+      scrollSpanY = Math.max(1, rect.height - window.innerHeight);
+      targetScroll = Math.max(0, Math.min(1, (window.scrollY - scrollBaseY) / scrollSpanY));
       schedule();
     }
+
+    // 窄屏日月用「屏幕百分比」定位：目标点取视口 (70%, 13%)，再用 SVG 的坐标变换
+    // 反算回用户单位，尺寸按屏宽比例给 —— 不再写死 translate 的数字，换机型也落在
+    // 同一处。换算用 scene 的 CTM（不含天空层自身的位移），所以是纯粹的
+    // 「屏幕坐标 → 画幅坐标」反解。
+    const sky = scene.querySelector<SVGGElement>('.hero-scene__layer[data-depth="0.12"]');
+    function layoutSky() {
+      if (!scene || !sky) return;
+      if (!window.matchMedia('(max-width: 767px)').matches) {
+        sky.style.removeProperty('translate');
+        sky.querySelectorAll('circle').forEach((c) => c.style.removeProperty('scale'));
+        return;
+      }
+      const ctm = scene.getScreenCTM();
+      if (!ctm) return;
+      const target = scene.createSVGPoint();
+      // 目标点按视口比例给：右侧 78%、纵向 27% —— 落在标题右侧那片空白的正中，
+      // 不再挤在顶栏下面。
+      target.x = window.innerWidth * 0.78;
+      target.y = window.innerHeight * 0.27;
+      const local = target.matrixTransform(ctm.inverse());
+      // 日月的圆心在画幅坐标 (1375, 185)：位移就是「目标点 − 圆心」。
+      sky.style.translate = `${(local.x - 1375).toFixed(1)}px ${(local.y - 185).toFixed(1)}px`;
+      // 一个用户单位等于多少屏幕像素（CTM 的线性部分），直径目标按屏宽给。
+      const unit = Math.hypot(ctm.a, ctm.b) || 1;
+      const diameter = Math.min(128, window.innerWidth * 0.33);
+      const scale = (diameter / (252 * unit)).toFixed(3);
+      sky.querySelectorAll('circle').forEach((c) => {
+        c.style.scale = scale;
+      });
+    }
+
+    function onResize() {
+      updateScroll();
+      layoutSky();
+    }
+
+    // 展开态只由 HomeStage 的 .home-stage.is-expanded 表示 —— 这里观察到类变化就推进/退回，
+    // 不重复实现滚动阈值（点「开始探索」时页面并不滚动，光靠 scroll 判断会漏掉）。
+    const stage = hero.parentElement;
+    function syncLens() {
+      const next = stage?.classList.contains('is-expanded') ? 1 : 0;
+      if (next === lensTarget) return;
+      lensFrom = lens;
+      lensTarget = next;
+      lensStart = performance.now();
+      if (next === 1) {
+        // 把当前滚动与当前视差对齐成新的零点：点击时那次半屏跳转不会让层先飞一下。
+        scrollBaseY = window.scrollY - scroll * scrollSpanY;
+      } else {
+        scrollBaseY = 0;
+      }
+      if (reducedMotion.matches) {
+        lens = next;
+        paint();
+        return;
+      }
+      schedule();
+    }
+    const stageObserver = new MutationObserver(syncLens);
+    if (stage) stageObserver.observe(stage, { attributes: true, attributeFilter: ['class'] });
 
     function onPointerMove(event: PointerEvent) {
       if (!finePointer.matches || event.pointerType !== 'mouse' || reducedMotion.matches) return;
@@ -175,7 +296,9 @@ export default function HeroLandscape() {
       frame = 0;
       if (reducedMotion.matches) {
         x = y = scroll = targetX = targetY = targetScroll = 0;
-        for (const { element } of layers) element.style.removeProperty('transform');
+        // 位置与缩放直接落到当前状态：镜头该推到位就推到位，只是不再有过渡。
+        lens = lensTarget;
+        paint();
       } else {
         resetPointer();
         updateScroll();
@@ -205,7 +328,7 @@ export default function HeroLandscape() {
     hero.addEventListener('pointermove', onPointerMove, { passive: true });
     hero.addEventListener('pointerleave', onPointerLeave);
     window.addEventListener('scroll', updateScroll, { passive: true });
-    window.addEventListener('resize', updateScroll, { passive: true });
+    window.addEventListener('resize', onResize, { passive: true });
     document.addEventListener('visibilitychange', onVisibilityChange);
     reducedMotion.addEventListener('change', syncMotionPreference);
     finePointer.addEventListener('change', onInputChange);
@@ -214,18 +337,20 @@ export default function HeroLandscape() {
     window.screen.orientation?.addEventListener('change', resetTilt);
     syncTiltInput();
     updateScroll();
+    layoutSky();
 
     return () => {
       disposed = true;
       if (frame) cancelAnimationFrame(frame);
       observer.disconnect();
       themeObserver.disconnect();
+      stageObserver.disconnect();
       hero.style.removeProperty('--hero-orbit-angle');
       delete hero.dataset.sceneReady;
       hero.removeEventListener('pointermove', onPointerMove);
       hero.removeEventListener('pointerleave', onPointerLeave);
       window.removeEventListener('scroll', updateScroll);
-      window.removeEventListener('resize', updateScroll);
+      window.removeEventListener('resize', onResize);
       document.removeEventListener('visibilitychange', onVisibilityChange);
       reducedMotion.removeEventListener('change', syncMotionPreference);
       finePointer.removeEventListener('change', onInputChange);
@@ -261,6 +386,9 @@ export default function HeroLandscape() {
         <path d="m1655 220 13-7 13 7m-58 15 9-5 9 5" fill="none" stroke="var(--hero-ink)" strokeWidth="2" opacity="0.4" />
       </g>
 
+      {/* 镜头推进只作用在这层：山、湖、地面整体靠近并居中，天空层（含日月）留在原位 ——
+          天体在远处，镜头推进时不会跟着变大。 */}
+      <g className="hero-scene__world">
       <g className="hero-scene__layer" data-depth="0.24">
         <path d="M-120 695 70 575 160 605 275 544 380 590 455 535 565 610 695 543 770 568 920 402 980 470 1090 362 1160 449 1260 410 1370 480 1510 360 1590 420 1730 315 1940 536V1020H-120Z" fill="var(--hero-far)" />
         <path d="m70 575 90 30 115-61-44 78-84-2Zm385-40 110 75-117-33Zm465-133 60 68-41-12-36 28-41-2Zm170-40 70 87-70-39-73 51Zm640-47 107 113-106-51-86 69Z" fill="var(--hero-snow)" opacity="0.75" />
@@ -311,6 +439,7 @@ export default function HeroLandscape() {
           <use key={i} href={`#${pineId}`} transform={`translate(${tx} ${ty}) scale(${scale})`} fill="var(--hero-forest)" />
         ))}
         <path d="m1556 711 0 136 34 0-13-39-12 0 14-23-12 0 9-19-10 0Zm218-130v185h42l-19-53h-14l22-36h-20l17-29h-14Z" fill="var(--hero-forest-light)" opacity="0.45" />
+      </g>
       </g>
     </svg>
   );
