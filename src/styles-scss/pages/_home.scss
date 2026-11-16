@@ -7,15 +7,11 @@
 
 /* 与 .container 同一套阶梯（原为「<1200px 全幅 + ≥1200px 1140」的老写法） */
 .home-container { width: 100%; margin-left: auto; margin-right: auto; padding-left: 16px; padding-right: 16px; @include m.site-width-ladder; }
-.home-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 16px; }
 .home-col-12 { flex: 0 0 100%; max-width: 100%; }
-.home-col-6 { flex: 0 0 100%; max-width: 100%; }
-@media (min-width: 992px) { .home-col-6 { flex: 0 0 50%; max-width: 50%; } }
 .home-text-center { text-align: center; }
 
 .home-display { font-size: 3rem; font-weight: 700; margin-bottom: 0.75rem; line-height: 1.15; }
 @media (min-width: 992px) { .home-display { font-size: 3.5rem; } }
-.home-lead { font-size: 1.125rem; }
 
 /* Responsive grid for features */
 .home-grid { display: grid; grid-template-columns: 1fr; gap: 1rem; }
@@ -146,11 +142,11 @@ $hero-copy-step: 80ms;   // 相邻两行文字的间隔
 $hero-copy-count: 5;     // eyebrow / 标题 / 副标题 / 说明 / 按钮
 $hero-layer-step: 60ms;  // 相邻两层插图的起飞间隔
 // 山景与第一行 eyebrow 同时起步（0ms）：文字刚开始带出，地面层已经在往上升。
-// 五层各自 +60ms，远山在 240ms 起飞、780ms 落定；文字最后一行 860ms 收尾，整体由它带住。
+// 五层各自 +60ms，远山在 240ms 起飞、960ms 落定；文字最后一行 1040ms 收尾，整体由它带住。
 $hero-layer-start: 0ms;
 // 日月比插图晚 120ms 起步：地面先露头，天体随后长出来。
-// 时长仍是 540 + 60×4 = 780ms（覆盖地面起飞到远山落定的整段跨度），
-// 起点后移后收束在 900ms，比最后一层晚一点点。
+// 时长是 720 + 60×4 = 960ms（覆盖地面起飞到远山落定的整段跨度），
+// 起点后移后收束在 1080ms，比最后一层晚一点点。
 $hero-orb-start: $hero-layer-start + 120ms;
 $hero-orb-duration: v.$motion-duration + $hero-layer-step * 4;
 
@@ -196,7 +192,7 @@ $hero-orb-duration: v.$motion-duration + $hero-layer-step * 4;
     transform-box: view-box;
     transform-origin: 1375px 480px;
     // 与 public/static/js/core/base.js 的 theme-colors 时间线**同一条**（那里
-    // `KeyframeEffect(…, { duration: 540, easing: 'cubic-bezier(0.16, 1, 0.3, 1)' })`）：
+    // `KeyframeEffect(…, { duration: 720, easing: 'cubic-bezier(0.16, 1, 0.3, 1)' })`）：
     // 日月转过半圈的同时底色/文字/山体也在换色，两边差一截就会出现
     // 「景已经换完了、天还在转」的割裂。**改一处要改两处。**
     // 起始就有速度、末段平滑落定，半圈行程读起来是「翻过去」而不是「滑过去」。
@@ -264,7 +260,7 @@ $hero-orb-duration: v.$motion-duration + $hero-layer-step * 4;
 // 动画结束后释放 opacity/transform，按钮的背景模糊才能采样下方山景。
 // 禁用 JS 时直接展示静态文字。
 // 入场按「自上而下」逐个错峰：eyebrow → 标题 → 副标题 → 说明 → 按钮。
-// 位移与透明度分成两条：位移走形变档（540ms 贝塞尔），透明度走反馈档
+// 位移与透明度分成两条：位移走形变档（720ms 贝塞尔），透明度走反馈档
 // （240ms ease-out）—— 文字先变清楚、再滑到位；绑成一条会让字在移动途中一直半透明。
 .js .hero-content > * {
   // backwards：延迟期间保持起始帧，播完回到元素自身样式，
@@ -447,8 +443,9 @@ $hero-orb-duration: v.$motion-duration + $hero-layer-step * 4;
   .home-stage .hero-content > *,
   .home-stage.is-expanded .hero-content > * { animation: none; transition: none; }
   // 只清掉入场动画与平移；transform 留给脚本 —— 减少动态效果下镜头仍要停在
-  // 「推进后」的构图，只是不再有过渡。
-  .hero-scene__layer[data-depth] { animation: none; translate: none; }
+  // 「推进后」的构图，只是不再有过渡。天空层的 translate 是日月定位，不能一起清。
+  .hero-scene__layer[data-depth]:not([data-depth='0.12']) { animation: none; translate: none; }
+  .hero-scene__world { transition: none; }
   .hero-scene__sun,
   .hero-scene__moon,
   .hero-scene__sun circle,
@@ -609,9 +606,8 @@ $hero-orb-duration: v.$motion-duration + $hero-layer-step * 4;
   border-radius: 34px;
 }
 
-/* 标题、副标题与四张卡各自入场：从下方升起并淡入，依次错开。 */
+/* 标题与四张卡各自入场：从下方升起并淡入，依次错开。 */
 .home-features .home-display,
-.home-features__sub,
 .home-features .home-grid-item {
   opacity: 0;
   translate: 0 32px;
@@ -624,14 +620,12 @@ $hero-orb-duration: v.$motion-duration + $hero-layer-step * 4;
   pointer-events: auto;
 
   .home-display,
-  .home-features__sub,
   .home-grid-item {
     opacity: 1;
     translate: 0;
   }
 
   .home-display { transition-delay: 60ms; }
-  .home-features__sub { transition-delay: 110ms; }
 }
 
 @for $i from 1 through 4 {
@@ -655,8 +649,6 @@ $hero-orb-duration: v.$motion-duration + $hero-layer-step * 4;
   }
 
   .home-features .home-display { font-size: 2.8rem; }
-
-  .home-features__sub { font-size: 0.85rem; }
 
   .home-features .home-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -699,12 +691,6 @@ $hero-orb-duration: v.$motion-duration + $hero-layer-step * 4;
 }
 
 /* 动画效果 */
-@keyframes fadeInUp {
-  from { opacity: 0; transform: translateY(30px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-.fade-in-up { animation: fadeInUp v.$motion-duration v.$motion-easing }
-
 /* 无 JS：没有展开态可切。首屏文字与卡片按普通流前后排列，卡片直接可见，
    点「开始探索」由浏览器原生跳到 #features。 */
 html:not(.js) {
@@ -719,11 +705,46 @@ html:not(.js) {
 
     .home-grid { grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
     .home-display,
-    .home-features__sub,
     .home-grid-item { opacity: 1; translate: 0; }
   }
 }
 
 /* 此处原有 `.btn-custom`：紫色渐变按钮，没有任何 TSX 使用它。
    渐变两端 #667eea / #764ba2 都不在站内色板里。已删。 */
+
+/* 矮视口（横屏手机、窄高的窗口，如 844×390、768×600）：一屏装不下首屏文字或卡片，
+   把它们放回普通流并允许这一层内部滚动，否则「开始探索」与四张卡会被裁在视口外。 */
+@media (max-height: 640px) {
+  .home-stage__viewport { overflow-y: auto; }
+
+  .home-stage__copy {
+    position: static;
+    min-height: 100%;
+    padding: 12px 20px 24px;
+  }
+
+  // 首屏文字压一档：「开始探索」要在横屏手机的一屏里看得见。
+  .hero-eyebrow { margin-bottom: 16px; }
+  .hero-title { font-size: 2.6rem; margin-bottom: 10px; }
+  .hero-description { display: none; }
+  .hero-explore { margin-top: 8px; }
+
+  // 展开态文字层不再占位：卡片视图从这一层的顶部开始，滚轮直接落在卡片上。
+  .home-stage.is-expanded .home-stage__copy { display: none; }
+
+  .home-stage.is-expanded .home-features {
+    position: static;
+    min-height: 100%;
+    justify-content: flex-start;
+    padding: 24px 18px 40px;
+  }
+}
+
+/* 没有脚本时日月也要看得见：天空层在窄画幅里被裁到右边缘之外，这里把它挪回
+   画幅右上。有脚本时 layoutSky 用内联样式覆盖（内联优先），两处目标一致。 */
+@media (max-width: 1023px) {
+  .hero-scene__layer[data-depth='0.12'] { translate: -430px -30px; }
+  .hero-scene__sun circle,
+  .hero-scene__moon circle { scale: 0.5; }
+}
 

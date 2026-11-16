@@ -667,6 +667,9 @@
 // 它要接点击关闭；用 fixed 定位，不跟着外壳的安全区内边距缩进。
 .feed-modal {
   @include m.modal-scrim;
+  // 遮罩由 .feed-modal__backdrop 那一层画（它要接点击关闭），容器本身不再铺，
+  // 否则两层 .5 叠成 .75。
+  background: none;
   display: none;
 
   &--open {

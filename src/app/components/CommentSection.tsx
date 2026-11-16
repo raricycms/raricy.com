@@ -554,9 +554,9 @@ export default function CommentSection({
 
       {/* 删除确认模态框
           ⚠️ 展开类是 `is-open` 而**不是** Bootstrap 的 `show`：站内 modal 是
-          src/styles-scss/components/_modal.scss 那套（.modal{display:none} +
-          .modal.is-open{display:flex}），`.fade`/`.show` 只控透明度、不控显隐。
-          写成 `show` 的话弹窗永远 display:none，删除按钮点了没反应 —— 评论删不掉。
+          src/styles-scss/components/_modal.scss 那套（.modal 常驻、靠 visibility 收放，
+          `.is-open` 才把卡片与遮罩带到终态），`.fade`/`.show` 只控透明度、不控显隐。
+          写成 `show` 的话弹窗一直是隐藏态，删除按钮点了没反应 —— 评论删不掉。
           同页 BlogManageDialogs 的删除框即此写法，保持同构。关闭入口只有标题栏那颗 ×。 */}
       <div
         className={`modal${deleteTarget ? ' is-open' : ''}`}
@@ -569,7 +569,7 @@ export default function CommentSection({
           <div className="modal-content">
             <div className="modal-header">
               <h5 className="modal-title">确认删除评论</h5>
-              <button type="button" className="btn-close" aria-label="Close" onClick={() => setDeleteTarget(null)} />
+              <button type="button" className="btn-close" aria-label="关闭" onClick={() => setDeleteTarget(null)} />
             </div>
             <div className="modal-body">
               <div className="text-muted">确定要删除该评论吗？</div>

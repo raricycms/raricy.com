@@ -366,7 +366,7 @@ function transitionTheme(themeName) {
         if (!Object.keys(to).length) continue;
         // 240ms / ease-out：整页换色属于反馈档（颜色、底色、描边、阴影、透明度），
         // 见 _variables.scss 的 $feedback-duration / $feedback-easing 与
-        // docs/frontend-styles.md §6.2/§6.4。日月旋转变形仍走 540ms 那条曲线，
+        // docs/frontend-styles.md §6.2/§6.4。日月旋转变形走 720ms 那条曲线，
         // 两者时长不同，改一处要看清另一处。
         const effect = new KeyframeEffect(element, [from, to], { duration: 240, easing: 'ease-out', pseudoElement: pseudo });
         const animation = new Animation(effect, document.timeline);
@@ -660,7 +660,7 @@ function initSiteChrome() {
         : { matches: false, addEventListener: function () {}, removeEventListener: function () {} };
     function isMobile() { return mqMobile.matches; }
 
-    // 收起方向现在也有动画（_header.scss：面板 540ms 收回，期间 visibility 仍是
+    // 收起方向现在也有动画（_header.scss：面板 720ms 收回，期间 visibility 仍是
     // visible）—— 但里面的链接要**立即**退出焦点序列，同 .site-user-dropdown-panel
     // 的处理，靠 inert 而不是等 visibility 那一刀。
     // ⚠️ 只在移动端置 inert：桌面端的 collapse 是常显的，误置等于整条顶栏点不动。

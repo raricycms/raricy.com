@@ -17,9 +17,9 @@ import { TAIL_CURVES } from './curves';
  * 默认时长 540ms：曲线本身前段极快（前 25% 已走完 60% 以上），所以数字上比原来的
  * 反馈档长得多，观感上「点了就有反应」那一下并不慢 —— 拉长的是尾巴。
  * 要改默认时长只改这一个数，下表里写 `INTERACTION_DURATION` 的变体跟着一起变。
- * 原来试过 600ms，觉得收尾稍拖，现在试验台取 540ms；展开那格仍摆 480 / 600 两列作对照。
- * 540 这条已经是全站的取值（abstracts/_variables.scss 的 $motion-duration /
- * $motion-easing）；试验台的每列各带着自己的时长，只做并排演示，不参与统一。
+ * 全站现行取值是 abstracts/_variables.scss 的 $motion-duration（720ms）；这里保留
+ * 540ms 作为统一之前的对照基线，用于并排比较尾段长度。试验台的每列各带着自己的
+ * 时长，只做演示，不参与统一。
  */
 export const INTERACTION_CURVE_ID = 'interaction';
 export const INTERACTION_DURATION = 540;

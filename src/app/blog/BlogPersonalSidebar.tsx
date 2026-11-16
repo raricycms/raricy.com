@@ -6,6 +6,7 @@ import { useSearchParams } from 'next/navigation';
 import { X } from 'lucide-react';
 import Avatar from '@/app/components/Avatar';
 import { BLOG_SCOPES, type BlogScope } from '@/lib/blog-directory';
+import { MOTION_MS } from '@/lib/motion';
 
 export interface BlogPersonalSummary {
   counts: Record<BlogScope, number>;
@@ -21,7 +22,8 @@ export interface BlogPersonalSummary {
  *     正文一句登录后可见的范围说明；统计、个人范围与创建入口都没有，
  *     卡片里也不放按钮（登录入口在顶栏）
  * 几何与交互（桌面 280px 卡片、窄屏悬浮胶囊）两种状态同一套代码承担；
- * 访客的胶囊没有创建钮，只剩一颗头像球，宽度由 `.blog-personal--guest` 单独给。
+ * 访客的胶囊没有创建钮，只剩一颗头像球；`.blog-personal--guest` 在窄屏整颗隐藏
+ * （手机上它会压住内容，登录入口本来就在顶栏）。
  */
 export default function BlogPersonalSidebar({ user, summary = null, scope = 'all', basePath = '/blog' }: {
   user: { id: string; username: string; frameUrl: string | null } | null;
@@ -69,7 +71,8 @@ export default function BlogPersonalSidebar({ user, summary = null, scope = 'all
     if (!open) return;
     measurePanel();
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) { setSettled(true); return; }
-    const timer = window.setTimeout(() => setSettled(true), 540);
+    // 面板过渡与这里必须同一时长：早一帧置 settled 会让内部滚动条在面板还在动时可用。
+    const timer = window.setTimeout(() => setSettled(true), MOTION_MS);
     return () => window.clearTimeout(timer);
   }, [open, measurePanel]);
 
@@ -189,15 +192,15 @@ export default function BlogPersonalSidebar({ user, summary = null, scope = 'all
         </button>
         <div className="blog-personal__panel" id="blog-personal-panel" inert={narrow && !open}>
           <div className="blog-personal__inner" ref={panelInner}>
-            {user && summary ? (
+            {user ? (
               <>
                 <Link className="blog-personal__identity" href={`/u/${user.id}`}>
                   <span>{user.username}</span>
                 </Link>
                 <dl className="blog-personal__stats">
-                  <div className="blog-likes" title="获赞"><dt><span className="icon icon-heart-fill" aria-hidden="true" /><span className="visually-hidden">获赞</span></dt><dd className="numeric">+{summary.likesReceived}</dd></div>
-                  <div className="blog-comments" title="收到评论"><dt><span className="icon icon-chat-dots_new" aria-hidden="true" /><span className="visually-hidden">收到评论</span></dt><dd className="numeric">+{summary.commentsReceived}</dd></div>
-                  <div className="blog-fish" title="收获鱼干"><dt><span className="icon icon-fish" aria-hidden="true" /><span className="visually-hidden">收获鱼干</span></dt><dd className="numeric">+{summary.fishReceived}</dd></div>
+                  <div className="blog-likes" title="获赞"><dt><span className="icon icon-heart-fill" aria-hidden="true" /><span className="visually-hidden">获赞</span></dt><dd className="numeric">+{summary?.likesReceived ?? 0}</dd></div>
+                  <div className="blog-comments" title="收到评论"><dt><span className="icon icon-chat-dots_new" aria-hidden="true" /><span className="visually-hidden">收到评论</span></dt><dd className="numeric">+{summary?.commentsReceived ?? 0}</dd></div>
+                  <div className="blog-fish" title="收获鱼干"><dt><span className="icon icon-fish" aria-hidden="true" /><span className="visually-hidden">收获鱼干</span></dt><dd className="numeric">+{summary?.fishReceived ?? 0}</dd></div>
                 </dl>
                 <nav className="blog-personal__ranges" aria-label="文章范围">
                   {BLOG_SCOPES.map((item) => (
@@ -212,7 +215,7 @@ export default function BlogPersonalSidebar({ user, summary = null, scope = 'all
                     >
                       <span className={`icon ${item.icon}`} aria-hidden="true" />
                       <span>{item.label}</span>
-                      <span className="numeric">{summary.counts[item.value]}</span>
+                      <span className="numeric">{summary?.counts[item.value] ?? 0}</span>
                     </Link>
                   ))}
                 </nav>

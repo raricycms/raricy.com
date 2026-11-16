@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useId, useRef } from 'react';
+import { MOTION_MS } from '@/lib/motion';
 
 type OrientationEventConstructor = typeof DeviceOrientationEvent & {
   requestPermission?: () => Promise<'granted' | 'denied'>;
@@ -13,7 +14,7 @@ const LENS_ZOOM = 1.8;
 // 不论放多大，峰顶都钉在屏幕中央；近层因为放大率高，位移也更大，纵深由此出来。
 const LENS_SHIFT_X = -430;
 const LENS_SHIFT_Y = 20.5;
-const LENS_MS = 720;
+const LENS_MS = MOTION_MS;
 
 // 与 $motion-easing 同一条 cubic-bezier(0.16, 1, 0.3, 1)。CSS 那边拿不到曲线求值，
 // 这里用牛顿法由 x 解 t 再取 y。
@@ -83,7 +84,7 @@ export default function HeroLandscape() {
     // 点「开始探索」会一次性跳半屏，若按绝对位置算，层会被这一跳顶飞。
     let scrollBaseY = 0;
     let scrollSpanY = 1;
-    // 镜头推进进度 0→1：由 .home-stage 的 is-expanded 触发，时间驱动，走 540ms 贝塞尔。
+    // 镜头推进进度 0→1：由 .home-stage 的 is-expanded 触发，时间驱动，走 720ms 贝塞尔。
     let lens = 0;
     let lensTarget = 0;
     let lensFrom = 0;
@@ -153,7 +154,7 @@ export default function HeroLandscape() {
     const sky = scene.querySelector<SVGGElement>('.hero-scene__layer[data-depth="0.12"]');
     function layoutSky() {
       if (!scene || !sky) return;
-      if (!window.matchMedia('(max-width: 767px)').matches) {
+      if (!window.matchMedia('(max-width: 1023px)').matches) {
         sky.style.removeProperty('translate');
         sky.querySelectorAll('circle').forEach((c) => c.style.removeProperty('scale'));
         return;

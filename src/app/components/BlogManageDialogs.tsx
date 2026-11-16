@@ -98,7 +98,7 @@ export function BlogVisibilityDialog({
         <div className="modal-content">
           <div className="modal-header">
             <h5 className="modal-title">设置可见性</h5>
-            <button type="button" className="btn-close" aria-label="Close" onClick={onClose} />
+            <button type="button" className="btn-close" aria-label="关闭" onClick={onClose} />
           </div>
           <div className="modal-body">
             <p className="form-hint text-muted">当前：{VISIBILITY_LABEL[visibility]}</p>
@@ -135,7 +135,7 @@ export function BlogVisibilityDialog({
               「仅站内可见」不会收回已经抓走的副本。
             </span>
           </div>
-          <div className="modal-footer">
+          <div className="modal-footer modal-footer--split">
             {/* 取消：回到「管理文章」目录而非直接关闭（与删除弹窗同款） */}
             <button type="button" className="button button-primary" onClick={onReturnToManage}>
               取消
@@ -216,7 +216,7 @@ export function BlogDeleteDialog({
         <div className="modal-content">
           <div className="modal-header">
             <h5 className="modal-title">确认删除</h5>
-            <button type="button" className="btn-close" aria-label="Close" onClick={onClose} />
+            <button type="button" className="btn-close" aria-label="关闭" onClick={onClose} />
           </div>
           <div className="modal-body">
             确定要删除这篇文章《{blogTitle}》吗？该操作不可恢复。
@@ -237,7 +237,7 @@ export function BlogDeleteDialog({
               </div>
             )}
           </div>
-          <div className="modal-footer">
+          <div className="modal-footer modal-footer--split">
             {/* 取消：回到「管理文章」目录而非直接关闭 */}
             <button type="button" className="button button-primary" onClick={onReturnToManage}>
               取消

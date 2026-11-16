@@ -5,7 +5,9 @@ import type { Metadata } from 'next';
 import { prisma } from '@/lib/db';
 import { rateLimit, RULES } from '@/lib/rate-limit';
 import { clientIp } from '@/lib/request-ip';
-import { listPublicBlogs, listPublicCategoryFacets } from '@/lib/blog-service';
+import { getCurrentUser } from '@/lib/auth';
+import { frameUrlFor } from '@/lib/frame-service';
+import { getBlogDirectorySummary, listPublicBlogs, listPublicCategoryFacets } from '@/lib/blog-service';
 import Avatar from '@/app/components/Avatar';
 import BlogTimestamps from '@/app/components/BlogTimestamps';
 import { categoryFullPath } from '@/lib/format';
@@ -101,6 +103,9 @@ export default async function ExplorePage({
 }) {
   const sp = await searchParams;
   const { page, category, search } = readParams(sp);
+  // 这一页对所有人开放，会话可有可无：登录用户看到的侧栏要在身份、统计与「创建」
+  // 入口上与顶栏一致，只有访客才走「未登录」那一支。
+  const viewer = await getCurrentUser();
 
   // ── 搜索限频 ────────────────────────────────────────────────────────────────
   // 只对**真的带搜索词**的请求计数。写成无条件计数的话，光是翻页 / 换栏目就把额度
@@ -180,9 +185,13 @@ export default async function ExplorePage({
 
       <div className="container">
         <div className="blog-layout blog-directory">
-          {/* 访客没有会话：侧栏固定走「未登录」那一支（user 与 summary 都是 null），
-              卡片里不放按钮；表单与栏目下拉也都不带排序偏好。 */}
-          <BlogPersonalSidebar user={null} />
+          {/* 侧栏按会话分两支：登录用户给身份、统计与「创建」（与站内目录同一份数据），
+              访客给「未登录」与可见范围说明，卡片里不放按钮。 */}
+          <BlogPersonalSidebar
+            user={viewer ? { id: viewer.id, username: viewer.username, frameUrl: frameUrlFor(viewer) } : null}
+            summary={viewer ? await getBlogDirectorySummary(viewer.id, []) : null}
+            basePath="/explore"
+          />
 
           {/* 不能是 <main>：根 layout 已经有一个 <main>，嵌套 main 会让读屏读出两个
               主内容地标（AdminShell 文件头有同一禁令）。版面靠 .blog-content 的

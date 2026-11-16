@@ -83,7 +83,7 @@ export function BlogLikersDialog({ blogId, open, onClose }: DialogProps) {
         <div className="modal-content">
           <div className="modal-header">
             <h5 className="modal-title"><span className="icon icon-heart-fill" aria-hidden="true" style={{ marginRight: '0.5rem' }}></span>点赞者列表</h5>
-            <button type="button" className="btn-close" aria-label="Close" onClick={onClose} />
+            <button type="button" className="btn-close" aria-label="关闭" onClick={onClose} />
           </div>
           <div className="modal-body">
             <div id="likers-list" className="list-group" style={{ maxHeight: '50vh', overflow: 'auto' }}>
@@ -182,7 +182,7 @@ export function BlogFeedersDialog({ blogId, open, onClose }: DialogProps) {
         <div className="modal-content">
           <div className="modal-header">
             <h5 className="modal-title"><span className="icon icon-fish" aria-hidden="true" style={{ marginRight: '0.5rem' }}></span>投喂者列表</h5>
-            <button type="button" className="btn-close" aria-label="Close" onClick={onClose} />
+            <button type="button" className="btn-close" aria-label="关闭" onClick={onClose} />
           </div>
           <div className="modal-body">
             <div id="feeders-list" className="list-group" style={{ maxHeight: '50vh', overflow: 'auto' }}>

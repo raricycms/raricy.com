@@ -636,7 +636,8 @@ body {
   // 放进 header 内部的话，fixed 子元素再低的 z-index 也画在 header 背景之上，
   // 整条顶栏会跟着变暗；用 box-shadow 扩散则无法点它收起。
   // 点击收起由 base.js 绑定（与点汉堡同一路）。
-  // 断点外的那条 display: none 在文件末尾 —— 桌面端它就是个普通 div，不参与任何绘制。
+  // 桌面端的 `display: none` 写在断点之前（见文件的 `.site-navbar-scrim` 基础规则）——
+  // 那时它就是个普通 div，不参与任何绘制。
   .site-navbar-scrim {
     display: block;
     position: fixed;

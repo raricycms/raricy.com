@@ -227,11 +227,14 @@
 }
 
 // Close button (×) without image assets
+// 命中区按 44×44 给（触屏最小目标），用负外边距抵掉多出来的内距，
+// 标题栏高度与改动前一致。
 .btn-close {
   box-sizing: content-box;
-  width: 1rem;
-  height: 1rem;
-  padding: 0.25rem;
+  width: 1.25rem;
+  height: 1.25rem;
+  padding: 0.75rem;
+  margin: -0.5rem -0.5rem -0.5rem 0;
   color: currentColor;
   background: transparent;
   border: 0;
@@ -242,8 +245,8 @@
 .btn-close::before {
   content: '×';
   display: block;
-  font-size: 1.25rem;
-  line-height: 1rem;
+  font-size: 1.5rem;
+  line-height: 1.25rem;
 }
 .btn-close:hover { opacity: .75; }
 

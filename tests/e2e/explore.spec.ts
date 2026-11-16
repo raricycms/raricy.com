@@ -96,7 +96,7 @@ test.describe('对外列表 /explore', () => {
     expect(res?.status()).toBe(200);
     await expect(page.locator('.blogs-hero h1')).toHaveText('博客');
     // 侧栏、工具栏与搜索框都该在（这是页面结构，不是「有没有内容」）。
-    // 访客侧栏与站内目录同一副信息卡：身份是「未登录」，登录入口就在卡里。
+    // 访客侧栏与站内目录同一副信息卡：身份是「未登录」。
     await expect(page.locator('.blog-personal'), '访客也要有左侧信息卡').toHaveCount(1);
     // 访客侧栏只报身份：登录 / 注册的入口留在顶栏，卡片里不放按钮。
     await expect(

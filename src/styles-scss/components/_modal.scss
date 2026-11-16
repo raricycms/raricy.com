@@ -41,9 +41,9 @@
 // `.modal-overlay` 由组件在关闭时直接卸载，摘掉 `.show` 与移除节点是同一帧，
 // 没有可播退场的时刻 —— 它保持 display 开关、不加动画。
 //
-// 卡片：入场从视口底部飞入，离场飞出底部，曲线用全站形变档（540ms）。
+// 卡片：入场从视口底部飞入，离场飞出底部，曲线用全站形变档（720ms）。
 // 遮罩：标准反馈档（透明度，240ms ease-out），画在 ::before 上 —— 直接给容器设
-// opacity 会把卡片一起变透明。关闭时遮罩先淡完（240ms），卡片继续飞到 540ms 再
+// opacity 会把卡片一起变透明。关闭时遮罩先淡完（240ms），卡片继续飞到 720ms 再
 // 整体 visibility: hidden，两段时间线各自独立，互不牵连。
 
 .modal {
@@ -51,10 +51,10 @@
   display: flex;
   background: none;
   visibility: hidden;
-  // 关闭瞬间就放开指针：退场期间遮罩已经透明，但容器还占着整个视口 540ms，
+  // 关闭瞬间就放开指针：退场期间遮罩已经透明，但容器还占着整个视口 720ms，
   // 不关掉的话这段时间里页面点不动。
   pointer-events: none;
-  // 关闭：等卡片飞完（540ms）再隐藏，否则退场会被掐断。
+  // 关闭：等卡片飞完（720ms）再隐藏，否则退场会被掐断。
   transition: visibility 0s v.$motion-duration;
 
   &::before {
@@ -116,6 +116,9 @@
 }
 
 // 结构性线条一律不画（§3.6）：标题区与操作区靠留白分段，不靠横线。
+// 操作区默认靠右 —— 多数弹窗删掉重复的「取消」后只剩一个提交按钮，
+// 用 space-between 会把它顶到左边、右侧空出一大片。需要两侧分开的（如管理文章
+// 弹窗的「取消」回到目录、右侧才是保存）加 `--split`。
 .modal-header,
 .modal-footer {
   display: flex;
@@ -124,13 +127,20 @@
   padding: 1rem;
 }
 
+.modal-footer {
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.modal-footer--split {
+  justify-content: space-between;
+}
+
 .modal-title { margin: 0; font-size: 1.25rem; }
 
 .modal-body { padding: 1rem; }
 
-// 弹窗的出现动画暂时关掉：遮罩与卡片都直接到终态。
-// 需要恢复时，把 modal-fade（遮罩 240ms 反馈档）与 modal-rise（卡片上抬 8px + 0.98
-// 缩放，540ms 形变档）挂回 .modal / .modal-overlay 与卡片根，并在 reduced-motion 里关掉。
+// 弹窗卡片：入场从视口底部飞入、离场飞回底部，见 components/_modal.scss。
 
 // List group styles used inside modal
 //

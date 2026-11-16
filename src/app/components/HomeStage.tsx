@@ -43,15 +43,32 @@ export default function HomeStage({ blogHref, gamesBlocked }: Props) {
     };
   }, []);
 
+  // 深链：地址里带 #features 时直接进展开态。sticky 层里的锚点本身不产生滚动，
+  // 所以这里按同样的阈值把页面挪到位，分享与刷新都能落回卡片视图。
+  useEffect(() => {
+    const applyHash = () => {
+      if (window.location.hash !== '#features') return;
+      window.scrollTo({ top: Math.round(window.innerHeight * 0.55), behavior: 'auto' });
+      setExpanded(true);
+    };
+    applyHash();
+    window.addEventListener('hashchange', applyHash);
+    return () => window.removeEventListener('hashchange', applyHash);
+  }, []);
+
   // 点「开始探索」：跳过默认的锚点跳转（sticky 层里锚点滚不动），把页面一次性挪到
   // 展开态该在的位置，地址栏仍留 #features 以便分享/刷新。
   // 这里用瞬时跳转而不是平滑滚动：sticky 层钉在原处，画面上看不出位移，
   // 而平滑滚动会让滚动与镜头推进抢同一条时间线，读起来就是一次抽搐。
   const onExplore = (event: MouseEvent<HTMLAnchorElement>) => {
+    // 带修饰键的点击让它按浏览器默认行为走（新标签打开 #features）。
+    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
     event.preventDefault();
     window.scrollTo({ top: Math.round(window.innerHeight * 0.55), behavior: 'auto' });
     window.history.replaceState(null, '', '#features');
     setExpanded(true);
+    // 焦点跟着视图走：否则键盘用户还停在已经淡出的「开始探索」上。
+    document.getElementById('features-title')?.focus({ preventScroll: true });
   };
 
   return (
@@ -61,7 +78,7 @@ export default function HomeStage({ blogHref, gamesBlocked }: Props) {
           <HeroLandscape />
           <div className="home-stage__scrim" aria-hidden="true" />
 
-          <div className="home-container home-stage__copy">
+          <div className="home-container home-stage__copy" inert={expanded}>
             <div className="hero-content">
               <p className="hero-eyebrow">Raricy.com</p>
               <h1 className="hero-title" id="hero-title">聪明山</h1>
@@ -71,9 +88,8 @@ export default function HomeStage({ blogHref, gamesBlocked }: Props) {
             </div>
           </div>
 
-          <section className="home-features" id="features" aria-labelledby="features-title">
-            <h2 className="home-display" id="features-title">探索</h2>
-            <p className="home-features__sub">从这里进入站内的各项内容。</p>
+          <section className="home-features" id="features" aria-labelledby="features-title" inert={!expanded}>
+            <h2 className="home-display" id="features-title" tabIndex={-1}>探索</h2>
             <div className="home-grid">
               <div className="home-grid-item">
                 <Link className="feature-card card-story" href="/story">
