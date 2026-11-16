@@ -410,6 +410,8 @@ a {
   i, .icon { 
     font-size: 1.2rem; 
     color: var(--color-text-primary); 
+    // 颜色变化属于反馈档：没有这条时悬停是硬切。
+    transition: color v.$feedback-duration v.$feedback-easing;
   }
 }
 
@@ -466,8 +468,11 @@ a {
     font-size: 1.2rem;
     color: var(--color-text-primary);
     // 点击切换主题时，base.js 用内联 transform 累加 180°，靠这里的过渡产生动画。
-    // 旋转属于状态切换型形变，走全站同一条交互节奏（§6.2）。
-    transition: transform v.$motion-duration v.$motion-easing;
+    // 旋转属于状态切换型形变，走全站同一条交互节奏（§6.2）；颜色是反馈档 ——
+    // 只写 transform 的话悬停变蓝是硬切。
+    transition:
+      transform v.$motion-duration v.$motion-easing,
+      color v.$feedback-duration v.$feedback-easing;
   }
 }
 
@@ -495,6 +500,7 @@ a {
   .icon {
     font-size: 1.2rem;
     color: var(--color-text-primary);
+    transition: color v.$feedback-duration v.$feedback-easing;
   }
 }
 
