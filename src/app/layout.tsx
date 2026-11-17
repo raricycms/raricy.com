@@ -10,6 +10,7 @@ import Footer from './components/Footer';
 import FooterGate from './components/FooterGate';
 import NotificationHeartbeat from './components/NotificationHeartbeat';
 import SmoothWheelScroll from './components/SmoothWheelScroll';
+import SiteScrollbar from './components/SiteScrollbar';
 import FrameBuster from './components/FrameBuster';
 import { getCurrentUser, isCoreUser } from '@/lib/auth';
 import { frameUrlFor } from '@/lib/frame-service';
@@ -94,6 +95,8 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         <NotificationHeartbeat />
         {/* 滚轮平滑滚动：全站生效，内部滚动区域同样适用（见组件内说明） */}
         <SmoothWheelScroll />
+        {/* 自绘滚动条：原生那条占布局宽度，跨页面与锁滚动时顶栏会跟着横移（见组件内说明） */}
+        <SiteScrollbar />
         <main>{children}</main>
         {/* /chat 是满屏工作台，不渲染页脚（见 FooterGate） */}
         <FooterGate>

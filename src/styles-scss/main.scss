@@ -35,6 +35,8 @@
 @use 'layout/grid';
 @use 'layout/header';
 @use 'layout/footer';
+// 自绘滚动条：桌面端藏掉原生那条，宽度才不随页面长短变化（见 layout/_scrollbar.scss）。
+@use 'layout/scrollbar';
 @use 'layout/admin-sidebar';
 
 @use 'components/button';
