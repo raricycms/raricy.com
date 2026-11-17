@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { MOTION_MS } from '@/lib/motion';
+import { lockPageScroll } from '@/lib/scroll-lock';
 
 // 正文配图的查看层：图片从它在正文里的位置升到视口中央，下压一层深色遮罩。
 // 不是弹窗 —— 没有卡片外壳与关闭钮，点图 / 点遮罩 / Esc 都收起。
@@ -53,7 +54,7 @@ export default function ImageZoom({ source, onDone }: { source: ImageZoomSource;
   const [transform, setTransform] = useState('none');
   const baseRef = useRef<Box | null>(null);
   const trackRef = useRef<HTMLDivElement>(null);
-  const previousOverflow = useRef('');
+  const releaseScroll = useRef<(() => void) | null>(null);
   const finishTimer = useRef<number | null>(null);
   const onDoneRef = useRef(onDone);
   onDoneRef.current = onDone;
@@ -102,7 +103,8 @@ export default function ImageZoom({ source, onDone }: { source: ImageZoomSource;
       return;
     }
     // 先把页面还回去：遮罩与图片还在收动画，滚动与点击不再被它们挡住。
-    document.body.style.overflow = previousOverflow.current;
+    releaseScroll.current?.();
+    releaseScroll.current = null;
     setPhase('closing');
     // 终点是文档坐标，滚动不改它 —— 图随页面走，位移只发生在文档坐标系里。
     if (baseRef.current) moveTo(baseRef.current);
@@ -115,7 +117,7 @@ export default function ImageZoom({ source, onDone }: { source: ImageZoomSource;
     const start = baseRef.current;
     if (!start) return;
     clearFinish();
-    document.body.style.overflow = 'hidden';
+    releaseScroll.current = lockPageScroll();
     setPhase('open');
     moveTo(centerDoc(start));
   }, [phase, clearFinish, centerDoc, moveTo]);
@@ -132,12 +134,13 @@ export default function ImageZoom({ source, onDone }: { source: ImageZoomSource;
     return () => cancelAnimationFrame(frame);
   }, [source.image, centerDoc, moveTo]);
 
-  // 打开期间锁滚动；收起时由 close 立刻放开。
+  // 打开期间锁滚动；收起时由 close 立刻放开。锁的时候连滚动条宽度一起补，
+  // 否则桌面上滚动条一消失，整页会右移半个滚动条（见 lib/scroll-lock）。
   useEffect(() => {
-    previousOverflow.current = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
+    releaseScroll.current = lockPageScroll();
     return () => {
-      document.body.style.overflow = previousOverflow.current;
+      releaseScroll.current?.();
+      releaseScroll.current = null;
     };
   }, []);
 

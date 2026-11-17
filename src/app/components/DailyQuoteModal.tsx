@@ -8,6 +8,7 @@ import type { DailyQuoteView, TodayQuoteState } from '@/lib/daily-quote';
 import DailyQuoteCard from './DailyQuoteCard';
 import DailyQuoteForm from './DailyQuoteForm';
 import { MOTION_MS } from '@/lib/motion';
+import { lockPageScroll } from '@/lib/scroll-lock';
 
 // 关闭时卡片滑回视口下方，走形变档 720ms（与 $motion-duration 同值），滑完才真正 close()。
 const CLOSE_MS = MOTION_MS;
@@ -19,7 +20,7 @@ export default function DailyQuoteModal({ onClose, returnFocus }: { onClose: () 
   const closingRef = useRef(false);
   const closeTimer = useRef<number | null>(null);
   const previousFocus = useRef<HTMLElement | null>(null);
-  const previousOverflow = useRef('');
+  const releaseScroll = useRef<(() => void) | null>(null);
   const [submission, setSubmission] = useState(false);
   const [result, setResult] = useState<{ day: string; state: TodayQuoteState; quote: DailyQuoteView | null; can_submit: boolean } | null>(null);
   const [error, setError] = useState('');
@@ -30,8 +31,9 @@ export default function DailyQuoteModal({ onClose, returnFocus }: { onClose: () 
   useEffect(() => {
     const element = dialog.current;
     previousFocus.current = document.activeElement as HTMLElement | null;
-    previousOverflow.current = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
+    // 锁滚动要连滚动条宽度一起补（见 lib/scroll-lock）：只写 overflow: hidden 的话，
+    // 桌面上滚动条一消失，整页会右移半个滚动条，打开弹窗那一下就是「页面抖几像素」。
+    releaseScroll.current = lockPageScroll();
     element?.showModal();
     // 第一帧保持透明的初始态，下一帧再加 is-open —— 否则浏览器会把两帧合并成一次跳变。
     const frame = requestAnimationFrame(() => setOpened(true));
@@ -39,7 +41,8 @@ export default function DailyQuoteModal({ onClose, returnFocus }: { onClose: () 
       cancelAnimationFrame(frame);
       if (closeTimer.current !== null) { window.clearTimeout(closeTimer.current); closeTimer.current = null; }
       if (element?.open) element.close();
-      document.body.style.overflow = previousOverflow.current;
+      releaseScroll.current?.();
+      releaseScroll.current = null;
       const target = returnFocus?.current ?? previousFocus.current;
       if (target?.isConnected) target.focus();
     };
@@ -65,7 +68,8 @@ export default function DailyQuoteModal({ onClose, returnFocus }: { onClose: () 
     if (closeTimer.current !== null) { window.clearTimeout(closeTimer.current); closeTimer.current = null; }
     const element = dialog.current;
     if (element?.open) element.close();
-    document.body.style.overflow = previousOverflow.current;
+    releaseScroll.current?.();
+    releaseScroll.current = null;
     const target = returnFocus?.current ?? previousFocus.current;
     if (target?.isConnected) target.focus();
     onCloseRef.current();
@@ -89,7 +93,9 @@ export default function DailyQuoteModal({ onClose, returnFocus }: { onClose: () 
       element.classList.add('is-closing');
       if (element.open) element.close();
     }
-    document.body.style.overflow = previousOverflow.current;
+    // 先 close() 再还原滚动锁：两件事在同一帧发生，滚动条与内距一起回来，宽度不变。
+    releaseScroll.current?.();
+    releaseScroll.current = null;
     setClosing(true);
     closeTimer.current = window.setTimeout(finishClose, CLOSE_MS);
   }

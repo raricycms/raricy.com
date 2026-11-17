@@ -7,6 +7,7 @@ import { X } from 'lucide-react';
 import Avatar from '@/app/components/Avatar';
 import { BLOG_SCOPES, type BlogScope } from '@/lib/blog-directory';
 import { MOTION_MS } from '@/lib/motion';
+import { lockPageScroll } from '@/lib/scroll-lock';
 
 export interface BlogPersonalSummary {
   counts: Record<BlogScope, number>;
@@ -95,23 +96,12 @@ export default function BlogPersonalSidebar({ user, summary = null, scope = 'all
   // 手势却拦不住鼠标滚轮；而面板自己真正可滚时，滚到尽头还会把余量转交给后面那一页
   // （滚动链，SCSS 的 overscroll-behavior: contain 管这一半）。实测（390×844）：不锁时
   // 展开后把滚轮停在面板上，window.scrollY 从 0 直接被带到 105。
-  // 锁法照 u/[id]/ProfileBoard.tsx 的详情层：先量滚动条宽度再用 padding-right 抵掉，
-  // 直接 overflow: hidden 会让桌面窄窗口的滚动条消失、正文横向跳一下。
+  // 锁法见 lib/scroll-lock：先量滚动条宽度再用 padding-right 抵掉，直接 overflow:
+  // hidden 会让桌面窄窗口的滚动条消失、正文横向跳一下。
   // 收起 / 卸载（含链接导航）都走 cleanup 还原，别只在收起按钮里写。
   useEffect(() => {
     if (!open || !narrow) return;
-    const prevOverflow = document.body.style.overflow;
-    const prevPaddingRight = document.body.style.paddingRight;
-    const scrollbar = window.innerWidth - document.documentElement.clientWidth;
-    document.body.style.overflow = 'hidden';
-    if (scrollbar > 0) {
-      const current = Number.parseFloat(window.getComputedStyle(document.body).paddingRight) || 0;
-      document.body.style.paddingRight = `${current + scrollbar}px`;
-    }
-    return () => {
-      document.body.style.overflow = prevOverflow;
-      document.body.style.paddingRight = prevPaddingRight;
-    };
+    return lockPageScroll();
   }, [open, narrow]);
 
   useEffect(() => {
