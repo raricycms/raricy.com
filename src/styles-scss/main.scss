@@ -28,6 +28,8 @@
 @use 'base/root';
 @use 'base/typography';
 @use 'base/forms';
+// 触屏吸附：选择器带 html[data-snap] 前缀，与页面段不争同权规则，位置只为归组。
+@use 'base/scroll-snap';
 
 @use 'layout/container';
 @use 'layout/grid';
@@ -50,6 +52,7 @@
 @use 'components/frame-buster';
 @use 'components/file-picker';
 @use 'components/image-picker';
+@use 'components/image-zoom';
 @use 'components/user-picker';
 @use 'components/sticker-picker';
 // Markdown 编辑器外壳（博客 / 云剪贴板共用）。放在 components/ 里 —— 两个页面段

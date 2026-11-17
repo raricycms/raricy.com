@@ -48,7 +48,9 @@ export default function HeroLandscape() {
   useEffect(() => {
     const scene = ref.current;
     const hero = scene?.closest<HTMLElement>('.hero-section');
-    if (!scene || !hero) return;
+    // sticky 那一层：视差行程的终点就是它不再固定在视口里的位置，所以行程要减它的高度。
+    const layer = scene?.closest<HTMLElement>('.home-stage__viewport');
+    if (!scene || !hero || !layer) return;
 
     const layers = Array.from(scene.querySelectorAll<SVGGElement>('[data-depth]'))
       .map((element) => ({
@@ -142,7 +144,11 @@ export default function HeroLandscape() {
 
     function updateScroll() {
       const rect = hero!.getBoundingClientRect();
-      scrollSpanY = Math.max(1, rect.height - window.innerHeight);
+      // 行程 = 这一段的总高 − sticky 层高：层高一旦追平，这一层就不再固定在视口里，
+      // 视差正该在这条边界上走满。两个高度都是布局高度（段高含 svh、层高是 lvh），
+      // 地址栏收放不改它们；若拿 window.innerHeight 当减数，地址栏一收行程就变，
+      // 山景会在滚动中途被重新映射一次位置。
+      scrollSpanY = Math.max(1, rect.height - layer!.getBoundingClientRect().height);
       targetScroll = Math.max(0, Math.min(1, (window.scrollY - scrollBaseY) / scrollSpanY));
       schedule();
     }
@@ -162,16 +168,18 @@ export default function HeroLandscape() {
       const ctm = scene.getScreenCTM();
       if (!ctm) return;
       const target = scene.createSVGPoint();
-      // 目标点按视口比例给：右侧 78%、纵向 27% —— 落在标题右侧那片空白的正中，
-      // 不再挤在顶栏下面。
-      target.x = window.innerWidth * 0.78;
-      target.y = window.innerHeight * 0.27;
+      // 目标点按画幅盒的比例给：右侧 78%、纵向 27% —— 位于标题右侧那片空白的正中，
+      // 不再挤在顶栏下面。基准取画幅盒而不是 window.innerWidth/innerHeight：
+      // 盒高按 svh 定（地址栏收放不动它），日月才不会在滚动中跟着可见高度挪位置。
+      const box = scene.getBoundingClientRect();
+      target.x = box.right * 0.78;
+      target.y = box.bottom * 0.27;
       const local = target.matrixTransform(ctm.inverse());
       // 日月的圆心在画幅坐标 (1375, 185)：位移就是「目标点 − 圆心」。
       sky.style.translate = `${(local.x - 1375).toFixed(1)}px ${(local.y - 185).toFixed(1)}px`;
       // 一个用户单位等于多少屏幕像素（CTM 的线性部分），直径目标按屏宽给。
       const unit = Math.hypot(ctm.a, ctm.b) || 1;
-      const diameter = Math.min(128, window.innerWidth * 0.33);
+      const diameter = Math.min(128, box.width * 0.33);
       const scale = (diameter / (252 * unit)).toFixed(3);
       sky.querySelectorAll('circle').forEach((c) => {
         c.style.scale = scale;

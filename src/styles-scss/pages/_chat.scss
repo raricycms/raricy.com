@@ -1145,6 +1145,8 @@
   cursor: zoom-out;
   // 触屏捏合时不要让浏览器抢去做页面缩放 / 下拉刷新
   touch-action: none;
+  // 整层既是遮罩也是卡片：遮罩淡入 + 整层从视口底部升起，与点赞者 / 投喂者那套模态同参。
+  @include m.modal-enter-self;
 }
 
 .chat-lightbox__img {

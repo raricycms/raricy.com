@@ -118,6 +118,7 @@
 .oauth-modal-overlay {
   @include m.modal-scrim;
   display: flex;
+  @include m.modal-enter('.oauth-modal');
 }
 
 .oauth-modal {

@@ -26,6 +26,7 @@
 
 .modal-overlay.show {
   display: flex;
+  @include m.modal-enter('.modal-dialog');
 }
 
 .modal-dialog {
@@ -34,17 +35,41 @@
 
 // ── 出现与离开 ──────────────────────────────────────────────────────────────
 //
-// 只有 `.modal`（开关类 `.is-open`）做动画：它的四个使用者（点赞者 / 投喂者名单、
-// 可见性、删除确认、收藏夹选择）都把外壳常驻在页面里，关闭只是摘掉 `.is-open`，
-// 元素还在文档里，退场才有时间播完。
+// 两批外壳的时间线不一样，原因是它们是否能活在关闭之后：
 //
-// `.modal-overlay` 由组件在关闭时直接卸载，摘掉 `.show` 与移除节点是同一帧，
-// 没有可播退场的时刻 —— 它保持 display 开关、不加动画。
+// `.modal`（开关类 `.is-open`）的四个使用者（点赞者 / 投喂者名单、可见性、删除确认、
+// 收藏夹选择）把外壳常驻在页面里，关闭只是摘掉 `.is-open`，元素还在文档里 ——
+// 用 transition 写，入场与退场都有时间播。
+//
+// `.modal-overlay` 那一批由组件在关闭时直接卸载，摘掉 `.show` 与移除节点是同一帧，
+// 没有可播退场的时刻；入场用 `@keyframes`（`modal-enter` mixin）—— 元素插入文档的
+// 那一帧就开播。入场与 `.modal` 完全同参：卡片从视口底部飞入 720ms、遮罩淡入 240ms。
 //
 // 卡片：入场从视口底部飞入，离场飞出底部，曲线用全站形变档（720ms）。
-// 遮罩：标准反馈档（透明度，240ms ease-out），画在 ::before 上 —— 直接给容器设
-// opacity 会把卡片一起变透明。关闭时遮罩先淡完（240ms），卡片继续飞到 720ms 再
-// 整体 visibility: hidden，两段时间线各自独立，互不牵连。
+// 遮罩：标准反馈档（透明度，240ms ease-out）。`.modal` 把它画在 ::before 上 ——
+// 直接给容器设 opacity 会把卡片一起变透明；`.modal-overlay` 的遮罩就是容器自己的
+// background，所以那一批改动画 background-color。
+// 关闭时 `.modal` 的遮罩先淡完（240ms），卡片继续飞到 720ms 再整体 visibility: hidden，
+// 两段时间线各自独立，互不牵连。
+
+// 入场动画本体。放在这里而不是 mixin 里：keyframes 是全局的，`modal-enter` 只负责挂载。
+@keyframes modal-scrim-in {
+  from {
+    background-color: transparent;
+  }
+}
+
+@keyframes modal-card-rise {
+  from {
+    transform: translateY(80vh);
+  }
+}
+
+@keyframes modal-fade-in {
+  from {
+    opacity: 0;
+  }
+}
 
 .modal {
   @include m.modal-scrim;
@@ -111,7 +136,6 @@
   background: var(--color-background-card);
   color: var(--color-text-primary);
   border-radius: v.$radius-card;
-  box-shadow: var(--shadow-card-brand);
   overflow: hidden;
 }
 

@@ -53,6 +53,9 @@ function panel(page: Page) {
 async function openPanel(page: Page, editor: string) {
   await page.locator(editor).getByRole('button', { name: '插入引用', exact: true }).click();
   await expect(panel(page)).toBeVisible();
+  // 面板有入场动画（卡片自视口底部升起，形变档 720ms）。量几何前等它停稳，
+  // 否则量到的是动画途中的位置：卡片还在视口下方，会被判成「溢出视口」。
+  await expect.poll(async () => panel(page).evaluate((el) => getComputedStyle(el).transform)).toBe('none');
   return panel(page);
 }
 

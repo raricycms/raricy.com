@@ -60,8 +60,10 @@
     --color-accent-violet: #8b5cf6;
     --color-accent-violet-soft: rgba(139, 92, 246, 0.12);
     /* 全站只有三束阴影，都是品牌色（蓝）：
-       · --shadow-card-brand —— 「抬起」：整块可点的卡片 hover、以及浮层（弹窗 /
+       · --shadow-card-brand —— 「抬起」：整块可点的卡片 hover、以及浮层（固定顶栏 /
          下拉 / 贴边面板）。偏移 2px，读作「浮起来」。
+         模态面板不在此列：它们压在遮罩上，层级由遮罩与卡片底色交代，常驻一束蓝光
+         在暗色主题下显脏（见 docs/frontend-styles.md §3.6、§5.7）。
        · --shadow-focus-brand —— 「聚焦」：字段与输入面板，偏移 0（四周均匀），
          不透明度高一档，见下面那条说明。
        · --shadow-glow-brand —— 「开启」：开关 / 勾选项处于开启时的状态光晕。

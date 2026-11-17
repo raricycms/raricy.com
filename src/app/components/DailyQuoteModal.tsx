@@ -7,11 +7,10 @@ import { ArrowLeft, LoaderCircle, PenLine, X } from 'lucide-react';
 import type { DailyQuoteView, TodayQuoteState } from '@/lib/daily-quote';
 import DailyQuoteCard from './DailyQuoteCard';
 import DailyQuoteForm from './DailyQuoteForm';
-import { FEEDBACK_MS } from '@/lib/motion';
+import { MOTION_MS } from '@/lib/motion';
 
-// 关闭时内容、外壳与遮罩只改透明度，走反馈档 240ms（与 $feedback-duration 同值），
-// 收完才真正 close()。
-const CLOSE_MS = FEEDBACK_MS;
+// 关闭时卡片滑回视口下方，走形变档 720ms（与 $motion-duration 同值），滑完才真正 close()。
+const CLOSE_MS = MOTION_MS;
 
 export default function DailyQuoteModal({ onClose, returnFocus }: { onClose: () => void; returnFocus?: RefObject<HTMLButtonElement | null> }) {
   const dialog = useRef<HTMLDialogElement>(null);
@@ -80,6 +79,17 @@ export default function DailyQuoteModal({ onClose, returnFocus }: { onClose: () 
       finishClose();
       return;
     }
+    // 立刻退出原生模态：只要还挂着 showModal，整页都是 inert，点击与滚动全部由弹窗
+    // 接管 —— 退场那 720ms 会变成「点了关闭却动不了网站」。关掉之后卡片继续按
+    // .is-closing 播完退场（那条规则自己把 display 与定位补回来），页面当场可用。
+    // 顺序要紧：先把 .is-closing 挂上（此时 display 仍是 open 的那一份），再 close()。
+    // 反过来做会先掉进 display: none，元素重新出现时没有过渡的起点，位移会直接跳到终点。
+    const element = dialog.current;
+    if (element) {
+      element.classList.add('is-closing');
+      if (element.open) element.close();
+    }
+    document.body.style.overflow = previousOverflow.current;
     setClosing(true);
     closeTimer.current = window.setTimeout(finishClose, CLOSE_MS);
   }
@@ -95,7 +105,14 @@ export default function DailyQuoteModal({ onClose, returnFocus }: { onClose: () 
       ? '今日一言已下架。'
       : '今日一言尚未发行，请稍后刷新。';
 
-  return createPortal(<dialog ref={dialog} className={`daily-quote-dialog${opened ? ' is-open' : ''}${closing ? ' is-closing' : ''}`}
+  return createPortal(<>
+    {/* 遮罩自己画：`<dialog>` 关掉之后 ::backdrop 就没了，而卡片还要播完退场。
+        这一层同时承担开场的淡入与退场的淡出，指针事件始终不接（点击一律由对话框接住）。 */}
+    <div
+      className={`daily-quote-scrim${opened ? ' is-open' : ''}${closing ? ' is-closing' : ''}`}
+      aria-hidden="true"
+    />
+    <dialog ref={dialog} className={`daily-quote-dialog${opened ? ' is-open' : ''}${closing ? ' is-closing' : ''}`}
     aria-labelledby="daily-quote-title"
     onCancel={(event) => { event.preventDefault(); requestClose(); }}
     onClick={(event) => { if (event.target === event.currentTarget) requestClose(); }}>
@@ -143,5 +160,5 @@ export default function DailyQuoteModal({ onClose, returnFocus }: { onClose: () 
         </button>
       </footer>
     </div>
-  </dialog>, document.body);
+  </dialog></>, document.body);
 }

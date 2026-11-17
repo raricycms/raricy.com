@@ -11,6 +11,8 @@
   @include m.modal-scrim;
   z-index: v.$z-alert;
   display: flex;
+  // 一直显示、没有开关类：入场动画在挂载那一帧播一次。
+  @include m.modal-enter('.frame-buster__dialog');
 }
 
 .frame-buster__dialog {

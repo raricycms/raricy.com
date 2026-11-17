@@ -1,0 +1,85 @@
+@use '../abstracts/variables' as v;
+
+// 正文配图的原位放大：点图之后，这张图自己从正文里升到视口中央，下压一层深色遮罩。
+//
+// 【为什么不做成弹窗】放大后看到的还是同一张图：没有卡片外壳、没有标题栏、没有关闭钮。
+// 套一层卡片会把「把这张图看清楚」变成「打开一个新面板」，也把图的上下文切掉了。
+// 这里只做两件事：把图移到中央、把页面压暗 —— 所以结构上只有一个盖满视口的层。
+//
+// 【动画】位移与缩放走形变档（720ms / cubic-bezier(0.16, 1, 0.3, 1)），遮罩走反馈档
+// （240ms / ease-out），与全站浮层同一组参数。图片的起点就是它在正文里的那一格，
+// 终点按视口九成、且不超过原图像素算，于是「放大」与「移动」是同一条时间线上的一次动作。
+//
+// 【以页面为参考系】层里分两节：外层 `.image-zoom__track` 把坐标原点固定在文档上
+// （行内给它 -scrollX / -scrollY，滚动时立即跟随、不参与过渡），内层图片的 left/top
+// 与 transform 全部是文档坐标。于是收起过程中的滚动是「整张图跟着页面一起走」，
+// 而回到那一格的位移与缩放仍然只在文档坐标系里发生 —— 屏幕上不会出现「追着往
+// 反方向飘」的读数。
+//
+// 【顶栏始终在最上层】这一层整体压在顶栏之下（$z-header - 1）：顶栏不被遮罩压暗，
+// 也不会被放大的图盖住；图片按顶栏以下的那块区域居中（见 centerDoc），不会钻进
+// 导航底下。正文配图放大是页面内的查看，不属于「盖住整个界面」的浮层 —— 与
+// `.chat-lightbox` 那种从模态里点开的整屏查看器不同，那一层仍然取 $z-viewer。
+//
+// 【关闭立刻放开】要求关闭的那一刻就给这个层加 .is-closing：它不再接收指针事件，
+// 页面在收动画的同时就能操作（与 .modal 退场期间同一条口径）；只有那张图还接着
+// 点击，再点一次就是重新放大。
+
+.image-zoom {
+  position: fixed;
+  inset: 0;
+  z-index: v.$z-header - 1;
+  overflow: hidden;
+}
+
+// 文档坐标系：原点平移到 (0, 0) 的文档位置。滚动时由脚本立即改写，过渡只留给图片自己。
+.image-zoom__track {
+  position: absolute;
+  inset: 0;
+}
+
+.image-zoom__scrim {
+  position: absolute;
+  inset: 0;
+  background: v.$scrim-viewer;
+  opacity: 0;
+  transition: opacity v.$feedback-duration v.$feedback-easing;
+}
+
+.image-zoom.is-open .image-zoom__scrim {
+  opacity: 1;
+}
+
+.image-zoom.is-closing {
+  pointer-events: none;
+}
+
+// 收起过程中只有那张图还接点击：再点一次就重新放大。层本身继续把点击让给页面，
+// 所以「收了就想滚、想点别处」都不会被这层挡住。
+.image-zoom.is-closing .image-zoom__img {
+  pointer-events: auto;
+  cursor: zoom-in;
+}
+
+.image-zoom.is-closing .image-zoom__scrim {
+  opacity: 0;
+}
+
+.image-zoom__img {
+  position: absolute;
+  // 起点由行内样式定，transform-origin 留在左上角：先缩后移都按左上角算，
+  // 位移量就是「目标左上角 − 起点左上角」。
+  transform-origin: 0 0;
+  transition: transform v.$motion-duration v.$motion-easing;
+  border-radius: 6px;
+  background: var(--color-background-card);
+  cursor: zoom-out;
+  will-change: transform;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .image-zoom__scrim,
+  .image-zoom__img {
+    transition: none;
+  }
+}

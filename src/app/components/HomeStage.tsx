@@ -5,17 +5,29 @@ import { useEffect, useRef, useState } from 'react';
 import type { MouseEvent } from 'react';
 import { Gamepad2 } from 'lucide-react';
 import HeroLandscape from './HeroLandscape';
+import ScrollSnap from './ScrollSnap';
 
 type Props = {
   blogHref: string;
   gamesBlocked: boolean;
 };
 
+// 卡片视图在滚动里的位置（相对 sticky 层高度的比例）：点「开始探索」跳到这里，
+// 展开的进入/退出阈值按同一把尺子给，触屏吸附的卡片停靠点也取这个数 ——
+// 三处用同一个值，停下时才是同一幅画面。
+const CARD_VIEW_RATIO = 0.55;
+
+/** 卡片视图那一格的滚动位置；sticky 层还没挂上时返回 null。 */
+function cardViewScrollTop(layer: HTMLElement | null): number | null {
+  return layer ? Math.round(layer.getBoundingClientRect().height * CARD_VIEW_RATIO) : null;
+}
+
 // 首屏是一次「镜头推进」：页面滚过一小段、或点「开始探索」，文字向上退场、
 // 山景靠近并居中、暗色蒙层压下来，探索与四张卡随后浮到蒙层之上。
 // 卡片视图固定在视口里，后面的滚动继续走山景的竖直视差，滚完这一段才是页脚。
 export default function HomeStage({ blogHref, gamesBlocked }: Props) {
   const stageRef = useRef<HTMLDivElement>(null);
+  const layerRef = useRef<HTMLDivElement>(null);
   const [expanded, setExpanded] = useState(false);
   // inert 只能等挂载后再加：SSR 里没有「展开态」这个概念，若把 inert 写进首屏 HTML，
   // 禁用 JS 的访客会看到卡片却点不动（`html:not(.js)` 只负责版面回退，管不了惰性）。
@@ -28,14 +40,17 @@ export default function HomeStage({ blogHref, gamesBlocked }: Props) {
 
   useEffect(() => {
     const stage = stageRef.current;
-    if (!stage) return;
+    const layer = layerRef.current;
+    if (!stage || !layer) return;
     let frame = 0;
     // 两个阈值：进入要比退出更难一点，停在交界处来回滚时不至于反复切换。
+    // 尺子用 sticky 层的高度（窄屏 lvh、桌面 vh − 顶栏），它不随地址栏收放变化。
     const evaluate = () => {
       frame = 0;
       const travelled = -stage.getBoundingClientRect().top;
-      const enter = window.innerHeight * 0.3;
-      const exit = window.innerHeight * 0.18;
+      const unit = layer.getBoundingClientRect().height;
+      const enter = unit * 0.3;
+      const exit = unit * 0.18;
       setExpanded((prev) => (prev ? travelled > exit : travelled >= enter));
     };
     const onScroll = () => {
@@ -52,11 +67,13 @@ export default function HomeStage({ blogHref, gamesBlocked }: Props) {
   }, []);
 
   // 深链：地址里带 #features 时直接进展开态。sticky 层里的锚点本身不产生滚动，
-  // 所以这里按同样的阈值把页面挪到位，分享与刷新都能落回卡片视图。
+  // 所以这里按同样的位置把页面挪到位，分享与刷新都能回到卡片视图。
   useEffect(() => {
     const applyHash = () => {
       if (window.location.hash !== '#features') return;
-      window.scrollTo({ top: Math.round(window.innerHeight * 0.55), behavior: 'auto' });
+      const top = cardViewScrollTop(layerRef.current);
+      if (top === null) return;
+      window.scrollTo({ top, behavior: 'auto' });
       setExpanded(true);
     };
     applyHash();
@@ -71,8 +88,10 @@ export default function HomeStage({ blogHref, gamesBlocked }: Props) {
   const onExplore = (event: MouseEvent<HTMLAnchorElement>) => {
     // 带修饰键的点击让它按浏览器默认行为走（新标签打开 #features）。
     if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    const top = cardViewScrollTop(layerRef.current);
+    if (top === null) return;
     event.preventDefault();
-    window.scrollTo({ top: Math.round(window.innerHeight * 0.55), behavior: 'auto' });
+    window.scrollTo({ top, behavior: 'auto' });
     window.history.replaceState(null, '', '#features');
     setExpanded(true);
     // 焦点跟着视图走：否则键盘用户还停在已经淡出的「开始探索」上。等一帧 ——
@@ -84,8 +103,18 @@ export default function HomeStage({ blogHref, gamesBlocked }: Props) {
 
   return (
     <div className={`home-stage${expanded ? ' is-expanded' : ''}`} ref={stageRef}>
+      <ScrollSnap mode="stage" />
       <div className="hero-section" id="home">
-        <div className="home-stage__viewport">
+        {/* 触屏吸附的两个停靠点：0 与卡片视图。都用 1px 标记 —— 整屏高的元素当停靠点时，
+            顶边与底边之间会空出一段不吸附的位置（见 styles-scss/base/_scroll-snap.scss）。
+            卡片视图那格的 top 与「开始探索」的滚动位置同源，lvh 与窄屏 sticky 层等高。 */}
+        <div className="home-stage__snap" aria-hidden="true" style={{ top: 0 }} />
+        <div
+          className="home-stage__snap home-stage__snap--card"
+          aria-hidden="true"
+          style={{ top: `calc(${CARD_VIEW_RATIO} * 100lvh)` }}
+        />
+        <div className="home-stage__viewport" ref={layerRef}>
           <HeroLandscape />
           <div className="home-stage__scrim" aria-hidden="true" />
 

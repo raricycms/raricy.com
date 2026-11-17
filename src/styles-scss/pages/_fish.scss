@@ -674,6 +674,12 @@
 
   &--open {
     display: flex;
+    @include m.modal-enter('.feed-modal__content');
+
+    // 这一层的遮罩画在 __backdrop 上（容器自己不铺），淡入挂在它身上。
+    .feed-modal__backdrop {
+      @include m.modal-fade;
+    }
   }
 }
 

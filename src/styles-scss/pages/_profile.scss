@@ -1122,11 +1122,16 @@
   position: absolute;
   inset: 0;
   background: $scrim-modal;
+  // 面板自己走 JS 的 FLIP 入场，遮罩跟着淡入，两者同一个起点。
+  @include m.modal-fade;
 }
 
 // 关闭：面板在 JS 里反向 FLIP 回源卡片，遮罩必须同步淡出 —— 否则背景会一下子变亮。
+// 这一层同时放开指针事件：收动画的那几百毫秒里页面已经可以点、可以滚，
+// 与 .modal 退场期间同一条口径。
 .bento-detail.is-closing {
   animation: none;
+  pointer-events: none;
 
   .bento-detail__backdrop {
     opacity: 0;
@@ -1179,6 +1184,7 @@
 .bento-modal {
   @include m.modal-scrim;
   display: flex;
+  @include m.modal-enter('.bento-modal__box');
 
   &__box {
     @include m.modal-card(560px);

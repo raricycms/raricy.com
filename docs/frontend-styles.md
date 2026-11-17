@@ -197,11 +197,14 @@ textarea、正文编辑区与多行组合面板为固定圆角。
 | 用途 | 令牌或配方 | 显示时机 |
 |---|---|---|
 | 可点击卡片的反馈 | `--shadow-card-brand` | 整卡可点时悬停显示 |
-| 浮层与固定顶栏 | `--shadow-card-brand` | 保持可见时显示 |
+| 固定顶栏、下拉与贴边面板 | `--shadow-card-brand` | 保持可见时显示 |
 | 字段与键盘聚焦 | `--shadow-focus-brand` | 聚焦时显示 |
 | 开启态的控件光晕 | `--shadow-glow-brand` | 开关 / 勾选项处于开启时显示 |
 | 普通模态遮罩 | `$scrim-modal`，即 `rgba(0,0,0,.5)` | 模态面板展开时显示 |
 | 内容查看器遮罩 | `$scrim-viewer`，即 `rgba(0,0,0,.8)` | 图片放大、图床预览时显示 |
+
+模态面板不投影：它压在遮罩上，层级由遮罩与卡片底色交代，再叠一束品牌蓝光晕会在
+暗色主题下显脏。这条限制只针对弹窗本身，顶栏、下拉与贴边面板仍然靠这束光晕浮起来。
 
 普通卡片常态无阴影，卡内只有局部按钮可点时，不能让整卡悬停发光。
 不用黑色 `box-shadow`；内容分类明确的功能卡可用 §3.1 的同色光晕。
@@ -232,6 +235,9 @@ textarea、正文编辑区与多行组合面板为固定圆角。
 | `$z-modal` | 1050 | 模态：`.modal`、`.modal-overlay`、`.bento-*`、`.feed-modal`、`.oauth-modal-overlay`、`.frame-buster` 的基态 |
 | `$z-viewer` | 1060 | 内容查看器：图片放大、图床预览，从模态里点开的图也能放大 |
 | `$z-alert` | 1100 | 系统级提示，必须盖住一切（跨站 iframe 提示） |
+
+正文配图的原位放大不取这四档：它压在顶栏之下（`$z-header - 1`），顶栏因此始终在最上层，
+见 §5.7。整屏看图器（`.chat-lightbox`）仍属 `$z-viewer`。
 
 新浮层从这四档里选，不写任何不属于表的数字；需要更高时先确认它属于哪一类范围，
 再改表，不能就地写一个更大的值。
@@ -296,7 +302,11 @@ textarea、正文编辑区与多行组合面板为固定圆角。
 
 安全区统一读取 `--safe-top / bottom / left / right`；
 父层已经让出的安全区，子层不能重复叠加。
-占满可见高度的页面使用 `dvh`，可先写 `vh` 兜底；
+占满可见高度、并且要跟随地址栏收放的页面使用 `dvh`，可先写 `vh` 兜底；
+滚动中必须保持尺寸与位置不动的整屏画幅改用 `svh` / `lvh` —— 这两个值不随地址栏收放变化。
+首页山景按后者处理：sticky 层取 `lvh`（任何状态都盖满屏），画幅取 `svh`（缩放只由它决定），
+两者差出来的那一条由山体的绘制溢出补上；换成 `dvh` 时地址栏一收，整幅画要按新高度重新缩放、
+重新居中，而那次重排不在合成线程上。
 软键盘引起的可视区域变化由工作台自己的视口适配处理。
 
 ### 4.4 响应式决策
@@ -310,6 +320,12 @@ textarea、正文编辑区与多行组合面板为固定圆角。
 隐藏文字后必须保留名称与操作能力；长名字在没有悬停提示的触屏上仍要有读全的路径。
 局部工作区的折行按实际容器宽度决定，适合时使用容器查询，
 不要用视口宽度猜测一张卡片还剩多少空间。
+
+窄屏触摸下的整页滚动按一屏一格吸附（首页与 `/explore`）：停靠点分别是首屏、卡片视图 /
+列表里的卡片顶、页脚，并配 `scroll-snap-stop: always` —— 一次手势只前进一格，惯性不会把
+页面直接送到页脚。吸附交给浏览器的 `scroll-snap`，它与手指惯性跑同一条时间线；脚本在滚动
+结束之后再补 `scrollTo` 只会把页面拽回来一次。桌面与宽屏不启用，滚轮已有
+`SmoothWheelScroll` 的缓动。
 
 ## 5. 通用组件标准
 
@@ -425,7 +441,7 @@ textarea、正文编辑区与多行组合面板为固定圆角。
 
 ### 5.7 弹窗、浮层与提示
 
-普通弹窗采用主题卡片底色、30px 圆角与品牌浮层阴影，
+普通弹窗采用主题卡片底色与 30px 圆角，不投影（见 §3.6），
 默认内容宽度以 500px 为参照，窄屏限制在视口内并保留边距。
 外壳与卡片的实现只有一份：`abstracts/_mixins.scss` 的 `modal-scrim`（遮罩 / 整层可滚 /
 安全区留白）、`modal-frame`（宽度与居中）、`modal-card`（宽度 + 卡片表面）。
@@ -439,15 +455,46 @@ textarea、正文编辑区与多行组合面板为固定圆角。
 内容分两段到达（先占位、后正文）的弹窗，窄屏把上沿固定：高度变化只向下长，
 盒子不跟着上下跳半个高度差；其余弹窗仍是 `margin: auto` 居中。
 
-`.modal` 这一套（博客管理、点赞者 / 投喂者名单、收藏夹选择、评论删除）的外壳常驻在
-页面里，关闭只摘 `.is-open`，所以有完整的出现与离开：卡片入场自视口底部飞入、离场
-飞出底部，走 §6.2 的形变档（720ms / `cubic-bezier(0.16, 1, 0.3, 1)`）；遮罩用标准
-反馈档（240ms / `ease-out`）淡入淡出，画在 `::before` 上而不是给容器设 opacity ——
-后者会把卡片一起弄透明。关闭时遮罩先淡完，容器等卡片飞完（720ms）再 `visibility:
-hidden`；退场期间 `pointer-events: none`，页面立刻可以继续操作。
+全站模态只有一条入场时间线（点赞者 / 投喂者名单是参照实现）：卡片自视口底部飞入，
+走 §6.2 的形变档（720ms / `cubic-bezier(0.16, 1, 0.3, 1)`）；遮罩用反馈档
+（240ms / `ease-out`）淡入。任何弹窗都不再另配时长、曲线或方向。
 
-`.modal-overlay` 的弹窗由组件在关闭时卸载，摘 `.show` 与移除节点是同一帧，没有可播
-退场的时刻，保持无动画。`prefers-reduced-motion` 下两套都直接切换。
+`.modal` 这一套（博客管理、点赞者 / 投喂者名单、收藏夹选择、评论删除）的外壳常驻在
+页面里，关闭只摘 `.is-open`，所以还有完整的离开：卡片飞出底部、遮罩淡出，画在
+`::before` 上而不是给容器设 opacity —— 后者会把卡片一起弄透明。关闭时遮罩先淡完，
+容器等卡片飞完（720ms）再 `visibility: hidden`；退场期间 `pointer-events: none`，
+页面立刻可以继续操作。
+
+`.modal-overlay` 那一批（聊天搜索、发起私聊、插入引用、用户与栏目编辑、鱼市确认、
+收款画报等）由组件在关闭时卸载，摘 `.show` 与移除节点是同一帧，没有可播退场的时刻：
+入场用 `@keyframes`（`abstracts/_mixins.scss` 的 `modal-enter`）在元素插入那一帧开播，
+参数与 `.modal` 完全一致，关闭直接消失。`.bento-modal`、`.oauth-modal-overlay`、
+`.frame-buster`、`.feed-modal` 与游戏里的 `<dialog>` 走同一条入场，卡片的类名由各自
+传给 `modal-enter`。`.chat-lightbox`（讨论与评论里的图片）外壳本身就是卡片，淡入与
+升起同时挂在它身上（`modal-enter-self`）；每日一言的 `<dialog>` 用 `.is-open` /
+`.is-closing` 的 transition 复刻同一条曲线与时长。
+`prefers-reduced-motion` 下全部直接切换。积木墙详情层是唯一例外：面板由 JS 从被点的
+卡片 FLIP 到居中，遮罩仍按反馈档淡入。
+
+正文配图的放大不算弹窗：点图之后这张图自己从正文里升到顶栏以下那块区域的正中，
+下压一层 `$scrim-viewer`。整层压在顶栏之下（`$z-header - 1`）—— 顶栏始终在它上面，
+既不被遮罩压暗，也不会被放大的图盖住；图片按顶栏以下那块区域居中，不会钻进导航底下。
+位移与缩放走形变档（720ms）—— 起点就是它在正文里的那一格，终点按那块区域的九成、
+且不超过原图像素算，放大与移动因此是同一条时间线上的一次动作；遮罩淡入淡出走反馈档
+（240ms）。没有卡片外壳、标题栏与关闭钮，点图、点遮罩、按 Esc 都收起；关闭一开始
+这一层就不再接收指针事件，页面当场可操作。
+运动以页面为参考系：层内坐标固定在文档上（滚动位移立即跟随、不参与过渡），图片的位移
+与缩放只在文档坐标系里发生 —— 收起途中滚动是「整张图跟着页面走」，不会出现追着页面
+反向飘的运动；终点固定为打开时量下的那一格，滚动不改它。图片从顶栏后面回到正文。
+动画可打断 —— 缩小的过程中再点那张图就重新放大，收尾计时被清掉、滚动重新锁上。
+实现为 `components/_image-zoom.scss` 与 `components/reactive/ImageZoom.tsx`，
+上游自带的 `<dialog>` 预览在这里被拦下。
+
+每日一言的关闭走同一条口径：点关闭就先 `close()` 退出原生模态（否则整页 inert，
+退场那 720ms 里点不动任何东西），卡片靠 `.is-closing` 补回 `display` / `position`
+继续播完退场，遮罩改用同级的 `.daily-quote-scrim`（对话框一关 `::backdrop` 就没了）。
+顺序必须是「先挂 `.is-closing`、再 `close()`」：反过来会先掉进 `display: none`，
+元素重新出现时没有过渡起点，位移直接跳到终点。
 
 模态使用 §3.6 的遮罩，阻止背景交互和穿透滚动；
 焦点进入弹窗并在关闭后回到触发入口。非模态下拉不额外遮暗整页。
@@ -838,6 +885,8 @@ e2e 读取现有构建产物；修改源码后先构建，或使用 `npm run e2e
 | 对象 | 入口 |
 |---|---|
 | 主题、字体、安全区 | `src/styles-scss/base/_root.scss`、`src/styles-scss/base/_fonts.scss` |
+| 首屏山景与触屏吸附 | `src/styles-scss/pages/_home.scss`、`src/styles-scss/base/_scroll-snap.scss`、`src/app/components/HomeStage.tsx`、`src/app/components/ScrollSnap.tsx` |
+| 正文配图放大 | `src/styles-scss/components/_image-zoom.scss`、`src/app/components/reactive/ImageZoom.tsx`、`src/app/components/reactive/ReactiveDocument.tsx` |
 | 尺度与公共配方 | `src/styles-scss/abstracts/_variables.scss`、`src/styles-scss/abstracts/_mixins.scss` |
 | 模态外壳、遮罩与入场 | `src/styles-scss/components/_modal.scss`、`src/styles-scss/components/_frame-buster.scss`、`src/styles-scss/pages/_oauth.scss` |
 | 博客目录卡片与搜索 | `src/styles-scss/pages/blog/_menu.scss` |

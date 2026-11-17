@@ -65,9 +65,14 @@
   position: relative;
   isolation: isolate;
   /* 滚动行程：一屏展示 + 0.9 屏的推进与视差。卡片视图在这段里固定在视口，
-     滚完这一段才到页脚 —— 首页整屏由山景铺满，不再另起一块白底内容区。 */
+     滚完这一段才到页脚 —— 首页整屏由山景铺满，不再另起一块白底内容区。
+
+     一屏取 svh：手机地址栏收放不改变 svh，这一段与整份文档的高度于是恒定。写成 dvh
+     时地址栏一收整段就变高，下面的 sticky 层、画幅缩放、页脚位置跟着重排一次 ——
+     而那次重排不在合成线程上，读数正是「滑到一半背景忽然重算位置和大小」。
+     行程 90vh：vh 在手机上等于地址栏收起后的大视口，同样不随滚动变化。 */
   height: calc(100vh + 90vh);
-  height: calc(100dvh + 90vh);
+  height: calc(100svh + 90vh);
 }
 
 /* 固定在视口的那一层：山景、蒙层、首屏文字、卡片都画在这里。
@@ -404,8 +409,11 @@ $hero-orb-duration: v.$motion-duration + $hero-layer-step * 4;
   .home-stage { margin-top: calc(-1 * var(--navbar-height)); }
   .home-stage__viewport {
     top: 0;
+    // 层高取 lvh（地址栏收起后的高度）：无论地址栏在不在，这一层都盖满屏，且整次
+    // 滚动里高度不变。画幅另按 svh 定高（见下面的 .hero-scene），两者差出来的那一条
+    // 由山体的绘制溢出补上，于是背景不会随可见高度重新缩放、重新居中。
     height: 100vh;
-    height: 100dvh;
+    height: 100lvh;
   }
   .home-stage__copy {
     align-items: flex-start;
@@ -413,9 +421,14 @@ $hero-orb-duration: v.$motion-duration + $hero-layer-step * 4;
     padding-top: 170px;
   }
   .hero-scene {
-    inset: 0;
+    inset: 0 auto auto 0;
     width: 100%;
-    height: 100%;
+    // 画幅高度按 svh 定：preserveAspectRatio="slice" 的缩放只由这个盒子的尺寸决定，
+    // 地址栏收放不动 svh，山景于是不会缩放也不会重新居中。地面层画到画幅以下 500
+    // 用户单位（见 SVG 里 data-depth="1.3" 那几条路径），层高比 svh 多出来的那一条
+    // 正是由这截绘制溢出补上的 —— 所以这里不能加 overflow: hidden。
+    height: 100vh;
+    height: 100svh;
     max-width: none;
   }
   // 首屏把「山」这一组压到文字下方、并向左移露出主峰；天空层（日月）完全不动。
@@ -646,6 +659,9 @@ $hero-orb-duration: v.$motion-duration + $hero-layer-step * 4;
   .home-features {
     gap: 10px;
     padding: 64px 26px 24px;
+    // 层高是 lvh，地址栏展开时可见区只有 svh：把差出来的那一条补到下内距，卡片组的
+    // 居中基准才与可见区中线一致（不补的话静止态整组会往下多出半个差值）。
+    padding-bottom: calc(24px + 100lvh - 100svh);
   }
 
   .home-features .home-display { font-size: 2.8rem; }

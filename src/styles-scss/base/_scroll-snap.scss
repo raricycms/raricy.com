@@ -1,0 +1,69 @@
+// 触屏吸附（首页与对外列表 /explore）
+//
+// 【为什么需要】触摸滑动的惯性会把一次手势直接送到页脚，中间那段（首页的卡片视图、
+// 列表里的文章）等于没看过。这两个页面在窄屏下按「一屏一格」停靠，惯性在第一个停靠点
+// 上就收住。
+//
+// 【为什么交给浏览器】吸附与减速在合成线程上跑，和手指惯性是同一条时间线。脚本在滚动
+// 结束之后再补一段 scrollTo（无论缓动与否）是第二条时间线：先自由滑到底、再被拽回来，
+// 读数是一次抽搐，而且拦不住「一次滑到页脚」这件事本身。
+//
+// 【scroll-snap-stop: always 是关键】默认的 normal 允许惯性一次滑过任意多个停靠点，
+// 于是「很容易一次就滑到底栏」照旧。always 要求滚动在遇到的第一个停靠点上停下。
+//
+// 【只在窄屏 + 触摸生效】桌面滚轮已经有 SmoothWheelScroll 的缓动，再叠一层吸附会让
+// 一格滚轮变成一次跳转。启用与否由 src/app/components/ScrollSnap.tsx 给 <html> 打
+// data-snap 决定，那个组件同时负责挑出列表里的停靠卡片。
+
+/* 首页的停靠点标记：1px、绝对定位、不接事件 —— 只参与 snap 计算，不参与版面。
+   两处（首屏顶边、卡片视图）共用这一条，top 由 HomeStage 写成行内样式
+   （见那边的 CARD_VIEW_RATIO），与「开始探索」跳到的是同一个数。 */
+.home-stage__snap {
+  position: absolute;
+  left: 0;
+  width: 1px;
+  height: 1px;
+  pointer-events: none;
+}
+
+@media (max-width: 767px) and (pointer: coarse) {
+  html[data-snap] {
+    scroll-snap-type: y mandatory;
+  }
+
+  /* 最末一格：页脚底边贴住视口下沿。少了它，mandatory 会把最后一屏固定在最后一张卡上，
+     页脚那段说明就再也滚不到（可达位置只剩停靠点）。 */
+  html[data-snap] .site-footer {
+    scroll-snap-align: end;
+  }
+
+  /* 首页：首屏（0）→ 卡片视图 → 页脚。
+     停靠点一律用 1px 的标记，不拿 .home-stage / .hero-section 这类整屏高的元素当停靠点：
+     比视口高的元素在顶边与底边之间会留出一段「怎么滚都算已经吸附」的位置，mandatory
+     于是管不住那一段，页面可以停在任意半屏上（实测 1496 高的文档在 400~560 之间完全不吸附）。 */
+  html[data-snap='stage'] .home-stage__snap {
+    scroll-snap-align: start;
+  }
+
+  /* 卡片视图那一格要求惯性必停：一次手势正好前进一格。 */
+  html[data-snap='stage'] .home-stage__snap--card {
+    scroll-snap-stop: always;
+  }
+
+  /* 对外列表：页首（0）→ 列表里约一屏一个的卡片顶。
+     body 为固定顶栏让出了 --navbar-height，列表页的内容因此整体从 62px 起。
+     把 snapport 上沿缩进同一个高度：页首那一格正好停在 0，卡片那一格停在「卡片顶边
+     贴上顶栏下沿」的位置 —— 一条缩进同时管住两头，卡片顶不会被顶栏压住。 */
+  html[data-snap='list'] {
+    scroll-padding-top: var(--navbar-height);
+  }
+
+  html[data-snap='list'] .blogs-hero {
+    scroll-snap-align: start;
+  }
+
+  html[data-snap='list'] .blog-item[data-snap-stop] {
+    scroll-snap-align: start;
+    scroll-snap-stop: always;
+  }
+}

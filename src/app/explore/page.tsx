@@ -19,6 +19,7 @@ import BlogFilters from '@/app/blog/BlogFilters';
 import BlogCategorySelect from '@/app/blog/BlogCategorySelect';
 import SearchForm from '@/app/blog/SearchForm';
 import SitePager from '@/app/components/SitePager';
+import ScrollSnap from '@/app/components/ScrollSnap';
 
 // 根 layout 读 cookie 取登录态，整棵树本来就是动态的 —— 这里写 revalidate/静态化
 // 都是自欺（它不会生效，只会让下一个人以为这页有缓存）。见「已知风险」。
@@ -169,6 +170,8 @@ export default async function ExplorePage({
 
   return (
     <>
+      {/* 窄屏触摸下的整页吸附：停靠点挑在卡片顶边（见 components/ScrollSnap.tsx）。 */}
+      <ScrollSnap mode="list" />
       <section className="blogs-hero">
         <div className="container">
           {/* 【为什么这一页自称「博客」，而不是「公开文章」】
