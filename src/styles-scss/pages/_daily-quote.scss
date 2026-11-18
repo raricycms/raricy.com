@@ -84,9 +84,10 @@
   // autoFocus 在隐藏元素上会失效，而这一层只挡视觉、不挡焦点。`is-open` 那一帧
   // 透明度直接到 1、位移照常过渡：卡片一亮就已经在动画里，不会先淡出来再升。
   opacity: 0;
-  // 起点是卡片自身高度的下方：居中弹窗用整屏位移（80vh）时，行程里有一大段是
-  // 「卡片在屏幕外飞」，读起来像动画卡住；用 100% 让行程与卡片高度绑定。
-  transform: translateY(calc(100% + 24px));
+  // 位移 = 半个视口 + 半个自身高度 + 24px：卡片居中时，这个量刚好把整张卡片送到
+  // 视口下沿之外（只写 100% 的话，卡片顶边仍停在原来底边的位置，退场结束时还有
+  // 一大截露在屏幕里）。入场反向走同一条：卡片从屏幕外升起。
+  transform: translateY(calc(50vh + 50% + 24px));
   transition: transform v.$motion-duration v.$motion-easing;
 
   // 遮罩不在 ::backdrop 上：对话框一 close() 退出原生模态，::backdrop 当场消失，
@@ -111,7 +112,7 @@
     // 留在遮罩之上（两者都脱离原生模态了），否则卡片会被自己的遮罩压暗。
     z-index: v.$z-modal + 1;
     pointer-events: none;
-    transform: translateY(calc(100% + 24px));
+    transform: translateY(calc(50vh + 50% + 24px));
   }
 
   &__body {
