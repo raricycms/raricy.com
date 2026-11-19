@@ -18,6 +18,54 @@
   display: none;
 }
 
+/* 局部滚动容器：由 Scrollbars.tsx 在运行时挂上这两个类。
+   原生那条在这里藏掉，滑块是注入的 .scroll-port__thumb（绝对定位、不占布局）。 */
+.scroll-port {
+  scrollbar-width: none;
+}
+
+.scroll-port::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+
+/* 原本是 static 的容器才补定位上下文（由脚本判断后添加）。 */
+.scroll-port--static {
+  position: relative;
+}
+
+.scroll-port__thumb {
+  position: absolute;
+  top: 0;
+  right: 0;
+  // 与页面级那条同参：静止 10px、悬停两倍、按下二级主题色、指针不变。
+  width: 10px;
+  min-height: 32px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--color-text-primary) 22%, transparent);
+  pointer-events: auto;
+  cursor: default;
+  touch-action: none;
+  z-index: 1;
+  transition:
+    width v.$motion-duration v.$motion-easing,
+    background-color v.$feedback-duration v.$feedback-easing,
+    opacity v.$feedback-duration v.$feedback-easing;
+
+  &:hover {
+    width: 20px;
+  }
+
+  &:active {
+    background: var(--color-brand-secondary);
+  }
+
+  &.is-hidden {
+    opacity: 0;
+    pointer-events: none;
+  }
+}
+
 @media (hover: hover) and (pointer: fine) {
   /* 藏掉原生滚动条：两条都写，Chromium / WebKit 认伪元素，Firefox 认 scrollbar-width。 */
   html {
