@@ -11,6 +11,7 @@ import FooterGate from './components/FooterGate';
 import NotificationHeartbeat from './components/NotificationHeartbeat';
 import SmoothWheelScroll from './components/SmoothWheelScroll';
 import SiteScrollbar from './components/SiteScrollbar';
+import Scrollbars from './components/Scrollbars';
 import FrameBuster from './components/FrameBuster';
 import { getCurrentUser, isCoreUser } from '@/lib/auth';
 import { frameUrlFor } from '@/lib/frame-service';
@@ -97,6 +98,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         <SmoothWheelScroll />
         {/* 自绘滚动条：原生那条占布局宽度，跨页面与锁滚动时顶栏会跟着横移（见组件内说明） */}
         <SiteScrollbar />
+        <Scrollbars />
         <main>{children}</main>
         {/* /chat 是满屏工作台，不渲染页脚（见 FooterGate） */}
         <FooterGate>

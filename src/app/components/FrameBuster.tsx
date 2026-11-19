@@ -184,7 +184,8 @@ export default function FrameBuster() {
     };
 
     window.addEventListener('keydown', onKey);
-    // 与其它浮层共用同一份滚动锁（可叠加、幂等）；不要各写一遍 body.style.overflow。
+    // 与全站其它入口同一份锁：这里原先自己写 overflow，两个浮层同时在场时
+    // 先关的那个会把滚动提前放开（见 lib/scroll-lock）。
     const releaseScroll = lockPageScroll();
     dialogRef.current?.focus();
 

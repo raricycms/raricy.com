@@ -7,12 +7,15 @@
  * 这里不必量宽度、补内距 —— 补内距也挪不动 fixed 元素。其余平台原生条仍在，由
  * styles-scss/layout/_scrollbar.scss 让根元素常驻 scrollbar-gutter 抵掉宽度变化。
  *
- * 【可嵌套】浮层可能叠着出现（详情层里再开一个面板），卸载顺序也不保证与打开相反：
- * 用模块级计数，第一个锁记下原值、最后一个释放才还原。返回的释放函数幂等 ——
- * 同一帧里既点关闭又卸载组件，不会重复计数。
+ * 【按引用计数】六个入口（每日一言、图片放大、个人主页排版、窄屏博客侧栏、阅读器
+ * 全屏、跨站 iframe 提示）可能同时在场：各自记 `previousOverflow` 的话，先关的那个会
+ * 把 overflow 还原成空，外层还开着时页面就恢复了滚动。这里只在外层第一把锁进来时记
+ * 原值、最后一把锁释放时还原。
+ *
+ * 【幂等】返回的释放函数重复调用只生效一次 —— 同一帧里既点关闭又卸载组件，不会重复计数。
  */
 
-let locks = 0;
+let lockCount = 0;
 let previousOverflow = '';
 
 /**
@@ -20,16 +23,17 @@ let previousOverflow = '';
  * @returns 幂等的还原函数
  */
 export function lockPageScroll(): () => void {
-  if (locks === 0) {
-    previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
+  const body = document.body;
+  if (lockCount === 0) {
+    previousOverflow = body.style.overflow;
+    body.style.overflow = 'hidden';
   }
-  locks += 1;
+  lockCount += 1;
   let released = false;
   return () => {
     if (released) return;
     released = true;
-    locks = Math.max(0, locks - 1);
-    if (locks === 0) document.body.style.overflow = previousOverflow;
+    lockCount = Math.max(0, lockCount - 1);
+    if (lockCount === 0) body.style.overflow = previousOverflow;
   };
 }

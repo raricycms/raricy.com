@@ -154,8 +154,8 @@ export default function ImageZoom({ source, onDone }: { source: ImageZoomSource;
     layerRef.current?.focus({ preventScroll: true });
   }, []);
 
-  // 打开期间锁滚动；收起时由 close 立刻放开。宽度不会变（桌面端原生条已换成自绘条），
-  // 所以这里只锁 overflow，不补内距（见 lib/scroll-lock）。
+  // 打开期间锁滚动；收起时由 close 立刻放开。桌面端的原生滚动条已经换成自绘的，
+  // 锁滚动不改变布局宽度，不必再补内距（见 lib/scroll-lock）。
   useEffect(() => {
     releaseScroll.current = lockPageScroll();
     return () => {

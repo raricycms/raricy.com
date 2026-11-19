@@ -20,13 +20,63 @@
   display: none;
 }
 
+/* 局部滚动容器：由 Scrollbars.tsx 在运行时挂上这两个类。
+   原生那条在这里藏掉，滑块是注入的 .scroll-port__thumb（绝对定位、不占布局）。 */
+.scroll-port {
+  /* 只隐藏纵向那条：`pre`、横向表格这类盒子的 overflow-x 也是 auto，
+     把 height 一起清零会让代码块的横向滚动条消失，而注入的滑块只跟踪纵向。 */
+  &::-webkit-scrollbar {
+    width: 0;
+  }
+}
+
+/* 原本是 static 的容器才补定位上下文（由脚本判断后添加）。 */
+.scroll-port--static {
+  position: relative;
+}
+
+.scroll-port__thumb {
+  position: absolute;
+  top: 0;
+  right: 0;
+  // 页面级那条是 10px，局部再细一档：下拉、侧栏、聊天列表这些盒子面积小，
+  // 10px 的滑块在 280px 宽的侧栏里占比太大。悬停仍翻倍（6px → 12px）。
+  width: 6px;
+  min-height: 32px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--color-text-primary) 22%, transparent);
+  pointer-events: auto;
+  cursor: default;
+  touch-action: none;
+  z-index: 1;
+  transition:
+    width v.$motion-duration v.$motion-easing,
+    background-color v.$feedback-duration v.$feedback-easing,
+    opacity v.$feedback-duration v.$feedback-easing;
+
+  &:hover {
+    width: 12px;
+  }
+
+  &:active {
+    background: var(--color-brand-secondary);
+  }
+
+  &.is-hidden {
+    opacity: 0;
+    pointer-events: none;
+  }
+}
+
 @media (hover: hover) and (pointer: fine) {
-  /* 藏掉原生滚动条：两条都写，Chromium / WebKit 认伪元素，Firefox 认 scrollbar-width。 */
-  html {
+  /* 藏掉原生滚动条：两条都写，Chromium / WebKit 认伪元素，Firefox 认 scrollbar-width。
+     限定 `html.js`：脚本没跑起来（禁用 JS、水合失败）时原生那条必须留着，否则页面上
+     一条滚动位置指示都没有 —— 自绘那条要等 React 挂载。 */
+  html.js {
     scrollbar-width: none;
   }
 
-  html::-webkit-scrollbar {
+  html.js::-webkit-scrollbar {
     width: 0;
     height: 0;
   }
@@ -61,15 +111,19 @@
     touch-action: none;
     // 位置跟滚动走，不能有过渡，否则拖动时会滞后。
     will-change: transform;
-    // 变色走反馈档：悬停变二级主题色、按下变一级主题色。
-    transition: background-color v.$feedback-duration v.$feedback-easing, opacity v.$feedback-duration v.$feedback-easing;
+    // 悬停只加宽（形变档），按下才换色（反馈档）—— 两条各走自己那一档。
+    transition:
+      width v.$motion-duration v.$motion-easing,
+      background-color v.$feedback-duration v.$feedback-easing,
+      opacity v.$feedback-duration v.$feedback-easing;
 
+    // 悬停翻倍（10px → 20px），右边界仍贴着屏幕：宽度从左边长出来，胶囊形靠 999px 圆角维持。
     &:hover {
-      background: var(--color-brand-secondary);
+      width: 20px;
     }
 
     &:active {
-      background: var(--color-brand-primary);
+      background: var(--color-brand-secondary);
     }
 
     &.is-hidden {

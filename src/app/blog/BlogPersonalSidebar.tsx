@@ -96,8 +96,8 @@ export default function BlogPersonalSidebar({ user, summary = null, scope = 'all
   // 手势却拦不住鼠标滚轮；而面板自己真正可滚时，滚到尽头还会把余量转交给后面那一页
   // （滚动链，SCSS 的 overscroll-behavior: contain 管这一半）。实测（390×844）：不锁时
   // 展开后把滚轮停在面板上，window.scrollY 从 0 直接被带到 105。
-  // 锁法见 lib/scroll-lock：只做锁与放。桌面端原生滚动条已换成不占布局宽度的自绘条，
-  // 锁滚动前后视口宽度不变，不需要再量滚动条宽度补 padding-right。
+  // 锁法见 lib/scroll-lock：按引用计数锁住 body 的 overflow，不量滚动条宽度
+  // （桌面端的原生滚动条已经换成自绘的，锁与放都不改变布局宽度）。
   // 收起 / 卸载（含链接导航）都走 cleanup 还原，别只在收起按钮里写。
   useEffect(() => {
     if (!open || !narrow) return;
