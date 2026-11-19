@@ -208,25 +208,46 @@ body > main {
      滚动条，那时它吃的是上面那层的原生配色。
 
    刻意**不写** scrollbar-color / scrollbar-width：按规范这两个一旦生效，就会让
-   ::-webkit-scrollbar 整族失效（Chrome 121+ 已支持它们）—— 那时圆角与 hover
-   变蓝都没了。不写它们的代价是 Firefox 只得上面那层的原生暗色条；那已满足
+   ::-webkit-scrollbar 整族失效（Chrome 121+ 已支持它们）—— 那时圆角与描边变化
+   都没了。不写它们的代价是 Firefox 只得上面那层的原生暗色条；那已满足
    「跟着主题走」，换来 Chrome 里一条与全站圆角语言一致的滚动条，划算。 */
-::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar { width: var(--scrollbar-size, 10px); height: var(--scrollbar-size, 10px); }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb {
-  /* 看着 6px、摸着还是 10px：2px 透明描边 + background-clip: padding-box。
-     不这么写，10px 宽的槽会被底色填满，「细条」就只剩两端那点倒角。 */
-  background: var(--color-text-secondary);
+  /* 与页面级自绘滚动条（layout/_scrollbar.scss）同一套外观：半透明主文字色、
+     999px 胶囊、右缘贴边。看着 6px、摸着还是 10px —— 2px 透明描边 +
+     background-clip: padding-box；不这么写，10px 宽的槽会被底色填满。 */
+  background: color-mix(in srgb, var(--color-text-primary) 22%, transparent);
   background-clip: padding-box;
   border: 2px solid transparent;
   border-radius: 999px;
 }
-/* background 是简写，会把 background-clip 重置回 border-box —— 这里必须再写一次，
-   否则 hover 时滚动条会突然变粗一圈。 */
+/* 悬停把描边收成 0：视觉上从 6px 长到满槽（约两倍），颜色不变。
+   ⚠️ 原生滚动条伪元素不支持 transition，这一步是瞬时的；要跟自绘那条一样有
+   720ms 形变过渡，只能换成脚本自绘（见 layout/_scrollbar.scss）。 */
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--color-brand-primary);
+  background: color-mix(in srgb, var(--color-text-primary) 22%, transparent);
   background-clip: padding-box;
+  border-width: 0;
+}
+/* 按下（拖动滑块）换成二级主题色，与自绘那条一致。 */
+::-webkit-scrollbar-thumb:active {
+  background: var(--color-brand-secondary);
+  background-clip: padding-box;
+  border-width: 0;
 }
 /* 两轴都能滚时右下角那块小方块：默认是白的，暗色下会露馅 */
 ::-webkit-scrollbar-corner { background: transparent; }
+
+/* 局部滚动容器细一档：下拉列表、选择器面板、编辑器预览这些占的面积小，
+   10px 的槽会把内容挤得很窄。 */
+.expand-select__list,
+.sticker-picker__body,
+.user-picker__list,
+.image-picker-scroll,
+.md-res-scroll,
+.md-editor__preview-body,
+pre {
+  --scrollbar-size: 8px;
+}
 
