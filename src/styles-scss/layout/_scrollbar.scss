@@ -65,9 +65,9 @@
       background-color v.$feedback-duration v.$feedback-easing,
       opacity v.$feedback-duration v.$feedback-easing;
 
-    // 略变宽，右边界仍贴着屏幕：宽度从左边长出来，胶囊形靠 999px 圆角维持。
+    // 悬停翻倍（10px → 20px），右边界仍贴着屏幕：宽度从左边长出来，胶囊形靠 999px 圆角维持。
     &:hover {
-      width: 13px;
+      width: 20px;
     }
 
     &:active {
