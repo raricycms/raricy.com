@@ -172,8 +172,11 @@ export default function HeroLandscape() {
       // 不再挤在顶栏下面。基准取画幅盒而不是 window.innerWidth/innerHeight：
       // 盒高按 svh 定（地址栏收放不动它），日月才不会在滚动中跟着可见高度挪位置。
       const box = scene.getBoundingClientRect();
-      target.x = box.right * 0.78;
-      target.y = box.bottom * 0.27;
+      // 比例只由盒子尺寸决定：写成 left + width·比例 而不是 right·比例 ——
+      // 盒子滚出视口上沿后 right / bottom 不再是「盒宽 / 盒高」，那时触发 resize
+      // （转屏、开开发者工具、地址栏收放）日月会被换算到错的位置。
+      target.x = box.left + box.width * 0.78;
+      target.y = box.top + box.height * 0.27;
       const local = target.matrixTransform(ctm.inverse());
       // 日月的圆心在画幅坐标 (1375, 185)：位移就是「目标点 − 圆心」。
       sky.style.translate = `${(local.x - 1375).toFixed(1)}px ${(local.y - 185).toFixed(1)}px`;

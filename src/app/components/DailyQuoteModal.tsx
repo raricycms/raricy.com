@@ -31,8 +31,8 @@ export default function DailyQuoteModal({ onClose, returnFocus }: { onClose: () 
   useEffect(() => {
     const element = dialog.current;
     previousFocus.current = document.activeElement as HTMLElement | null;
-    // 锁滚动要连滚动条宽度一起补（见 lib/scroll-lock）：只写 overflow: hidden 的话，
-    // 桌面上滚动条一消失，整页会右移半个滚动条，打开弹窗那一下就是「页面抖几像素」。
+    // 锁滚动走 lib/scroll-lock：桌面端的原生滚动条已经换成自绘的，锁滚动不再改变
+    // 布局宽度，这里不必量宽度、补内距。
     releaseScroll.current = lockPageScroll();
     element?.showModal();
     // 第一帧保持透明的初始态，下一帧再加 is-open —— 否则浏览器会把两帧合并成一次跳变。
@@ -93,7 +93,8 @@ export default function DailyQuoteModal({ onClose, returnFocus }: { onClose: () 
       element.classList.add('is-closing');
       if (element.open) element.close();
     }
-    // 先 close() 再还原滚动锁：两件事在同一帧发生，滚动条与内距一起回来，宽度不变。
+    // 先 close() 再还原滚动锁：两件事同一帧发生，页面当场可操作，宽度也不变
+    // （自绘滚动条不占布局宽度）。
     releaseScroll.current?.();
     releaseScroll.current = null;
     setClosing(true);

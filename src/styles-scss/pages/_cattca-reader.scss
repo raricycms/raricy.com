@@ -529,8 +529,8 @@
   min-height: 0;
   overflow-x: hidden;
   overflow-y: auto;
-  // 站点统一由 base/_root.scss 的 ::-webkit-scrollbar 画滚动条；这里刻意不写
-  // scrollbar-color / scrollbar-width（它们一生效，整套圆角 hover 样式就失效了）。
+  // 这个盒子会被 Scrollbars 接管（桌面端换成自绘的那条），未接管时走
+  // base/_root.scss 的原生配色。这里刻意不写 scrollbar-color / scrollbar-width。
   scrollbar-gutter: stable;
 }
 

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ExternalLink } from 'lucide-react';
+import { lockPageScroll } from '@/lib/scroll-lock';
 
 // FrameBuster —— 页面被**跨站** <iframe> 嵌入时，弹一个居中模态框，给用户「跳出」入口。
 //
@@ -183,13 +184,14 @@ export default function FrameBuster() {
     };
 
     window.addEventListener('keydown', onKey);
-    const prevOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
+    // 与全站其它入口同一份锁：这里原先自己写 overflow，两个浮层同时在场时
+    // 先关的那个会把滚动提前放开（见 lib/scroll-lock）。
+    const releaseScroll = lockPageScroll();
     dialogRef.current?.focus();
 
     return () => {
       window.removeEventListener('keydown', onKey);
-      document.body.style.overflow = prevOverflow;
+      releaseScroll();
     };
   }, [embed, closeModal]);
 

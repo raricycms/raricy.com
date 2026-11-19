@@ -134,8 +134,8 @@ export default function ImageZoom({ source, onDone }: { source: ImageZoomSource;
     return () => cancelAnimationFrame(frame);
   }, [source.image, centerDoc, moveTo]);
 
-  // 打开期间锁滚动；收起时由 close 立刻放开。锁的时候连滚动条宽度一起补，
-  // 否则桌面上滚动条一消失，整页会右移半个滚动条（见 lib/scroll-lock）。
+  // 打开期间锁滚动；收起时由 close 立刻放开。桌面端的原生滚动条已经换成自绘的，
+  // 锁滚动不改变布局宽度，不必再补内距（见 lib/scroll-lock）。
   useEffect(() => {
     releaseScroll.current = lockPageScroll();
     return () => {

@@ -207,10 +207,11 @@ body > main {
      额外画成站内令牌色（圆角细条）。Safari 在默认的 overlay 模式下不画自定义
      滚动条，那时它吃的是上面那层的原生配色。
 
-   刻意**不写** scrollbar-color / scrollbar-width：按规范这两个一旦生效，就会让
+   全局这条刻意**不写** scrollbar-color / scrollbar-width：按规范这两个一旦生效，就会让
    ::-webkit-scrollbar 整族失效（Chrome 121+ 已支持它们）—— 那时圆角与描边变化
    都没了。不写它们的代价是 Firefox 只得上面那层的原生暗色条；那已满足
-   「跟着主题走」，换来 Chrome 里一条与全站圆角语言一致的滚动条，划算。 */
+   「跟着主题走」，换来 Chrome 里一条与全站圆角语言一致的滚动条，划算。
+   （桌面端页面级那条在 layout/_scrollbar.scss 里单独隐藏，它只作用于 `html.js`。） */
 ::-webkit-scrollbar { width: var(--scrollbar-size, 10px); height: var(--scrollbar-size, 10px); }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb {
@@ -238,16 +239,4 @@ body > main {
 }
 /* 两轴都能滚时右下角那块小方块：默认是白的，暗色下会露馅 */
 ::-webkit-scrollbar-corner { background: transparent; }
-
-/* 局部滚动容器细一档：下拉列表、选择器面板、编辑器预览这些占的面积小，
-   10px 的槽会把内容挤得很窄。 */
-.expand-select__list,
-.sticker-picker__body,
-.user-picker__list,
-.image-picker-scroll,
-.md-res-scroll,
-.md-editor__preview-body,
-pre {
-  --scrollbar-size: 8px;
-}
 

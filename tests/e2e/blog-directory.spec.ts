@@ -150,7 +150,7 @@ test('手机端面板：点外部不穿透进文章页，展开时锁住页面�
   await page.waitForTimeout(600);
   expect(page.url()).toBe(before);
 
-  // 收起后恢复滚动（cleanup 还原 body 的 overflow / padding-right）。
+  // 收起后恢复滚动（cleanup 还原 body 的 overflow）。
   await expect.poll(() => page.evaluate(() => document.body.style.overflow)).toBe('');
 });
 

@@ -21,12 +21,11 @@
 /* 局部滚动容器：由 Scrollbars.tsx 在运行时挂上这两个类。
    原生那条在这里藏掉，滑块是注入的 .scroll-port__thumb（绝对定位、不占布局）。 */
 .scroll-port {
-  scrollbar-width: none;
-}
-
-.scroll-port::-webkit-scrollbar {
-  width: 0;
-  height: 0;
+  /* 只隐藏纵向那条：`pre`、横向表格这类盒子的 overflow-x 也是 auto，
+     把 height 一起清零会让代码块的横向滚动条消失，而注入的滑块只跟踪纵向。 */
+  &::-webkit-scrollbar {
+    width: 0;
+  }
 }
 
 /* 原本是 static 的容器才补定位上下文（由脚本判断后添加）。 */
@@ -68,12 +67,14 @@
 }
 
 @media (hover: hover) and (pointer: fine) {
-  /* 藏掉原生滚动条：两条都写，Chromium / WebKit 认伪元素，Firefox 认 scrollbar-width。 */
-  html {
+  /* 藏掉原生滚动条：两条都写，Chromium / WebKit 认伪元素，Firefox 认 scrollbar-width。
+     限定 `html.js`：脚本没跑起来（禁用 JS、水合失败）时原生那条必须留着，否则页面上
+     一条滚动位置指示都没有 —— 自绘那条要等 React 挂载。 */
+  html.js {
     scrollbar-width: none;
   }
 
-  html::-webkit-scrollbar {
+  html.js::-webkit-scrollbar {
     width: 0;
     height: 0;
   }

@@ -153,10 +153,20 @@
   }
 
   &__stage {
-    // 与正片同档：占位那一帧就撑到位，内容到达时居中位置不动（见文件头）。
-    // 390 宽下正片实测 276，取 280 让两段高度一致。
-    min-height: 280px;
     animation: daily-quote-content-in v.$feedback-duration v.$feedback-easing .055s both;
+  }
+
+  // 占位态才撑到正片高度：内容到达时盒子不缩，居中位置不动（见文件头）。
+  // 常驻 min-height 会让短内容与横屏矮视口也白白占高，甚至撑出内部滚动 ——
+  // 横屏（844×390）可视高减掉内距、标题与底栏后装不下 280px。
+  &__stage:has(.daily-quote-state--loading) {
+    min-height: 280px;
+  }
+
+  @media (max-height: 640px) {
+    &__stage:has(.daily-quote-state--loading) {
+      min-height: 0;
+    }
   }
 
   &__footer {
