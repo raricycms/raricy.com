@@ -59,15 +59,19 @@
     touch-action: none;
     // 位置跟滚动走，不能有过渡，否则拖动时会滞后。
     will-change: transform;
-    // 变色走反馈档：悬停变二级主题色、按下变一级主题色。
-    transition: background-color v.$feedback-duration v.$feedback-easing, opacity v.$feedback-duration v.$feedback-easing;
+    // 悬停只加宽（形变档），按下才换色（反馈档）—— 两条各走自己那一档。
+    transition:
+      width v.$motion-duration v.$motion-easing,
+      background-color v.$feedback-duration v.$feedback-easing,
+      opacity v.$feedback-duration v.$feedback-easing;
 
+    // 略变宽，右边界仍贴着屏幕：宽度从左边长出来，胶囊形靠 999px 圆角维持。
     &:hover {
-      background: var(--color-brand-secondary);
+      width: 13px;
     }
 
     &:active {
-      background: var(--color-brand-primary);
+      background: var(--color-brand-secondary);
     }
 
     &.is-hidden {
