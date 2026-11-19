@@ -5,7 +5,7 @@
 范围：`src/lib` 根目录下全部 `*.ts`，不含 `md-editor/`、`reactive/` 等子目录。
 
 - 文件数：148
-- 合计行数：32122（含空行）
+- 合计行数：32126（含空行）
 
 | 文件 | 行数 | 导出数 | 一句话职责 |
 | --- | ---: | ---: | --- |
@@ -135,7 +135,7 @@
 | `rich-text.ts` | 328 | 6 | 用户输入正文 → 安全 HTML 的**共享管线**（marked → DOMPurify → 后处理） |
 | `safe-url.ts` | 73 | 3 | 登录回跳地址的安全校验 |
 | `saved-message-service.ts` | 408 | 14 | 私聊消息保存箱 |
-| `scroll-lock.ts` | 35 | 1 | 锁住页面滚动。 |
+| `scroll-lock.ts` | 39 | 1 | 锁住页面滚动。 |
 | `secret-box.ts` | 109 | 4 | 落盘密钥的对称加解密（Fernet） |
 | `service-accounts.ts` | 46 | 2 | 服务账号（配额白名单） |
 | `session.ts` | 90 | 5 | 基于 JWT 的会话 |

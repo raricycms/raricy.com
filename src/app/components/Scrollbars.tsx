@@ -23,12 +23,22 @@ const SKIP = new Set(['HTML', 'BODY', 'TEXTAREA']);
 const HIDE_ON = '/';
 const ENABLED = '(hover: hover) and (pointer: fine)';
 
+/**
+ * 只有能单独把纵向原生条藏掉的引擎才接管局部容器。Firefox 不认 `::-webkit-scrollbar`，
+ * 藏不掉原生条 —— 再注入一条滑块就是两条并排。页面级那条不靠这个判据：它用
+ * `scrollbar-width: none` 藏根滚动条，Firefox 也支持。
+ */
+const CAN_HIDE_NATIVE_VERTICAL =
+  typeof CSS !== 'undefined' && typeof CSS.supports === 'function'
+  && CSS.supports('selector(::-webkit-scrollbar)');
+
 type Port = {
   el: HTMLElement;
   thumb: HTMLDivElement;
   onScroll: () => void;
   observer: ResizeObserver;
   mutation: MutationObserver;
+  classObserver: MutationObserver;
   cleanup: () => void;
 };
 
@@ -42,10 +52,17 @@ function isScrollPort(el: HTMLElement): boolean {
 function mount(el: HTMLElement): Port | null {
   if (!isScrollPort(el)) return null;
   el.dataset.scrollPort = '1';
-  el.classList.add('scroll-port');
   // 只有原本是 static 的容器才补定位上下文；absolute/fixed 的容器本身就是上下文，
   // 改它的 position 会把布局挪走。
-  if (getComputedStyle(el).position === 'static') el.classList.add('scroll-port--static');
+  const needsStatic = getComputedStyle(el).position === 'static';
+  // React 重渲染会整串重写 className（例如 `.modal` 切 `is-open`）：运行期加的两个类
+  // 会被一起抹掉，原生条当场回来、滑块却还在 —— 变成两条并排。这里记住该补什么，
+  // 并在 class 被外部改写时补回去（见下面的 classObserver）。
+  const ensureClasses = () => {
+    if (!el.classList.contains('scroll-port')) el.classList.add('scroll-port');
+    if (needsStatic && !el.classList.contains('scroll-port--static')) el.classList.add('scroll-port--static');
+  };
+  ensureClasses();
 
   const thumb = document.createElement('div');
   thumb.className = 'scroll-port__thumb is-hidden';
@@ -56,6 +73,7 @@ function mount(el: HTMLElement): Port | null {
   const sync = () => {
     // 内容被整体替换（innerHTML、按 key 重建）时滑块会被一起删掉：补回来。
     if (!thumb.isConnected) el.appendChild(thumb);
+    ensureClasses();
     const height = el.clientHeight;
     const scrollH = el.scrollHeight;
     if (scrollH <= height + 1 || height < MIN_THUMB) {
@@ -110,6 +128,10 @@ function mount(el: HTMLElement): Port | null {
   // 排到 rAF 的话那一帧用户看到的是「滑块消失」。
   const mutation = new MutationObserver(() => sync());
   mutation.observe(el, { childList: true, subtree: true, characterData: true });
+  // 外部（React）重写 className 时立即把接管类补回去；补类本身也会触发一次本观察器，
+  // 第二次进来类已存在，直接返回。
+  const classObserver = new MutationObserver(() => ensureClasses());
+  classObserver.observe(el, { attributes: true, attributeFilter: ['class'] });
 
   requestAnimationFrame(sync);
 
@@ -119,10 +141,12 @@ function mount(el: HTMLElement): Port | null {
     onScroll,
     observer,
     mutation,
+    classObserver,
     cleanup: () => {
       el.removeEventListener('scroll', onScroll);
       observer.disconnect();
       mutation.disconnect();
+      classObserver.disconnect();
       thumb.remove();
       el.classList.remove('scroll-port', 'scroll-port--static');
       delete el.dataset.scrollPort;
@@ -136,6 +160,8 @@ export default function Scrollbars() {
   useEffect(() => {
     // 首页整屏是画，页面级那条不在，局部也不接管。
     if (pathname === HIDE_ON) return;
+    // 藏不掉原生纵向条（Firefox）就不接管：否则原生条与滑块两条并排。
+    if (!CAN_HIDE_NATIVE_VERTICAL) return;
     if (!window.matchMedia(ENABLED).matches) return;
 
     const ports = new Map<HTMLElement, Port>();

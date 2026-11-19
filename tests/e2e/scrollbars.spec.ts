@@ -51,6 +51,35 @@ test.describe('页内滚动条', () => {
     await page.evaluate(() => document.getElementById('scroll-probe')?.remove());
   });
 
+  test('框架重写容器的 className 后，接管类自动补回', async ({ page }) => {
+    await page.goto('/explore', { waitUntil: 'domcontentloaded' });
+
+    // 流内 static 容器才能一起验 `scroll-port--static`（接管时补的定位上下文）。
+    await page.evaluate(() => {
+      const box = document.createElement('div');
+      box.id = 'scroll-probe';
+      box.style.cssText = 'width: 300px; height: 200px; overflow-y: auto;';
+      box.innerHTML = '<div style="height: 900px;"></div>';
+      document.body.appendChild(box);
+    });
+
+    const port = page.locator('#scroll-probe');
+    await expect(port).toHaveClass(/scroll-port/, { timeout: 5000 });
+    await expect(port).toHaveClass(/scroll-port--static/);
+
+    // React 重渲染会整串重写 className（`.modal` 切 `is-open` 就是实例）：
+    // 运行期加的接管类被一起抹掉，原生条回来、滑块却还在 —— 变成两条滚动条。
+    await page.evaluate(() => {
+      document.getElementById('scroll-probe')!.className = 'rewritten-by-framework';
+    });
+    await expect(port).toHaveClass(/scroll-port/, { timeout: 2000 });
+    await expect(port).toHaveClass(/scroll-port--static/);
+    expect(await port.evaluate((el) => getComputedStyle(el).position)).toBe('relative');
+    await expect(port.locator('.scroll-port__thumb')).toHaveCount(1);
+
+    await page.evaluate(() => document.getElementById('scroll-probe')?.remove());
+  });
+
   test('横向溢出的盒子仍能横向滚动', async ({ page }) => {
     await page.goto('/explore', { waitUntil: 'domcontentloaded' });
 
