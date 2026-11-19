@@ -36,7 +36,7 @@
     right: 0;
     bottom: 0;
     // 与经典滚动条同宽，拖动热区不至于太窄。
-    width: 10px;
+    width: 12px;
     // 顶栏之下、内容之上：它不属于页面内容，也不该盖住顶栏。
     z-index: v.$z-header - 1;
     pointer-events: none;
@@ -45,24 +45,29 @@
   .site-scrollbar__thumb {
     position: absolute;
     top: 0;
-    left: 2px;
-    right: 2px;
+    // 贴右边缘：滑块右边界就是屏幕右边界。两侧各缩 2px 的话，鼠标顶到屏幕最右边
+    // 那几像素反而落在滑块外面（跟着往下拖会拖不动），热区必须一直铺到边。
+    left: auto;
+    right: 0;
+    width: 10px;
     min-height: 36px;
     border-radius: 999px;
     background: color-mix(in srgb, var(--color-text-primary) 22%, transparent);
     pointer-events: auto;
-    cursor: grab;
+    // 指针保持默认箭头：这块不是可点的控件，拖动时换手形会让人以为它是按钮。
+    cursor: default;
     touch-action: none;
     // 位置跟滚动走，不能有过渡，否则拖动时会滞后。
     will-change: transform;
+    // 变色走反馈档：悬停变二级主题色、按下变一级主题色。
     transition: background-color v.$feedback-duration v.$feedback-easing, opacity v.$feedback-duration v.$feedback-easing;
 
     &:hover {
-      background: color-mix(in srgb, var(--color-text-primary) 34%, transparent);
+      background: var(--color-brand-secondary);
     }
 
     &:active {
-      cursor: grabbing;
+      background: var(--color-brand-primary);
     }
 
     &.is-hidden {
