@@ -293,7 +293,7 @@
   height: 3px;
   background: var(--color-brand-primary);
   opacity: 0.7;
-  z-index: 1050;
+  z-index: v.$z-modal;
   transition: width v.$motion-duration v.$motion-easing;
 }
 

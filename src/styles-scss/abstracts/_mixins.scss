@@ -203,10 +203,11 @@
 // `.feed-modal`、`.oauth-modal-overlay`、`.frame-buster`），所以由调用方 `@include`
 // 这两个 mixin，而不是让它们互相继承。
 //
-// 垂直定位交给子元素的 `margin: auto`，**不用** `align-items: center` 收尾：内容比
-// 视口高时，居中会把顶部挤出可滚区域，底部的按钮永远点不到（实测 390×664 下栏目
-// 编辑弹窗高 823px）。auto 边距在空间不足时退化为 0，从顶部排布，两端都滚得到。
-//
+// 垂直定位：走 `modal-frame` 的卡片用 `margin: auto` 居中 —— 内容比视口高时 auto 边距
+// 退化为 0，从顶部排布，两端都滚得到（若只靠外壳的 align-items: center 收尾，超高内容的
+// 顶部会被挤出可滚区域，底部按钮永远点不到；实测 390×664 下栏目编辑弹窗高 823px）。
+// 外壳仍保留 align-items / justify-content: center，是给不走 modal-frame、把整层直接当
+// 卡片用的查看器（如 `.image-hosting-preview__content`）兜底。
 // 留白同时让出安全区：`--safe-*` 由 base/_root.scss 提供，刘海与 Home Indicator
 // 都落在这圈内边距里。
 

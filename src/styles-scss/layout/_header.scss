@@ -648,10 +648,13 @@ body {
     display: block;
     position: fixed;
     inset: 0;
-    z-index: 1029;
+    z-index: v.$z-header - 1;
     background: rgba(0, 0, 0, 0.5);
     opacity: 0;
     visibility: hidden;
+    // 收起时淡完（240ms）才隐藏，这期间它仍铺满视口 —— 不关掉指针的话，点了关闭
+    // 立刻去点页面会被这层吃掉（与 .modal 退场期间 pointer-events: none 同一口径）。
+    pointer-events: none;
     // 收起：淡完（240ms 反馈档）再隐藏；展开：立即可见（延迟只属于收起方向）。
     transition: opacity v.$feedback-duration v.$feedback-easing,
                 visibility 0s v.$feedback-duration;
@@ -660,6 +663,7 @@ body {
   .site-navbar.open + .site-navbar-scrim {
     opacity: 1;
     visibility: visible;
+    pointer-events: auto;
     transition: opacity v.$feedback-duration v.$feedback-easing,
                 visibility 0s;
   }

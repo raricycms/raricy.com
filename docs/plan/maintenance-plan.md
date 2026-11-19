@@ -19,7 +19,7 @@
 | `.current-category` 死规则 | 待清理：当前没有渲染消费方，博客样式仍保留 `.current-category .badge` | 删除前核对模板和脚本；避免重新启用半透明白底白字的过时配方 |
 | 正文 `.copy-btn` 的样式归属 | 已失效：旧 DOM 后处理的注入点已删除，当前没有渲染消费方；博客根级与故事局部的 `.copy-btn` 规则都是死规则 | 删除死规则前核对模板与脚本；当前代码块复制按钮由统一渲染引擎的 `md-code-block-copy` 提供，不要再按 `.copy-btn` 找注入点 |
 | 签到奖励脉冲的主题色 | 待适配：`btnPulse` 写死浅色品牌蓝，深色下与按钮本体不同色 | 在所属组件明确可用的主题配方，保留按下反馈并覆盖减少动态效果；不引入全局未定义变量 |
-| 全站交互状态的动效覆盖 | 待补：不少悬停 / 按下 / 展开 / 加载状态仍是瞬时切换；顶栏部分图标容器还在用 `transition: all` | 按组件补 150–250ms 反馈与 480 / 220ms 形变；禁止用 `transition: all` 和 `max-height` 猜高度；优先目录、顶栏、表单、列表、弹窗 |
+| 全站交互状态的动效覆盖 | 待补：不少悬停 / 按下 / 展开 / 加载状态仍是瞬时切换；顶栏部分图标容器还在用 `transition: all` | 按组件补 `$feedback-duration`（240ms）反馈与 `$motion-duration`（720ms）形变（见 docs/frontend-styles.md §6.2）；禁止用 `transition: all` 和 `max-height` 猜高度；优先目录、顶栏、表单、列表、弹窗 |
 | 顶栏脉冲的减少动态效果 | 已修：`_header.scss` 的 `prefers-reduced-motion: reduce` 分支已把 `.site-link__dot` / `.notification-badge` / `.checkin-badge` 的 `animation` 置为 `none` | 再动这三个「呼吸点」时保持整族列在 reduce 名单里；保留红点与数字本身，不改变功能 |
 
 > 2026-10 通知页重做时已顺手清掉 `.filter-btn` 那份从未生效的通知侧副本；

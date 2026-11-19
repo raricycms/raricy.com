@@ -7,16 +7,11 @@
 
 /* 与 .container 同一套阶梯（原为「<1200px 全幅 + ≥1200px 1140」的老写法） */
 .home-container { width: 100%; margin-left: auto; margin-right: auto; padding-left: 16px; padding-right: 16px; @include m.site-width-ladder; }
-.home-col-12 { flex: 0 0 100%; max-width: 100%; }
 .home-text-center { text-align: center; }
 
-.home-display { font-size: 3rem; font-weight: 700; margin-bottom: 0.75rem; line-height: 1.15; }
-@media (min-width: 992px) { .home-display { font-size: 3.5rem; } }
-
-/* Responsive grid for features */
-.home-grid { display: grid; grid-template-columns: 1fr; gap: 1rem; }
-@media (min-width: 768px) { .home-grid { grid-template-columns: repeat(2, 1fr); } }
-@media (min-width: 992px) { .home-grid { grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); } }
+// 字号/外边距由卡片视图的 `.home-features .home-display` 给（那里要按视口 clamp），
+// 这里只剩字重这一条基础。
+.home-display { font-weight: 700; }
 
 /* 首页功能卡上的引导标签。改「淡底 + 同色字」的胶囊，与博客首页的
    .blog-likes / .blog-comments / .blog-fish 三个统计胶囊同一套观感 ——
@@ -397,7 +392,6 @@ $hero-orb-duration: v.$motion-duration + $hero-layer-step * 4;
 @media (min-width: 768px) and (max-width: 1199px) {
   .hero-content { max-width: 440px; }
   .hero-title { font-size: 5rem; }
-  .hero-eyebrow { font-size: 0.7rem; }
 }
 
 @media (max-width: 767px) {
@@ -568,8 +562,8 @@ $hero-orb-duration: v.$motion-duration + $hero-layer-step * 4;
    死代码，已删。 */
 
 /* ── 卡片视图（首屏推进后的第二幕）─────────────────────────────────────────
-   浮在暗化蒙层之上。首页由山景铺满整屏，不再另起一块浅色内容区；卡片是磨砂玻璃，
-   底下的山体透上来。 */
+   浮在暗化蒙层之上。首页由山景铺满整屏，不再另起一块浅色内容区；卡片用标准卡片色
+   压在蒙层上，底下的山体只以模糊背景透出来（不是磨砂玻璃卡）。 */
 .home-features {
   position: absolute;
   inset: 0;
@@ -578,7 +572,7 @@ $hero-orb-duration: v.$motion-duration + $hero-layer-step * 4;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  // 标题与副标题之间留一点呼吸，卡片之间的竖直间距由 .home-grid 的 margin-top 单独给。
+  // 标题与卡片之间的竖直间距由 .home-grid 的 margin-top 单独给。
   gap: 10px;
   padding: clamp(56px, 8vh, 96px) clamp(18px, 4vw, 56px) clamp(32px, 6vh, 64px);
   pointer-events: none;
@@ -590,19 +584,10 @@ $hero-orb-duration: v.$motion-duration + $hero-layer-step * 4;
     line-height: 1.1;
   }
 
-  // 副标题：半透明的正文色 —— 浅色主题下就是半透明黑，暗色主题自动变成半透明白。
-  &__sub {
-    margin: 0;
-    color: color-mix(in srgb, var(--color-text-primary) 55%, transparent);
-    font-size: clamp(0.95rem, 1.1vw, 1.08rem);
-    line-height: 1.6;
-    letter-spacing: 0.02em;
-    text-align: center;
-  }
-
   .home-grid {
     display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    // 列数跟着实际卡片走：专注模式屏蔽玩具区时只剩三张，写死 4 列会空出右侧一整格。
+    grid-template-columns: repeat(var(--home-card-count, 4), minmax(0, 1fr));
     gap: clamp(16px, 1.8vw, 26px);
     width: min(1180px, 100%);
     // 标题组与卡片之间的竖直间距。
@@ -683,7 +668,7 @@ $hero-orb-duration: v.$motion-duration + $hero-layer-step * 4;
     margin-bottom: 8px;
   }
 
-  .home-features .card-title { font-size: 1.05rem; margin-bottom: 6px !important; }
+  .home-features .card-title { font-size: 1.05rem; margin-bottom: 6px; }
 
   .home-features .card-text {
     font-size: 0.78rem;

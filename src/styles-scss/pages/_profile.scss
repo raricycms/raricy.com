@@ -1322,6 +1322,9 @@
   }
 
   .bento-card {
+    // 卡片入场的 bento-rise 是 animation（不是 transition）—— 只关 transition 的话，
+    // 减少动态效果下卡片仍会逐张升起，且随 540→720ms 变得更长。
+    animation: none;
     transition: none;
   }
 

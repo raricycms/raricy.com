@@ -26,7 +26,7 @@
   pointer-events: none;
 }
 
-@media (max-width: 767px) and (pointer: coarse) {
+@media (max-width: 767px) and (pointer: coarse) and (prefers-reduced-motion: no-preference) {
   html[data-snap] {
     scroll-snap-type: y mandatory;
   }
@@ -51,11 +51,11 @@
   }
 
   /* 对外列表：页首（0）→ 列表里约一屏一个的卡片顶。
-     body 为固定顶栏让出了 --navbar-height，列表页的内容因此整体从 62px 起。
-     把 snapport 上沿缩进同一个高度：页首那一格正好停在 0，卡片那一格停在「卡片顶边
-     贴上顶栏下沿」的位置 —— 一条缩进同时管住两头，卡片顶不会被顶栏压住。 */
+     吸附时卡片顶对齐的是 scroll-padding-top，所以它要让开的不只是固定顶栏，还有
+     吸顶的筛选条（sticky，高度随窄屏排版变）。那一段由 ScrollSnap.tsx 量出来写进
+     --snap-padding-top；脚本没跑到时退回顶栏高度。 */
   html[data-snap='list'] {
-    scroll-padding-top: var(--navbar-height);
+    scroll-padding-top: var(--snap-padding-top, var(--navbar-height));
   }
 
   html[data-snap='list'] .blogs-hero {

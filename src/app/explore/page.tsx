@@ -7,6 +7,7 @@ import { rateLimit, RULES } from '@/lib/rate-limit';
 import { clientIp } from '@/lib/request-ip';
 import { getCurrentUser, isCoreUser } from '@/lib/auth';
 import { frameUrlFor } from '@/lib/frame-service';
+import { resolveFocusHiddenCategoryIds } from '@/lib/focus-service';
 import { getBlogDirectorySummary, listPublicBlogs, listPublicCategoryFacets } from '@/lib/blog-service';
 import Avatar from '@/app/components/Avatar';
 import BlogTimestamps from '@/app/components/BlogTimestamps';
@@ -109,6 +110,9 @@ export default async function ExplorePage({
   // —— /blog 有 requireCoreUser，普通登录用户点了只会被挡回来。
   const viewer = await getCurrentUser();
   const viewerCanOpenDirectory = isCoreUser(viewer);
+  // 侧栏的「文章范围」计数指回 /blog，口径必须与 /blog 一致：专注模式屏蔽的栏目
+  // 在那边不计入。不传这份集合的话，开了专注模式的 core+ 在两个页面看到的数字不同。
+  const focusHiddenCategoryIds = viewer ? await resolveFocusHiddenCategoryIds(viewer) : null;
 
   // ── 搜索限频 ────────────────────────────────────────────────────────────────
   // 只对**真的带搜索词**的请求计数。写成无条件计数的话，光是翻页 / 换栏目就把额度
@@ -195,7 +199,7 @@ export default async function ExplorePage({
               /explore 本身不实现 scope 参数，指到本页会变成点不动的死链。 */}
           <BlogPersonalSidebar
             user={viewer ? { id: viewer.id, username: viewer.username, frameUrl: frameUrlFor(viewer) } : null}
-            summary={viewer ? await getBlogDirectorySummary(viewer.id, []) : null}
+            summary={viewer ? await getBlogDirectorySummary(viewer.id, focusHiddenCategoryIds) : null}
             basePath="/blog"
             showRanges={viewerCanOpenDirectory}
             showCreate={viewerCanOpenDirectory}

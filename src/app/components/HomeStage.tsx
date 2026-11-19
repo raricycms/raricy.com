@@ -1,8 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useRef, useState } from 'react';
-import type { MouseEvent } from 'react';
+import { useEffect, useRef, useState, type CSSProperties, type MouseEvent } from 'react';
 import { Gamepad2 } from 'lucide-react';
 import HeroLandscape from './HeroLandscape';
 import ScrollSnap from './ScrollSnap';
@@ -130,7 +129,10 @@ export default function HomeStage({ blogHref, gamesBlocked }: Props) {
 
           <section className="home-features" id="features" aria-labelledby="features-title" inert={mounted && !expanded}>
             <h2 className="home-display" id="features-title" tabIndex={-1}>探索</h2>
-            <div className="home-grid">
+            <div
+              className="home-grid"
+              style={{ '--home-card-count': gamesBlocked ? 3 : 4 } as CSSProperties}
+            >
               <div className="home-grid-item">
                 <Link className="feature-card card-story" href="/story">
                   <div className="card-body home-text-center">

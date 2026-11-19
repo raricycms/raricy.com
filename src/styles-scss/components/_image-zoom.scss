@@ -30,6 +30,12 @@
   inset: 0;
   z-index: v.$z-header - 1;
   overflow: hidden;
+  // 焦点由脚本送进来（role="dialog"），整层是观看区而不是控件 —— 不要画一圈视口大的焦点框。
+  &:focus {
+    outline: none;
+  }
+  // 触屏：这一层接住手势，别让拖动顺着滚动链把后面的页面带走（锁滚动只锁了 overflow）。
+  touch-action: none;
 }
 
 // 文档坐标系：原点平移到 (0, 0) 的文档位置。滚动时由脚本立即改写，过渡只留给图片自己。
@@ -71,7 +77,8 @@
   // 位移量就是「目标左上角 − 起点左上角」。
   transform-origin: 0 0;
   transition: transform v.$motion-duration v.$motion-easing;
-  border-radius: 6px;
+  // 与讨论区灯箱、图床预览同一档圆角（三个查看器取同一个 8px）。
+  border-radius: 8px;
   background: var(--color-background-card);
   cursor: zoom-out;
   will-change: transform;

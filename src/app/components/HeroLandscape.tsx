@@ -153,7 +153,7 @@ export default function HeroLandscape() {
       schedule();
     }
 
-    // 窄屏日月用「屏幕百分比」定位：目标点取视口 (70%, 13%)，再用 SVG 的坐标变换
+    // 窄屏日月用「屏幕百分比」定位：目标点取画幅盒的 (78%, 27%)，再用 SVG 的坐标变换
     // 反算回用户单位，尺寸按屏宽比例给 —— 不再写死 translate 的数字，换机型也落在
     // 同一处。换算用 scene 的 CTM（不含天空层自身的位移），所以是纯粹的
     // 「屏幕坐标 → 画幅坐标」反解。
@@ -200,12 +200,12 @@ export default function HeroLandscape() {
       lensFrom = lens;
       lensTarget = next;
       lensStart = performance.now();
-      if (next === 1) {
-        // 把当前滚动与当前视差对齐成新的零点：点击时那次半屏跳转不会让层先飞一下。
-        scrollBaseY = window.scrollY - scroll * scrollSpanY;
-      } else {
-        scrollBaseY = 0;
-      }
+      // 两个方向都用同一条连续公式：把「当前滚动」与「当前视差进度」对齐成新的零点。
+      // 点「开始探索」会一次性跳半屏，不重定基准的话层会被这一跳顶飞；而收起方向若
+      // 直接归零，基准会突变，层在收回后先抽一下再回到原位。
+      scrollBaseY = window.scrollY - scroll * scrollSpanY;
+      // 基准换了，按新基准重算目标进度；不重算的话会停在旧 target 上直到下次滚动。
+      updateScroll();
       if (reducedMotion.matches) {
         lens = next;
         paint();

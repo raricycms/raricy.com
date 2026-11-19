@@ -250,8 +250,8 @@ export default function ProfileBoard({
     const panel = detailPanelRef.current;
     restoreFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
 
-    // 锁滚动走 lib/scroll-lock：它把滚动条让出的宽度一起补回来，直接 overflow: hidden
-    // 会让桌面端滚动条消失、正文横向跳一下（详情层是 fixed，跳的是背景）。
+    // 锁滚动走 lib/scroll-lock：桌面端原生滚动条已换成不占布局宽度的自绘条，
+    // 锁与放不改变视口宽度，背景不会被挤得横跳一下，也不必补内距。
     const releaseScroll = lockPageScroll();
     detailCloseRef.current?.focus();
 

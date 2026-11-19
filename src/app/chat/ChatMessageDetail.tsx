@@ -94,7 +94,7 @@ export default function ChatMessageDetail({
   const time = fmtFullTime(msg.created_at);
 
   return createPortal(
-    <div className="modal-overlay show chat-detail-overlay" onClick={onClose}>
+    <div className="modal-overlay show" onClick={onClose}>
       <div
         ref={dialogRef}
         className="modal-dialog chat-detail"

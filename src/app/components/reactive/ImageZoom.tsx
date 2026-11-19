@@ -53,9 +53,11 @@ export default function ImageZoom({ source, onDone }: { source: ImageZoomSource;
   const [phase, setPhase] = useState<Phase>('enter');
   const [transform, setTransform] = useState('none');
   const baseRef = useRef<Box | null>(null);
+  const layerRef = useRef<HTMLDivElement>(null);
   const trackRef = useRef<HTMLDivElement>(null);
   const releaseScroll = useRef<(() => void) | null>(null);
   const finishTimer = useRef<number | null>(null);
+  const enterFrame = useRef<number | null>(null);
   const onDoneRef = useRef(onDone);
   onDoneRef.current = onDone;
 
@@ -98,6 +100,12 @@ export default function ImageZoom({ source, onDone }: { source: ImageZoomSource;
 
   const close = useCallback(() => {
     if (phase === 'closing') return;
+    // 入场那一帧（rAF 里才走向中央）还没跑：取消它，否则它会把 phase 改回 open，
+    // 而滚动已经放开 —— 画面会在关闭中跳回放大态。
+    if (enterFrame.current !== null) {
+      cancelAnimationFrame(enterFrame.current);
+      enterFrame.current = null;
+    }
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
       onDoneRef.current();
       return;
@@ -127,15 +135,27 @@ export default function ImageZoom({ source, onDone }: { source: ImageZoomSource;
     const box = toDoc(source.image.getBoundingClientRect());
     baseRef.current = box;
     setBase(box);
-    const frame = requestAnimationFrame(() => {
+    enterFrame.current = requestAnimationFrame(() => {
+      enterFrame.current = null;
       moveTo(centerDoc(box));
       setPhase('open');
     });
-    return () => cancelAnimationFrame(frame);
+    return () => {
+      if (enterFrame.current !== null) {
+        cancelAnimationFrame(enterFrame.current);
+        enterFrame.current = null;
+      }
+    };
   }, [source.image, centerDoc, moveTo]);
 
-  // 打开期间锁滚动；收起时由 close 立刻放开。锁的时候连滚动条宽度一起补，
-  // 否则桌面上滚动条一消失，整页会右移半个滚动条（见 lib/scroll-lock）。
+  // 焦点进这一层：原图被临时隐藏（visibility: hidden 不可聚焦），不接住的话键盘用户
+  // 会掉回 body，读屏也听不到「这里打开了一张图」。关闭时焦点由父级还给正文那张图。
+  useEffect(() => {
+    layerRef.current?.focus({ preventScroll: true });
+  }, []);
+
+  // 打开期间锁滚动；收起时由 close 立刻放开。宽度不会变（桌面端原生条已换成自绘条），
+  // 所以这里只锁 overflow，不补内距（见 lib/scroll-lock）。
   useEffect(() => {
     releaseScroll.current = lockPageScroll();
     return () => {
@@ -193,7 +213,15 @@ export default function ImageZoom({ source, onDone }: { source: ImageZoomSource;
     .join(' ');
 
   return createPortal(
-    <div className={className} role="presentation" onClick={close}>
+    <div
+      className={className}
+      ref={layerRef}
+      role="dialog"
+      aria-modal="true"
+      aria-label={source.alt ? `查看图片：${source.alt}` : '查看图片'}
+      tabIndex={-1}
+      onClick={close}
+    >
       <div className="image-zoom__scrim" aria-hidden="true" />
       <div
         className="image-zoom__track"

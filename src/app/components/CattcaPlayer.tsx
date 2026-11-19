@@ -33,6 +33,7 @@ import type {
   ReaderSegment,
   ReaderStatus,
 } from './cattca/types';
+import { lockPageScroll } from '@/lib/scroll-lock';
 
 // ── 解释器类型（cattca.js 是纯 JS，这里给出最小构造签名） ──────────────────────
 
@@ -648,13 +649,10 @@ const CattcaPlayer = forwardRef<CattcaPlayerHandle, CattcaPlayerProps>(function 
   // 书页模式下不再强制对齐到偶数页：段可能从任意页开始，强制对齐会把读者
   // 从当前页弹回上一页。可见页由 visiblePageIndexes 直接取 [pageIndex, pageIndex+1]。
 
-  // 全屏：锁 body 滚动，Esc 由阅读器处理。
+  // 全屏：锁 body 滚动（走共享原语，可与别的浮层叠加），Esc 由阅读器处理。
   useEffect(() => {
-    if (typeof document === 'undefined') return;
-    document.body.style.overflow = fullscreen ? 'hidden' : '';
-    return () => {
-      document.body.style.overflow = '';
-    };
+    if (!fullscreen) return;
+    return lockPageScroll();
   }, [fullscreen]);
 
   useImperativeHandle(
