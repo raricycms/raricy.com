@@ -83,6 +83,7 @@ import {
   type Tone,
   type ToneDef,
 } from '@/lib/profile-blocks';
+import { lockPageScroll } from '@/lib/scroll-lock';
 
 /** 桌面网格 gap。行高 = 列宽（方格），拖拽换算格距时只用这一个常量。 */
 const GAP = 16;
@@ -249,16 +250,9 @@ export default function ProfileBoard({
     const panel = detailPanelRef.current;
     restoreFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
 
-    // 锁滚动前先量滚动条宽度，并用 padding-right 抵掉 —— 直接 overflow:hidden 会让
-    // 桌面端滚动条消失、正文横向跳一下（详情层是 fixed，跳的是背景）。
-    const prevOverflow = document.body.style.overflow;
-    const prevPaddingRight = document.body.style.paddingRight;
-    const scrollbar = window.innerWidth - document.documentElement.clientWidth;
-    document.body.style.overflow = 'hidden';
-    if (scrollbar > 0) {
-      const current = Number.parseFloat(window.getComputedStyle(document.body).paddingRight) || 0;
-      document.body.style.paddingRight = `${current + scrollbar}px`;
-    }
+    // 锁滚动走 lib/scroll-lock：它把滚动条让出的宽度一起补回来，直接 overflow: hidden
+    // 会让桌面端滚动条消失、正文横向跳一下（详情层是 fixed，跳的是背景）。
+    const releaseScroll = lockPageScroll();
     detailCloseRef.current?.focus();
 
     // FLIP：先把面板缩到源卡片的位置与大小，下一帧再放回自身 —— 用户看到的是
@@ -313,8 +307,7 @@ export default function ProfileBoard({
     return () => {
       cancelAnimationFrame(raf);
       window.removeEventListener('keydown', onKey);
-      document.body.style.overflow = prevOverflow;
-      document.body.style.paddingRight = prevPaddingRight;
+      releaseScroll();
       if (closeTimerRef.current !== null) {
         window.clearTimeout(closeTimerRef.current);
         closeTimerRef.current = null;
@@ -1762,9 +1755,6 @@ function FieldDialog({
           )}
         </div>
         <div className="bento-modal__foot">
-          <button type="button" className="bento-btn" onClick={onClose}>
-            取消
-          </button>
           <button
             type="button"
             className="bento-btn bento-btn--primary"
@@ -1787,4 +1777,3 @@ function FieldDialog({
     </div>
   );
 }
-

@@ -7,15 +7,11 @@
 
 /* 与 .container 同一套阶梯（原为「<1200px 全幅 + ≥1200px 1140」的老写法） */
 .home-container { width: 100%; margin-left: auto; margin-right: auto; padding-left: 16px; padding-right: 16px; @include m.site-width-ladder; }
-.home-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 16px; }
 .home-col-12 { flex: 0 0 100%; max-width: 100%; }
-.home-col-6 { flex: 0 0 100%; max-width: 100%; }
-@media (min-width: 992px) { .home-col-6 { flex: 0 0 50%; max-width: 50%; } }
 .home-text-center { text-align: center; }
 
 .home-display { font-size: 3rem; font-weight: 700; margin-bottom: 0.75rem; line-height: 1.15; }
 @media (min-width: 992px) { .home-display { font-size: 3.5rem; } }
-.home-lead { font-size: 1.125rem; }
 
 /* Responsive grid for features */
 .home-grid { display: grid; grid-template-columns: 1fr; gap: 1rem; }
@@ -66,17 +62,60 @@
   --hero-forest-light: color-mix(in srgb, var(--color-accent-cyan) 30%, var(--color-text-primary));
   background: radial-gradient(ellipse at 85% 15%, var(--hero-sky-blue), transparent 65%), var(--hero-sky);
   color: var(--hero-ink);
-  /* 顶栏是全局固定条（body 有 padding-top: var(--navbar-height)），hero 的 88vh 里
-     要扣掉它；写死 62px 会在 --navbar-height 改档（安全区/字号）时错位。 */
-  min-height: clamp(620px, calc(88vh - var(--navbar-height)), 820px);
-  min-height: clamp(620px, calc(88dvh - var(--navbar-height)), 820px);
-  display: flex;
-  align-items: center;
   position: relative;
+  isolation: isolate;
+  /* 滚动行程：一屏展示 + 0.9 屏的推进与视差。卡片视图在这段里固定在视口，
+     滚完这一段才到页脚 —— 首页整屏由山景铺满，不再另起一块白底内容区。
+
+     一屏取 svh：手机地址栏收放不改变 svh，这一段与整份文档的高度于是恒定。写成 dvh
+     时地址栏一收整段就变高，下面的 sticky 层、画幅缩放、页脚位置跟着重排一次 ——
+     而那次重排不在合成线程上，读数正是「滑到一半背景忽然重算位置和大小」。
+     行程 90vh：vh 在手机上等于地址栏收起后的大视口，同样不随滚动变化。 */
+  height: calc(100vh + 90vh);
+  height: calc(100svh + 90vh);
+}
+
+/* 固定在视口的那一层：山景、蒙层、首屏文字、卡片都画在这里。
+   top 取顶栏高度而不是 0：body 的 padding-top 已经把内容推到顶栏下方，
+   若吸附到 0，滚动一开始整层会先被顶栏压上去一截，看起来像「先滚了一下」。 */
+.home-stage__viewport {
+  position: sticky;
+  top: var(--navbar-height);
+  height: calc(100vh - var(--navbar-height));
+  height: calc(100dvh - var(--navbar-height));
   overflow: hidden;
   isolation: isolate;
+}
 
-  > .home-container { position: relative; z-index: 1; }
+/* 首屏文字：与早期版面一致 —— 贴容器顶部、靠 .hero-content 的上内距定位。
+   ⚠️ 这个节点本身就是 .home-container（HomeStage 里两个类写在同一层），
+   所以不要再写 `.home-stage__copy > .home-container` —— 那选择器永远匹配不到。 */
+.home-stage__copy {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  align-items: flex-start;
+}
+
+/* 卡片视图的暗化蒙层：铺在山景之上、文字与卡片之下。
+   比站内弹窗的 $scrim-modal 更深一档 —— 卡片在这里用标准卡片色，底要够暗才压得住。 */
+.home-stage__scrim {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  // 用页面底色（而不是纯黑）做压暗层：浅色模式是一层透光白膜，界面整体提亮；
+  // 暗色模式自动变成深膜，两个主题各得其所。
+  background: color-mix(in srgb, var(--color-background-page) 58%, transparent);
+  opacity: 0;
+  pointer-events: none;
+  // 蒙层同时负责背景模糊：山景在它后面，模糊的是真背景，卡片本身仍是清晰的实底。
+  -webkit-backdrop-filter: blur(0);
+  backdrop-filter: blur(0);
+  transition:
+    opacity v.$feedback-duration v.$feedback-easing,
+    backdrop-filter v.$motion-duration v.$motion-easing,
+    -webkit-backdrop-filter v.$motion-duration v.$motion-easing;
 }
 
 [data-theme='dark'] .hero-section {
@@ -102,6 +141,20 @@
   --hero-forest-light: color-mix(in srgb, var(--color-accent-cyan) 18%, var(--color-background-page));
 }
 
+// 首屏入场编排：文字自上而下逐条带出，山景在文字尾部就起步，两者有交叠、中间不停顿。
+// 下面这几个量就是整条时间线，改节奏只改这里。
+$hero-copy-step: 80ms;   // 相邻两行文字的间隔
+$hero-copy-count: 5;     // eyebrow / 标题 / 副标题 / 说明 / 按钮
+$hero-layer-step: 60ms;  // 相邻两层插图的起飞间隔
+// 山景与第一行 eyebrow 同时起步（0ms）：文字刚开始带出，地面层已经在往上升。
+// 五层各自 +60ms，远山在 240ms 起飞、960ms 落定；文字最后一行 1040ms 收尾，整体由它带住。
+$hero-layer-start: 0ms;
+// 日月比插图晚 120ms 起步：地面先露头，天体随后长出来。
+// 时长是 720 + 60×4 = 960ms（覆盖地面起飞到远山落定的整段跨度），
+// 起点后移后收束在 1080ms，比最后一层晚一点点。
+$hero-orb-start: $hero-layer-start + 120ms;
+$hero-orb-duration: v.$motion-duration + $hero-layer-step * 4;
+
 .hero-scene {
   position: absolute;
   inset: 0;
@@ -112,9 +165,24 @@
 
   &__layer {
     transform-box: view-box;
-    transform-origin: 72% 100%;
+    // 关于画幅中心缩放：滚动视差与镜头推进共用这一个原点，构图才可预测。
+    transform-origin: 50% 50%;
     transition: none;
   }
+
+  // 插图入场只动位置，不做透明度淡入。用独立的 translate 属性承载，与 JS 每帧写的
+  // inline transform（视差）分开叠加 —— 若也写 transform，动画会顶掉视差，视差一恢复
+  // 层就会跳一下。天空层不参与（data-depth 0.12）。
+  &__layer:not([data-depth='0.12']) {
+    animation: hero-layer-rise v.$motion-duration v.$motion-easing backwards;
+  }
+
+  // 由近及远：地面 → 丘陵 → 湖 → 主山 → 远山。
+  &__layer[data-depth='1.3'] { animation-delay: $hero-layer-start; }
+  &__layer[data-depth='0.85'] { animation-delay: $hero-layer-start + $hero-layer-step; }
+  &__layer[data-depth='0.65'] { animation-delay: $hero-layer-start + $hero-layer-step * 2; }
+  &__layer[data-depth='0.46'] { animation-delay: $hero-layer-start + $hero-layer-step * 3; }
+  &__layer[data-depth='0.24'] { animation-delay: $hero-layer-start + $hero-layer-step * 4; }
 
   // 共享的旋转中心 —— 升落的快慢与「藏多久」都拴在这一个点上：
   // · y 必须落在山脊**以下**（这里约在山脊下 200 用户单位），升落的那段弧才会被山体
@@ -129,16 +197,24 @@
     transform-box: view-box;
     transform-origin: 1375px 480px;
     // 与 public/static/js/core/base.js 的 theme-colors 时间线**同一条**（那里
-    // `KeyframeEffect(…, { duration: 540, easing: 'cubic-bezier(0.16, 1, 0.3, 1)' })`）：
+    // `KeyframeEffect(…, { duration: 720, easing: 'cubic-bezier(0.16, 1, 0.3, 1)' })`）：
     // 日月转过半圈的同时底色/文字/山体也在换色，两边差一截就会出现
     // 「景已经换完了、天还在转」的割裂。**改一处要改两处。**
     // 起始就有速度、末段平滑落定，半圈行程读起来是「翻过去」而不是「滑过去」。
     transition: transform v.$motion-duration v.$motion-easing,
                 opacity v.$feedback-duration v.$feedback-easing;
 
-    // circle 的 fill/stroke 与 base.js 那条换色动画同档（反馈档 360ms / ease-out），
+    // circle 的 fill/stroke 与 base.js 那条换色动画同档（反馈档 240ms / ease-out），
     // 留长了自己这份过渡会在 WAAPI 动画结束后再拖一截。
-    circle { transition: fill v.$feedback-duration v.$feedback-easing, stroke v.$feedback-duration v.$feedback-easing; }
+    // 入场从零放大：原点取各自圆心（fill-box 的 center），圆点在原地长出来；
+    // 时长与五层插图的全程对齐（$hero-orb-duration）。外层的 rotate 走 transform，
+    // 这层只动 scale，两者互不覆盖。
+    circle {
+      transform-box: fill-box;
+      transform-origin: center;
+      transition: fill v.$feedback-duration v.$feedback-easing, stroke v.$feedback-duration v.$feedback-easing;
+      animation: hero-orb-in $hero-orb-duration v.$motion-easing $hero-orb-start backwards;
+    }
   }
 
   &__sun { transform: rotate(var(--hero-orbit-angle)); opacity: 1; }
@@ -148,21 +224,125 @@
 [data-theme='dark'] .hero-scene__sun { opacity: 0; }
 [data-theme='dark'] .hero-scene__moon { opacity: 1; }
 
+/* 世界层只是标记：镜头推进由 HeroLandscape 逐个元素写入 transform ——
+   每层的放大率 = 1 + depth×1.8，近层大、远层小，才读得出纵深。 */
+.hero-scene__world {
+  /* 无样式：不设 transform，交给脚本按层合成。 */
+}
+
+/* 展开时压暗整屏，并把背后的山景模糊掉。 */
+.home-stage.is-expanded .home-stage__scrim {
+  opacity: 1;
+  -webkit-backdrop-filter: blur(10px) saturate(115%);
+  backdrop-filter: blur(10px) saturate(115%);
+}
+
+// 插图从画面下方插入：只写 from，终值取元素自身（无位移）。
+// 位移取 720 用户单位：画幅高 900，最高的主山峰顶在 y≈221、丘陵的树冠顶到 y≈366，
+// 只有整层再下移 720 才能保证动画未开始（或延迟期间）时每一层都不出现在画面里。
+// 五层共用同一位移，速度一致，差异只由起飞时间体现。
+@keyframes hero-layer-rise {
+  from {
+    translate: 0 720px;
+  }
+}
+
+// 日月从零大小长到自身尺寸。
+@keyframes hero-orb-in {
+  from {
+    transform: scale(0);
+  }
+}
+
 .hero-content {
   position: relative;
   max-width: 510px;
-  padding-top: 36px;
-  padding-bottom: 100px;
+  // 整体压到首屏中线略偏下：标题顶边不再贴到顶栏附近。
+  padding-top: 96px;
+  padding-bottom: 48px;
 }
 
 // 动画结束后释放 opacity/transform，按钮的背景模糊才能采样下方山景。
-// 禁用 JS 时直接展示静态文字。入场位移与全站形变动效同一条节奏（§6.2）。
-.js .hero-content { animation: fadeInUp v.$motion-duration v.$motion-easing backwards; }
+// 禁用 JS 时直接展示静态文字。
+// 入场按「自上而下」逐个错峰：eyebrow → 标题 → 副标题 → 说明 → 按钮。
+// 位移与透明度分成两条：位移走形变档（720ms 贝塞尔），透明度走反馈档
+// （240ms ease-out）—— 文字先变清楚、再滑到位；绑成一条会让字在移动途中一直半透明。
+.js .hero-content > * {
+  // backwards：延迟期间保持起始帧，播完回到元素自身样式，
+  // 不留 opacity/transform 的填充值（否则按钮的 backdrop-filter 采不到山景）。
+  animation:
+    hero-copy-in v.$motion-duration v.$motion-easing backwards,
+    hero-copy-fade v.$feedback-duration v.$feedback-easing backwards;
+}
+
+@for $i from 1 through $hero-copy-count {
+  .js .hero-content > :nth-child(#{$i}) {
+    animation-delay: $hero-copy-step * ($i - 1);
+  }
+}
+
+/* 展开：入场的严格倒放 —— 同一段位移、同一组两档时长、同样 80ms 错峰，
+   文字依次向上退出。收起时动画换回入场那一组，从下方重新浮上来。
+   用 keyframes 而不是过渡：过渡从「当前计算值」起步，入场动画刚结束时
+   计算值还带着动画的收尾状态，两者叠在一起就会读成一顿。 */
+.home-stage.is-expanded .hero-content > * {
+  animation:
+    hero-copy-out v.$motion-duration v.$motion-easing both,
+    hero-copy-out-fade v.$feedback-duration v.$feedback-easing both;
+  // 静态末态：动画在跑时由 animation 接管，减少动态效果时直接落到这里，
+  // 文字才不会留在卡片上面。
+  opacity: 0;
+  translate: -48px 0;
+}
+
+@for $i from 1 through $hero-copy-count {
+  // 离场不做错峰：五段文字同时起步，一起向左退出。
+  .home-stage.is-expanded .hero-content > :nth-child(#{$i}) {
+    animation-delay: 0ms;
+  }
+}
+
+/* 展开后文字层不能再接住点击，否则会挡住卡片的链接。 */
+.home-stage.is-expanded .home-stage__copy {
+  pointer-events: none;
+}
+
+/* 起始帧必须写全：动画用 both 填充，延迟期间要停在“原位、不透明”，
+   否则会落回上面那条静态末态，文字一开始就是隐形的。 */
+@keyframes hero-copy-out {
+  from {
+    translate: 0;
+  }
+  to {
+    translate: -48px 0;
+  }
+}
+
+@keyframes hero-copy-out-fade {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes hero-copy-in {
+  from {
+    translate: 0 28px;
+  }
+}
+
+@keyframes hero-copy-fade {
+  from {
+    opacity: 0;
+  }
+}
 
 .hero-eyebrow {
   margin: 0 0 32px;
   color: var(--color-brand-primary);
-  font-size: 0.75rem;
+  font-size: 1.05rem;
   font-weight: 600;
   letter-spacing: 0.14em;
 }
@@ -221,12 +401,49 @@
 }
 
 @media (max-width: 767px) {
-  .hero-section { min-height: 760px; align-items: flex-start; }
-  .hero-section > .home-container { padding-top: 56px; }
-  // 保持山体比例，窄屏把画幅移到文字下方，最高峰仍在右侧。
-  .hero-scene { inset: auto -140px -2px auto; width: 940px; height: 470px; max-width: none; }
+  // 窄屏：山景画幅同样铺满视口，首屏用一条 transform 把它压到文字下方、并向左移
+  // 露出主峰一侧；展开时归零。两个形态之间只动 transform —— 若首屏用小画幅、
+  // 展开时改成全屏，尺寸会瞬间跳一次，推进动画就断了。
+  // 窄屏让首页从页面最顶端铺下来：抵消 body 为固定顶栏留的空白，sticky 层吸附在 0，
+  // 顶栏下方那一条才不会露出另一种底色。桌面端保持顶栏下方开始的原样。
+  .home-stage { margin-top: calc(-1 * var(--navbar-height)); }
+  .home-stage__viewport {
+    top: 0;
+    // 层高取 lvh（地址栏收起后的高度）：无论地址栏在不在，这一层都盖满屏，且整次
+    // 滚动里高度不变。画幅另按 svh 定高（见下面的 .hero-scene），两者差出来的那一条
+    // 由山体的绘制溢出补上，于是背景不会随可见高度重新缩放、重新居中。
+    height: 100vh;
+    height: 100lvh;
+  }
+  .home-stage__copy {
+    align-items: flex-start;
+    // 这个节点就是容器本身：内距直接写在它上面（含顶栏高度）。
+    padding-top: 170px;
+  }
+  .hero-scene {
+    inset: 0 auto auto 0;
+    width: 100%;
+    // 画幅高度按 svh 定：preserveAspectRatio="slice" 的缩放只由这个盒子的尺寸决定，
+    // 地址栏收放不动 svh，山景于是不会缩放也不会重新居中。地面层画到画幅以下 500
+    // 用户单位（见 SVG 里 data-depth="1.3" 那几条路径），层高比 svh 多出来的那一条
+    // 正是由这截绘制溢出补上的 —— 所以这里不能加 overflow: hidden。
+    height: 100vh;
+    height: 100svh;
+    max-width: none;
+  }
+  // 首屏把「山」这一组压到文字下方、并向左移露出主峰；天空层（日月）完全不动。
+  // 位移只写在 world 上，展开时归零 —— 若改整个 SVG 的位移，日月会跟着漂。
+  // 纵向写定值（用户单位，≈ 一屏的 26%）：SVG 里百分比是按 world 的 bbox 解析的，
+  // 不是画幅高度，用 26% 会变成三百多个单位。
+  .hero-scene__world {
+    transform: translate(-195px, 80px);
+    transition: transform v.$motion-duration v.$motion-easing;
+  }
+  .home-stage.is-expanded .hero-scene__world { transform: translate(0, 0); }
+  // 窄屏日月的位移与尺寸由脚本按屏幕百分比算（见 HeroLandscape 的 layoutSky）：
+  // 这里不再写死 translate / scale，桌面端也不受影响。
   .hero-content { max-width: 100%; padding: 0; }
-  .hero-eyebrow { margin-bottom: 24px; font-size: 0.625rem; letter-spacing: 0.1em; }
+  .hero-eyebrow { margin-bottom: 24px; font-size: 0.85rem; letter-spacing: 0.1em; }
   .hero-title { margin-bottom: 16px; font-size: clamp(4rem, 12vw, 5rem); }
   .hero-tagline { margin-bottom: 18px; font-size: 1.35rem; }
   .hero-description { margin-bottom: 24px; font-size: 0.875rem; }
@@ -234,12 +451,27 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .js .hero-content { animation: none; }
-  .hero-scene__layer { transform: none !important; }
+  // 选择器都要写到与基础规则同特异性（甚至更高）：本块在文件里排得比 hero / 卡片的
+  // 基础规则靠前，同特异性时会被后面的规则压掉，动画照样播一遍。
+  .home-stage .hero-content > *,
+  .home-stage.is-expanded .hero-content > * { animation: none; transition: none; }
+  // 只清掉入场动画与平移；transform 留给脚本 —— 减少动态效果下镜头仍要停在
+  // 「推进后」的构图，只是不再有过渡。天空层的 translate 是日月定位，不能一起清。
+  .hero-scene__layer[data-depth]:not([data-depth='0.12']) { animation: none; translate: none; }
+  .hero-scene__world { transition: none; }
   .hero-scene__sun,
   .hero-scene__moon,
   .hero-scene__sun circle,
-  .hero-scene__moon circle { transition: none; }
+  .hero-scene__moon circle { transition: none; animation: none; }
+  // 推进与卡片视图的编排同样不做过渡：状态直接到位。
+  .home-stage .home-stage__scrim,
+  .home-stage .home-features .home-display,
+  .home-stage .home-features .home-grid-item,
+  .home-stage.is-expanded .home-features .home-grid-item:nth-child(1),
+  .home-stage.is-expanded .home-features .home-grid-item:nth-child(2),
+  .home-stage.is-expanded .home-features .home-grid-item:nth-child(3),
+  .home-stage.is-expanded .home-features .home-grid-item:nth-child(4),
+  .home-stage .home-features .home-display { transition: none; }
 }
 
 /* 卡片样式优化 */
@@ -335,24 +567,205 @@
    #667eea）。没有任何 TSX 使用这三个类 —— 管理页用的是 .admin-stat-item 一族。
    死代码，已删。 */
 
-/* 特色区域 */
-.features-section { padding: 5rem 0; background: var(--color-background-page); }
+/* ── 卡片视图（首屏推进后的第二幕）─────────────────────────────────────────
+   浮在暗化蒙层之上。首页由山景铺满整屏，不再另起一块浅色内容区；卡片是磨砂玻璃，
+   底下的山体透上来。 */
+.home-features {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  // 标题与副标题之间留一点呼吸，卡片之间的竖直间距由 .home-grid 的 margin-top 单独给。
+  gap: 10px;
+  padding: clamp(56px, 8vh, 96px) clamp(18px, 4vw, 56px) clamp(32px, 6vh, 64px);
+  pointer-events: none;
+
+  .home-display {
+    margin: 0;
+    color: var(--color-text-primary);
+    font-size: clamp(3rem, 5.2vw, 4.6rem);
+    line-height: 1.1;
+  }
+
+  // 副标题：半透明的正文色 —— 浅色主题下就是半透明黑，暗色主题自动变成半透明白。
+  &__sub {
+    margin: 0;
+    color: color-mix(in srgb, var(--color-text-primary) 55%, transparent);
+    font-size: clamp(0.95rem, 1.1vw, 1.08rem);
+    line-height: 1.6;
+    letter-spacing: 0.02em;
+    text-align: center;
+  }
+
+  .home-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: clamp(16px, 1.8vw, 26px);
+    width: min(1180px, 100%);
+    // 标题组与卡片之间的竖直间距。
+    margin-top: clamp(32px, 5.2vh, 64px);
+  }
+
+  .home-grid-item { min-width: 0; }
+}
+
+/* 卡片表面：标准卡片色（与站内其它卡片一致），不再做磨砂玻璃。 */
+.home-features .feature-card {
+  background: var(--color-background-card);
+  border: none;
+  border-radius: 34px;
+}
+
+/* 标题与四张卡各自入场：从下方升起并淡入，依次错开。 */
+.home-features .home-display,
+.home-features .home-grid-item {
+  opacity: 0;
+  translate: 0 32px;
+  transition:
+    translate v.$motion-duration v.$motion-easing,
+    opacity v.$feedback-duration v.$feedback-easing;
+}
+
+.home-stage.is-expanded .home-features {
+  pointer-events: auto;
+
+  .home-display,
+  .home-grid-item {
+    opacity: 1;
+    translate: 0;
+  }
+
+  .home-display { transition-delay: 60ms; }
+}
+
+@for $i from 1 through 4 {
+  .home-stage.is-expanded .home-features .home-grid-item:nth-child(#{$i}) {
+    transition-delay: 60ms + $i * 70ms;
+  }
+}
 
 /* CTA alignment inside cards */
 .feature-card .card-body .home-btn { margin-top: auto; }
 
-/* 响应式优化 */
-@media (max-width: 768px) {
-  .feature-card { margin-bottom: 2rem; }
+/* 中等屏两列，窄屏 2×2 四宫格（卡片缩小、内距收窄，四张同屏）。 */
+@media (max-width: 1023px) {
+  .home-features .home-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 767px) {
+  .home-features {
+    gap: 10px;
+    padding: 64px 26px 24px;
+    // 层高是 lvh，地址栏展开时可见区只有 svh：把差出来的那一条补到下内距，卡片组的
+    // 居中基准才与可见区中线一致（不补的话静止态整组会往下多出半个差值）。
+    padding-bottom: calc(24px + 100lvh - 100svh);
+  }
+
+  .home-features .home-display { font-size: 2.8rem; }
+
+  .home-features .home-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+    margin-top: 26px;
+  }
+
+  .home-features .feature-card { border-radius: 26px; }
+
+  .home-features .card-body { padding: 16px 12px; }
+
+  .home-features .feature-icon,
+  .home-features .feature-game-icon {
+    width: 2.1rem;
+    height: 2.1rem;
+    margin-bottom: 8px;
+  }
+
+  .home-features .card-title { font-size: 1.05rem; margin-bottom: 6px !important; }
+
+  .home-features .card-text {
+    font-size: 0.78rem;
+    line-height: 1.5;
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  // 按钮文字与底座垂直居中：inline-flex 让行高不再把文字顶到上半格。
+  .home-features .home-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 34px;
+    padding: 6px 12px;
+    font-size: 0.75rem;
+    line-height: 1;
+  }
 }
 
 /* 动画效果 */
-@keyframes fadeInUp {
-  from { opacity: 0; transform: translateY(30px); }
-  to { opacity: 1; transform: translateY(0); }
+/* 无 JS：没有展开态可切。首屏文字与卡片按普通流前后排列，卡片直接可见，
+   点「开始探索」由浏览器原生跳到 #features。 */
+html:not(.js) {
+  .hero-section { height: auto; min-height: 88vh; }
+  .home-stage__viewport { position: static; height: auto; }
+  .home-stage__copy { position: static; padding-top: 64px; }
+
+  .home-features {
+    position: static;
+    padding: 40px 18px 72px;
+    pointer-events: auto;
+
+    .home-grid { grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
+    .home-display,
+    .home-grid-item { opacity: 1; translate: 0; }
+  }
 }
-.fade-in-up { animation: fadeInUp v.$motion-duration v.$motion-easing }
 
 /* 此处原有 `.btn-custom`：紫色渐变按钮，没有任何 TSX 使用它。
    渐变两端 #667eea / #764ba2 都不在站内色板里。已删。 */
+
+/* 矮视口（横屏手机、窄高的窗口，如 844×390、768×600）：一屏装不下首屏文字或卡片，
+   把它们放回普通流并允许这一层内部滚动，否则「开始探索」与四张卡会被裁在视口外。 */
+@media (max-height: 640px) {
+  .home-stage__viewport { overflow-y: auto; }
+
+  .home-stage__copy {
+    position: static;
+    min-height: 100%;
+    padding: 12px 20px 24px;
+  }
+
+  // 首屏文字压一档：「开始探索」要在横屏手机的一屏里看得见。
+  .hero-eyebrow { margin-bottom: 16px; }
+  .hero-title { font-size: 2.6rem; margin-bottom: 10px; }
+  .hero-description { display: none; }
+  .hero-explore { margin-top: 8px; }
+
+  // 展开态文字层不再占位：卡片视图从这一层的顶部开始，滚轮直接落在卡片上。
+  .home-stage.is-expanded .home-stage__copy { display: none; }
+
+  .home-stage.is-expanded .home-features {
+    // 必须定位在蒙层之上：absolute + z-index:1 的 .home-stage__scrim 是定位元素，
+    // 这一层若写 static，卡片表面会被蒙层压暗/模糊（而卡片内容的 z-index:2 又浮在
+    // 蒙层上，读起来是半张卡被盖住）。relative 不改变普通流位置，只把整层抬上去。
+    position: relative;
+    z-index: 3;
+    min-height: 100%;
+    justify-content: flex-start;
+    padding: 24px 18px 40px;
+  }
+}
+
+/* 没有脚本时日月也要看得见：天空层在窄画幅里被裁到右边缘之外，这里把它挪回
+   画幅右上。有脚本时 layoutSky 用内联样式覆盖（内联优先），两处目标一致。
+   1024 宽是竖屏 iPad Pro 的视口宽，一并纳入，避免再差一像素被裁。 */
+@media (max-width: 1024px) {
+  .hero-scene__layer[data-depth='0.12'] { translate: -430px -30px; }
+  .hero-scene__sun circle,
+  .hero-scene__moon circle { scale: 0.5; }
+}
 

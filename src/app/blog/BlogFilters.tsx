@@ -35,5 +35,5 @@ export default function BlogFilters({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  return <div ref={host} className="blog-filters" aria-label="文章筛选">{children}</div>;
+  return <div ref={host} className="blog-filters" role="group" aria-label="文章筛选">{children}</div>;
 }

@@ -196,4 +196,102 @@
   }
 }
 
+// ── 模态外壳 / 卡片 ─────────────────────────────────────────────────────────
+//
+// 全站全屏弹窗只有一套外壳（docs/frontend-styles.md §5.7）：固定铺满视口、整层可滚、
+// 卡片靠 `margin: auto` 居中。类名各不相同（`.modal-overlay`、`.bento-modal`、
+// `.feed-modal`、`.oauth-modal-overlay`、`.frame-buster`），所以由调用方 `@include`
+// 这两个 mixin，而不是让它们互相继承。
+//
+// 垂直定位交给子元素的 `margin: auto`，**不用** `align-items: center` 收尾：内容比
+// 视口高时，居中会把顶部挤出可滚区域，底部的按钮永远点不到（实测 390×664 下栏目
+// 编辑弹窗高 823px）。auto 边距在空间不足时退化为 0，从顶部排布，两端都滚得到。
+//
+// 留白同时让出安全区：`--safe-*` 由 base/_root.scss 提供，刘海与 Home Indicator
+// 都落在这圈内边距里。
 
+/// 遮罩层：固定铺满 + 整层可滚 + 安全区留白。`display` 由调用方按自己的开关类声明。
+@mixin modal-scrim($scrim: v.$scrim-modal) {
+  position: fixed;
+  inset: 0;
+  z-index: v.$z-modal;
+  align-items: center;
+  justify-content: center;
+  overflow-y: auto;
+  padding: calc(#{v.$space-4} + var(--safe-top)) calc(#{v.$space-4} + var(--safe-right))
+    calc(#{v.$space-4} + var(--safe-bottom)) calc(#{v.$space-4} + var(--safe-left));
+  background: $scrim;
+}
+
+/// 外壳里的卡片盒：宽度参照 + 居中。`.modal-dialog` 只取这一层，外观由 `.modal-content` 画。
+@mixin modal-frame($width: 500px) {
+  width: 100%;
+  max-width: $width;
+  margin: auto;
+}
+
+/// 单层卡片（`.bento-modal`、`.feed-modal__content`、`.oauth-modal`、`.frame-buster`）：
+/// 宽度 + 屏幕上的外观一次给齐。主题卡片底色 + 30px 圆角。
+/// 不投影：模态卡片压在遮罩上，层级由遮罩与卡片底色交代；品牌蓝光晕只在悬停与浮层
+/// （顶栏 / 下拉 / 贴边面板）上使用，弹窗常驻一束蓝光会在暗色主题下尤其显脏。
+/// 需要并排内容的面板传 560px；竖幅图片卡片按图片比例自己收窄（见 .poster-modal）。
+@mixin modal-card($width: 500px) {
+  @include modal-frame($width);
+  background: var(--color-background-card);
+  color: var(--color-text-primary);
+  border-radius: v.$radius-card;
+}
+
+/// 卡片升起：入场自视口底部飞入。`<dialog>` 这类外壳本身就是卡片时单独用它。
+/// 减少动态效果下直接进到终态。
+@mixin modal-rise {
+  animation: modal-card-rise v.$motion-duration v.$motion-easing;
+
+  @media (prefers-reduced-motion: reduce) {
+    animation: none;
+  }
+}
+
+/// 单层淡入：独立遮罩层、内容查看器整层、原生 dialog 的 `::backdrop`。
+/// 这些元素只承担「遮暗或出现」，没有位移可播。
+@mixin modal-fade {
+  animation: modal-fade-in v.$feedback-duration v.$feedback-easing;
+
+  @media (prefers-reduced-motion: reduce) {
+    animation: none;
+  }
+}
+
+/// 外壳本身就是卡片（整屏查看器）：遮罩与卡片是同一个元素，两条动画同时挂在它身上 ——
+/// 背景色淡入（反馈档）、整层从视口底部升起（形变档），与其它模态同一套参数。
+@mixin modal-enter-self {
+  animation:
+    modal-scrim-in v.$feedback-duration v.$feedback-easing,
+    modal-card-rise v.$motion-duration v.$motion-easing;
+
+  @media (prefers-reduced-motion: reduce) {
+    animation: none;
+  }
+}
+
+/// 模态入场：遮罩淡入（反馈档）+ 卡片从视口底部升起（形变档）。
+///
+/// 这一类外壳随组件挂载与卸载，没有退场可播，所以入场用 `@keyframes` 而不是切换类：
+/// 元素插入文档那一帧就开播，不依赖「先挂上、下一帧再加类」的两帧时序。
+/// 卡片选择器由调用方给 —— 各家的卡片类名不同（`.modal-dialog`、`.oauth-modal`、
+/// `.bento-modal__box`、`.frame-buster__dialog`）。常驻外壳 `.modal` 有自己的
+/// transition 时间线（能播退场），不要套这一条。
+///
+/// 遮罩动的是容器自己的 `background-color`（`modal-scrim-in`），不是 opacity ——
+/// 给容器设 opacity 会把卡片一起变淡。减少动态效果下两条都关掉。
+@mixin modal-enter($card-selector) {
+  animation: modal-scrim-in v.$feedback-duration v.$feedback-easing;
+
+  #{$card-selector} {
+    @include modal-rise;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    animation: none;
+  }
+}

@@ -4,8 +4,8 @@
 
 范围：`src/lib` 根目录下全部 `*.ts`，不含 `md-editor/`、`reactive/` 等子目录。
 
-- 文件数：146
-- 合计行数：32082（含空行）
+- 文件数：148
+- 合计行数：32115（含空行）
 
 | 文件 | 行数 | 导出数 | 一句话职责 |
 | --- | ---: | ---: | --- |
@@ -114,6 +114,7 @@
 | `market-stream.ts` | 308 | 6 | 练手盘行情的**常驻 WebSocket 消费端**（只喂展示缓存） |
 | `mention-service.ts` | 45 | 1 | @ 选人读路径：只返回当前评论区 / 会话里可被提及的用户，不暴露角色或成员状态。 |
 | `mention-shared.ts` | 24 | 4 | 评论与讨论共用的 @ 词汇；零依赖，客户端也可直接使用。 |
+| `motion.ts` | 5 | 2 | 脚本侧要用的两档时长：样式在 src/styles-scss/abstracts/_variables.scss |
 | `navigation-back.ts` | 48 | 4 | 文章页「返回上页」的落点判据（纯函数，**零依赖**） |
 | `notification-service.ts` | 332 | 14 | 通知业务逻辑 |
 | `oauth.ts` | 651 | 45 | OAuth 2.0 Authorization Code 核心库（raricy 作为 IdP） |
@@ -134,6 +135,7 @@
 | `rich-text.ts` | 328 | 6 | 用户输入正文 → 安全 HTML 的**共享管线**（marked → DOMPurify → 后处理） |
 | `safe-url.ts` | 73 | 3 | 登录回跳地址的安全校验 |
 | `saved-message-service.ts` | 408 | 14 | 私聊消息保存箱 |
+| `scroll-lock.ts` | 28 | 1 | 锁住页面滚动。 |
 | `secret-box.ts` | 109 | 4 | 落盘密钥的对称加解密（Fernet） |
 | `service-accounts.ts` | 46 | 2 | 服务账号（配额白名单） |
 | `session.ts` | 90 | 5 | 基于 JWT 的会话 |

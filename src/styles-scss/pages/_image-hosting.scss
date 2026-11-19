@@ -247,22 +247,19 @@
 }
 
 // ---- Preview modal ----
+// 内容查看器：遮罩比普通模态更深（$scrim-viewer），层级在模态之上，从模态里点开的图
+// 也能放大。图片与讨论区的图片放大取同一个 8px 圆角。
 
 .image-hosting-preview {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, .7);
+  @include m.modal-scrim($scrim-viewer);
+  z-index: $z-viewer;
   display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
-  padding: $space-4;
 
   &__content {
     max-width: 90vw;
     max-height: 90vh;
     background: var(--color-background-card);
-    border-radius: $radius-large;
+    border-radius: 8px;
     overflow: hidden;
     position: relative;
 

@@ -58,7 +58,7 @@
 .l2-result-mark { display: grid; place-items: center; width: 44px; height: 44px; border-radius: 50%; color: var(--color-brand-primary); background: var(--color-brand-secondary); }
 .l2-about { padding: 4px 16px; h3 { font-size: .8rem; font-weight: 500; margin: 0 0 8px; } p { font-size: .75rem; color: var(--color-text-secondary); line-height: 1.9; margin: 0 0 12px; } a { display: inline-flex; align-items: center; gap: 6px; font-size: .72rem; color: var(--color-text-secondary); } }
 .l2-save-note { margin: 24px 0 0; text-align: center; font-size: .72rem; color: var(--color-text-secondary); }
-.l2-dialog { border: 0; width: min(640px, calc(100vw - 32px)); max-height: calc(100dvh - 48px); padding: 28px; margin: auto; border-radius: 30px; color: var(--color-text-primary); background: var(--color-background-card); box-shadow: var(--shadow-card-brand); overscroll-behavior: contain; &::backdrop { background: rgb(0 0 0 / 50%); } button:focus-visible { outline: none; box-shadow: var(--shadow-focus-brand); } }
+.l2-dialog { border: 0; width: min(640px, calc(100vw - 32px)); max-height: calc(100dvh - 48px); padding: 28px; margin: auto; border-radius: 30px; color: var(--color-text-primary); background: var(--color-background-card); overscroll-behavior: contain; &[open] { @include m.modal-rise; &::backdrop { @include m.modal-fade; } } &::backdrop { background: rgb(0 0 0 / 50%); } button:focus-visible { outline: none; box-shadow: var(--shadow-focus-brand); } }
 body:has(.l2-dialog[open]) { overflow: hidden; }
 .l2-dialog-heading { justify-content: space-between; h2 { font-size: 1.35rem; margin: 0; } }
 .l2-dialog-intro { color: var(--color-text-secondary); font-size: .8rem; line-height: 1.8; margin: 12px 0 24px; }

@@ -304,8 +304,10 @@ export default function ExpandSelect({
                   );
                 });
                 // 有标题的分组给 role=group（读屏能把标题念出来）；没有标题的别套空壳。
+                // 带 class 是为了让组内选项也吃到 4px 间距 —— 组是列表的直接子元素，
+                // 列表的 gap 只分开「组」与「组」，组里的选项原先仍彼此紧贴。
                 return group.label ? (
-                  <div key={`group-${groupIndex}`} role="group" aria-label={group.label}>
+                  <div key={`group-${groupIndex}`} role="group" aria-label={group.label} className="expand-select__group">
                     <div className="expand-select__group-label" aria-hidden="true">
                       {group.label}
                     </div>

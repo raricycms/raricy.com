@@ -28,7 +28,7 @@ const SORT_OPTIONS = [
 //
 // 【两条免翻转保证】
 //  1. 服务端把 URL 里显式合法的 sort 回显到页内链接（侧栏/搜索/分页），见 page.tsx /
-//     BlogSidebar / SearchForm —— 从已选 updated 的页面点出去的跳转都带着 sort。
+//     BlogPersonalSidebar / SearchForm —— 从已选 updated 的页面点出去的跳转都带着 sort。
 //     无参 URL 的偏好则由 cookie 在服务端直接生效，回显缝隙（如侧栏子分类）不再需要
 //     客户端补参。
 //  2. 迁移 effect（下方）：仅当 URL 无 sort 参数 且 cookie 缺失（旧访客的 localStorage

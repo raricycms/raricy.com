@@ -63,7 +63,10 @@ export default function FavoriteButton({ blogId, initialFavorited }: Props) {
     };
     document.addEventListener('keydown', onKey);
     // 焦点送进关闭按钮（第一个可聚焦元素）：既宣布了弹窗，也不会让 Tab 越界第一步就跑到背景。
-    requestAnimationFrame(() => closeRef.current?.focus());
+    // ⚠️ 必须带 preventScroll：入场时卡片从视口下方飞上来，浏览器看到焦点元素在滚动容器
+    // 的可见区之外，会把 .modal 的 scrollTop 直接设到几百像素 —— 那一下会把整张卡
+    // 顶回屏幕中间、卡住不动一小段，读起来就是「点开收藏时顿一下」（实测 scrollTop 0 → 402）。
+    requestAnimationFrame(() => closeRef.current?.focus({ preventScroll: true }));
     return () => {
       document.removeEventListener('keydown', onKey);
       triggerRef.current?.focus();

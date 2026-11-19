@@ -3,31 +3,30 @@
 
 // ── 每日一言弹窗（<dialog> + showModal，全站唯一一个） ──────────────────────
 //
-// 【窄屏为什么钉住上沿，而不是垂直居中】这个弹窗的内容是分两段到达的：先是
+// 【居中，用 min-height 压住两段到达的跳动】这个弹窗的内容是分两段到达的：先是
 // 「正在打开今日一言…」的占位，读到 `/api/daily-quotes/today` 之后才换成正片。
-// 盒子高度因此会跳一次（390×664 实测：占位 166px → 正片 425px）。用
-// `margin: auto` 垂直居中时，这次变化会让**整个盒子**上下各挪半个高度差（这里是
-// 130px）—— 手机上网络比桌面慢，占位那一帧会停留得足够久，用户看到的就是
-// 「弹窗突然被往下/上拽了半屏，然后又弹回来」。后面还有几次同类变化：点「我也要
-// 投稿」换成表单（高得多），共鸣/收藏成功后卡片下方多一行反馈。
-// 窄屏把上沿钉死（固定上外边距 + 下外边距 auto 吃掉剩余空间），高度只向下长，
-// 标题、「每日一言」和关闭按钮原地不动。宽屏这次加载通常在一帧内就完成（本机实测
-// 几十毫秒，肉眼看不到中间态），保留原来的居中。
+// 盒子高度因此会跳一次（390×664 实测：占位 166px → 正片 425px）。直接居中时，
+// 这次变化会让整个盒子上下各挪半个高度差（约 130px），看起来像「弹窗被拽了半屏」。
+// 所以 __stage 给了一个与正片同档的 min-height：占位那一帧就撑到正片高度，居中
+// 位置不动。窄屏与宽屏同一套，不再把上沿钉在顶栏下面 —— 那会让整张弹窗贴顶，
+// 读起来像「位置很高」。
 //
 // 【遮罩只用平铺色，不加 backdrop-filter】§3.6 的普通模态遮罩令牌就是
 // `rgba(0,0,0,.5)`。全屏高斯模糊在手机上要按帧重算整页，而遮罩本身是不透明的
 // 纯色层，模糊之后只剩一层脏灰；此外这一幕在手机上出现过「打开瞬间整块弹窗被
 // 合成到错误偏移、一帧后自己回来」的闪动，与这层全屏滤镜的初始化同时发生。
-// 弹窗自己的层级由 `--shadow-card-brand` 交代，够用。
+// 弹窗的层级由遮罩交代，卡片本身不投影（§3.6）。
 //
-// 【开合只淡入淡出，不缩放、不位移】这个弹窗的几何被 e2e 按真视口量（左右留白、
-// 高度上限、窄屏上沿固定），缩放会把这几条断言变成抖动源；而且模态是视口级浮层，
-// 没有一个可以「长出来」的触发边缘，它属于 §6.2 的入场 / 退场档。关闭时内容先退
-// （150ms），外壳与遮罩后收（220ms，收起档曲线），收完才真正 close()。减少动态
-// 效果时 JS 直接收尾，不依赖动画结束事件。
-// ⚠️ `::backdrop` 的 background 必须保持固定的 `rgba(0,0,0,.5)`：透明度动画走
-// `opacity`，不要把 alpha 写进 background —— e2e 直接读 computed backgroundColor，
-// 那种写法会让它随帧变化。
+// 【开合与全站模态同参】入场：卡片自视口底部升起（形变档 720ms），遮罩淡入（反馈档
+// 240ms）；退场反向走同一条时间线，组件等形变档走完才卸载。不做缩放：
+// 弹窗的几何被 e2e 按真视口量（左右留白、高度上限、窄屏上沿固定），缩放会把那几条
+// 断言变成抖动源。也不给内部内容单独加淡入 —— 内容跟着卡片一起到，弹窗里再套一层
+// 入场会让同一件事播两遍。减少动态效果时 JS 直接收尾，不依赖动画结束事件。
+//
+// 【关闭必须当场放开页面】还挂着 showModal 的时候整页都是 inert：点击与滚动全部由
+// 弹窗接管，退场那 720ms 就成了「点了关闭却动不了网站」。所以点关闭时先 close()
+// （立刻退出原生模态），卡片靠 .is-closing 补回 display / position 继续播退场，
+// 遮罩改用同级的 .daily-quote-scrim —— 关掉对话框，`::backdrop` 就没了。
 
 @keyframes daily-quote-spin {
   to {
@@ -45,6 +44,27 @@
   }
 }
 
+// 遮罩层：与对话框同级，随它一起淡入淡出（反馈档）。
+// 从不接收指针事件 —— 打开时点击由模态对话框自己接（点遮罩区域等于点对话框），
+// 退场期间直接作用到下面的页面。
+.daily-quote-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: v.$z-modal;
+  background: rgba(0, 0, 0, .5);
+  opacity: 0;
+  transition: opacity v.$feedback-duration v.$feedback-easing;
+  pointer-events: none;
+
+  &.is-open {
+    opacity: 1;
+  }
+
+  &.is-closing {
+    opacity: 0;
+  }
+}
+
 .daily-quote-dialog {
   border: 0;
   padding: 0;
@@ -57,52 +77,46 @@
   border-radius: v.$radius-card;
   color: var(--color-text-primary);
   background: var(--color-background-card);
-  box-shadow: var(--shadow-card-brand);
   overflow-y: auto;
   overscroll-behavior: contain;
+  // 与点赞者 / 投喂者那套模态同一条入场：卡片自视口底部升起（形变档 720ms），
+  // 遮罩淡入（反馈档 240ms）。首帧用透明度挡住，不加 visibility —— `<dialog>` 的
+  // autoFocus 在隐藏元素上会失效，而这一层只挡视觉、不挡焦点。`is-open` 那一帧
+  // 透明度直接到 1、位移照常过渡：卡片一亮就已经在动画里，不会先淡出来再升。
   opacity: 0;
-  transition: opacity v.$feedback-duration v.$feedback-easing;
+  // 位移 = 半个视口 + 半个自身高度 + 24px：卡片居中时，这个量刚好把整张卡片送到
+  // 视口下沿之外（只写 100% 的话，卡片顶边仍停在原来底边的位置，退场结束时还有
+  // 一大截露在屏幕里）。入场反向走同一条：卡片从屏幕外升起。
+  transform: translateY(calc(50vh + 50% + 24px));
+  transition: transform v.$motion-duration v.$motion-easing;
 
+  // 遮罩不在 ::backdrop 上：对话框一 close() 退出原生模态，::backdrop 当场消失，
+  // 而卡片还要播完退场。这里留空，遮罩交给同级那层 .daily-quote-scrim。
   &::backdrop {
-    background: rgba(0, 0, 0, .5);
-    opacity: 0;
-    transition: opacity v.$feedback-duration v.$feedback-easing;
+    background: transparent;
   }
 
   &.is-open {
     opacity: 1;
-
-    &::backdrop {
-      opacity: 1;
-    }
-
-    .daily-quote-dialog__body {
-      opacity: 1;
-      transition-delay: 55ms;
-    }
+    transform: none;
   }
 
-  // 关闭：内容先退场，外壳与遮罩随后收起。两条时间线同一条收起节奏。
+  // 关闭：组件先 close() 退出原生模态（页面当场可操作），卡片靠这条规则继续渲染，
+  // 按形变档滑回视口下方。display / position 必须补回来 —— 关掉的 <dialog> 是
+  // `display: none`，不补就没有退场可看。
   &.is-closing {
-    opacity: 0;
-    transition: opacity v.$feedback-duration v.$feedback-easing;
-
-    &::backdrop {
-      opacity: 0;
-      transition: opacity v.$feedback-duration v.$feedback-easing;
-    }
-
-    .daily-quote-dialog__body {
-      opacity: 0;
-      transition: opacity v.$feedback-duration v.$feedback-easing;
-      transition-delay: 0s;
-    }
+    display: block;
+    position: fixed;
+    inset: 0;
+    height: fit-content;
+    // 留在遮罩之上（两者都脱离原生模态了），否则卡片会被自己的遮罩压暗。
+    z-index: v.$z-modal + 1;
+    pointer-events: none;
+    transform: translateY(calc(50vh + 50% + 24px));
   }
 
   &__body {
     padding: 28px;
-    opacity: 0;
-    transition: opacity v.$feedback-duration v.$feedback-easing;
   }
 
   &__header {
@@ -139,6 +153,9 @@
   }
 
   &__stage {
+    // 与正片同档：占位那一帧就撑到位，内容到达时居中位置不动（见文件头）。
+    // 390 宽下正片实测 276，取 280 让两段高度一致。
+    min-height: 280px;
     animation: daily-quote-content-in v.$feedback-duration v.$feedback-easing .055s both;
   }
 
@@ -667,12 +684,10 @@
   }
 }
 
-/* 窄屏：上沿钉死（理由见文件头）。`<dialog>` 的 UA 样式是 `height: fit-content`，
-   所以固定上外边距 + `margin-bottom: auto` 只会让它贴顶，不会把盒子拉满视口；
-   内容超过 max-height 时仍然是弹窗内部滚动。 */
+/* 窄屏：与宽屏同一套居中。内容超过 max-height 时仍然是弹窗内部滚动。 */
 @media (max-width: 768px) {
   .daily-quote-dialog {
-    margin: calc(12px + var(--safe-top)) auto auto;
+    margin: auto;
   }
 
   .daily-quote-page {
@@ -733,6 +748,7 @@
   .daily-quote-dialog,
   .daily-quote-dialog::backdrop,
   .daily-quote-dialog *,
+  .daily-quote-scrim,
   .daily-quote-card,
   .daily-quote-card *,
   .daily-quote-form,

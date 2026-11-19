@@ -1,0 +1,78 @@
+@use '../abstracts/variables' as v;
+
+// 自绘滚动条（SiteScrollbar.tsx）。
+//
+// 【为什么不用原生那条】经典滚动条要占 10~15px：长页面有、短页面没有，锁滚动前后也
+// 没有。布局视口宽度因此会变，`position: fixed` 的顶栏按 `left/right: 0` 铺满它，
+// 于是从长页面点进短页面、或者打开弹层锁滚动，顶栏与居中内容都会横移半个滚动条。
+// 把原生那条藏掉，宽度在每个页面、每个状态下都是同一个值，顶栏也能铺到屏幕边缘。
+//
+// 【为什么自己画】藏掉之后桌面端就没有滚动位置指示了。这条从顶栏下沿开始、到视口
+// 底部结束 —— 原生那条只能从窗口顶端开始，会切进顶栏那一格。首页整屏是画，不显示
+// （见组件的 HIDE_ON）。
+//
+// 只在「有悬停、精确指针」的桌面环境启用：触屏与 macOS 的浮层滚动条本来不占宽度，
+// 原生那条留着更自然。
+
+.site-scrollbar {
+  display: none;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  /* 藏掉原生滚动条：两条都写，Chromium / WebKit 认伪元素，Firefox 认 scrollbar-width。 */
+  html {
+    scrollbar-width: none;
+  }
+
+  html::-webkit-scrollbar {
+    width: 0;
+    height: 0;
+  }
+
+  .site-scrollbar {
+    display: block;
+    position: fixed;
+    top: var(--navbar-height);
+    right: 0;
+    bottom: 0;
+    // 与经典滚动条同宽，拖动热区不至于太窄。
+    width: 12px;
+    // 顶栏之下、内容之上：它不属于页面内容，也不该盖住顶栏。
+    z-index: v.$z-header - 1;
+    pointer-events: none;
+  }
+
+  .site-scrollbar__thumb {
+    position: absolute;
+    top: 0;
+    // 贴右边缘：滑块右边界就是屏幕右边界。两侧各缩 2px 的话，鼠标顶到屏幕最右边
+    // 那几像素反而落在滑块外面（跟着往下拖会拖不动），热区必须一直铺到边。
+    left: auto;
+    right: 0;
+    width: 10px;
+    min-height: 36px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--color-text-primary) 22%, transparent);
+    pointer-events: auto;
+    // 指针保持默认箭头：这块不是可点的控件，拖动时换手形会让人以为它是按钮。
+    cursor: default;
+    touch-action: none;
+    // 位置跟滚动走，不能有过渡，否则拖动时会滞后。
+    will-change: transform;
+    // 变色走反馈档：悬停变二级主题色、按下变一级主题色。
+    transition: background-color v.$feedback-duration v.$feedback-easing, opacity v.$feedback-duration v.$feedback-easing;
+
+    &:hover {
+      background: var(--color-brand-secondary);
+    }
+
+    &:active {
+      background: var(--color-brand-primary);
+    }
+
+    &.is-hidden {
+      opacity: 0;
+      pointer-events: none;
+    }
+  }
+}

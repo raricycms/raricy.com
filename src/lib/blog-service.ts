@@ -655,9 +655,9 @@ export async function listPublicBlogs(params: PublicListParams = {}): Promise<{
 }
 
 /**
- * 公开集合里**真的有文章**的栏目 id 集合（给 `/explore` 的侧栏剪枝用）。
+ * 公开集合里**真的有文章**的栏目 id 集合（给 `/explore` 的栏目剪枝用）。
  *
- * 侧栏只列这个集合里的栏目：空栏目是死链（点进去什么都没有），而且会给搜索引擎
+ * 栏目只列这个集合里的：空栏目是死链（点进去什么都没有），而且会给搜索引擎
  * 一批空页面。这与 sitemap/列表「同一个集合」是同一条纪律的延伸 —— 因此它也必须
  * 走同一个 `INDEXABLE_BLOG_WHERE`。
  *

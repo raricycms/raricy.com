@@ -11,10 +11,14 @@ interface Category {
   children: { id: number; name: string; slug: string }[];
 }
 
-export default function BlogCategorySelect({ categories, currentSlug, featured }: {
+export default function BlogCategorySelect({ categories, currentSlug, featured, basePath = '/blog', showFeatured = true }: {
   categories: Category[];
   currentSlug: string | null;
   featured?: string;
+  /** 提交到哪个列表页。`/explore`（对外公开列表）复用本组件，传它自己的路径。 */
+  basePath?: string;
+  /** 是否提供「精选文章」。精选是站内的编辑口径，对外列表不提供。 */
+  showFeatured?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   // 首帧服务端渲染只能给出 `--category-closed-width` 的 120px 兜底值，水合后
@@ -111,7 +115,7 @@ export default function BlogCategorySelect({ categories, currentSlug, featured }
     if (nextFeatured) p.set('featured', nextFeatured);
     setOpen(false);
     toggle.current?.focus();
-    router.push(p.size ? `/blog?${p}` : '/blog', { scroll: false });
+    router.push(p.size ? `${basePath}?${p}` : basePath, { scroll: false });
   }
 
   return (
@@ -141,7 +145,9 @@ export default function BlogCategorySelect({ categories, currentSlug, featured }
           <div className="blog-category-select__clip">
             <div className="blog-category-select__options" aria-label="栏目选择">
               <button type="button" className={`blog-category-select__option${!currentSlug && !featured ? ' is-active' : ''}`} onClick={() => choose(null)}><span>全部栏目</span></button>
-              <button type="button" className={`blog-category-select__option${featured === '1' && !currentSlug ? ' is-active' : ''}`} onClick={() => choose(null, '1')}><span>精选文章</span></button>
+              {showFeatured && (
+                <button type="button" className={`blog-category-select__option${featured === '1' && !currentSlug ? ' is-active' : ''}`} onClick={() => choose(null, '1')}><span>精选文章</span></button>
+              )}
               {categories.map((category) => (
                 <div key={category.id}>
                   <div className={`blog-category-select__parent${currentSlug === category.slug ? ' is-active' : ''}`}>

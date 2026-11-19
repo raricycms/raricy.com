@@ -43,6 +43,7 @@
   color: var(--color-text-secondary);
   font-size: 0.8rem;
 }
+// 选项是胶囊：相邻两块紧贴时淡底会在圆角处连成一条（选中项与悬停项分不开）。
 .mention-picker__option {
   @include m.btn-tab;
   display: block;
@@ -51,6 +52,10 @@
   text-align: left;
   overflow-wrap: anywhere;
   font: inherit;
+
+  & + & {
+    margin-top: 4px;
+  }
 }
 
 @mixin rich-composer($p) {

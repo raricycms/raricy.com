@@ -6,11 +6,39 @@ import { useSearchParams } from 'next/navigation';
 import { X } from 'lucide-react';
 import Avatar from '@/app/components/Avatar';
 import { BLOG_SCOPES, type BlogScope } from '@/lib/blog-directory';
+import { MOTION_MS } from '@/lib/motion';
+import { lockPageScroll } from '@/lib/scroll-lock';
 
-export default function BlogPersonalSidebar({ user, summary, scope }: {
-  user: { id: string; username: string; frameUrl: string | null };
-  summary: { counts: Record<BlogScope, number>; likesReceived: number; commentsReceived: number; fishReceived: number };
-  scope: BlogScope;
+export interface BlogPersonalSummary {
+  counts: Record<BlogScope, number>;
+  likesReceived: number;
+  commentsReceived: number;
+  fishReceived: number;
+}
+
+/**
+ * 目录页左侧的信息侧栏。两个列表共用这一副外壳，内容按登录状态分两种：
+ *   · 登录用户 —— 头像、昵称、获得统计、五个文章范围、创建入口
+ *   · 访客（`user` 为 null）—— 头像位换成通用图标，身份写「未登录」，
+ *     正文一句登录后可见的范围说明；统计、个人范围与创建入口都没有，
+ *     卡片里也不放按钮（登录入口在顶栏）
+ * 几何与交互（桌面 280px 卡片、窄屏悬浮胶囊）两种状态同一套代码承担；
+ * 访客的胶囊没有创建钮，只剩一颗头像球；`.blog-personal--guest` 在窄屏整颗隐藏
+ * （手机上它会压住内容，登录入口本来就在顶栏）。
+ *
+ * 「文章范围」与「创建」只对能进站内目录（core+）的人有意义：/explore 复用本卡时
+ * 传 showRanges={false} / showCreate={false}，避免链到进不去的 /blog。
+ */
+export default function BlogPersonalSidebar({ user, summary = null, scope = 'all', basePath = '/blog', showRanges = true, showCreate = true }: {
+  user: { id: string; username: string; frameUrl: string | null } | null;
+  summary?: BlogPersonalSummary | null;
+  scope?: BlogScope;
+  /** 文章范围的链接指向哪个目录页；默认站内目录 `/blog`。 */
+  basePath?: string;
+  /** 是否显示「我发布的」等文章范围（只有写路径在 /blog 的 core+ 需要）。 */
+  showRanges?: boolean;
+  /** 是否显示「创建」入口（指向 /blog/upload，core+ 才能用）。 */
+  showCreate?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [narrow, setNarrow] = useState(false);
@@ -51,7 +79,8 @@ export default function BlogPersonalSidebar({ user, summary, scope }: {
     if (!open) return;
     measurePanel();
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) { setSettled(true); return; }
-    const timer = window.setTimeout(() => setSettled(true), 540);
+    // 面板过渡与这里必须同一时长：早一帧置 settled 会让内部滚动条在面板还在动时可用。
+    const timer = window.setTimeout(() => setSettled(true), MOTION_MS);
     return () => window.clearTimeout(timer);
   }, [open, measurePanel]);
 
@@ -67,23 +96,12 @@ export default function BlogPersonalSidebar({ user, summary, scope }: {
   // 手势却拦不住鼠标滚轮；而面板自己真正可滚时，滚到尽头还会把余量转交给后面那一页
   // （滚动链，SCSS 的 overscroll-behavior: contain 管这一半）。实测（390×844）：不锁时
   // 展开后把滚轮停在面板上，window.scrollY 从 0 直接被带到 105。
-  // 锁法照 u/[id]/ProfileBoard.tsx 的详情层：先量滚动条宽度再用 padding-right 抵掉，
-  // 直接 overflow: hidden 会让桌面窄窗口的滚动条消失、正文横向跳一下。
+  // 锁法见 lib/scroll-lock：先量滚动条宽度再用 padding-right 抵掉，直接 overflow:
+  // hidden 会让桌面窄窗口的滚动条消失、正文横向跳一下。
   // 收起 / 卸载（含链接导航）都走 cleanup 还原，别只在收起按钮里写。
   useEffect(() => {
     if (!open || !narrow) return;
-    const prevOverflow = document.body.style.overflow;
-    const prevPaddingRight = document.body.style.paddingRight;
-    const scrollbar = window.innerWidth - document.documentElement.clientWidth;
-    document.body.style.overflow = 'hidden';
-    if (scrollbar > 0) {
-      const current = Number.parseFloat(window.getComputedStyle(document.body).paddingRight) || 0;
-      document.body.style.paddingRight = `${current + scrollbar}px`;
-    }
-    return () => {
-      document.body.style.overflow = prevOverflow;
-      document.body.style.paddingRight = prevPaddingRight;
-    };
+    return lockPageScroll();
   }, [open, narrow]);
 
   useEffect(() => {
@@ -109,14 +127,18 @@ export default function BlogPersonalSidebar({ user, summary, scope }: {
     if (next === 'all') p.delete('scope');
     else p.set('scope', next);
     p.delete('page');
-    return p.size ? `/blog?${p}` : '/blog';
+    return p.size ? `${basePath}?${p}` : basePath;
   }
+
+  const toggleLabel = user
+    ? (open ? '收起我的博客' : '展开我的博客')
+    : (open ? '收起访客信息' : '展开访客信息');
 
   return (
     <aside
       ref={host}
-      className={`blog-personal${open ? ' is-open' : ''}${open && settled ? ' is-settled' : ''}`}
-      aria-label="我的博客"
+      className={`blog-personal${user ? '' : ' blog-personal--guest'}${showCreate ? '' : ' blog-personal--no-create'}${open ? ' is-open' : ''}${open && settled ? ' is-settled' : ''}`}
+      aria-label={user ? '我的博客' : '访客信息'}
       onBlur={(event) => {
         if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setOpen(false);
       }}
@@ -138,20 +160,27 @@ export default function BlogPersonalSidebar({ user, summary, scope }: {
         onClick={() => setOpen(false)}
       />
       <div className="blog-personal__shell" ref={shell}>
-        <Link
-          className="blog-personal__avatar"
-          href={`/u/${user.id}`}
-          aria-label={`${user.username}的主页`}
-          tabIndex={narrow && !open ? -1 : undefined}
-          aria-hidden={narrow && !open}
-        >
-          <Avatar userId={user.id} frameUrl={user.frameUrl} alt="" />
-        </Link>
+        {user ? (
+          <Link
+            className="blog-personal__avatar"
+            href={`/u/${user.id}`}
+            aria-label={`${user.username}的主页`}
+            tabIndex={narrow && !open ? -1 : undefined}
+            aria-hidden={narrow && !open}
+          >
+            <Avatar userId={user.id} frameUrl={user.frameUrl} alt="" />
+          </Link>
+        ) : (
+          /* 访客没有头像，也没有主页可去：同一格放通用人像图标，不套链接。 */
+          <span className="blog-personal__avatar blog-personal__avatar--guest">
+            <span className="icon icon-person-circle" aria-hidden="true" />
+          </span>
+        )}
         <button
           ref={toggle}
           type="button"
           className="blog-personal__toggle"
-          aria-label={open ? '收起我的博客' : '展开我的博客'}
+          aria-label={toggleLabel}
           aria-expanded={open}
           aria-controls="blog-personal-panel"
           onClick={() => { measurePanel(); setOpen((value) => !value); }}
@@ -160,34 +189,48 @@ export default function BlogPersonalSidebar({ user, summary, scope }: {
         </button>
         <div className="blog-personal__panel" id="blog-personal-panel" inert={narrow && !open}>
           <div className="blog-personal__inner" ref={panelInner}>
-            <Link className="blog-personal__identity" href={`/u/${user.id}`}>
-              <span>{user.username}</span>
-            </Link>
-            <dl className="blog-personal__stats">
-              <div className="blog-likes" title="获赞"><dt><span className="icon icon-heart-fill" aria-hidden="true" /><span className="visually-hidden">获赞</span></dt><dd className="numeric">+{summary.likesReceived}</dd></div>
-              <div className="blog-comments" title="收到评论"><dt><span className="icon icon-chat-dots_new" aria-hidden="true" /><span className="visually-hidden">收到评论</span></dt><dd className="numeric">+{summary.commentsReceived}</dd></div>
-              <div className="blog-fish" title="收获鱼干"><dt><span className="icon icon-fish" aria-hidden="true" /><span className="visually-hidden">收获鱼干</span></dt><dd className="numeric">+{summary.fishReceived}</dd></div>
-            </dl>
-            <nav className="blog-personal__ranges" aria-label="文章范围">
-              {BLOG_SCOPES.map((item) => (
-                <Link
-                  key={item.value}
-                  href={scopeHref(item.value)}
-                  className={`blog-personal__range${scope === item.value ? ' is-active' : ''}`}
-                  aria-current={scope === item.value ? 'page' : undefined}
-                  onClick={() => setOpen(false)}
-                  scroll={false}
-                  prefetch={false}
-                >
-                  <span className={`icon ${item.icon}`} aria-hidden="true" />
-                  <span>{item.label}</span>
-                  <span className="numeric">{summary.counts[item.value]}</span>
+            {user ? (
+              <>
+                <Link className="blog-personal__identity" href={`/u/${user.id}`}>
+                  <span>{user.username}</span>
                 </Link>
-              ))}
-            </nav>
+                <dl className="blog-personal__stats">
+                  <div className="blog-likes" title="获赞"><dt><span className="icon icon-heart-fill" aria-hidden="true" /><span className="visually-hidden">获赞</span></dt><dd className="numeric">+{summary?.likesReceived ?? 0}</dd></div>
+                  <div className="blog-comments" title="收到评论"><dt><span className="icon icon-chat-dots_new" aria-hidden="true" /><span className="visually-hidden">收到评论</span></dt><dd className="numeric">+{summary?.commentsReceived ?? 0}</dd></div>
+                  <div className="blog-fish" title="收获鱼干"><dt><span className="icon icon-fish" aria-hidden="true" /><span className="visually-hidden">收获鱼干</span></dt><dd className="numeric">+{summary?.fishReceived ?? 0}</dd></div>
+                </dl>
+                {showRanges && (
+                <nav className="blog-personal__ranges" aria-label="文章范围">
+                  {BLOG_SCOPES.map((item) => (
+                    <Link
+                      key={item.value}
+                      href={scopeHref(item.value)}
+                      className={`blog-personal__range${scope === item.value ? ' is-active' : ''}`}
+                      aria-current={scope === item.value ? 'page' : undefined}
+                      onClick={() => setOpen(false)}
+                      scroll={false}
+                      prefetch={false}
+                    >
+                      <span className={`icon ${item.icon}`} aria-hidden="true" />
+                      <span>{item.label}</span>
+                      <span className="numeric">{summary?.counts[item.value] ?? 0}</span>
+                    </Link>
+                  ))}
+                </nav>
+                )}
+              </>
+            ) : (
+              /* 访客没有身份可链、没有统计、也没有个人范围：这张卡只报「未登录」和一句
+                 登录后可见的范围说明。登录入口留给顶栏，卡片里不放按钮。 */
+              <>
+                <span className="blog-personal__identity"><span>未登录</span></span>
+                <p className="blog-personal__note">登录后可查看「我发布的」「我赞过的」等文章范围。</p>
+              </>
+            )}
             {/* 绝对定位的「创建」占位：桌面不占位（CSS 里 display:none），窄屏展开时
-                在范围下方空出按钮那一格，见 _directory.scss 的 __create-space 说明。 */}
-            <span className="blog-personal__create-space" aria-hidden="true" />
+                在面板内容下方空出按钮那一格，见 _directory.scss 的 __create-space 说明。
+                访客没有那颗按钮，就不会留这一格。 */}
+            {user && showCreate && <span className="blog-personal__create-space" aria-hidden="true" />}
           </div>
         </div>
         {/*
@@ -196,11 +239,16 @@ export default function BlogPersonalSidebar({ user, summary, scope }: {
           尺寸 / 底色 / 文案都由 CSS 在 `.is-open` 下过渡（见 _directory.scss）。
           ⚠️ 它必须在 `.blog-personal__panel` **外面**：面板收起时整块 0 高，放进去
           加号会跟着被裁掉；而它是收起态唯一的创建入口。
+
+          访客没有这一格：卡片里不放按钮，收起态的胶囊只剩一颗头像球
+          （几何见 _directory.scss 的 `.blog-personal--guest`）。
         */}
-        <Link href="/blog/upload" className="upload-button blog-personal__create">
-          <span className="icon icon-add" aria-hidden="true" />
-          <span className="blog-personal__create-label">创建</span>
-        </Link>
+        {user && showCreate && (
+          <Link href="/blog/upload" className="upload-button blog-personal__create">
+            <span className="icon icon-add" aria-hidden="true" />
+            <span className="blog-personal__create-label">创建</span>
+          </Link>
+        )}
       </div>
     </aside>
   );

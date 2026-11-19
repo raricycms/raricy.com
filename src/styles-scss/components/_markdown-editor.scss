@@ -700,8 +700,7 @@
 // 这里只写面板自己的：宽度、标签排、列表与四种状态。
 .md-res-modal {
   // 与图床选择器同宽：同样是「一列条目 + 一个搜索框」
-  max-width: 560px;
-  width: calc(100vw - 40px);
+  @include m.modal-frame(560px);
 }
 
 .md-res-tabs {

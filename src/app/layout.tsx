@@ -10,6 +10,7 @@ import Footer from './components/Footer';
 import FooterGate from './components/FooterGate';
 import NotificationHeartbeat from './components/NotificationHeartbeat';
 import SmoothWheelScroll from './components/SmoothWheelScroll';
+import SiteScrollbar from './components/SiteScrollbar';
 import FrameBuster from './components/FrameBuster';
 import { getCurrentUser, isCoreUser } from '@/lib/auth';
 import { frameUrlFor } from '@/lib/frame-service';
@@ -86,10 +87,16 @@ export default async function RootLayout({ children }: { children: React.ReactNo
       </head>
       <body>
         <Navbar user={user} frameUrl={frameUrlFor(user)} />
+        {/* 移动端展开顶栏时的暗色蒙版。必须挂在 header 的**紧邻兄弟**上：放进 header
+            内部的话，fixed 子元素再低的 z-index 也画在 header 背景之上，会把整条顶栏
+            一起压暗（_header.scss 的 .site-navbar-scrim）。 */}
+        <div className="site-navbar-scrim" aria-hidden="true" />
         {/* 切页/bfcache 恢复时即时刷新顶栏未读数（实时值走 SSE，两档兜底轮询在 base.js） */}
         <NotificationHeartbeat />
         {/* 滚轮平滑滚动：全站生效，内部滚动区域同样适用（见组件内说明） */}
         <SmoothWheelScroll />
+        {/* 自绘滚动条：原生那条占布局宽度，跨页面与锁滚动时顶栏会跟着横移（见组件内说明） */}
+        <SiteScrollbar />
         <main>{children}</main>
         {/* /chat 是满屏工作台，不渲染页脚（见 FooterGate） */}
         <FooterGate>

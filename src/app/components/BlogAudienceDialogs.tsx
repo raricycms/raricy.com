@@ -83,12 +83,12 @@ export function BlogLikersDialog({ blogId, open, onClose }: DialogProps) {
         <div className="modal-content">
           <div className="modal-header">
             <h5 className="modal-title"><span className="icon icon-heart-fill" aria-hidden="true" style={{ marginRight: '0.5rem' }}></span>点赞者列表</h5>
-            <button type="button" className="btn-close" aria-label="Close" onClick={onClose} />
+            <button type="button" className="btn-close" aria-label="关闭" onClick={onClose} />
           </div>
           <div className="modal-body">
             <div id="likers-list" className="list-group" style={{ maxHeight: '50vh', overflow: 'auto' }}>
               {msg ? (
-                <div className="text-muted">{msg}</div>
+                <div className="list-group__empty">{msg}</div>
               ) : (
                 likers.map((u) => (
                   <div className="list-group-item" key={u.id}>
@@ -126,11 +126,6 @@ export function BlogLikersDialog({ blogId, open, onClose }: DialogProps) {
                 下一页
               </button>
             </div>
-          </div>
-          <div className="modal-footer">
-            <button type="button" className="btn btn-secondary" onClick={onClose}>
-              关闭
-            </button>
           </div>
         </div>
       </div>
@@ -187,12 +182,12 @@ export function BlogFeedersDialog({ blogId, open, onClose }: DialogProps) {
         <div className="modal-content">
           <div className="modal-header">
             <h5 className="modal-title"><span className="icon icon-fish" aria-hidden="true" style={{ marginRight: '0.5rem' }}></span>投喂者列表</h5>
-            <button type="button" className="btn-close" aria-label="Close" onClick={onClose} />
+            <button type="button" className="btn-close" aria-label="关闭" onClick={onClose} />
           </div>
           <div className="modal-body">
             <div id="feeders-list" className="list-group" style={{ maxHeight: '50vh', overflow: 'auto' }}>
               {msg ? (
-                <div className="text-muted">{msg}</div>
+                <div className="list-group__empty">{msg}</div>
               ) : (
                 feeders.map((f) => (
                   <div className="list-group-item" key={f.user_id}>
@@ -244,11 +239,6 @@ export function BlogFeedersDialog({ blogId, open, onClose }: DialogProps) {
                 下一页
               </button>
             </div>
-          </div>
-          <div className="modal-footer">
-            <button type="button" className="btn btn-secondary" onClick={onClose}>
-              关闭
-            </button>
           </div>
         </div>
       </div>

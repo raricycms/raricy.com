@@ -88,11 +88,6 @@ a {
 
 
 /* 搜索栏 */
-.blog-search {
-    display: flex;
-    justify-content: center;
-    margin-top: 20px;
-}
 
 .search-form {
     display: flex;
@@ -209,163 +204,6 @@ a {
     gap: 30px;
     margin-top: 30px;
     min-height: calc(100vh - 400px);
-}
-
-/* 左侧分类导航 */
-.sidebar {
-    flex: 0 0 280px;
-    background: var(--color-background-card);
-    border-radius: 30px;
-    padding: 0px 24px;
-    height: auto;
-    margin-bottom: 30px;
-    position: sticky;
-    top: 90px;
-    overflow: auto;
-}
-
-.sidebar-title {
-    font-size: 2rem;
-    font-weight: bold;
-    color: var(--color-text-primary);
-    margin-bottom: 20px;
-    padding-bottom: 12px;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    cursor: pointer;
-    user-select: none;
-    transition: color v.$feedback-duration v.$feedback-easing;
-    &:hover {
-        color: var(--color-brand-primary);
-    }
-}
-
-.sidebar-title .toggle-icon {
-    font-size: 1rem;
-    transition: transform v.$motion-duration v.$motion-easing;
-}
-
-.sidebar-title.collapsed .toggle-icon {
-    transform: rotate(-90deg);
-}
-
-.category-list {
-    list-style: none;
-    padding: 0;
-    margin: 0;
-    // 透明度属于反馈档，不跟高度一起走形变档
-    transition: max-height v.$motion-duration v.$motion-easing,
-        margin-bottom v.$motion-duration v.$motion-easing,
-        opacity v.$feedback-duration v.$feedback-easing;
-    overflow: hidden;
-}
-
-.category-list.collapsed {
-    max-height: 0;
-    opacity: 0;
-    margin-bottom: 0;
-}
-
-.category-list:not(.collapsed) {
-    max-height: 1250px;
-    opacity: 1;
-}
-
-.category-item {
-    margin-bottom: 8px;
-}
-
-.category-item.has-children {
-    position: relative;
-}
-
-/* 分类栏 = 切页档：当前分类常驻最高级空闲态，按下不叠加变化。
-   原先这里靠 `border-left: 3px solid transparent` 占位、再由 .active 上色，
-   是「胶囊 + 左侧竖条」两种形状语言的混搭 —— 竖条已去掉，语义全部由底色承担。 */
-.category-link {
-    @include m.btn-tab;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 10px 14px;
-    text-decoration: none;
-    font-size: 0.9rem;
-    font-weight: 500;
-    position: relative;
-    /* JSX 里 `category-link` 与 `collapsible` 是**同一元素上的两个类**（BlogSidebar.tsx），
-       所以必须是 `&.collapsible` 而不是后代选择器 —— 旧写法 `.collapsible` 嵌在
-       `.category-link` 里编译成 `.category-link .collapsible`，永远命中不到。 */
-    &.collapsible {
-        cursor: pointer;
-        user-select: none;
-
-        /* 折叠态由同一元素上的 `.collapsed` 承载（`.sub-category-list` 用的是同一个状态类，
-           两者同源同步切换）。箭头：展开朝下、折叠朝右。旧规则把 rotate 写在拼错的
-           `.catogory-toggle` 上，箭头从不旋转。 */
-        &.collapsed .category-toggle {
-            transform: rotate(-90deg);
-        }
-    }
-}
-
-
-
-.category-content {
-    display: flex;
-    align-items: center;
-    flex: 1;
-}
-
-.category-toggle {
-    font-size: 0.8rem;
-    margin-left: 8px;
-    transition: transform v.$motion-duration v.$motion-easing;
-    color: var(--color-text-secondary);
-}
-
-
-/* .category-link.active 的规则已并入上面的 @include m.btn-tab */
-
-.category-link .icon,
-.category-item .icon {
-    margin-right: 8px;
-    font-size: 1rem;
-    background-color: rgba(255, 255, 255, 0);
-}
-
-.sub-category-list {
-    list-style: none;
-    padding: 0;
-    margin: 8px 0 0 24px;
-    // 透明度属于反馈档，不跟高度一起走形变档
-    transition: max-height v.$motion-duration v.$motion-easing,
-        margin-top v.$motion-duration v.$motion-easing,
-        opacity v.$feedback-duration v.$feedback-easing;
-    overflow: hidden;
-}
-
-.sub-category-list.collapsed {
-    max-height: 0;
-    opacity: 0;
-    margin-top: 0;
-}
-
-.sub-category-list:not(.collapsed) {
-    max-height: 500px;
-    opacity: 1;
-}
-
-/* 子分类与父分类同一档（原先色值是写死的 #8e9ba6，不在主题体系内，
-   暗色下不会跟着变） */
-.sub-category-link {
-    @include m.btn-tab;
-    display: flex;
-    align-items: center;
-    padding: 8px 12px;
-    text-decoration: none;
-    font-size: 0.85rem;
-    font-weight: 400;
 }
 
 /* 右侧博客列表 */
@@ -664,44 +502,6 @@ a {
         margin-top: 14px;
     }
 
-    .sidebar {
-        flex: none;
-        position: static;
-        order: -1;
-        height: auto;               /* Mobile/tablet: auto height */
-        max-height: none;           /* Remove fixed height cap */
-        overflow: visible;          /* No internal scroll; page grows with content */
-        margin-bottom: 0;           /* 单列下间距交给 .blog-layout 的 gap，不再额外 30px */
-        padding: 14px 20px;
-        border-radius: 20px;
-    }
-
-    /* 折叠态（默认）下目录只是细条标题：小标题 + 小行距，给文章让出空间 */
-    .sidebar-title {
-        font-size: 1.35rem;
-        margin-bottom: 0;
-        padding-bottom: 0;
-    }
-
-    /* 展开后的目录也压紧行距（仍是折叠态为主，行距只在展开时显形） */
-    .category-item {
-        margin-bottom: 4px;
-    }
-
-    .category-link {
-        padding: 7px 10px;
-        font-size: 0.85rem;
-    }
-
-    .sub-category-list {
-        margin: 4px 0 0 12px;
-    }
-
-    .sub-category-link {
-        padding: 6px 10px;
-        font-size: 0.8rem;
-    }
-
     /* 排序条不再独占大片空白：紧贴目录，小一号 */
     .blog-sort {
         margin: 2px 0 10px;
@@ -726,43 +526,9 @@ a {
         font-size: 1rem;
         margin-bottom: 14px;
     }
-
-    .blog-search {
-        margin-top: 12px;
-    }
 }
 
 @media (max-width: 768px) {
-    .sidebar {
-        padding: 12px 14px;
-        height: auto;               /* Ensure auto height on smaller screens */
-        max-height: none;
-        overflow: visible;
-    }
-
-    /* 手机端默认折叠分类列表 */
-    // 与 BlogSidebar.tsx 的折叠命名保持一致（用 .collapsed 而非 .expanded），
-    // 否则展开时 DOM 上既无 .collapsed 也无 .expanded，命中不到任何规则。
-    .sidebar .category-list {
-        max-height: 0;
-        opacity: 0;
-        margin-bottom: 0;
-    }
-
-    .sidebar .category-list:not(.collapsed) {
-        max-height: 1000px;
-        opacity: 1;
-        margin-bottom: 0;
-    }
-
-    /* 手机端侧边栏标题：整行可点，保持小巧 */
-    .sidebar-title {
-        font-size: 1.15rem;
-        padding: 4px 10px;
-        margin: -12px -14px 0;
-        border-radius: 12px;
-    }
-
     .blog-item {
         padding: 14px 16px;
         border-radius: 18px;
@@ -804,10 +570,6 @@ a {
         margin-bottom: 10px;
     }
 
-    .blog-search {
-        margin-top: 10px;
-    }
-
     .blog-layout {
         margin-top: 10px;
         gap: 10px;
@@ -815,39 +577,6 @@ a {
 
     .blog-sort {
         margin: 2px 0 8px;
-    }
-
-    .sub-category-list {
-        margin-left: 10px;
-    }
-}
-
-/* ── 水合前（≤992px）：目录按「已折叠」渲染 ────────────────────────────────────
-   自动折叠发生在 BlogSidebar 的 useEffect（水合之后），而 SSR 直出的是展开态 ——
-   不接管的话，手机/平板会先画一帧展开的目录，再播放一段折叠动画（用户看到的
-   「一进去是展开的，然后收起来」）。这里让首帧就是折叠好的：BlogSidebar 挂载时
-   给 .sidebar 补上 --ready，此后完全由 .collapsed 类说话，两种渲染结果一致，
-   那一帧没有任何视觉变化。
-
-   前缀 .js（layout 的内联脚本在 <head> 同步打上）把这条限制在「JS 可用」时：
-   禁用 JS 就没有任何东西会接管折叠，目录必须保持展开可点，不能被藏起来。
-
-   放在文件末尾：与上面 ≤768px 的 `.sidebar .category-list:not(.collapsed)` 比，
-   多一个 .js 已经胜出，但同段内的两条仍靠源序压过更早的 :not(.collapsed)。 */
-@media (max-width: 992px) {
-    .js .sidebar:not(.sidebar--ready) {
-
-        .category-list,
-        .sub-category-list {
-            max-height: 0;
-            opacity: 0;
-            margin-top: 0;
-            margin-bottom: 0;
-        }
-
-        .sidebar-title .toggle-icon {
-            transform: rotate(-90deg);
-        }
     }
 }
 
