@@ -1,8 +1,8 @@
 // 玩具清单只描述陈列方式（标题 / 简介 / 分类 / 模式 / 图标 / 归属合集）；引擎按页面加载，
 // 不从这里导入客户端组件。
-// href 是清单里唯一与路由重复的字段：它指向 `src/app/game/<id>/page.tsx`。
-// tests/unit/game-catalog.test.ts 会逐条核对 href 真有对应页面文件 —— 以前这一列没有
-// 对账，清单里点进去 404 只能等用户发现。
+// href 是清单里唯一与路由重复的字段：本站游戏指向 `src/app/game/<id>/page.tsx`，改路由
+// 记得回来同步（漏了不报类型错，症状是卡片点进去 404）。站外游戏把 `external` 设为 true，
+// href 写完整 URL，卡片按外链渲染（新窗口打开），不参与站内路由。
 //
 // 【合集可以嵌套】合集只登记 `parentId`，**URL 由父链推出来**，不在清单里存 href。
 // 存一份 href 的话，改父链就得记得回来同步那个字符串 —— 漏了不会报类型错，
@@ -35,9 +35,12 @@ export interface GameEntry {
   description: string;
   category: keyof typeof GAME_CATEGORIES;
   modes: readonly (keyof typeof GAME_MODES)[];
+  /** 本站路由路径；`external: true` 时是站外完整 URL。 */
   href: string;
+  /** 站外游戏：卡片渲染成普通 `<a>`，新窗口打开。 */
+  external?: boolean;
   collectionId: GameCollectionId | null;
-  icon: 'atamas' | 'wand' | 'public-space' | 'quandi' | 'twinshade' | 'lumen' | 'yiwen' | 'hinge' | 'loom' | 'papercut' | 'marbling' | 'motion';
+  icon: 'atamas' | 'wand' | 'public-space' | 'quandi' | 'twinshade' | 'lumen' | 'yiwen' | 'hinge' | 'loom' | 'papercut' | 'marbling' | 'motion' | 'rarica';
 }
 
 export const GAMES = [
@@ -200,6 +203,17 @@ export const GAMES = [
     href: '/game/motion',
     collectionId: 'test',
     icon: 'motion',
+  },
+  {
+    id: 'rarica',
+    title: '莱莉卡',
+    description: '抽卡、组卡，和山人对战。45 张卡、四种花色、三种玩法，一局五分钟。',
+    category: 'social',
+    modes: ['solo', 'online'],
+    href: 'https://rarica.raricy.com',
+    external: true,
+    collectionId: null,
+    icon: 'rarica',
   },
 ] as const satisfies readonly GameEntry[];
 
