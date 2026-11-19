@@ -38,8 +38,9 @@
   position: absolute;
   top: 0;
   right: 0;
-  // 与页面级那条同参：静止 10px、悬停两倍、按下二级主题色、指针不变。
-  width: 10px;
+  // 页面级那条是 10px，局部再细一档：下拉、侧栏、聊天列表这些盒子面积小，
+  // 10px 的滑块在 280px 宽的侧栏里占比太大。悬停仍翻倍（6px → 12px）。
+  width: 6px;
   min-height: 32px;
   border-radius: 999px;
   background: color-mix(in srgb, var(--color-text-primary) 22%, transparent);
@@ -53,7 +54,7 @@
     opacity v.$feedback-duration v.$feedback-easing;
 
   &:hover {
-    width: 20px;
+    width: 12px;
   }
 
   &:active {
