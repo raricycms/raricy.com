@@ -433,6 +433,17 @@ export interface SendMessageInput {
   replyTo?: number | null;
   /** 专注模式是否屏蔽了大区：屏蔽后对讨论大区不可发言（服务端由路由按 isFocusLobbyBlocked(user) 填入） */
   lobbyBlocked?: boolean;
+  /**
+   * **仅内部使用**（生成任务的持久化回执）：`prisma.chatMessage.create` 成功后、
+   * 任何后续 await 之前同步调用。回调异常被吞掉 —— 消息已经提交，回执失败不能
+   * 把它变成发送失败。普通发送调用方不传。
+   */
+  onPersisted?: (messageId: number) => void;
+  /**
+   * **仅内部使用**（生成任务）：正式 message SSE 事件的外层附带 `generation_id`
+   * （不写库、不进 DTO），供客户端移除对应的临时预览。普通发送调用方不传。
+   */
+  broadcastGenerationId?: string;
 }
 
 export type SendMessageResult =
@@ -560,7 +571,7 @@ async function notifyChannelMentions(params: {
  * 「讨论」链接上的红点（见 getChatUnreadSummary），不占铃铛数字。
  */
 export async function sendMessage(input: SendMessageInput): Promise<SendMessageResult> {
-  const { channelId, authorId, imageId, blogId, patTargetId, replyTo, lobbyBlocked } = input;
+  const { channelId, authorId, imageId, blogId, patTargetId, replyTo, lobbyBlocked, broadcastGenerationId } = input;
   const content = (input.content ?? '').trim();
   const now = nowForDb();
 
@@ -678,6 +689,16 @@ export async function sendMessage(input: SendMessageInput): Promise<SendMessageR
     throw e;
   }
 
+  // 持久化回执（仅生成任务传入）：create 已提交，必须**同步**在下一个 await 之前
+  // 记录消息 id —— 后面 DTO / 广播 / 通知失败都要按「已提交」处理。回调异常吞掉。
+  if (input.onPersisted) {
+    try {
+      input.onPersisted(created.id);
+    } catch {
+      /* 回执失败不影响已提交的消息 */
+    }
+  }
+
   // 4) 私聊成员列表：SSE 推送要用（大区广播给全部在线连接，不需要）。
   //    这里**不发「新消息」通知** —— 讨论未读由顶栏「讨论」链接的红点体现；
   //    唯一会进通知列表的是 @ 提及（见第 6 步）。
@@ -699,7 +720,14 @@ export async function sendMessage(input: SendMessageInput): Promise<SendMessageR
 
   // 5) SSE 实时推送（尽力而为：推送失败不影响消息本身，下一次对账会补上）
   try {
-    const event = { type: 'message' as const, channel_id: channelId, message: dto };
+    const event = {
+      type: 'message' as const,
+      channel_id: channelId,
+      message: dto,
+      // 生成任务发布时带上原任务 id（仅事件外层，不写库）：客户端据此移除临时预览。
+      // 断线补齐 / 普通发送的 message 没有该字段，客户端仍按 message.id 合并。
+      ...(broadcastGenerationId ? { generation_id: broadcastGenerationId } : {}),
+    };
     if (access.kind === CHAT_KIND_LOBBY) {
       // 大区广播给全部在线连接；专注模式屏蔽了大区的连接跳过（他们本就看不到大区）
       publishToAll(event, dto.id, { skipLobbyBlocked: true });

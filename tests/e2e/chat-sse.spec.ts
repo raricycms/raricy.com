@@ -157,6 +157,57 @@ test.describe('讨论 SSE 实时推送', () => {
     }
   });
 
+  // 【R2】机器人生成接口 → SSE 临时预览 → complete 后交接为一条正式消息。
+  // 钉三件事：临时事件真的走 SSE 到达（不是靠轮询）、final 后只留一条正式气泡
+  // （POST 响应 / SSE 回声 / terminal 三种顺序都不能重复）、临时行在交接后消失。
+  test('流式生成：临时预览经 SSE 出现，完成后只剩一条正式消息', async ({ page }) => {
+    const marker = `e2e-gen-${uniqueTag()}`;
+    await loginViaApi(page, SEED_USERS.core.username);
+    await page.goto(`/chat?channel=${LOBBY}`);
+    await expect(page.locator('.chat-main')).toBeVisible();
+
+    const created = await page.request.post(`/api/chat/channels/${LOBBY}/generations`, {
+      data: { client_request_id: crypto.randomUUID() },
+    });
+    expect(created.status(), `创建生成任务失败: ${await created.text()}`).toBe(200);
+    const { generation_id: generationId } = (await created.json()) as {
+      generation_id: string;
+    };
+
+    const first = await page.request.post(`/api/chat/generations/${generationId}/chunks`, {
+      data: { seq: 1, delta: marker },
+    });
+    expect(first.status(), `第一片失败: ${await first.text()}`).toBe(200);
+    await expect(
+      page.locator('.chat-msg--generating', { hasText: marker }).first()
+    ).toBeVisible({ timeout: 8000 });
+
+    const second = await page.request.post(`/api/chat/generations/${generationId}/chunks`, {
+      data: { seq: 2, delta: '-done' },
+    });
+    expect(second.status(), `第二片失败: ${await second.text()}`).toBe(200);
+    // 快照是完整累计正文：第二片后应能看到 marker-done（不依赖增量拼接）。
+    await expect(
+      page.locator('.chat-msg--generating', { hasText: `${marker}-done` })
+    ).toHaveCount(1, { timeout: 8000 });
+
+    const completed = await page.request.post(
+      `/api/chat/generations/${generationId}/complete`,
+      { data: { last_seq: 2 } }
+    );
+    expect(completed.status(), `complete 失败: ${await completed.text()}`).toBe(200);
+    const body = (await completed.json()) as { status: string; message_id?: number };
+    expect(body.status).toBe('completed');
+    expect(typeof body.message_id).toBe('number');
+
+    await expect(
+      page.locator('.chat-msg--generating', { hasText: marker })
+    ).toHaveCount(0, { timeout: 8000 });
+    await expect(
+      page.locator('.chat-msg:not(.chat-msg--generating)', { hasText: `${marker}-done` })
+    ).toHaveCount(1, { timeout: 8000 });
+  });
+
   // 【为什么值得一条用例】标签页隐藏时前端会主动 close 掉 SSE（连接池是跨标签页共享的），
   // 回前台重连的是**新的 EventSource 对象** —— last event id 是对象自己的属性（规范：初值
   // 空串），新对象不带 Last-Event-ID，服务端那个 backfill 整段跳过；而 60 秒那趟对账只拉

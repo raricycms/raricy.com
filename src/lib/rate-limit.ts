@@ -250,6 +250,18 @@ export const RULES = {
   /** 发起私聊（可能建新频道行）：防脚本批量建空会话骚扰他人侧栏。 */
   chatNewChannel: { limit: 20, windowMs: 60 * 1000 },
   /**
+   * 机器人生成任务：创建（每作者 12/分）与分块提交（每作者 600/分 = 10/秒）。
+   *
+   * 【为什么与 chatMinute 分开】生成中的片段不是发言：它们不写库、只广播临时快照，
+   * 而正式 `chatMinute` / `chatDaily` **只在 complete 调用发送内核时**扣一次
+   * （docs/plan/chat-reactive-streaming-design.md §5.1）。分块档挡的是脚本洪泛，
+   * 正常客户端约 5 帧/秒（服务端快照节流），600/分留了突发余量。
+   * 桶键必须带独立前缀（`chatgen:create:` / `chatgen:chunk:`）—— rule 不参与分桶，
+   * 复用别的前缀会与那边共用计数桶、互相吃额度。
+   */
+  chatGenerationCreateMinute: { limit: 12, windowMs: 60 * 1000 },
+  chatGenerationChunkMinute: { limit: 600, windowMs: 60 * 1000 },
+  /**
    * 登录限频（新增档：限频表里原来没有它）。
    * 两个维度分别计数，任一超限即 429，且**只统计失败**（见 isRateLimited）：
    *   · IP —— 挡「一台机器扫一批账号」；

@@ -191,6 +191,8 @@ describe('RULES 全站配额（src/lib/rate-limit.ts 即权威，改动即报警
       chatDaily: [8000, DAY],
       chatPoll: [120, 60_000],
       chatNewChannel: [20, 60_000],
+      chatGenerationCreateMinute: [12, 60_000],
+      chatGenerationChunkMinute: [600, 60_000],
       loginPerIp: [300, MIN15],
       loginPerUser: [100, MIN15],
       transferHourly: [100, HOUR],

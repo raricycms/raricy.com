@@ -96,9 +96,9 @@ describe('docs/src-lib-index.md：生成物与磁盘对账', () => {
 
   it('表格恰好覆盖 src/lib 根目录全部 *.ts（多一个少一个都报）', () => {
     const disk = filesOnDisk();
-    // 根目录文件数基线：2026-11 时 148 个（新增 scroll-lock.ts 后）。真的增减文件时，
-    // 这里和索引一起改。
-    expect(disk.length, 'src/lib 根目录 .ts 数量变了（基线 148）').toBe(148);
+    // 根目录文件数基线：2026-11 时 150 个（新增 chat-generation-shared.ts /
+    // chat-generation-reducer.ts 后）。真的增减文件时，这里和索引一起改。
+    expect(disk.length, 'src/lib 根目录 .ts 数量变了（基线 150）').toBe(150);
 
     const rows = tableRows(buildLibIndexMarkdown());
     expect(
