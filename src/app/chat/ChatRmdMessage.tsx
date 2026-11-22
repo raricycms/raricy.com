@@ -157,6 +157,13 @@ export default function ChatRmdMessage({
     setFailedSlots(EMPTY_SLOTS);
   }, [manager, messageKey]);
 
+  // 只有**文档本身**变化时才给逐槽媒体一次重试机会；同一份文档被重复回传
+  // （缓存命中 / 重新订阅）不重置，避免失败媒体「重载 → 再失败 → 重置」的回路。
+  const compiledDocument = compiled?.document ?? null;
+  useEffect(() => {
+    setFailedSlots((previous) => (previous.size === 0 ? previous : EMPTY_SLOTS));
+  }, [compiledDocument, messageKey]);
+
   /**
    * 离屏消息不排队（设计 §3.2 初始策略）：最多 300 条 DOM 全量编一次会把共享
    * Worker 的队列塞满，流式最新快照要排在几百条历史之后。viewport 内的正式消息
@@ -214,8 +221,15 @@ export default function ChatRmdMessage({
       if (!active) return;
       if (snapshot.key !== messageKey) return;
       if (snapshot.revision !== revision || snapshot.phase !== phase) return;
-      setFailedSlots((previous) => (previous.size === 0 ? previous : EMPTY_SLOTS));
-      setCompiled({ revision, phase: snapshot.phase, document: snapshot.document });
+      // 同一份文档被重复回传（典型：离屏 → 视口内重新订阅命中 final 缓存）时
+      // 不产生新状态：否则 onContentChange / 引用适配 / 失败槽重置都会被重新触发，
+      // 与滚动触发的 IntersectionObserver 订阅切换叠在一起会形成回路。
+      setCompiled((previous) => {
+        if (previous && previous.phase === snapshot.phase && previous.document === snapshot.document) {
+          return previous;
+        }
+        return { revision, phase: snapshot.phase, document: snapshot.document };
+      });
     };
 
     try {
