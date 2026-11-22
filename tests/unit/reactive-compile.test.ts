@@ -20,6 +20,7 @@ import {
   REACTIVE_COMPILE_OPTIONS,
   SITE_EMBED_TAG,
 } from '@/lib/reactive/host-components';
+import { compileSource } from '@/lib/reactive/compile-source';
 import {
   reactiveDiagnosticCodes,
   reactiveFallbackReasons,
@@ -32,6 +33,25 @@ import {
 } from '@/lib/reactive/compile';
 
 const EMBED_REF = 'AbCd1234Ef';
+
+describe('ReactiveMD 0.9 source phases', () => {
+  const streamingSource = `${'paragraph '.repeat(500)}{{ 1 +`;
+  const guardedFinalSource = `${'paragraph '.repeat(500)}${'{{ '.repeat(129)}`;
+
+  it('lets streaming snapshots reach provisional compilation with unfinished expressions', () => {
+    const result = compileSource(streamingSource, REACTIVE_COMPILE_OPTIONS, 'streaming');
+
+    expect(result.ok, JSON.stringify(result)).toBe(true);
+    if (result.ok) expect(result.status).toBe('partial');
+  });
+
+  it('keeps the incomplete-expression budget guard for final source', () => {
+    const result = compileSource(guardedFinalSource, REACTIVE_COMPILE_OPTIONS, 'final');
+
+    expect(result).toMatchObject({ ok: false, status: 'failed' });
+    expect(result.diagnostics.map((diagnostic) => diagnostic.code)).toContain('local.budget');
+  });
+});
 
 function collectNodes(nodes: readonly LocalNode[] | undefined, type: string): LocalNode[] {
   const found: LocalNode[] = [];
