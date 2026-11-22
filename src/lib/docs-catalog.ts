@@ -339,6 +339,12 @@ export const DOC_ENTRIES: readonly DocEntry[] = [
   },
   {
     group: 'dev',
+    slug: 'plan/chat-reactive-streaming-design',
+    title: 'Chat ReactiveMD 渲染与机器人流式输出设计',
+    summary: '沿用现有数据库结构，在浏览器复用博客的 ReactiveMD 编译器。含机器人流式发送协议与并行分工。',
+  },
+  {
+    group: 'dev',
     slug: 'plan/story-rebuild-plan',
     title: '故事区重做计划',
     summary: '内容工具、三个作品样板、分批上线与持续选编；方案完成，尚未实施。',
