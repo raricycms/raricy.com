@@ -2,6 +2,7 @@
 @use '../abstracts/mixins' as m;
 @use '../components/composer' as composer;
 @use '../components/markdown-body' as markdown-body;
+@use 'chat/chat-rmd' as chat-rmd;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 在线讨论区（/chat）— 双栏工作台：会话侧栏（可折叠/移动端抽屉）+ 消息主区。
@@ -1047,6 +1048,12 @@
   }
 }
 
+// ── ReactiveMD 正文（ChatRmdMessage）────────────────────────────────────────
+// RMD 根 article.md-document 与它的包裹层在 pages/chat/_chat-rmd.scss。
+// 放在这里（旧 Markdown 规则之后）确保 RMD 的覆写按源码顺序生效；
+// 块级基线仍是上面的 markdown-body mixin，两边不各写一份。
+@include chat-rmd.chat-rmd;
+
 .chat-msg__deleted {
   color: var(--color-text-secondary);
   font-style: italic;
@@ -1122,6 +1129,66 @@
   .chat-msg__image,
   .chat-msg__md img {
     -webkit-user-drag: none;
+  }
+}
+
+// ── 生成中的临时行（ChatGenerationItem）─────────────────────────────────────
+// 临时行与正式消息共用同一套外壳（.chat-msg / 头像 / 表头 / 气泡），这里只补
+// 三处差异：生成状态、空正文占位、不可交互头像。它不参与菜单 / 高亮 / 按下 /
+// 已读回执，组件也不会加那些状态类；位置放在交互反馈规则之后，是为了同权的
+// 覆盖（气泡悬停叠色）能按源码顺序决胜。
+//
+// 头像在这里是 span（正式消息是打开操作菜单的 button）：没有菜单就不该给
+// 手型光标与悬停光晕。
+.chat-msg--generating .chat-msg__avatar {
+  cursor: default;
+}
+.chat-msg--generating .chat-msg__avatar:hover,
+.chat-msg--generating .chat-msg__avatar:focus-visible {
+  box-shadow: none;
+}
+
+// 气泡的悬停 / 按下叠色是「可打开消息详情」的反馈；临时行没有可打开的详情，
+// 铺上会让它看起来能点。
+.chat-msg--generating .chat-msg__content::after {
+  content: none;
+}
+
+// 时间位置换成生成状态：一颗品牌色小圆点 + 文字。
+.chat-msg__time--generating {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.chat-msg__time--generating::before {
+  content: '';
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--color-brand-primary);
+  animation: chat-generating-pulse 1.2s ease-in-out infinite;
+}
+
+// 首个空快照的占位点。尺寸固定且与单行文字同高：从空正文到第一帧文字时
+// 气泡不会先塌成一条线再弹开（高度变化后的滚动跟随归 ChatApp）。
+.chat-msg__generating-pending {
+  display: inline-block;
+  width: 0.5em;
+  height: 0.5em;
+  border-radius: 50%;
+  background: var(--color-text-secondary);
+  vertical-align: middle;
+  animation: chat-generating-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes chat-generating-pulse {
+  0%,
+  100% {
+    opacity: 0.35;
+  }
+  50% {
+    opacity: 1;
   }
 }
 
@@ -2280,5 +2347,11 @@
   ::view-transition-old(chat-list),
   ::view-transition-new(chat-list) {
     animation: none;
+  }
+  // 生成状态的小圆点直接停在常亮态：状态文字本身照常可读。
+  .chat-msg__time--generating::before,
+  .chat-msg__generating-pending {
+    animation: none;
+    opacity: 1;
   }
 }
