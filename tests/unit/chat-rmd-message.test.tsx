@@ -186,6 +186,7 @@ interface MessageProps {
   phase: ChatSourcePhase;
   allowBareImage?: boolean;
   onImageClick?: (url: string) => void;
+  onBeforeContentChange?: () => void;
   onContentChange?: () => void;
 }
 
@@ -198,6 +199,7 @@ function tree(fake: ReturnType<typeof createFakeManager>, props: MessageProps): 
         phase={props.phase}
         allowBareImage={props.allowBareImage}
         onImageClick={props.onImageClick}
+        onBeforeContentChange={props.onBeforeContentChange}
         onContentChange={props.onContentChange}
       />
     </ChatRmdProvider>
@@ -454,6 +456,46 @@ describe('ChatRmdMessage — 通知、卸载与竞态', () => {
     const stable = onContentChange.mock.calls.length;
     await settle(3);
     expect(onContentChange.mock.calls.length).toBe(stable);
+  });
+
+  it('内容变化前先调用 onBeforeContentChange，提交后才调用 onContentChange', async () => {
+    const fake = createFakeManager();
+    const events: string[] = [];
+    const onBeforeContentChange = vi.fn(() => {
+      events.push('before');
+    });
+    const onContentChange = vi.fn(() => {
+      events.push('after');
+    });
+    const source = '[@AbCdEf1234]';
+    await render(tree(fake, { content: source, phase: 'final', onBeforeContentChange, onContentChange }));
+
+    // ① final 文档 / 引用落位：从变化开始记录，before 必须先于对应的 after。
+    events.length = 0;
+    fake.deliverLatest('msg:1', compile(source));
+    await settle(10);
+    expect(onBeforeContentChange).toHaveBeenCalled();
+    expect(onContentChange).toHaveBeenCalled();
+    expect(events[0]).toBe('before');
+    // 每个 after 都必须有一个尚未消费的 before（编译提交、引用落位各成一对）。
+    let pendingBefore = 0;
+    for (const event of events) {
+      if (event === 'before') {
+        pendingBefore += 1;
+      } else {
+        expect(pendingBefore).toBeGreaterThan(0);
+        pendingBefore -= 1;
+      }
+    }
+
+    // ② 成功的媒体 load 发生在浏览器应用图片尺寸之后：不能再记录 before（那会覆盖
+    // 引用落位前的正确快照），只应触发 after；失败回退 token 时才记录 before。
+    const image = rootBox().querySelector('img.rich-image-ref')!;
+    events.length = 0;
+    dispatch(image, 'load');
+    await settle(3);
+    expect(events).toContain('after');
+    expect(events).not.toContain('before');
   });
 
   it('provider 卸载时 unsubscribe 并 dispose', async () => {

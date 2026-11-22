@@ -25,7 +25,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { randomUUID } from 'node:crypto';
-import { hasAdminRights } from '../auth';
+import { hasAdminRights, type SafeUser } from '../auth';
 import { avatarUrl } from '../avatar-refs';
 import { bubbleKeyFor } from '../bubble-service';
 import {
@@ -51,7 +51,7 @@ import { publishToAll, publishToUsers } from '../chat-bus';
 import { prisma } from '../db';
 import { frameUrlFor } from '../frame-service';
 import { apiErr } from '../format';
-import { rateLimit, RULES } from '../rate-limit';
+import { isRateLimited, rateLimit, RULES } from '../rate-limit';
 import { canAccessChannel } from './channels';
 import { CHAT_KIND_DIRECT, CHAT_KIND_LOBBY } from './constants';
 import { sendMessage, type SendMessageResult } from './messages';
@@ -286,6 +286,20 @@ function stopSweepTimerIfIdle(): void {
 }
 
 /**
+ * 活动任务在 `now` 是否已越过空闲或总时长截止点（与 sweep 同一口径）。
+ *
+ * 清扫与操作前的补查之外，**异步鉴权返回后还要再判一次**：鉴权可以 await，
+ * 期间任务可能正好越过截止点，而共享清扫未必已经跑过。不复查就会让一个慢鉴权
+ * 把分块续期、或让 complete 取得提交权。
+ */
+function isTaskDeadlinePassed(task: GenerationTask, now: number): boolean {
+  return (
+    now - task.createdAt >= CHAT_GENERATION_MAX_DURATION_MS ||
+    now - task.lastActivityAt >= CHAT_GENERATION_IDLE_TIMEOUT_MS
+  );
+}
+
+/**
  * 过期清扫。finalizing **不参与**超时判定：发布已经取得唯一提交权，
  * 不能因为总时长到点把任务释放或恢复成 active。
  */
@@ -293,11 +307,7 @@ function sweep(): void {
   const now = monoNow();
   for (const task of [...state.tasks.values()]) {
     if (task.status !== 'active') continue;
-    if (now - task.createdAt >= CHAT_GENERATION_MAX_DURATION_MS) {
-      expireTask(task);
-      continue;
-    }
-    if (now - task.lastActivityAt >= CHAT_GENERATION_IDLE_TIMEOUT_MS) expireTask(task);
+    if (isTaskDeadlinePassed(task, now)) expireTask(task);
   }
   for (const [id, receipt] of [...state.receipts]) {
     if (now - receipt.savedAt >= CHAT_GENERATION_RECEIPT_TTL_MS) dropReceipt(id);
@@ -522,8 +532,11 @@ export async function createGeneration(params: {
   if (state.tasks.size >= CHAT_GENERATION_MAX_ACTIVE_TASKS) {
     return failure(503, 'capacity', CAPACITY_MESSAGE);
   }
-  const limiter = rateLimit(`chatgen:create:${params.authorId}`, RULES.chatGenerationCreateMinute);
-  if (!limiter.allowed) return failure(429, 'rate_limited', CREATE_RATE_MESSAGE);
+  // 早期只做**不扣配额**的快速 429：真正的扣减必须与任务登记同处一个同步临界段，
+  // 否则同一个 client_request_id 的并发重试会在查重之前各扣一次（见下方临界段）。
+  if (isRateLimited(`chatgen:create:${params.authorId}`, RULES.chatGenerationCreateMinute)) {
+    return failure(429, 'rate_limited', CREATE_RATE_MESSAGE);
+  }
 
   // 作者 DTO 与私聊收件人：一次取齐（快照事件要用与正式消息一致的 author 字段）。
   const authorRow = await prisma.user.findUnique({
@@ -550,7 +563,7 @@ export async function createGeneration(params: {
     recipients = members.map((m) => m.userId);
   }
 
-  // ── 同步临界段：重查幂等 / 名额后再登记 ──
+  // ── 同步临界段：重查幂等 / 名额 / 创建配额后再登记 ──
   const replayAfterAwait = lookupIdempotent(key, replyTo);
   if (replayAfterAwait) return replayAfterAwait;
   if (state.authorActive.has(params.authorId)) {
@@ -559,6 +572,11 @@ export async function createGeneration(params: {
   if (state.tasks.size >= CHAT_GENERATION_MAX_ACTIVE_TASKS) {
     return failure(503, 'capacity', CAPACITY_MESSAGE);
   }
+  // 创建配额只在**真正登记新任务**时扣一次：同 key 的并发重试已在上面的
+  // replayAfterAwait 命中回执并直接返回，不会再消耗配额。扣减与登记之间不能有
+  // await，否则并发请求仍能穿过这里各扣一次。
+  const limiter = rateLimit(`chatgen:create:${params.authorId}`, RULES.chatGenerationCreateMinute);
+  if (!limiter.allowed) return failure(429, 'rate_limited', CREATE_RATE_MESSAGE);
 
   const now = monoNow();
   const task: GenerationTask = {
@@ -683,6 +701,13 @@ export async function appendGenerationChunk(params: {
     const receipt = state.receipts.get(params.generationId);
     if (!receipt) return failure(404, 'not_found', '生成任务不存在');
     return chunkRejectionForReceipt(receipt);
+  }
+  // 鉴权 await 期间越过截止点：按时过期终结并拒绝，**不得**继续走 seq 追加 ——
+  // 否则一个慢鉴权就能让分块续期（lastActivityAt）把任务无限续命。
+  // finalizing 已有唯一提交权，不在这里终结（交给 finalize 的结论）。
+  if (task.status === 'active' && isTaskDeadlinePassed(task, monoNow())) {
+    expireTask(task);
+    return failure(410, 'gone', '生成任务已过期', { next_seq: task.nextSeq });
   }
   if (task.status === 'finalizing') {
     return chunkConflict(task, '生成任务正在完成，不能再提交片段');
@@ -908,6 +933,13 @@ export async function completeGeneration(params: {
     return replayComplete(receipt);
   }
 
+  // 鉴权 await 期间越过截止点：active 任务不再取得提交权（不落库、不发正式消息）。
+  // 与 chunk 同口径原地过期；finalizing 跳过（已有唯一提交权，等发送内核结论）。
+  if (task.status === 'active' && isTaskDeadlinePassed(task, monoNow())) {
+    expireTask(task);
+    return failure(410, 'gone', '生成任务已过期');
+  }
+
   if (task.status === 'finalizing') {
     if (task.finalizeLastSeq !== lastSeq || !task.finalizePromise) {
       return failure(409, 'conflict', '生成任务正在完成', { next_seq: task.nextSeq });
@@ -1113,4 +1145,25 @@ export async function chatGenerationAuthFailure(res: Response): Promise<Response
   }
   const error: ChatGenerationErrorCode = res.status === 401 ? 'unauthorized' : 'forbidden';
   return apiErr(res.status === 401 ? 401 : 403, message, { error });
+}
+
+/**
+ * 读体窗口的二次鉴权（complete / chunks / cancel 共用；GET 无 body 不需要）。
+ *
+ * 首次 requireChatUser 之后到读完请求体之间，会话可能失效，或账号被禁言 / 降权 /
+ * 屏蔽大区。读体完成后必须复核，不能拿首次的 user 快照继续操作任务：
+ *   · 复核失败（401/403）→ 用 chatGenerationAuthFailure 重包，保持稳定 error 字段；
+ *   · 复核通过但不是同一个人 → 403 forbidden（不能拿新账号去操作别人的任务）；
+ *   · 通过时返回**复核后的用户**：authorId 与大区专注判定都必须用它，而不是旧快照。
+ */
+export async function revalidateGenerationAuthor(
+  initialUserId: string,
+  recheck: () => Promise<SafeUser | Response>
+): Promise<SafeUser | Response> {
+  const current = await recheck();
+  if (current instanceof Response) return chatGenerationAuthFailure(current);
+  if (current.id !== initialUserId) {
+    return apiErr(403, '无权操作该生成任务', { error: 'forbidden' });
+  }
+  return current;
 }

@@ -46,6 +46,30 @@ vi.mock('@/lib/chat/messages', async (importOriginal) => {
   };
 });
 
+// ── 频道访问鉴权注入点（默认直通；可按住让并发请求都停在异步鉴权窗口）────────
+// 只用于创建并发的配额用例：把两个请求都按在 canAccessChannel 里，释放后它们的
+// 预检查重都在「谁都没登记」时完成 —— 早期扣配额的实现必然各扣一次，能稳定变红。
+const accessGate = vi.hoisted(() => ({
+  hold: false,
+  entered: 0,
+  releases: [] as Array<() => void>,
+}));
+
+vi.mock('@/lib/chat/channels', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/chat/channels')>();
+  return {
+    ...actual,
+    canAccessChannel: async (...args: Parameters<typeof actual.canAccessChannel>) => {
+      const result = await actual.canAccessChannel(...args);
+      if (accessGate.hold) {
+        accessGate.entered += 1;
+        await new Promise<void>((resolve) => accessGate.releases.push(resolve));
+      }
+      return result;
+    },
+  };
+});
+
 // ── 广播故障注入（DTO / SSE 推送失败不影响已提交的正式消息）──────────────────
 const busGate = vi.hoisted(() => ({ fail: false }));
 
@@ -83,6 +107,7 @@ import {
   __setChatGenerationClockForTest,
   appendGenerationChunk,
   cancelGeneration,
+  CHAT_GENERATION_IDLE_TIMEOUT_MS,
   completeGeneration,
   createGeneration,
   getGeneration,
@@ -134,6 +159,30 @@ function framesOf(stream: CapturedStream): ChatStreamEvent[] {
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+/**
+ * 在「下一次异步等待期间」推进注入时钟。
+ *
+ * 用法：调用方把操作包进 `run`。这里先登记一个 0ms 定时器并**同步忙等**到它到期
+ * （Node 把 0 夹到 1ms），再同步启动 `run`：定时器回调只能在下一次让出主线程时执行，
+ * 也就是 `run` 里初始 sweep 之后、首个 `await`（频道访问查询）期间 —— 正是要覆盖的
+ * 「异步鉴权窗口」。不用真实睡眠，也不需要给生产代码加钩子。
+ */
+async function advanceClockDuringNextAwait<T>(
+  advanceBy: () => void,
+  run: () => Promise<T>
+): Promise<T> {
+  const timer = setTimeout(advanceBy, 0);
+  const due = performance.now() + 5;
+  while (performance.now() < due) {
+    // spin：仅让定时器到期，不让出主线程（否则会先跑完 run 之前的逻辑）
+  }
+  try {
+    return await run();
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 beforeEach(async () => {
   await resetDb();
   __resetChatGenerations();
@@ -149,6 +198,9 @@ beforeEach(async () => {
   sendGate.throwError = false;
   busGate.fail = false;
   frameGate.fail = false;
+  accessGate.hold = false;
+  accessGate.entered = 0;
+  accessGate.releases = [];
 });
 
 afterEach(() => {
@@ -196,6 +248,27 @@ async function cancel(authorId: string, generationId: string) {
 
 async function get(authorId: string, generationId: string) {
   return getGeneration({ authorId, generationId, lobbyBlocked: false });
+}
+
+/**
+ * 并发执行两个创建，并把它们都按在异步鉴权窗口里，一起放行。
+ *
+ * 释放后两份请求的「预检查重」都在任一方登记之前完成 —— 若创建配额仍在异步查询
+ * 之前扣减，这种交错必然各扣一次（早期实现会在这里变红）。
+ */
+async function createConcurrentlyHeld<A, B>(
+  first: () => Promise<A>,
+  second: () => Promise<B>
+): Promise<[A, B]> {
+  accessGate.hold = true;
+  accessGate.entered = 0;
+  accessGate.releases = [];
+  const pending = Promise.all([first(), second()]);
+  for (let i = 0; i < 400 && accessGate.entered < 2; i++) await sleep(5);
+  expect(accessGate.entered).toBe(2);
+  accessGate.hold = false;
+  for (const release of accessGate.releases.splice(0)) release();
+  return pending;
 }
 
 describe('创建：幂等、元数据冲突与容量', () => {
@@ -273,6 +346,62 @@ describe('创建：幂等、元数据冲突与容量', () => {
       replyTo: null,
     });
     expect(limited).toMatchObject({ ok: false, status: 429, error: 'rate_limited' });
+  });
+
+  it('同一 client_request_id 并发创建：同一个 id、只登记一个任务、只扣一次创建配额', async () => {
+    const author = await makeCore();
+    const createWithKey = (clientRequestId: string) =>
+      createGeneration({
+        authorId: author.id,
+        channelId: CHAT_LOBBY_ID,
+        lobbyBlocked: false,
+        clientRequestId,
+        replyTo: null,
+      });
+
+    const [a, b] = await createConcurrentlyHeld(
+      () => createWithKey('concurrent-same'),
+      () => createWithKey('concurrent-same')
+    );
+    expect(a.ok && b.ok).toBe(true);
+    if (!a.ok || !b.ok) return;
+    expect(b.result.generation_id).toBe(a.result.generation_id);
+
+    // 只登记了一个活动任务：换 key 再建会撞每作者 1 个（在扣创建配额之前就返回）。
+    const blocked = await createWithKey('concurrent-other');
+    expect(blocked).toMatchObject({ ok: false, status: 503, error: 'capacity' });
+
+    // 创建桶只应命中 1 次；探针自身消耗一次 → remaining = limit - 2。
+    const probe = rateLimit(`chatgen:create:${author.id}`, RULES.chatGenerationCreateMinute);
+    expect(probe.remaining).toBe(RULES.chatGenerationCreateMinute.limit - 2);
+  });
+
+  it('不同 key 并发创建：一个成功、另一个 503 capacity，且不额外扣创建配额', async () => {
+    const author = await makeCore();
+    const createWithKey = (clientRequestId: string) =>
+      createGeneration({
+        authorId: author.id,
+        channelId: CHAT_LOBBY_ID,
+        lobbyBlocked: false,
+        clientRequestId,
+        replyTo: null,
+      });
+
+    const results = await createConcurrentlyHeld(
+      () => createWithKey('concurrent-a'),
+      () => createWithKey('concurrent-b')
+    );
+    const succeeded = results.filter((r) => r.ok);
+    const rejected = results.filter((r) => !r.ok);
+    expect(succeeded).toHaveLength(1);
+    expect(rejected).toHaveLength(1);
+    expect(rejected[0]).toMatchObject({ status: 503, error: 'capacity' });
+    if (!succeeded[0].ok) return;
+
+    // 成功的任务确实可用；失败者没有留下第二份任务或第二次扣费。
+    expect((await chunk(author.id, succeeded[0].result.generation_id, 1, 'x')).ok).toBe(true);
+    const probe = rateLimit(`chatgen:create:${author.id}`, RULES.chatGenerationCreateMinute);
+    expect(probe.remaining).toBe(RULES.chatGenerationCreateMinute.limit - 2);
   });
 
   it('参数形状与频道访问错误', async () => {
@@ -753,6 +882,58 @@ describe('超时、失权与回执', () => {
     advance(100_000); // 总时长 600s；距最后片段仅 100s（空闲未到 120s）
     const status = await get(author.id, created.generation_id);
     expect(status).toMatchObject({ ok: true, result: { status: 'expired' } });
+  });
+
+  it('鉴权 await 期间越过空闲截止点：chunk 同步复查后 410，不续期、不再发快照', async () => {
+    const author = await makeCore();
+    const stream = connect(author.id);
+    const created = await createGen(author.id);
+    expect((await chunk(author.id, created.generation_id, 1, '第一段')).ok).toBe(true);
+    await sleep(30);
+
+    // 距空闲截止点只差 1ms：chunk 入口的 sweep 会放行；鉴权 await 期间时钟被推过线。
+    advance(CHAT_GENERATION_IDLE_TIMEOUT_MS - 1);
+    const res = await advanceClockDuringNextAwait(
+      () => {
+        fakeNow += 2;
+      },
+      () => chunk(author.id, created.generation_id, 2, '不该被接受')
+    );
+
+    expect(res).toMatchObject({ ok: false, status: 410, error: 'gone', extra: { next_seq: 2 } });
+    // 分块没有续期：任务已过期，序号停在 2。
+    expect(await get(author.id, created.generation_id)).toMatchObject({
+      ok: true,
+      result: { status: 'expired', next_seq: 2 },
+    });
+    const frames = framesOf(stream);
+    expect(frames.filter((f) => f.type === 'generation_snapshot')).toHaveLength(1);
+    const terminals = frames.filter(
+      (f) => f.type === 'generation_terminal' && (f as { status?: string }).status === 'expired'
+    );
+    expect(terminals).toHaveLength(1);
+  });
+
+  it('鉴权 await 期间越过空闲截止点：complete 不给提交权，任务 expired 且不落库', async () => {
+    const author = await makeCore();
+    const created = await createGen(author.id);
+    expect((await chunk(author.id, created.generation_id, 1, '将不发布')).ok).toBe(true);
+
+    advance(CHAT_GENERATION_IDLE_TIMEOUT_MS - 1);
+    const done = await advanceClockDuringNextAwait(
+      () => {
+        fakeNow += 2;
+      },
+      () => complete(author.id, created.generation_id, 1)
+    );
+
+    expect(done).toMatchObject({ ok: false, status: 410, error: 'gone' });
+    expect(sendGate.calls).toBe(0);
+    expect(await prisma.chatMessage.count()).toBe(0);
+    expect(await get(author.id, created.generation_id)).toMatchObject({
+      ok: true,
+      result: { status: 'expired' },
+    });
   });
 
   it('回执保留 15 分钟后淘汰：GET 404，幂等键失效后可重新创建', async () => {

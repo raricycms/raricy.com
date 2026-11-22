@@ -439,6 +439,8 @@ export interface ChatMessageItemProps {
   onJumpToReply: (messageId: number) => void;
   /** 点击图片 → 原位放大（覆盖层），不新开窗口 */
   onImageClick: (url: string) => void;
+  /** 正文异步编译 / 引用落位 / 媒体加载导致高度变化**之前**（宿主记录变化前位置）。 */
+  onBeforeContentChange?: () => void;
   /** 正文异步编译 / 引用落位 / 媒体加载后的高度变化（宿主按贴底规则跟随）。 */
   onContentChange?: () => void;
 }
@@ -458,6 +460,7 @@ function ChatMessageItemInner({
   onAvatarClick,
   onJumpToReply,
   onImageClick,
+  onBeforeContentChange,
   onContentChange,
 }: ChatMessageItemProps) {
   const [imgError, setImgError] = useState(false);
@@ -508,6 +511,7 @@ function ChatMessageItemInner({
           phase="final"
           allowBareImage={!msg.image && !msg.image_missing && !msg.blog && !msg.blog_missing}
           onImageClick={onImageClick}
+          onBeforeContentChange={onBeforeContentChange}
           onContentChange={onContentChange}
         />
       )}

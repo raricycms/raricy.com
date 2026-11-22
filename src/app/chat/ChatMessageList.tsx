@@ -80,6 +80,11 @@ export interface ChatMessageListProps {
   /** 点正文里的图床引用图 → 原位放大。 */
   onImageClick: (url: string) => void;
   /**
+   * 正文异步编译 / 引用落位 / 媒体加载导致高度变化**之前**通知宿主记录位置
+   * （宿主的「贴底才跟随」判定用变化前的快照）。必须是稳定引用。
+   */
+  onBeforeContentChange?: () => void;
+  /**
    * 正文异步编译 / 引用落位 / 媒体加载导致高度变化后通知宿主（贴底才跟随）。
    * 必须是稳定引用：它会进 ChatMessageItem 的 memo 比较。
    */
@@ -110,6 +115,7 @@ function ChatMessageListInner({
   onAvatarClick,
   onJumpToReply,
   onImageClick,
+  onBeforeContentChange,
   onContentChange,
 }: ChatMessageListProps) {
   return (
@@ -163,6 +169,7 @@ function ChatMessageListInner({
               onAvatarClick={onAvatarClick}
               onJumpToReply={onJumpToReply}
               onImageClick={onImageClick}
+              onBeforeContentChange={onBeforeContentChange}
               onContentChange={onContentChange}
             />
           </Fragment>

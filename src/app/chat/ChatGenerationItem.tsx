@@ -21,11 +21,14 @@ export default function ChatGenerationItem({
   generation,
   isMine,
   onImageClick,
+  onBeforeContentChange,
   onContentChange,
 }: {
   generation: ChatGenerationPreview;
   isMine: boolean;
   onImageClick?: (url: string) => void;
+  /** 编译/渲染高度即将变化前通知 ChatApp 记录「变化前是否贴底」。 */
+  onBeforeContentChange?: () => void;
   /** 编译/渲染高度变化后通知 ChatApp 按「贴底才跟随」规则滚动。 */
   onContentChange?: () => void;
 }) {
@@ -58,6 +61,7 @@ export default function ChatGenerationItem({
                 phase="streaming"
                 allowBareImage={false}
                 onImageClick={onImageClick}
+                onBeforeContentChange={onBeforeContentChange}
                 onContentChange={onContentChange}
               />
             ) : (

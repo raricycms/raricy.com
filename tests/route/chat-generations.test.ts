@@ -19,6 +19,53 @@ vi.mock('next/headers', () => ({
   }),
 }));
 
+// ── 读体窗口二次鉴权的注入点（默认走真实会话鉴权）─────────────────────────────
+// queue 为空 / 值为 'real' 时调用真实 requireChatUser；其余值按调用序模拟
+// 「读体期间会话失效 / 被禁言 / 换号」。只在设置了 queue 的用例里生效。
+const authGate = vi.hoisted(() => ({
+  queue: [] as Array<'real' | 'unauthorized' | 'forbidden' | { user: unknown }>,
+  /** 真实鉴权被调用的次数（确认复核本身真的发生了） */
+  calls: 0,
+}));
+
+vi.mock('@/app/api/chat/_auth', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/app/api/chat/_auth')>();
+  const { apiErr } = await import('@/lib/format');
+  return {
+    ...actual,
+    requireChatUser: async () => {
+      authGate.calls += 1;
+      const step = authGate.queue.shift();
+      if (step === 'unauthorized') return apiErr(401, '请先登录');
+      if (step === 'forbidden') return apiErr(403, '你已被禁言，暂时无法讨论');
+      if (step && typeof step === 'object') return step.user as never;
+      return actual.requireChatUser();
+    },
+  };
+});
+
+// ── 生成服务调用计数（证明读体后复核失败时没有落进业务层）─────────────────────
+const generationCalls = vi.hoisted(() => ({ complete: 0, chunk: 0, cancel: 0 }));
+
+vi.mock('@/lib/chat/generations', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/chat/generations')>();
+  return {
+    ...actual,
+    completeGeneration: (...args: Parameters<typeof actual.completeGeneration>) => {
+      generationCalls.complete += 1;
+      return actual.completeGeneration(...args);
+    },
+    appendGenerationChunk: (...args: Parameters<typeof actual.appendGenerationChunk>) => {
+      generationCalls.chunk += 1;
+      return actual.appendGenerationChunk(...args);
+    },
+    cancelGeneration: (...args: Parameters<typeof actual.cancelGeneration>) => {
+      generationCalls.cancel += 1;
+      return actual.cancelGeneration(...args);
+    },
+  };
+});
+
 import { POST as createRoute } from '@/app/api/chat/channels/[id]/generations/route';
 import { GET as statusRoute } from '@/app/api/chat/generations/[id]/route';
 import { POST as chunksRoute } from '@/app/api/chat/generations/[id]/chunks/route';
@@ -27,6 +74,7 @@ import { POST as cancelRoute } from '@/app/api/chat/generations/[id]/cancel/rout
 import { __resetChatGenerations, __setChatGenerationClockForTest } from '@/lib/chat/generations';
 import { __resetChatBus } from '@/lib/chat-bus';
 import { __resetRateLimitStore } from '@/lib/rate-limit';
+import { PUBLIC_USER_SELECT } from '@/lib/auth';
 import { createSessionToken } from '@/lib/session';
 import { CHAT_LOBBY_ID } from '@/lib/chat-shared';
 import { makeUser, prisma, resetDb } from '../helpers/db';
@@ -42,6 +90,11 @@ beforeEach(async () => {
   session.token = undefined;
   fakeNow = 1_000_000;
   __setChatGenerationClockForTest(() => fakeNow);
+  authGate.queue = [];
+  authGate.calls = 0;
+  generationCalls.complete = 0;
+  generationCalls.chunk = 0;
+  generationCalls.cancel = 0;
 });
 
 afterEach(() => {
@@ -335,5 +388,109 @@ describe('生成接口：权限与副作用', () => {
     expect((await statusCall(created.generation_id)).status).toBe(403);
     expect((await chunkCall(created.generation_id, { seq: 2, delta: 'x' })).status).toBe(403);
     expect(await prisma.chatMessage.count()).toBe(0);
+  });
+});
+
+describe('读体窗口的二次鉴权（complete / chunks / cancel）', () => {
+  async function safeUserOf(userId: string) {
+    const row = await prisma.user.findUnique({ where: { id: userId }, select: PUBLIC_USER_SELECT });
+    if (!row) throw new Error('user missing');
+    return row;
+  }
+
+  it('complete：读体期间会话失效 → 401，不进入生成服务，任务保持 active', async () => {
+    const author = await makeUser({ role: 'core' });
+    await login(author.id);
+    const created = await createOk();
+    await chunkCall(created.generation_id, { seq: 1, delta: '正文' });
+
+    const authBefore = authGate.calls;
+    const completeBefore = generationCalls.complete;
+    authGate.queue = ['real', 'unauthorized'];
+    const res = await completeCall(created.generation_id, { last_seq: 1 });
+
+    // 首次鉴权 + 读体后复核都要发生；复核失败时不得落进 completeGeneration。
+    expect(authGate.calls - authBefore).toBe(2);
+    expect(res.status).toBe(401);
+    expect(await json(res)).toMatchObject({ code: 401, error: 'unauthorized' });
+    expect(generationCalls.complete).toBe(completeBefore);
+    expect(await prisma.chatMessage.count()).toBe(0);
+    expect(await json(await statusCall(created.generation_id))).toMatchObject({
+      status: 'active',
+      next_seq: 2,
+    });
+  });
+
+  it('complete：读体期间被禁言 → 403 forbidden（重包出稳定 error 字段）', async () => {
+    const author = await makeUser({ role: 'core' });
+    await login(author.id);
+    const created = await createOk();
+    await chunkCall(created.generation_id, { seq: 1, delta: '正文' });
+
+    const completeBefore = generationCalls.complete;
+    authGate.queue = ['real', 'forbidden'];
+    const res = await completeCall(created.generation_id, { last_seq: 1 });
+
+    expect(res.status).toBe(403);
+    expect(await json(res)).toMatchObject({ code: 403, error: 'forbidden' });
+    expect(generationCalls.complete).toBe(completeBefore);
+    expect(await prisma.chatMessage.count()).toBe(0);
+  });
+
+  it('complete：读体期间换号 → 403，不拿新账号操作别人的任务', async () => {
+    const author = await makeUser({ role: 'core' });
+    const other = await makeUser({ role: 'core' });
+    await login(author.id);
+    const created = await createOk();
+    await chunkCall(created.generation_id, { seq: 1, delta: '正文' });
+
+    const completeBefore = generationCalls.complete;
+    authGate.queue = ['real', { user: await safeUserOf(other.id) }];
+    const res = await completeCall(created.generation_id, { last_seq: 1 });
+
+    expect(res.status).toBe(403);
+    expect(await json(res)).toMatchObject({ code: 403, error: 'forbidden' });
+    expect(generationCalls.complete).toBe(completeBefore);
+    expect(await prisma.chatMessage.count()).toBe(0);
+
+    // 任务仍属原作者：换号请求没有改动状态，原作者随后可以正常完成。
+    expect(await json(await statusCall(created.generation_id))).toMatchObject({ status: 'active' });
+    expect((await completeCall(created.generation_id, { last_seq: 1 })).status).toBe(200);
+    expect(await prisma.chatMessage.count()).toBe(1);
+  });
+
+  it('chunks：读体期间会话失效 → 401，分块未被接受', async () => {
+    const author = await makeUser({ role: 'core' });
+    await login(author.id);
+    const created = await createOk();
+
+    const chunkBefore = generationCalls.chunk;
+    authGate.queue = ['real', 'unauthorized'];
+    const res = await chunkCall(created.generation_id, { seq: 1, delta: 'x' });
+
+    expect(res.status).toBe(401);
+    expect(await json(res)).toMatchObject({ code: 401, error: 'unauthorized' });
+    expect(generationCalls.chunk).toBe(chunkBefore);
+    expect(await json(await statusCall(created.generation_id))).toMatchObject({
+      status: 'active',
+      next_seq: 1,
+      revision: 0,
+    });
+  });
+
+  it('cancel：读体期间换号 → 403，任务未被取消', async () => {
+    const author = await makeUser({ role: 'core' });
+    const other = await makeUser({ role: 'core' });
+    await login(author.id);
+    const created = await createOk();
+
+    const cancelBefore = generationCalls.cancel;
+    authGate.queue = ['real', { user: await safeUserOf(other.id) }];
+    const res = await cancelCall(created.generation_id);
+
+    expect(res.status).toBe(403);
+    expect(await json(res)).toMatchObject({ code: 403, error: 'forbidden' });
+    expect(generationCalls.cancel).toBe(cancelBefore);
+    expect(await json(await statusCall(created.generation_id))).toMatchObject({ status: 'active' });
   });
 });

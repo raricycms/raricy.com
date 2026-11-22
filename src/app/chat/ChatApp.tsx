@@ -684,18 +684,25 @@ export default function ChatApp({
   }, []);
 
   /**
-   * 临时行/正式消息编译、引用落位、媒体加载后的高度变化：与正式消息同一条跟随
-   * 规则 —— 更新前贴底才随内容增高滚动，离底保持阅读锚点。回调必须稳定（列表 memo）。
+   * 正文即将增高前记录的「是否贴底」。
    *
-   * 【为什么直接 scrollToBottom 而不是 scrollAfterCommit】后者是「等下一次 messages
-   * 提交再滚」的待办；正文异步编译不会改变 messages，待办会一直挂着不执行。这里
-   * 由视图在 layout effect 里回调，DOM 高度已经更新、浏览器尚未 paint，直接滚是安全的。
+   * 【为什么必须在变化前量】`onContentChange` 由 ChatRmdMessage 在 layout effect 里
+   * 回调，那时 DOM 高度已经更新：一张图 / 一段剪贴板一次增高超过 140px，原本贴底的
+   * 用户会被 `isNearBottom()` 判成离底，跟随就此中断；反过来，用户刚开始往上翻
+   * （还没滚出阈值）时编译结果落地，也会被判成贴底把列表拽回去。所以改由视图在
+   * 每次会改变高度的提交**之前**调用 `handleContentBeforeChange` 记下快照，
+   * 更新后只认这份快照。默认 true：尚无任何异步落位时按贴底处理。
    */
-  const handleMessageContentChange = useCallback(() => {
-    if (overlayOpenRef.current) return;
-    if (Date.now() < userScrollUntilRef.current) return;
-    if (isNearBottom()) scrollToBottom();
-  }, [isNearBottom, scrollToBottom]);
+  const nearBottomBeforeChangeRef = useRef(true);
+  /**
+   * 用户主动滚动（wheel / touch）后的同步窗。
+   *
+   * 图片的 `load` 事件在布局变化之后才到，不能用它覆盖「变化前」快照；但用户可能
+   * 在引用落位之后、图片加载之前滚开。这里在用户滚动后的 700ms 内随滚动事件刷新
+   * 快照（程序化 scrollTo / 高度变化引发的滚动不在此窗内），慢加载媒体就会用
+   * 用户最后停留的位置，而不是引用落位时的旧位置。
+   */
+  const nearBottomSyncUntilRef = useRef(0);
 
   /**
    * 用户自己滑到底 = 已读：清掉「N 条新消息」浮标（连带「以下是新消息」分隔线）
@@ -709,6 +716,11 @@ export default function ChatApp({
    * 判据，不会出现卡在中间地带反复横跳。绝大多数滚动事件在第一行就早退了。
    */
   const handleListScroll = useCallback(() => {
+    // 用户主动滚动后的短窗口：同步「变化前贴底」快照，供随后才 load 完的图片/媒体
+    // 使用最新位置；程序化 scrollTo 不经过 wheel/touch，不会打开这个窗口。
+    if (Date.now() < nearBottomSyncUntilRef.current) {
+      nearBottomBeforeChangeRef.current = !historyViewRef.current && isNearBottom();
+    }
     // 历史视图里「滚到底」滚到的是窗口底部，不是最新消息：既不算已读，也不清浮标
     // （那时候 lastIdRef 还停在跳转前的最新 id，标下去等于把没看的消息全标成读过）。
     if (historyViewRef.current) return;
@@ -719,6 +731,39 @@ export default function ChatApp({
     // 窗口失焦时 markRead 自己会跳过（没看就不能算读过）→ 顶栏红点保持亮着
     if (aid && lastIdRef.current) void markRead(aid, lastIdRef.current);
   }, [isNearBottom, markRead]);
+
+  /**
+   * 正文即将改变高度：记录「变化前」是否贴底。
+   * 历史视图 / 跳转进行中（待办未消费或落位定时器未结束）一律记为不贴底 ——
+   * 这两种场景下随内容滚到底会把用户从正在看的窗口里拽走。
+   */
+  const handleContentBeforeChange = useCallback(() => {
+    const jumping = pendingJumpRef.current !== null || jumpSettleTimerRef.current !== null;
+    nearBottomBeforeChangeRef.current = !historyViewRef.current && !jumping && isNearBottom();
+  }, [isNearBottom]);
+
+  /**
+   * 临时行/正式消息编译、引用落位、媒体加载后的高度变化：与正式消息同一条跟随
+   * 规则 —— 更新前贴底才随内容增高滚动，离底保持阅读锚点。回调必须稳定（列表 memo）。
+   *
+   * 判定用 `nearBottomBeforeChangeRef` 里**变化前**的快照（见上一段），不再实时量；
+   * 同时保留两道硬性否决：
+   *   · overlay 打开 → 不滚（滚动会把菜单 / 详情收起，表现为「菜单闪一下」）；
+   *   · 300ms 用户滚轮 / 触摸保护窗内 → 不滚（刚翻页时编译结果落地，滚动权归用户）。
+   * 历史视图与跳转（pendingJump / jumpSettleTimer）再显式优先一次：即使快照因
+   * 异步时序残留为 true，也不把用户从当前窗口拽走。
+   *
+   * 【为什么直接 scrollToBottom 而不是 scrollAfterCommit】后者是「等下一次 messages
+   * 提交再滚」的待办；正文异步编译不会改变 messages，待办会一直挂着不执行。这里
+   * 由视图在 layout effect 里回调，DOM 高度已经更新、浏览器尚未 paint，直接滚是安全的。
+   */
+  const handleMessageContentChange = useCallback(() => {
+    if (overlayOpenRef.current) return;
+    if (Date.now() < userScrollUntilRef.current) return;
+    if (historyViewRef.current) return;
+    if (pendingJumpRef.current !== null || jumpSettleTimerRef.current !== null) return;
+    if (nearBottomBeforeChangeRef.current) scrollToBottom();
+  }, [scrollToBottom]);
 
   // ── 拉消息（初始 / 切频道） ────────────────────────────────────────────
   /** 拉频道首页消息（纯网络，不落状态）。 */
@@ -1010,21 +1055,62 @@ export default function ChatApp({
   }, [onStreamMessage, reloadActive]);
 
   /**
+   * 按 id 精确补拉一条正式消息（生成终态 completed 的交接路径）。
+   *
+   * 【为什么不用 catchUpActive】它依赖 lastIdRef 游标：空频道 lastId=0 时直接退出；
+   * 而实时投递失败时若已有更新的消息把游标推高，`after=游标` 的增量查询会**跳过**
+   * 这条缺失的 id —— 正式消息已落库，界面上却永远不出现。终态事件自带 message_id，
+   * 按它取一条即可，与游标无关。
+   *
+   * 【为什么 messageId===1 走 before】`after=0` 会被 parsePosInt 当成缺省（非法），
+   * 服务端会返回**最新一页**而不是那一条；id=1 只能用 `before=2&limit=1` 取。
+   *
+   * 请求前后核对频道 / viewToken / 历史视图：拉取期间切频道、整页重载或进入历史视图，
+   * 这份结果就不该再落地（历史视图保持当前窗口，不接窗口边缘之外的新消息）。
+   * 目标已在列表时直接返回；取不到就安静返回 —— 不盲 reloadActive 把历史窗口换掉，
+   * 下一次心跳补齐 / 对账会兜底。
+   */
+  const fetchMessageById = useCallback(
+    async (channelId: string, messageId: number) => {
+      if (!Number.isSafeInteger(messageId) || messageId <= 0) return;
+      if (activeRef.current !== channelId) return;
+      if (historyViewRef.current) return;
+      if (messagesRef.current.some((m) => m.id === messageId)) return;
+      const token = viewTokenRef.current;
+      const query = messageId > 1 ? `after=${messageId - 1}&limit=1` : 'before=2&limit=1';
+      try {
+        const data = await api(`/api/chat/channels/${channelId}/messages?${query}`);
+        if (data.code !== 200 || !Array.isArray(data.messages)) return;
+        if (token !== viewTokenRef.current) return;
+        if (activeRef.current !== channelId) return;
+        if (historyViewRef.current) return;
+        const target = (data.messages as ChatMessageDTO[]).find((m) => m.id === messageId);
+        if (!target) return;
+        // 交给唯一合并入口：按 id 去重、推进游标、贴底滚 + 已读 / 离底计未读。
+        onStreamMessage(target);
+      } catch {
+        // 网络失败不打扰用户：回前台 / 定时补齐会再来。
+      }
+    },
+    [onStreamMessage]
+  );
+
+  /**
    * 生成中的临时预览（机器人在流式输出时经 SSE 推送）。
    *
    * 临时行与正式 `messages` 是两份状态：临时行不推进游标、不建未读、不参与保存/
    * 回复/菜单。正式消息到达（带 generation_id）或 terminal 到达时移除预览。
-   * `onCompleted` 只处理「终态先到、正式消息还没进列表」的顺序：补拉一页，
-   * 按消息 id 去重；历史视图里不打断当前窗口。
+   * `onCompleted` 只处理「终态先到、正式消息还没进列表」的顺序：按事件携带的
+   * message_id 精确补拉这一条（不走游标，空频道与游标已被推高的场景都成立），
+   * 按消息 id 去重；历史视图里不打断当前窗口。回调经 hook 的 ref 保存，引用变化
+   * 不会丢事件。
    */
   const generations = useChatGenerations({
     onCompleted: useCallback(
       (channelId: string, messageId: number) => {
-        if (channelId !== activeRef.current || historyViewRef.current) return;
-        if (messagesRef.current.some((m) => m.id === messageId)) return;
-        void catchUpActive();
+        void fetchMessageById(channelId, messageId);
       },
-      [catchUpActive]
+      [fetchMessageById]
     ),
   });
   // SSE effect 的依赖必须保持稳定（变一次就重连一次），所以事件处理走 ref。
@@ -1140,8 +1226,15 @@ export default function ChatApp({
           void reconcile();
         }
       };
-      // onerror 无需处理：浏览器按服务端下发的 retry 自动重连；
+      // 断线（onerror）只清临时预览，**不 close**：浏览器仍按服务端下发的 retry
+      // 自动重连。原因：自动重连补发的正式 message 帧不带 generation_id，若生成
+      // 在断线期间完成，旧预览没有「正式消息到达」这条移除路径，会与正式消息并存
+      // 到超时清扫（约两分半）。正式消息本身靠重连后的 catchUpActive / 对账补齐，
+      // 不需要在这里补；重连后仍在活动的任务会收到新快照、重新显示。
       // 被封禁/降权时服务端返回 403，EventSource 按规范直接关闭且不再重试。
+      src.onerror = () => {
+        generationsRef.current.clearAll();
+      };
     };
 
     const closeStream = () => {
@@ -1990,9 +2083,11 @@ export default function ChatApp({
               onWheel={() => {
                 // 只登记用户主动滚动；程序化 scrollTo 不触发 wheel / touchmove。
                 userScrollUntilRef.current = Date.now() + 300;
+                nearBottomSyncUntilRef.current = Date.now() + 700;
               }}
               onTouchMove={() => {
                 userScrollUntilRef.current = Date.now() + 300;
+                nearBottomSyncUntilRef.current = Date.now() + 700;
               }}
             >
               {/* 列表内容是 memo 的独立组件 —— 让输入框的状态变化（每敲一个字、
@@ -2023,6 +2118,7 @@ export default function ChatApp({
                 onAvatarClick={openAvatarMenu}
                 onJumpToReply={jumpToMessage}
                 onImageClick={openLightbox}
+                onBeforeContentChange={handleContentBeforeChange}
                 onContentChange={handleMessageContentChange}
               />
               {/* 生成中的临时行渲染在 memo 列表之外：快照约 5 帧/秒，不能让它
@@ -2035,6 +2131,7 @@ export default function ChatApp({
                     generation={generation}
                     isMine={generation.author.id === currentUserId}
                     onImageClick={openLightbox}
+                    onBeforeContentChange={handleContentBeforeChange}
                     onContentChange={handleMessageContentChange}
                   />
                 ))}

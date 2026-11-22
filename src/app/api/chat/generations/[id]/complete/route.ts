@@ -10,6 +10,7 @@ import {
   chatGenerationAuthFailure,
   completeGeneration,
   readJsonBodyLimited,
+  revalidateGenerationAuthor,
 } from '@/lib/chat/generations';
 import { apiErr, apiOk } from '@/lib/format';
 import { isFocusLobbyBlocked } from '@/lib/focus-mode';
@@ -35,10 +36,14 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   }
   const payload = raw as Partial<ChatGenerationCompleteInput>;
 
+  // 读体窗口的二次鉴权：读体期间会话可能失效 / 被禁言 / 换号，不能用旧快照发消息。
+  const currentUser = await revalidateGenerationAuthor(user.id, requireChatUser);
+  if (currentUser instanceof Response) return currentUser;
+
   const outcome = await completeGeneration({
-    authorId: user.id,
+    authorId: currentUser.id,
     generationId,
-    lobbyBlocked: isFocusLobbyBlocked(user),
+    lobbyBlocked: isFocusLobbyBlocked(currentUser),
     lastSeq: payload.last_seq,
   });
   if (!outcome.ok) {

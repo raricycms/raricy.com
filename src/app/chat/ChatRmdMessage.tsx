@@ -83,6 +83,12 @@ export interface ChatRmdMessageProps {
   onImageClick?: (url: string) => void;
   /** 编译提交 / 引用落位 / 媒体 load-error 后通知宿主重新跟随滚动。 */
   onContentChange?: () => void;
+  /**
+   * 即将改变正文高度的状态提交**之前**回调（编译文档、引用落位、媒体落位）。
+   * 宿主在这里记录「变化前是否贴底」—— 变化后再量，一次增高超过阈值就会被误判
+   * 成离底，原本贴底的用户会中断跟随（见 ChatApp 的 handleContentBeforeChange）。
+   */
+  onBeforeContentChange?: () => void;
   className?: string;
 }
 
@@ -132,6 +138,7 @@ export default function ChatRmdMessage({
   allowBareImage = true,
   onImageClick,
   onContentChange,
+  onBeforeContentChange,
   className,
 }: ChatRmdMessageProps) {
   const context = useChatRmd();
@@ -149,6 +156,11 @@ export default function ChatRmdMessage({
   const rootRef = useRef<HTMLDivElement | null>(null);
   /** 进入预取带时的优先级：视口内 visible，视口外的预取带 nearby。 */
   const compilePriorityRef = useRef<'visible' | 'nearby'>('visible');
+  /**
+   * 变化前通知的 ref 镜像：回调可能每秒换引用（快照流式更新），而这里要把它
+   * 带进订阅 / 适配 effect 的闭包又不让它们重跑，所以统一经 ref 读最新值。
+   */
+  const notifyBeforeRef = useRef(onBeforeContentChange);
 
   // 换 key / 换 manager：上一份编译与适配结果不再属于这条消息。
   useEffect(() => {
@@ -224,6 +236,9 @@ export default function ChatRmdMessage({
       // 同一份文档被重复回传（典型：离屏 → 视口内重新订阅命中 final 缓存）时
       // 不产生新状态：否则 onContentChange / 引用适配 / 失败槽重置都会被重新触发，
       // 与滚动触发的 IntersectionObserver 订阅切换叠在一起会形成回路。
+      // 变化前通知放在 updater 外面：即使随后因同文档幂等跳过也是无害的空记录，
+      // 而放进 updater 会在 StrictMode 下被重复调用、也不能保证早于提交。
+      notifyBeforeRef.current?.();
       setCompiled((previous) => {
         if (previous && previous.phase === snapshot.phase && previous.document === snapshot.document) {
           return previous;
@@ -281,6 +296,8 @@ export default function ChatRmdMessage({
         ) {
           return;
         }
+        // 引用落位会一次性把 token 换成媒体、改变高度：提交前先让宿主记录位置。
+        notifyBeforeRef.current?.();
         setFailedSlots((previous) => (previous.size === 0 ? previous : EMPTY_SLOTS));
         setAdaptedState({ revision: compiled.revision, reference });
       })
@@ -338,6 +355,11 @@ export default function ChatRmdMessage({
 
   const handleMediaSettled = useCallback((slot: string, failed: boolean): void => {
     if (!slot) return;
+    // 只在失败时记录「变化前」：成功 load 发生在浏览器应用图片尺寸之后，此时再量
+    // 已经是变化后的位置，会覆盖引用落位前记录的正确快照。成功的增高沿用
+    // setAdaptedState / setCompiled 之前那次 before；用户在等待加载期间滚开的情况
+    // 由 ChatApp 的用户滚动同步窗修正。
+    if (failed) notifyBeforeRef.current?.();
     setMediaEpoch((epoch) => epoch + 1);
     if (!failed) return;
     setFailedSlots((previous) => {
@@ -379,6 +401,7 @@ export default function ChatRmdMessage({
   const notifyRef = useRef(onContentChange);
   useIsomorphicLayoutEffect(() => {
     notifyRef.current = onContentChange;
+    notifyBeforeRef.current = onBeforeContentChange;
   });
 
   // 编译提交、引用落位、媒体 load/error 后合并到一次 layout effect 通知宿主。
