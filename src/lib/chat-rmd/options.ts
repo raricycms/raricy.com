@@ -14,9 +14,9 @@ import type { LocalUrlPolicy } from 'reactive-md/react';
 
 /**
  * 编译依赖的身份。升级 `reactive-md` 时必须同步改这里，否则 final 缓存会跨版本复用。
- * 当前由 `package.json` 精确锁定 `reactive-md@0.9.1`。
+ * 当前由 `package.json` 精确锁定 `reactive-md@0.9.2`。
  */
-export const CHAT_RMD_COMPILER_VERSION = 'reactive-md/0.9.1';
+export const CHAT_RMD_COMPILER_VERSION = 'reactive-md/0.9.2';
 
 /** Chat 编译参数身份；调整 `CHAT_RMD_COMPILE_OPTIONS` 的任何数值都要换版本。 */
 export const CHAT_RMD_OPTIONS_VERSION = 'chat-rmd/1';

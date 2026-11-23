@@ -21,7 +21,7 @@ export const CHAT_RMD_POLICY_VERSION = 'chat-rmd-policy/1';
 export const CHAT_RMD_POLICY_UNSUPPORTED = 'policy.unsupported';
 
 /**
- * v1 允许列表 = 现有 Markdown 结构 + 公式。字符串以 reactive-md 0.9.1 实际产出为准：
+ * v1 允许列表 = 现有 Markdown 结构 + 公式。字符串以 reactive-md 0.9.2 实际产出为准：
  * `emphasis`/`delete`/`thematicBreak` 分别对应 em/del/hr；`fallback` 是编译器自己的
  * 「按源码显示」节点，保留它不会获得任何能力。
  *

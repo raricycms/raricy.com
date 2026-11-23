@@ -32,7 +32,7 @@ describe('CHAT_RMD_COMPILE_OPTIONS', () => {
   });
 
   it('导出稳定的版本身份', () => {
-    expect(CHAT_RMD_COMPILER_VERSION).toBe('reactive-md/0.9.1');
+    expect(CHAT_RMD_COMPILER_VERSION).toBe('reactive-md/0.9.2');
     expect(CHAT_RMD_OPTIONS_VERSION).toBe('chat-rmd/1');
   });
 });
