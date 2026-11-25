@@ -39,14 +39,14 @@
 import { createHash, randomInt, randomUUID } from 'node:crypto';
 import type { DailyQuote, Prisma } from '@prisma/client';
 import { prisma } from './db';
-import { dayStart, nowForDb, todayStr } from './db-time';
+import { nowForDb, todayStr } from './db-time';
 import { hasAdminRights, isCoreUser, isCurrentlyBanned } from './auth';
 import { postEntry, InsufficientFishError } from './fish-service';
 import { fishToUnits, unitsToFish } from './fish-units';
 import { rateLimit, RULES } from './rate-limit';
 import {
-  QUOTE_CATEGORIES, QUOTE_CONTENT_MAX, QUOTE_HISTORY_PAGE_SIZE,
-  QUOTE_RESONANCE_FISH, QUOTE_SAVED_PAGE_SIZE, QUOTE_STATUSES, canEditQuoteSubmission, normalizeQuotePage, quoteLength,
+  QUOTE_CATEGORIES, QUOTE_CONTENT_MAX, QUOTE_HISTORY_PAGE_SIZE, QUOTE_REVIEW_FILTERS,
+  QUOTE_RESONANCE_FISH, QUOTE_SAVED_PAGE_SIZE, canEditQuoteSubmission, normalizeQuotePage, pickWeightedQuote, quoteLength,
   type DailyQuoteHistoryEntry, type DailyQuoteResonanceResult, type DailyQuoteView, type TodayQuoteState,
   quoteDisplayStatus, type SavedQuoteEntry,
 } from './daily-quote';
@@ -65,6 +65,8 @@ function uniqueViolation(error: unknown): boolean {
 
 const activeSubmitter = {
   OR: [{ kind: 'builtin' }, { submitter: { archivedAt: null } }],
+  /** 软删只用于「未通过」投稿；任何读口都不返回它（恢复列表另行查询）。 */
+  deletedAt: null,
 } satisfies Prisma.DailyQuoteWhereInput;
 
 // 模块可能在热更新或不同 Next 编译图里实例化，合并在途选取要放到 globalThis。
@@ -82,7 +84,15 @@ const state = globalThis as unknown as {
 state.__dailyQuotePending ??= new Map();
 state.__dailyQuoteIssuance ??= { failures: new Map(), lastDay: null, timer: null, started: false };
 
-async function selectEdition(day: string): Promise<string> {
+/** 选句用的 [0,1) 均匀值；作为参数注入，测试才能用固定随机序列复现「抽中谁」。 */
+const randomUnit = () => randomInt(1_000_000) / 1_000_000;
+
+/**
+ * 当天的社区候选抽取：先按作者权重抽投稿人，再在该作者名下均匀抽一条。
+ * 权重是 `log(n+2)`（n = 该作者在池中的稿件数），理由与纯函数实现见
+ * `pickWeightedQuote`。候选池为空时才走经典轮换。
+ */
+async function selectEdition(day: string, random: () => number): Promise<string> {
   for (let attempt = 0; attempt < 3; attempt++) {
     const existing = await prisma.dailyQuoteEdition.findUnique({ where: { day } });
     if (existing) return existing.quoteId;
@@ -92,20 +102,19 @@ async function selectEdition(day: string): Promise<string> {
           // P03：不再要求「投稿人名下有未删除的博客」—— 资格只看账号角色 / 归档 /
           // 禁言（见下一行 where 与 rows.filter）。博客要求只留在参与门槛
           // （requireQuoteParticipant），不参与「这一句能不能被选登」。
-          where: { status: 'approved', kind: 'community', firstSelectedDay: null, editions: { none: {} },
+          where: { status: 'approved', kind: 'community', firstSelectedDay: null, deletedAt: null,
+            editions: { none: {} },
             submitter: { archivedAt: null, role: { in: ['core', 'admin', 'owner'] } } },
           select: { id: true, submitterId: true, submitter: { select: { isBanned: true, banUntil: true } } },
-          orderBy: [{ reviewedAt: 'asc' }, { id: 'asc' }],
         });
         const candidates = rows.filter((row) => !isCurrentlyBanned(row.submitter));
-        const yesterday = new Date(dayStart(day).getTime() - 86400000).toISOString().slice(0, 10);
-        const prior = await tx.dailyQuoteEdition.findUnique({ where: { day: yesterday }, select: { quote: { select: { submitterId: true } } } });
-        const community = candidates.find((row) => row.submitterId !== prior?.quote.submitterId) ?? candidates[0];
+        const community = pickWeightedQuote(candidates, random);
         let quoteId: string;
         if (community) {
           // 条件写入 + edition 同事务：不能跨日重复认领，失败也不能把稿件凭空用掉。
           const claimed = await tx.dailyQuote.updateMany({
-            where: { id: community.id, status: 'approved', firstSelectedDay: null, editions: { none: {} } },
+            where: { id: community.id, status: 'approved', firstSelectedDay: null, deletedAt: null,
+              editions: { none: {} } },
             data: { firstSelectedDay: day },
           });
           if (!claimed.count) throw new QuoteError(409, '选登状态变化，请重试', 'SELECTION_CHANGED');
@@ -136,10 +145,10 @@ async function selectEdition(day: string): Promise<string> {
   throw new QuoteError(503, '选登暂时繁忙，请稍后重试');
 }
 
-async function editionQuoteId(day: string): Promise<string> {
+async function editionQuoteId(day: string, random: () => number): Promise<string> {
   const pending = state.__dailyQuotePending.get(day);
   if (pending) return pending;
-  const operation = selectEdition(day);
+  const operation = selectEdition(day, random);
   state.__dailyQuotePending.set(day, operation);
   try { return await operation; }
   finally { state.__dailyQuotePending.delete(day); }
@@ -180,8 +189,10 @@ export function __resetDailyQuoteIssuanceState(): void {
  * 旧期不会在这里被回填 —— 非当天请求直接拒绝，不产生任何 edition。
  * 已有记录直接复用（重复调度 / 当天重启 / 多进程并发都得到同一天同一句）。
  * 选句失败只记录失败态并返回，不抛给启动钩子（进程不能因为附加功能起不来）。
+ *
+ * `random` 只给测试注入固定随机序列；生产一律用默认的加密随机源。
  */
-export async function ensureEditionForDay(day: string): Promise<EditionIssueResult> {
+export async function ensureEditionForDay(day: string, random: () => number = randomUnit): Promise<EditionIssueResult> {
   const store = state.__dailyQuoteIssuance!;
   const today = todayStr();
   if (day !== today) {
@@ -190,7 +201,7 @@ export async function ensureEditionForDay(day: string): Promise<EditionIssueResu
     return { day, status: 'failed', error };
   }
   try {
-    const quoteId = await editionQuoteId(day);
+    const quoteId = await editionQuoteId(day, random);
     store.failures.delete(day);
     store.lastDay = day;
     return { day, status: 'published', quoteId };
@@ -624,7 +635,7 @@ export async function editQuoteSubmission(quoteId: string, userId: string, input
   try {
     return await prisma.$transaction(async (tx) => {
       await requireQuoteParticipant(userId, { write: true }, tx);
-      const quote = await tx.dailyQuote.findFirst({ where: { id: quoteId, submitterId: userId, kind: 'community' } });
+      const quote = await tx.dailyQuote.findFirst({ where: { id: quoteId, submitterId: userId, kind: 'community', deletedAt: null } });
       if (!quote) throw new QuoteError(404, '投稿不存在');
       if (!canEditQuoteSubmission(quote.status)) throw new QuoteError(409, '稿件已通过审核或已下架，不能编辑，请刷新');
       const data = validateSubmission(input);
@@ -655,7 +666,9 @@ export async function editQuoteSubmission(quoteId: string, userId: string, input
 export async function listSubmissions(userId: string) {
   await requireQuoteParticipant(userId);
   const quotes = await prisma.dailyQuote.findMany({
-    where: { submitterId: userId, kind: 'community' }, orderBy: [{ createdAt: 'desc' }, { id: 'asc' }], take: 100,
+    // 管理员软删的稿件连作者也不再展示（见 deleteRejectedQuote）。
+    where: { submitterId: userId, kind: 'community', deletedAt: null },
+    orderBy: [{ createdAt: 'desc' }, { id: 'asc' }], take: 100,
     select: { id: true, content: true, category: true, signature: true, sourceType: true, sourceName: true, status: true,
       revision: true, firstSelectedDay: true, reviewReason: true, createdAt: true,
       revisions: { orderBy: { revision: 'desc' }, select: { revision: true, content: true, category: true, signature: true,
@@ -666,12 +679,15 @@ export async function listSubmissions(userId: string) {
 
 export async function listReviewQuotes(status: string, page: number, adminId: string) {
   await requireQuoteParticipant(adminId, { admin: true });
-  const selected = (QUOTE_STATUSES as readonly string[]).includes(status) ? status : 'pending';
+  const selected = (QUOTE_REVIEW_FILTERS as readonly string[]).includes(status) ? status : 'pending';
   const current = Number.isSafeInteger(page) ? Math.max(1, page) : 1;
-  const where: Prisma.DailyQuoteWhereInput = { ...activeSubmitter,
-    ...(selected === 'builtin' ? { kind: 'builtin', status: 'approved' } : selected === 'retired' ? { status: 'retired' } :
-      { kind: 'community', status: selected === 'selected' ? 'approved' : selected,
-        ...(selected === 'approved' ? { firstSelectedDay: null } : selected === 'selected' ? { firstSelectedDay: { not: null } } : {}) }) };
+  // 「已删除」只看软删的未通过稿；其余档照旧排除软删与归档投稿人。
+  const where: Prisma.DailyQuoteWhereInput = selected === 'deleted'
+    ? { ...activeSubmitter, kind: 'community', deletedAt: { not: null } }
+    : { ...activeSubmitter,
+      ...(selected === 'builtin' ? { kind: 'builtin', status: 'approved' } : selected === 'retired' ? { status: 'retired' } :
+        { kind: 'community', status: selected === 'selected' ? 'approved' : selected,
+          ...(selected === 'approved' ? { firstSelectedDay: null } : selected === 'selected' ? { firstSelectedDay: { not: null } } : {}) }) };
   const [total, quotes] = await Promise.all([
     prisma.dailyQuote.count({ where }),
     prisma.dailyQuote.findMany({
@@ -723,5 +739,57 @@ export async function reviewQuote(quoteId: string, adminId: string, action: unkn
       objectType: 'daily_quote', objectId: quoteId, reason: trimmed || null,
       visibility: 'internal', hideTarget: quote.signature === 'anonymous', createdAt: nowForDb(),
     }, select: { id: true } }); // 不回读 extra（JSON 列）
+  });
+}
+
+/**
+ * 删除一条「审核未通过」的投稿（**软删**，只翻 `deleted_at`）。
+ *
+ * 为什么只限未通过：通过稿可能已进入候选或已选登，下架有自己的语义（保留正文与
+ * 往期占位），都不能用「删除」代替。软删后稿件从审核列表、作者「我的投稿」和一切
+ * 读口消失，但正文、版本与审核历史原样保留，管理端「已删除」列表可恢复。
+ *
+ * 状态仍是 `rejected`：活动正文条件唯一索引不会因此把这句话永久占住。
+ */
+export async function deleteRejectedQuote(quoteId: string, adminId: string): Promise<void> {
+  await prisma.$transaction(async (tx) => {
+    await requireQuoteParticipant(adminId, { write: true, admin: true }, tx);
+    const quote = await tx.dailyQuote.findFirst({
+      where: { id: quoteId, kind: 'community', status: 'rejected', ...activeSubmitter },
+      select: { id: true, submitterId: true, signature: true },
+    });
+    if (!quote) throw new QuoteError(409, '只有审核未通过的稿件可以删除，请刷新后重试', 'QUOTE_NOT_DELETABLE');
+    const now = nowForDb();
+    const updated = await tx.dailyQuote.updateMany({
+      where: { id: quote.id, status: 'rejected', deletedAt: null }, data: { deletedAt: now },
+    });
+    if (!updated.count) throw new QuoteError(409, '稿件状态已变化，请刷新');
+    await tx.adminActionLog.create({ data: {
+      action: 'daily_quote_delete', adminId, targetUserId: quote.submitterId,
+      objectType: 'daily_quote', objectId: quote.id, reason: null,
+      visibility: 'internal', hideTarget: quote.signature === 'anonymous', createdAt: now,
+    }, select: { id: true } });
+  });
+}
+
+/** 撤销一次软删（管理端「已删除」列表）。只认仍为 `rejected` 的墓碑行，不改其他状态。 */
+export async function restoreDeletedQuote(quoteId: string, adminId: string): Promise<void> {
+  await prisma.$transaction(async (tx) => {
+    await requireQuoteParticipant(adminId, { write: true, admin: true }, tx);
+    const quote = await tx.dailyQuote.findFirst({
+      where: { id: quoteId, kind: 'community', status: 'rejected', deletedAt: { not: null } },
+      select: { id: true, submitterId: true, signature: true },
+    });
+    if (!quote) throw new QuoteError(409, '这条稿件不在已删除列表，请刷新', 'QUOTE_NOT_RESTORABLE');
+    const now = nowForDb();
+    const updated = await tx.dailyQuote.updateMany({
+      where: { id: quote.id, status: 'rejected', deletedAt: { not: null } }, data: { deletedAt: null },
+    });
+    if (!updated.count) throw new QuoteError(409, '稿件状态已变化，请刷新');
+    await tx.adminActionLog.create({ data: {
+      action: 'daily_quote_restore', adminId, targetUserId: quote.submitterId,
+      objectType: 'daily_quote', objectId: quote.id, reason: null,
+      visibility: 'internal', hideTarget: quote.signature === 'anonymous', createdAt: now,
+    }, select: { id: true } });
   });
 }

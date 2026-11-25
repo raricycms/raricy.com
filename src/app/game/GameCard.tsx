@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { Grid2X2, Wand2, Flag, Activity } from 'lucide-react';
+import { Activity, ExternalLink, Flag, Grid2X2, Swords, Wand2 } from 'lucide-react';
 import { AtamasRingIcon } from '@/games/atamas/icons';
 import { TwinShadeIcon } from '@/games/twinshade/icons';
 import { LumenIcon } from '@/games/lumen/icons';
@@ -21,12 +21,14 @@ function GameIcon({ icon }: { icon: GameEntry['icon'] }) {
   if (icon === 'public-space') return <Grid2X2 />;
   if (icon === 'quandi') return <Flag />;
   if (icon === 'motion') return <Activity />;
+  if (icon === 'rarica') return <Swords />;
   return <Wand2 />;
 }
 
-export default function GameCard({ game }: { game: GameEntry }) {
+/** 卡片内容：站内与站外共用，只有外层链接不同。 */
+function GameCardContent({ game }: { game: GameEntry }) {
   return (
-    <Link href={game.href} className="game-card">
+    <>
       <span className="game-card__icon" aria-hidden="true"><GameIcon icon={game.icon} /></span>
       <h2>{game.title}</h2>
       <div className="game-card__tags">
@@ -34,7 +36,25 @@ export default function GameCard({ game }: { game: GameEntry }) {
         {game.modes.map((mode) => <span key={mode}>{GAME_MODES[mode]}</span>)}
       </div>
       <p>{game.description}</p>
-      <span className="game-action">开始游戏</span>
+      <span className="game-action">
+        开始游戏
+        {game.external && <ExternalLink size={16} aria-hidden="true" />}
+      </span>
+    </>
+  );
+}
+
+export default function GameCard({ game }: { game: GameEntry }) {
+  if (game.external) {
+    return (
+      <a href={game.href} className="game-card" target="_blank" rel="noopener noreferrer">
+        <GameCardContent game={game} />
+      </a>
+    );
+  }
+  return (
+    <Link href={game.href} className="game-card">
+      <GameCardContent game={game} />
     </Link>
   );
 }

@@ -43,12 +43,10 @@ import type { BlogVisibility } from './blog-visibility';
 import { INDEXABLE_BLOG_WHERE } from './blog-public-scope';
 import {
   CONTENT_WRITE_ERROR_CODES,
-  CONTENT_FORMAT_LABELS,
-  DEFAULT_CONTENT_FORMAT,
+  contentFormatFromSyntaxVersion,
   parseContentFormat,
-  resolveContentWriteFormat,
 } from './content-format';
-import type { ContentFormat, ContentWriteErrorCode } from './content-format';
+import type { ContentWriteErrorCode } from './content-format';
 import { validateContentForPublish, ReactivePublishError } from './reactive/publish';
 import type { Prisma } from '@prisma/client';
 import type { PersonalBlogScope } from './blog-directory';
@@ -461,8 +459,8 @@ export async function getBlogDetail(id: string, viewer: BlogViewer | null) {
       allowAnonymousComments: true,
       author: { select: { id: true, username: true, equippedFrameKey: true, equippedFrameExpiresAt: true } },
       category: { select: { name: true, slug: true, parentId: true, parent: { select: { name: true } } } },
-      // format / syntaxVersion 随详情一起出：渲染器选择与对外 API 的格式字段都靠它。
-      content: { select: { content: true, updatedAt: true, format: true, syntaxVersion: true } },
+      // syntaxVersion 随详情一起出：对外 API 的 format 由它派生，正文渲染只看源码。
+      content: { select: { content: true, updatedAt: true, syntaxVersion: true } },
     },
   });
   if (!blog) return blog;
@@ -897,38 +895,17 @@ export const BLOG_ACCEPTED_KEYS = [
 ] as const;
 
 /** 正文写入闸门的失败原因。全部是**拒绝**，不是降级。 */
-export type ContentWriteFailure = 'invalid_format' | 'format_mismatch' | 'reactive_invalid';
-
-export type ContentWriteGate =
-  | { ok: true; format: ContentFormat }
-  | { ok: false; reason: ContentWriteFailure };
+export type ContentWriteFailure = 'invalid_format' | 'reactive_invalid';
 
 /**
- * 博客正文的**唯一写入闸门**（createBlog / updateBlog / 两个写接口都调它）。
+ * 写入闸门失败时的对外文案（route 层直接用它，避免两处措辞漂移）。
  *
- * 与 `resolveContentWriteFormat` 的分工：那边只回答「请求值与当前值合不合法」，
- * 这里先判**库里那个当前值**：未知存量值一律拒绝（绝不猜成 markdown —— 猜错就是
- * 把另一种语言的源码交给旧解析器）。
- *
- * reactive 的「能不能发布」不在这里判：它需要发布前语法检查，属于
- * `createBlog` / `updateBlog` 的发布步骤（见 `validateContentForPublish`）。
+ * 请求里那个**已废弃**的 `format` 值只校验白名单、不参与存储（见 validateBlogData）：
+ * 正文格式由正文自己决定，调用方的声明不再能改变保存结果。保留白名单是为了
+ * 「拼错的值回 400」这条既有契约，而不是静默接受。
  */
-export function resolveBlogContentFormat(
-  requested: unknown,
-  stored: unknown = undefined
-): ContentWriteGate {
-  const current =
-    stored === undefined ? DEFAULT_CONTENT_FORMAT : parseContentFormat(stored);
-  if (current === null) return { ok: false, reason: 'invalid_format' };
-  return resolveContentWriteFormat(requested, current);
-}
-
-/** 写入闸门失败时的对外文案（route 层直接用它，避免两处措辞漂移）。 */
 export function contentWriteFailureMessage(reason: ContentWriteFailure): string {
   if (reason === 'invalid_format') return '内容格式取值不合法，可选：markdown / reactive';
-  if (reason === 'format_mismatch') {
-    return '正文包含有效 ReactiveMD 语法，但格式为 Markdown；请改用 reactive，或把示例放进代码块';
-  }
   return '正文无法编译渲染，已拒绝发布';
 }
 
@@ -974,15 +951,6 @@ export interface ValidatedBlogData {
    *  所以走 HTTP 的路径连 validate 的默认档都不会误用。）
    */
   allowAnonymousComments?: boolean;
-  /**
-   * 正文格式。**缺省 = 「没提这件事」**（与 allowAnonymousComments 同一语义）：
-   *   · createBlog → 默认 markdown；
-   *   · updateBlog → 保留库里原值（省略不等于打回默认档）。
-   * 类型上可选是为了让不认识这个字段的旧调用方继续工作；但一旦出现，就必须是
-   * 白名单里的值（validateBlogData 已经卡过）。reactive 的**写入闸门**不在这里判 ——
-   * 那条要看库里的当前值，见 resolveBlogContentFormat。
-   */
-  format?: ContentFormat;
 }
 
 export type ValidateBlogResult =
@@ -1028,16 +996,10 @@ export async function validateBlogData(raw: unknown): Promise<ValidateBlogResult
   const description = (typeof data.description === 'string' ? data.description : '').trim();
   const content = typeof data.content === 'string' ? data.content : '';
 
-  // 内容格式：缺省 = 没提这件事（create 默认 markdown / update 保留原值），
-  // 显式值必须是白名单。**未知值直接 400，不静默当成 markdown** —— 那等于把
-  // 另一种语言的正文交给旧解析器。reactive 的写入闸门在 service 层（要看库里当前值）。
-  let format: ContentFormat | undefined;
-  if (data.format !== undefined) {
-    const parsed = parseContentFormat(data.format);
-    if (parsed === null) {
-      return { ok: false, message: contentWriteFailureMessage('invalid_format') };
-    }
-    format = parsed;
+  // `format` 仍接受（老调用方 / bot 会带），但**只校验不落库**：正文格式由正文自己
+  // 决定（见 content-format.ts）。未知值照旧 400，免得一个拼错的值被静默接受。
+  if (data.format !== undefined && parseContentFormat(data.format) === null) {
+    return { ok: false, message: contentWriteFailureMessage('invalid_format') };
   }
 
   // 可见性：缺省 internal；非白名单值直接 400，**不静默丢弃**（同下面那批未知字段）
@@ -1095,7 +1057,6 @@ export async function validateBlogData(raw: unknown): Promise<ValidateBlogResult
       categoryId,
       visibility,
       allowAnonymousComments,
-      ...(format !== undefined ? { format } : {}),
     },
   };
 }
@@ -1276,7 +1237,7 @@ export async function getBlogForEdit(blogId: string) {
       visibility: true,
       allowAnonymousComments: true,
       rendererOverride: true,
-      content: { select: { content: true, format: true, syntaxVersion: true } },
+      content: { select: { content: true, syntaxVersion: true } },
     },
   });
   if (!blog) return null;
@@ -1292,9 +1253,8 @@ export async function getBlogForEdit(blogId: string) {
     visibility: parseVisibility(blog.visibility) ?? 'internal',
     allowAnonymousComments: blog.allowAnonymousComments,
     authorId: blog.authorId,
-    // 编辑表单目前不带格式字段（不切换渲染器）；列在这里是为了将来的编辑器与
-    // 回退路径能读到它。未知值给 null —— 绝不在读口猜成 markdown。
-    format: parseContentFormat(blog.content?.format) ?? null,
+    // 编辑表单的格式初值：由正文行派生（没有正文行时给 null，交给表单默认档）。
+    format: blog.content ? contentFormatFromSyntaxVersion(blog.content.syntaxVersion) : null,
     syntaxVersion: blog.content?.syntaxVersion ?? null,
     rendererOverride: blog.rendererOverride ?? null,
     contentMarkdown: blog.content?.content ?? '',
@@ -1307,34 +1267,14 @@ export async function getBlogForEdit(blogId: string) {
  * 磁盘 instance/blogs/<id> 目录是历史遗留物（旧数据残留），正文已入库，本站不再创建。
  */
 export async function createBlog(authorId: string, data: ValidatedBlogData): Promise<string> {
-  // 服务层自己的闸门（route 已先判过）：绕过 HTTP 的调用方也不该能写非法格式。
-  const write = resolveBlogContentFormat(data.format);
-  if (!write.ok) throw new Error(contentWriteFailureMessage(write.reason));
-
   const blogId = crypto.randomUUID();
   const now = nowForDb();
 
   // 发布前复用统一编译器检查正文，结果不落库。
-  // Markdown 也走统一引擎；编译 / 语义校验失败同样不落库。
-  const validation = await validateContentForPublish({
-
-    content: data.content,
-    format: write.format,
-  });
+  // Markdown 与增强语法都走统一引擎；编译 / 语义校验失败同样不落库。
+  const validation = await validateContentForPublish({ content: data.content });
   if (!validation.ok) {
-    if (validation.reason === 'format_mismatch') {
-      throw new ReactivePublishError(
-        contentWriteFailureMessage('format_mismatch'),
-        CONTENT_WRITE_ERROR_CODES.format_mismatch
-      );
-    }
     throw new ReactivePublishError(contentWriteFailureMessage('reactive_invalid'));
-  }
-  if (write.format === 'markdown' && validation.detectedFormat === 'reactive') {
-    throw new ReactivePublishError(
-      contentWriteFailureMessage('format_mismatch'),
-      CONTENT_WRITE_ERROR_CODES.format_mismatch
-    );
   }
   const syntaxVersion = validation.syntaxVersion;
 
@@ -1356,9 +1296,8 @@ export async function createBlog(authorId: string, data: ValidatedBlogData): Pro
       data: {
         blogId,
         content: data.content,
-        // 显式写格式：不依赖列默认值，免得「create 路径漏填 → 由默认值兜底」变成
-        // 一条只在将来改默认值时才暴露的静默差异。
-        format: write.format,
+        // 正文里有没有增强语法全由这次编译判定：非 NULL = 增强语法（记版本），
+        // NULL = 纯 Markdown。库里不再有第二列来表达这件事。
         syntaxVersion,
         updatedAt: now,
       },
@@ -1398,44 +1337,25 @@ export async function updateBlog(
       visibility: true,
       allowAnonymousComments: true,
       category: { select: { name: true } },
-      // 正文格式要在**写之前**读：省略 format 的旧调用方必须保留原值
-      // （`resolveBlogContentFormat` 的闸门保证原值只能是合法格式）。
-      content: { select: { content: true, format: true, syntaxVersion: true } },
+      // 正文只读一次：upsert 要复用这份原文，重新编译也只在正文变化时做。
+      content: { select: { content: true, syntaxVersion: true } },
     },
   });
   if (!blog) return { hasChanges: false, changesDetail: [] };
 
   const contentRow = blog.content;
   const oldContent = contentRow?.content ?? '';
-  const write = resolveBlogContentFormat(data.format, contentRow?.format);
-  if (!write.ok) return { hasChanges: false, changesDetail: [], error: write.reason };
 
-  // 正文或格式变化时重新检查；
-  // 只改标题 / 摘要时不重新检查正文。
-  const oldFormat = contentRow ? parseContentFormat(contentRow.format) : null;
+  // 只改标题 / 摘要时不重新编译正文。
   let validation: Awaited<ReturnType<typeof validateContentForPublish>> | null = null;
-  if (!contentRow || oldFormat !== write.format || oldContent !== data.content) {
-    validation = await validateContentForPublish({
-
-      content: data.content,
-      format: write.format,
-    });
+  if (!contentRow || oldContent !== data.content) {
+    validation = await validateContentForPublish({ content: data.content });
     if (!validation.ok) {
-      return {
-        hasChanges: false,
-        changesDetail: [],
-        error: validation.reason === 'format_mismatch' ? 'format_mismatch' : 'reactive_invalid',
-      };
-    }
-    if (write.format === 'markdown' && validation.detectedFormat === 'reactive') {
-      return { hasChanges: false, changesDetail: [], error: 'format_mismatch' };
+      return { hasChanges: false, changesDetail: [], error: 'reactive_invalid' };
     }
   }
-  const syntaxVersion = validation
-    ? validation.syntaxVersion
-    : write.format === 'reactive'
-      ? contentRow?.syntaxVersion ?? null
-      : null;
+  // 正文没变时沿用库里的版本；变了就按本次编译结果重写（可能从增强语法退回纯 Markdown）。
+  const syntaxVersion = validation ? validation.syntaxVersion : contentRow?.syntaxVersion ?? null;
 
   let hasChanges = false;
   const changesDetail: string[] = [];
@@ -1489,20 +1409,9 @@ export async function updateBlog(
     hasChanges = true;
   }
 
-  // 正文变化（contentRow / oldContent 在上面取格式时已经读过一次）
+  // 正文变化（contentRow / oldContent 在上面已读过一次）
   if (oldContent !== data.content) {
     changesDetail.push('文章内容已更新');
-    hasChanges = true;
-  }
-
-  // 格式变化也是正文变化：同样的文字从 Markdown 换成 ReactiveMD（或反过来）时
-  // 旧管线 / 新管线的解释完全不同，不能因为「字符串没变」就静默返回。
-  const formatChanged = !!contentRow && oldFormat !== write.format;
-  if (formatChanged) {
-    changesDetail.push(
-      `正文格式从《${oldFormat ? CONTENT_FORMAT_LABELS[oldFormat] : '未知'}》` +
-        `改为《${CONTENT_FORMAT_LABELS[write.format]}》`
-    );
     hasChanges = true;
   }
 
@@ -1512,8 +1421,7 @@ export async function updateBlog(
     blog.title !== data.title ||
     blog.description !== data.description ||
     blog.categoryId !== data.categoryId ||
-    oldContent !== data.content ||
-    formatChanged;
+    oldContent !== data.content;
 
   const now = nowForDb();
   const ops: Prisma.PrismaPromise<unknown>[] = [
@@ -1533,18 +1441,15 @@ export async function updateBlog(
     prisma.blogContent.upsert({
       where: { blogId },
       // 补缺失的空正文行时保留发布时间，不把数据修复伪装成文章更新。
-      // format 显式写回：省略 format 的旧调用方走的是「保留原值」语义。syntaxVersion
-      // 只在 reactive 行有意义；markdown 行写 null，免得脏值跟着正文长期并存。
+      // syntaxVersion 与正文同一份：增强语法记版本，纯 Markdown 写 null。
       create: {
         blogId,
         content: data.content,
-        format: write.format,
         syntaxVersion,
         updatedAt: articleChanged ? now : blog.createdAt,
       },
       update: {
         content: data.content,
-        format: write.format,
         syntaxVersion,
         ...(articleChanged ? { updatedAt: now } : {}),
       },

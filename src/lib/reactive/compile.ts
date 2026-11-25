@@ -1,6 +1,5 @@
 import { compileSource } from './compile-source';
 import { LOCAL_SYNTAX_VERSION, localCompileOptionsKey, type LocalCompileResult } from 'reactive-md';
-import type { ContentFormat } from '../content-format';
 import { ReactiveLruCache, reactiveCompileCacheKey } from './cache';
 import { REACTIVE_COMPILER_VERSION, REACTIVE_COMPILE_OPTIONS } from './host-components';
 import { ADAPTER_VERSION, expandDocumentReferences } from './ref-adapter';
@@ -9,7 +8,6 @@ import type { ReferenceMode, SiteHostData } from './ref-types';
 
 export interface ReactiveCompileInput {
   source: string;
-  format: ContentFormat;
   mode: ReferenceMode;
   viewer: { id: string; role?: string; archivedAt?: Date | null } | null;
   clientIp?: string;

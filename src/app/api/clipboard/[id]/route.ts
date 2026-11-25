@@ -10,7 +10,7 @@ import { getClip } from '@/lib/clipboard-query';
 import {
   updateClip,
   deleteClip,
-  resolveClipContentFormat,
+  checkRequestedClipFormat,
   clipContentWriteMessage,
   clipContentWriteErrorCode,
   CLIP_TITLE_MAX,
@@ -43,7 +43,8 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
       author_name: clip.authorName,
       publicity: clip.publicity,
       content: clip.content,
-      // 正文语言。null = 库里认不出（或正文行缺失）—— 消费方不得当成 markdown。
+      // 正文语言的派生标签（非 NULL 的 syntax_version = 增强语法）。消费方仍可按它
+      // 分支显示，但它不再由调用方声明，也不单独存库。
       format: clip.format,
       syntax_version: clip.syntaxVersion,
       version: clip.version,
@@ -81,16 +82,19 @@ export async function PUT(req: Request, ctx: { params: Promise<{ id: string }> }
     return apiErr(400, 'title too long');
   }
 
-  // 请求侧的格式语法先判一次；**省略时必须把 undefined 传下去** ——
-  // service 要据此保留库里的原格式（传 'markdown' 会变成一次静默转换）。
-  const requestedWrite = resolveClipContentFormat(data.format);
-  if (!requestedWrite.ok) return apiErr(400, clipContentWriteMessage(requestedWrite.reason));
+  // 已废弃的 `format` 只校验白名单（拼错的值照旧 400），不参与存储；正文格式由
+  // 正文自己决定（见 clipboard-service.checkRequestedClipFormat）。
+  const requestedFormat = checkRequestedClipFormat(data.format);
+  if (!requestedFormat.ok) {
+    return apiErr(400, clipContentWriteMessage(requestedFormat.reason), {
+      error_code: clipContentWriteErrorCode(requestedFormat.reason),
+    });
+  }
 
   const result = await updateClip(id, user.id, {
     title,
     content,
     publicity,
-    format: data.format,
   });
   if (!result.ok) {
     if (result.reason === 'forbidden') return apiErr(403, '您不是该文章作者，无法编辑！');
@@ -98,7 +102,7 @@ export async function PUT(req: Request, ctx: { params: Promise<{ id: string }> }
     // 把它们如实映射成与上面同样的文案，避免被误报成「剪贴板不存在」。
     if (result.reason === 'title_too_long') return apiErr(400, 'title too long');
     if (result.reason === 'content_too_long') return apiErr(400, 'content too long');
-    if (result.reason === 'invalid_format' || result.reason === 'reactive_invalid' || result.reason === 'format_mismatch') {
+    if (result.reason === 'reactive_invalid') {
       return apiErr(400, clipContentWriteMessage(result.reason), {
         error_code: clipContentWriteErrorCode(result.reason),
       });

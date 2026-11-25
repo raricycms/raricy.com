@@ -17,7 +17,7 @@ import { categoryFullPath } from '@/lib/format';
 import { FOCUS_MODE_SETTINGS_HREF } from '@/lib/focus-mode';
 import { resolveFocusHiddenCategoryIds } from '@/lib/focus-service';
 import BlogPersonalSidebar from './BlogPersonalSidebar';
-import BlogCategorySelect from './BlogCategorySelect';
+import BlogCategorySelect, { type BlogCategoryOption } from './BlogCategorySelect';
 import BlogFilters from './BlogFilters';
 import SearchForm from './SearchForm';
 import BlogSort from './BlogSort';
@@ -158,6 +158,13 @@ export default async function BlogListPage({
     return p.size ? `/blog?${p}` : '/blog';
   })();
 
+  // 栏目下拉吃通用选项（value / name / children）—— 目录页的筛选值是栏目 slug。
+  const categoryOptions: BlogCategoryOption[] = pruneFocusCategories(categories, focusHiddenSet).map((category) => ({
+    value: category.slug,
+    name: category.name,
+    children: category.children.map((child) => ({ value: child.slug, name: child.name })),
+  }));
+
   return (
     <>
       <section className="blogs-hero">
@@ -185,7 +192,7 @@ export default async function BlogListPage({
             <BlogFilters>
               <SearchForm
                 key={`${scope}:${currentSlug}:${sp.featured}:${sp.search}`}
-                currentSlug={currentSlug}
+                category={currentSlug}
                 featured={featuredFilter === true}
                 featuredValue={sp.featured === '0' || sp.featured === '1' ? sp.featured : undefined}
                 scope={scope}
@@ -194,8 +201,8 @@ export default async function BlogListPage({
                 sort={rawSort}
               />
               <BlogCategorySelect
-                categories={pruneFocusCategories(categories, focusHiddenSet)}
-                currentSlug={currentSlug}
+                categories={categoryOptions}
+                currentValue={currentSlug}
                 featured={sp.featured}
               />
               {/* 空结果页也挂载排序偏好的恢复 effect。 */}

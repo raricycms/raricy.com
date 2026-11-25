@@ -57,7 +57,7 @@ function daysBefore(endDay: string, n: number): string[] {
   return Array.from({ length: n }, (_, i) => new Date(base - i * 86400000).toISOString().slice(0, 10));
 }
 
-describe('全站每日选取与90天去重', () => {
+describe('全站每日选取与经典循环', () => {
   it('不签到也能读今日一言（P02 解耦）；读取不会代签或发鱼', async () => {
     const user = await makeUser({ role: 'core' });
     await builtin();
@@ -213,20 +213,20 @@ describe('共鸣：每人每句一生一次、全额投喂、匿名与回滚', (
     expect(dto).toMatchObject({ resonated: true, favorited: true, can_resonate: false });
     await expectLedgerConsistent();
   });
-  it('90 天后再入选同一句：仍显示已共鸣、不能再付一次', async () => {
+  it('经典再次入选同一句：仍显示已共鸣、不能再付一次', async () => {
     const reader = await makeUser({ role: 'core' });
-    const quote = await builtin('九十天后再次入选');
+    const quote = await builtin('经典再次入选');
     await publish('2026-10-21', quote.id);
     await checkIn(reader.id);
     expect((await getTodayQuote(reader.id)).quote?.id).toBe(quote.id);
     await resonateQuote(quote.id, reader.id);
 
-    vi.setSystemTime(new Date('2027-01-20T02:00:00Z')); // 第 91 天（UTC+8 的 2027-01-20）
-    expect(todayStr()).toBe('2027-01-20');
+    vi.setSystemTime(new Date('2026-10-22T23:00:00Z')); // UTC+8 的 10-23，同一句经典再次入选
+    expect(todayStr()).toBe('2026-10-23');
     await checkIn(reader.id);
     await ensureEditionForDay(todayStr());
     const again = await getTodayQuote(reader.id);
-    expect(again.day).toBe('2027-01-20');
+    expect(again.day).toBe('2026-10-23');
     expect(again.quote).toMatchObject({ id: quote.id, resonated: true, can_resonate: false, resonance_count: 1 });
     expect(await resonateQuote(quote.id, reader.id)).toMatchObject({ already_resonated: true, resonance_count: 1 });
     expect(await prisma.dailyQuoteResonance.count()).toBe(1);
@@ -388,7 +388,7 @@ describe('投稿审核与私密一言集', () => {
     await submitQuote(author.id, editInput);
     const before = await prisma.dailyQuote.findUniqueOrThrow({ where: { id: original.id } });
     for (const invalid of [
-      { content: '' }, { content: '字'.repeat(51) }, { content: '包含\u200b隐藏字符' },
+      { content: '' }, { content: '字'.repeat(101) }, { content: '包含\u200b隐藏字符' },
       { content: '？！' }, { category: '无效类型' }, { signature: 'invalid' },
       { source_type: 'invalid' }, { source_name: '' }, { source_name: '字'.repeat(101) },
     ]) {
@@ -404,15 +404,15 @@ describe('投稿审核与私密一言集', () => {
     await expect(editQuoteSubmission(original.id, author.id, editInput)).rejects.toMatchObject({ status: 403 });
   });
 
-  it('50字按 Unicode 字符计数；引用必填出处；未通过不永久占位，已收录内容仍去重', async () => {
+  it('100字按 Unicode 字符计数；引用必填出处；未通过不永久占位，已收录内容仍去重', async () => {
     const user = await makeUser({ role: 'core' }); const admin = await makeUser({ role: 'admin' });
     const input = { category: '治愈', signature: 'anonymous', source_type: 'original' };
-    await expect(submitQuote(user.id, { ...input, content: '字'.repeat(51) })).rejects.toMatchObject({ status: 400 });
+    await expect(submitQuote(user.id, { ...input, content: '字'.repeat(101) })).rejects.toMatchObject({ status: 400 });
     await expect(submitQuote(user.id, { ...input, content: '引用内容', source_type: 'quotation' })).rejects.toMatchObject({ status: 400 });
-    const quote = await submitQuote(user.id, { ...input, content: '好'.repeat(49) + '𠮷' });
+    const quote = await submitQuote(user.id, { ...input, content: '好'.repeat(99) + '𠮷' });
     await reviewQuote(quote.id, admin.id, 'reject', '不予收录');
     await expect(reviewQuote(quote.id, admin.id, 'approve', '')).rejects.toMatchObject({ status: 409 });
-    await expect(submitQuote(user.id, { ...input, content: '好'.repeat(49) + '𠮷！' })).rejects.toMatchObject({ status: 400 });
+    await expect(submitQuote(user.id, { ...input, content: '好'.repeat(99) + '𠮷！' })).rejects.toMatchObject({ status: 400 });
     const smaller = await submitQuote(user.id, { ...input, content: '同一句话。' });
     await reviewQuote(smaller.id, admin.id, 'reject', '不合适');
     __resetRateLimitStore();

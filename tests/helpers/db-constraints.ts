@@ -28,17 +28,27 @@ const APPEAL_PENDING_SQL_REL = path.join(
   '43_appeal_pending_unique',
   'migration.sql'
 );
+// 46 把 format 列退役后，39 那条 content 失效触发器引用了不存在的列；测试库要在
+// 装完 39 之后再套一次替换（与真实迁移执行的是同一条语句）。
+const SEARCH_TRIGGER_FIX_SQL_REL = path.join(
+  'prisma',
+  'migrations',
+  '46_drop_content_format',
+  'search-triggers.sql'
+);
 
 /** 手写 SQL 的绝对路径（repoRoot = 仓库根）。 */
 export function constraintSqlPaths(repoRoot: string): {
   constraintSql: string;
   searchSql: string;
   appealPendingSql: string;
+  searchTriggerFixSql: string;
 } {
   return {
     constraintSql: path.resolve(repoRoot, CONSTRAINT_SQL_REL),
     searchSql: path.resolve(repoRoot, SEARCH_SQL_REL),
     appealPendingSql: path.resolve(repoRoot, APPEAL_PENDING_SQL_REL),
+    searchTriggerFixSql: path.resolve(repoRoot, SEARCH_TRIGGER_FIX_SQL_REL),
   };
 }
 
@@ -52,13 +62,15 @@ export function installTestConstraints(dbPath: string, repoRoot: string) {
   if (!dbPath.replace(/\\/g, '/').includes('/tests/.tmp/')) {
     throw new Error('拒绝向非测试库安装约束');
   }
-  const { constraintSql, searchSql, appealPendingSql } = constraintSqlPaths(repoRoot);
+  const { constraintSql, searchSql, appealPendingSql, searchTriggerFixSql } =
+    constraintSqlPaths(repoRoot);
   // 直取内置模块，避免 Playwright 的 require/ESM 加载钩子将实验模块当作源码。
   const { DatabaseSync } = process.getBuiltinModule('node:sqlite') as typeof import('node:sqlite');
   const db = new DatabaseSync(dbPath);
   try {
     db.exec(fs.readFileSync(constraintSql, 'utf8'));
     db.exec(fs.readFileSync(searchSql, 'utf8'));
+    db.exec(fs.readFileSync(searchTriggerFixSql, 'utf8'));
     db.exec(fs.readFileSync(appealPendingSql, 'utf8'));
   } finally {
     db.close();

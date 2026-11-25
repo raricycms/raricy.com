@@ -3,11 +3,14 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 
-export default function AdminDailyQuoteReview({ id, status, version }: { id: string; status: string; version: string }) {
+export default function AdminDailyQuoteReview({ id, status, version, deleted = false }: {
+  id: string; status: string; version: string; deleted?: boolean;
+}) {
   const router = useRouter();
   const [reason, setReason] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+
   async function review(action: string) {
     if (busy) return;
     setBusy(true); setError('');
@@ -20,6 +23,32 @@ export default function AdminDailyQuoteReview({ id, status, version }: { id: str
     } catch (cause) { setError(cause instanceof Error ? cause.message : '审核失败'); }
     finally { setBusy(false); }
   }
+
+  /** 删除 / 恢复都不需要正文版本：删除只作用于「未通过」，恢复只作用于已删除的墓碑行。 */
+  async function mutate(url: string, method: 'DELETE' | 'POST') {
+    if (busy) return;
+    setBusy(true); setError('');
+    try {
+      const response = await fetch(url, { method });
+      if (!response.ok) throw new Error((await response.json()).message || '操作失败');
+      router.refresh();
+    } catch (cause) { setError(cause instanceof Error ? cause.message : '操作失败'); }
+    finally { setBusy(false); }
+  }
+
+  if (status === 'rejected') {
+    return <div className="daily-quote-form">
+      <div className="daily-quote-card__actions">
+        {deleted
+          ? <button type="button" className="daily-quote-primary" disabled={busy}
+              onClick={() => void mutate(`/api/admin/daily-quotes/${encodeURIComponent(id)}/restore`, 'POST')}>恢复</button>
+          : <button type="button" className="daily-quote-primary" disabled={busy}
+              onClick={() => void mutate(`/api/admin/daily-quotes/${encodeURIComponent(id)}`, 'DELETE')}>删除</button>}
+      </div>
+      {error && <p className="daily-quote-error" role="alert">{error}</p>}
+    </div>;
+  }
+
   if (status !== 'pending' && status !== 'approved') return null;
   return <div className="daily-quote-form">
     <label>审核说明{status === 'pending' ? '（拒绝时必填）' : '（下架时必填）'}

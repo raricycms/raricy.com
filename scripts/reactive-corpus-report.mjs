@@ -259,9 +259,14 @@ async function readDbDocuments(dbPath) {
     if (hasBlogs) {
       const contentColumns = tableColumns(db, 'blog_contents');
       const blogColumns = tableColumns(db, 'blogs');
-      const formatExpr = contentColumns.has('format')
-        ? 'bc.format AS format'
-        : 'NULL AS format';
+      // 正文格式由正文行派生：syntax_version 非 NULL = 增强语法（库内已无 format 列；
+      // 旧库仍可能只有 format，两种都认，避免旧库上把增强语法误报成「声明 Markdown」）。
+      const formatSignal = contentColumns.has('syntax_version') || contentColumns.has('format');
+      const formatExpr = contentColumns.has('syntax_version')
+        ? "CASE WHEN bc.syntax_version IS NOT NULL THEN 'reactive' ELSE 'markdown' END AS format"
+        : contentColumns.has('format')
+          ? 'bc.format AS format'
+          : 'NULL AS format';
       const deletedFilter = blogColumns.has('deleted_at')
         ? ' AND b.deleted_at IS NULL'
         : '';
@@ -278,7 +283,7 @@ async function readDbDocuments(dbPath) {
           id: row.id,
           kind: 'blog',
           content: row.content,
-          ...(contentColumns.has('format') ? { format: row.format } : {}),
+          ...(formatSignal ? { format: row.format } : {}),
         });
       }
     }
@@ -286,9 +291,12 @@ async function readDbDocuments(dbPath) {
     if (hasClips) {
       const contentColumns = tableColumns(db, 'clip_text');
       const clipColumns = tableColumns(db, 'clipboards');
-      const formatExpr = contentColumns.has('format')
-        ? 'ct.format AS format'
-        : 'NULL AS format';
+      const formatSignal = contentColumns.has('syntax_version') || contentColumns.has('format');
+      const formatExpr = contentColumns.has('syntax_version')
+        ? "CASE WHEN ct.syntax_version IS NOT NULL THEN 'reactive' ELSE 'markdown' END AS format"
+        : contentColumns.has('format')
+          ? 'ct.format AS format'
+          : 'NULL AS format';
       const deletedFilter = clipColumns.has('deleted_at')
         ? ' AND c.deleted_at IS NULL'
         : '';
@@ -305,7 +313,7 @@ async function readDbDocuments(dbPath) {
           id: row.id,
           kind: 'clipboard',
           content: row.content,
-          ...(contentColumns.has('format') ? { format: row.format } : {}),
+          ...(formatSignal ? { format: row.format } : {}),
         });
       }
     }

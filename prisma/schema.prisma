@@ -205,6 +205,8 @@ model DailyQuote {
   reviewedAt   DateTime? @map("reviewed_at")
   revision     Int      @default(1)
   firstSelectedDay String? @map("first_selected_day")
+  /// 管理员删除「审核未通过」投稿的软删标记；读路径一律排除，恢复即置回 NULL。
+  deletedAt    DateTime? @map("deleted_at")
 
   submitter  User? @relation("DailyQuoteSubmitter", fields: [submitterId], references: [id])
   reviewer   User? @relation("DailyQuoteReviewer", fields: [reviewerId], references: [id])
@@ -242,7 +244,7 @@ model DailyQuoteRevision {
   @@map("daily_quote_revisions")
 }
 
-/// UTC+8 日历日的全站唯一选择。保留所有历史，包括旧社区重复及经典循环。
+/// UTC+8 日历日的全站唯一选择。保留所有历史，包括经典循环产生的重复期次。
 model DailyQuoteEdition {
   day       String   @id
   quoteId   String   @map("quote_id")
@@ -258,7 +260,7 @@ model DailyQuoteEdition {
 /// 【它不再是权限判据】2026-10 起「共鸣资格」由 `DailyQuoteResonanceOnce` 决定 ——
 /// 每家用户对每句一言一生最多一次。这张表只服务历史审计（哪天共鸣的、付了多少），
 /// 新增写入只可能发生在「首次共鸣」那一刻，所以日期列不再进任何去重判断。
-/// 三元主键保留原样：存量里可能已有跨日的多条记录（旧规则明确允许），不能删。
+/// 三元主键保留原样：存量里可能已有跨日的多条记录，不能删。
 model DailyQuoteResonance {
   quoteId   String   @map("quote_id")
   userId    String   @map("user_id")
@@ -275,10 +277,10 @@ model DailyQuoteResonance {
 
 /// 累计共鸣资格：同一用户对同一句一言**一生最多一次**。
 ///
-/// 【为什么另起一张表而不是给明细加二元唯一索引】旧规则是 (quote, user, day) 三元
-/// 去重 —— 换日、取消收藏、90 天后再次入选都能再共鸣一次。存量里若已存在跨日重复，
-/// 直接加二元唯一索引会让迁移失败；删掉重复明细又会丢掉真实行为记录与历史转账的
-/// 对应关系。所以明细原样保留，这张表只负责「资格 / 共鸣人数」这一件事。
+/// 【为什么另起一张表而不是给明细加二元唯一索引】明细按 (quote, user, day) 记录，
+/// 同一句同一人可以有多行；存量里若已存在跨日重复，直接加二元唯一索引会让迁移失败，
+/// 删掉重复明细又会丢掉真实行为记录与历史转账的对应关系。所以明细原样保留，这张表
+/// 只负责「资格 / 共鸣人数」这一件事。
 ///
 /// 回填取每组最早的明细时间（见迁移 `37_daily_quote_resonance_once`）；此后新共鸣
 /// 在同一事务里写这一行 + 明细行 + 两侧记账。**读本人状态与统计人数都只查这张表。**
@@ -417,12 +419,10 @@ model BlogContent {
   blogId    String    @id @map("blog_id")
   content   String
   updatedAt DateTime? @map("updated_at")
-  // 正文语言：'markdown' | 'reactive'。默认 markdown —— 存量行不做任何内容改写。
-  // 白名单与写入闸门在 src/lib/content-format.ts（零依赖，客户端表单也要读）。
-  // 未识别的值**不能**当成 markdown：写入一律拒绝、读取按不可信处理。
-  format    String    @default("markdown")
-  // 仅 format='reactive' 时有意义：写入时的语法版本（LOCAL_SYNTAX_VERSION）。
-  // 它只用于升级审计与迁移提示，**不是渲染开关**。
+  // 正文里有没有增强语法，**只有这一个真相**：非 NULL = 写入时被识别为 Reactive
+  // （值是当时的 LOCAL_SYNTAX_VERSION），NULL = 纯 Markdown。
+  // 对外的 `format` 字段由它派生（见 src/lib/content-format.ts），不再单独存列。
+  // 它只用于升级审计与迁移提示，**不是渲染开关**（渲染只认源码 + 编译器）。
   syntaxVersion String? @map("syntax_version")
 
   blog Blog @relation(fields: [blogId], references: [id])
@@ -658,8 +658,8 @@ model ClipText {
   clipId    String    @id @map("clip_id")
   content   String
   updatedAt DateTime? @map("updated_at")
-  // 与 BlogContent 同形：'markdown' | 'reactive'，默认 markdown；未识别的值不猜。
-  format    String    @default("markdown")
+  // 与 BlogContent 同形：非 NULL = 写入时含增强语法，NULL = 纯 Markdown；
+  // 对外的 `format` 由它派生，不再单独存列。
   syntaxVersion String? @map("syntax_version")
 
   clipboard ClipBoard @relation(fields: [clipId], references: [id])

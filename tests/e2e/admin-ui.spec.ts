@@ -15,15 +15,14 @@ test.describe('管理面板操作', () => {
     await loginViaApi(page, SEED_USERS.owner.username);
     await page.goto('/admin/blogs', { waitUntil: 'domcontentloaded' });
 
-    const host = page.locator('.expand-select', {
-      has: page.locator('#article-category-filter'),
-    });
-    await host.locator('.expand-select__toggle').click();
-    await host.getByRole('option', { name: SEED_CATEGORY.name, exact: true }).click();
+    // 与 /blog 目录共用同一个栏目下拉组件：选项是按钮，选中即跳转。
+    const host = page.locator('.blog-category-select');
+    await host.locator('.blog-category-select__toggle').click();
+    await host.getByRole('button', { name: SEED_CATEGORY.name, exact: true }).click();
 
-    // 这是「选中即提交」的筛选：值靠隐藏 input 同步写入，再 requestSubmit。
+    // 这是「选中即提交」的筛选：值靠 router.push 写进 URL。
     await expect(page).toHaveURL(/[?&]category=\d+(?:&|$)/);
-    await expect(page.locator('#article-category-filter')).toContainText(SEED_CATEGORY.name);
+    await expect(host.locator('.blog-category-select__toggle')).toContainText(SEED_CATEGORY.name);
   });
 
   test('文章行：可勾选，选中浮出批量底座，取消后底座收起', async ({ page }) => {

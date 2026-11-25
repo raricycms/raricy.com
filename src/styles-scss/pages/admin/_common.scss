@@ -154,8 +154,11 @@
 
 // ---- 工具栏（筛选 / 搜索）----
 // 胶囊底座 + 吸顶，几何对齐博客目录的 .blog-filters：控件统一高 44px。
+// 文章管理页的搜索框与栏目下拉直接复用博客目录的组件（SearchForm /
+// BlogCategorySelect），所以它们的定高与宽度也读博客那一套变量。
 .admin-toolbar {
   --admin-control-height: 44px;
+  --filter-control-height: var(--admin-control-height);
   position: sticky;
   top: calc(var(--navbar-height) + 12px);
   z-index: 30;
@@ -168,14 +171,31 @@
   border-radius: 999px;
   background: var(--color-background-card);
   animation: admin-rise v.$motion-duration v.$motion-easing backwards;
-}
 
-// ExpandSelect（通用下拉）的高度走自己的变量：外壳按它算曲率，所以不能只改
-// min-height，否则外壳会与字段盒差一截。工具栏按控件档（44），其余字段同档。
-.admin-toolbar__select {
-  flex: 0 1 210px;
-  min-width: 0;
-  --expand-select-height: var(--admin-control-height);
+  // 目录的搜索表单在 /blog 里被限宽 520px（右栏窄），这里让它吃掉工具栏余量。
+  .search-form {
+    flex: 1 1 260px;
+    max-width: none;
+    min-width: 0;
+  }
+
+  .search-field {
+    height: var(--admin-control-height);
+  }
+
+  .search-input {
+    height: 100%;
+    padding-block: 0;
+  }
+
+  .search-clear-btn {
+    padding: 8px 0;
+  }
+
+  // 宽度由组件水合后量出来写进 CSS 变量，flex 只负责不让它被压扁。
+  .blog-category-select {
+    flex: none;
+  }
 }
 
 .admin-toolbar__button {
@@ -868,8 +888,9 @@
     flex-basis: 100%;
   }
 
-  .admin-toolbar__select {
-    flex: 1 1 180px;
+  // 目录的搜索表单在窄屏独占一行，与 /blog 的 .blog-filters 同一档。
+  .admin-toolbar .search-form {
+    flex-basis: 100%;
   }
 
   .admin-toolbar__button {

@@ -4,14 +4,14 @@ import { compileReactiveSource } from '@/lib/reactive/compile';
 import { resolveReadRender, type ReadRenderInput } from '@/lib/reactive/read-render';
 const compileMock = vi.mocked(compileReactiveSource);
 afterEach(() => { vi.resetAllMocks(); });
-const input: ReadRenderInput = { source: '正文', format: 'markdown', viewer: null, mode: 'external' };
+const input: ReadRenderInput = { source: '正文', viewer: null, mode: 'external' };
 function compiled(ok = true) {
   return { result: ok ? { ok: true, document: { nodes: [] }, diagnostics: [] } : { ok: false, diagnostics: [{ code: 'local.structure.children' }] }, hostData: {}, compileMs: 3, cacheHit: false } as never;
 }
 describe('按需渲染源码（reactive 是唯一正文渲染路径）', () => {
-  it.each(['markdown', 'reactive'])('%s 源文都按当前编译器编译出可交互正文', async (format) => {
+  it('源文始终按当前编译器编译出可交互正文', async () => {
     compileMock.mockResolvedValue(compiled());
-    const result = await resolveReadRender({ ...input, format });
+    const result = await resolveReadRender(input);
     expect(result.choice.renderer).toBe('reactive');
     expect(compileMock).toHaveBeenCalledTimes(1);
     expect(result.bundle?.result.ok).toBe(true);
@@ -23,13 +23,9 @@ describe('按需渲染源码（reactive 是唯一正文渲染路径）', () => {
     expect(compileMock.mock.calls[0][0]).toMatchObject({ mode: 'expand', viewer: { id: 'alice' } });
     expect(compileMock.mock.calls[1][0]).toMatchObject({ mode: 'external', viewer: null });
   });
-  it('未知格式不读取或编译源码', async () => {
-    expect((await resolveReadRender({ ...input, format: 'oops' })).failure).toBe('invalid-format');
-    expect(compileMock).not.toHaveBeenCalled();
-  });
   it('坏文章只返回 unavailable，不影响其它文章', async () => {
     compileMock.mockResolvedValueOnce(compiled(false)).mockResolvedValueOnce(compiled());
-    const broken = await resolveReadRender({ ...input, format: 'reactive' });
+    const broken = await resolveReadRender(input);
     expect(broken.choice).toEqual({ renderer: 'unavailable', reason: 'compile' });
     expect(broken.failure).toBe('compile');
     expect((await resolveReadRender({ ...input, source: '另一篇' })).choice.renderer).toBe('reactive');

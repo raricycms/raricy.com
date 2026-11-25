@@ -20,26 +20,25 @@ describe('公开正文索引', () => {
     }
   });
   it('只索引可读文字，不收引用、隐藏状态、实现代码或失败源码', async () => {
-    const r=await publicBodyText('<const name="secret" value="{{ \'HiddenSentinel\' }}" />\n\n可见静态段落 [@AbCd1234]\n\n<if when="{{ false }}">HiddenChild</if>','reactive');
+    const r=await publicBodyText('<const name="secret" value="{{ \'HiddenSentinel\' }}" />\n\n可见静态段落 [@AbCd1234]\n\n<if when="{{ false }}">HiddenChild</if>');
     expect(r.text).toContain('可见静态段落');
     for(const secret of ['HiddenSentinel','HiddenChild','AbCd1234','secret','when']) expect(r.text).not.toContain(secret);
-    expect(await publicBodyText('<input bind="broken" type="nonsense" />','weird')).toEqual({text:'',status:'missing'});
     // 普通容器组件的可见正文要进搜索（只跳过 computed/const/validation/宿主组件）。
-    expect((await publicBodyText('<panel title="面板">面板可见文字</panel>','reactive')).text).toContain('面板可见文字');
-    const details = await publicBodyText('<details open><summary>折叠标题</summary>折叠正文</details>', 'markdown');
+    expect((await publicBodyText('<panel title="面板">面板可见文字</panel>')).text).toContain('面板可见文字');
+    const details = await publicBodyText('<details open><summary>折叠标题</summary>折叠正文</details>');
     expect(details.text).toContain('折叠标题');
     expect(details.text).toContain('折叠正文');
     // 历史媒体 token 是内部协议，不以 `媒体:xxxx` 混进搜索正文。
-    const media = await publicBodyText('<video src="https://example.com/a.mp4"></video>前文正文','reactive');
+    const media = await publicBodyText('<video src="https://example.com/a.mp4"></video>前文正文');
     expect(media.text).toContain('前文正文');
     expect(media.text).not.toContain('媒体:');
     // R3-105：索引编译是同步的 —— 超语法预算的病态正文直接记 missing（metadata-only
     // 降级），不进入超线性 compileLocal。
-    expect(await publicBodyText('{{ '.repeat(2_000), 'reactive')).toEqual({ text: '', status: 'missing' });
+    expect(await publicBodyText('{{ '.repeat(2_000))).toEqual({ text: '', status: 'missing' });
   });
-  it('编辑、改格式、公开/撤回、删除/恢复同步更新；失效旧行不可泄露', async () => {
+  it('编辑、公开/撤回、删除/恢复同步更新；失效旧行不可泄露', async () => {
     const u=await makeUser({role:'core'});
-    const data={title:'普通标题',description:'简介',content:'旧正文山风',categoryId:null,visibility:'public' as const,format:'markdown' as const};
+    const data={title:'普通标题',description:'简介',content:'旧正文山风',categoryId:null,visibility:'public' as const};
     const id=await createBlog(u.id,data);
     expect((await listPublicBlogs({search:'旧正文山风'})).total).toBe(1);
     await updateBlog(id,{...data,content:'新的正文海风'},u.id);
@@ -77,10 +76,9 @@ describe('公开正文索引', () => {
     expect(old.total).toBe(1); expect(old.blogs[0].snippet).toBeNull();
   });
   it('部分索引缺失（body_status=missing）→ searchAvailability=partial，仍可按标题搜到', async () => {
-    // 正文编译失败（未知格式）时 sync 会落 body_status='missing'：该篇仍在公开集合里，
+    // 正文编译失败时 sync 会落 body_status='missing'：该篇仍在公开集合里，
     // 但正文不可查 —— 这正是 UI 需要显示「部分文章只能按标题搜」的降级态（R3-189 ②）。
-    const b = await makeBlog({ visibility: 'public', title: '部分索引哨兵', content: '不可编译正文' });
-    await prisma.blogContent.update({ where: { blogId: b.id }, data: { format: 'weird-format' } });
+    const b = await makeBlog({ visibility: 'public', title: '部分索引哨兵', content: '{{ '.repeat(2_000) });
     await syncPublicBlogSearch(b.id);
 
     const r = await listPublicBlogs({ search: '部分索引哨兵' });

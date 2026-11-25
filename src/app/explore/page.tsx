@@ -17,7 +17,7 @@ import { categoryFullPath } from '@/lib/format';
 // 这些文件不是 Next 的特殊文件，不会被当成路由。
 import BlogPersonalSidebar from '@/app/blog/BlogPersonalSidebar';
 import BlogFilters from '@/app/blog/BlogFilters';
-import BlogCategorySelect from '@/app/blog/BlogCategorySelect';
+import BlogCategorySelect, { type BlogCategoryOption } from '@/app/blog/BlogCategorySelect';
 import SearchForm from '@/app/blog/SearchForm';
 import SitePager from '@/app/components/SitePager';
 import ScrollSnap from '@/app/components/ScrollSnap';
@@ -161,6 +161,12 @@ export default async function ExplorePage({
   const publicCategories = categories
     .map((c) => ({ ...c, children: c.children.filter((x) => facets.has(x.id)) }))
     .filter((c) => facets.has(c.id) || c.children.length > 0);
+  // 栏目下拉吃通用选项（value / name / children）—— 对外列表的筛选值同样是 slug。
+  const categoryOptions: BlogCategoryOption[] = publicCategories.map((category) => ({
+    value: category.slug,
+    name: category.name,
+    children: category.children.map((child) => ({ value: child.slug, name: child.name })),
+  }));
 
   const qs = (p: number) => {
     const params = new URLSearchParams();
@@ -215,7 +221,7 @@ export default async function ExplorePage({
               <SearchForm
                 key={`${category}:${search ?? ''}`}
                 basePath="/explore"
-                currentSlug={category}
+                category={category}
                 featured={false}
                 search={search ?? ''}
                 clearHref={clearHref}
@@ -225,8 +231,8 @@ export default async function ExplorePage({
               <BlogCategorySelect
                 basePath="/explore"
                 showFeatured={false}
-                categories={publicCategories}
-                currentSlug={category}
+                categories={categoryOptions}
+                currentValue={category}
               />
             </BlogFilters>
             {result === null ? (

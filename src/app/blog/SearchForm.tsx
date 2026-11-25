@@ -1,13 +1,14 @@
 'use client';
 
+// 博客搜索表单 —— 站内 /blog、对外 /explore 与文章管理（/admin/blogs）共用：
+// 胶囊输入框 + 内嵌「搜索」按钮，有搜索词时右侧给「清除」。
+// 空搜索时拦截提交，去掉 search 参数并保留其他筛选。
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import type { FormEvent } from 'react';
 
-// 博客搜索表单 — 搜索组的一套类名（search-form / search-field / search-input）
-// 空搜索时拦截，去掉 search 参数并保留其他筛选。
 export default function SearchForm({
-  currentSlug,
+  category,
   featured,
   search,
   clearHref,
@@ -15,8 +16,10 @@ export default function SearchForm({
   scope,
   featuredValue,
   basePath = '/blog',
+  placeholder = '搜索标题、作者、简介、正文...',
 }: {
-  currentSlug: string | null;
+  /** 当前筛选的栏目值（目录页是 slug，文章管理是 id）；会随搜索作为隐藏字段带走。 */
+  category?: string | null;
   featured: boolean;
   search: string;
   clearHref: string;
@@ -26,13 +29,15 @@ export default function SearchForm({
   featuredValue?: string;
   /**
    * 表单提交到哪个列表页（`action` 与空搜索时的回退跳转都用它）。
-   * `/explore`（对外公开列表）复用本组件，传它自己的路径；默认 `/blog`。
+   * `/explore`（对外公开列表）与 `/admin/blogs` 复用本组件，传它自己的路径；默认 `/blog`。
    *
    * ⚠️ 两处都要用 basePath：只改 `action` 漏改 `router.push` 的后果是
    * 「清空搜索框回车」把站外访客**甩到 core+ 的 /blog 上**（跳登录页），
    * 而带词搜索却正常 —— 一个只在清空时才现形、且看起来像「偶发」的 bug。
    */
   basePath?: string;
+  /** 搜索范围因页而异（目录页含正文，文章管理只搜标题），占位提示随调用方给。 */
+  placeholder?: string;
 }) {
   const router = useRouter();
 
@@ -41,7 +46,7 @@ export default function SearchForm({
     if (input && input.value.trim() === '') {
       e.preventDefault();
       const params = new URLSearchParams();
-      if (currentSlug) params.set('category', currentSlug);
+      if (category) params.set('category', category);
       if (featuredValue) params.set('featured', featuredValue);
       else if (featured) params.set('featured', '1');
       if (scope && scope !== 'all') params.set('scope', scope);
@@ -58,7 +63,7 @@ export default function SearchForm({
       className="search-form"
       onSubmit={onSubmit}
     >
-      {currentSlug && <input type="hidden" name="category" value={currentSlug} />}
+      {category && <input type="hidden" name="category" value={category} />}
       {(featuredValue || featured) && <input type="hidden" name="featured" value={featuredValue ?? '1'} />}
       {scope && scope !== 'all' && <input type="hidden" name="scope" value={scope} />}
       {sort && <input type="hidden" name="sort" value={sort} />}
@@ -69,7 +74,7 @@ export default function SearchForm({
           aria-label="搜索文章"
           name="search"
           defaultValue={search}
-          placeholder="搜索标题、作者、简介、正文..."
+          placeholder={placeholder}
           className="search-input"
         />
         <button type="submit" className="search-btn">

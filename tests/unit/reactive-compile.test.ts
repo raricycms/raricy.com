@@ -5,7 +5,7 @@
 //   · 宿主 schema 没生效（`<site-embed>` 变成未知组件 / 诊断满屏）；
 //   · 作者伪造的 `<site-embed>` 被当成真宿主节点（安全边界）；
 //   · 拒绝判据只看 `ok`（HTML / 未知组件 / 数学降级会静默改内容）；
-//   · 缓存键少一段（换个 format 仍命中旧编译）。
+//   · 缓存键少一段（同一份源码 / 选项仍命中旧编译）。
 //
 // 不读源码字符串、不碰数据库：用例里的正文都没有 `[@…]` 引用。
 // ─────────────────────────────────────────────────────────────────────────────
@@ -76,7 +76,6 @@ describe('作者伪造的 <site-embed>', () => {
 
     const outcome = await compileReactiveSource({
       source: `前 ${forged} 后`,
-      format: 'reactive',
       mode: 'external',
       viewer: null,
     });
@@ -182,13 +181,11 @@ describe('compileReactiveSource 缓存', () => {
   it('相同输入命中缓存；键相同', async () => {
     const first = await compileReactiveSource({
       source,
-      format: 'reactive',
       mode: 'external',
       viewer: null,
     });
     const second = await compileReactiveSource({
       source,
-      format: 'reactive',
       mode: 'external',
       viewer: null,
     });
@@ -202,7 +199,6 @@ describe('compileReactiveSource 缓存', () => {
   it('首次编译和缓存命中都返回可跨 RSC 边界的普通数据', async () => {
     const input = {
       source: '<counter bind="n" label="N" initial="2">\n\n当前 {{ n }}',
-      format: 'reactive' as const,
       mode: 'external' as const,
       viewer: null,
     };
@@ -223,30 +219,9 @@ describe('compileReactiveSource 缓存', () => {
     expectPlain(second.result);
   });
 
-  it('format 不再切换编译选项：同一份源码命中同一份编译结果', async () => {
-    const reactive = await compileReactiveSource({
-      source,
-      format: 'reactive',
-      mode: 'external',
-      viewer: null,
-    });
-    const markdown = await compileReactiveSource({
-      source,
-      format: 'markdown',
-      mode: 'external',
-      viewer: null,
-    });
-
-    // markdownBreaks 已统一为 true：format 不再改变选项键，结果可以复用。
-    expect(markdown.cacheHit).toBe(true);
-    expect(markdown.cacheKey).toBe(reactive.cacheKey);
-    expect(stats()).toMatchObject({ hits: 1, misses: 1 });
-  });
-
   it('调用方改自己的结果不会污染缓存', async () => {
     const first = await compileReactiveSource({
       source,
-      format: 'reactive',
       mode: 'external',
       viewer: null,
     });
@@ -254,7 +229,6 @@ describe('compileReactiveSource 缓存', () => {
 
     const second = await compileReactiveSource({
       source,
-      format: 'reactive',
       mode: 'external',
       viewer: null,
     });
@@ -272,7 +246,6 @@ describe('compileReactiveSource 缓存', () => {
 
     const third = await compileReactiveSource({
       source,
-      format: 'reactive',
       mode: 'external',
       viewer: null,
     });

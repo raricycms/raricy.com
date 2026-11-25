@@ -147,7 +147,6 @@ export default async function BlogDetailPage({ params }: { params: Promise<{ id:
   const contentSource = blog.content?.content ?? '';
   const readRender = await resolveReadRender({
     source: contentSource,
-    format: blog.content?.format,
     viewer: member
       ? { id: member.id, role: member.role, archivedAt: member.archivedAt }
       : null,

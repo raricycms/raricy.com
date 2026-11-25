@@ -6,9 +6,6 @@ import {
   getCategoryPostingMeta,
   banActionMessage,
   createBlog,
-  resolveBlogContentFormat,
-  contentWriteFailureMessage,
-  contentWriteErrorCode,
   BLOG_DAILY_LIMIT,
   ALL_SEARCH_FIELDS,
   type SearchField,
@@ -153,16 +150,6 @@ export async function POST(req: Request) {
   const v = await validateBlogData(body);
   if (!v.ok) return apiErr(400, v.message);
 
-  // 内容格式写入闸门（API 层也要判一次；service 层还有同一道 —— 两边都设防）。
-  // 新建省略 format = 默认 markdown；reactive 已开放，但**编译不过就整篇拒绝**（400），
-  // 而不是落库一半 —— 正文与快照必须同生共死，见 publish.ts 与 createBlog。
-  const contentWrite = resolveBlogContentFormat(v.data.format);
-  if (!contentWrite.ok) {
-    return apiErr(400, contentWriteFailureMessage(contentWrite.reason), {
-      error_code: contentWriteErrorCode(contentWrite.reason),
-    });
-  }
-
   // 每日发文上限（20 篇）
   const todayCount = await countBlogsToday(user.id);
   if (todayCount >= BLOG_DAILY_LIMIT) {
@@ -181,8 +168,8 @@ export async function POST(req: Request) {
     fullPath = meta.fullPath;
   }
 
-  // reactive 发布要先编译并生成同版本快照；编译不出来时 service 抛错，
-  // 这里折成 400（不是 500 —— 这是**请求内容**的问题，不是服务器故障）。
+  // 发布前要先编译通过；编译不出来时 service 抛错，这里折成 400（不是 500 ——
+  // 这是**请求内容**的问题，不是服务器故障）。
   let blogId: string;
   try {
     blogId = await createBlog(user.id, v.data);

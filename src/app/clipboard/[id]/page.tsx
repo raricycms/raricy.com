@@ -31,7 +31,6 @@ export default async function ClipDetailPage({ params }: { params: Promise<{ id:
   const contentSource = clip.content ?? '';
   const readRender = await resolveReadRender({
     source: contentSource,
-    format: clip.format,
     viewer: user ? { id: user.id, role: user.role, archivedAt: user.archivedAt } : null,
     mode: 'expand',
     // 与博客正文同一入口：公开收藏夹引用的按 IP 限频需要真实来源 IP（R3-131）。

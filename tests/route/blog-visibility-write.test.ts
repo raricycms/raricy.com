@@ -205,46 +205,30 @@ describe('GET /api/blogs/:id —— 下发 visibility（读-改-写的前提）'
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 内容格式（format）的写入契约 —— route 层
+// 正文格式的写入契约 —— route 层
 //
-// 语义（省略 format = 保留存量；未知值拒绝；reactive 编译失败拒绝；剪贴板同口径）
-// 由 tests/unit/content-format-integration.test.ts 的 resolveBlogContentFormat /
-// resolveClipContentFormat 与 createBlog / updateBlog / createClip / updateClip 用例
-// 完整承担。这里只留 route 独有的两件事：**PUT 省略 format 时的回填接线**（把库里
-// 现值交给闸门）与 **HTTP 400 映射**。
+// 库内**不再存 format**：正文语言由正文自己决定（含增强语法 → syntax_version 非
+// NULL，纯 Markdown → NULL）。请求里那个已废弃的 `format` 只校验白名单（拼错 → 400），
+// 合法值不改变保存结果。
+//
+// 语义（编译失败拒绝、写后 syntax_version 归位）由
+// tests/unit/content-format-integration.test.ts 的 createBlog / updateBlog /
+// createClip / updateClip 用例完整承担。这里只留 route 独有的两件事：HTTP 400 映射
+// 与「format 已废弃但仍校验」这条接线。
 // ─────────────────────────────────────────────────────────────────────────────
 
-const contentFormatOf = async (id: string) => {
+const contentRowOf = async (id: string) => {
   const row = await prisma.blogContent.findUnique({
     where: { blogId: id },
-    select: { content: true, format: true, syntaxVersion: true },
+    select: { content: true, syntaxVersion: true },
   });
   return row;
 };
 
-describe('博客写接口：format 的 HTTP 映射', () => {
-  it('★ PUT 省略 format → 保留库里原值（回填接线；删掉它 paraphrase = 静默降级）', async () => {
-    const author = await makeUser({ role: 'core' });
-    const blog = await makeBlog({ authorId: author.id, content: 'reactive 源码' });
-    await prisma.blogContent.update({
-      where: { blogId: blog.id },
-      data: { format: 'reactive', syntaxVersion: 'local-draft-3' },
-    });
-    await login(author.id);
+const REACTIVE_SOURCE = '<counter bind="n" label="N" initial="1" />';
 
-    const res = await updateBlog(
-      put({ ...base, content: '# 新 reactive\n\n正文' }),
-      ctx(blog.id)
-    );
-    expect(res.status).toBe(200);
-    expect(await contentFormatOf(blog.id)).toMatchObject({
-      content: '# 新 reactive\n\n正文',
-      format: 'reactive',
-      syntaxVersion: 'local-draft-3',
-    });
-  });
-
-  it('POST 未知 format / reactive 无法编译 → 400，且不落库', async () => {
+describe('博客写接口：正文格式的 HTTP 映射', () => {
+  it('★ 未知 format → 400；合法但已废弃的值不改变保存结果', async () => {
     const author = await makeUser({ role: 'core' });
     await login(author.id);
 
@@ -252,43 +236,65 @@ describe('博客写接口：format 的 HTTP 映射', () => {
     expect(unknown.status).toBe(400);
     expect(((await unknown.json()) as { message: string }).message).toContain('内容格式');
 
+    // format 已废弃：不再要求「正文与声明一致」，按正文自己的语言保存。
+    const ok = await createBlog(
+      post({ ...base, content: REACTIVE_SOURCE, format: 'markdown' })
+    );
+    expect(ok.status).toBe(200);
+    const { blog_id: id } = (await ok.json()) as { blog_id: string };
+    expect(await contentRowOf(id)).toMatchObject({ syntaxVersion: 'local-draft-3' });
+  });
+
+  it('POST 正文无法编译 → 400，且不落库', async () => {
+    const author = await makeUser({ role: 'core' });
+    await login(author.id);
+
     const broken = await createBlog(
       post({ ...base, content: '{{ 1 + }}', format: 'reactive' })
     );
     expect(broken.status).toBe(400);
     expect(((await broken.json()) as { message: string }).message).toContain('无法编译');
-
-    // 增强语法写成 markdown：HTTP 必须给**稳定错误码**（前端按码提示，不解析 message）。
-    // 语义在 content-format-integration 里；这里只钉 route 的 error_code 出口。
-    const mismatch = await createBlog(
-      post({
-        ...base,
-        content: '<counter bind="n" label="N" initial="1" />',
-        format: 'markdown',
-      })
-    );
-    expect(mismatch.status).toBe(400);
-    expect((await mismatch.json()) as { error_code?: string }).toMatchObject({
-      error_code: 'content_format_mismatch',
-    });
     expect(await prisma.blog.count()).toBe(0);
+  });
+
+  it('PUT 删光增强语法后 syntax_version 归 NULL', async () => {
+    const author = await makeUser({ role: 'core' });
+    const blog = await makeBlog({ authorId: author.id, content: '纯 Markdown' });
+    await login(author.id);
+
+    const add = await updateBlog(put({ ...base, content: REACTIVE_SOURCE }), ctx(blog.id));
+    expect(add.status).toBe(200);
+    expect(await contentRowOf(blog.id)).toMatchObject({ syntaxVersion: 'local-draft-3' });
+
+    const remove = await updateBlog(put({ ...base, content: '又是纯 Markdown' }), ctx(blog.id));
+    expect(remove.status).toBe(200);
+    expect(await contentRowOf(blog.id)).toMatchObject({
+      content: '又是纯 Markdown',
+      syntaxVersion: null,
+    });
   });
 });
 
-describe('剪贴板写接口：format 的 HTTP 映射', () => {
+describe('剪贴板写接口：正文格式的 HTTP 映射', () => {
   const clipBody = { title: '剪贴板', content: '正文', publicity: true };
 
-  it('PUT 省略 format → 保留原值；reactive 无法编译 → 400 且正文不变', async () => {
+  it('format 已废弃；正文含增强语法时 syntax_version 落版本，编译失败则正文不变', async () => {
     const author = await makeUser({ role: 'core' });
     await login(author.id);
     const created = await createClip(post(clipBody));
     const { id } = (await created.json()) as { id: string };
+    expect(await prisma.clipText.findUnique({ where: { clipId: id } })).toMatchObject({
+      syntaxVersion: null,
+    });
 
-    const ok = await updateClip(put({ ...clipBody, content: '新正文' }), ctx(id));
+    const ok = await updateClip(
+      put({ ...clipBody, content: REACTIVE_SOURCE, format: 'markdown' }),
+      ctx(id)
+    );
     expect(ok.status).toBe(200);
     expect(await prisma.clipText.findUnique({ where: { clipId: id } })).toMatchObject({
-      content: '新正文',
-      format: 'markdown',
+      content: REACTIVE_SOURCE,
+      syntaxVersion: 'local-draft-3',
     });
 
     const broken = await updateClip(
@@ -297,7 +303,7 @@ describe('剪贴板写接口：format 的 HTTP 映射', () => {
     );
     expect(broken.status).toBe(400);
     expect(await prisma.clipText.findUnique({ where: { clipId: id } })).toMatchObject({
-      content: '新正文',
+      content: REACTIVE_SOURCE,
     });
   });
 });

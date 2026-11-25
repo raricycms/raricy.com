@@ -146,24 +146,24 @@ function seedContent(dbPath: string): void {
         ('blog-old', '旧博客', '', 'author', 1700000000000, 0, 'public'),
         ('blog-archived', '归档作者的公开文章', '', 'archived-author', 1700000000000, 0, 'public');
 
-    INSERT INTO blog_contents (blog_id, content, updated_at, format, syntax_version)
+    INSERT INTO blog_contents (blog_id, content, updated_at, syntax_version)
       VALUES
         ('blog-md', '# 公开标题
 
-公开索引标记词', 1700000000000, 'markdown', NULL),
+公开索引标记词', 1700000000000, NULL),
         ('blog-old', '<!-- reactive-md: local-draft-2 -->
 
-旧正文标记词', 1700000000000, 'reactive', 'local-draft-2'),
+旧正文标记词', 1700000000000, 'local-draft-2'),
         ('blog-archived', '# 归档文章
 
-不应进入公开索引', 1700000000000, 'markdown', NULL);
+不应进入公开索引', 1700000000000, NULL);
 
     INSERT INTO clipboards (id, title, author_id, created_at, ignore, publicity)
       VALUES ('clip-old', '旧剪贴板', 'author', 1700000000000, 0, 1);
-    INSERT INTO clip_text (clip_id, content, updated_at, format, syntax_version)
+    INSERT INTO clip_text (clip_id, content, updated_at, syntax_version)
       VALUES ('clip-old', '<!-- reactive-md: local-draft-2 -->
 
-旧剪贴板标记词', 1700000000000, 'reactive', 'local-draft-2');
+旧剪贴板标记词', 1700000000000, 'local-draft-2');
     `
   );
 }

@@ -443,9 +443,12 @@ GET/HEAD/OPTIONS 视为安全方法，不校验（协议闸不受这条影响，
 ### 6.7 Markdown / 内容渲染
 
 **2026-11 起，博客详情与剪贴板详情的正文只走 §6.23 的 ReactiveMD 统一管线**：
-`format` 只表示源码语言（markdown / reactive），两种语言都由同一个引擎解释 ——
+正文里有没有增强语法只由 `syntax_version` 记录（非 NULL = reactive，NULL = 纯
+Markdown），两种语言都由同一个引擎解释 ——
 **reactive 是唯一正文渲染路径**，旧 Markdown 回退管线已整条退役（`REACTIVE_MD_MODE`
 不再被读取；`MarkdownRenderer` / `blog-renderer` / `content-ref-processor` 等已删除）。
+`format` 列已退役（迁移 `46_drop_content_format`）：对外 `format` 由
+`syntax_version` 派生，写请求里那个字段只校验白名单、不参与存储。
 `renderer_override` 列保留在库里（**迁移 `42_retire_residual` 明确保留**：它是对外 bot 契约
 `docs/bot/blog-bot.md` 的 GET 响应字段，退役需产品 / 文档批次），但已不参与任何选择。
 **评论、故事**不走 §6.23；讨论自 2026-11 起复用同一 ReactiveMD 引擎，但有聊天专用的
@@ -822,8 +825,8 @@ disallow（断掉「internal 文章 → 307 → next 参数里带 UUID」那条�
    **不是**在那条路由里加可见性过滤（那会把「站外聚合器能读什么」和「文章是否对外」
    这两件事混在一起）。
 
-**正文语言不改变可见性。** `format`（以及已不参与选择、仅为旧消费者保留的
-`renderer_override` 列）只决定「用哪个引擎解释正文」，
+**正文语言不改变可见性。** `syntax_version`（以及已不参与选择、仅为旧消费者保留的
+`renderer_override` 列）只决定「正文是不是增强语法」，
 档位仍只由 `visibility` 判；对外视图（非 core）进 ReactiveMD 管线时仍按 `external`
 模式取数（见 §6.23 / §7.3）。一篇 `public` 的 reactive 文章对访客照常可读，一篇
 `internal` 的 reactive 文章对访客照常是登录页。不要把「换了渲染器」误当成「放宽了
@@ -846,7 +849,7 @@ disallow（断掉「internal 文章 → 307 → next 参数里带 UUID」那条�
 作默认集合）**一律不作用于这里** —— 对外列表的资格只有一条 `visibility = public`。
 混合它们会直接破坏上面那条同源。
 
-**正文语言同样不参与这个集合**（`format` 只决定渲染引擎，`renderer_override` 已不参与
+**正文语言同样不参与这个集合**（`syntax_version` 只决定渲染分支，`renderer_override` 已不参与
 选择）：对外列表的资格仍然只有
 `visibility = public`，换了正文语言不改变「可发现」。卡片摘要按 `buildBlogExcerpt`
 的格式分派（reactive 走编译后的 AST，仍是纯文本），只影响卡片文字，不影响收录。
@@ -1682,9 +1685,10 @@ MP3 的帧同步要核版本 / 层 / 位速率字段（只判 `0xFF` 打头太�
 首页内容卡按「故事 / 玩具 / 博客 / 工具」排列；讨论入口保留在顶栏。
 游戏清单住 `src/lib/game-catalog.ts`：每款游戏只登记一次，玩法类别、游玩方式与
 启动方式分别描述。**合集可以嵌套**：清单只写 `parentId`，URL 由父链推出来
-（`/game/collections/<父>/<子>`），没有第二份 href 可漂；玩具首页只陈列顶层合集与
-ATÅMAS（益智、单人、原生组件），合集页陈列「直属游戏 + 子合集」，路由是 catch-all
-（`src/app/game/collections/[...slug]/page.tsx`）。顶层「测试」合集
+（`/game/collections/<父>/<子>`），没有第二份 href 可漂；玩具首页只陈列顶层合集、
+ATÅMAS（益智、单人、原生组件）与站外的莱莉卡（收集式卡牌对战，清单里 `external: true`、
+`href` 写完整 URL，卡片新窗口打开 rarica.raricy.com），合集页陈列「直属游戏 + 子合集」，
+路由是 catch-all（`src/app/game/collections/[...slug]/page.tsx`）。顶层「测试」合集
 `/game/collections/test` 收录 Wand demo、Wand demo 2、公共空间、圈地运动、合页 Demo、合页 Demo 2、合页 Demo 3、
 异文 Demo、折光、折光 2 与双影，并挂着手工间子合集 `/game/collections/test/craft`
 （织布机、剪纸、水面印花）；旧的顶层地址 `/game/collections/craft` 永久跳到新路径。
@@ -1963,9 +1967,10 @@ bot 接口，私密夹也能**复制成公开**、能导出 JSON —— 它的�
 #### 社区只选登一次，经典循环备用（迁移 `38_daily_quote_lifecycle`）
 
 社区候选必须审核通过、没有首次选登标记且没有历史 edition，投稿人当前为 core+、未归档、
-未禁言。按审核通过时间和 ID 排序；昨日为社区稿且存在其他作者候选时，先取
-其他作者等待最久的一条。资格暂时不满足只暂停候选，不自动拒稿。社区用完才取内置经典：
-从未使用优先，其次最久未使用，同档随机，可完整循环，不再使用90天冷却规则。
+未禁言。候选按作者分组加权：作者权重为 `log(n+2)`（n = 该作者在池中的稿件数），先按权重
+抽作者，再在该作者名下均匀抽一条；不再按审核时间排队，也不排除昨日作者。资格暂时不满足
+只暂停候选，不自动拒稿。社区用完才取内置经典：
+从未使用优先，其次最久未使用，同档随机，可完整循环。
 「名下有未删除博客」只是参与门槛（`requireQuoteParticipant`），**不是**选登候选条件
 （2026-11 P03 起删除该候选判据）。
 
@@ -2000,6 +2005,11 @@ bot 接口，私密夹也能**复制成公开**、能导出 JSON —— 它的�
 及全部可编辑字段的摘要，事务内同时复核版本与状态，阻止旧页面与改后改回造成的错误审核。
 版本仅向本人和管理员提供；新版本清空当前审核结论，但历史原因保留。审核只记内部审计日志，
 匿名身份及避免回读 JSON 列的处理不变。
+
+审核未通过的稿件可由管理员软删除（`daily_quotes.deleted_at`，迁移 `45_daily_quote_soft_delete`）：
+行仍是 `rejected`，只翻删除标记；审核列表、作者「我的投稿」与所有读口都排除它，正文、版本与
+审核历史保留，管理端「已删除」列表可恢复。删除 / 恢复各写一条内部审计日志，匿名稿打
+`hideTarget`；软删不改变状态，因此不影响活动正文条件唯一索引的覆盖范围。
 
 正文继续规范化哈希去重，但 `content_key` 不再全表唯一。迁移安装活动正文条件唯一索引，
 仅待审、通过和下架占名额；审核未通过及历史快照不永久封锁正文。测试模板、兜底建库与 e2e
@@ -2239,7 +2249,7 @@ Quoted-printable / 哈希 / AES）`legacy: true`，仍指向 `/tool/<slug>` —�
        非 core → forbidden()                     已登录但档位不够 → 原地 403
        core+   → notFound()
   → Server Component 先按 visibility / isCore 判可达，再交给 read-render：
-       resolveReadRender({ format, override, source, viewer, mode })
+       resolveReadRender({ source, viewer, mode })
          mode = core+ ? 'expand' : 'external'
   → 三种结果（data-content-renderer）：
        reactive       → ReactiveDocument（RSC 只传可序列化 document + hostData）
@@ -2252,8 +2262,8 @@ Quoted-printable / 哈希 / AES）`legacy: true`，仍指向 `/tool/<slug>` —�
 ```
 
 ⚠️ **渲染路径不是可见性判定。** `read-render` 只决定「正文怎么编译」，必须在
-`getBlogDetail` 已经判过档位之后调用；反过来，`format`（以及已失效的 `renderer_override`
-列）也不改变
+`getBlogDetail` 已经判过档位之后调用；反过来，正文语言（`syntax_version`，以及已失效的
+`renderer_override` 列）也不改变
 谁能读到这篇文章（§6.11）。
 
 ⚠️ **原始 markdown 是作为 RSC prop 随首屏 payload 下发的** —— 「正文交给客户端渲染」

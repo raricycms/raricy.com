@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { requireAdmin } from '@/lib/guard';
 import { listReviewQuotes, quoteReviewVersion } from '@/lib/daily-quote-service';
-import { QUOTE_STATUSES, QUOTE_STATUS_LABELS } from '@/lib/daily-quote';
+import { QUOTE_REVIEW_FILTERS, QUOTE_REVIEW_FILTER_LABELS } from '@/lib/daily-quote';
 import { ymdhms } from '@/lib/format';
 import AdminPageHeader from '@/app/components/AdminPageHeader';
 import AdminDailyQuoteReview from '@/app/components/AdminDailyQuoteReview';
@@ -19,8 +19,8 @@ export default async function DailyQuoteAdminPage({ searchParams }: { searchPara
   return <>
     <AdminPageHeader title="每日一言审核" />
     <nav className="daily-quote-pagination" aria-label="稿件状态">
-      {QUOTE_STATUSES.map((status) => <Link key={status} href={`/admin/daily-quotes?status=${status}`}
-        className="read-btn" aria-current={result.status === status ? 'page' : undefined}>{QUOTE_STATUS_LABELS[status]}</Link>)}
+      {QUOTE_REVIEW_FILTERS.map((status) => <Link key={status} href={`/admin/daily-quotes?status=${status}`}
+        className="read-btn" aria-current={result.status === status ? 'page' : undefined}>{QUOTE_REVIEW_FILTER_LABELS[status]}</Link>)}
     </nav>
     <p>共 {result.total} 条</p>
     <div className="daily-quote-list">
@@ -31,10 +31,11 @@ export default async function DailyQuoteAdminPage({ searchParams }: { searchPara
         <p>{quote.sourceType === 'original' ? '原创' : `引用自：${quote.sourceName}`}</p>
         <p className="daily-quote-card__hint numeric">{ymdhms(quote.createdAt)}</p>
         {quote.firstSelectedDay && <p className="daily-quote-card__hint numeric">选登于 {quote.firstSelectedDay}</p>}
+        {quote.deletedAt && <p className="daily-quote-card__hint">已删除（软删除，可恢复）</p>}
         {quote.candidate_unavailable && <p className="daily-quote-card__hint">{quote.candidate_unavailable}</p>}
         {quote.reviewReason && <p>审核说明：{quote.reviewReason}</p>}
         {quote.kind === 'community' && <QuoteRevisionHistory revisions={quote.revisions} />}
-        {!isCurrentlyBanned(user) && <AdminDailyQuoteReview id={quote.id} status={quote.status} version={quoteReviewVersion(quote)} />}
+        {!isCurrentlyBanned(user) && <AdminDailyQuoteReview id={quote.id} status={quote.status} version={quoteReviewVersion(quote)} deleted={Boolean(quote.deletedAt)} />}
       </article>)}
       {!result.quotes.length && <p>当前没有这类稿件。</p>}
     </div>

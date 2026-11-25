@@ -10,11 +10,9 @@ import { nowForDb } from './db-time';
 import { generateShortId } from './short-id';
 import {
   CONTENT_WRITE_ERROR_CODES,
-  DEFAULT_CONTENT_FORMAT,
   parseContentFormat,
-  resolveContentWriteFormat,
 } from './content-format';
-import type { ContentFormat, ContentWriteErrorCode } from './content-format';
+import type { ContentWriteErrorCode } from './content-format';
 import { validateContentForPublish } from './reactive/publish';
 
 // 校验上限：标题/正文的上限住在零依赖的 clipboard-limits.ts（客户端表单也要用），
@@ -27,36 +25,25 @@ import { CLIP_CONTENT_MAX, CLIP_TITLE_MAX } from './clipboard-limits';
 export const CLIP_PER_USER_MAX = 200;
 
 /** 正文写入闸门的失败原因（与 blog-service 同形，但两域各自设防）。 */
-export type ClipContentWriteFailure = 'invalid_format' | 'format_mismatch' | 'reactive_invalid';
-
-export type ClipContentWriteGate =
-  | { ok: true; format: ContentFormat }
-  | { ok: false; reason: ClipContentWriteFailure };
+export type ClipContentWriteFailure = 'invalid_format' | 'reactive_invalid';
 
 /**
- * 剪贴板正文的**唯一写入闸门**（createClip / updateClip / 两条写接口都调它）。
- *
- * 与博客侧逐条一致（见 blog-service.resolveBlogContentFormat）：省略 = 保留原值
- * （新建默认 markdown）；非法请求值 / 未知存量值 → 拒绝。
- *
- * reactive 能不能发布不在这里判：它需要保存前语法检查，见 createClip / updateClip。
+ * 请求里那个**已废弃**的 `format` 值只校验白名单、不参与存储（与博客同口径）：
+ * 正文格式由正文自己决定。保留白名单是为了「拼错的值回 400」，不是静默接受。
  */
-export function resolveClipContentFormat(
-  requested: unknown,
-  stored: unknown = undefined
-): ClipContentWriteGate {
-  const current =
-    stored === undefined ? DEFAULT_CONTENT_FORMAT : parseContentFormat(stored);
-  if (current === null) return { ok: false, reason: 'invalid_format' };
-  return resolveContentWriteFormat(requested, current);
+export type ClipContentWriteGate = { ok: true } | { ok: false; reason: ClipContentWriteFailure };
+
+/** 剪贴板正文写入前的请求侧检查（只看废弃字段合不合法）。 */
+export function checkRequestedClipFormat(requested: unknown): ClipContentWriteGate {
+  if (requested === undefined) return { ok: true };
+  return parseContentFormat(requested) === null
+    ? { ok: false, reason: 'invalid_format' }
+    : { ok: true };
 }
 
 /** 写入闸门失败时的对外文案（route 层直接用它，避免两处措辞漂移）。 */
 export function clipContentWriteMessage(reason: ClipContentWriteFailure): string {
   if (reason === 'invalid_format') return '内容格式取值不合法，可选：markdown / reactive';
-  if (reason === 'format_mismatch') {
-    return '正文包含有效 ReactiveMD 语法，但格式为 Markdown；请改用 reactive，或把示例放进代码块';
-  }
   return '正文无法编译渲染，已拒绝发布';
 }
 
@@ -68,11 +55,6 @@ export interface CreateClipInput {
   title: string;
   content: string;
   publicity?: boolean;
-  /**
-   * 正文格式。`unknown` 而不是 `ContentFormat`：service 自己必须校验任何绕过 route
-   * 的调用方（同长度校验的理由）。缺省 = 新建默认 markdown。
-   */
-  format?: unknown;
 }
 
 /** 长度校验失败的原因，与 route 层的 'title too long' / 'content too long' 一一对应。 */
@@ -107,10 +89,6 @@ export async function createClip(
   const lengthErr = validateClipLength(input.title, input.content);
   if (lengthErr) return { ok: false, reason: lengthErr };
 
-  // 写入闸门放在查库之前：非法 / reactive 请求连配额都不该消耗。
-  const write = resolveClipContentFormat(input.format);
-  if (!write.ok) return { ok: false, reason: write.reason };
-
   const count = await prisma.clipBoard.count({ where: { authorId } });
   if (count >= CLIP_PER_USER_MAX) {
     return { ok: false, reason: 'limit' };
@@ -120,19 +98,10 @@ export async function createClip(
   const now = nowForDb();
 
   // 保存前保留既有语法检查；数据库仅写原文和必要元数据。
-  const validation = await validateContentForPublish({
-
-    content: input.content,
-    format: write.format,
-  });
+  // 正文里有没有增强语法全由这次编译判定（syntax_version），不再接受调用方声明。
+  const validation = await validateContentForPublish({ content: input.content });
   if (!validation.ok) {
-    return {
-      ok: false,
-      reason: validation.reason === 'format_mismatch' ? 'format_mismatch' : 'reactive_invalid',
-    };
-  }
-  if (write.format === 'markdown' && validation.detectedFormat === 'reactive') {
-    return { ok: false, reason: 'format_mismatch' };
+    return { ok: false, reason: 'reactive_invalid' };
   }
   const syntaxVersion = validation.syntaxVersion;
 
@@ -148,7 +117,6 @@ export async function createClip(
         content: {
           create: {
             content: input.content,
-            format: write.format,
             syntaxVersion,
             updatedAt: now,
           },
@@ -164,8 +132,6 @@ export interface UpdateClipInput {
   title: string;
   content: string;
   publicity: boolean;
-  /** 与 CreateClipInput.format 同：unknown 由 service 自己校验；省略 = 保留原格式。 */
-  format?: unknown;
 }
 
 export type UpdateClipResult =
@@ -191,45 +157,27 @@ export async function updateClip(
 
   const clip = await prisma.clipBoard.findFirst({
     where: { id: clipId, ignore: false },
-    // content.format 是写入闸门的当前值；content / syntaxVersion 用来判断要不要
-    // 重新检查正文（只改标题时不必重编）。
+    // content / syntaxVersion 用来判断要不要重新编译正文（只改标题时不必重编）。
     select: {
       id: true,
       authorId: true,
-      content: { select: { format: true, content: true, syntaxVersion: true } },
+      content: { select: { content: true, syntaxVersion: true } },
     },
   });
 
   if (!clip) return { ok: false, reason: 'not_found' };
   if (clip.authorId !== editorId) return { ok: false, reason: 'forbidden' };
 
-  const write = resolveClipContentFormat(input.format, clip.content?.format);
-  if (!write.ok) return { ok: false, reason: write.reason };
-
   const oldContent = clip.content?.content ?? '';
-  const oldFormat = clip.content ? parseContentFormat(clip.content.format) : null;
   const validation =
-    !clip.content || oldFormat !== write.format || oldContent !== input.content
-      ? await validateContentForPublish({
-
-          content: input.content,
-          format: write.format,
-        })
+    !clip.content || oldContent !== input.content
+      ? await validateContentForPublish({ content: input.content })
       : null;
   if (validation && !validation.ok) {
-    return {
-      ok: false,
-      reason: validation.reason === 'format_mismatch' ? 'format_mismatch' : 'reactive_invalid',
-    };
+    return { ok: false, reason: 'reactive_invalid' };
   }
-  if (validation && write.format === 'markdown' && validation.detectedFormat === 'reactive') {
-    return { ok: false, reason: 'format_mismatch' };
-  }
-  const syntaxVersion = validation
-    ? validation.syntaxVersion
-    : write.format === 'reactive'
-      ? clip.content?.syntaxVersion ?? null
-      : null;
+  // 正文没变时沿用库里的版本；变了就按本次编译结果重写（可能从增强语法退回纯 Markdown）。
+  const syntaxVersion = validation ? validation.syntaxVersion : clip.content?.syntaxVersion ?? null;
 
   const now = nowForDb();
   await prisma.$transaction([
@@ -242,13 +190,11 @@ export async function updateClip(
           upsert: {
             create: {
               content: input.content,
-              format: write.format,
               syntaxVersion,
               updatedAt: now,
             },
             update: {
               content: input.content,
-              format: write.format,
               syntaxVersion,
               updatedAt: now,
             },

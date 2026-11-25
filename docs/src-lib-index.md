@@ -5,7 +5,7 @@
 范围：`src/lib` 根目录下全部 `*.ts`，不含 `md-editor/`、`reactive/` 等子目录。
 
 - 文件数：150
-- 合计行数：32669（含空行）
+- 合计行数：32649（含空行）
 
 | 文件 | 行数 | 导出数 | 一句话职责 |
 | --- | ---: | ---: | --- |
@@ -25,7 +25,7 @@
 | `audio-refs.ts` | 192 | 13 | `[@音频/<ID>]` 引用语法的（纯逻辑 + DOM 构造） |
 | `audio-service.ts` | 215 | 10 | 音频床元信息读取 / 删除 / 配额 |
 | `audio-upload.ts` | 337 | 11 | 音频床二进制上传 |
-| `audit-actions.ts` | 350 | 21 | 管理操作日志的**动作词汇表**（中文名、分组、配色档、metadata 说法） |
+| `audit-actions.ts` | 359 | 21 | 管理操作日志的**动作词汇表**（中文名、分组、配色档、metadata 说法） |
 | `audit-context.ts` | 57 | 3 | 「这条审计日志是谁写下的」 |
 | `audit-service.ts` | 530 | 10 | 管理审计公示 + 申诉 |
 | `auth.ts` | 114 | 7 | 服务端取当前用户 + 角色/禁言判定 |
@@ -35,7 +35,7 @@
 | `blog-excerpt.ts` | 313 | 6 | 把 Markdown / ReactiveMD 正文压成一段纯文本摘要（纯函数） |
 | `blog-limits.ts` | 20 | 3 | 博客“标题 / 描述 / 正文”长度上限的**唯一定义** |
 | `blog-public-scope.ts` | 70 | 5 | 「公开文章集合」的**唯一定义**（可索引 = visibility public） |
-| `blog-service.ts` | 1653 | 49 | 博客业务逻辑（纯函数 + 显式参数；软删除：Blog.ignore = true 一律排除） |
+| `blog-service.ts` | 1558 | 47 | 博客业务逻辑（纯函数 + 显式参数；软删除：Blog.ignore = true 一律排除） |
 | `blog-sort-pref.ts` | 18 | 3 | 博客列表排序偏好的存储键（零依赖，server/client 共用） |
 | `blog-visibility.ts` | 91 | 8 | 文章对外可见性的**词汇表**（三档的名字、白名单、解析、人话标签） |
 | `broadcast-groups.ts` | 24 | 3 | 群发通知的目标用户组（**单一真相源**） |
@@ -56,15 +56,15 @@
 | `checkin-service.ts` | 246 | 8 | 每日签到业务逻辑 |
 | `clipboard-limits.ts` | 8 | 2 | 云剪贴板的**对外可见上限**（零依赖，服务端与客户端共用）。 |
 | `clipboard-query.ts` | 93 | 3 | 云剪贴板的**只读**查询（含公开性判定） |
-| `clipboard-service.ts` | 317 | 18 | 云剪贴板业务逻辑 |
+| `clipboard-service.ts` | 263 | 18 | 云剪贴板业务逻辑 |
 | `comment-markdown.ts` | 49 | 1 | 评论正文的 Markdown → 安全 HTML |
 | `comment-service.ts` | 1056 | 21 | 评论业务逻辑 |
 | `comment-shared.ts` | 27 | 2 | 评论区「纯常量」，供服务端与客户端共享。 |
-| `content-format.ts` | 43 | 9 | Stored language and write gate. Rendering choices never change this value. |
+| `content-format.ts` | 42 | 8 | 正文语言的**派生标签**与请求值白名单。 |
 | `content-refs.ts` | 370 | 23 | `[@<内容ID>]` 引用语法的**纯逻辑**（识别 / 替换 / 截断） |
 | `credential-auth.ts` | 106 | 3 | 「用户名 + 密码」校验（两个门口共用） |
-| `daily-quote-service.ts` | 727 | 21 | 每日一言：全站 UTC+8 每日固定一句。社区只选登一次，经典在社区候选耗尽后循环。 |
-| `daily-quote.ts` | 111 | 17 | 客户端与服务端共用的每日一言词表、长度与展示契约；不引入数据库或 Node 模块。 |
+| `daily-quote-service.ts` | 795 | 23 | 每日一言：全站 UTC+8 每日固定一句。社区只选登一次，经典在社区候选耗尽后循环。 |
+| `daily-quote.ts` | 154 | 20 | 客户端与服务端共用的每日一言词表、长度与展示契约；不引入数据库或 Node 模块。 |
 | `db-time.ts` | 83 | 6 | 写库时间戳的统一约定 |
 | `db.ts` | 43 | 1 | （文件头未注明职责） |
 | `docs-catalog.ts` | 665 | 14 | 站内文档页（/docs）的**登记表**与 URL 口径 |
@@ -90,7 +90,7 @@
 | `frame-refs.ts` | 263 | 15 | 头像框的**词汇表**（白名单、解析、人话标签、到期判定） |
 | `frame-service.ts` | 707 | 22 | 头像框素材域（扫盘 / 缓存 / 查表）+ 持有与装备 + 判定唯一出口（server-only） |
 | `frame-shop-service.ts` | 313 | 5 | 鱼干商城：用鱼干**租**头像框（server-only） |
-| `game-catalog.ts` | 268 | 14 | 玩具清单只描述陈列方式（标题 / 简介 / 分类 / 模式 / 图标 / 归属合集）；引擎按页面加载， |
+| `game-catalog.ts` | 282 | 14 | 玩具清单只描述陈列方式（标题 / 简介 / 分类 / 模式 / 图标 / 归属合集）；引擎按页面加载， |
 | `guard.ts` | 76 | 4 | （文件头未注明职责） |
 | `http-cache.ts` | 87 | 4 | 原始字节路由（图床 / 音频床）共用的**条件请求**词汇 |
 | `https-guard.ts` | 204 | 9 | 「练手盘与玩具区只走 https」的判据（零 import，Edge 中间件可直接吃） |
@@ -127,8 +127,8 @@
 | `poster-render.ts` | 165 | 4 | 取数据 → 拼 SVG → sharp 光栅化成 PNG |
 | `poster.ts` | 851 | 28 | 画报 / 收款码的 SVG 构造（**纯函数**：不碰 prisma、不碰 sharp、不碰 fs） |
 | `profile-blocks.ts` | 713 | 49 | 个人主页「积木」的词汇表与校验（零依赖） |
-| `profile-service.ts` | 534 | 7 | 个人主页「积木」的读写 |
-| `public-blog-search.ts` | 131 | 9 | 公开正文检索：写入时编译并提取自身静态可见文字，读取时仅查 FTS 候选。 |
+| `profile-service.ts` | 533 | 7 | 个人主页「积木」的读写 |
+| `public-blog-search.ts` | 128 | 9 | 公开正文检索：写入时编译并提取自身静态可见文字，读取时仅查 FTS 候选。 |
 | `rate-limit.ts` | 443 | 9 | 限频（进程内 limiter + 快照持久化） |
 | `realtime-auth.ts` | 15 | 2 | （文件头未注明职责） |
 | `realtime-ticket-service.ts` | 62 | 5 | （文件头未注明职责） |

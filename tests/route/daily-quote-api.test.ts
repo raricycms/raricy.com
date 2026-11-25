@@ -12,7 +12,8 @@ import { GET as today } from '@/app/api/daily-quotes/today/route';
 import { GET as history } from '@/app/api/daily-quotes/history/route';
 import { GET as mine, POST as submit } from '@/app/api/daily-quotes/submissions/route';
 import { PATCH as edit } from '@/app/api/daily-quotes/submissions/[id]/route';
-import { PATCH as review } from '@/app/api/admin/daily-quotes/[id]/route';
+import { PATCH as review, DELETE as removeQuote } from '@/app/api/admin/daily-quotes/[id]/route';
+import { POST as restoreQuote } from '@/app/api/admin/daily-quotes/[id]/restore/route';
 import { POST as resonate } from '@/app/api/daily-quotes/[id]/resonance/route';
 import { POST as favorite, DELETE as unfavorite } from '@/app/api/daily-quotes/[id]/favorite/route';
 
@@ -72,6 +73,8 @@ describe('每日一言的HTTP权限、隐私与输入', () => {
   it('所有接口未登录401，普通用户403；core不能审核', async () => {
     const handlers = [() => today(), () => history(historyRequest()), () => mine(), () => submit(body(input)),
       () => edit(body(input, 'PATCH'), ctx('missing')), () => review(body({ action: 'approve' }, 'PATCH'), ctx('missing')),
+      () => removeQuote(new Request('http://localhost/api/admin/daily-quotes/x', { method: 'DELETE' }), ctx('missing')),
+      () => restoreQuote(new Request('http://localhost/api/admin/daily-quotes/x/restore', { method: 'POST' }), ctx('missing')),
       () => resonate(body({}), ctx('missing')), () => favorite(body({}), ctx('missing')), () => unfavorite(body({}, 'DELETE'), ctx('missing'))];
     for (const handler of handlers) expect((await handler()).status).toBe(401);
     const plain = await makeUser(); await login(plain.id);
@@ -106,7 +109,7 @@ describe('每日一言的HTTP权限、隐私与输入', () => {
     expect(response.headers.get('Cache-Control')).toContain('no-store');
     expect(await response.json()).toMatchObject({ submission: { id: quote.id, status: 'pending' } });
     expect((await (await mine()).json()).submissions).toEqual([expect.objectContaining({ ...changed, id: quote.id, status: 'pending' })]);
-    expect((await edit(body({ ...changed, content: '字'.repeat(51) }, 'PATCH'), ctx(quote.id))).status).toBe(400);
+    expect((await edit(body({ ...changed, content: '字'.repeat(101) }, 'PATCH'), ctx(quote.id))).status).toBe(400);
     const admin = await makeUser({ role: 'admin' }); await login(admin.id);
     expect((await reviewCurrent(quote.id, 'approve')).status).toBe(200);
     await login(author.id);
@@ -238,5 +241,37 @@ describe('每日一言的HTTP权限、隐私与输入', () => {
     expect((await prisma.dailyQuote.findUniqueOrThrow({ where: { id: quote.id } })).status).toBe('pending');
     expect(await prisma.adminActionLog.count()).toBe(0);
     expect((await reviewCurrent(quote.id, 'approve')).status).toBe(200);
+  });
+
+  it('删除未通过稿件：软删后作者与审核列表都不可见，可恢复，删除 / 恢复都写内部审计', async () => {
+    const admin = await makeUser({ role: 'admin' });
+    const author = await makeUser({ role: 'core' });
+    const quote = await submitQuote(author.id, { ...input, signature: 'anonymous' });
+    await login(admin.id);
+    const del = () => removeQuote(new Request(`http://localhost/api/admin/daily-quotes/${quote.id}`, { method: 'DELETE' }), ctx(quote.id));
+    const restore = () => restoreQuote(new Request(`http://localhost/api/admin/daily-quotes/${quote.id}/restore`, { method: 'POST' }), ctx(quote.id));
+
+    // 待审不在删除范围内。
+    expect((await del()).status).toBe(409);
+    expect((await reviewCurrent(quote.id, 'reject', '不予收录')).status).toBe(200);
+    expect((await del()).status).toBe(200);
+    expect((await del()).status).toBe(409); // 已删
+
+    await login(author.id);
+    expect((await (await mine()).json()).submissions).toEqual([]);
+    await login(admin.id);
+    expect((await restore()).status).toBe(200);
+    expect((await restore()).status).toBe(409); // 不在已删除列表
+
+    const logs = await prisma.adminActionLog.findMany({
+      where: { objectId: quote.id, action: { in: ['daily_quote_delete', 'daily_quote_restore'] } },
+      select: { action: true, visibility: true, hideTarget: true },
+    });
+    expect(logs.map((row) => row.action).sort()).toEqual(['daily_quote_delete', 'daily_quote_restore']);
+    // 匿名稿：删除与恢复都不在公示面暴露当事人。
+    expect(logs.every((row) => row.visibility === 'internal' && row.hideTarget)).toBe(true);
+
+    await login(author.id);
+    expect((await (await mine()).json()).submissions).toMatchObject([{ id: quote.id, status: 'rejected' }]);
   });
 });
