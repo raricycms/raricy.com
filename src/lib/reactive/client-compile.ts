@@ -1,7 +1,6 @@
 'use client';
 
 import type { LocalDocument } from 'reactive-md';
-import { parseContentFormat } from '../content-format';
 import { MAX_CARD_ITEMS, isFavoriteId } from '../favorite-refs';
 import { MAX_REF_CONCURRENCY, createConcurrencyLimiter } from '../content-refs';
 import { expandDocumentReferences } from './ref-adapter';
@@ -39,27 +38,12 @@ async function readClipboard(
   const res = await doFetch(`/api/clipboard/${id}`, { credentials: 'same-origin' });
   if (!res.ok) return { status: res.status === 403 ? 'forbidden' : 'error' };
   const data = (await res.json()) as {
-    clip?: { title?: unknown; content?: unknown; format?: unknown; version?: unknown };
-    content?: unknown;
+    clip?: { content?: unknown; version?: unknown };
   };
   const clip = data?.clip;
   if (!clip || typeof clip.content !== 'string') return { status: 'error' };
-  // 兼容未带 format 的旧响应（与 ref-reader.ts 一致）；带了认不出的值
-  // 绝不猜成 markdown —— 不给数据，适配器保留字面量。
-  const format =
-    clip.format === undefined ? 'markdown' : parseContentFormat(clip.format);
-  if (!format) return { status: 'error' };
-  const title = asString(clip.title) ?? '';
-  return {
-    status: 'ready',
-    title,
-    format,
-    version: asString(clip.version),
-    content: clip.content,
-    // payload 只放渲染方真读的字段：标题由 `title` 带，链接按 ref 现拼。
-    // 这里曾多写一个 `href`，全仓没有任何读者（R3-140）。
-    payload: { title },
-  };
+  // 只交正文；内联与否不再取决于被引用剪贴板的格式（预览与阅读同一口径）。
+  return { status: 'ready', content: clip.content, version: asString(clip.version) };
 }
 
 interface RawVoteOption {
@@ -109,7 +93,6 @@ function readVote(id: string, doFetch: typeof fetch): Promise<ResolvedReference 
       }));
     return {
       status: 'ready',
-      title: data.title,
       payload: {
         // 不写 `id`：渲染方（parseVoteData）只认下面这些展示字段，
         // 投票 id 由宿主的 ref 决定，payload.id 全仓零读者（R3-140）。
@@ -146,7 +129,6 @@ function readFavorite(id: string, doFetch: typeof fetch): Promise<ResolvedRefere
         : [];
       return {
         status: 'ready',
-        title: data.title,
         payload: {
           title: data.title,
           authorName: asString(data.author) ?? '',

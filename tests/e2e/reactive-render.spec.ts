@@ -166,14 +166,12 @@ test.describe('ReactiveMD 发布与阅读', () => {
     await expect(container).toContainText('第一行');
     await expect(container).toContainText('第二行');
 
-    // 五类引用：图片内联、Markdown 子剪贴板内联一层（新引擎静态子文档）、
+    // 五类引用：图片内联、剪贴板正文内联（不套外壳、不是卡片）、
     // 伪造宿主标签只是文字
     const gallery = container.getByRole('region', { name: '图集示例' });
     await expect(gallery.locator(`img[src*="/api/images/${imageId}/raw"]`)).toHaveCount(1);
-    const inlineClip = container.locator('.site-embed-clipboard-inline');
-    await expect(inlineClip).toHaveCount(1);
-    await expect(inlineClip).toContainText('剪贴板里的公开正文');
-    await expect(container.locator(`.site-embed-clipboard[href="/clipboard/${clipId}"]`)).toHaveCount(0);
+    await expect(container).toContainText('剪贴板里的公开正文');
+    await expect(container.locator(`a[href="/clipboard/${clipId}"]`)).toHaveCount(0);
     await expect(container.locator('.vote-embed')).toHaveCount(0);
     await expect(container).toContainText('<site-embed kind="vote"');
 
@@ -263,7 +261,7 @@ test.describe('统一管线的兼容与保存边界', () => {
     await expect(container).toContainText('第一行');
     await expect(container).toContainText('第二行');
     await expect(container.locator('.local-math-inline, .local-math-display').first()).toBeVisible({ timeout: 15_000 });
-    await expect(container.locator('.site-embed-clipboard-inline')).toContainText('被引用的剪贴板正文');
+    await expect(container).toContainText('被引用的剪贴板正文');
     await page.reload();
     await expect(page.locator('#userContentContainer p br')).not.toHaveCount(0);
   });

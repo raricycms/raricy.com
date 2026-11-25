@@ -22,7 +22,6 @@ import type {
   SiteEmbedData,
   SiteEmbedKind,
 } from '@/lib/reactive/ref-types';
-import { CONTENT_FORMAT_LABELS, parseContentFormat } from '@/lib/content-format';
 import { FAVORITE_ID_RE, MAX_CARD_ITEMS } from '@/lib/favorite-refs';
 import type { VoteEmbedData, VoteOptionData } from '@/lib/reactive/ref-types';
 
@@ -340,55 +339,39 @@ function isLocalDocument(value: unknown): value is LocalDocument {
   return isRecord(value) && Array.isArray(value.nodes);
 }
 
-function ClipboardEmbed({
-  clipboardId,
-  data,
-}: {
-  clipboardId: string;
-  data: SiteEmbedData;
-}): ReactNode {
+/**
+ * 剪贴板：**只显示正文**。
+ *
+ * 成员视图里 `ref-adapter` 已经把它编成静态子文档（`document` + `hostData` 成对下发），
+ * 这里直接交给文档渲染器 —— 不套外壳、不画卡片、不留回链，正文就是正文。
+ * 子文档缺失（子编译失败 / 数据没下发）时给失败占位，不退回一条链接。
+ */
+function ClipboardBody({ data }: { data: SiteEmbedData }): ReactNode {
   const document = isLocalDocument(data.document) ? data.document : null;
   const childHostData = isRecord(data.hostData) ? data.hostData : null;
-  if (data.format === 'markdown' && document && childHostData) {
-    return (
-      <InlineClipboardDocument document={document} hostData={childHostData} />
-    );
-  }
-
-  const title =
-    typeof data.title === 'string' && data.title.length > 0
-      ? data.title
-      : `剪贴板 ${clipboardId}`;
-  const format = parseContentFormat(data.format);
-
-  return (
-    <a className="site-embed-clipboard" href={`/clipboard/${clipboardId}`}>
-      <span className="site-embed-clipboard__title">{title}</span>
-      <span className="site-embed-clipboard__meta">
-        {format ? (
-          <span className="site-embed-clipboard__format">{CONTENT_FORMAT_LABELS[format]}</span>
-        ) : null}
-        <span>剪贴板</span>
-      </span>
-    </a>
-  );
+  if (!document || !childHostData) return <SiteEmbedStatus status="error" />;
+  return <InlineClipboardDocument document={document} hostData={childHostData} />;
 }
 
+/**
+ * 内联子剪贴板的唯一渲染入口（阅读页 / 预览 / 导出共用）。
+ *
+ * 不包任何自己的外壳：`.md-document` 的版式由 `.reactive-document .md-document`
+ * 统一接管，所以子正文与父正文的排版连续，看起来就是文章的一部分。
+ */
 export function InlineClipboardDocument({
   document,
   hostData,
   imageResolver,
 }: Pick<LocalDocumentViewProps, 'document' | 'hostData' | 'imageResolver'>) {
   return (
-    <div className="reactive-document site-embed-clipboard-inline" data-content-renderer="clipboard-inline">
-      <CompiledDocumentView
-        document={document}
-        hostData={hostData}
-        hostRenderer={renderSiteEmbedStatic}
-        imageResolver={imageResolver}
-        mode="static"
-      />
-    </div>
+    <CompiledDocumentView
+      document={document}
+      hostData={hostData}
+      hostRenderer={renderSiteEmbedStatic}
+      imageResolver={imageResolver}
+      mode="static"
+    />
   );
 }
 
@@ -410,7 +393,7 @@ export function renderSiteEmbedStatic(
     case 'audio':
       return <AudioEmbed audioId={resolved.ref} />;
     case 'clipboard':
-      return <ClipboardEmbed clipboardId={resolved.ref} data={resolved.data} />;
+      return <ClipboardBody data={resolved.data} />;
     case 'favorite':
       return <FavoriteEmbed favoriteId={resolved.ref} data={resolved.data} />;
     case 'vote': {

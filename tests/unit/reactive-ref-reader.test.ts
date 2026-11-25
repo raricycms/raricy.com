@@ -54,10 +54,11 @@ describe('request-scoped reference permissions', () => {
     expect(mocks.vote).not.toHaveBeenCalled();
     expect(mocks.favorite).not.toHaveBeenCalled();
   });
-  it('passes member identity, preserves format and turns failures into local states', async () => {
+  it('passes member identity, carries the clip body and turns failures into local states', async () => {
     const read = createServiceReferenceReader('expand', { id: 'owner', role: 'owner' });
+    // 「格式」不再参与渲染决策：读取层只交正文，内联与否由渲染方统一决定。
     mocks.clip.mockResolvedValue({ ok: true, clip: { title: 'Example', content: '{{secret}}', format: 'reactive', publicity: false } });
-    expect(await read(slot('clipboard', 'AbCd1234'))).toMatchObject({ status: 'ready', format: 'reactive' });
+    expect(await read(slot('clipboard', 'AbCd1234'))).toEqual({ status: 'ready', content: '{{secret}}' });
     expect(mocks.clip).toHaveBeenCalledWith('AbCd1234', 'owner', true);
     mocks.vote.mockRejectedValue(new Error('private database error'));
     expect(await read(slot('vote', 'AbCdEf123'))).toEqual({ status: 'error' });
