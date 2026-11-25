@@ -7,7 +7,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { prisma } from './db';
-import { parseContentFormat } from './content-format';
+import { contentFormatFromSyntaxVersion } from './content-format';
 import type { ContentFormat } from './content-format';
 import { createHash } from 'node:crypto';
 
@@ -23,10 +23,10 @@ export interface ClipDetail {
   publicity: boolean;
   content: string;
   /**
-   * 正文格式。**null = 库里的值不认识**（或正文行缺失）—— 绝不猜成 markdown：
-   * 猜错等于把另一种语言的源码交给 Markdown 解析器。读取方必须保留字面量 / 走链接。
+   * 正文格式，由 `syntax_version` 派生（库内没有 format 列）：非 NULL = 增强语法。
+   * 正文行缺失时按纯 Markdown 给 —— 内容为空，交给渲染器只会得到空白。
    */
-  format: ContentFormat | null;
+  format: ContentFormat;
   /** 写入时记录的语法版本，随正文一起通过 API 返回。 */
   syntaxVersion: string | null;
   /** Shared by API, member embeds and public embeds. */
@@ -60,7 +60,7 @@ export async function getClip(
       publicity: true,
       createdAt: true,
       author: { select: { username: true } },
-      content: { select: { content: true, format: true, syntaxVersion: true } },
+      content: { select: { content: true, syntaxVersion: true } },
     },
   });
 
@@ -80,11 +80,11 @@ export async function getClip(
       authorName: clip.author?.username ?? null,
       publicity: isPublic,
       content: clip.content?.content ?? '',
-      // 未知存量值给 null，不猜 markdown（见 ClipDetail.format 的说明）。
-      format: parseContentFormat(clip.content?.format) ?? null,
+      // 派生标签：正文行缺失 = 纯 Markdown（见 ClipDetail.format 的说明）。
+      format: contentFormatFromSyntaxVersion(clip.content?.syntaxVersion),
       syntaxVersion: clip.content?.syntaxVersion ?? null,
       version: createHash('sha256').update(JSON.stringify([
-        clip.content?.format ?? null, clip.content?.syntaxVersion ?? null,
+        clip.content?.syntaxVersion ?? null,
         clip.title, clip.content?.content ?? '',
       ])).digest('hex'),
       createdAt: clip.createdAt ?? null,

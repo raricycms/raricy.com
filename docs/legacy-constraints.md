@@ -117,7 +117,7 @@ git ls-tree -r 7d7be1c^ --name-only app/ # 列出旧 app/ 全树
 - `18_market_positions` —— 头部说系统账户「只存在于远端账户服务」、并把「远端同步失败的补偿事务删掉一行」列为唯一例外。现行：账户服务退役后练手盘在站内结算，**没有补偿删行**；仓位行仍绝不物理删除。
 - `23_market_leverage` —— 头部把白名单指向 `src/lib/market-service.ts` 的 `LEVERAGE_OPTIONS`。现行：杠杆词表已搬到 **`src/lib/market-leverage.ts`**（`MIN_LEVERAGE` / `MAX_LEVERAGE` / `LEVERAGE_PRESETS`；服务端只校验上下界，档位是纯 UI 快捷）。
 - `32_profile_block_sort` —— 头部说手机顺序单独存 `sort` 列。现行：**`sort` 列已被迁移 42 删除**；手机顺序改为桌面坐标的投影（`projectMobile`，按 (y, x) 排序），读路径不再读该列。
-- `35_reactive_md_format` —— 头部写「reactive 的写入闸门当前关闭」。现行：**写入已开放**（`resolveContentWriteFormat` 接受 reactive；语法 / 格式校验在 service 层，编不过的正文不落库）。
+- `35_reactive_md_format` —— 头部写「reactive 的写入闸门当前关闭」。现行：**写入已开放**，而且 `format` 列本身已在 **迁移 46** 退役 —— 正文语言由正文自己识别（`syntax_version` 非 NULL = 增强语法），编不过的正文不落库。
 
 ## 6. 假阳性清单（搜索时会误伤）
 

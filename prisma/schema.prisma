@@ -419,12 +419,10 @@ model BlogContent {
   blogId    String    @id @map("blog_id")
   content   String
   updatedAt DateTime? @map("updated_at")
-  // 正文语言：'markdown' | 'reactive'。默认 markdown —— 存量行不做任何内容改写。
-  // 白名单与写入闸门在 src/lib/content-format.ts（零依赖，客户端表单也要读）。
-  // 未识别的值**不能**当成 markdown：写入一律拒绝、读取按不可信处理。
-  format    String    @default("markdown")
-  // 仅 format='reactive' 时有意义：写入时的语法版本（LOCAL_SYNTAX_VERSION）。
-  // 它只用于升级审计与迁移提示，**不是渲染开关**。
+  // 正文里有没有增强语法，**只有这一个真相**：非 NULL = 写入时被识别为 Reactive
+  // （值是当时的 LOCAL_SYNTAX_VERSION），NULL = 纯 Markdown。
+  // 对外的 `format` 字段由它派生（见 src/lib/content-format.ts），不再单独存列。
+  // 它只用于升级审计与迁移提示，**不是渲染开关**（渲染只认源码 + 编译器）。
   syntaxVersion String? @map("syntax_version")
 
   blog Blog @relation(fields: [blogId], references: [id])
@@ -660,8 +658,8 @@ model ClipText {
   clipId    String    @id @map("clip_id")
   content   String
   updatedAt DateTime? @map("updated_at")
-  // 与 BlogContent 同形：'markdown' | 'reactive'，默认 markdown；未识别的值不猜。
-  format    String    @default("markdown")
+  // 与 BlogContent 同形：非 NULL = 写入时含增强语法，NULL = 纯 Markdown；
+  // 对外的 `format` 由它派生，不再单独存列。
   syntaxVersion String? @map("syntax_version")
 
   clipboard ClipBoard @relation(fields: [clipId], references: [id])

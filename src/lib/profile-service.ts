@@ -39,7 +39,7 @@
 
 import { prisma } from './db';
 import { buildBlogExcerpt } from './blog-excerpt';
-import { parseContentFormat } from './content-format';
+import { contentFormatFromSyntaxVersion } from './content-format';
 import { nowForDb, isoWithOffset } from './db-time';
 import { generateShortId } from './short-id';
 import { EXTERNAL_VISIBLE_BLOG_WHERE } from './blog-service';
@@ -210,7 +210,7 @@ async function resolveViews(
             blogId: { in: excerptBlogIds },
             blog: { is: { authorId: userId, ignore: false, ...EXTERNAL_VISIBLE_BLOG_WHERE } },
           },
-          select: { blogId: true, content: true, format: true },
+          select: { blogId: true, content: true, syntaxVersion: true },
         })
       : Promise.resolve([]),
   ]);
@@ -238,9 +238,8 @@ async function resolveViews(
               block.h >= 2
                 ? buildBlogExcerpt(
                     excerptMap.get(row.id)?.content ?? '',
-                    // 未识别的 format 按 Markdown 处理（`parseContentFormat` 返回 null），
-                    // 不猜成 reactive —— 存量正文不应被当成组件语法编译。
-                    parseContentFormat(excerptMap.get(row.id)?.format)
+                    // 摘要分支由正文行派生：非 NULL 的 syntax_version = 增强语法。
+                    contentFormatFromSyntaxVersion(excerptMap.get(row.id)?.syntaxVersion),
                   )
                 : '',
             date: ymd(row.createdAt),

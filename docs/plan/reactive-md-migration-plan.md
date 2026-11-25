@@ -19,8 +19,9 @@
 - 走哪条路径只由 `selectContentRenderer` 决定：格式无法识别 → `unavailable`；其余一律
   `reactive`。`REACTIVE_MD_MODE` 与「`off` 时交回旧渲染器」的分支已随 legacy 渲染整条退役
   （`3f2508c6`），现在没有第二条管线。没有百分比灰度、`shadow` 或逐篇 override 决策。
-- 迁移 35 的 `format`、`syntax_version` 仍在表里，供 API、草稿与旧消费者辨别内容；
-  `renderer_override` 只剩列与透出；`X-Content-Renderer` 响应头未接入（见 §12），
+- `syntax_version` 是「这篇是不是增强语法」的唯一存储；对外 `format` 由它派生。
+  `format` 列已在迁移 46 退役（回填 `syntax_version` 后删列），`renderer_override`
+  只剩列与透出；`X-Content-Renderer` 响应头未接入（见 §12），
   `ADAPTER_VERSION` 进缓存键（见 §5.3），结构化日志与 `data-content-renderer` 已落地。
 
 ## 3. 决策
@@ -35,12 +36,12 @@
 
 ### D2 格式、版本与回滚粒度
 
-- `format`（`markdown` | `reactive`）描述内容本身，写入入口只有 service 层校验一处；
-  `syntax_version` 仅 `reactive` 时写（值 `LOCAL_SYNTAX_VERSION`，当前 `local-draft-3`），
-  服务升级审计与迁移判断，不是渲染开关。
+- `syntax_version` 是**唯一**的「这篇是不是增强语法」存储（值 `LOCAL_SYNTAX_VERSION`，
+  当前 `local-draft-3`），服务升级审计与迁移判断，不是渲染开关；对外 `format` 由它派生。
 - `renderer_override`（`NULL | 'legacy' | 'reactive'`）自 2026-11 起不参与渲染决策，列与
-  透出保留给旧消费者；`format='reactive'` 的正文任何情况下都不交给旧解析器。
-- 迁移 35 是纯 `ADD COLUMN`：存量行默认 `markdown`，不改写任何内容。
+  透出保留给旧消费者。
+- 迁移 35 是纯 `ADD COLUMN`：存量行默认 `markdown`，不改写任何内容；`format` 列已在
+  迁移 46 退役（回填 `syntax_version` 后落库）。
 - 回退粒度是整篇：编译失败即 `unavailable`，不按诊断码局部降级，也不拿旧快照冒充当前正文。
 
 ## 5.3 编译缓存键

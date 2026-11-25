@@ -6,7 +6,7 @@ import { apiOk, apiErr } from '@/lib/format';
 import {
   createClip,
   listUserClips,
-  resolveClipContentFormat,
+  checkRequestedClipFormat,
   clipContentWriteMessage,
   clipContentWriteErrorCode,
   CLIP_TITLE_MAX,
@@ -59,11 +59,12 @@ export async function POST(req: Request) {
     return apiErr(400, 'title too long');
   }
 
-  // 内容格式写入闸门（API 层；service 里同一道）。新建省略 format = 默认 markdown。
-  const contentWrite = resolveClipContentFormat(data.format);
-  if (!contentWrite.ok) {
-    return apiErr(400, clipContentWriteMessage(contentWrite.reason), {
-      error_code: clipContentWriteErrorCode(contentWrite.reason),
+  // 已废弃的 `format` 只校验白名单（拼错的值照旧 400），不参与存储：
+  // 正文格式由正文自己决定，服务端编译后写 syntax_version。
+  const requestedFormat = checkRequestedClipFormat(data.format);
+  if (!requestedFormat.ok) {
+    return apiErr(400, clipContentWriteMessage(requestedFormat.reason), {
+      error_code: clipContentWriteErrorCode(requestedFormat.reason),
     });
   }
 
@@ -71,14 +72,13 @@ export async function POST(req: Request) {
     title,
     content,
     publicity,
-    format: contentWrite.format,
   });
   if (!result.ok) {
     // 长度类原因在这里理论上不可达（上面已先校验过），但 service 现在也自己设防，
     // 把它们如实映射成与上面同样的文案，避免被误报成「超过 200 篇」。
     if (result.reason === 'title_too_long') return apiErr(400, 'title too long');
     if (result.reason === 'content_too_long') return apiErr(400, 'content too long');
-    if (result.reason === 'invalid_format' || result.reason === 'reactive_invalid' || result.reason === 'format_mismatch') {
+    if (result.reason === 'reactive_invalid') {
       return apiErr(400, clipContentWriteMessage(result.reason), {
         error_code: clipContentWriteErrorCode(result.reason),
       });

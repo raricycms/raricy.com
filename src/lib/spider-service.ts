@@ -37,7 +37,7 @@
 import { prisma } from './db';
 import { serializeCommentBase, type CommentBaseDTO } from './comment-service';
 import { categoryFullPath, ymd } from './format';
-import { parseContentFormat } from './content-format';
+import { contentFormatFromSyntaxVersion } from './content-format';
 import type { ContentFormat } from './content-format';
 import type { Prisma } from '@prisma/client';
 
@@ -135,11 +135,11 @@ export interface SpiderBlogMeta {
   category_path: string | null;
   is_featured: boolean;
   /**
-   * 正文**语言**：'markdown' | 'reactive'；库里认不出的值给 null（不猜 markdown）。
+   * 正文**语言**的派生标签：'markdown' | 'reactive'（由 syntax_version 派生）。
    * `content` 仍是**源码**，不新增 HTML 字段 —— 这是对外契约的一部分：
-   * 消费方必须按 format 分支，reactive 文档不能交给 Markdown 解析器。
+   * 消费方可以按 format 分支，但服务端渲染只看源码。
    */
-  format: ContentFormat | null;
+  format: ContentFormat;
   /** 仅 reactive 有意义（语法版本，用于升级审计）；不是渲染开关。 */
   syntax_version: string | null;
   content: string;
@@ -175,7 +175,7 @@ export async function getSpiderBlog(blogId: string): Promise<SpiderBlogResult | 
       isFeatured: true,
       author: { select: { username: true } },
       category: { select: { name: true, parentId: true, parent: { select: { name: true } } } },
-      content: { select: { content: true, format: true, syntaxVersion: true } },
+      content: { select: { content: true, syntaxVersion: true } },
     },
   });
   if (!blog) return null;
@@ -196,7 +196,7 @@ export async function getSpiderBlog(blogId: string): Promise<SpiderBlogResult | 
     category: blog.category?.name ?? null,
     category_path: blog.category ? categoryFullPath(blog.category) : null,
     is_featured: blog.isFeatured ?? false,
-    format: parseContentFormat(blog.content?.format) ?? null,
+    format: contentFormatFromSyntaxVersion(blog.content?.syntaxVersion),
     syntax_version: blog.content?.syntaxVersion ?? null,
     content, // 对齐 get_blog_detail：blog_dict['content'] = content
     liked: false, // 公开 DTO：不随调用者变化（理由见 getSpiderBlog 的注释）

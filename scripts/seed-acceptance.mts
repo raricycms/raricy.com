@@ -63,7 +63,7 @@ const user = await prisma.user.upsert({
   },
 });
 /** 按标题复用已存在的剪贴板（顺带恢复被软删的那条），否则新建。 */
-async function ensureClipId(title: string, content: string, format: 'markdown' | 'reactive'): Promise<string> {
+async function ensureClipId(title: string, content: string): Promise<string> {
   const existing = await prisma.clipBoard.findFirst({
     where: { authorId: user.id, title },
     orderBy: { createdAt: 'desc' },
@@ -74,7 +74,7 @@ async function ensureClipId(title: string, content: string, format: 'markdown' |
     }
     return existing.id;
   }
-  const created = await createClip(user.id, { title, content, publicity: true, format });
+  const created = await createClip(user.id, { title, content, publicity: true });
   if (!created.ok) throw new Error(`${title}：剪贴板种子失败（${created.reason}）`);
   return created.id;
 }
@@ -100,13 +100,11 @@ async function ensureBlogId(
 async function main(): Promise<void> {
   const clipMarkdownId = await ensureClipId(
     '验收：Markdown 剪贴板',
-    '剪贴板里的 **Markdown 正文**。\n\n第二行\n第三行',
-    'markdown'
+    '剪贴板里的 **Markdown 正文**。\n\n第二行\n第三行'
   );
   const clipReactiveId = await ensureClipId(
     '验收：Reactive 剪贴板',
-    '<panel title="子组件">\n<slider bind="v" label="子滑块" initial="2" min="1" max="5">\n</panel>\n\n子值 {{ v }}。',
-    'reactive'
+    '<panel title="子组件">\n<slider bind="v" label="子滑块" initial="2" min="1" max="5">\n</panel>\n\n子值 {{ v }}。'
   );
 
   const mixed = [
@@ -134,7 +132,6 @@ async function main(): Promise<void> {
       content: mixed,
       categoryId: null,
       visibility: 'public',
-      format: 'markdown',
     })
   );
 
@@ -157,7 +154,6 @@ async function main(): Promise<void> {
       content: reactive,
       categoryId: null,
       visibility: 'public',
-      format: 'reactive',
     })
   );
 
@@ -182,7 +178,6 @@ async function main(): Promise<void> {
       content: longPoem,
       categoryId: null,
       visibility: 'public',
-      format: 'markdown',
     })
   );
 

@@ -8,8 +8,8 @@
 ## 0. 一句话说清
 
 云剪贴板是**一段可复用的文本**，建成后换一个 **8 位 ID**。正文可以是 Markdown
-（默认）或 ReactiveMD；ReactiveMD 发布前会先做一次**编译校验**（编译结果用完即弃，
-不产生持久快照）：
+或 ReactiveMD（**语言由正文自己决定**，含增强语法即按 ReactiveMD 保存）；每次发布前
+都会先做一次**编译校验**（编译结果用完即弃，不产生持久快照）：
 
 1. `POST /api/clipboard` —— 建一条，拿回 8 位 `id`；
 2. 在评论 / 讨论 / 博客正文里写 `[@<8位ID>]`，读者看到的就是**这段正文本身**
@@ -85,9 +85,9 @@ Content-Type: application/json
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|:----:|------|
 | `title` | string | 是 | 标题，**1–40 字符**（不 trim，按原样计） |
-| `content` | string | 是 | 正文**源文**，≤ **50000 字符**。默认 Markdown；`format='reactive'` 时是 ReactiveMD 源码 |
+| `content` | string | 是 | 正文**源文**，≤ **50000 字符**。Markdown 与 ReactiveMD 都可；**语言由正文自动识别** |
 | `publicity` | boolean | 是 | **必须显式传**。`true` = 公开（持有 ID 的 core+ 成员可读）；`false` = 私密保存，不公开分享 |
-| `format` | string | 否 | 正文语言：`markdown`（默认）或 `reactive`。未知值 `400`。reactive 发布前必须能编译，失败返回 `400 ReactiveMD 正文无法编译，已拒绝发布` |
+| `format` | string | 否 | **已废弃（兼容保留）**：仍接受 `markdown` / `reactive` 并校验白名单（未知值 `400`），但**不影响存储**。每次写入都按正文编译校验，无法编译返回 `400 ReactiveMD 正文无法编译，已拒绝发布` |
 
 > ⚠️ **`publicity` 只认布尔**：缺字段、传 `"true"`、传 `1` 都会回
 > `400 wrong publicity format`。**没有默认值** —— 这是刻意的，
@@ -112,8 +112,8 @@ Content-Type: application/json
 | `publicity` 不是布尔 / 缺字段 | `400 wrong publicity format` |
 | `content` 不是字符串 / 超过 50000 | `400 content too long` |
 | `title` 不是字符串 / 空 / 超过 40 | `400 title too long` |
-| `format` 不在白名单 | `400 内容格式取值不合法，可选：markdown / reactive` |
-| `format='reactive'` | 先做编译校验（**不产生持久快照**）；无法编译时 `400 ReactiveMD 正文无法编译，已拒绝发布` |
+| `format` 不在白名单 | `400 内容格式取值不合法，可选：markdown / reactive`（该字段已废弃，只校验不落库） |
+| 正文无法编译 | 每次写入都先做编译校验；无法编译时 `400 ReactiveMD 正文无法编译，已拒绝发布` |
 | 已有 200 条 | `400 一个用户只能发布200篇云剪贴板！` |
 
 > ⚠️ **报错文案是「英文键名」而不是中文说明**（`wrong publicity format` /
@@ -168,21 +168,21 @@ Cookie: raricy_session=<JWT>
     "author_name": "mybot",
     "publicity": true,
     "content": "## 常见问题\n\n- 问题一……",
-    "format": "markdown",          // markdown / reactive；认不出为 null
-    "syntax_version": null,        // 仅 reactive 有意义（语法版本，不是渲染开关）
-    "version": "…",                // 这份正文的稳定版本摘要（格式 + 标题 + 正文）
+    "format": "markdown",          // **派生**字段：syntax_version 非 null 即 reactive
+    "syntax_version": null,        // 「这篇是不是增强语法」的唯一存储（不是渲染开关）
+    "version": "…",                // 这份正文的稳定版本摘要（语法版本 + 标题 + 正文）
     "created_at": "2026-09-19T20:31:05.000Z"
   }
 }
 ```
 
-> ⚠️ **`content` 始终是源码，不是渲染结果。** 消费方必须按 `format` 分支：
+> ⚠️ **`content` 始终是源码，不是渲染结果。** 消费方应按 `format` 分支：
 > `markdown` 可以交给 Markdown 渲染器；`reactive` **不能** —— ReactiveMD 有
 > `{{ }}`、组件标签等 Markdown 不认识的语法，按 Markdown 解释不会报错，只会把
-> 源码当普通文本显示出来。`format` 为 `null`（库里认不出）时也不要猜成 Markdown。
+> 源码当普通文本显示出来。`format` 是派生的（只有 `markdown` / `reactive` 两档）。
 >
-> `version` 是引用方判断「这份公开快照有没有变」的稳定标识；正文、标题或格式变化
-> 都会让它变化。
+> `version` 是引用方判断「这份公开快照有没有变」的稳定标识；正文、标题或
+> `syntax_version` 变化都会让它变化。
 
 | 情形 | 返回 |
 |------|------|
@@ -206,11 +206,11 @@ Content-Type: application/json
 { "title": "新标题", "content": "新正文", "publicity": false }
 ```
 
-- **请求字段与 §3 完全一致**（`title` / `content` / `publicity` 三个必传，`format` 可选，
+- **请求字段与 §3 完全一致**（`title` / `content` / `publicity` 三个必传，`format` 可选但已废弃，
   同样是那几档上限）
 - 是**整体覆盖**，不是局部更新 —— 只想改标题也得把 `content` 原样带上
-- `format` **省略 = 保留库里原值**（不会把待改的正文打回 Markdown）；reactive 写入**已开放**，
-  但每次写入都会先做编译校验，编译失败时整笔拒绝并返回 `400 ReactiveMD 正文无法编译，已拒绝发布`
+- `format` **已废弃**：传不传都不影响存储，正文语言由正文自己识别；每次写入都会先做
+  编译校验，编译失败时整笔拒绝并返回 `400 ReactiveMD 正文无法编译，已拒绝发布`
 - `syntax_version` 是**只读**字段：写接口不消费它（传了会被忽略，不产生写入；
   由服务端在写入 reactive 正文时按编译结果维护）
 - 成功：`{ "code": 200, "message": "success", "id": "a1b2c3d4" }`
@@ -253,10 +253,10 @@ Cookie: raricy_session=<JWT>
 ```
 
 读者看到的是**那段正文本身**（走与所在正文同一条净化管线），不是一个链接。
-**引用方必须先看被引用剪贴板的 `format`**：`markdown` 子正文可以内联展开（按各位置规则）；
-`reactive` 与认不出的格式**不得内联**，只能生成安全的站内链接卡片
+**引用方必须先看被引用剪贴板的 `format`（派生值）**：`markdown` 子正文可以内联展开
+（按各位置规则）；`reactive` **不得内联**，只能生成安全的站内链接卡片
 （`[查看剪贴板](/clipboard/<id>)`）。**内联与否只看子剪贴板的格式，与父文档是 Markdown
-还是 Reactive 无关**：普通 Markdown 正文追加组件后 `format` 会自动升为 reactive，若这时
+还是 Reactive 无关**：普通 Markdown 正文追加组件后 `format` 会自动变成 reactive，若这时
 改成链接卡片，同一篇正文保存前后的阅读结果就变了。Reactive 子剪贴板仍只给链接卡片，
 不嵌套 Reactive 运行时，也不把另一种语言的源码拼进父文档。
 
@@ -331,7 +331,7 @@ Cookie: raricy_session=<JWT>
 | `400 wrong publicity format` | 没传 `publicity`，或传的不是布尔（§3） |
 | `400 title too long` | 标题为空串、或超过 40 字符（文案不区分两种情况） |
 | `400 content too long` | 正文不是字符串、或超过 50000 字符 |
-| `400 内容格式取值不合法…` | `format` 只认 `markdown` / `reactive`；reactive 写入**已开放**，但每次写入都会先做编译校验（§3） |
+| `400 内容格式取值不合法…` | `format` 只认 `markdown` / `reactive`，但该字段已废弃：合法值也不会改变存储（§3） |
 | 读到的 `format` 是 `reactive` | `content` 是 ReactiveMD 源码，不能按 Markdown 解析（§4.2） |
 | `400 一个用户只能发布200篇云剪贴板！` | **总数（含已软删的）**满 200 条 —— 配额按作者名下全部行数算，软删不释放名额 |
 | `403 该剪贴板为私有内容` | 别人的私有条。**这条 ID 是存在的**，只是你看不到（§4.2） |
@@ -358,7 +358,7 @@ const created = await (await fetch(`${BASE}/api/clipboard`, {
     title: '答疑模板',
     content: '## 常见问题\n\n- 问题一：……',
     publicity: true,                        // 显式指定，没有默认值
-    format: 'markdown',                     // 可省略；reactive 会先做编译校验（不产生持久快照）
+    // format 已废弃，可省略；语言由正文识别，写入前一律编译校验
   }),
 })).json();
 if (created.code !== 200) throw new Error(`建失败：${created.message}`);

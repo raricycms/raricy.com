@@ -6,12 +6,11 @@ import {
   updateBlog,
   setBlogVisibility,
   parseVisibility,
-  resolveBlogContentFormat,
   contentWriteFailureMessage,
   contentWriteErrorCode,
   BLOG_VISIBILITIES,
 } from '@/lib/blog-service';
-import { parseContentFormat } from '@/lib/content-format';
+import { contentFormatFromSyntaxVersion } from '@/lib/content-format';
 import type { BlogVisibility } from '@/lib/blog-service';
 import { setBlogIgnore } from '@/lib/admin-blog-service';
 import { categoryFullPath, apiOk, apiErr } from '@/lib/format';
@@ -54,9 +53,9 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
       category: blog.category?.name ?? null,
       category_path: blog.category ? categoryFullPath(blog.category) : null,
       content: blog.content?.content ?? '',
-      // 正文**语言**。消费方必须按它分支：reactive 源码不能交给 Markdown 解析器。
-      // 库里认不出的值给 null（不猜 markdown）；正文行缺失同样是 null。
-      format: parseContentFormat(blog.content?.format) ?? null,
+      // 正文语言的派生标签：非 NULL 的 syntax_version = 增强语法。不再单独存库，
+      // 也不能由调用方声明决定（写入口只校验那个已废弃的值合不合法）。
+      format: contentFormatFromSyntaxVersion(blog.content?.syntaxVersion),
       syntax_version: blog.content?.syntaxVersion ?? null,
       // 逐篇渲染覆盖（NULL / legacy / reactive）。它不改变 format，仅决定兼容渲染路径。
       renderer_override: blog.rendererOverride ?? null,
@@ -145,13 +144,11 @@ export async function PUT(req: Request, ctx: { params: Promise<{ id: string }> }
     where: { id, ignore: false },
     // visibility / allowAnonymousComments 是给下面「缺键时回填现值」取的。visibility 与
     // getBlogForEdit 一样归一化到白名单（列是 TEXT、没有 CHECK 约束，取值白名单在 TS 侧）。
-    // content.format 是格式写入闸门的当前值 —— 省略 format 的旧调用方必须保留它。
     select: {
       id: true,
       authorId: true,
       visibility: true,
       allowAnonymousComments: true,
-      content: { select: { format: true } },
     },
   });
   if (!blog) return apiErr(404, '文章不存在');
@@ -165,21 +162,6 @@ export async function PUT(req: Request, ctx: { params: Promise<{ id: string }> }
   }
 
   const body = await req.json().catch(() => null);
-
-  // 内容格式写入闸门（API 层先判一次；updateBlog 里还有同一道）。
-  //   · 省略 format → 保留库里原值（不是打回默认档）；
-  //   · 存量 reactive / 未知值 → 拒绝。本期没有同版本快照，任何写入都会丢格式或
-  //     把 reactive 源码按 Markdown 改写。
-  const requestedFormat =
-    body && typeof body === 'object' && !Array.isArray(body)
-      ? (body as Record<string, unknown>).format
-      : undefined;
-  const contentWrite = resolveBlogContentFormat(requestedFormat, blog.content?.format);
-  if (!contentWrite.ok) {
-    return apiErr(400, contentWriteFailureMessage(contentWrite.reason), {
-      error_code: contentWriteErrorCode(contentWrite.reason),
-    });
-  }
 
   // 缺 `visibility` 键时**用库里现值补齐**。
   //

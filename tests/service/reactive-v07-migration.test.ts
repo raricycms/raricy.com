@@ -16,8 +16,8 @@ async function oldSources() {
   const blogId = await createBlog(user.id, { title: '旧博客', content: '初始', description: '', visibility: 'internal', categoryId: null });
   const clip = await createClip(user.id, { title: '旧剪贴板', content: '初始' });
   if (!clip.ok) throw new Error('clip fixture failed');
-  await prisma.blogContent.update({ where: { blogId }, data: { format: 'reactive', syntaxVersion: 'local-draft-2', content: '<!-- reactive-md: local-draft-2 -->\n\n旧博客正文' } });
-  await prisma.clipText.update({ where: { clipId: clip.id }, data: { format: 'reactive', syntaxVersion: 'local-draft-2', content: '旧剪贴板正文' } });
+  await prisma.blogContent.update({ where: { blogId }, data: { syntaxVersion: 'local-draft-2', content: '<!-- reactive-md: local-draft-2 -->\n\n旧博客正文' } });
+  await prisma.clipText.update({ where: { clipId: clip.id }, data: { syntaxVersion: 'local-draft-2', content: '旧剪贴板正文' } });
   return { user, blogId, clipId: clip.id };
 }
 
@@ -68,7 +68,9 @@ describe('ReactiveMD 0.7 正文迁移', () => {
     await expect(applyReactiveV07Migration(plan)).rejects.toThrow('blocked');
     expect((await prisma.blogContent.findUniqueOrThrow({ where: { blogId } })).syntaxVersion).toBe('local-draft-2');
     expect(await prisma.reactiveSourceMigration.count()).toBe(0);
-    await prisma.clipText.update({ where: { clipId }, data: { syntaxVersion: null } });
+    // 版本列是「这篇是增强语法」的唯一存储：认不出的版本必须在迁移里停下。
+    // （syntax_version 为 NULL 的纯 Markdown 行不属于未迁移正文，见 migrate-v07.ts。）
+    await prisma.clipText.update({ where: { clipId }, data: { syntaxVersion: 'local-draft-1' } });
     expect((await planReactiveV07Migration()).blockers).toEqual(expect.arrayContaining([expect.objectContaining({ id: clipId, codes: ['site.migration.unknown-syntax'] })]));
   });
 
@@ -92,7 +94,7 @@ describe('ReactiveMD 0.7 正文迁移', () => {
     ).join('\n\n')}`;
     await prisma.blogContent.update({
       where: { blogId },
-      data: { format: 'reactive', syntaxVersion: 'local-draft-2', content: longSource },
+      data: { syntaxVersion: 'local-draft-2', content: longSource },
     });
 
     const plan = await planReactiveV07Migration();
@@ -120,7 +122,7 @@ describe('ReactiveMD 0.7 正文迁移', () => {
     if (!clip.ok) throw new Error('clip fixture failed');
     await prisma.clipText.update({
       where: { clipId: clip.id },
-      data: { format: 'reactive', syntaxVersion: 'local-draft-2', content: '后新增 reactive' },
+      data: { syntaxVersion: 'local-draft-2', content: '后新增 reactive' },
     });
 
     await expect(applyReactiveV07Migration(plan)).rejects.toThrow('Unmigrated reactive source');

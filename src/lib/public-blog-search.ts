@@ -12,7 +12,6 @@ import {
   PUBLIC_SEARCH_BLOG_SQL,
   isPublicIndexableBlog,
 } from './blog-public-scope';
-import { parseContentFormat } from './content-format';
 import { REACTIVE_COMPILE_OPTIONS } from './reactive/host-components';
 import { currentCompileSignature } from './reactive/compile-identity';
 
@@ -38,9 +37,7 @@ const CONTAINERS = new Set(['root', 'heading', 'paragraph', 'emphasis', 'strong'
 
 /** 没有读者可见正文的组件 / 宿主节点；其余组件的子节点继续取文字。 */
 const SKIPPED_COMPONENTS = new Set(['computed', 'const', 'validation', 'site-embed', 'if']);
-export async function publicBodyText(source: string, rawFormat: unknown): Promise<{ text: string; status: 'ready' | 'missing' }> {
-  const format = parseContentFormat(rawFormat);
-  if (!format) return { text: '', status: 'missing' };
+export async function publicBodyText(source: string): Promise<{ text: string; status: 'ready' | 'missing' }> {
   try {
     const result = compileSource(source, REACTIVE_COMPILE_OPTIONS);
     if (!result.ok) return { text: '', status: 'missing' };
@@ -73,13 +70,13 @@ export async function syncPublicBlogSearch(blogId: string, db: PrismaClient = pr
     return;
   }
   const source = row.content.content;
-  const format = row.content.format;
-  const body = await publicBodyText(source, format);
+  const syntaxVersion = row.content.syntaxVersion;
+  const body = await publicBodyText(source);
   const tokens = searchTerms(body.text);
   const version = PUBLIC_SEARCH_VERSION;
   await db.$transaction(async tx => {
     const current = await tx.blog.findUnique({ where: { id: blogId }, include: { content: true } });
-    if (!current || !isPublicIndexableBlog(current) || current.content?.content !== source || current.content?.format !== format) return;
+    if (!current || !isPublicIndexableBlog(current) || current.content?.content !== source || current.content?.syntaxVersion !== syntaxVersion) return;
     await tx.$executeRaw`DELETE FROM public_blog_search WHERE blog_id = ${blogId}`;
     await tx.$executeRaw`INSERT INTO public_blog_search(rowid,blog_id,body,folded,tokens,version,body_status)
       SELECT rowid,id,${body.text},${body.text.toLowerCase()},${tokens},${version},${body.status}

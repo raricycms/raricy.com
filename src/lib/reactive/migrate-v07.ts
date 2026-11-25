@@ -43,8 +43,8 @@ export async function planReactiveV07Migration(): Promise<ReactiveV07Plan> {
   return runAsBackendOps(async () => {
     const alreadyApplied = !!(await prisma.reactiveSourceMigration.findUnique({ where: { name: MIGRATION_NAME } }));
     const [blogs, clips] = await Promise.all([
-      prisma.blogContent.findMany({ where: { format: 'reactive' }, select: { blogId: true, content: true, syntaxVersion: true } }),
-      prisma.clipText.findMany({ where: { format: 'reactive' }, select: { clipId: true, content: true, syntaxVersion: true } }),
+      prisma.blogContent.findMany({ where: { syntaxVersion: { not: null } }, select: { blogId: true, content: true, syntaxVersion: true } }),
+      prisma.clipText.findMany({ where: { syntaxVersion: { not: null } }, select: { clipId: true, content: true, syntaxVersion: true } }),
     ]);
     const sources: SourceRow[] = [
       ...blogs.map((row) => ({ kind: 'blog' as const, id: row.blogId, source: row.content, syntaxVersion: row.syntaxVersion })),
@@ -95,7 +95,7 @@ export async function planReactiveV07Migration(): Promise<ReactiveV07Plan> {
         blockers.push({ kind: item.kind, id: item.id, codes: migrated.diagnostics.map((d) => d.code) });
         continue;
       }
-      const validation = await validateContentForPublish({ content: migrated.source, format: 'reactive' });
+      const validation = await validateContentForPublish({ content: migrated.source });
       if (!validation.ok) {
         blockers.push({ kind: item.kind, id: item.id, codes: validation.codes });
         continue;
@@ -114,7 +114,7 @@ export async function applyReactiveV07Migration(plan: ReactiveV07Plan): Promise<
       throw new Error('Migration already applied');
     }
     for (const row of plan.rows) {
-      const predicate = { format: 'reactive', syntaxVersion: row.syntaxVersion, content: row.source };
+      const predicate = { syntaxVersion: row.syntaxVersion, content: row.source };
       const updated = row.kind === 'blog'
         ? await tx.blogContent.updateMany({ where: { blogId: row.id, ...predicate }, data: { content: row.migratedSource, syntaxVersion: LOCAL_SYNTAX_VERSION } })
         : await tx.clipText.updateMany({ where: { clipId: row.id, ...predicate }, data: { content: row.migratedSource, syntaxVersion: LOCAL_SYNTAX_VERSION } });
@@ -122,7 +122,14 @@ export async function applyReactiveV07Migration(plan: ReactiveV07Plan): Promise<
 
     }
     // 捕获准备之后新增或被修改成旧版本的正文，避免留下未迁移的行。
-    const old = { format: 'reactive', OR: [{ syntaxVersion: null }, { syntaxVersion: { not: LOCAL_SYNTAX_VERSION } }] };
+    // 纯 Markdown 行（syntax_version IS NULL）不属于未迁移正文 —— 格式列退役后
+    // 它是正常状态，不能按旧口径（format='reactive'）一起拦下。
+    const old = {
+      AND: [
+        { syntaxVersion: { not: null } },
+        { syntaxVersion: { not: LOCAL_SYNTAX_VERSION } },
+      ],
+    };
     if (await tx.blogContent.findFirst({ where: old, select: { blogId: true } }) ||
         await tx.clipText.findFirst({ where: old, select: { clipId: true } })) {
       throw new Error('Unmigrated reactive source appeared during migration');
@@ -130,11 +137,11 @@ export async function applyReactiveV07Migration(plan: ReactiveV07Plan): Promise<
     // 列已是当前版本、正文却仍声明旧版本的行同样不能留到标记之后。
     const [currentBlogs, currentClips] = await Promise.all([
       tx.blogContent.findMany({
-        where: { format: 'reactive', syntaxVersion: LOCAL_SYNTAX_VERSION, content: { contains: 'reactive-md:' } },
+        where: { syntaxVersion: LOCAL_SYNTAX_VERSION, content: { contains: 'reactive-md:' } },
         select: { blogId: true, content: true },
       }),
       tx.clipText.findMany({
-        where: { format: 'reactive', syntaxVersion: LOCAL_SYNTAX_VERSION, content: { contains: 'reactive-md:' } },
+        where: { syntaxVersion: LOCAL_SYNTAX_VERSION, content: { contains: 'reactive-md:' } },
         select: { clipId: true, content: true },
       }),
     ]);

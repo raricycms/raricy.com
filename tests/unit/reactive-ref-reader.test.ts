@@ -24,12 +24,12 @@ beforeEach(() => vi.clearAllMocks());
 describe('request-scoped reference permissions', () => {
   it('prepares external payloads without probing member resources', async () => {
     const source = '[@AbCd1234] [@AbCdEf123] [@123456]';
-    const result = await compileReactiveSource({ source, mode: 'external', viewer: null, format: 'markdown' });
+    const result = await compileReactiveSource({ source, mode: 'external', viewer: null });
     expect(result.hostData).toEqual({});
     expect(result.result.ok).toBe(true);
     expect(JSON.stringify(result.result)).toContain('[@AbCdEf123]');
     // 同一输入再准备一次，适配产出必须一致（快照/哈希机制已退出，见 R3-106）。
-    const again = await compileReactiveSource({ source, mode: 'external', viewer: null, format: 'markdown' });
+    const again = await compileReactiveSource({ source, mode: 'external', viewer: null });
     expect(again.result).toEqual(result.result);
     expect(mocks.clip).not.toHaveBeenCalled();
     expect(mocks.vote).not.toHaveBeenCalled();

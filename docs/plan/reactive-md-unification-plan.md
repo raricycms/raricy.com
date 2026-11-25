@@ -13,13 +13,14 @@
 
 - 博客与云剪贴板的 Markdown、Reactive 正文都走同一条管线：授权后按需编译、SSR 静态首屏、
   浏览器接管交互（`src/lib/reactive/read-render.ts` → `compileLocal` → `LocalDocumentView`）。
-- 作者不选手动格式：`src/lib/md-editor/format-mode.ts` 从源码推导 effective format，保存时
-  提交明确 `format`；草稿把原文、格式与语法版本一起恢复，旧草稿也兼容。
+- 作者不选手动格式：`src/lib/md-editor/format-mode.ts` 从源码推导 effective format，草稿把
+  原文、格式与语法版本一起恢复，旧草稿也兼容。
+- 库内只存 `syntax_version` 表示「有没有增强语法」；API 的 `format` 由它派生，写请求里
+  那个字段已废弃（只校验白名单，不再影响存储）。写入一律先编译：编译失败返回
+  `content_unrenderable`（`src/lib/reactive/publish.ts`），不再有 format_mismatch。
 - 共用编辑器四入口：Insert、Components、上传图片、插入引用。Components 目录来自站点当前
   编译配置（`reactive-md/authoring` + `src/lib/md-editor/reactive-authoring.ts`），
   不维护第二份组件清单。
-- API 省略格式沿用「创建默认 / 更新保留」；显式写了有效增强语法却声明 Markdown 的写入
-  返回具名 400（`src/lib/reactive/publish.ts` 的 `format_mismatch`）。
 - 引用权限与预算、静态首屏与无 JS 阅读沿用原口径；HTML capability flags 继续关闭。
 
 ## 2. 语料与性能结论（本地开发库）
@@ -34,12 +35,13 @@
 
 ### 3.1 一套引擎、一个作者入口，保留准确的格式契约
 
-- `format` 不再决定「用新引擎还是旧引擎」，只服务 API、草稿与旧消费者兼容；不为界面统一
+- `format` 只服务 API、草稿与旧消费者兼容（库内已改由 `syntax_version` 派生）；不为界面统一
   批量把旧 Markdown 改标为 Reactive。
-- 已有 Reactive 正文保留其格式与语法版本，删掉一个组件不自动降级。
+- 已有 Reactive 正文保留其语法版本，删掉一个组件不自动降级。
 - 自动识别依据上游语法事实，不用全文正则猜 `{{` 或 `<tag>`，也不把代码 / LaTeX 里的示例
   自动升级；字面语法用 Markdown 转义或代码标记表达。
-- 将来删除 `format` / `syntax_version` 须另做完整的消费者迁移，不在本轮靠改默认值隐式完成。
+- 库内 `format` 列已于迁移 46 退役；再动 `syntax_version` 须另做完整的消费者迁移，不在本轮
+  靠改默认值隐式完成。
 
 ### 3.2 统一编译配置与兼容层
 
