@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { Activity, ExternalLink, Flag, Grid2X2, Swords, Wand2 } from 'lucide-react';
+import { Activity, Clapperboard, ExternalLink, Flag, Grid2X2, Sparkles, Swords, Trees, Wand2 } from 'lucide-react';
 import { AtamasRingIcon } from '@/games/atamas/icons';
 import { TwinShadeIcon } from '@/games/twinshade/icons';
 import { LumenIcon } from '@/games/lumen/icons';
@@ -22,6 +22,9 @@ function GameIcon({ icon }: { icon: GameEntry['icon'] }) {
   if (icon === 'quandi') return <Flag />;
   if (icon === 'motion') return <Activity />;
   if (icon === 'rarica') return <Swords />;
+  if (icon === 'rariroom') return <Clapperboard />;
+  if (icon === 'ling') return <Sparkles />;
+  if (icon === 'reality') return <Trees />;
   return <Wand2 />;
 }
 

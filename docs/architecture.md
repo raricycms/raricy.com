@@ -1686,8 +1686,10 @@ MP3 的帧同步要核版本 / 层 / 位速率字段（只判 `0xFF` 打头太�
 游戏清单住 `src/lib/game-catalog.ts`：每款游戏只登记一次，玩法类别、游玩方式与
 启动方式分别描述。**合集可以嵌套**：清单只写 `parentId`，URL 由父链推出来
 （`/game/collections/<父>/<子>`），没有第二份 href 可漂；玩具首页只陈列顶层合集、
-ATÅMAS（益智、单人、原生组件）与站外的莱莉卡（收集式卡牌对战，清单里 `external: true`、
-`href` 写完整 URL，卡片新窗口打开 rarica.raricy.com），合集页陈列「直属游戏 + 子合集」，
+ATÅMAS（益智、单人、原生组件）与四款站外游戏（清单里 `external: true`、`href` 写完整
+URL，卡片新窗口打开）：莱莉卡（收集式卡牌对战，rarica.raricy.com）、放映厅（屏幕共享与
+影院模式，rariroom.raricy.com）、灵性实验室（感知与预知小实验，ling.raricy.com）与
+灵感菇树林（占卜与调频，reality.raricy.com），合集页陈列「直属游戏 + 子合集」，
 路由是 catch-all（`src/app/game/collections/[...slug]/page.tsx`）。顶层「测试」合集
 `/game/collections/test` 收录 Wand demo、Wand demo 2、公共空间、圈地运动、合页 Demo、合页 Demo 2、合页 Demo 3、
 异文 Demo、折光、折光 2 与双影，并挂着手工间子合集 `/game/collections/test/craft`
