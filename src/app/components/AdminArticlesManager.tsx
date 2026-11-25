@@ -6,17 +6,17 @@
 //   • 选中后从底部浮出批量操作胶囊（更新栏目 / 设为精选）
 //   • 每行动作簇委托给 <AdminBlogActions>（栏目下拉 + 查看 / 编辑 / 精选）
 // 没有批量更新端点，这里对所选文章逐条 PATCH，可见结果等价（toast + 列表刷新）。
-// 筛选 / 搜索仍用原生 GET 表单交给服务端重渲染。
+// 顶部筛选与博客目录（/blog）共用同一套控件：<SearchForm> + <BlogCategorySelect>。
+// 搜索走 GET 表单由服务端重渲染，栏目下拉选中即跳转（两处都会丢掉 page）。
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { useState, type CSSProperties } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
   CheckCheck,
   FileText,
   Heart,
-  Search,
   Star,
   X,
 } from 'lucide-react';
@@ -24,7 +24,12 @@ import AdminBlogActions, { type CategoryGroup } from './AdminBlogActions';
 import AdminEmpty from './AdminEmpty';
 import AdminPager from './AdminPager';
 import AdminPick from './AdminPick';
-import ExpandSelect, { type ExpandSelectGroup } from './ExpandSelect';
+import BlogCategorySelect, { type BlogCategoryExtraOption, type BlogCategoryOption } from '@/app/blog/BlogCategorySelect';
+import SearchForm from '@/app/blog/SearchForm';
+
+const ADMIN_CATEGORY_EXTRA_OPTIONS: BlogCategoryExtraOption[] = [
+  { value: '-1', label: '未分类' },
+];
 
 export interface ArticleRow {
   id: string;
@@ -49,6 +54,8 @@ interface Props {
   articles: ArticleRow[];
   total: number;
   categoryGroups: CategoryGroup[];
+  /** 筛选下拉的栏目树（与 /blog 目录同一个组件吃同一种选项）。 */
+  categoryOptions: BlogCategoryOption[];
   currentCategoryId: string; // 原样回填筛选下拉（'' / '-1' / 数字）
   search: string;
   pagination: Pagination;
@@ -63,6 +70,7 @@ export default function AdminArticlesManager({
   articles,
   total,
   categoryGroups,
+  categoryOptions,
   currentCategoryId,
   search,
   pagination,
@@ -72,35 +80,18 @@ export default function AdminArticlesManager({
   const [batchCategory, setBatchCategory] = useState('none');
   const [busy, setBusy] = useState(false);
 
-  // 栏目筛选是「选中即提交」的 GET 筛选：本地值先落下来（面板立刻显示新值），
-  // 再 requestSubmit。服务端那一份变化时（比如点「重置」）同步回来。
-  const [categoryFilter, setCategoryFilter] = useState(currentCategoryId);
-  const filterFormRef = useRef<HTMLFormElement>(null);
-  useEffect(() => setCategoryFilter(currentCategoryId), [currentCategoryId]);
-
-  const categoryFilterGroups = useMemo<ExpandSelectGroup[]>(
-    () => [
-      {
-        options: [
-          { value: '', label: '全部栏目' },
-          { value: '-1', label: '未分类' },
-        ],
-      },
-      ...categoryGroups.map((group) => ({
-        label: group.label,
-        options: group.options.map((option) => ({
-          value: String(option.id),
-          label: option.label,
-        })),
-      })),
-    ],
-    [categoryGroups]
-  );
-
   const pageIds = articles.map((a) => a.id);
   const selectedOnPage = pageIds.filter((id) => selected.has(id));
   const allSelected = pageIds.length > 0 && selectedOnPage.length === pageIds.length;
   const hasFilter = Boolean(currentCategoryId || search);
+
+  // 搜索框的「清除」只去掉搜索词，栏目筛选保留（与 /blog 目录一致）。
+  const clearHref = (() => {
+    const p = new URLSearchParams();
+    if (currentCategoryId) p.set('category', currentCategoryId);
+    const s = p.toString();
+    return s ? `/admin/blogs?${s}` : '/admin/blogs';
+  })();
 
   const toggle = (id: string) => {
     const next = new Set(selected);
@@ -208,46 +199,30 @@ export default function AdminArticlesManager({
 
   return (
     <div className="admin-container">
-      {/* 筛选和搜索栏 —— 胶囊底座，吸在顶栏下方 */}
-      <form ref={filterFormRef} method="GET" className="admin-toolbar" id="filterForm">
-        <label className="admin-search">
-          <span className="admin-search__icon" aria-hidden="true">
-            <Search />
-          </span>
-          <input
-            type="search"
-            className="admin-search__input"
-            name="search"
-            defaultValue={search}
-            placeholder="搜索文章标题…"
-            aria-label="搜索文章标题"
-          />
-        </label>
-
-        <ExpandSelect
-          id="article-category-filter"
-          name="category"
-          className="admin-toolbar__select"
-          value={categoryFilter}
-          onChange={(value) => {
-            setCategoryFilter(value);
-            filterFormRef.current?.requestSubmit();
-          }}
-          groups={categoryFilterGroups}
-          ariaLabel="按栏目筛选"
+      {/* 筛选和搜索栏 —— 胶囊底座，吸在顶栏下方。搜索框与栏目下拉直接复用
+          博客目录的组件：搜索内嵌「搜索 / 清除」，栏目下拉选中即跳转。 */}
+      <div className="admin-toolbar">
+        <SearchForm
+          key={`${currentCategoryId}:${search}`}
+          basePath="/admin/blogs"
+          category={currentCategoryId || null}
+          featured={false}
+          search={search}
+          clearHref={clearHref}
+          sort={null}
+          placeholder="搜索文章标题…"
         />
 
-        <button type="submit" className="btn btn-primary admin-toolbar__button">
-          筛选
-        </button>
-        {hasFilter && (
-          <Link href="/admin/blogs" className="btn btn-secondary admin-toolbar__button">
-            重置
-          </Link>
-        )}
+        <BlogCategorySelect
+          basePath="/admin/blogs"
+          showFeatured={false}
+          categories={categoryOptions}
+          currentValue={currentCategoryId || null}
+          extraOptions={ADMIN_CATEGORY_EXTRA_OPTIONS}
+        />
 
         <span className="admin-toolbar__hint numeric">共 {total} 篇</span>
-      </form>
+      </div>
 
       <div className="admin-list-head">
         <span>

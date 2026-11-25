@@ -5,6 +5,7 @@ import { categoryFullPath, ymd } from '@/lib/format';
 import AdminPageHeader from '@/app/components/AdminPageHeader';
 import AdminArticlesManager, { type ArticleRow } from '@/app/components/AdminArticlesManager';
 import type { CategoryGroup } from '@/app/components/AdminBlogActions';
+import type { BlogCategoryOption } from '@/app/blog/BlogCategorySelect';
 import { FilePen } from 'lucide-react';
 
 export const dynamic = 'force-dynamic';
@@ -75,6 +76,17 @@ export default async function AdminBlogsPage({
     ],
   }));
 
+  // 筛选下拉与 /blog 目录共用同一个组件；管理端按栏目 id 筛选，所以选项值取 id
+  // （目录页取 slug）。图标前缀留在名字里 —— 组件本身不为某个页面渲染图标。
+  const categoryOptions: BlogCategoryOption[] = (tree as CategoryTreeNode[]).map((root) => ({
+    value: String(root.id),
+    name: withIcon(root.icon, root.name),
+    children: (root.children ?? []).map((child) => ({
+      value: String(child.id),
+      name: withIcon(child.icon, child.name),
+    })),
+  }));
+
   const articles: ArticleRow[] = (result.blogs as BlogRow[]).map((b) => {
     const created = b.createdAt instanceof Date ? b.createdAt : null;
     return {
@@ -107,6 +119,7 @@ export default async function AdminBlogsPage({
         articles={articles}
         total={result.total}
         categoryGroups={categoryGroups}
+        categoryOptions={categoryOptions}
         currentCategoryId={currentCategoryId}
         search={sp.search ?? ''}
         pagination={{

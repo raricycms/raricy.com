@@ -74,7 +74,7 @@ export interface ExpandSelectProps {
   disabled?: boolean;
   /** 触发钮的无障碍名称。需要读出「当前值」时由调用方拼好传进来。 */
   ariaLabel?: string;
-  /** 附加到根节点的类名（`admin-field__control` / `admin-toolbar__select` 等）。 */
+  /** 附加到根节点的类名（`admin-field__control` 等）。 */
   className?: string;
 }
 

@@ -1,24 +1,42 @@
 'use client';
 
+// 博客目录的栏目下拉：站内 /blog、对外 /explore 与文章管理（/admin/blogs）共用。
+//
+// 组件只负责「展示栏目树 + 把选中的筛选值写进 URL」，值的含义由调用方定：
+// 两个目录页用栏目 slug，文章管理用栏目 id（它按 id 筛选）。选中后删掉
+// page / category / featured 再写 category，其余查询参数（搜索词、scope……）原样保留。
+
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { ChevronDown } from 'lucide-react';
 
-interface Category {
-  id: number;
+export interface BlogCategoryChild {
+  /** 筛选值：目录页是 slug，文章管理是 id 的字符串形式。 */
+  value: string;
   name: string;
-  slug: string;
-  children: { id: number; name: string; slug: string }[];
 }
 
-export default function BlogCategorySelect({ categories, currentSlug, featured, basePath = '/blog', showFeatured = true }: {
-  categories: Category[];
-  currentSlug: string | null;
+export interface BlogCategoryOption extends BlogCategoryChild {
+  children: BlogCategoryChild[];
+}
+
+/** 栏目树之前追加的固定选项（文章管理用它放「未分类」）。 */
+export interface BlogCategoryExtraOption {
+  value: string;
+  label: string;
+}
+
+export default function BlogCategorySelect({ categories, currentValue, featured, basePath = '/blog', showFeatured = true, extraOptions = [] }: {
+  categories: BlogCategoryOption[];
+  /** 当前筛选值；null 表示「全部栏目」。 */
+  currentValue: string | null;
   featured?: string;
-  /** 提交到哪个列表页。`/explore`（对外公开列表）复用本组件，传它自己的路径。 */
+  /** 提交到哪个列表页。`/explore`（对外公开列表）与 `/admin/blogs` 复用本组件，传它自己的路径。 */
   basePath?: string;
-  /** 是否提供「精选文章」。精选是站内的编辑口径，对外列表不提供。 */
+  /** 是否提供「精选文章」。精选是站内的编辑口径，对外列表与文章管理不提供。 */
   showFeatured?: boolean;
+  /** 追加在栏目树之前的固定选项。 */
+  extraOptions?: BlogCategoryExtraOption[];
 }) {
   const [open, setOpen] = useState(false);
   // 首帧服务端渲染只能给出 `--category-closed-width` 的 120px 兜底值，水合后
@@ -27,14 +45,16 @@ export default function BlogCategorySelect({ categories, currentSlug, featured, 
   // 所以过渡只在用户真正操作过之后开启（`.is-ready`），首次测量是无动画的。
   const [ready, setReady] = useState(false);
   const [expanded, setExpanded] = useState(() => new Set(
-    categories.filter((c) => c.slug === currentSlug || c.children.some((child) => child.slug === currentSlug)).map((c) => c.id)
+    categories.filter((c) => c.value === currentValue || c.children.some((child) => child.value === currentValue)).map((c) => c.value)
   ));
   const host = useRef<HTMLDivElement>(null);
   const toggle = useRef<HTMLButtonElement>(null);
   const router = useRouter();
   const params = useSearchParams();
-  const selected = categories.flatMap((c) => [c, ...c.children]).find((c) => c.slug === currentSlug);
-  const label = selected?.name ?? (currentSlug ? '所选栏目' : featured === '1' ? '精选文章' : featured === '0' ? '非精选文章' : '全部栏目');
+  const selectedLabel = categories.flatMap((c) => [c, ...c.children]).find((c) => c.value === currentValue)?.name
+    ?? extraOptions.find((option) => option.value === currentValue)?.label;
+  const label = selectedLabel
+    ?? (currentValue ? '所选栏目' : featured === '1' ? '精选文章' : featured === '0' ? '非精选文章' : '全部栏目');
 
   useLayoutEffect(() => {
     const element = host.current!;
@@ -106,12 +126,12 @@ export default function BlogCategorySelect({ categories, currentSlug, featured, 
     };
   }, [open]);
 
-  function choose(slug: string | null, nextFeatured?: string) {
+  function choose(value: string | null, nextFeatured?: string) {
     const p = new URLSearchParams(params.toString());
     p.delete('page');
     p.delete('category');
     p.delete('featured');
-    if (slug) p.set('category', slug);
+    if (value) p.set('category', value);
     if (nextFeatured) p.set('featured', nextFeatured);
     setOpen(false);
     toggle.current?.focus();
@@ -144,35 +164,38 @@ export default function BlogCategorySelect({ categories, currentSlug, featured, 
         <div className="blog-category-select__panel" id="blog-category-options" inert={!open}>
           <div className="blog-category-select__clip">
             <div className="blog-category-select__options" aria-label="栏目选择">
-              <button type="button" className={`blog-category-select__option${!currentSlug && !featured ? ' is-active' : ''}`} onClick={() => choose(null)}><span>全部栏目</span></button>
+              <button type="button" className={`blog-category-select__option${!currentValue && !featured ? ' is-active' : ''}`} onClick={() => choose(null)}><span>全部栏目</span></button>
               {showFeatured && (
-                <button type="button" className={`blog-category-select__option${featured === '1' && !currentSlug ? ' is-active' : ''}`} onClick={() => choose(null, '1')}><span>精选文章</span></button>
+                <button type="button" className={`blog-category-select__option${featured === '1' && !currentValue ? ' is-active' : ''}`} onClick={() => choose(null, '1')}><span>精选文章</span></button>
               )}
+              {extraOptions.map((option) => (
+                <button key={option.value} type="button" className={`blog-category-select__option${currentValue === option.value ? ' is-active' : ''}`} onClick={() => choose(option.value)}><span>{option.label}</span></button>
+              ))}
               {categories.map((category) => (
-                <div key={category.id}>
-                  <div className={`blog-category-select__parent${currentSlug === category.slug ? ' is-active' : ''}`}>
-                    <button type="button" className="blog-category-select__option" onClick={() => choose(category.slug)}><span>{category.name}</span></button>
+                <div key={category.value}>
+                  <div className={`blog-category-select__parent${currentValue === category.value ? ' is-active' : ''}`}>
+                    <button type="button" className="blog-category-select__option" onClick={() => choose(category.value)}><span>{category.name}</span></button>
                     {category.children.length > 0 && (
                       <button
                         type="button"
                         className="blog-category-select__expand"
-                        aria-label={`${expanded.has(category.id) ? '收起' : '展开'}${category.name}的二级栏目`}
-                        aria-expanded={expanded.has(category.id)}
-                        aria-controls={`blog-category-children-${category.id}`}
+                        aria-label={`${expanded.has(category.value) ? '收起' : '展开'}${category.name}的二级栏目`}
+                        aria-expanded={expanded.has(category.value)}
+                        aria-controls={`blog-category-children-${category.value}`}
                         onClick={() => setExpanded((previous) => {
                           const next = new Set(previous);
-                          if (next.has(category.id)) next.delete(category.id);
-                          else next.add(category.id);
+                          if (next.has(category.value)) next.delete(category.value);
+                          else next.add(category.value);
                           return next;
                         })}
                       ><ChevronDown aria-hidden="true" /></button>
                     )}
                   </div>
                   {category.children.length > 0 && (
-                    <div className={`blog-category-select__children${expanded.has(category.id) ? ' is-expanded' : ''}`} id={`blog-category-children-${category.id}`} inert={!open || !expanded.has(category.id)}>
+                    <div className={`blog-category-select__children${expanded.has(category.value) ? ' is-expanded' : ''}`} id={`blog-category-children-${category.value}`} inert={!open || !expanded.has(category.value)}>
                       <div className="blog-category-select__clip">
                         {category.children.map((child) => (
-                          <button key={child.id} type="button" className={`blog-category-select__option blog-category-select__option--child${currentSlug === child.slug ? ' is-active' : ''}`} onClick={() => choose(child.slug)}><span>{child.name}</span></button>
+                          <button key={child.value} type="button" className={`blog-category-select__option blog-category-select__option--child${currentValue === child.value ? ' is-active' : ''}`} onClick={() => choose(child.value)}><span>{child.name}</span></button>
                         ))}
                       </div>
                     </div>
