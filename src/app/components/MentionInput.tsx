@@ -2,6 +2,7 @@
 
 import { useEffect, useId, useRef, useState } from 'react';
 import { activeMention, type MentionScope, type MentionUser } from '@/lib/mention-shared';
+import { useImeGuard } from './ime-keydown';
 import { insertAtRange } from './textarea-insert';
 
 /** 共用输入框的 @ 提示；搜索防抖、取消过期请求，选择只替换光标处的那一个 token。 */
@@ -15,6 +16,7 @@ export default function MentionInput({
 }) {
   const listId = useId();
   const pickerRef = useRef<HTMLDivElement>(null);
+  const ime = useImeGuard();
   const [focused, setFocused] = useState(false);
   const [composing, setComposing] = useState(false);
   const [caret, setCaret] = useState({ start: 0, end: 0 });
@@ -87,18 +89,24 @@ export default function MentionInput({
         onBlur={(e) => { setFocused(false); props.onBlur?.(e); }}
         onChange={(e) => { setDismissed(''); updateCaret(e.currentTarget); props.onChange?.(e); }}
         onSelect={(e) => { updateCaret(e.currentTarget); props.onSelect?.(e); }}
-        onCompositionStart={(e) => { setComposing(true); props.onCompositionStart?.(e); }}
+        onCompositionStart={(e) => { ime.onCompositionStart(); setComposing(true); props.onCompositionStart?.(e); }}
         onCompositionEnd={(e) => {
           // Firefox 的最终 input 可能晚于 compositionend。先同步 DOM 中的最终文本，
           // 否则下面的状态更新会让受控 textarea 用旧 value 覆盖刚选中的汉字。
           // 读取整段 value（而非追加 e.data），同时保留光标两侧正文与取消组字的结果。
+          ime.onCompositionEnd();
           onTextChange(e.currentTarget.value);
           setComposing(false);
           updateCaret(e.currentTarget);
           props.onCompositionEnd?.(e);
         }}
         onKeyDown={(e) => {
-          if (e.nativeEvent.isComposing || composing) return;
+          // 组字期间的按键属于输入法。**必须**在任何 preventDefault 之前让开：
+          // 拦下来候选就选不中，字打不进去，而界面上看不出任何异常。
+          // 判据见 ime-keydown.ts —— 只判 isComposing 会漏掉 Safari 的确认键
+          //（compositionend 先发，那一下的 isComposing 已是 false），
+          // 表现就是「按 Enter 确认候选词，消息当场发出去」。
+          if (ime.isImeKey(e)) return;
           if (open) {
             if (e.key === 'Escape') { e.preventDefault(); setDismissed(key); return; }
             if (users.length && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {

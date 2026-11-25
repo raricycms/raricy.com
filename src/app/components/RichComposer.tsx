@@ -25,6 +25,7 @@ import { BookOpenText, Check, IdCard, Image as ImageIcon, Images, Smile, X } fro
 import { IMAGE_ACCEPT } from '@/lib/image-client';
 import type { MentionScope } from '@/lib/mention-shared';
 import MentionInput from './MentionInput';
+import { isImeKeydown } from './ime-keydown';
 import type { PendingImage } from './usePendingImage';
 import ImagePickerModal from './ImagePickerModal';
 import StickerPicker, { type StickerPickKind } from './StickerPicker';
@@ -337,7 +338,13 @@ export default function RichComposer({
           onKeyDown={(e) => {
             // 触屏：不拦截 Enter，走浏览器默认行为插入换行
             if (isTouch) return;
-            if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+            // 发送口自己的防线：MentionInput 在更前面已经整段让开过一次，这里再判一次
+            // 原生信号，让「发送」这件事不依赖上层组件的实现。判据见 ime-keydown.ts ——
+            // 只判 isComposing 会漏掉 Safari 的确认键（compositionend 先发，那一下的
+            // isComposing 已是 false），中文用户打英文按 Enter 确认候选词就会当场发出。
+            // 必须在任何 preventDefault 之前。
+            if (isImeKeydown(e.nativeEvent)) return;
+            if (e.key === 'Enter' && !e.shiftKey) {
               e.preventDefault();
               onSend();
             }
