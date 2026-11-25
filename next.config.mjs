@@ -63,9 +63,10 @@ const nextConfig = {
   // 静音，而症状从「构建失败」退化成「运行时报不是函数」—— 现在这几个是实测
   // 撞到的，就只列这几个。
   webpack: (config, { isServer, webpack }) => {
-    // Next 15's bundled React predates useEffectEvent. Preserve Radix's optional lookup.
+    // Next 15's bundled React predates useEffectEvent. In reactive-md@0.9.2 only the
+    // controls bundle contains Radix's optional lookup, so keep the text rewrite scoped there.
     config.module.rules.push({
-      test: /[\\/]reactive-md[\\/]dist-library[\\/].+\.js$/,
+      test: /[\\/]reactive-md[\\/]dist-library[\\/]controls-[^\\/]+\.js$/,
       loader: path.join(import.meta.dirname, 'scripts/reactive-md-react-fallback.cjs'),
     });
     if (!isServer) {

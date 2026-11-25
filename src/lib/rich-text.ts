@@ -1,7 +1,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // rich-text.ts — 用户输入正文 → 安全 HTML 的**共享管线**（marked → DOMPurify → 后处理）
 // 【唯一管线】标签 / 属性白名单也收在这里，两个入口共用；只有链接类名与缓存上限由调用方注入：
-//   chat-markdown.ts → 讨论气泡（linkClass chat-msg__link, cacheMax 300）；
+//   chat-markdown.ts → 讨论气泡 R1 回退管线（linkClass chat-msg__link, cacheMax 300）；
 //   comment-markdown.ts → 评论正文（linkClass comment-link, cacheMax 200）。
 // ⚠️ 改本文件 = 改安全边界；单测 tests/unit/chat-markdown.test.ts 逐条覆盖五道防线（两个入口都跑）。
 // 【威胁模型：五道防线】

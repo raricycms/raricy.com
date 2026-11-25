@@ -18,16 +18,15 @@
 // 被开发态立即重挂，再 dispose。
 // ─────────────────────────────────────────────────────────────────────────────
 
-import 'reactive-md/screen.css';
+import 'reactive-md/styles/minimal.css';
 
 import { useEffect, useMemo, useState } from 'react';
 import { createLocalRuntime, type LocalDocument, type LocalRuntime } from 'reactive-md';
 import {
   LocalDocumentView,
-  type LocalHostData,
-  type LocalHostRenderer,
   type LocalUrlPolicy,
-} from 'reactive-md/react/unstyled';
+} from 'reactive-md/react/minimal';
+import type { LocalHostData, LocalHostRenderer } from 'reactive-md/react/unstyled';
 import { CHAT_REF_HOST_TAG, CHAT_REF_SLOT_ATTR, isChatHostData } from '@/lib/chat-rmd/reference-types';
 
 /** 聊天静态挂载的能力上限：三项全关（编译期策略之外的运行时第二道闸）。 */
@@ -129,8 +128,9 @@ export function normalizeChatRmdDocument(
     part += 1;
     return part;
   });
-  if (liftedNodes === document.nodes) return document;
-  return { ...document, nodes: liftedNodes };
+  // Chat policy keeps Markdown and the host-rendered chat-ref nodes. Clearing the
+  // compiler preset identity lets the minimal React package render that subset.
+  return { ...document, componentConfigKey: undefined, nodes: liftedNodes };
 }
 
 export interface ChatRmdDocumentProps {

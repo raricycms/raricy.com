@@ -424,6 +424,26 @@ describe('final 缓存', () => {
 });
 
 describe('取消与 Worker 生命周期', () => {
+  it('短暂取消订阅后同 key 快照复用 Worker 增量会话', () => {
+    vi.useFakeTimers();
+    try {
+      const { manager, worker } = setup();
+      const first = manager.subscribe(request('gen:1', 1, '快照一', 'streaming'), () => {});
+      const fake = worker();
+      fake.respondOk(fake.compileAt(0));
+      first();
+
+      vi.advanceTimersByTime(500);
+      manager.subscribe(request('gen:1', 2, '快照二', 'streaming'), () => {});
+
+      expect(fake.terminated).toBe(0);
+      expect(fake.posted.some((entry) => entry.type === 'release' && entry.key === 'gen:1')).toBe(false);
+      expect(fake.compileAt(1)).toMatchObject({ key: 'gen:1', revision: 2, phase: 'streaming' });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('取消订阅只撤销队列项，不终止共享 Worker', () => {
     const { manager, worker } = setup();
     const snapshots: ChatCompiledSnapshot[] = [];

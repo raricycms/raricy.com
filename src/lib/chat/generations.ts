@@ -223,6 +223,7 @@ function failure(
 const CAPACITY_MESSAGE = '同时进行的生成任务已达上限，请稍后再试';
 const CREATE_RATE_MESSAGE = '创建生成任务过于频繁，请稍后再试';
 const CHUNK_RATE_MESSAGE = '提交生成片段过于频繁，请稍后再试';
+const FINALIZE_WARN_AFTER_MS = 30_000;
 
 // ── 小工具 ───────────────────────────────────────────────────────────────────
 
@@ -956,7 +957,19 @@ export async function completeGeneration(params: {
   // 冻结源码后立即登记提交权；此后不再接受 chunk / cancel。
   task.status = 'finalizing';
   task.finalizeLastSeq = lastSeq;
-  task.finalizePromise = runFinalize(task, task.source, params.lobbyBlocked);
+  const finalizePromise = runFinalize(task, task.source, params.lobbyBlocked);
+  task.finalizePromise = finalizePromise;
+  const watchdog = setTimeout(() => {
+    if (task.status === 'finalizing') {
+      console.error(
+        `[chat-generations] finalizing 超过 ${FINALIZE_WARN_AFTER_MS}ms（id=${task.id}）`
+      );
+    }
+  }, FINALIZE_WARN_AFTER_MS);
+  void finalizePromise.then(
+    () => clearTimeout(watchdog),
+    () => clearTimeout(watchdog)
+  );
   return task.finalizePromise;
 }
 

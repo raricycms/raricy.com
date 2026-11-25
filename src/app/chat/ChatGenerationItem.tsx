@@ -47,9 +47,13 @@ export default function ChatGenerationItem({
       />
       <div className="chat-msg__body">
         <div className="chat-msg__meta">
-          <Link className="chat-msg__name" href={`/u/${generation.author.id}`}>
-            {generation.author.username}
-          </Link>
+          {generation.author.id ? (
+            <Link className="chat-msg__name" href={`/u/${generation.author.id}`}>
+              {generation.author.username}
+            </Link>
+          ) : (
+            <span className="chat-msg__name">{generation.author.username}</span>
+          )}
           <span className="chat-msg__time chat-msg__time--generating">正在生成…</span>
         </div>
         <div className="chat-msg__own-blocks">
