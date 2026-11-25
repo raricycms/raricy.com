@@ -470,8 +470,14 @@ test.describe('Markdown 渲染', () => {
     await expect(md.locator('img')).toHaveCount(0);
     // 畸形标签不得渲染出真表单控件（含 GFM 任务列表之外的任何 input）
     await expect(md.locator('input')).toHaveCount(0);
-    // 危险链接保留文字但摘掉 href（点了也不会执行）
-    await expect(md.locator('a', { hasText: '点我' })).not.toHaveAttribute('href');
+    // 危险链接保留文字但不可导航：聊天 RMD 策略会把整个链接降级为文字（没有 <a>），
+    // 旧管线保留无 href 的 <a>。两种都满足「点了不会执行」，这里两者都接受。
+    const dangerousLink = md.locator('a', { hasText: '点我' });
+    if (await dangerousLink.count()) {
+      await expect(dangerousLink).not.toHaveAttribute('href');
+    } else {
+      await expect(md).toContainText('点我');
+    }
 
     // 真·执行探测：onerror / <script> / javascript: href 只要有一个生效，
     // 这几个全局变量就会被赋值。

@@ -18,6 +18,10 @@
 发**表情**（§7.4）、报**正在输入**（§7.5）、报**已读**（§7.6）—— 不实现不影响收发，
 但对面会感觉在跟一堵墙说话。
 
+长回复还可以选择**流式生成**（§7.8）：先把正文分块推给站内读者作临时预览，
+最后一次性发布为正式消息。**它是可选增强 —— 现有一次性 `POST /messages` 继续可用
+且行为不变**，不实现流式不影响任何功能。
+
 无需申请 token、无需白名单、无需站长开任何开关。
 
 ---
@@ -38,6 +42,9 @@
 > ⚠️ 机器人**享受不到任何豁免**：它同样受限频约束（§10），也同样**会被禁言**
 > （被禁言期间所有讨论接口返回 `403 你已被禁言，暂时无法讨论`）。
 > 这是刻意设计——出问题时站长能像处理普通用户一样处理它。
+>
+> 流式生成（§7.8）不扩大任何可见范围：临时预览只投递给本来就能看到该频道的连接，
+> 失权（禁言 / 降权 / 私聊成员关系失效 / 专注模式屏蔽大区）会立刻停止任务。
 
 ---
 
@@ -168,7 +175,7 @@ if (me.user === null) { /* 该重新登录了 */ }
 { "code": 200, "message": "ok", ...其他数据字段 }
 ```
 
-出错时 `code` 与 HTTP 状态码一致，且**只有** `code` 和 `message`：
+出错时 `code` 与 HTTP 状态码一致；**常规接口**只有 `code` 和 `message`：
 
 ```json
 { "code": 403, "message": "需要核心用户权限" }
@@ -176,19 +183,27 @@ if (me.user === null) { /* 该重新登录了 */ }
 
 成功时 `message` 通常是 `"ok"` 或一句中文提示（如 `"登录成功"`）。
 
-> ⚠️ **有一个例外**：发送消息接口（§7）成功时 `message` 是一个**对象**而非字符串。
-> 已在 §7.2 单独说明 —— 无论哪个接口，**判断成功请一律只看 `code`**。
+> ⚠️ **生成接口（§7.8）的失败响应多一个稳定的机器标识 `error`**，冲突时还可能带
+> `next_seq` / `status` 等辅助字段；无论哪种情况，`message` 都是提示字符串，
+> 正式消息对象放在 `chat_message`（不会覆盖 `message`）。旧发送接口的 `message`
+> 对象特例（§7.2）仍然存在，两者不要混用同一种解析方式。
 
-| 状态码 | 含义 | 常见 message |
+| 状态码 | 含义 | 常见 message / 生成接口 `error` |
 |--------|------|--------------|
-| `400` | 参数错误 | `请求体格式错误` / `用户名和密码不能为空` |
+| `400` | 参数错误 | `请求体格式错误` / `用户名和密码不能为空`；生成接口另有 `invalid_request` / `empty` / `too_long` / `reply_invalid` |
 | `401` | 未登录 / 会话失效 | `请先登录` / `用户名或密码错误` |
-| `403` | 权限不足 / 被禁言 / 跨源 | `需要核心用户权限` / `你已被禁言，暂时无法讨论` / `跨源请求被拒绝 (CSRF)` |
-| `404` | 频道不存在或不可见 | `频道不存在` |
-| `429` | 触发限频 | 发消息 `发言过于频繁，请稍后再试` / `今日发言已达上限，请明日再试`；对账 `请求过于频繁，请稍后再试`；登录 `尝试过于频繁，请 15 分钟后再试` |
-| `5xx` | 服务器内部错误 | ⚠️ **不保证是本文的 JSON 形状** —— 讨论域自己从不产出 5xx，它只出现在未捕获异常时，由框架返回默认响应体。**先判 HTTP 状态与能否解析 JSON，再取 `code`** |
+| `403` | 权限不足 / 被禁言 / 跨源 | `需要核心用户权限` / `你已被禁言，暂时无法讨论` / `跨源请求被拒绝 (CSRF)`；生成接口另有 `forbidden` / `send_forbidden` |
+| `404` | 频道不存在或不可见 | `频道不存在`；生成接口也用于任务不存在 / 回执已淘汰（`not_found`） |
+| `409` | 生成任务的状态 / 序号 / 幂等参数冲突（仅 §7.8） | `序号跳跃，请按 next_seq 继续` / `client_request_id 已用于不同的生成参数` / `生成任务正在完成，无法取消` |
+| `410` | 生成任务仍有过期回执，但请求已不可用（仅 §7.8） | `生成任务已过期` |
+| `413` | 生成请求体、单片段或累计正文超限（仅 §7.8） | `请求内容超过限制` / `单个片段不能超过 1024 字符` / `生成正文不能超过 5000 字` |
+| `429` | 触发限频 | 发消息 `发言过于频繁，请稍后再试` / `今日发言已达上限，请明日再试`；对账 `请求过于频繁，请稍后再试`；登录 `尝试过于频繁，请 15 分钟后再试`；生成接口另有 `rate_limited` / `send_rate_limited` |
+| `500` | 生成完成时写库结果未知（仅 §7.8） | `消息写入结果未知，请先核对频道消息再决定是否重发`（`error: "commit_unknown"`，`retryable: false`） |
+| `503` | 生成任务容量已满（仅 §7.8） | `同时进行的生成任务已达上限，请稍后再试`（`error: "capacity"`） |
+| `5xx` | 服务器内部错误 | ⚠️ **常规接口不保证是本文的 JSON 形状** —— 讨论域自己从不产出 5xx，它只出现在未捕获异常时，由框架返回默认响应体。只有生成接口的 500 `commit_unknown` 是明确的 JSON 契约。**先判 HTTP 状态与能否解析 JSON，再取 `code`** |
 
-（原表这里写的是 `503 服务暂时不可用` —— 讨论域没有任何一条路径会返回 503，那是个**编出来的码**，照它写分支等于写一段永不执行的代码。2026-09 核对全部 `src/app/api/chat/**` 的 `apiErr` 调用后删掉。）
+（2026-09 核对时讨论域没有任何 503，曾删掉旧表里编出的「服务暂时不可用」；
+2026-11 的生成接口（§7.8）新增了有明确语义的容量 `503`，与当时那条编造的码不是一回事。）
 
 > ⚠️ **讨论域的接口带 `Cache-Control: no-store`**（`apiOk` / `apiErr` 统一加），
 > 别在客户端缓存这些响应。⚠️ 但**别把它当全站保证**：本文档顺带提到的
@@ -254,7 +269,8 @@ data: {"type":"message","channel_id":"lobby","message":{...}}
 
 `id:` 用于断线补齐（§6.3）。它出现在 **`message` 事件**上（值 = 消息 id），
 **私聊的 `read` 事件**上也有（值 = 对方读到的那条消息 id）；`typing` 与 `resync`
-不带 `id`。
+不带 `id`。**`generation_snapshot` / `generation_terminal`（§7.8）也不带 `id:`**，
+它们不推进补齐游标。
 
 > ⚠️ 所以「记住最后一个 `id:`」时别假定它一定是消息 —— 保守写法是**只在 `message`
 > 事件上更新游标**。用 `read` 上那个值当游标也不会漏消息（它同样是消息 id），
@@ -274,21 +290,30 @@ retry: 3000
 > 📌 之后服务端每 **25 秒**发一个注释帧 `: ping` 保活。标准 SSE 客户端会忽略注释帧 ——
 > 你不用处理，但**别把它当成数据帧**，也别拿它去更新你的「最后一条消息」游标。
 
-### 6.2 五种事件
+### 6.2 七种事件
 
 | `type` | 载荷字段 | 含义 |
 |--------|----------|------|
-| `message` | `channel_id`, `message` | 一条新消息（含你自己发的，用于多端同步） |
+| `message` | `channel_id`, `message`, 可选 `generation_id` | 一条新消息（含你自己发的，用于多端同步） |
 | `resync` | — | 积压太多补不齐，**请重新拉取**（§6.3） |
 | `typing` | `channel_id`, `user_id`, `username` | 有人正在输入（不落库，3 秒后自行忽略） |
 | `read` | `channel_id`, `user_id`, `message_id` | 私聊已读回执 |
 | `appearance` | — | 气泡装备变化，展示客户端读取 §9.8 快照；纯文本机器人可忽略 |
+| `generation_snapshot` | `generation_id`, `channel_id`, `revision`, `author`, `source` | 某条正在生成的**完整累计正文**（§7.8）；无 SSE `id` |
+| `generation_terminal` | `generation_id`, `channel_id`, `revision`, `status`, `message_id?`, `error?` | 生成任务进入终态（§7.8）；无 SSE `id` |
 
-`message` 事件的 `message` 字段就是 §11.1 的 `ChatMessageDTO`。
+`message` 事件的 `message` 字段就是 §11.1 的 `ChatMessageDTO`。`generation_id`
+只是事件外层字段，不写库；**断线补齐的 `message` 没有它也同样有效**，客户端按
+`message.id` 去重即可。
 
-> 这五个是**收**方向：别人做的动作推给你。**发**方向的三个信号 ——
-> 让别人看到「mybot 正在输入…」（§7.5）、把会话标记为已读并推回执（§7.6）——
-> 是你主动 POST 出来的。
+> `generation_snapshot` / `generation_terminal` 是**临时事件**：不建立消息 id，
+> 不推进未读 / 已读 / 侧栏 `last_message`，也不产生 @ 提及。只有随后那条正式
+> `message` 会走正常规则。生成中的正文只活在读者页面内存里，不写客户端存储。
+
+> 这些事件里，`message` / `resync` / `typing` / `read` / `appearance` 是**收**方向：
+> 别人做的动作推给你；`generation_snapshot` / `generation_terminal` 也属于收方向，
+> 是别人正在生成的内容。**发**方向的三个信号 —— 让别人看到「mybot 正在输入…」
+> （§7.5）、把会话标记为已读并推回执（§7.6）—— 是你主动 POST 出来的。
 
 ### 6.3 断线补齐（重要）
 
@@ -300,6 +325,10 @@ SSE 原生支持断线续传，**请务必实现**，否则断线期间的消息
 4. 若积压超过 **100 条**补不齐，服务端改发一帧 `{"type":"resync"}`；
 5. 收到 `resync` → 自己重新 `GET /api/chat/channels/lobby/messages`（§8）
    拉一次当前首页，把状态对齐。
+
+> 生成事件（§7.8）**不参与补齐**：它们没有 SSE `id`，也不会被重放。重连后要么收到
+> 活动任务的新快照，要么直接收到已发布的那条正式 `message`；不要拿生成事件去推进
+> `Last-Event-ID`。
 
 ### 6.4 会被服务端主动断开的情形
 
@@ -591,6 +620,221 @@ Cookie: raricy_session=<JWT>
 > ⚠️ 被抑制的那条 @ **不会在通知列表里留下任何条目**（`/api/notifications` 数不出来），
 > 但那条消息仍然是未读 —— 未读数与顶栏红点照常亮。「正在看就不打扰」不等于「当它没发生」。
 
+### 7.8 流式生成（可选）
+
+§7 的一次性发送**永远可用，且行为不变**。流式生成是可选增强：适合长回复、模型
+逐字产出等场景 —— 先把正文分块推给站内读者作临时预览，最后**一次**发布为正式消息。
+正式消息仍走同一条发送内核：权限、禁言、专注模式、正文长度、`reply_to`、
+`chatMinute` / `chatDaily`、@ 提及与未读全部照旧。
+
+三条边界先记住：
+
+- **作者只从会话取**，请求里不能指定；`generation_id` 不是授权凭据，只有任务作者能操作。
+- **临时预览不写库**、没有消息 id，不影响未读 / 已读 / 侧栏预览 / @ 提及。
+- **只有 `complete` 发布正式消息**，且同一任务在回执保留期内最多发布一次。
+
+#### 协议
+
+| 方法与路径 | 请求体 | 成功响应（除 `code` / `message`） |
+|------------|--------|-----------------------------------|
+| `POST /api/chat/channels/:id/generations` | `{client_request_id, reply_to?}` | `generation_id, next_seq, idle_timeout_ms, max_duration_ms` |
+| `POST /api/chat/generations/:id/chunks` | `{seq, delta}` | `accepted_seq, next_seq, revision` |
+| `POST /api/chat/generations/:id/complete` | `{last_seq}` | `status, message_id?, chat_message?, error?, retryable?` |
+| `POST /api/chat/generations/:id/cancel` | `{}`（可省略） | `status`（已有终态时原样返回）、`error?` |
+| `GET /api/chat/generations/:id` | 无 | `status, next_seq, revision, message_id?, error?` |
+
+创建返回的 `next_seq` 是下一个待提交序号（新任务为 1）；两个超时以响应里的数值为准。
+`reply_to` 在创建时只校验形状（正整数），目标是否存在 / 已删 / 同频道要到
+`complete` 才校验，失败为 `reply_invalid`。
+
+`GET` 只用于**任务作者**查询自己的任务，不推进任何已读；终态且回执仍在时返回 `200`，
+用 `status` / `error` 描述结果，不要拿 `code` 判断是否发布成功。
+
+#### 完整示例
+
+```bash
+BASE=https://raricy.com
+COOKIE='raricy_session=<JWT>'
+UUID='6f1c1e0e-6a7d-4d5e-9a1b-2c3d4e5f6a7b'   # 自己生成，持久保存，重试时复用
+
+# 1) 创建任务
+curl -sS -b "$COOKIE" -H 'Content-Type: application/json' \
+  -d "{\"client_request_id\":\"$UUID\"}" \
+  "$BASE/api/chat/channels/lobby/generations"
+```
+
+```json
+{ "code": 200, "message": "生成任务已创建",
+  "generation_id": "0b6e8f9a-...", "next_seq": 1,
+  "idle_timeout_ms": 120000, "max_duration_ms": 600000 }
+```
+
+```bash
+GEN='0b6e8f9a-...'   # 上一步的 generation_id
+
+# 2) 分块：seq 从 1 开始逐块 +1；delta 非空、单块 ≤1024 字符
+curl -sS -b "$COOKIE" -H 'Content-Type: application/json' \
+  -d '{"seq":1,"delta":"第一段。"}' \
+  "$BASE/api/chat/generations/$GEN/chunks"
+
+curl -sS -b "$COOKIE" -H 'Content-Type: application/json' \
+  -d '{"seq":2,"delta":"第二段。"}' \
+  "$BASE/api/chat/generations/$GEN/chunks"
+```
+
+每次分块成功返回：
+
+```json
+{ "code": 200, "message": "ok", "accepted_seq": 2, "next_seq": 3, "revision": 2 }
+```
+
+```bash
+# 3) 完成：last_seq 必须等于最后被接受的序号（这里是 2）
+curl -sS -b "$COOKIE" -H 'Content-Type: application/json' \
+  -d '{"last_seq":2}' \
+  "$BASE/api/chat/generations/$GEN/complete"
+```
+
+```jsonc
+{ "code": 200, "message": "发送成功", "status": "completed",
+  "message_id": 12345, "chat_message": { /* 完整 ChatMessageDTO，见 §11.1 */ } }
+```
+
+`chat_message` 是完整的 §11.1 `ChatMessageDTO`，只在**真正执行发布的流程**里返回；
+进入终态后的回执重放只给保存下来的 `message_id` 与原结果，不再带 `chat_message`。
+
+```bash
+# 4) 取消（只能在 complete 之前；已进入 finalizing 会 409）
+curl -sS -b "$COOKIE" -H 'Content-Type: application/json' \
+  -d '{}' "$BASE/api/chat/generations/$GEN/cancel"
+```
+
+```json
+{ "code": 200, "message": "生成任务已结束", "status": "cancelled" }
+```
+
+#### 分块规则
+
+- `seq` 从 **1** 开始、逐块 +1；只有 `seq === next_seq` 的片段会被接受。
+- `delta` 必须非空；单块最多 **1024** 个 JavaScript 字符单位；每任务最多 **512** 块；
+  累计正文（未 `trim`）最多 **5000** 字；整个 HTTP body 最多 **8 KiB**（JSON 转义也算）。
+- 旧序号**同内容**重放返回原来的 `accepted_seq / next_seq / revision`，不追加、不广播；
+  旧序号**不同内容**或**跳号**返回 `409 conflict`，并带当前 `next_seq`。
+- 只有**新片段被接受**才续期空闲计时；重放请求不能无限续命。
+- `complete` 不再接收新正文：最后一个分块先拿到确认，再发 `complete`。
+  `last_seq` 必须等于最后接受的序号；一个片段都没提交时用 `0`，此时会按空正文失败
+  （`400`，`status: "failed"`，`error: "empty"`）。
+- `complete` 开始后任务进入 `finalizing`，再提交分块或取消都是 `409 conflict`。
+- 分块或 `complete` 的 `409` 不会结束任务：按响应里的 `next_seq` 校正后可以继续或重试；
+  只有 `finalizing` 中的拒绝例外 —— 此时发布已取得唯一提交权，只能等 `complete` 的结果。
+
+#### 幂等
+
+- `client_request_id` 用**客户端生成的 UUID**（服务端接受 1–128 字符的字符串，
+  建议就用标准 UUID）。幂等键是 `(author, channel, client_request_id)`。
+- 相同参数重复创建返回**同一个** `generation_id`（`next_seq` 是任务当前值，不保证是 1）；
+  `reply_to` 等元数据不一致返回 `409 conflict`。
+- **网络超时不要换新 key**：保留原 `client_request_id` 重试创建。回执保留期内，
+  同一 key 始终映射到同一任务（**包括已进入终态的任务**）；要开始新任务必须用新 key，
+  且先确认上一条确实没有发布。
+- 幂等重放**不消耗**创建限频；分块重放会照常消耗分块限频。
+- 创建、分块、完成、取消的请求体都受 8 KiB 上限约束（`GET` 无请求体）。
+
+#### 终态与重试纪律
+
+| `status` | 含义 | 正式消息 |
+|----------|------|----------|
+| `active` | 可继续提交分块 | 无 |
+| `finalizing` | 已开始 `complete`，正文冻结 | 尚未确定，等结果 |
+| `completed` | 已发布 | 有，`message_id` 必有 |
+| `failed` | 可证明没有写入 | 无 |
+| `commit_unknown` | 写库结果未知 | **未知** |
+| `cancelled` | 已取消 | 无 |
+| `expired` | 空闲或总时长超时 | 无 |
+
+- `failed` 的 `error` 可能是 `empty` / `too_long` / `reply_invalid` /
+  `send_forbidden` / `send_rate_limited` / `not_found`。这些都能证明没有写成，
+  修正原因后可以**新建任务**（新 `client_request_id`）。
+- `commit_unknown`（HTTP `500`，`retryable: false`）**不得自动重发**。此时可能已经
+  发布，也可能没有；先按 §8 / 正式 SSE 查询近期频道消息核对。
+- **进程重启、回执被淘汰后，`404` / `410` 不能证明原请求没有发布。** 回执保留
+  **15 分钟是上限**，全站最多 4096 条，超容量会提前淘汰最旧的；淘汰后接口给 `404`，
+  幂等键也随之释放。核对仍以频道消息为准，源码相同不能当作唯一证据。
+- 正式发言配额（`chatMinute` / `chatDaily`）**只在 `complete`** 调用发送内核时扣一次；
+  可能遇到 `429 send_rate_limited`，此时任务是 `failed`，没有发布。首版不预留名额，
+  若决定重试，先处理配额，再用新任务重新生成。
+- `finalizing` 中重复 `complete`（同 `last_seq`）共用同一个结果；不同 `last_seq` 为 `409`。
+- 终态后重放 `complete`：`completed` / `failed` / `commit_unknown` 且 `last_seq` 相同
+  会原样返回保存的结果；`cancelled` 为 `409 conflict`，`expired` 为 `410 gone`；
+  `last_seq` 不同同样为 `409`。
+- 任务已终态后 `cancel` 返回已有 `status`（含 `completed`），**不会撤回**已发布的消息；
+  `expired` 回执的 `cancel` / `complete` / `chunks` 都返回 `410 gone`。
+
+#### 错误标识
+
+失败响应里的 `error` 是稳定的机器标识，按它分支，不要匹配中文 `message`。
+`message` **始终是提示字符串**；正式消息对象只出现在 `chat_message`。`409` 还常带
+`next_seq`（有时带 `status`）辅助你回到正确序号。
+
+| HTTP | `error` | 场景 |
+|------|---------|------|
+| `400` | `invalid_request` | 请求形状非法：缺字段、`seq` / `last_seq` 不是合法整数、`delta` 为空、`client_request_id` 为空或超过 128 字符、JSON 非法或不是对象 |
+| `400` | `empty` | `complete` 时正文为空（没提交片段，或只有空白） |
+| `400` | `too_long` | `complete` 时正文超过 5000 字 |
+| `400` | `reply_invalid` | `complete` 时 `reply_to` 指向的消息不存在 / 已删除 / 不在本频道 |
+| `401` | `unauthorized` | 未登录或会话失效 |
+| `403` | `forbidden` | 非任务作者、禁言、非 core+、频道不可访问、专注模式屏蔽大区 |
+| `403` | `send_forbidden` | `complete` 调用发送内核时被最终权限拒绝（任务转 `failed`） |
+| `404` | `not_found` | 任务不存在、回执已被淘汰，或频道不存在 |
+| `409` | `conflict` | 序号跳跃、异内容重放、幂等元数据冲突、`finalizing` 中提交分块 / 取消、终态后 `complete` 参数不一致 |
+| `410` | `gone` | 任务仍有过期回执，`chunks` / `complete` / `cancel` 已不可用 |
+| `413` | `too_large` | HTTP body 超 8 KiB、单片段超 1024 字符、片段数超 512、累计正文超 5000 字 |
+| `429` | `rate_limited` | 创建或分块限频（§10 的两条生成配额） |
+| `429` | `send_rate_limited` | `complete` 时正式发言配额不足，任务转 `failed` |
+| `500` | `commit_unknown` | 写库结果未知，`retryable: false`，不得自动重发 |
+| `503` | `capacity` | 每作者 1 个 / 全站 32 个活动任务已满 |
+
+`complete` 返回的 `failed` 也使用同一组 HTTP / `error`（例如正文超长是
+`400 too_long`、正式配额不足是 `429 send_rate_limited`），响应里同时带
+`status: "failed"`；重放时原样返回保存的 HTTP 状态与结果。
+
+#### 资源预算
+
+| 项目 | 上限 |
+|------|------|
+| 每作者同时活动任务（含 `finalizing`） | **1** 个 |
+| 全站同时活动任务 | **32** 个 |
+| 单片段 | **1024** 字符 / HTTP body **8 KiB** |
+| 每任务片段数 | **512** 个 |
+| 累计正文 | **5000** 字（未 `trim` 也受限） |
+| 空闲超时 | **120 秒**（最后接受片段起算） |
+| 总时长 | **10 分钟**（从创建起算；`complete` 必须在此之前开始） |
+| 创建限频 | **12 次/分钟/作者** |
+| 分块限频 | **600 次/分钟/作者**（约 10 次/秒，含重放） |
+| 终态回执 | **15 分钟** / 全站 **4096** 条（保留期是上限） |
+| 临时广播 | 每任务约 **5 帧/秒**，合并为最新完整快照 |
+
+活动名额已满返回 `503 capacity`（不是 429）。临时事件没有 SSE `id`，也不占用消息游标。
+
+#### 权限与可见性
+
+- 每次创建、分块、完成、取消、查询都重新验证生产者：非任务作者 `403 forbidden`，
+  任务不存在或回执已淘汰 `404 not_found`。
+- 私聊的临时预览只投递给该频道成员（含作者自己的其他标签页）；大区广播跳过专注模式
+  屏蔽大区的连接。频道的读者权限始终由服务端判定，`generation_id` 不构成任何授权。
+- 失权（禁言、降权、私聊成员关系失效、专注模式屏蔽大区）会立刻终止任务并清空缓冲，
+  终态为 `failed` / `forbidden`，不会再发布。
+- 临时事件不建立消息 id，不推进已读、不增加未读、不更新侧栏预览、不发 @ 通知；
+  正式发布只执行一次既有的 @ 提及与未读规则。
+
+#### 读者看到什么
+
+站内读者通过 SSE 收到 `generation_snapshot`（完整累计正文，`revision` 递增）与
+`generation_terminal`（终态、`message_id`），页面按 `generation_id` 维护临时预览；
+收到带 `generation_id` 的正式 `message` 后按 `message.id` 换成正式消息。断线补齐的
+`message` 没有 `generation_id` 也有效。机器人一般不需要消费这两种事件，但若自己也
+在读频道，应按 §6.2 的说明忽略它们对未读 / 已读的影响。
+
 ---
 
 ## 8. 读历史消息
@@ -794,8 +1038,10 @@ GET /api/chat/channels/lobby/appearance?users=u_xxx,u_yyy
 
 | 规则 | 额度 | 适用 |
 |------|------|------|
-| `chatMinute` | **120 次 / 分钟** | 发消息（**拍一拍 / 表情 / 带图消息各算一条**） |
-| `chatDaily` | **8000 次 / 24 小时** | 发消息 |
+| `chatMinute` | **120 次 / 分钟** | 发消息（**拍一拍 / 表情 / 带图消息各算一条**）；流式任务只在 `complete` 扣一次 |
+| `chatDaily` | **8000 次 / 24 小时** | 发消息；流式任务只在 `complete` 扣一次 |
+| `chatGenerationCreateMinute` | **12 次 / 分钟** | 创建生成任务（§7.8）。桶键 `chatgen:create:<用户 id>`；幂等重放不消耗 |
+| `chatGenerationChunkMinute` | **600 次 / 分钟** | 提交生成片段（§7.8）。桶键 `chatgen:chunk:<用户 id>`；重放也消耗 |
 | `chatPoll` | 120 次 / 分钟 | 会话列表与未读对账（§9.3） |
 | `chatNewChannel` | 20 次 / 分钟 | 发起私聊（§9.1） |
 | `imageUploadHourly` | 200 张 / 小时 | 上传图片（§9.2，按张数计） |
@@ -805,6 +1051,11 @@ GET /api/chat/channels/lobby/appearance?users=u_xxx,u_yyy
 | `passwordPerIp` | 120 次 / 分钟 | 密码计算，成功也计数 |
 | `passwordGlobal` | 240 次 / 分钟 | 全站网络密码计算；另外同时最多 4 个在途计算 |
 
+**两条生成配额与 `chatMinute` / `chatDaily` 相互独立**：创建与分块**不占**正式发言
+额度，正式额度只在 `complete` 真正调用发送内核时扣一次。因此一个流式任务可能
+创建、分块都成功，却在 `complete` 撞上 `429 send_rate_limited`（任务转 `failed`）。
+生成任务的活动名额已满返回 `503 capacity`，那是容量而不是限频，不要按 429 退避。
+
 **不在表里的接口**（不消耗任何配额，但也别拿它们当心跳刷）：
 
 | 接口 | 为什么没有配额 |
@@ -812,6 +1063,7 @@ GET /api/chat/channels/lobby/appearance?users=u_xxx,u_yyy
 | 正在输入（§7.5） | 只有一条「同频道 3 秒一次」的服务端节流 |
 | 已读（§7.6） | 只是推进游标 —— 但留意它顺带决定顶栏「讨论」红点熄不熄，以及清掉该会话的 @ 通知 |
 | 报到（§7.7） | 本身只写服务端进程内的一个条目；但每次会做一次频道可访问性查询（不是零成本） |
+| 生成任务查询（§7.8 的 `GET`） | 只读自己的任务状态，没有独立配额；别拿它当轮询 |
 | 表情清单（§7.4） | 素材变动很慢，一天拉几次足够 |
 | 用户搜索（§9.1）、会话内搜索（§9.4）、撤回（§9.5） | 都是读或轻写，没有独立配额 |
 
@@ -820,8 +1072,10 @@ GET /api/chat/channels/lobby/appearance?users=u_xxx,u_yyy
 
 超限一律 `429`，`message` 按接口不同：发消息是 `发言过于频繁，请稍后再试`（分钟额度）
 或 `今日发言已达上限，请明日再试`（日额度），对账是 `请求过于频繁，请稍后再试`。
-**判断一律只看 `code === 429`。** 两个例外：**图片上传**的限频失败是逐张进 `failed[]`
-（见 `docs/bot/image-bot.md` §8）；非限频的权限拒绝仍是 `401` / `403`，不是 429。
+生成接口的限频还要看 `error`：创建 / 分块是 `rate_limited`，`complete` 撞正式配额是
+`send_rate_limited`（此时任务已转 `failed`）。**常规接口判断一律只看 `code === 429`。**
+两个例外：**图片上传**的限频失败是逐张进 `failed[]`（见 `docs/bot/image-bot.md` §8）；
+非限频的权限拒绝仍是 `401` / `403`，不是 429；生成容量不足是 `503`。
 
 两点提醒：
 
@@ -909,12 +1163,59 @@ GET /api/chat/channels/lobby/appearance?users=u_xxx,u_yyy
 见 §6.2。完整定义：
 
 ```jsonc
-{ "type": "message", "channel_id": "lobby", "message": { /* ChatMessageDTO */ } }
+{ "type": "message", "channel_id": "lobby", "message": { /* ChatMessageDTO */ },
+  "generation_id": "可选：由生成任务发布时带原任务 id" }
 { "type": "resync" }
 { "type": "appearance" } // 气泡装备变化，不携带身份或消息内容；纯文本机器人可忽略
 { "type": "typing", "channel_id": "lobby", "user_id": "u_xxx", "username": "alice" }
 { "type": "read",   "channel_id": "d_xxx", "user_id": "u_xxx", "message_id": 12345 }
+{ "type": "generation_snapshot", "generation_id": "…", "channel_id": "lobby",
+  "revision": 3, "author": { /* ChatAuthorDTO，同 §11.1 */ }, "source": "累计正文" }
+{ "type": "generation_terminal", "generation_id": "…", "channel_id": "lobby",
+  "revision": 4, "status": "completed", "message_id": 12345 }
 ```
+
+生成事件**不带 SSE `id`**，`generation_terminal` 的 `error` 只在失败终态出现，
+`message_id` 只在 `completed` 出现；`generation_snapshot` 每帧都是完整累计正文
+（不是增量），`revision` 严格递增，客户端应忽略不更新的帧。
+
+### 11.4 生成接口（§7.8）
+
+```jsonc
+// POST /api/chat/channels/:id/generations
+{ "code": 200, "message": "生成任务已创建",
+  "generation_id": "…", "next_seq": 1,
+  "idle_timeout_ms": 120000, "max_duration_ms": 600000 }
+
+// POST /api/chat/generations/:id/chunks
+{ "code": 200, "message": "ok", "accepted_seq": 2, "next_seq": 3, "revision": 2 }
+
+// POST /api/chat/generations/:id/complete（发布成功）
+{ "code": 200, "message": "发送成功", "status": "completed",
+  "message_id": 12345, "chat_message": { /* ChatMessageDTO */ } }
+
+// POST /api/chat/generations/:id/complete（失败终态，HTTP 与 code 同值）
+{ "code": 429, "message": "发言过于频繁，请稍后再试",
+  "status": "failed", "error": "send_rate_limited" }
+
+// POST /api/chat/generations/:id/complete（写库结果未知）
+{ "code": 500, "message": "消息写入结果未知，请先核对频道消息再决定是否重发",
+  "status": "commit_unknown", "error": "commit_unknown", "retryable": false }
+
+// POST /api/chat/generations/:id/cancel
+{ "code": 200, "message": "生成任务已结束", "status": "cancelled" }
+
+// GET /api/chat/generations/:id
+{ "code": 200, "message": "ok", "status": "active", "next_seq": 3, "revision": 2 }
+```
+
+`status` 取值：`active` / `finalizing` / `completed` / `failed` / `commit_unknown` /
+`cancelled` / `expired`。终态回执仍在时，`GET` 以 `200` 返回终态；`expired` 的
+`GET` 同样是 `200` + `status: "expired"`，只有 `chunks` / `complete` / `cancel` 才是
+`410 gone`。
+
+`error` 取值见 §7.8 的错误表；`message` 永远是字符串，`chat_message` 只在
+**真正执行发布**时出现，进入终态后的回执重放不再带它。
 
 ---
 
@@ -956,6 +1257,11 @@ GET /api/chat/channels/lobby/appearance?users=u_xxx,u_yyy
 | 拿不到未读条数 | `GET .../messages`（§8）不带未读，未读在 §9.3 |
 | 正在某个会话里被 @ 却收不到通知 | 刻意的：服务端判定你正在看这个会话（§7.7），只是不打扰 —— 未读数与顶栏红点照常。调过 §7.7 又不想被抑制，就别再报到了（约 150 秒后自动失效） |
 | 铃铛里的 @ 通知自己变成已读了 | 读到那个会话了（§7.6 第 4 条）：进频道 / 看新消息都会把该会话的 @ 通知一并标已读 |
+| 生成分块返回 `409` | `seq` 跳跃，或同一 `seq` 的内容与已接受的不一致。按响应里的 `next_seq` 续传（§7.8） |
+| 创建生成任务返回 `503` | 每作者 1 个 / 全站 32 个活动任务已满，等任务结束；或退回一次性发送（§7.8） |
+| `complete` 返回 `500`、`status=commit_unknown` | 写库结果未知：先查频道消息核对，**不得自动重发**（§7.8） |
+| `complete` 返回 `429 send_rate_limited` | 正式发言配额不足，任务已转 `failed`、没有发布；处理配额后新建任务（§7.8 / §10） |
+| 生成中的预览与正式消息重复 | 按 `message.id` 去重；预览用正式事件的 `generation_id` 或 `generation_terminal` 的 `message_id` 清除（§6.2 / §7.8） |
 
 ---
 
@@ -978,3 +1284,18 @@ GET /api/chat/channels/lobby/appearance?users=u_xxx,u_yyy
 
 **想让回复带表情**：启动时 `GET /api/stickers`（§7.4）拿一份「合集名 / 表情名」，
 之后正文里写 `[@猫猫/开心]` 就是一张图。
+
+**流式机器人（可选）**：把上面第 5 步换成下面四步，其余不变。
+
+```
+5a. 生成并保存 client_request_id（UUID），POST
+    /api/chat/channels/lobby/generations   { "client_request_id": "<UUID>" }
+5b. 对第 1..N 段正文依次 POST .../generations/<id>/chunks
+    { "seq": 1, "delta": "..." }           ← seq 从 1 递增，等每次确认再发下一块
+5c. POST .../generations/<id>/complete     { "last_seq": N }
+5d. 失败时按 §7.8 分支：429 退避、409 按 next_seq 续传、commit_unknown 先查再决定
+```
+
+网络超时用**同一个** `client_request_id` 重试创建；只有确认上一条没有发布、并且
+要开始新回复时才换新 UUID。容量满（`503`）或不想实现流式时，直接走第 5 步的一次性
+发送，功能完全不受影响。

@@ -4,11 +4,13 @@
 // ChatMessageDetail.tsx — 单击消息正文打开的「消息详情 + 操作」面板。
 //
 // 移动端消息列表为了长按菜单关掉了原生选字（见 _chat.scss 触屏区块），这个面板是
-// 唯一能原生选中并复制正文的地方；桌面单击正文也进这里。正文用 ChatMarkdown 渲染，
-// 且不在 `.chat-msg` 内，所以不受列表那条 `user-select: none` 影响。
+// 唯一能原生选中并复制正文的地方；桌面单击正文也进这里。正文用 ChatRmdMessage
+// 渲染（正式消息 final），且不在 `.chat-msg` 内，所以不受列表那条
+// `user-select: none` 影响。
 //
 // 动作按钮与右键 / 长按菜单共用同一套权限判定：「回复 / 删除」先关面板再执行，
-// 「保存 / 复制」保持打开，让按钮状态就地翻转。
+// 「保存 / 复制」保持打开，让按钮状态就地翻转。复制走 `msg.content` 原文，
+// 与正文的渲染结果无关。
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useEffect, useRef } from 'react';
@@ -17,7 +19,7 @@ import Link from 'next/link';
 import { Bookmark, BookmarkCheck, Copy, Reply, Trash2 } from 'lucide-react';
 import Avatar from '@/app/components/Avatar';
 import type { ChatMessageDTO } from '@/lib/chat-shared';
-import ChatMarkdown from './ChatMarkdown';
+import ChatRmdMessage from './ChatRmdMessage';
 
 /**
  * 'YYYY-MM-DD HH:mm'（UTC+8 钟面）。
@@ -48,6 +50,7 @@ export default function ChatMessageDetail({
   onCopy,
   onDelete,
   onClose,
+  onImageClick,
 }: {
   /** 当前查看的这条消息。 */
   msg: ChatMessageDTO;
@@ -64,6 +67,8 @@ export default function ChatMessageDetail({
   onCopy: (m: ChatMessageDTO) => void;
   onDelete: (m: ChatMessageDTO) => void;
   onClose: () => void;
+  /** 点击正文里的受控图片 → 由宿主打开灯箱；不传时图片不可点，渲染不受影响。 */
+  onImageClick?: (url: string) => void;
 }) {
   const dialogRef = useRef<HTMLDivElement>(null);
 
@@ -157,7 +162,15 @@ export default function ChatMessageDetail({
               </div>
             )}
 
-            <ChatMarkdown content={msg.content} />
+            {/* 入口条件由调用方把住（未删除、非拍一拍、正文非空）。裸图判定与列表
+                同口径：消息自带图片 / 博客附件时不把正文里的单图拉成裸图。 */}
+            <ChatRmdMessage
+              messageKey={`detail:${msg.id}`}
+              content={msg.content}
+              phase="final"
+              allowBareImage={!msg.image && !msg.image_missing && !msg.blog && !msg.blog_missing}
+              onImageClick={onImageClick}
+            />
 
             {/* 「详细信息」：把列表里看不全的事实摊开（完整日期 / 消息编号 /
                 回复对象 / 保存状态）。只放用户能据此做判断的条目，不堆内部字段。 */}

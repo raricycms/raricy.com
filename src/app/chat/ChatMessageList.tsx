@@ -61,6 +61,12 @@ export interface ChatMessageListProps {
   isDirect: boolean;
   /** 一条消息都没有时的空态文案（大区与私聊刻意不同）。 */
   emptyText: string;
+  /**
+   * 当前频道是否有生成中的临时行（渲染在列表组件之外，见 ChatApp）。
+   * 只影响空态判定：有临时行时不显示「还没有消息」——它是布尔值，不会让
+   * 每秒数次的快照更新穿透这层 memo。
+   */
+  hasGenerations?: boolean;
   /** 「已折叠 N 条 · 展开更早」——放回一页由 ChatApp 定（REVEAL_STEP 住那边）。 */
   onRevealOlder: () => void;
   onLoadOlder: () => void;
@@ -73,6 +79,16 @@ export interface ChatMessageListProps {
   onJumpToReply: (messageId: number) => void;
   /** 点正文里的图床引用图 → 原位放大。 */
   onImageClick: (url: string) => void;
+  /**
+   * 正文异步编译 / 引用落位 / 媒体加载导致高度变化**之前**通知宿主记录位置
+   * （宿主的「贴底才跟随」判定用变化前的快照）。必须是稳定引用。
+   */
+  onBeforeContentChange?: () => void;
+  /**
+   * 正文异步编译 / 引用落位 / 媒体加载导致高度变化后通知宿主（贴底才跟随）。
+   * 必须是稳定引用：它会进 ChatMessageItem 的 memo 比较。
+   */
+  onContentChange?: () => void;
 }
 
 function ChatMessageListInner({
@@ -91,6 +107,7 @@ function ChatMessageListInner({
   isAdmin,
   isDirect,
   emptyText,
+  hasGenerations = false,
   onRevealOlder,
   onLoadOlder,
   onOpenMenu,
@@ -98,6 +115,8 @@ function ChatMessageListInner({
   onAvatarClick,
   onJumpToReply,
   onImageClick,
+  onBeforeContentChange,
+  onContentChange,
 }: ChatMessageListProps) {
   return (
     <>
@@ -115,7 +134,9 @@ function ChatMessageListInner({
           </button>
         )
       )}
-      {messages.length === 0 && <div className="chat-list__empty">{emptyText}</div>}
+      {messages.length === 0 && !hasGenerations && (
+        <div className="chat-list__empty">{emptyText}</div>
+      )}
       {messages.map((m, i, arr) => {
         const prev = i > 0 ? arr[i - 1] : null;
         const showDate = !prev || dayKey(prev.created_at) !== dayKey(m.created_at);
@@ -148,6 +169,8 @@ function ChatMessageListInner({
               onAvatarClick={onAvatarClick}
               onJumpToReply={onJumpToReply}
               onImageClick={onImageClick}
+              onBeforeContentChange={onBeforeContentChange}
+              onContentChange={onContentChange}
             />
           </Fragment>
         );

@@ -10,6 +10,7 @@
 
 | 文档 | 状态与剩余范围 |
 |------|----------------|
+| `docs/plan/chat-reactive-streaming-design.md` | 待实施。沿用现有数据库结构，浏览器复用博客的 ReactiveMD 编译器，新增机器人流式发送协议。详见任务分工与验收条件 |
 | `docs/plan/story-rebuild-plan.md` | 故事区重做方案与本地调研完成（2026-10-31）；初审/复审工具、作品编辑、美术、页面与发布均未实施 |
 | `docs/plan/story-review-tooling.md` | 故事工作台设计：先人工复审闭环，再接 AI 初审、版本与作品关联；全部为待实施提案 |
 | `docs/plan/story-editorial-design.md` | 故事制作流程：作者确认、定稿、设计简报、配图、Codex 交接和可撤回出版；待作品试点 |

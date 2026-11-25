@@ -1,0 +1,314 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// 聊天正文的 ReactiveMD 版式（ChatRmdMessage / ChatRmdHostView）
+//
+// 职责：把上游 `.md-document` 的「独立文档页」版式收进聊天气泡，并补齐 RMD
+// 结构里旧 marked 管线没有的包裹层（.md-code-block / .md-table-scroll /
+// .md-list / 公式 / 引用宿主）。
+//
+// 【基线在哪】块级排版（p / 标题 / 列表 / blockquote / code / pre / table /
+// hr / 图片 / 表情 / 音频 / 名片）仍由 components/_markdown-body.scss 的
+// `rich-markdown('chat-msg__md')` 提供 —— 与评论同一份口径，这里不重抄。
+// 本文件只写旧规则覆盖不到的三类：RMD 新增的包裹层、上游文档根的内外留白、
+// 以及聊天气泡特有的单图 / 源码回退 / 子剪贴板 / 生成占位。
+//
+// 【作用域】全部规则限定在 .chat-msg__md 之下。上游 screen.css 由客户端组件
+// import，与 main.scss 的加载顺序不保证；多一层 .chat-msg__md 既让胜负不靠
+// 顺序，也避免影响博客（.reactive-document）与别处将来的 .md-document。
+// 上游规则都在 @layer 里，站点未分层规则本来就能压过它们 —— 这里的复合选择器
+// 是为了压过本仓 _chat.scss 里同名的旧规则。
+//
+// 【为什么是 mixin】_chat.scss 先 @use、再在正文段 @include：直接写顶层规则
+// 会被 @use 提升到文件开头，同权时反而先输给文件里的旧规则。
+//
+// 改动注意：
+//   · 气泡的 white-space: pre-wrap 与 word-break 由 .chat-msg__md 基线给；
+//     源码回退态要用复合类把 white-space 改回 pre-wrap（基线是 normal）。
+//   · 单图 / 单表情的零内距必须连同 RMD 根一起清零；图片自身的尺寸与描边
+//     仍归 _markdown-body 的 img 规则，别在这里重抄（两处定义必然漂开）。
+//   · 不写 contain / 固定高度：图片与引用异步落位后的高度变化由 ChatApp 的
+//     贴底规则处理（docs/plan/chat-reactive-streaming-design.md §7）。
+// ─────────────────────────────────────────────────────────────────────────────
+
+@mixin chat-rmd {
+  // ── 文档根 ────────────────────────────────────────────────────────────────
+  // 上游把 `.md-document` 当独立文档页：720px 居中、自己的字号 / 行高 / 底色。
+  // 气泡里正文只是气泡的一段 —— 宽度、字体、行高全部交还气泡；
+  // 块级间距由 _markdown-body 的基线给，这里只保证根节点不带文档页留白。
+  .chat-msg__md .md-document {
+    // 上游组件规则读 --ink / --surface 等变量。这里映射到站点令牌，
+    // 深色主题随之切换（与 pages/blog/_reactive-md.scss 同一套映射，作用域不同）。
+    --ink: var(--color-text-primary);
+    --ink-soft: var(--color-text-secondary);
+    --ink-muted: var(--color-text-secondary);
+    --surface: var(--color-background-card);
+    --surface-subtle: var(--color-background-subtle);
+    --document-bg: transparent;
+    --line: var(--color-border);
+    --line-strong: var(--color-border);
+    --accent: var(--color-brand-primary);
+    --accent-text: var(--color-brand-primary);
+    --accent-hover: var(--color-brand-primary);
+    --accent-soft: var(--color-brand-secondary);
+    --accent-line: var(--color-border);
+    --neutral-soft: var(--color-background-content);
+    --font-sans: var(--font-body);
+    --formula-ink: var(--color-text-primary);
+    --code-bg: var(--color-background-subtle);
+    --code-bg-deep: var(--color-background-content);
+    --code-ink: var(--color-text-primary);
+
+    width: auto;
+    max-width: none;
+    margin: 0;
+    padding: 0;
+    background: transparent;
+    color: inherit;
+    font-family: inherit;
+    font-size: inherit;
+    // 继承而不是另写数值：单图气泡把 .chat-msg__md 的 line-height 设为 0，
+    // 这里跟着归零，图片下方才不会有基线空隙。
+    line-height: inherit;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+
+    > :first-child {
+      margin-top: 0;
+    }
+
+    > :last-child {
+      margin-bottom: 0;
+    }
+  }
+
+  // ── 围栏代码 ──────────────────────────────────────────────────────────────
+  // 上游把「语言栏 + pre.md-code」包在 .md-code-block 里，旧正文只有 pre。
+  // 对齐旧外观：外框 = 旧 pre 的底色 / 圆角，内层 pre 只留内距与横向滚动。
+  .chat-msg__md .md-document .md-code-block {
+    margin: 0 0 0.5em;
+    padding: 0;
+    max-width: 100%;
+    border: none;
+    border-radius: 8px;
+    background: var(--color-background-subtle);
+    color: inherit;
+    overflow: hidden;
+  }
+
+  // 静态视图没有复制按钮，工具条里只剩语言名；旧正文没有这一栏，
+  // 气泡里也无可操作项，隐藏后代码块与旧外观一致（打印样式同样隐藏它）。
+  .chat-msg__md .md-document .md-code-block-toolbar {
+    display: none;
+  }
+
+  .chat-msg__md .md-document .md-code-block pre,
+  .chat-msg__md .md-document pre.md-code {
+    margin: 0;
+    padding: 8px 10px;
+    border: none;
+    border-radius: 0;
+    background: transparent;
+    // 上游 pre 读 --text-sm（14px）；旧正文 pre 继承气泡字号，这里还原。
+    font-size: inherit;
+    line-height: inherit;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  // ── 表格 ──────────────────────────────────────────────────────────────────
+  // 横向滚动归外层 .md-table-scroll（上游包裹层）；把基线里写在 table 上的
+  // display: block / overflow-x 按回表格语义，避免内外两层滚动条。
+  .chat-msg__md .md-document .md-table-scroll {
+    margin: 0 0 0.5em;
+    max-width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .chat-msg__md .md-document .md-table {
+    display: table;
+    margin: 0;
+    // 宽度按内容算：普通表格撑满气泡（min-width: 100%），列多的表格保持
+    // 自己的最大内容宽度，让外层 .md-table-scroll 真正出现横向滚动，
+    // 而不是把单元格里的字全部挤断（max-width: none 与上一条配套）。
+    width: max-content;
+    min-width: 100%;
+    max-width: none;
+    border-collapse: collapse;
+    // 基线把 table 自己写成滚动容器（旧正文没有外层包裹）；这里把横轴交还
+    // .md-table-scroll，滚动条只出现一层。
+    overflow: visible;
+    // 上游 .md-table 读 --text-sm；旧正文表格继承气泡字号。
+    font-size: inherit;
+    line-height: inherit;
+  }
+
+  // ── 任务列表 ──────────────────────────────────────────────────────────────
+  // 静态文档用 span.md-task-marker（✓ / ☐）代替禁用复选框。勾选列与普通
+  // 列表的项目符号列对齐：基线列表内距是 1.4em。
+  .chat-msg__md .md-document .md-task-item {
+    margin-left: -1.4em;
+    list-style: none;
+  }
+
+  .chat-msg__md .md-document .md-task-item > p:first-of-type {
+    display: inline;
+    margin: 0;
+  }
+
+  .chat-msg__md .md-document .md-task-marker {
+    display: inline-block;
+    min-width: 1.2em;
+    margin-right: 0.2em;
+    color: var(--color-text-secondary);
+    font-family: var(--font-mono);
+    vertical-align: -1px;
+  }
+
+  // ── 链接 ──────────────────────────────────────────────────────────────────
+  // RMD 链接没有旧管线的 .chat-msg__link 类；复现同一档：品牌色 + 下划线、
+  // 长地址在气泡内折行。名片是胶囊链接（_markdown-body 有整套外观），排除。
+  .chat-msg__md .md-document a:not(.rich-user-ref):not(.chat-rmd-clipboard-link) {
+    color: var(--color-brand-primary);
+    text-decoration: underline;
+    overflow-wrap: anywhere;
+  }
+
+  .chat-msg__md .md-document a:not(.rich-user-ref):not(.chat-rmd-clipboard-link):hover {
+    text-decoration: none;
+  }
+
+  // ── 公式 ──────────────────────────────────────────────────────────────────
+  // RMD 公式渲染成 KaTeX 的 span.local-math（块级再包 .local-math-display /
+  // .local-math-block）。这里把块级几何写全，不单靠上游 screen.css：
+  // 块级公式过宽时在自己的横轴滚动，不把气泡顶宽。
+  .chat-msg__md .md-document .local-math-display {
+    display: block;
+    margin: 0.4em 0;
+    max-width: 100%;
+    overflow-x: auto;
+    overflow-y: hidden;
+    text-align: center;
+  }
+
+  .chat-msg__md .md-document .local-math-inline {
+    display: inline;
+    vertical-align: baseline;
+  }
+
+  .chat-msg__md .md-document .local-math-block {
+    display: block;
+    width: max-content;
+    min-width: 100%;
+  }
+
+  .chat-msg__md .md-document .local-math {
+    color: inherit;
+    font-size: 1em;
+    overflow-wrap: normal;
+  }
+
+  .chat-msg__md .md-document .local-math .katex {
+    font-size: 1.1em;
+  }
+
+  .chat-msg__md .md-document .local-math .katex-display {
+    margin: 0;
+  }
+
+  // ── 局部源码回退 ──────────────────────────────────────────────────────────
+  // 编译器给出的 fallback 节点按源码显示。聊天里它就是普通文字，
+  // 不画上游那圈诊断样式的虚线框。
+  .chat-msg__md .md-document .local-fallback {
+    padding: 0;
+    border: none;
+    background: transparent;
+    color: inherit;
+    font-family: inherit;
+    font-size: inherit;
+    line-height: inherit;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+
+  .chat-msg__md .md-document .local-fallback-block {
+    display: block;
+    margin: 0 0 0.5em;
+  }
+
+  // ── 宿主引用 ──────────────────────────────────────────────────────────────
+  // 图片（img.rich-image-ref）、音频（audio.rich-audio-ref）、表情 / 黄脸、
+  // 名片都是 _markdown-body 的后代规则直接命中的，这里不重定义。
+  //
+  // 子剪贴板：ChatRmdHostView 渲染成 span.chat-rmd-clipboard > article.md-document。
+  // 外框只做「引用块」的层级与限高（320px 与图片上限同一档，超长正文给回链），
+  // 内层继续用同一套聊天正文版式，不再套一层气泡底色。
+  .chat-msg__md .chat-rmd-clipboard {
+    display: block;
+    max-height: 320px;
+    margin: 0.4em 0;
+    padding: 8px 10px;
+    border-radius: 8px;
+    background: var(--color-background-content);
+    overflow-y: auto;
+  }
+
+  .chat-msg__md .chat-rmd-clipboard .md-document {
+    margin: 0;
+    padding: 0;
+    max-width: none;
+    background: transparent;
+  }
+
+  .chat-msg__md .chat-rmd-clipboard-link {
+    display: inline-block;
+    margin-top: 2px;
+    color: var(--color-brand-primary);
+    text-decoration: underline;
+  }
+
+  .chat-msg__md .chat-rmd-clipboard-link:hover {
+    text-decoration: none;
+  }
+
+  // ── 单图 / 单表情气泡 ─────────────────────────────────────────────────────
+  // 气泡的零内距与透明底由 _chat.scss 的 `:has(> .chat-msg__md--single-image)`
+  // 处理；图片自身的 display / margin 也已由那边的单图段归零。
+  // 这里只清 RMD 根与段落，避免文档页留白在图片四周多出一圈。
+  .chat-msg__md--single-image .md-document {
+    margin: 0;
+    padding: 0;
+    max-width: none;
+    background: transparent;
+  }
+
+  .chat-msg__md--single-image .md-document p,
+  .chat-msg__md--single-image .md-document > :first-child,
+  .chat-msg__md--single-image .md-document > :last-child {
+    margin: 0;
+  }
+
+  // ── 整段源码回退 ──────────────────────────────────────────────────────────
+  // 编译失败 / 超预算 / Worker 不可用时，根节点里是完整源码文本（React 文本
+  // 节点）。.chat-msg__md 基线把 white-space 设成 normal（marked 标签间换行
+  // 会多出空行），这里必须用复合类把换行压回来。
+  .chat-msg__md.chat-msg__md--source {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+
+  // ── 深色主题 ──────────────────────────────────────────────────────────────
+  // 上游的语法高亮变量只有一套浅色取值；深色下沿用博客正文那一套重绑
+  //（pages/blog/_reactive-md.scss），只改聊天作用域，不碰上游与博客。
+  [data-theme='dark'] .chat-msg__md .md-document .md-code-block {
+    --md-code-token-comment: #93a4bd;
+    --md-code-token-keyword: #c7a4ff;
+    --md-code-token-string: #9fdb9a;
+    --md-code-token-number: #f2c879;
+    --md-code-token-title: #8fc7ff;
+    --md-code-token-attr: #ffb3c8;
+    --md-code-token-meta: #d2b4ff;
+    --md-code-token-addition: #8fe3c8;
+    --md-code-token-deletion: #ff9daa;
+  }
+}

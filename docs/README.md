@@ -97,6 +97,7 @@ GitHub 上仍是原来的反引号，两边不冲突。
 | 文档 | 讲什么 |
 |------|--------|
 | `plan/README.md` | 计划索引：按状态查找剩余工作、实施记录与更新约定 |
+| `plan/chat-reactive-streaming-design.md` | Chat 在浏览器复用博客的 ReactiveMD 编译器，沿用现有数据库结构，约定机器人流式发送协议与并行分工 |
 | `plan/reactive-md-simplification-plan.md` | ReactiveMD 简化方案及实施记录：源码渲染、移除数据库快照、SQL-only 迁移，保留编辑、引用、首屏与导出 |
 | `plan/story-rebuild-plan.md` | 故事区重做总计划：内容工具、三个作品样板、分批上线与持续选编（方案完成，未实施） |
 | `plan/story-review-tooling.md` | 故事初审与编辑工作台：只读导入、AI 全文覆盖、人工复审、作品建档与增量更新 |

@@ -65,7 +65,7 @@ const nextConfig = {
   webpack: (config, { isServer, webpack }) => {
     // Next 15's bundled React predates useEffectEvent. Preserve Radix's optional lookup.
     config.module.rules.push({
-      test: /[\\/]reactive-md[\\/]dist-library[\\/]LocalDocumentView-[\w-]+\.js$/,
+      test: /[\\/]reactive-md[\\/]dist-library[\\/].+\.js$/,
       loader: path.join(import.meta.dirname, 'scripts/reactive-md-react-fallback.cjs'),
     });
     if (!isServer) {

@@ -308,9 +308,9 @@ ftyp 品牌 / 声明归一化 / `planImageUpload` —— 服务端与浏览器�
 
 ### Markdown / 内容渲染
 
-`docs/architecture.md` §6.7（四条管线的分工、五道防线）+ `docs/guide/内容引用语法指南.md`
-（`[@8位/9位/10位]` 与「博客一条管道、评论讨论另一条」的差别）。故事是**服务端**渲染
-（`story-service.ts`，按可信输入处理）——见 `docs/guide/story-module.md`。
+`docs/architecture.md` §6.7（各条管线的分工、五道防线）+ `docs/guide/内容引用语法指南.md`
+（`[@8位/9位/10位]` 与「博客/讨论走 ReactiveMD、评论走 rich-text」的差别）。故事是**服务端**
+渲染（`story-service.ts`，按可信输入处理）——见 `docs/guide/story-module.md`。
 
 **ReactiveMD 渲染器（2026-10）**：主副本是 `docs/architecture.md` §6.23，文件头在
 `src/lib/reactive/`（`read-render.ts` 决策、`diagnostics.ts` 回退、`ref-adapter.ts`
@@ -321,6 +321,15 @@ ftyp 品牌 / 声明归一化 / `planImageUpload` —— 服务端与浏览器�
 `reactive/read-render.ts`；**reactive 是唯一正文渲染路径**（Markdown 与 Reactive 同引擎，
 编译失败/认不出 → `unavailable`），旧 Markdown 回退管线已整条退役（`REACTIVE_MD_MODE`
 不再被读取）；别在页面里另判模式或恢复第二套渲染器。
+
+**讨论正文（2026-11）**复用同一引擎但有独立边界：`chat-rmd/options`（关闭 CSS/JS/扩展
+HTML + 节点/解析/深度预算）、`chat-rmd/document-policy`（只留 Markdown + 公式，组件/
+图片/表达式/HTML 降级源码）、`chat-rmd/compile-manager`（每页一个 Worker、多文档队列、
+同 key 最新 revision、离屏不排队、只缓存 final）、`chat-rmd/references`（AST → `chat-ref`
+唯一 slot + hostData，宿主二次校验字段）。**不要把博客的 URL 策略、`site-embed` 或
+`read-render.ts` 直接接到聊天**：聊天链接只允许站内/http(s)/mailto（外链 nofollow +
+新标签），图片只允许受控本站前缀，宿主节点只信适配器登记的 slot。R1 回退路径是恢复
+`ChatMarkdown` 调用；`chat-markdown.ts` 的单测同时保护评论旧管线，不要整份删除。
 
 ### 表情包
 
@@ -388,8 +397,9 @@ ftyp 品牌 / 声明归一化 / `planImageUpload` —— 服务端与浏览器�
 让开它，`sticker-service.ts` 的扫盘跳过同名目录。只改一端 = 「面板里挑得出、
 一渲染却变成播放器」。加第三个保留名时照这个走。
 
-**两条管线的接入方式不同，别互相照抄**：评论 / 讨论在**净化后**建 DOM（那边白名单里
-没有 audio，与没有 img 同理）；博客在**源文**上拼标签串（那边白名单本来就允许 audio），
+**各管线的接入方式不同，别互相照抄**：评论在**净化后**建 DOM（那边白名单里没有 audio，
+与没有 img 同理）；讨论在编译后的 AST 上登记 hostData（不建 DOM、不拼标签串）；博客在
+**源文**上拼标签串（那边白名单本来就允许 audio），
 但**必须配 `maskMarkdownCode`** —— 源文阶段没有 DOM、跳过不了 `CODE`/`PRE`，
 漏了就会在代码块里嵌出一个真播放器。这是博客侧最可能的静默错误。
 

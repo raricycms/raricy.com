@@ -451,14 +451,17 @@ Markdown），两种语言都由同一个引擎解释 ——
 `syntax_version` 派生，写请求里那个字段只校验白名单、不参与存储。
 `renderer_override` 列保留在库里（**迁移 `42_retire_residual` 明确保留**：它是对外 bot 契约
 `docs/bot/blog-bot.md` 的 GET 响应字段，退役需产品 / 文档批次），但已不参与任何选择。
-**评论、讨论、故事**不走 §6.23，始终用下表这套既有管线（故事由服务端 marked 渲染）。
+**评论、故事**不走 §6.23；讨论自 2026-11 起复用同一 ReactiveMD 引擎，但有聊天专用的
+静态策略、页面级 Worker 队列与 AST 引用适配（见 §6.23 末段与本节下表）。评论仍用下表
+这套既有管线，故事由服务端 marked 渲染。
 
 | 场景 | 渲染方式 | 管线 |
 |------|---------|------|
 | 博客正文 / 剪贴板正文 | **统一 ReactiveMD 管线**（服务端静态首屏 + 客户端水合，见 §6.23） | `reactive/read-render.ts` 决策 → `compile.ts`；Markdown 与 Reactive 同引擎，**没有 legacy 分支** |
-| 讨论正文 / 评论正文 | **客户端**渲染，同一套管线 | `rich-text.ts`（marked → DOMPurify → 后处理），白名单与链接类名见 `chat-markdown.ts` / `comment-markdown.ts` |
+| 讨论正文 | **客户端**编译，聊天专用 ReactiveMD 静态视图 | 页面级 `chat-rmd/compile-manager` + Worker（多文档队列、离屏不排队）；`chat-rmd/document-policy` 把能力收窄到 Markdown + 公式；引用由 `chat-rmd/references` 在 AST 上适配为 `chat-ref` 宿主槽位。正文入口 `ChatRmdMessage` |
+| 评论正文 | **客户端**渲染 | `rich-text.ts`（marked → DOMPurify → 后处理），白名单与链接类名见 `comment-markdown.ts` |
 | 故事正文 | **服务端**渲染 | `src/lib/story-service.ts` 的 `marked` + `stripScripts`。内容由站长直接写在 `instance/stories/`，按可信输入处理，**不走 DOMPurify、也不做语法高亮** |
-| 内容引用 `[@…]`（评论 / 讨论） | 浏览器渲染时正则替换为剪贴板/投票/图床/收藏夹组件 | `rich-text.ts` 的 `content-refs` 管线（按 id 长度分流：6 位收藏夹 / 8 位剪贴板 / 9 位投票 / 10 位图床）。**表情包不在这条管道上**。两次替换都**按区间切片**、不按内容 `replace`；分流扫的是**盖过码**的副本，所以代码块里的引用一律不展开（指南对读者的承诺）。博客 / 剪贴板正文里的引用改由 reactive 的 ref-adapter / hostData 处理（见 §6.23） |
+| 内容引用 `[@…]`（评论 / 讨论） | 评论在净化后按区间切片；讨论在编译后的 AST text 节点上适配 | 评论：`rich-text.ts` 的 `content-refs` 管线（6 位收藏夹 / 8 位剪贴板 / 9 位投票 / 10 位图床）；讨论：`chat-rmd/references`（同样的 id 长度分流与屏蔽规则，hostData 按 slot 原子成对）。两者都**不在代码/链接子树里展开**；博客 / 剪贴板正文的引用由 reactive 的 ref-adapter / hostData 处理（见 §6.23） |
 | 表情包 `[@合集/表情]` | 浏览器渲染时替换为内联 `<img>`（**仅评论 / 讨论**）。两个来源共用这条管道：站长放的图片（`/api/stickers/` 字节路由）与**内置黄脸**（`/static/emoji/` 静态素材）—— 后者多叠一个 `rich-emoji-ref` 类把自己压成文字大小；**整条正文只有这一张黄脸时**再叠 `rich-emoji-solo`，尺寸退回表情包那一档（判据是「最终 DOM 里只有这一张」） | `src/lib/sticker-refs.ts` 的 `embedStickerRefs`，在 `rich-text.ts` 里紧跟 `embedUserRefs` 之后调用；单发那一档是 `markSoloEmojiFaces`（同一文件），在 `render()` 里**最后**跑（任何新的 `embed*` 都必须排在它上面）；黄脸清单在 `src/lib/emoji-faces.ts` |
 | 音频 `[@音频/<ID>]`（评论 / 讨论） | 浏览器渲染时替换为内联 `<audio controls>`：在**净化后**建 DOM（白名单里没有 audio），一条正文最多展开 3 个；博客 / 剪贴板正文的音频引用走 reactive hostData | `src/lib/audio-refs.ts` 的 `embedAudioRefs`（DOM）。`音频` 是**保留合集名**（表情那条正则带 `(?!用户/)(?!音频/)` 让开），见 §6.15 |
 | 用户名片 `[@用户/<用户名>]` | 浏览器渲染时替换为一枚**行内名片**（`<a>` 包住「带头像框的头像 + 用户名」，指向 `/u/<id>`）（**仅评论 / 讨论**）。认的是**用户名**而不是 ID，所以多一条异步取数；**不算 @ 提及**，不发通知 | `src/lib/user-refs.ts` 的 `embedUserRefs`（纯逻辑 + DOM 构造），数据由 `src/app/components/useUserCards.ts` 经 `RichTextContext` 注入，取数口是 `GET /api/users/<用户名>`（要 core+）。`用户` 因此是**保留合集名**（表情那条正则带 `(?!用户/)` 让开） |
@@ -483,19 +486,22 @@ Markdown），两种语言都由同一个引擎解释 ——
 正文上**，不在这条之列 —— 从剪贴板带进来的音频引用会照常变成播放器，收藏夹 token
 在原文里也有同一个 ID 时会变成卡片。对外视图不解析剪贴板引用，保留原文。
 
-**讨论与评论共用一条管线**（`rich-text.ts`）。两者的威胁模型与防线逐条相同，差别只在
-白名单与链接类名（`chat-msg__link` / `comment-link`），所以管线唯一、参数由调用方注入。
-各写一份的代价不是重复代码，是**防线漂移**：任一边漏打一个补丁另一边不会知道，而两边
-看起来都「有净化」。五道防线（裸 HTML / 伪协议 / 属性注入 / 外链图片 / 无 DOM 降级）
-在 `rich-text.ts` 文件头逐条讲，单测见 `tests/unit/{chat,comment}-markdown.test.ts`。
+**评论仍走 `rich-text.ts`；讨论已切到聊天专用 RMD 管线**。两条管线的威胁模型相同
+（裸 HTML / 伪协议 / 属性注入 / 外链图片 / 无 DOM 降级），但实现位置不同：评论是
+marked → DOMPurify → 后处理；讨论是编译期能力收缩（`chat-rmd/document-policy`）+
+静态运行时零 grants + AST 引用白名单。评审时不要因为「讨论换了实现」就放宽评论侧：
+`rich-text.ts` 仍是评论的唯一净化出口，单测见 `tests/unit/comment-markdown.test.ts`；
+讨论侧的旧 `chat-markdown.ts` 管线保留（`ChatMarkdown` 组件留作 R1 回退），但站内
+正文已不再调用。
 
 两处**刻意不参数化**，因为它们是安全口径而非样式偏好：
 
 - `<img>` 一律不在白名单，`![](url)` 降级成链接 —— 发图走图床**附件**（`imageId`），
   不允许正文嵌任意外链图片（跟踪像素 / 访客 IP 泄露 / 混合内容）。
-- 无 DOM（SSR）时一律退回转义纯文本。因此**服务端不渲染**这两处的正文，前端调用点
-  （`ChatMarkdown` / `CommentMarkdown`）都依赖「列表由客户端拉取、SSR 期零条」这个前提；
-  若将来改成服务端直出消息/评论，必须改成「挂载后再渲染」的门控写法，否则首帧不一致。
+- 无 DOM（SSR）时讨论回退为完整源码文本、评论退回转义纯文本。因此**服务端不渲染**
+  这两处的正文，前端调用点（`ChatRmdMessage` / `CommentMarkdown`）都依赖「列表由客户端
+  拉取、SSR 期零条」这个前提；若将来改成服务端直出消息/评论，必须改成「挂载后再渲染」
+  的门控写法，否则首帧不一致。
 
 评论的 `content_html`（服务端转义 + `<br>`）**站内已不再用于渲染** —— 保留给 spider API
 （外部只读接口，不能因为站内换了渲染方式就被打碎）与无 JS 降级。
@@ -2042,7 +2048,7 @@ bot 接口，私密夹也能**复制成公开**、能导出 JSON —— 它的�
 新旧写入不能混跑；迁移与回退边界及实施记录见 `docs/plan/daily-quote-refactor-plan.md` §8/§12。
 用户操作及接口字段见 `docs/guide/每日一言使用指南.md`。
 
-### 6.23 ReactiveMD 统一渲染器（博客 / 剪贴板，2026-11）
+### 6.23 ReactiveMD 统一渲染器（博客 / 剪贴板 / 讨论，2026-11）
 
 博客与云剪贴板共用 ReactiveMD 引擎和编辑器。普通作者写 Markdown，需要时混写组件
 和表达式；工具栏保留 格式、组件、上传图片、插入引用 四个入口。
@@ -2074,6 +2080,18 @@ Markdown 剪贴板内联一层，Reactive 剪贴板卡片显示；预览不执�
 **运维：**SQL `up` 只做结构迁移。旧源码升级、公开搜索索引修复均独立执行，不再有
 快照回填或“全站 RMD 必须编译成功”的部署前置。公开索引仍是数据库中的可重建检索
 数据，失效身份来自独立编译配置；失败不回滚正文，按现有可见性规则降级检索。
+
+**聊天正文（讨论区，2026-11）：** 与博客 / 剪贴板共用同一引擎，但配置、队列与引用适配
+独立。`chat-rmd/options` 关闭作者 CSS / JavaScript / 扩展 HTML，并收紧节点、解析与
+Markdown 深度预算；`chat-rmd/document-policy` 只保留 Markdown 结构与公式，作者组件、
+原生图片、表达式与 HTML 一律降级为源码文本；`chat-rmd/compile-manager` 每页一个 Worker
+（多文档队列，同 key 只留最新 revision，离屏不排队，只缓存 final 结果）；引用由
+`chat-rmd/references` 在 AST 的 text 节点上适配为带唯一 slot 的 `chat-ref` 宿主组件，
+宿主层按当前查看者取数、逐 slot 失败降级。聊天**不复用**博客的 URL 策略与 `site-embed`：
+链接只允许站内 / http(s) / mailto（外链 nofollow + 新标签），图片只允许受控本站前缀。
+机器人流式输出使用同一编译器的 `streaming` 阶段；临时事件不写消息游标、不影响未读 /
+已读 / 侧栏预览，正式发布仍只走 `sendMessage`。设计契约见
+`docs/plan/chat-reactive-streaming-design.md`。
 
 范围及原设计取舍见 `docs/plan/reactive-md-simplification-plan.md`；早期统一渲染实施
 记录见 `docs/plan/reactive-md-unification-plan.md`。当前发布命令见 `docs/deploy.md`。

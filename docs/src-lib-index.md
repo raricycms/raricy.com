@@ -4,8 +4,8 @@
 
 范围：`src/lib` 根目录下全部 `*.ts`，不含 `md-editor/`、`reactive/` 等子目录。
 
-- 文件数：148
-- 合计行数：32106（含空行）
+- 文件数：150
+- 合计行数：32649（含空行）
 
 | 文件 | 行数 | 导出数 | 一句话职责 |
 | --- | ---: | ---: | --- |
@@ -44,11 +44,13 @@
 | `bubble-service.ts` | 104 | 7 | 气泡持有与装备的唯一写入者。权威在 user_bubbles，users 装备列是副本： |
 | `bubble-shop-service.ts` | 64 | 3 | 气泡租赁：与扣款同事务授予，续期基准在事务内读取，防并发少发租期。 |
 | `chat-bus.ts` | 173 | 8 | 讨论 SSE 的进程内订阅注册表（服务端专用） |
+| `chat-generation-reducer.ts` | 353 | 13 | 讨论流「生成中临时预览」的纯状态机（零 React / 零 DOM） |
+| `chat-generation-shared.ts` | 136 | 12 | 机器人生成任务的跨端协议（零运行时依赖） |
 | `chat-markdown.ts` | 44 | 1 | 讨论正文的 Markdown → 安全 HTML |
 | `chat-message-interaction.ts` | 144 | 9 | 讨论消息的指针交互判据（零依赖） |
 | `chat-presence.ts` | 78 | 4 | 「谁正在看哪个会话」（服务端专用，进程内） |
 | `chat-service.ts` | 75 | 6 | 讨论域对外 API 聚合层（纯 barrel，实现在 src/lib/chat/） |
-| `chat-shared.ts` | 204 | 23 | 讨论区「纯常量 + DTO 类型」，供服务端与客户端共享。 |
+| `chat-shared.ts` | 240 | 25 | 讨论区「纯常量 + DTO 类型」，供服务端与客户端共享。 |
 | `chat-sidebar-pref.ts` | 16 | 3 | 讨论侧栏折叠偏好的存储键（零依赖，server/client 共用） |
 | `chat-viewport.ts` | 104 | 6 | 讨论区整屏工作台的「软键盘让位」纯逻辑（零依赖） |
 | `checkin-service.ts` | 246 | 8 | 每日签到业务逻辑 |
@@ -65,7 +67,7 @@
 | `daily-quote.ts` | 154 | 20 | 客户端与服务端共用的每日一言词表、长度与展示契约；不引入数据库或 Node 模块。 |
 | `db-time.ts` | 83 | 6 | 写库时间戳的统一约定 |
 | `db.ts` | 43 | 1 | （文件头未注明职责） |
-| `docs-catalog.ts` | 659 | 14 | 站内文档页（/docs）的**登记表**与 URL 口径 |
+| `docs-catalog.ts` | 665 | 14 | 站内文档页（/docs）的**登记表**与 URL 口径 |
 | `docs-service.ts` | 218 | 4 | 把一份登记在案的文档读出来、渲染成 HTML（服务端专用） |
 | `emoji-faces.ts` | 90 | 9 | 内置「黄脸表情」合集的清单与地址 |
 | `favorite-refs.ts` | 92 | 8 | 收藏夹引用语法 `[@<六位收藏夹ID>]` 的**纯逻辑**（id 词汇 + 盖码） |
@@ -127,7 +129,7 @@
 | `profile-blocks.ts` | 713 | 49 | 个人主页「积木」的词汇表与校验（零依赖） |
 | `profile-service.ts` | 533 | 7 | 个人主页「积木」的读写 |
 | `public-blog-search.ts` | 128 | 9 | 公开正文检索：写入时编译并提取自身静态可见文字，读取时仅查 FTS 候选。 |
-| `rate-limit.ts` | 431 | 9 | 限频（进程内 limiter + 快照持久化） |
+| `rate-limit.ts` | 443 | 9 | 限频（进程内 limiter + 快照持久化） |
 | `realtime-auth.ts` | 15 | 2 | （文件头未注明职责） |
 | `realtime-ticket-service.ts` | 62 | 5 | （文件头未注明职责） |
 | `realtime-url.ts` | 22 | 1 | （文件头未注明职责） |

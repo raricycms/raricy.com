@@ -10,6 +10,10 @@
 import { stripAudioTokens } from './audio-refs';
 import { stripStickerTokens } from './sticker-refs';
 import { stripUserCardTokens } from './user-refs';
+import type {
+  ChatGenerationErrorCode,
+  ChatGenerationTerminalStatus,
+} from './chat-generation-shared';
 
 export const CHAT_LOBBY_ID = 'lobby';
 /** 纯文本消息上限。 */
@@ -170,6 +174,36 @@ export interface ChatStreamMessageEvent {
   type: 'message';
   channel_id: string;
   message: ChatMessageDTO;
+  /**
+   * 这条正式消息由生成任务发布时带原任务 id，供客户端移除临时预览。
+   * 断线补齐的 message 没有该字段，客户端仍按 message.id 合并。
+   */
+  generation_id?: string;
+}
+
+/**
+ * 生成中的完整快照。**不带 SSE id**，不推进正式消息游标。
+ * 首次接收可能发生在生成中途/丢帧之后，所以每帧都是完整累计正文。
+ */
+export interface ChatStreamGenerationSnapshotEvent {
+  type: 'generation_snapshot';
+  generation_id: string;
+  channel_id: string;
+  revision: number;
+  author: ChatAuthorDTO;
+  source: string;
+}
+
+/** 生成任务进入终态。不含 source/author；failed 时带公开错误标识。 */
+export interface ChatStreamGenerationTerminalEvent {
+  type: 'generation_terminal';
+  generation_id: string;
+  channel_id: string;
+  revision: number;
+  /** 只允许终态；active / finalizing 不应出现在这个事件里。 */
+  status: ChatGenerationTerminalStatus;
+  message_id?: number;
+  error?: ChatGenerationErrorCode;
 }
 
 /**
@@ -201,4 +235,6 @@ export type ChatStreamEvent =
   | ChatStreamMessageEvent
   | ChatStreamResyncEvent
   | ChatStreamTypingEvent
-  | ChatStreamReadEvent;
+  | ChatStreamReadEvent
+  | ChatStreamGenerationSnapshotEvent
+  | ChatStreamGenerationTerminalEvent;

@@ -49,6 +49,11 @@ import { POST as saveMessageApi } from '@/app/api/chat/saved/route';
 import { DELETE as unsaveMessageApi } from '@/app/api/chat/saved/[messageId]/route';
 import { GET as savedIdsApi } from '@/app/api/chat/saved/ids/route';
 import { POST as revealChannelApi } from '@/app/api/chat/channels/[id]/reveal/route';
+import { POST as createGenerationApi } from '@/app/api/chat/channels/[id]/generations/route';
+import { GET as getGenerationApi } from '@/app/api/chat/generations/[id]/route';
+import { POST as appendGenerationChunkApi } from '@/app/api/chat/generations/[id]/chunks/route';
+import { POST as completeGenerationApi } from '@/app/api/chat/generations/[id]/complete/route';
+import { POST as cancelGenerationApi } from '@/app/api/chat/generations/[id]/cancel/route';
 import { parsePosInt } from '@/app/api/chat/_auth';
 
 const login = async (userId: string, sv = 0) => {
@@ -111,6 +116,13 @@ const cases: { name: string; call: () => Promise<Response>; canProbeAllow?: bool
   { name: 'DELETE /api/chat/saved/:messageId', call: () => unsaveMessageApi(new Request('http://localhost/x', { method: 'DELETE' }), ctxMessage('1')) },
   { name: 'GET  /api/chat/saved/ids', call: () => savedIdsApi(url(`/api/chat/saved/ids?channel=${CHAT_LOBBY_ID}`)) },
   { name: 'POST /api/chat/channels/:id/reveal', call: () => revealChannelApi(post('/x'), ctx(CHAT_LOBBY_ID)) },
+  // 机器人生成任务：core 放行后落到业务校验（缺 client_request_id → 400，
+  // 未知 generation id → 404），这里只断言「不是守卫拒绝」。
+  { name: 'POST /api/chat/channels/:id/generations', call: () => createGenerationApi(post('/x', {}), ctx(CHAT_LOBBY_ID)) },
+  { name: 'GET  /api/chat/generations/:id', call: () => getGenerationApi(url('/x'), ctx('missing')) },
+  { name: 'POST /api/chat/generations/:id/chunks', call: () => appendGenerationChunkApi(post('/x', {}), ctx('missing')) },
+  { name: 'POST /api/chat/generations/:id/complete', call: () => completeGenerationApi(post('/x', {}), ctx('missing')) },
+  { name: 'POST /api/chat/generations/:id/cancel', call: () => cancelGenerationApi(post('/x', {}), ctx('missing')) },
   { name: 'GET  /api/chat/stream（SSE，只测拒绝）', call: () => stream(url('/api/chat/stream')), canProbeAllow: false },
 ];
 
@@ -119,7 +131,7 @@ beforeEach(async () => {
   session.token = undefined;
 });
 
-describe('讨论接口的档位（14 个 handler）', () => {
+describe('讨论接口的档位（23 个 handler）', () => {
   it('清单要盖住 chat 下的**全部** handler（漏一条 = 漏一个免检的口子）', () => {
     // 真的去扫盘，不是断言我自己写的数组长度 —— 新增一条讨论路由而忘了补进 cases 时，
     // 它必须变红。否则那条路由在「有没有测试保护」这件事上是隐形的。

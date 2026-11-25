@@ -7,8 +7,9 @@
 // 字都会 setText → ChatApp 重渲染 → 整棵列表重渲染。包上 memo 后，只要 props 引用
 // 不变就跳过（父组件里所有回调都必须是 useCallback 的稳定引用，见 ChatApp）。
 //
-// 【正文渲染】走 ChatMarkdown（Markdown → 净化 HTML）；回复摘要 / 侧栏预览等
-// 只露一行的位置仍按纯文本处理，不进 Markdown 管线。
+// 【正文渲染】走 ChatRmdMessage（ReactiveMD，正式消息 final 阶段）；回复摘要 /
+// 侧栏预览等只露一行的位置仍按纯文本处理，不进正文渲染管线。临时生成行不是
+// ChatMessageDTO，由 ChatApp 单独渲染，不经过本组件。
 //
 // 消息操作只有两条入口：桌面右键、触屏长按。没有常驻「⋯」按钮 —— 桌面悬停 /
 // 键盘聚焦时给气泡轻微变色作可操作提示，移动端按下时同一套叠色。
@@ -34,7 +35,7 @@ import {
   movedBeyondTolerance,
 } from '@/lib/chat-message-interaction';
 import { nowForDb } from '@/lib/db-time';
-import ChatMarkdown from './ChatMarkdown';
+import ChatRmdMessage from './ChatRmdMessage';
 import type { MessageMenuAnchor } from './ChatMessageMenu';
 
 // ── 时间显示：一律 UTC+8 钟面 ─────────────────────────────────────────────────
@@ -438,6 +439,10 @@ export interface ChatMessageItemProps {
   onJumpToReply: (messageId: number) => void;
   /** 点击图片 → 原位放大（覆盖层），不新开窗口 */
   onImageClick: (url: string) => void;
+  /** 正文异步编译 / 引用落位 / 媒体加载导致高度变化**之前**（宿主记录变化前位置）。 */
+  onBeforeContentChange?: () => void;
+  /** 正文异步编译 / 引用落位 / 媒体加载后的高度变化（宿主按贴底规则跟随）。 */
+  onContentChange?: () => void;
 }
 
 function ChatMessageItemInner({
@@ -455,6 +460,8 @@ function ChatMessageItemInner({
   onAvatarClick,
   onJumpToReply,
   onImageClick,
+  onBeforeContentChange,
+  onContentChange,
 }: ChatMessageItemProps) {
   const [imgError, setImgError] = useState(false);
 
@@ -498,9 +505,14 @@ function ChatMessageItemInner({
       {msg.is_deleted ? (
         <span className="chat-msg__deleted">{msg.content}</span>
       ) : (
-        <ChatMarkdown
+        <ChatRmdMessage
+          messageKey={`msg:${msg.id}`}
           content={msg.content}
+          phase="final"
           allowBareImage={!msg.image && !msg.image_missing && !msg.blog && !msg.blog_missing}
+          onImageClick={onImageClick}
+          onBeforeContentChange={onBeforeContentChange}
+          onContentChange={onContentChange}
         />
       )}
     </ChatBubble>
