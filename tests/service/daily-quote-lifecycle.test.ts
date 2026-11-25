@@ -33,7 +33,7 @@ beforeEach(async () => {
 afterEach(() => { vi.restoreAllMocks(); vi.useRealTimers(); });
 
 describe('一言重构的生命周期与账务边界', () => {
-  it('社区按审核时间并轮换作者；用完后只循环经典，91天后也不回流', async () => {
+  it('社区按审核时间并轮换作者；用完后只循环经典', async () => {
     const a = await makeUser(); const b = await makeUser(); const reader = await makeUser();
     const q1 = await content(a.id); const q2 = await content(a.id); const q3 = await content(b.id);
     for (const [i, quote] of [q1, q2, q3].entries()) await prisma.dailyQuote.update({ where: { id: quote.id },

@@ -338,7 +338,7 @@ tests/unit/fish-credential-list-cli.test.ts     tests/unit/audit-log-cli.test.ts
 | 文件 | 用例 | 现耗时 | 处置 | 理由 |
 |---|---:|---:|---|---|
 | `tests/service/comment-anonymous.test.ts` | 22 | 30.9s | 保 | 匿名承诺属身份/可见性：真身不出任何出口 |
-| `tests/service/daily-quote-service.test.ts` | 22 | 26.7s | 保 | 90 天去重 + 共鸣扣款幂等 |
+| `tests/service/daily-quote-service.test.ts` | 22 | 26.7s | 保 | 经典循环 + 共鸣扣款幂等 |
 | `tests/service/checkin-service.test.ts` | 30 | 24.1s | 保 | 钱 + 时间语义核心：UTC+8 跨日、唯一约束并发 |
 | `tests/service/fish-webhook.test.ts` | 27 | 24.0s | 保 | 商户回调契约+SSRF+退避时间语义集中于此 |
 | `tests/service/fish-service.test.ts` | 48 | 23.1s | 保 | 钱的基础层：加扣与流水形态 |

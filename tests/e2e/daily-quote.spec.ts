@@ -588,7 +588,7 @@ test('往期条目上共鸣 + 收藏：跨页一致、重复请求幂等（H2 / 
 
 test('同一句两个入选日期：两条同时存在，操作一条另一条同步（H5 / U1）', async ({ page }) => {
   const classic = classics[3];
-  // 90 天不重复是**选句**的规则，不是历史的约束：同一句可以在两个日期各入选一次
+  // 经典可以再次入选：同一句可以在两个日期各有一期
   const { day: day1 } = await seedPastEdition({ daysAgo: 1, classicIndex: 3 });
   const { day: day2 } = await seedPastEdition({ daysAgo: 2, classicIndex: 3 });
   await registerCoreUser(page);

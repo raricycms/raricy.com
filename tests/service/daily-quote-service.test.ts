@@ -57,7 +57,7 @@ function daysBefore(endDay: string, n: number): string[] {
   return Array.from({ length: n }, (_, i) => new Date(base - i * 86400000).toISOString().slice(0, 10));
 }
 
-describe('全站每日选取与90天去重', () => {
+describe('全站每日选取与经典循环', () => {
   it('不签到也能读今日一言（P02 解耦）；读取不会代签或发鱼', async () => {
     const user = await makeUser({ role: 'core' });
     await builtin();
@@ -213,20 +213,20 @@ describe('共鸣：每人每句一生一次、全额投喂、匿名与回滚', (
     expect(dto).toMatchObject({ resonated: true, favorited: true, can_resonate: false });
     await expectLedgerConsistent();
   });
-  it('90 天后再入选同一句：仍显示已共鸣、不能再付一次', async () => {
+  it('经典再次入选同一句：仍显示已共鸣、不能再付一次', async () => {
     const reader = await makeUser({ role: 'core' });
-    const quote = await builtin('九十天后再次入选');
+    const quote = await builtin('经典再次入选');
     await publish('2026-10-21', quote.id);
     await checkIn(reader.id);
     expect((await getTodayQuote(reader.id)).quote?.id).toBe(quote.id);
     await resonateQuote(quote.id, reader.id);
 
-    vi.setSystemTime(new Date('2027-01-20T02:00:00Z')); // 第 91 天（UTC+8 的 2027-01-20）
-    expect(todayStr()).toBe('2027-01-20');
+    vi.setSystemTime(new Date('2026-10-22T23:00:00Z')); // UTC+8 的 10-23，同一句经典再次入选
+    expect(todayStr()).toBe('2026-10-23');
     await checkIn(reader.id);
     await ensureEditionForDay(todayStr());
     const again = await getTodayQuote(reader.id);
-    expect(again.day).toBe('2027-01-20');
+    expect(again.day).toBe('2026-10-23');
     expect(again.quote).toMatchObject({ id: quote.id, resonated: true, can_resonate: false, resonance_count: 1 });
     expect(await resonateQuote(quote.id, reader.id)).toMatchObject({ already_resonated: true, resonance_count: 1 });
     expect(await prisma.dailyQuoteResonance.count()).toBe(1);
