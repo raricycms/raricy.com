@@ -22,9 +22,10 @@ const SQL_34 = readMigration('34_daily_quotes/migration.sql');
 const SQL_37 = readMigration('37_daily_quote_resonance_once/migration.sql');
 const SQL_38 = readMigration('38_daily_quote_lifecycle/migration.sql');
 const CONSTRAINTS_38 = readMigration('38_daily_quote_lifecycle/constraints.sql');
+const SQL_45 = readMigration('45_daily_quote_soft_delete/migration.sql');
 
 describe('300条经典兜底及实际迁移', () => {
-  it('条目不重复、不超50字，逐条保存作者与原文来源', () => {
+  it('条目不重复、不超100字，逐条保存作者与原文来源', () => {
     expect(classics).toHaveLength(300);
     expect(new Set(classics.map((quote) => quote.content_key)).size).toBe(300);
     expect(new Set(classics.map((quote) => quote.id)).size).toBe(300);
@@ -200,5 +201,32 @@ describe('38_daily_quote_lifecycle 真实迁移', () => {
     const index = db.prepare("SELECT sql FROM sqlite_master WHERE name='uq_daily_quotes_active_content'").get();
     expect(index?.sql).toContain("WHERE \"status\" IN ('pending', 'approved', 'retired')");
     expect(db.prepare('SELECT COUNT(*) AS n FROM daily_quotes WHERE first_selected_day IS NOT NULL').get()).toEqual({ n: 0 });
+  });
+});
+
+describe('45_daily_quote_soft_delete 真实迁移', () => {
+  let db: InstanceType<typeof DatabaseSync>;
+
+  beforeEach(() => {
+    db = new DatabaseSync(':memory:');
+    db.exec(`PRAGMA foreign_keys=ON; CREATE TABLE users(id TEXT PRIMARY KEY);`);
+    db.exec(SQL_34);
+    db.exec(SQL_38);
+  });
+  afterEach(() => db.close());
+
+  it('旧库只加一列：存量稿件默认未删除，正文 / 状态与活动正文条件索引原样', () => {
+    db.prepare(`INSERT INTO daily_quotes(id,kind,content,content_key,category,signature,source_type,submitter_id,status,review_reason,created_at)
+      VALUES('legacy','community','旧稿正文','旧稿正文','哲思','anonymous','original',NULL,'rejected','出处有误',1)`).run();
+    const before = db.prepare('SELECT content,status,review_reason,revision,first_selected_day FROM daily_quotes').get();
+
+    db.exec(SQL_45);
+
+    const after = db.prepare('SELECT content,status,review_reason,revision,first_selected_day,deleted_at FROM daily_quotes').get();
+    expect(after).toMatchObject({ ...(before as Record<string, unknown>), deleted_at: null });
+    // 软删标记不改变状态：未通过稿仍不占活动正文条件唯一索引。
+    const index = db.prepare("SELECT sql FROM sqlite_master WHERE name='uq_daily_quotes_active_content'").get();
+    expect(index?.sql).toContain("WHERE \"status\" IN ('pending', 'approved', 'retired')");
+    expect(db.prepare("SELECT COUNT(*) AS n FROM daily_quotes WHERE status='rejected'").get()).toEqual({ n: 1 });
   });
 });

@@ -1,5 +1,5 @@
 // 客户端与服务端共用的每日一言词表、长度与展示契约；不引入数据库或 Node 模块。
-export const QUOTE_CONTENT_MAX = 50;
+export const QUOTE_CONTENT_MAX = 100;
 export const QUOTE_RESONANCE_FISH = 1;
 export const QUOTE_HISTORY_PAGE_SIZE = 20;
 export const QUOTE_SAVED_PAGE_SIZE = 20;
@@ -7,6 +7,11 @@ export const QUOTE_CATEGORIES = ['治愈', '搞笑', '扎心', '励志', '哲思
 export const QUOTE_STATUSES = ['pending', 'approved', 'selected', 'rejected', 'retired', 'builtin'] as const;
 export const QUOTE_STATUS_LABELS: Record<string, string> = {
   pending: '待审核', approved: '已通过未选登', selected: '已选登', rejected: '审核未通过', retired: '已下架', builtin: '内置经典',
+};
+/** 管理端审核列表的筛选档：六个真实状态 + 软删除的「已删除」。 */
+export const QUOTE_REVIEW_FILTERS = [...QUOTE_STATUSES, 'deleted'] as const;
+export const QUOTE_REVIEW_FILTER_LABELS: Record<string, string> = {
+  ...QUOTE_STATUS_LABELS, deleted: '已删除',
 };
 
 export function quoteDisplayStatus(quote: { status: string; firstSelectedDay: string | null; kind?: string }) {
@@ -108,4 +113,42 @@ export function normalizeQuotePage(requested: number, total: number, pageSize: n
   const pages = total > 0 ? Math.ceil(total / pageSize) : 0;
   const wanted = Number.isSafeInteger(requested) && requested > 0 ? requested : 1;
   return { page: pages > 0 ? Math.min(wanted, pages) : 1, pages };
+}
+
+/**
+ * 从社区候选里抽一条：**先按作者权重抽作者，再在该作者名下均匀抽一条**。
+ *
+ * 作者权重 = `log(n + 2)`，n 是该投稿人当前在候选池里的稿件数。稿件多的人更容易
+ * 中选，但增长是对数的：n 从 1 涨到 10，权重只从 log3 涨到 log12，不会一人垄断。
+ * 对数底数不影响结果（各权重同乘一个常数，归一化后概率不变）。
+ *
+ * `random()` 必须返回 `[0,1)` 的均匀值，且一次抽取调用两次（作者、条目）；
+ * 它是显式参数而不是内部 `Math.random`，固定随机序列就能在测试里复现同一次抽取。
+ */
+export function pickWeightedQuote<T extends { submitterId: string | null }>(
+  candidates: readonly T[],
+  random: () => number,
+): T | null {
+  if (candidates.length === 0) return null;
+
+  // 按投稿人分组；组序 = 首次出现顺序，保证同一份候选与随机序列得到同一结果。
+  const groups = new Map<string, T[]>();
+  for (const candidate of candidates) {
+    const key = candidate.submitterId ?? '';
+    const group = groups.get(key);
+    if (group) group.push(candidate); else groups.set(key, [candidate]);
+  }
+  const weighted = [...groups.values()].map((quotes) => ({ quotes, weight: Math.log(quotes.length + 2) }));
+  const total = weighted.reduce((sum, group) => sum + group.weight, 0);
+
+  let point = random() * total;
+  let chosen = weighted[weighted.length - 1];
+  for (const group of weighted) {
+    chosen = group;
+    point -= group.weight;
+    if (point < 0) break;
+  }
+
+  const index = Math.min(Math.floor(random() * chosen.quotes.length), chosen.quotes.length - 1);
+  return chosen.quotes[index];
 }

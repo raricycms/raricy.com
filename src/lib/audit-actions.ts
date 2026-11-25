@@ -54,6 +54,8 @@ export const AUDIT_ACTIONS = [
   'daily_quote_approve',
   'daily_quote_reject',
   'daily_quote_retire',
+  'daily_quote_delete',
+  'daily_quote_restore',
   // 系统运维
   'decide_appeal',
   'revoke_invite_code',
@@ -87,6 +89,8 @@ export const AUDIT_ACTION_LABEL: Record<AuditAction, string> = {
   daily_quote_approve: '通过一言投稿',
   daily_quote_reject: '拒绝一言投稿',
   daily_quote_retire: '下架每日一言',
+  daily_quote_delete: '删除一言投稿',
+  daily_quote_restore: '恢复一言投稿',
   decide_appeal: '处理申诉',
   revoke_invite_code: '撤销邀请码',
   frame_grant: '发放头像框',
@@ -124,6 +128,8 @@ export const AUDIT_ACTION_GROUP: Record<AuditAction, AuditActionGroup> = {
   daily_quote_approve: 'content',
   daily_quote_reject: 'content',
   daily_quote_retire: 'content',
+  daily_quote_delete: 'content',
+  daily_quote_restore: 'content',
   decide_appeal: 'system',
   revoke_invite_code: 'system',
   frame_grant: 'system',
@@ -147,6 +153,8 @@ export const AUDIT_ACTION_KIND: Record<AuditAction, AuditActionKind> = {
   daily_quote_approve: 'restore',
   daily_quote_reject: 'punish',
   daily_quote_retire: 'punish',
+  daily_quote_delete: 'punish',
+  daily_quote_restore: 'restore',
   unban_user: 'restore',
   restore_blog: 'restore',
   restore_comment: 'restore',
@@ -211,8 +219,9 @@ export const AUDIT_OBJECT_TYPE_LABEL: Record<AuditObjectType, string> = {
  */
 export const CLI_ONLY_ACTIONS = ['frame_grant', 'frame_revoke', 'bubble_grant', 'bubble_revoke', 'archive_user', 'unarchive_user'] as const;
 
-// 投稿审核不公开尚未发布的稿件与审核原因；网页管理日志仍可检索。
-const PRIVATE_QUOTE_ACTIONS = ['daily_quote_approve', 'daily_quote_reject', 'daily_quote_retire'] as const;
+// 投稿审核与删除不公开尚未发布的稿件与审核原因；网页管理日志仍可检索。
+const PRIVATE_QUOTE_ACTIONS = ['daily_quote_approve', 'daily_quote_reject', 'daily_quote_retire',
+  'daily_quote_delete', 'daily_quote_restore'] as const;
 
 /**
  * `/admin/logs` 动作下拉的选项集 = 全部 − 归档两码。

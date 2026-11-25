@@ -205,6 +205,8 @@ model DailyQuote {
   reviewedAt   DateTime? @map("reviewed_at")
   revision     Int      @default(1)
   firstSelectedDay String? @map("first_selected_day")
+  /// 管理员删除「审核未通过」投稿的软删标记；读路径一律排除，恢复即置回 NULL。
+  deletedAt    DateTime? @map("deleted_at")
 
   submitter  User? @relation("DailyQuoteSubmitter", fields: [submitterId], references: [id])
   reviewer   User? @relation("DailyQuoteReviewer", fields: [reviewerId], references: [id])

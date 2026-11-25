@@ -5,7 +5,7 @@
 范围：`src/lib` 根目录下全部 `*.ts`，不含 `md-editor/`、`reactive/` 等子目录。
 
 - 文件数：148
-- 合计行数：32140（含空行）
+- 合计行数：32260（含空行）
 
 | 文件 | 行数 | 导出数 | 一句话职责 |
 | --- | ---: | ---: | --- |
@@ -25,7 +25,7 @@
 | `audio-refs.ts` | 192 | 13 | `[@音频/<ID>]` 引用语法的（纯逻辑 + DOM 构造） |
 | `audio-service.ts` | 215 | 10 | 音频床元信息读取 / 删除 / 配额 |
 | `audio-upload.ts` | 337 | 11 | 音频床二进制上传 |
-| `audit-actions.ts` | 350 | 21 | 管理操作日志的**动作词汇表**（中文名、分组、配色档、metadata 说法） |
+| `audit-actions.ts` | 359 | 21 | 管理操作日志的**动作词汇表**（中文名、分组、配色档、metadata 说法） |
 | `audit-context.ts` | 57 | 3 | 「这条审计日志是谁写下的」 |
 | `audit-service.ts` | 530 | 10 | 管理审计公示 + 申诉 |
 | `auth.ts` | 114 | 7 | 服务端取当前用户 + 角色/禁言判定 |
@@ -61,8 +61,8 @@
 | `content-format.ts` | 43 | 9 | Stored language and write gate. Rendering choices never change this value. |
 | `content-refs.ts` | 370 | 23 | `[@<内容ID>]` 引用语法的**纯逻辑**（识别 / 替换 / 截断） |
 | `credential-auth.ts` | 106 | 3 | 「用户名 + 密码」校验（两个门口共用） |
-| `daily-quote-service.ts` | 727 | 21 | 每日一言：全站 UTC+8 每日固定一句。社区只选登一次，经典在社区候选耗尽后循环。 |
-| `daily-quote.ts` | 111 | 17 | 客户端与服务端共用的每日一言词表、长度与展示契约；不引入数据库或 Node 模块。 |
+| `daily-quote-service.ts` | 795 | 23 | 每日一言：全站 UTC+8 每日固定一句。社区只选登一次，经典在社区候选耗尽后循环。 |
+| `daily-quote.ts` | 154 | 20 | 客户端与服务端共用的每日一言词表、长度与展示契约；不引入数据库或 Node 模块。 |
 | `db-time.ts` | 83 | 6 | 写库时间戳的统一约定 |
 | `db.ts` | 43 | 1 | （文件头未注明职责） |
 | `docs-catalog.ts` | 659 | 14 | 站内文档页（/docs）的**登记表**与 URL 口径 |

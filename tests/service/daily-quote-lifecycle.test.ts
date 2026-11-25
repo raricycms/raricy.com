@@ -6,6 +6,7 @@ import { nowForDb, todayStr } from '@/lib/db-time';
 import { __resetRateLimitStore } from '@/lib/rate-limit';
 import { getTodayQuote, quoteContentKey, quoteView, resonateQuote, submitQuote, reviewQuote, quoteReviewVersion,
   saveQuote, listSavedQuotes, listQuoteHistory, listSubmissions, editQuoteSubmission, listReviewQuotes,
+  deleteRejectedQuote, restoreDeletedQuote,
   ensureEditionForDay, __resetDailyQuoteIssuanceState } from '@/lib/daily-quote-service';
 
 async function makeUser(role: 'core' | 'admin' | 'owner' = 'core') {
@@ -33,20 +34,22 @@ beforeEach(async () => {
 afterEach(() => { vi.restoreAllMocks(); vi.useRealTimers(); });
 
 describe('一言重构的生命周期与账务边界', () => {
-  it('社区按审核时间并轮换作者；用完后只循环经典', async () => {
+  it('社区按作者权重抽取，抽走的稿件不再进池；用完后只循环经典', async () => {
     const a = await makeUser(); const b = await makeUser(); const reader = await makeUser();
     const q1 = await content(a.id); const q2 = await content(a.id); const q3 = await content(b.id);
-    for (const [i, quote] of [q1, q2, q3].entries()) await prisma.dailyQuote.update({ where: { id: quote.id },
-      data: { reviewedAt: new Date(`2026-10-20T00:00:0${i}.000Z`) } });
     const classic = await content();
-    for (const [i, id] of [q1.id, q3.id, q2.id, classic.id].entries()) {
+    // 固定随机源 = 0：每次都落「池内首个作者组 + 组内第一条」。组序是查询返回顺序，
+    // 这里正好是 a 的两条先被抽干，再轮到 b；抽中后 firstSelectedDay 非空，不再进池。
+    const firstPick = () => 0;
+    for (const [i, id] of [q1.id, q2.id, q3.id, classic.id].entries()) {
       vi.setSystemTime(new Date(`2026-10-${21 + i}T02:00:00Z`)); await checkIn(reader.id);
       // P03：每天的发行由后台任务触发；测试里显式模拟启动钩子/定时器。
-      await ensureEditionForDay(todayStr());
+      await ensureEditionForDay(todayStr(), firstPick);
       expect((await getTodayQuote(reader.id)).quote?.id).toBe(id);
     }
+    // 社区池耗尽后经典可继续循环（2027-01-30 已过全部候选期）。
     vi.setSystemTime(new Date('2027-01-30T02:00:00Z')); await checkIn(reader.id);
-    await ensureEditionForDay(todayStr());
+    await ensureEditionForDay(todayStr(), firstPick);
     expect((await getTodayQuote(reader.id)).quote?.id).toBe(classic.id);
     for (const q of [q1, q2, q3]) expect(await prisma.dailyQuoteEdition.count({ where: { quoteId: q.id } })).toBe(1);
     expect((await listSubmissions(a.id)).every((q) => q.display_status === 'selected')).toBe(true);
@@ -146,6 +149,54 @@ describe('一言重构的生命周期与账务边界', () => {
     expect((await listReviewQuotes('approved', 1, admin.id)).total).toBe(0);
     expect((await listReviewQuotes('selected', 1, admin.id)).quotes[0].display_status).toBe('selected');
     expect((await listReviewQuotes('builtin', 1, admin.id)).total).toBe(1);
+  });
+
+  it('审核未通过可软删：作者与审核列表都不显示，正文与版本保留，可恢复', async () => {
+    const author = await makeUser(); const admin = await makeUser('admin');
+    const quote = await submitQuote(author.id, { ...input, content: '一条会被删除的投稿', signature: 'anonymous' });
+    await reviewQuote(quote.id, admin.id, 'reject', '不予收录');
+    expect((await listReviewQuotes('rejected', 1, admin.id)).total).toBe(1);
+
+    await deleteRejectedQuote(quote.id, admin.id);
+    expect((await listReviewQuotes('rejected', 1, admin.id)).total).toBe(0);
+    expect((await listReviewQuotes('deleted', 1, admin.id)).total).toBe(1);
+    expect(await listSubmissions(author.id)).toEqual([]);
+    // 软删后作者不能编辑、审核也不能通过：两处都按「不存在 / 状态变化」拒绝。
+    await expect(editQuoteSubmission(quote.id, author.id, input)).rejects.toMatchObject({ status: 404 });
+    await expect(reviewQuote(quote.id, admin.id, 'approve', '')).rejects.toMatchObject({ status: 409 });
+    const tombstone = await prisma.dailyQuote.findUniqueOrThrow({ where: { id: quote.id }, include: { revisions: true } });
+    expect(tombstone).toMatchObject({ status: 'rejected', deletedAt: expect.any(Date) });
+    // 审核结论覆盖当前版本那一行（投稿即 version 1），删除不新增也不改写版本。
+    expect(tombstone.revisions).toHaveLength(1);
+    expect(tombstone.revisions[0]).toMatchObject({ revision: 1, status: 'rejected', reviewReason: '不予收录' });
+    const log = await prisma.adminActionLog.findFirstOrThrow({
+      where: { action: 'daily_quote_delete', objectId: quote.id },
+      select: { visibility: true, hideTarget: true, targetUserId: true },
+    });
+    // 匿名稿的删除日志同样隐藏当事人；日志只进内部检索面。
+    expect(log).toEqual({ visibility: 'internal', hideTarget: true, targetUserId: author.id });
+
+    await restoreDeletedQuote(quote.id, admin.id);
+    expect(await listSubmissions(author.id)).toMatchObject([{ id: quote.id, status: 'rejected' }]);
+    expect((await listReviewQuotes('deleted', 1, admin.id)).total).toBe(0);
+    expect((await listReviewQuotes('rejected', 1, admin.id)).total).toBe(1);
+  });
+
+  it('只有「审核未通过」可删：待审 / 通过 / 下架 / 内置都拒绝，非管理员也拒绝', async () => {
+    const author = await makeUser(); const admin = await makeUser('admin');
+    const pending = await submitQuote(author.id, { ...input, content: '还在待审的投稿' });
+    await expect(deleteRejectedQuote(pending.id, admin.id)).rejects.toMatchObject({ status: 409, reason: 'QUOTE_NOT_DELETABLE' });
+    for (const quote of [await content(author.id), await content()]) {
+      await expect(deleteRejectedQuote(quote.id, admin.id)).rejects.toMatchObject({ status: 409 });
+    }
+    const retired = await content(author.id);
+    await prisma.dailyQuote.update({ where: { id: retired.id }, data: { status: 'retired' } });
+    await expect(deleteRejectedQuote(retired.id, admin.id)).rejects.toMatchObject({ status: 409 });
+    await expect(deleteRejectedQuote('missing', admin.id)).rejects.toMatchObject({ status: 409 });
+    await expect(restoreDeletedQuote(pending.id, admin.id)).rejects.toMatchObject({ status: 409 });
+    await expect(deleteRejectedQuote(pending.id, author.id)).rejects.toMatchObject({ status: 403 });
+    // 拒绝路径不写任何删除 / 恢复日志。
+    expect(await prisma.adminActionLog.count()).toBe(0);
   });
 
   it('重复收藏保留原收藏时间，取消再加入才更新时间；经典重播不暴露最近入选日', async () => {
