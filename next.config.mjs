@@ -20,6 +20,32 @@ const nextConfig = {
     // 给 multipart 边界留出余量。
     middlewareClientMaxBodySize: '12mb',
   },
+  async redirects() {
+    const archivedPlans = [
+      'test-suite-audit',
+      'daily-quote-refactor-plan',
+      'daily-quote-repair-plan',
+      'reactive-md-migration-plan',
+      'reactive-md-unification-plan',
+      'reactive-md-simplification-plan',
+      'craft-games-design',
+      'chat-reactive-streaming-design',
+      'editor-plan',
+      'format-converter-roadmap',
+    ];
+    return [
+      ...archivedPlans.map((name) => ({
+        source: '/docs/plan/' + name,
+        destination: '/docs/archive/' + name,
+        permanent: true,
+      })),
+      {
+        source: '/docs/format-converter-implementation',
+        destination: '/docs/archive/format-converter-implementation',
+        permanent: true,
+      },
+    ];
+  },
   // ── 旧地址兼容（rewrite，不是跳转）──────────────────────────────────────
   //
   // 历史直链：图床是 `/image/i/<id>`，头像是 `/auth/avatar/<user_id>`；现在这两条

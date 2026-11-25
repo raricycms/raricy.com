@@ -5,7 +5,7 @@
 // `validateBlogData`（它对缺键一律回 `'internal'` 这个默认档）：
 //
 //   · **创建**（`POST /api/blogs`）—— 缺键 = 默认档 internal。正确：新文章本来就该
-//     fail-closed（`docs/architecture.md` §6.11 的表里 internal 就是「默认」）。
+//     fail-closed（`docs/agent-domain-rules.md` §2.19 的表里 internal 就是「默认」）。
 //   · **编辑**（`PUT /api/blogs/:id`）—— 缺键 = **不改动这一列**。默认档在这里是错的：
 //     一个只认识旧那 4 个键的调用方（`parseVisibility` 的注释点名要保护的
 //     「不带这个字段的 bot」）改一次标题就会把 link/public 的文章静默改回私密 ——

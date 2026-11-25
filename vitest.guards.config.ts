@@ -2,7 +2,7 @@
 //
 // 【为什么单独入口】守卫的价值在「拦漂移」，但执行成本全在起 vitest 环境（它们只读文件、
 // 不碰库、不碰浏览器）。放进 `npm test` 会让每次改动的门禁为它们付全额环境开销；
-// 独立成入口后进 CI / 提交前检查即可（详见 `docs/plan/test-suite-audit.md` §2/§5）。
+// 独立成入口后进 CI / 提交前检查即可（详见 `docs/testing.md` §1.1）。
 import { defineConfig } from 'vitest/config';
 import { sharedTestOptions, sharedResolve, sharedEsbuild } from './vitest.shared';
 

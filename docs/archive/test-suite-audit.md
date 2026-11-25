@@ -1,5 +1,7 @@
 # 测试套件价值审计与精简清单
 
+> 历史归档。下文保留设计或验收当时的记录。现行说明见 `docs/testing.md`。后续事项见 `docs/plan/README.md`。
+
 > 审计日期：2026-11-13。基线是当日 `npx vitest run` 全量（272 文件中 2 个红：
 > `tests/service/migrate-entry.test.ts` 与 `tests/route/oauth-token-ratelimit.test.ts` 的
 > 真实 scrypt 用例，原因见 `docs/known-red.md` 同批记录）。

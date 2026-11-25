@@ -9,7 +9,7 @@
 //     if (blog.visibility !== 'internal') { ... }
 //
 // 而「放出去」是**不可逆的**：搜索引擎与第三方存档会抓走副本，改回来也收不回
-// （见 docs/architecture.md §6.11 的风险清单）。所以它必须是白名单式的：
+// （见 docs/agent-domain-rules.md §2.19 的风险清单）。所以它必须是白名单式的：
 //
 //     EXTERNAL_VISIBILITIES  /  EXTERNAL_VISIBLE_BLOG_WHERE   ← 只列「算数的那几档」
 //

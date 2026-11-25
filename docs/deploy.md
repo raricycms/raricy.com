@@ -346,6 +346,12 @@ SELECT name, checksum FROM _raricy_migrations WHERE name LIKE '21_%';        -- 
 
 > 永远不要在生产跑 `prisma migrate dev` / `prisma db push` / `prisma migrate reset`——它们会无视 `_raricy_migrations` 直接动 schema。
 
+### 每日一言迁移与回退
+
+切换社区稿生命周期和累计共鸣写入时，先备份并在副本核对历史期次、社区首次选登日、每人每句的累计共鸣和对应流水。停写后按本节应用迁移，再切换 Prisma client 与新应用。首次选登与当日期次、累计共鸣保护与付款必须使用同一代写入逻辑。
+
+迁移后允许存在同正文的多条未通过稿件。回退时先停写、核对新增稿件和资金变动，使用兼容现有约束的版本。恢复旧备份涉及备份后的投稿和流水，须先由站长决定如何处理这些真实数据。发行与读取的现行契约见 `docs/daily-quote.md`。
+
 ## 5. 依赖安装 + 构建 + 启动
 
 ### 依赖
@@ -373,7 +379,7 @@ npx prisma generate
 > **`public/static/frames/`（头像框素材）不在上表里** —— 它是我们自己画的、
 > **随代码入库**的，`git pull` 就有，不需要任何生成步骤。少了它会**静默不显示
 > 头像框**（与「没发过框」长得一模一样），自查用 `npm run cli -- frame list --keys`。
-> 详见 `docs/architecture.md` §6.6 与 §6.14。
+> 详见 `docs/architecture.md` §6.6 与 `docs/agent-domain-rules.md` §2.22。
 
 ⚠️ `npm ci --ignore-scripts`、或从缓存拷 `node_modules` 的构建会跳过它 —— 那种环境要
 手工补一次：

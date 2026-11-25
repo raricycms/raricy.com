@@ -1,10 +1,12 @@
 # ReactiveMD 功能与架构简化方案
 
+> 历史归档。下文保留设计或验收当时的记录。现行说明见 `docs/content-rendering.md`。后续事项见 `docs/plan/README.md`。
+
 > 状态：用户后续确认的收缩范围已完成本地实现与验收（2026-11-02）；未推送、未部署。
 > 本站核对基线：`9a9b99b7`；当时使用 `reactive-md@0.7.0`。
 > 上游核对提交：`dc276866cc53f33fab099a1f1eb439debe24fa62`。
 > 本方案保留统一 Markdown / ReactiveMD 的产品目标，调整快照、发布、源码升级和部署
-> 的职责。此前实施记录保留在 `docs/plan/reactive-md-unification-plan.md`，其中持久快照、
+> 的职责。此前实施记录保留在 `docs/archive/reactive-md-unification-plan.md`，其中持久快照、
 > 原文与快照同事务、全站编译通过后才完成迁移的要求，在本方案实施后退出。
 > 本文不是上线记录；没有修改生产数据库、部署脚本或当前正文。
 >

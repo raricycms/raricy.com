@@ -1,8 +1,6 @@
 # Chat ReactiveMD 渲染与机器人流式输出设计
 
-校对日期：2026-11-22。状态：R1/R2 已实施（未 push/上线）；视觉审核与性能测量待站长复核。
-
-本方案采用已确认的范围：聊天消息继续保存原始 `content`，数据库结构和历史正文均不改动；浏览器复用博客的 ReactiveMD 编译引擎。机器人通过新增接口提交生成中的文本，完成后进入现有正式消息发送流程。本文是实施契约与代理分工；R1/R2 已按此落地，尚未 push/上线。
+> 历史归档。R1/R2 已合入主分支，现场审核与性能测量见 `docs/plan/README.md`。现行渲染与接口分别见 `docs/content-rendering.md` §2 和 `docs/bot/chat-bot.md` §7.8。
 
 ## 1. 决策与交付范围
 
@@ -38,7 +36,7 @@
 
 `services/realtime/` 当前负责独立实时游戏。聊天生成状态、会话验证和 SSE 均留在主站，避免增加跨进程通道。
 
-架构背景见 `docs/architecture.md` §6.7/§6.23；引用约束见 `docs/agent-domain-rules.md`；机器人现行接口见 `docs/bot/chat-bot.md`。实施完成时再更新这些文档的现行行为描述。
+渲染入口见 `docs/content-rendering.md` §2，引用约束见 `docs/agent-domain-rules.md` §2.13。
 
 ## 3. 前端渲染流程
 

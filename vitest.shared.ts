@@ -1,7 +1,7 @@
 // Vitest 公共配置：全量、guards、migrations、slow、fast 五套入口共用同一环境与超时口径。
 //
 // 【为什么抽公共层】`npm test` 只跑「日常门禁」；静态守卫、空库全量迁移验收、启动
-// 生命周期这类用例不该占默认门禁（详见 `docs/plan/test-suite-audit.md`），但它们的
+// 生命周期这类用例不该占默认门禁（详见 `docs/testing.md` §1.1），但它们的
 // environment / setupFiles / 超时口径必须与全量一致，否则「单跑绿、全量红」会换个地方重演。
 //
 // 【别在这里放 include/exclude】各入口的选面不同，只放共享项。

@@ -60,7 +60,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
   });
 
   // 按档位发：public 可索引、link 只可读不可索引。这与页面的 robots 元数据、
-  // sitemap 的收录范围是同一套口径的三处落点（见 docs/architecture.md §6.11）。
+  // sitemap 的收录范围是同一套口径的三处落点（见 docs/agent-domain-rules.md §2.19）。
   const indexable = (INDEXABLE_VISIBILITIES as readonly string[]).includes(blog.visibility);
 
   return new Response(new Uint8Array(png), {
