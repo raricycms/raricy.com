@@ -185,7 +185,6 @@ interface KeyState {
   queued: QueueEntry | null;
   inFlight: InFlight | null;
   delivered: { revision: number; phase: ChatSourcePhase } | null;
-  releaseAfterFlight: boolean;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -310,7 +309,6 @@ export function createChatCompileManager(
         queued: null,
         inFlight: null,
         delivered: null,
-        releaseAfterFlight: false,
       };
       keys.set(key, state);
     }
@@ -483,13 +481,9 @@ export function createChatCompileManager(
       }
     }
 
-    const finishedFinal = message.phase === 'final';
-    if (finishedFinal && !state.queued) {
-      // Worker 在 final 后已自行释放会话；这里保持与 worker 的显式约定一致。
-      sendRelease(state.key);
-    } else if (state.releaseAfterFlight && !state.queued && !state.inFlight) {
-      sendRelease(state.key);
-    }
+    // final 由 worker 自己释放会话，这里保持与 worker 的显式约定一致；
+    // streaming 的会话留给 unsubscribe 的宽限期决定是否释放。
+    if (message.phase === 'final' && !state.queued) sendRelease(state.key);
 
     pump();
   }
@@ -636,8 +630,9 @@ export function createChatCompileManager(
 
     if (state.subs.size === 0) {
       removeQueueEntry(state);
-      state.releaseAfterFlight = false;
       keys.delete(state.key);
+      // 流式快照常因短暂离屏（滚动、频道切换）先取消再订阅同一 key：留 1s 会话，
+      // 重订阅时 getKeyState 撤销这个定时器；到期仍无人回来才真正释放。
       const previousTimer = releaseTimers.get(state.key);
       if (previousTimer !== undefined) clearTimeout(previousTimer);
       releaseTimers.set(

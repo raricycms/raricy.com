@@ -444,6 +444,50 @@ describe('取消与 Worker 生命周期', () => {
     }
   });
 
+  it('宽限期到期后释放 Worker 会话', () => {
+    vi.useFakeTimers();
+    try {
+      const { manager, worker } = setup();
+      const unsubscribe = manager.subscribe(request('gen:1', 1, '快照', 'streaming'), () => {});
+      const fake = worker();
+      fake.respondOk(fake.compileAt(0));
+      unsubscribe();
+
+      const releaseSent = (): boolean =>
+        fake.posted.some((entry) => entry.type === 'release' && entry.key === 'gen:1');
+      expect(releaseSent()).toBe(false);
+      vi.advanceTimersByTime(999);
+      expect(releaseSent()).toBe(false);
+      vi.advanceTimersByTime(1);
+      expect(releaseSent()).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('dispose 清掉待触发的会话释放定时器', () => {
+    vi.useFakeTimers();
+    try {
+      const { manager, worker } = setup();
+      const unsubscribe = manager.subscribe(request('gen:1', 1, '快照', 'streaming'), () => {});
+      const fake = worker();
+      fake.respondOk(fake.compileAt(0));
+      unsubscribe();
+      // 只剩宽限期这一个定时器（编译超时随结果一起清掉）。
+      expect(vi.getTimerCount()).toBe(1);
+
+      manager.dispose();
+      expect(vi.getTimerCount()).toBe(0);
+
+      vi.advanceTimersByTime(2_000);
+      expect(fake.posted.some((entry) => entry.type === 'release' && entry.key === 'gen:1')).toBe(
+        false
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('取消订阅只撤销队列项，不终止共享 Worker', () => {
     const { manager, worker } = setup();
     const snapshots: ChatCompiledSnapshot[] = [];
