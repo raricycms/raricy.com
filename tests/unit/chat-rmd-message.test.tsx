@@ -74,9 +74,11 @@ function createFakeManager() {
   const history: FakeRecord[] = [];
   const requests: ChatCompileRequest[] = [];
   const unsubscribed: string[] = [];
+  const warmupCalls = vi.fn();
   let disposed = 0;
 
   const manager: ChatCompileManager = {
+    warmup: warmupCalls,
     subscribe(request, listener) {
       const record: FakeRecord = { request, listener, active: true };
       records.push(record);
@@ -127,6 +129,7 @@ function createFakeManager() {
     requests,
     history,
     unsubscribed,
+    warmupCalls,
     get disposed() {
       return disposed;
     },
@@ -226,6 +229,30 @@ function dispatch(target: Element, type: 'error' | 'load' | 'click'): void {
     else target.dispatchEvent(new Event(type));
   });
 }
+
+describe('ChatRmdProvider — Worker 预热', () => {
+  it('挂载后的下一个任务就预热，不等 requestIdleCallback', async () => {
+    const idle = vi.fn();
+    const originalIdle = (window as unknown as Record<string, unknown>).requestIdleCallback;
+    (window as unknown as Record<string, unknown>).requestIdleCallback = idle;
+    try {
+      const fake = createFakeManager();
+      await render(tree(fake, { content: '预热', phase: 'final' }));
+
+      // effect 只排了 setTimeout(0)，本轮 act 还没有让定时器跑。
+      expect(fake.warmupCalls).not.toHaveBeenCalled();
+      await settle(1);
+      expect(fake.warmupCalls).toHaveBeenCalledTimes(1);
+      expect(idle).not.toHaveBeenCalled();
+    } finally {
+      if (originalIdle === undefined) {
+        delete (window as unknown as Record<string, unknown>).requestIdleCallback;
+      } else {
+        (window as unknown as Record<string, unknown>).requestIdleCallback = originalIdle;
+      }
+    }
+  });
+});
 
 describe('ChatRmdMessage — 编译结果与回退', () => {
   it('final 编译成功后渲染文档，引用落位为受控图片', async () => {

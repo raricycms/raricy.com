@@ -2010,7 +2010,8 @@ export default function ChatApp({
 
   return (
     // 页面级 RMD 编译上下文：一个 Chat 页面一个 Manager/Worker，列表、详情与临时行
-    // 共用（详情虽是 portal，React context 仍会穿过）。Worker 在首个正文订阅时才创建。
+    // 共用（详情虽是 portal，React context 仍会穿过）。Worker 由 provider 在挂载后
+    // 立即预热，首个正文订阅直接复用，不等页面空闲。
     <ChatRmdProvider viewerScope={currentUserId}>
       <div
         ref={pageRef}
