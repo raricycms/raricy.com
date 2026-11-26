@@ -458,7 +458,7 @@ Markdown），两种语言都由同一个引擎解释 ——
 | 场景 | 渲染方式 | 管线 |
 |------|---------|------|
 | 博客正文 / 剪贴板正文 | **统一 ReactiveMD 管线**（服务端静态首屏 + 客户端水合，见 §6.23） | `reactive/read-render.ts` 决策 → `compile.ts`；Markdown 与 Reactive 同引擎，**没有 legacy 分支** |
-| 讨论正文 | **客户端**编译，聊天专用 ReactiveMD 静态视图 | 页面级 `chat-rmd/compile-manager` + Worker（多文档队列、离屏不排队）；`chat-rmd/document-policy` 把能力收窄到 Markdown + 公式 + 静态展示组件白名单（alert/badge/panel/card/section/grid）；引用由 `chat-rmd/references` 在 AST 上适配为 `chat-ref` 宿主槽位。正文入口 `ChatRmdMessage` |
+| 讨论正文 | **客户端**编译，聊天专用 ReactiveMD 静态视图 | 页面级 `chat-rmd/compile-manager` + Worker（多文档队列、离屏不排队）；`chat-rmd/document-policy` 把能力收窄到 Markdown + 公式 + 静态展示组件白名单（alert/badge/panel/card/section/grid/text）与 `div align`；引用由 `chat-rmd/references` 在 AST 上适配为 `chat-ref` 宿主槽位。正文入口 `ChatRmdMessage` |
 | 评论正文 | **客户端**渲染 | `rich-text.ts`（marked → DOMPurify → 后处理），白名单与链接类名见 `comment-markdown.ts` |
 | 故事正文 | **服务端**渲染 | `src/lib/story-service.ts` 的 `marked` + `stripScripts`。内容由站长直接写在 `instance/stories/`，按可信输入处理，**不走 DOMPurify、也不做语法高亮** |
 | 内容引用 `[@…]`（评论 / 讨论） | 评论在净化后按区间切片；讨论在编译后的 AST text 节点上适配 | 评论：`rich-text.ts` 的 `content-refs` 管线（6 位收藏夹 / 8 位剪贴板 / 9 位投票 / 10 位图床）；讨论：`chat-rmd/references`（同样的 id 长度分流与屏蔽规则，hostData 按 slot 原子成对）。两者都**不在代码/链接子树里展开**；博客 / 剪贴板正文的引用由 reactive 的 ref-adapter / hostData 处理（见 §6.23） |

@@ -15,7 +15,7 @@ import type { LocalDocument, LocalHtmlPolicy, LocalNode } from 'reactive-md';
 import { chatReactiveUrlPolicy } from './options';
 
 /** 文档策略身份；final 缓存键的一部分。 */
-export const CHAT_RMD_POLICY_VERSION = 'chat-rmd-policy/2';
+export const CHAT_RMD_POLICY_VERSION = 'chat-rmd-policy/3';
 
 /** 策略拒绝码：视图应显示完整源码。 */
 export const CHAT_RMD_POLICY_UNSUPPORTED = 'policy.unsupported';
@@ -30,7 +30,8 @@ export const CHAT_RMD_POLICY_UNSUPPORTED = 'policy.unsupported';
  * （HTML 通道）、linkReference / footnote*（引用解析）、comment / definition
  * （不渲染的元数据，保留字面量无害但无展示价值，统一转文本）。
  *
- * 组件只放行 minimal preset 里的**静态展示组件**（见 `CHAT_RMD_ALLOWED_COMPONENTS`）。
+ * 组件只放行 minimal preset 里的**静态展示组件**（见 `CHAT_RMD_ALLOWED_COMPONENTS`），
+ * 另放行 P0 HTML 的 `div` 静态 `align`（见 `CHAT_RMD_ALLOWED_DIV_ALIGN`）。
  * 输入 / 条件 / 绑定类组件仍按源码文本显示：它们的运行状态与表达式求值不在聊天的
  * 静态策略内。
  */
@@ -71,7 +72,25 @@ const CHAT_RMD_ALLOWED_COMPONENTS: Readonly<Record<string, readonly string[]>> =
   card: ['title'],
   section: ['color'],
   grid: ['columns'],
+  text: ['color'],
 });
+
+/** `div` 只放行 P0 HTML 的静态 align；class/style 等属性在编译期已拒绝。 */
+const CHAT_RMD_ALLOWED_DIV_ALIGN: ReadonlySet<string> = new Set([
+  'left',
+  'center',
+  'right',
+  'justify',
+]);
+
+function isAllowedChatDiv(node: LocalNode): boolean {
+  if (node.type !== 'div') return false;
+  const attrs = node.attrs ?? {};
+  const keys = Object.keys(attrs);
+  if (keys.length !== 1 || keys[0] !== 'align') return false;
+  const value = attrs.align;
+  return typeof value === 'string' && CHAT_RMD_ALLOWED_DIV_ALIGN.has(value.toLowerCase());
+}
 
 function isAllowedChatComponent(node: LocalNode): boolean {
   if (node.type !== 'component' || typeof node.name !== 'string') return false;
@@ -187,6 +206,10 @@ function rebuildAllowedNode(
     safe.attrs = attrs;
   }
 
+  if (node.type === 'div' && typeof node.attrs?.align === 'string') {
+    safe.attrs = { align: node.attrs.align };
+  }
+
   if (node.children && node.children.length > 0) {
     const children = transformChildren(node.children);
     if (!children) return null;
@@ -222,6 +245,17 @@ function transformNode(node: LocalNode, source: string): LocalNode[] | null {
 
   if (node.type === 'component') {
     if (!isAllowedChatComponent(node)) {
+      const literal = literalTextNode(node, source);
+      return literal ? [literal] : null;
+    }
+    const rebuilt = rebuildAllowedNode(node, source, (children) => transformNodes(children, source));
+    if (rebuilt) return [rebuilt];
+    const literal = literalTextNode(node, source);
+    return literal ? [literal] : null;
+  }
+
+  if (node.type === 'div') {
+    if (!isAllowedChatDiv(node)) {
       const literal = literalTextNode(node, source);
       return literal ? [literal] : null;
     }

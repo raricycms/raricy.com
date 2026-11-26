@@ -307,6 +307,38 @@ describe('ChatRmdMessage — 聊天策略文档', () => {
     expect(alert!.querySelector('strong')?.textContent).toBe('now');
     expect(box.textContent).not.toContain('<alert');
   });
+
+  it('策略放行的 text 颜色与 div align 渲染', async () => {
+    const fake = createFakeManager();
+    const source =
+      '<text color="blue">蓝色 **文字**</text>\n\n<div align="right">\n## 第一幕：碎裂的回响\n</div>';
+    const policy = applyChatDocumentPolicy(compile(source));
+    expect(policy.ok, JSON.stringify(policy)).toBe(true);
+    if (!policy.ok) throw new Error('unreachable');
+
+    await render(tree(fake, { content: source, phase: 'final' }));
+    const record = fake.latest('msg:1', 'final');
+    expect(record).not.toBeNull();
+    await act(async () => {
+      fake.deliverTo(record!, policy.document);
+    });
+    await settle();
+
+    const box = rootBox();
+    const text = box.querySelector('.local-text');
+    expect(text).not.toBeNull();
+    expect(text!.textContent).toContain('蓝色');
+    expect(text!.querySelector('strong')?.textContent).toBe('文字');
+    expect(box.textContent).not.toContain('<text');
+
+    const heading = [...box.querySelectorAll('h2')].find((node) =>
+      node.textContent?.includes('第一幕')
+    );
+    expect(heading).toBeDefined();
+    const div = heading!.parentElement;
+    expect(div?.tagName).toBe('DIV');
+    expect(div?.getAttribute('align') === 'right' || (div as HTMLElement).style.textAlign === 'right').toBe(true);
+  });
 });
 
 describe('ChatRmdMessage — streaming 约束', () => {

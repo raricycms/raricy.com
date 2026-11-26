@@ -76,7 +76,7 @@ const CHAT_RMD_COMPILE_OPTIONS = {
 
 这些预算是首版初值，需用消息样本测量，调整时同步配置身份和预算用例。正文输入沿用 `CHAT_TEXT_MAX`/`CHAT_CAPTION_MAX`，目前都是 trim 后 5000 个 JavaScript 字符单位；流式内存还约束未 trim 的累计长度。
 
-静态模式不承担权限隔离。文档策略还要检查节点、属性以及 document 上的 capabilities、组件定义和计算信息：作者脚本、样式、网络组件、iframe、未批准的宿主节点均不得进入聊天运行时。M0 允许列表包含现有 Markdown 节点、无副作用的公式展示，以及 minimal preset 的静态展示组件 `alert` / `badge` / `panel` / `card` / `section` / `grid`；组件只保留各自白名单里的静态属性，属性值含插值即回退源码。输入控件、条件组件与表达式仍按源码显示。
+静态模式不承担权限隔离。文档策略还要检查节点、属性以及 document 上的 capabilities、组件定义和计算信息：作者脚本、样式、网络组件、iframe、未批准的宿主节点均不得进入聊天运行时。M0 允许列表包含现有 Markdown 节点、无副作用的公式展示、minimal preset 的静态展示组件 `alert` / `badge` / `panel` / `card` / `section` / `grid` / `text`，以及 P0 HTML 的 `div align`；组件只保留各自白名单里的静态属性，属性值含插值即回退源码。输入控件、条件组件与表达式仍按源码显示。
 
 原生图片节点默认转回字面量，只有聊天引用适配器生成的受控媒体组件可以加载图片。源码不能通过伪造 `chat-ref` 标签获得引用权限，宿主数据必须来自适配器登记的槽位并二次验证字段。
 

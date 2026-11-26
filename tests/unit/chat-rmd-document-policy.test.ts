@@ -294,6 +294,32 @@ describe('允许的静态展示组件', () => {
     expect(collectText(document.nodes)).toContain('![img](https://evil.example/x.png)');
   });
 
+  it('保留 text 颜色组件与内部 Markdown', () => {
+    const document = compiledPolicy('<text color="blue">蓝色 **粗体**</text>');
+
+    const [text] = collectComponents(document.nodes, 'text');
+    expect(text).toBeDefined();
+    expect(text.attrs).toEqual({ color: 'blue' });
+    expect(collectTypes(text.children ?? [])).toContain('strong');
+    expect(collectText(document.nodes)).not.toContain('<text');
+  });
+
+  it('保留 div 的静态 align，拒绝无 align 与额外属性的 div', () => {
+    const document = compiledPolicy('<div align="right">\n## 第一幕：碎裂的回响\n</div>');
+    const [div] = collectNodes(document.nodes, 'div');
+    expect(div).toBeDefined();
+    expect(div.attrs).toEqual({ align: 'right' });
+    expect(collectNodes(div.children ?? [], 'heading')).toHaveLength(1);
+
+    const plain = compiledPolicy('<div>内容</div>');
+    expect(collectNodes(plain.nodes, 'div')).toEqual([]);
+    expect(collectText(plain.nodes)).toContain('<div>内容</div>');
+
+    const withClass = compiledPolicy('<div align="center" class="x">内容</div>');
+    expect(collectNodes(withClass.nodes, 'div')).toEqual([]);
+    expect(collectText(withClass.nodes)).toContain('class="x"');
+  });
+
   it('保留 panel / card / grid / section 且只带白名单属性', () => {
     const document = compiledPolicy(
       [
@@ -521,6 +547,6 @@ describe('策略失败与可序列化', () => {
   });
 
   it('导出稳定的策略版本', () => {
-    expect(CHAT_RMD_POLICY_VERSION).toBe('chat-rmd-policy/2');
+    expect(CHAT_RMD_POLICY_VERSION).toBe('chat-rmd-policy/3');
   });
 });

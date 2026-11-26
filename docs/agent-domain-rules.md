@@ -324,7 +324,7 @@ ftyp 品牌 / 声明归一化 / `planImageUpload` —— 服务端与浏览器�
 
 **讨论正文（2026-11）**复用同一引擎但有独立边界：`chat-rmd/options`（关闭 CSS/JS/扩展
 HTML + 节点/解析/深度预算）、`chat-rmd/document-policy`（Markdown + 公式 + 静态展示组件
-白名单 alert/badge/panel/card/section/grid；交互组件/图片/表达式/HTML 降级源码）、`chat-rmd/compile-manager`（每页一个 Worker、多文档队列、
+白名单 alert/badge/panel/card/section/grid/text + `div align`；交互组件/图片/表达式/其余 HTML 降级源码）、`chat-rmd/compile-manager`（每页一个 Worker、多文档队列、
 同 key 最新 revision、离屏不排队、只缓存 final）、`chat-rmd/references`（AST → `chat-ref`
 唯一 slot + hostData，宿主二次校验字段）。**不要把博客的 URL 策略、`site-embed` 或
 `read-render.ts` 直接接到聊天**：聊天链接只允许站内/http(s)/mailto（外链 nofollow +
