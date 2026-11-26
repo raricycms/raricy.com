@@ -11,7 +11,7 @@
 // 【scroll-snap-stop: always 是关键】默认的 normal 允许惯性一次滑过任意多个停靠点，
 // 于是「很容易一次就滑到底栏」照旧。always 要求滚动在遇到的第一个停靠点上停下。
 //
-// 【只在窄屏 + 触摸生效】桌面滚轮已经有 SmoothWheelScroll 的缓动，再叠一层吸附会让
+// 【只在窄屏 + 触摸生效】桌面滚轮使用浏览器原生滚动，再叠一层吸附会让
 // 一格滚轮变成一次跳转。启用与否由 src/app/components/ScrollSnap.tsx 给 <html> 打
 // data-snap 决定，那个组件同时负责挑出列表里的停靠卡片。
 

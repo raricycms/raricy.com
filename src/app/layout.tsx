@@ -9,7 +9,6 @@ import Navbar from './components/Navbar';
 import Footer from './components/Footer';
 import FooterGate from './components/FooterGate';
 import NotificationHeartbeat from './components/NotificationHeartbeat';
-import SmoothWheelScroll from './components/SmoothWheelScroll';
 import SiteScrollbar from './components/SiteScrollbar';
 import Scrollbars from './components/Scrollbars';
 import FrameBuster from './components/FrameBuster';
@@ -94,8 +93,6 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         <div className="site-navbar-scrim" aria-hidden="true" />
         {/* 切页/bfcache 恢复时即时刷新顶栏未读数（实时值走 SSE，两档兜底轮询在 base.js） */}
         <NotificationHeartbeat />
-        {/* 滚轮平滑滚动：全站生效，内部滚动区域同样适用（见组件内说明） */}
-        <SmoothWheelScroll />
         {/* 自绘滚动条：原生那条占布局宽度，跨页面与锁滚动时顶栏会跟着横移（见组件内说明） */}
         <SiteScrollbar />
         <Scrollbars />

@@ -10,6 +10,8 @@
 //
 // 关键纪律：
 //   · 旧 revision 的结果一律丢弃；订阅在换 key / 卸载时撤销。
+//   · final 文档提交走 startTransition（快速滚动 / 流式更新期间让出主线程），
+//     streaming 保持紧急更新以跟上生成节奏。
 //   · 编译失败 / 超预算 / Worker 不可用 / 无 provider 时显示**完整源码**（React
 //     文本节点，根类名 `chat-msg__md--source`），绝不让正文消失。
 //   · streaming 阶段不请求任何引用与媒体：hostData 为空、URL 策略全部拒绝。
@@ -21,6 +23,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import {
+  startTransition,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -239,12 +242,25 @@ export default function ChatRmdMessage({
       // 变化前通知放在 updater 外面：即使随后因同文档幂等跳过也是无害的空记录，
       // 而放进 updater 会在 StrictMode 下被重复调用、也不能保证早于提交。
       notifyBeforeRef.current?.();
-      setCompiled((previous) => {
-        if (previous && previous.phase === snapshot.phase && previous.document === snapshot.document) {
-          return previous;
-        }
-        return { revision, phase: snapshot.phase, document: snapshot.document };
-      });
+      const commit = (): void => {
+        setCompiled((previous) => {
+          if (
+            previous &&
+            previous.phase === snapshot.phase &&
+            previous.document === snapshot.document
+          ) {
+            return previous;
+          }
+          return { revision, phase: snapshot.phase, document: snapshot.document };
+        });
+      };
+      // final 文档是整条消息最大的一次提交（后续还跟着引用适配）；放进 transition，
+      // 快速滚动时不与滚动 / 流式更新争抢同步渲染。streaming 仍需紧急更新。
+      if (snapshot.phase === 'final') {
+        startTransition(commit);
+      } else {
+        commit();
+      }
     };
 
     try {

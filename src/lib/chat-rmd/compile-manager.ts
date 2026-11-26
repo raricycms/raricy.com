@@ -9,6 +9,8 @@
 //   · 调度：visible final → 生成中的最新快照 → nearby，流式与历史轮转防饥饿；
 //   · 顺序：Manager 层按 revision / phase 丢弃过期结果，final 不被旧 streaming 覆盖；
 //   · 缓存：只缓存 final 成功文档（300 条 / 16 MiB），流式结果不缓存；
+//   · 滚动抑制：`setScrolling(true)` 期间不派发新任务（在途编译与结果投递不变），
+//     `setScrolling(false)` 立即恢复排队任务的派发；
 //   · 资源：短暂离订阅时保留 Worker 会话供同 key 快照续用；dispose 才 terminate。
 //
 // 不在模块顶层访问 window / Worker；SSR import 时只注册工厂，首次 subscribe 或
@@ -295,6 +297,8 @@ export function createChatCompileManager(
   let disposed = false;
   let nextId = 1;
   let roundRobinStreaming = true;
+  /** 滚动期暂停新任务派发；在途任务与结果投递不受影响。 */
+  let scrollingPaused = false;
 
   function getKeyState(key: string): KeyState {
     const releaseTimer = releaseTimers.get(key);
@@ -582,6 +586,9 @@ export function createChatCompileManager(
       drainUnavailable();
       return;
     }
+    // 滚动期不取新任务：队列原样保留，恢复后按既有优先级继续；在途结果已由
+    // onWorkerMessage 照常投递，提交层负责降低滚动期间的渲染优先级。
+    if (scrollingPaused) return;
 
     const entry = takeNextEntry();
     if (!entry) return;
@@ -747,7 +754,19 @@ export function createChatCompileManager(
     }
   }
 
-  return { subscribe, warmup, dispose };
+  /**
+   * 滚动期暂停 / 恢复**新任务**派发：置位后 `pump()` 不再取新任务，`false` 时
+   * 立即 `pump()` 恢复。不取消在途 Worker 编译，结果照常投递；不改优先级 /
+   * 缓存 / 失败预算语义。dispose 后为 no-op（订阅清理竞态下仍可能被调用）。
+   */
+  function setScrolling(active: boolean): void {
+    if (disposed) return;
+    if (scrollingPaused === active) return;
+    scrollingPaused = active;
+    if (!active) pump();
+  }
+
+  return { subscribe, warmup, dispose, setScrolling };
 }
 
 /**

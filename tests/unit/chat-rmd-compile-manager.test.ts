@@ -3,7 +3,7 @@
 //
 // 用注入的假 Worker 钉住「错了也不报错」的调度边界：300 条历史不丢、同一 key 只编译
 // 最新 revision、旧 streaming 不覆盖 final、缓存必须核对完整源码、取消不终止 Worker、
-// Worker 崩溃 / 超时回退与有限重建、预热幂等且失败静默、dispose 清理。
+// Worker 崩溃 / 超时回退与有限重建、预热幂等且失败静默、滚动期暂停派发、dispose 清理。
 //
 // 文件末尾附带 Worker 侧 handler 的真实编译用例（同一 Agent 的编译基础设施）。
 // ─────────────────────────────────────────────────────────────────────────────
@@ -586,6 +586,84 @@ describe('取消与 Worker 生命周期', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe('滚动暂停', () => {
+  it('setScrolling(true) 不派发新编译，恢复后继续并正常投递快照', () => {
+    const { manager, worker } = setup();
+    expect(manager.setScrolling).toBeTypeOf('function');
+
+    const first: ChatCompiledSnapshot[] = [];
+    manager.subscribe(request('msg:1', 1, '甲'), (snapshot) => first.push(snapshot));
+    const fake = worker();
+    fake.respondOk(fake.compileAt(0));
+    expect(first).toHaveLength(1);
+
+    manager.setScrolling?.(true);
+    const paused: ChatCompiledSnapshot[] = [];
+    manager.subscribe(request('msg:2', 1, '乙'), (snapshot) => paused.push(snapshot));
+    expect(fake.compiles()).toHaveLength(1);
+    expect(paused).toEqual([]);
+
+    manager.setScrolling?.(false);
+    expect(fake.compiles()).toHaveLength(2);
+    expect(fake.compileAt(1)).toMatchObject({ key: 'msg:2', revision: 1, phase: 'final' });
+    fake.respondOk(fake.compileAt(1));
+    expect(paused).toEqual([
+      {
+        key: 'msg:2',
+        revision: 1,
+        phase: 'final',
+        document: makeDocument('乙'),
+        errorCode: null,
+      },
+    ]);
+  });
+
+  it('暂停期间在途任务完成仍投递结果，但不取下一个任务', () => {
+    const { manager, worker } = setup();
+    const first: ChatCompiledSnapshot[] = [];
+    manager.subscribe(request('msg:1', 1, '甲'), (snapshot) => first.push(snapshot));
+    const fake = worker();
+    const inFlight = fake.compileAt(0);
+
+    const second: ChatCompiledSnapshot[] = [];
+    manager.subscribe(request('msg:2', 1, '乙'), (snapshot) => second.push(snapshot));
+    manager.setScrolling?.(true);
+
+    fake.respondOk(inFlight);
+    expect(first).toEqual([
+      {
+        key: 'msg:1',
+        revision: 1,
+        phase: 'final',
+        document: makeDocument('甲'),
+        errorCode: null,
+      },
+    ]);
+    expect(fake.compiles()).toHaveLength(1);
+    expect(second).toEqual([]);
+
+    manager.setScrolling?.(false);
+    expect(fake.compileAt(1).key).toBe('msg:2');
+    fake.respondOk(fake.compileAt(1));
+    expect(second).toHaveLength(1);
+  });
+
+  it('dispose 后 setScrolling 为 no-op', () => {
+    const { manager, workers, worker } = setup();
+    manager.subscribe(request('msg:1', 1, '甲'), () => {});
+    const fake = worker();
+    manager.dispose();
+
+    expect(() => {
+      manager.setScrolling?.(true);
+      manager.setScrolling?.(false);
+    }).not.toThrow();
+    expect(workers).toHaveLength(1);
+    expect(fake.compiles()).toHaveLength(1);
+    expect(fake.terminated).toBe(1);
   });
 });
 

@@ -32,7 +32,6 @@ import AvatarMenu, { type AvatarMenuAnchor } from './AvatarMenu';
 import ChatMessageMenu, { type MessageMenuAnchor } from './ChatMessageMenu';
 import ChatMessageDetail from './ChatMessageDetail';
 import ImageLightbox from '../components/ImageLightbox';
-import { releaseSmoothWheelScroll } from '../components/SmoothWheelScroll';
 import { isMentioned, markGroupedMessages } from './ChatMessageItem';
 import ChatMessageList from './ChatMessageList';
 import ChatSidebar from './ChatSidebar';
@@ -43,6 +42,7 @@ import ChatSearchModal, { SearchButton } from './ChatSearchModal';
 import ChatGenerationItem from './ChatGenerationItem';
 import ChatRmdProvider from './ChatRmdProvider';
 import { useChatGenerations } from './useChatGenerations';
+import { useChatScrollActivity } from './useChatScrollActivity';
 import { useChatViewport } from './useChatViewport';
 
 declare global {
@@ -397,6 +397,13 @@ export default function ChatApp({
   const pageRef = useRef<HTMLDivElement>(null);
   useChatViewport(pageRef);
 
+  /**
+   * 列表滚动活跃度：wheel / touchmove / 高速 scroll 期间暂停 RMD 编译派发，
+   * 减速或停止 180ms 后恢复（见 useChatScrollActivity.ts）。document 捕获按
+   * target 过滤，不产生 state，也不依赖列表元素的挂载时机。
+   */
+  useChatScrollActivity();
+
   const activeChannel = useMemo(
     () => channels.find((c) => c.id === activeId) ?? null,
     [channels, activeId]
@@ -577,9 +584,6 @@ export default function ChatApp({
   const scrollToBottom = useCallback((behavior: ScrollBehavior = 'auto') => {
     const el = listRef.current;
     if (!el) return;
-    // 滚轮缓动逐帧写 scrollTop，会把这次平滑滚动中止在第一帧之前（见 SmoothWheelScroll
-    // 的 releaseSmoothWheelScroll）。「回到最新」与自动到底都走这里，必须先让位。
-    releaseSmoothWheelScroll(el);
     el.scrollTo({ top: el.scrollHeight, behavior });
   }, []);
 
@@ -648,7 +652,6 @@ export default function ChatApp({
       const row = el.getBoundingClientRect();
       const box = list.getBoundingClientRect();
       if (row.top >= box.top && row.bottom <= box.bottom) return; // 落位了
-      releaseSmoothWheelScroll();
       el.scrollIntoView({ block: 'center' });
     }, 400);
   }, []);
@@ -664,7 +667,6 @@ export default function ChatApp({
         `[data-message-id="${jump.messageId}"]`
       );
       if (el) {
-        releaseSmoothWheelScroll();
         el.scrollIntoView({ block: 'center', behavior: 'smooth' });
         flashHighlight(jump.messageId);
         ensureJumpLands(el);
@@ -1758,7 +1760,6 @@ export default function ChatApp({
     (messageId: number) => {
       const hit = listRef.current?.querySelector<HTMLElement>(`[data-message-id="${messageId}"]`);
       if (hit) {
-        releaseSmoothWheelScroll();
         hit.scrollIntoView({ block: 'center', behavior: 'smooth' });
         flashHighlight(messageId);
         return;

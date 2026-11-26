@@ -46,6 +46,11 @@ export interface ChatCompileManager {
    * （首次订阅仍按既有逻辑创建或重试）。
    */
   warmup?(): void;
+  /**
+   * 可选：滚动期暂停 / 恢复**新任务**的派发。只影响排队任务何时交给 Worker，
+   * 不取消在途编译，结果照常投递（结果提交层的降优先级由视图另行处理）。
+   */
+  setScrolling?(active: boolean): void;
   /** 释放 Worker、队列与缓存；provider 卸载时调用。 */
   dispose(): void;
 }

@@ -3,9 +3,10 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // ChatRmdProvider.tsx — 聊天页面的 RMD 编译上下文（一条页面一个 Manager / Worker）
 //
-// 责任只有三件：
+// 责任只有四件：
 //   · 每页创建并持有一个 `ChatCompileManager`，挂载后空闲预热 Worker，卸载时 dispose；
 //   · 把当前查看者作用域与子编译入口传给消息视图；
+//   · 订阅页面滚动活动信号，快速滚动期间让 Manager 暂停派发新编译任务；
 //   · 提供一个可注入 Manager 的测试缝（默认走 createChatCompileManager）。
 //
 // 【为什么子编译不另建 Manager】剪贴板子文档与父正文共用同一 Worker 队列：
@@ -43,6 +44,7 @@ import type {
   ChatCompileManager,
   ChatCompileRequest,
 } from '@/lib/chat-rmd/types';
+import { subscribeChatScrollActivity } from './scroll-activity';
 
 /** 子编译的缺省上限；B 的适配器只负责发起，超时由本层兜底。 */
 export const CHAT_RMD_CHILD_COMPILE_TIMEOUT_MS = 15_000;
@@ -155,6 +157,16 @@ export default function ChatRmdProvider({
   useEffect(() => {
     if (!manager) return;
     return scheduleWarmup(manager);
+  }, [manager]);
+
+  // 快速滚动期暂停新编译任务的派发：只影响排队任务何时交给 Worker，在途编译与
+  // 结果投递不受影响（提交层的降优先级由 ChatRmdMessage 的 final transition 负责）。
+  // 卸载时退订；Manager 已 dispose 时 setScrolling 自身是 no-op，竞态安全。
+  useEffect(() => {
+    if (!manager) return;
+    return subscribeChatScrollActivity((active) => {
+      manager.setScrolling?.(active);
+    });
   }, [manager]);
 
   // 名片取数是页面级公开数据缓存（reference-reader）：切账号或离开页面即释放，
