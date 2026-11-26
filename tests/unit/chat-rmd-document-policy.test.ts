@@ -547,6 +547,6 @@ describe('策略失败与可序列化', () => {
   });
 
   it('导出稳定的策略版本', () => {
-    expect(CHAT_RMD_POLICY_VERSION).toBe('chat-rmd-policy/3');
+    expect(CHAT_RMD_POLICY_VERSION).toBe('chat-rmd-policy/4');
   });
 });

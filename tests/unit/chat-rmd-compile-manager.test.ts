@@ -9,7 +9,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { describe, expect, it, vi } from 'vitest';
-import type { LocalCompileResult, LocalDocument } from 'reactive-md';
+import type { LocalCompileResult, LocalDocument, LocalNode } from 'reactive-md';
 import {
   ChatFinalCache,
   chatCompileIdentity,
@@ -764,6 +764,52 @@ describe('Worker handler（真实编译 + 策略）', () => {
         enableJavaScript: false,
         enableExtendedHtml: false,
       });
+    } finally {
+      handler.dispose();
+    }
+  });
+
+  it('未声明插值按字面文本编译，表格不再整段回退源码', () => {
+    const outputs: ChatWorkerResponse[] = [];
+    const handler = createChatCompileWorkerHandler((message) => outputs.push(message));
+
+    try {
+      handler.handle({
+        type: 'compile',
+        id: 1,
+        key: 'msg:2',
+        revision: 1,
+        phase: 'final',
+        source: [
+          '| Item | Cost |',
+          '| --- | ---: |',
+          '| Venue | {{ venueCost }} |',
+          '| Materials | {{ materialsCost }} |',
+        ].join('\n'),
+      });
+
+      expect(outputs).toHaveLength(1);
+      const message = outputs[0];
+      expect(message.type).toBe('result');
+      if (message.type !== 'result') throw new Error('unreachable');
+      expect(message.result.ok).toBe(true);
+      if (!message.result.ok) throw new Error('unreachable');
+
+      const types: string[] = [];
+      const values: string[] = [];
+      const walk = (nodes: readonly LocalNode[]) => {
+        for (const node of nodes) {
+          types.push(node.type);
+          if (typeof node.value === 'string') values.push(node.value);
+          if (node.children) walk(node.children);
+        }
+      };
+      walk(message.result.document.nodes);
+
+      expect(types).toContain('table');
+      expect(types).not.toContain('fallback');
+      expect(values.join('')).toContain('{{ venueCost }}');
+      expect(values.join('')).toContain('{{ materialsCost }}');
     } finally {
       handler.dispose();
     }

@@ -14,8 +14,11 @@
 import type { LocalDocument, LocalHtmlPolicy, LocalNode } from 'reactive-md';
 import { chatReactiveUrlPolicy } from './options';
 
-/** 文档策略身份；final 缓存键的一部分。 */
-export const CHAT_RMD_POLICY_VERSION = 'chat-rmd-policy/3';
+/**
+ * 文档策略身份；final 缓存键的一部分。
+ * v4：编译前把插值按字面文本掩码，缓存结果与旧版不同。
+ */
+export const CHAT_RMD_POLICY_VERSION = 'chat-rmd-policy/4';
 
 /** 策略拒绝码：视图应显示完整源码。 */
 export const CHAT_RMD_POLICY_UNSUPPORTED = 'policy.unsupported';

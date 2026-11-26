@@ -6,7 +6,8 @@
 // 同一 key 的连续快照走增量会话，final / release 后释放；会话数上限 8（LRU）。
 //
 // 只接收源码、key、revision、phase 这些可序列化参数，不接收 cookie、用户资料或
-// 权限数据。所有成功文档都先过 `applyChatDocumentPolicy`，再回传主线程。
+// 权限数据。编译前先把 `{{ … }}` 掩码为字面文本，成功后再恢复并过
+// `applyChatDocumentPolicy`，最后回传主线程。
 //
 // 文件底部只在 DedicatedWorkerGlobalScope 中安装 handler；被普通页面 import 时无副作用。
 // ─────────────────────────────────────────────────────────────────────────────
@@ -19,6 +20,10 @@ import {
   CHAT_RMD_POLICY_UNSUPPORTED,
   applyChatDocumentPolicy,
 } from './document-policy';
+import {
+  maskChatExpressionLiterals,
+  restoreChatExpressionLiterals,
+} from './interpolation-literals';
 import { CHAT_RMD_COMPILE_OPTIONS } from './options';
 
 /** 每个 Worker 内允许同时保留的增量会话数。 */
@@ -116,8 +121,10 @@ export function createChatCompileWorkerHandler(
     }
 
     try {
+      // 表达式按字面文本编译：未声明标识符不再让整块结构回退源码。
+      const masked = maskChatExpressionLiterals(source, CHAT_RMD_COMPILE_OPTIONS);
       const result = compileSource(
-        source,
+        masked.source,
         CHAT_RMD_COMPILE_OPTIONS,
         phase,
         (input, options, sourcePhase) => session.compile(input, options, sourcePhase)
@@ -128,6 +135,8 @@ export function createChatCompileWorkerHandler(
         postMessage({ type: 'result', id, key, revision, phase, result: failure });
         return;
       }
+
+      if (masked.masked) restoreChatExpressionLiterals(result.document, source);
 
       const policy = applyChatDocumentPolicy(result.document);
       if (!policy.ok) {

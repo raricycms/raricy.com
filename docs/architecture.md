@@ -2084,7 +2084,8 @@ Markdown 剪贴板内联一层，Reactive 剪贴板卡片显示；预览不执�
 **聊天正文（讨论区，2026-11）：** 与博客 / 剪贴板共用同一引擎，但配置、队列与引用适配
 独立。`chat-rmd/options` 关闭作者 CSS / JavaScript / 扩展 HTML，并收紧节点、解析与
 Markdown 深度预算；`chat-rmd/document-policy` 只保留 Markdown 结构与公式，作者组件、
-原生图片、表达式与 HTML 一律降级为源码文本；`chat-rmd/compile-manager` 每页一个 Worker
+原生图片、表达式与 HTML 一律降级为源码文本（插值在编译前按字面文本掩码，表格等
+块级结构不会因未声明标识符整段回退）；`chat-rmd/compile-manager` 每页一个 Worker
 （多文档队列，同 key 只留最新 revision，离屏不排队，只缓存 final 结果）；引用由
 `chat-rmd/references` 在 AST 的 text 节点上适配为带唯一 slot 的 `chat-ref` 宿主组件，
 宿主层按当前查看者取数、逐 slot 失败降级。聊天**不复用**博客的 URL 策略与 `site-embed`：
