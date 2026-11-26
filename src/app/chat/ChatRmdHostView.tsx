@@ -8,8 +8,9 @@
 // 媒体、名片或剪贴板能力。每个载荷在这里再做一次字段校验，URL 全部由**校验过的
 // id / 白名单前缀**重拼，hostData 里带来的 url 不可信。
 //
-// 媒体失败按 slot 上报给 ChatRmdMessage 汇总（撤销单图类）；渲染回退统一是原
-// token 的 React 文本节点，不共享失败状态、不构造 dangerouslySetInnerHTML。
+// 图片 / 表情失败按 slot 上报给 ChatRmdMessage 汇总（撤销单图类），渲染回退是原
+// token 的 React 文本节点；音频是自包含控件，解码错误也保留播放器结构，不换回
+// token。所有回退都不共享失败状态、不构造 dangerouslySetInnerHTML。
 //
 // 剪贴板的 Markdown 子文档用内层 static `ChatRmdDocument` 渲染：同一 hostData、
 // 同一 URL 策略，宿主渲染器带 `allowClipboard:false` —— 子剪贴板不再递归展开。
@@ -230,12 +231,14 @@ function ChatRefBody({
       if (!src) return payload.token;
       return (
         <audio
-          className="rich-audio-ref"
+          className="rich-audio-ref chat-rmd-audio"
           src={src}
           controls
           preload="none"
+          aria-label="音频播放器"
           onLoadedMetadata={() => env.onMediaSettled?.(slot, false)}
-          onError={() => env.onMediaSettled?.(slot, true)}
+          // 音频错误不回退 token：0 秒录音、只有 ID3 头的文件在浏览器里会报
+          // 解码错误，但引用本身仍应保留播放器结构，而不是缩回 `[@音频/…]`。
         />
       );
     }

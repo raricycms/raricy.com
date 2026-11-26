@@ -67,6 +67,30 @@ function failedResult(code: string): LocalCompileResult {
   };
 }
 
+function collectNodes(nodes: readonly LocalNode[], type: string): LocalNode[] {
+  const found: LocalNode[] = [];
+  const walk = (list: readonly LocalNode[]) => {
+    for (const node of list) {
+      if (node.type === type) found.push(node);
+      if (node.children) walk(node.children);
+    }
+  };
+  walk(nodes);
+  return found;
+}
+
+function collectText(nodes: readonly LocalNode[]): string {
+  const parts: string[] = [];
+  const walk = (list: readonly LocalNode[]) => {
+    for (const node of list) {
+      if (typeof node.value === 'string') parts.push(node.value);
+      if (node.children) walk(node.children);
+    }
+  };
+  walk(nodes);
+  return parts.join('');
+}
+
 class FakeWorker implements ChatCompileWorkerLike {
   onmessage: ((event: { data: unknown }) => void) | null = null;
   onerror: ((event: unknown) => void) | null = null;
@@ -876,6 +900,126 @@ describe('Worker handler（真实编译 + 策略）', () => {
     }
   });
 
+  it('final 不支持的 if 组件只降级自身，前后文照常渲染', () => {
+    const outputs: ChatWorkerResponse[] = [];
+    const handler = createChatCompileWorkerHandler((message) => outputs.push(message));
+
+    try {
+      const source = '前文\n\n<if test="{{ 1 }}">是</if>\n\n后文';
+      handler.handle({
+        type: 'compile',
+        id: 1,
+        key: 'msg:if',
+        revision: 1,
+        source,
+        phase: 'final',
+      });
+
+      expect(outputs).toHaveLength(1);
+      const message = outputs[0];
+      expect(message.type).toBe('result');
+      if (message.type !== 'result') throw new Error('unreachable');
+      expect(message.result.ok, JSON.stringify(message.result)).toBe(true);
+      if (!message.result.ok) throw new Error('unreachable');
+
+      const document = message.result.document;
+      expect(document.source).toBe(source);
+      // 字面文本已从掩码恢复，组件以外的结构都保留。
+      const paragraphs = collectNodes(document.nodes, 'paragraph');
+      expect(paragraphs.map((node) => collectText(node.children ?? []))).toEqual([
+        '前文',
+        '后文',
+      ]);
+      expect(collectNodes(document.nodes, 'fallback').map((node) => node.value)).toEqual([
+        '<if test="{{ 1 }}">是</if>',
+      ]);
+      // 不允许出现包裹整条消息的 fallback。
+      expect(
+        collectNodes(document.nodes, 'fallback').some((node) => node.value === source)
+      ).toBe(false);
+      expect(handler.sessionCount).toBe(0);
+    } finally {
+      handler.dispose();
+    }
+  });
+
+  it('同一段落里坏的 alert 降级为源码，合法 alert 仍是组件', () => {
+    const outputs: ChatWorkerResponse[] = [];
+    const handler = createChatCompileWorkerHandler((message) => outputs.push(message));
+
+    try {
+      const source = '前文\n\n<alert tone="nope">坏</alert> <alert>好</alert>\n\n后文';
+      handler.handle({
+        type: 'compile',
+        id: 1,
+        key: 'msg:alert',
+        revision: 1,
+        source,
+        phase: 'final',
+      });
+
+      expect(outputs).toHaveLength(1);
+      const message = outputs[0];
+      expect(message.type).toBe('result');
+      if (message.type !== 'result') throw new Error('unreachable');
+      expect(message.result.ok, JSON.stringify(message.result)).toBe(true);
+      if (!message.result.ok) throw new Error('unreachable');
+
+      const document = message.result.document;
+      const alerts = collectNodes(document.nodes, 'component').filter(
+        (node) => node.name === 'alert'
+      );
+      expect(alerts).toHaveLength(1);
+      expect(collectText(alerts[0].children ?? [])).toBe('好');
+      expect(collectNodes(document.nodes, 'fallback').map((node) => node.value)).toEqual([
+        '<alert tone="nope">坏</alert>',
+      ]);
+      // 不存在包裹整条消息的 fallback。
+      expect(
+        collectNodes(document.nodes, 'fallback').some((node) => node.value === source)
+      ).toBe(false);
+      expect(collectText(document.nodes)).toContain('前文');
+      expect(collectText(document.nodes)).toContain('后文');
+      expect(collectText(document.nodes)).not.toContain('<alert>好</alert>');
+    } finally {
+      handler.dispose();
+    }
+  });
+
+  it('final 不支持的 jump 组件局部降级为源码文本', () => {
+    const outputs: ChatWorkerResponse[] = [];
+    const handler = createChatCompileWorkerHandler((message) => outputs.push(message));
+
+    try {
+      const source = '<jump target="x">跳</jump>';
+      handler.handle({
+        type: 'compile',
+        id: 1,
+        key: 'msg:jump',
+        revision: 1,
+        source,
+        phase: 'final',
+      });
+
+      expect(outputs).toHaveLength(1);
+      const message = outputs[0];
+      expect(message.type).toBe('result');
+      if (message.type !== 'result') throw new Error('unreachable');
+      expect(message.result.ok, JSON.stringify(message.result)).toBe(true);
+      if (!message.result.ok) throw new Error('unreachable');
+
+      expect(message.result.document.source).toBe(source);
+      expect(message.result.document.nodes).toHaveLength(1);
+      expect(message.result.document.nodes[0]).toMatchObject({
+        type: 'fallback',
+        value: source,
+      });
+      expect(collectNodes(message.result.document.nodes, 'component')).toEqual([]);
+    } finally {
+      handler.dispose();
+    }
+  });
+
   it('final 未闭合插值超限返回失败诊断，不抛异常', () => {
     const outputs: ChatWorkerResponse[] = [];
     const handler = createChatCompileWorkerHandler((message) => outputs.push(message));
@@ -894,11 +1038,13 @@ describe('Worker handler（真实编译 + 策略）', () => {
       const message = outputs[0];
       expect(message.type).toBe('result');
       if (message.type !== 'result') throw new Error('unreachable');
+      // 预算失败是宿主主动拒绝，不做 streaming 降级。
       expect(message.result.ok).toBe(false);
       if (message.result.ok) throw new Error('unreachable');
       expect(message.result.diagnostics.map((diagnostic) => diagnostic.code)).toContain(
         'local.budget'
       );
+      expect(handler.sessionCount).toBe(0);
     } finally {
       handler.dispose();
     }

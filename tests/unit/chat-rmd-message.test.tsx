@@ -408,6 +408,27 @@ describe('ChatRmdMessage — final 引用与裸图', () => {
     expect(box.classList.contains('chat-msg__md--single-image')).toBe(false);
   });
 
+  it('单图带首尾空白 / 换行或包在强调里时仍是裸图，正文只剩图片', async () => {
+    const fake = createFakeManager();
+    const cases = [
+      { key: 'msg:bare-1', source: '[@AbCdEf1234]\n' },
+      { key: 'msg:bare-2', source: '  [@AbCdEf1234]  ' },
+      { key: 'msg:bare-3', source: '**[@AbCdEf1234]**' },
+    ];
+    for (const { key, source } of cases) {
+      await render(tree(fake, { messageKey: key, content: source, phase: 'final' }));
+      fake.deliverLatest(key, compile(source));
+      await settle();
+
+      const box = rootBox();
+      // 气泡收缩到图片宽度全靠这个类（_chat.scss 的单图段）；残留 token 文本
+      // 或漏类都会让图片重新被撑到气泡一侧、另一侧留空白。
+      expect(box.classList.contains('chat-msg__md--single-image')).toBe(true);
+      expect(box.querySelectorAll('img.rich-image-ref')).toHaveLength(1);
+      expect(box.textContent?.trim()).toBe('');
+    }
+  });
+
   it('正文带其他内容时不是裸图', async () => {
     const fake = createFakeManager();
     const source = '看图 [@AbCdEf1234]';

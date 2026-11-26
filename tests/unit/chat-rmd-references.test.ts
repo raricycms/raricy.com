@@ -1,7 +1,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // chat-rmd-references.test.ts —— 聊天 AST 引用适配的兼容矩阵
 //
-// 覆盖：图床 / 剪贴板（正常、截断、reactive、失败）、投票与收藏夹保持字面量、
+// 覆盖：图床 / 剪贴板（正常、截断、ReactiveMD、未知格式、失败）、投票与收藏夹保持字面量、
 // 音频与表情上限、名片取数与失败、代码与链接子树屏蔽、重复资源独立 slot、
 // 子剪贴板预算共享与不递归、裸图判定、并发闸门与取消、输入不可变。
 // 取数走 stub 的全局 fetch（reference-reader 的默认实现），不触网。
@@ -236,8 +236,43 @@ describe('8 位剪贴板引用', () => {
     expect(data.document).toBeTruthy();
   });
 
-  it('reactive / 未知格式只给站内回链，不把整篇 RMD 带进聊天', async () => {
-    for (const format of ['reactive', null, 'html'] as const) {
+  it('ReactiveMD 剪贴板与 Markdown 走同一子编译路径，子剪贴板不递归', async () => {
+    const childSource = '# 标题\n\n带引用 [@AbCd5678] [@AbCdEf1234]';
+    const compileChild = vi.fn(async (_source: string, _signal: AbortSignal) =>
+      doc(
+        para(text('RMD 子文档 [@AbCd5678] [@AbCdEf1234]')),
+        // Worker 对不支持组件的局部降级节点：原样接受，不影响父消息。
+        makeNode('fallback', { value: '坏组件' })
+      )
+    );
+    stubFetch({
+      '/api/clipboard/AbCd1234': () => clipboardResponse(childSource, 'reactive'),
+    });
+    const result = await adaptChatReferences(
+      doc(para(text('看 [@AbCd1234]'))),
+      makeContext({ compileChild, budget: { images: 0 } })
+    );
+
+    expect(compileChild).toHaveBeenCalledTimes(1);
+    expect(compileChild.mock.calls[0][0]).toBe(childSource);
+
+    const data = hostDataOf(result, hostNodes(result.document)[0]);
+    if (data.kind !== 'clipboard') throw new Error('unreachable');
+    expect(data.error).toBeUndefined();
+    expect(data.href).toBe('/clipboard/AbCd1234');
+    expect(data.document).toBeTruthy();
+
+    // 子文档里的 8 位剪贴板 token 保持字面量（不递归），图床受父消息 images=0 约束；
+    // Worker 的局部 fallback 节点原样保留在子文档里。
+    const childText = JSON.stringify(data.document?.nodes);
+    expect(childText).toContain('[@AbCd5678]');
+    expect(childText).toContain('[@AbCdEf1234]');
+    expect(childText).toContain('坏组件');
+    expect(hostNodes(data.document as LocalDocument)).toHaveLength(0);
+  });
+
+  it('库内认不出的格式只给站内回链，不把整篇正文带进聊天', async () => {
+    for (const format of [null, 'html'] as const) {
       stubFetch({
         '/api/clipboard/AbCd1234': () =>
           clipboardResponse('<secret> [@AbCdEf1234]', format),
@@ -259,6 +294,50 @@ describe('8 位剪贴板引用', () => {
       expect(JSON.stringify(data)).not.toContain('title');
       vi.unstubAllGlobals();
     }
+  });
+
+  it('子编译返回 null / 抛错时退回收链卡片，不塞半截文档', async () => {
+    const failing: Array<ChatReferenceContext['compileChild']> = [
+      vi.fn(async (_source: string, _signal: AbortSignal) => null),
+      vi.fn(async (_source: string, _signal: AbortSignal): Promise<LocalDocument | null> => {
+        throw new Error('worker compile failed');
+      }),
+    ];
+    for (const compileChild of failing) {
+      stubFetch({
+        '/api/clipboard/AbCd1234': () => clipboardResponse('RMD 正文', 'reactive'),
+      });
+      const result = await adaptChatReferences(
+        doc(para(text('[@AbCd1234]'))),
+        makeContext({ compileChild })
+      );
+      const data = hostDataOf(result, hostNodes(result.document)[0]);
+      if (data.kind !== 'clipboard') throw new Error('unreachable');
+      expect(data.error).toBeUndefined();
+      expect(data.document).toBeUndefined();
+      expect(data.href).toBe('/clipboard/AbCd1234');
+      expect(JSON.stringify(result.document)).not.toContain('RMD 正文');
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('ReactiveMD 剪贴板同样只展开首条并共享预算', async () => {
+    const compileChild = vi.fn(async (_source: string, _signal: AbortSignal) =>
+      doc(para(text('[@AbCdEf1234]')))
+    );
+    stubFetch({ '/api/clipboard/AbCd1234': () => clipboardResponse('子', 'reactive') });
+    const result = await adaptChatReferences(
+      doc(para(text('[@AbCd1234] [@AbCd5678]'))),
+      makeContext({ compileChild, budget: { clipboard: 1, images: 0 } })
+    );
+    const hosts = hostNodes(result.document);
+    expect(hosts).toHaveLength(1);
+    // 第二条剪贴板保持字面量。
+    expect(JSON.stringify(result.document)).toContain('[@AbCd5678]');
+    // 子文档复用父消息已用尽的图床额度。
+    const data = hostDataOf(result, hosts[0]);
+    if (data.kind !== 'clipboard') throw new Error('unreachable');
+    expect(JSON.stringify(data.document?.nodes)).toContain('[@AbCdEf1234]');
   });
 
   it('404 / 403 / 网络失败分别降级，且后续剪贴板 token 不再展开', async () => {

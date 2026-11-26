@@ -9,10 +9,19 @@
 // 权限数据。编译前先把 `{{ … }}` 掩码为字面文本，成功后再恢复并过
 // `applyChatDocumentPolicy`，最后回传主线程。
 //
+// final 阶段遇到未支持组件的属性错误会整条编译失败；此时用同一掩码源码再做一次
+// streaming 编译，把坏组件降级为局部 fallback，其余结构照常渲染。预算类失败不重试，
+// 保持 `compileSource` 前置守卫与编译器预算的诊断语义。
+//
 // 文件底部只在 DedicatedWorkerGlobalScope 中安装 handler；被普通页面 import 时无副作用。
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { createLocalCompileSession, type LocalCompileResult } from 'reactive-md';
+import {
+  createLocalCompileSession,
+  type LocalCompileOptions,
+  type LocalCompileResult,
+  type LocalSourcePhase,
+} from 'reactive-md';
 import { compileSource } from '../reactive/compile-source';
 import type { ChatWorkerRequest, ChatWorkerResponse } from './compile-manager';
 import type { ChatSourcePhase } from './types';
@@ -23,6 +32,7 @@ import {
 import {
   maskChatExpressionLiterals,
   restoreChatExpressionLiterals,
+  type MaskedChatSource,
 } from './interpolation-literals';
 import { CHAT_RMD_COMPILE_OPTIONS } from './options';
 
@@ -50,6 +60,17 @@ function isCompileRequest(
     typeof request.revision === 'number' &&
     typeof request.source === 'string' &&
     (request.phase === 'streaming' || request.phase === 'final')
+  );
+}
+
+/**
+ * 预算失败不参与 streaming 降级：`compileSource` 的前置守卫与编译器的
+ * `local.budget.*` 是防超限输入的主动拒绝，重试只会绕过守卫、多编译一遍。
+ */
+function isBudgetFailure(result: Extract<LocalCompileResult, { ok: false }>): boolean {
+  return result.diagnostics.some(
+    (diagnostic) =>
+      diagnostic.code === 'local.budget' || diagnostic.code.startsWith('local.budget.')
   );
 }
 
@@ -120,22 +141,17 @@ export function createChatCompileWorkerHandler(
       return;
     }
 
-    try {
-      // 表达式按字面文本编译：未声明标识符不再让整块结构回退源码。
-      const masked = maskChatExpressionLiterals(source, CHAT_RMD_COMPILE_OPTIONS);
-      const result = compileSource(
-        masked.source,
-        CHAT_RMD_COMPILE_OPTIONS,
-        phase,
-        (input, options, sourcePhase) => session.compile(input, options, sourcePhase)
-      );
+    const runCompile = (
+      input: string,
+      options?: LocalCompileOptions,
+      sourcePhase?: LocalSourcePhase
+    ): LocalCompileResult => session.compile(input, options, sourcePhase);
 
-      if (!result.ok) {
-        const failure: LocalCompileResult = result;
-        postMessage({ type: 'result', id, key, revision, phase, result: failure });
-        return;
-      }
-
+    /** 恢复字面文本 → 文档策略 → 以请求自己的 phase 回传。 */
+    function publish(
+      masked: MaskedChatSource,
+      result: Extract<LocalCompileResult, { ok: true }>
+    ): void {
       if (masked.masked) restoreChatExpressionLiterals(result.document, source);
 
       const policy = applyChatDocumentPolicy(result.document);
@@ -159,6 +175,39 @@ export function createChatCompileWorkerHandler(
         phase,
         result: { ...result, document: policy.document },
       });
+    }
+
+    try {
+      // 表达式按字面文本编译：未声明标识符不再让整块结构回退源码。
+      const masked = maskChatExpressionLiterals(source, CHAT_RMD_COMPILE_OPTIONS);
+      const result = compileSource(
+        masked.source,
+        CHAT_RMD_COMPILE_OPTIONS,
+        phase,
+        runCompile
+      );
+
+      if (!result.ok) {
+        // final 的语义错误（如组件属性 required / unknown / type）会让整条消息失败；
+        // streaming 恢复会把出错组件降级为局部 fallback，合法组件仍保留。
+        // 用同一会话、同一掩码源码再编译一次；失败则保留 final 诊断。
+        if (phase === 'final' && !isBudgetFailure(result)) {
+          const degraded = compileSource(
+            masked.source,
+            CHAT_RMD_COMPILE_OPTIONS,
+            'streaming',
+            runCompile
+          );
+          if (degraded.ok) {
+            publish(masked, degraded);
+            return;
+          }
+        }
+        postMessage({ type: 'result', id, key, revision, phase, result });
+        return;
+      }
+
+      publish(masked, result);
     } catch {
       // 异常信息可能带源码片段，回传稳定码 + 通用文案即可。
       disposeSession(key);

@@ -2085,9 +2085,11 @@ Markdown 剪贴板内联一层，Reactive 剪贴板卡片显示；预览不执�
 独立。`chat-rmd/options` 关闭作者 CSS / JavaScript / 扩展 HTML，并收紧节点、解析与
 Markdown 深度预算；`chat-rmd/document-policy` 只保留 Markdown 结构与公式，作者组件、
 原生图片、表达式与 HTML 一律降级为源码文本（插值在编译前按字面文本掩码，表格等
-块级结构不会因未声明标识符整段回退）；`chat-rmd/compile-manager` 每页一个 Worker
+块级结构不会因未声明标识符整段回退；final 遇到组件属性错误时改用 streaming 局部
+恢复，只有坏组件回退，合法组件照常渲染）；`chat-rmd/compile-manager` 每页一个 Worker
 （多文档队列，同 key 只留最新 revision，离屏不排队，只缓存 final 结果）；引用由
-`chat-rmd/references` 在 AST 的 text 节点上适配为带唯一 slot 的 `chat-ref` 宿主组件，
+`chat-rmd/references` 在 AST 的 text 节点上适配为带唯一 slot 的 `chat-ref` 宿主组件
+（8 位剪贴板最多内联一条，Markdown 与 ReactiveMD 子文档都独立编译并套同一策略），
 宿主层按当前查看者取数、逐 slot 失败降级。聊天**不复用**博客的 URL 策略与 `site-embed`：
 链接只允许站内 / http(s) / mailto（外链 nofollow + 新标签），图片只允许受控本站前缀。
 机器人流式输出使用同一编译器的 `streaming` 阶段；临时事件不写消息游标、不影响未读 /

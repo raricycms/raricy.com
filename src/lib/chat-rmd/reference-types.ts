@@ -83,7 +83,7 @@ export interface ChatUserHostData {
 
 /**
  * 剪贴板失败态：不携带标题 / 正文，失败时不把服务端私密内容带进聊天。
- * `format` 同时覆盖 reactive 与库内认不出的未知格式（只给站内回链）。
+ * `format` 专指库内认不出的格式 —— Markdown 与 ReactiveMD 都会独立编译后内联。
  */
 export type ChatClipboardError = 'missing' | 'forbidden' | 'format';
 
@@ -91,7 +91,7 @@ export interface ChatClipboardHostData {
   kind: 'clipboard';
   slot: string;
   token: string;
-  /** Markdown 子剪贴板独立编译后的文档；缺席时视图按 href 显示回链。 */
+  /** 子剪贴板（Markdown / ReactiveMD）独立编译后的文档；缺席时视图按 href 显示回链。 */
   document?: LocalDocument;
   /** 站内回链（`/clipboard/:id`），截断与失败态都用它。 */
   href?: string;
