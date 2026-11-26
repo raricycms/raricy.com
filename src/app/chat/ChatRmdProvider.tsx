@@ -4,7 +4,7 @@
 // ChatRmdProvider.tsx — 聊天页面的 RMD 编译上下文（一条页面一个 Manager / Worker）
 //
 // 责任只有三件：
-//   · 每页创建并持有一个 `ChatCompileManager`，卸载时 dispose；
+//   · 每页创建并持有一个 `ChatCompileManager`，挂载后空闲预热 Worker，卸载时 dispose；
 //   · 把当前查看者作用域与子编译入口传给消息视图；
 //   · 提供一个可注入 Manager 的测试缝（默认走 createChatCompileManager）。
 //
@@ -12,13 +12,17 @@
 // manager 自己排队，子编译键（`child:<hash>:<seq>`）与消息键（`msg:<id>` /
 // `gen:<id>`）不同，不会互相顶掉，也不会占住父文档的执行槽。
 //
-// 【SSR】模块顶层不访问 window / Worker；服务端渲染时 manager 为 null，消息视图
-// 直接显示源码（转义文本）。Manager 的 Worker 是首次 subscribe 才创建的，所以
-// 即使客户端首帧就建 Manager 也不产生网络 / 子进程资源。
+// 【预热】挂载后空闲时调用一次 `manager.warmup?.()`，把 Worker 冷启动（dev 约
+// 0.8–1.2s）提前到首条消息之前。只预创建 Worker，不订阅、不编译；调度用
+// requestIdleCallback + 超时兜底，不支持时退回 setTimeout(0)，卸载 / 重挂时取消。
 //
-// 【StrictMode】Manager 本身没有外部资源（Worker 延迟创建），卸载 dispose 用
-// 微任务 + 共享 mounted 标记与 CompiledDocumentView 同构：开发态「卸载后立即
-// 重挂」不会把仍在使用的 Manager 关掉。
+// 【SSR】模块顶层不访问 window / Worker；服务端渲染时 manager 为 null，消息视图
+// 直接显示源码（转义文本）。Worker 在首次 subscribe 或客户端空闲预热时才创建，
+// 所以即使客户端首帧就建 Manager 也不产生网络 / 子进程资源。
+//
+// 【StrictMode】Manager 的预热幂等（已有 Worker 直接复用），不订阅、不编译；
+// 卸载 dispose 用微任务 + 共享 mounted 标记与 CompiledDocumentView 同构：开发态
+// 「卸载后立即重挂」不会把仍在使用的 Manager 关掉。
 // ─────────────────────────────────────────────────────────────────────────────
 
 import {
@@ -42,6 +46,9 @@ import type {
 
 /** 子编译的缺省上限；B 的适配器只负责发起，超时由本层兜底。 */
 export const CHAT_RMD_CHILD_COMPILE_TIMEOUT_MS = 15_000;
+
+/** 预热调度的空闲超时；页面一直忙时也保证在首条消息渲染前开始建 Worker。 */
+const CHAT_RMD_WARMUP_IDLE_TIMEOUT_MS = 1_500;
 
 export interface ChatRmdContextValue {
   manager: ChatCompileManager;
@@ -87,6 +94,38 @@ interface Lifecycle {
   mounted: boolean;
 }
 
+/**
+ * 空闲时调度一次预热，返回取消函数。仅在客户端 effect 中调用。
+ * 优先 requestIdleCallback（带超时兜底）；不支持（如 Safari）时退回 setTimeout(0)。
+ * `manager.warmup` 可重复调用且失败静默，取消后不会再触发。
+ */
+function scheduleWarmup(manager: ChatCompileManager): () => void {
+  if (typeof window === 'undefined') return () => {};
+
+  let cancelled = false;
+  const run = (): void => {
+    if (cancelled) return;
+    cancelled = true;
+    // 只预创建 Worker；失败由 Manager 静默，首次订阅仍按既有逻辑重试。
+    manager.warmup?.();
+  };
+
+  if (typeof window.requestIdleCallback === 'function') {
+    const id = window.requestIdleCallback(run, { timeout: CHAT_RMD_WARMUP_IDLE_TIMEOUT_MS });
+    return () => {
+      cancelled = true;
+      // 取消接口与调度接口成对存在；个别 polyfill 只补了后者。
+      if (typeof window.cancelIdleCallback === 'function') window.cancelIdleCallback(id);
+    };
+  }
+
+  const timer = setTimeout(run, 0);
+  return () => {
+    cancelled = true;
+    clearTimeout(timer);
+  };
+}
+
 export default function ChatRmdProvider({
   viewerScope,
   children,
@@ -109,6 +148,14 @@ export default function ChatRmdProvider({
       });
     };
   }, [lifecycle, manager]);
+
+  // 预热：挂载后空闲时预创建 Worker，缩短首条消息从源码升级为渲染视图的等待。
+  // 只预创建，不订阅、不编译；StrictMode 重挂时 cleanup 先取消再重新调度，
+  // Manager.warmup 幂等，不会重复创建 Worker。
+  useEffect(() => {
+    if (!manager) return;
+    return scheduleWarmup(manager);
+  }, [manager]);
 
   // 名片取数是页面级公开数据缓存（reference-reader）：切账号或离开页面即释放，
   // 不把上一个查看者的作用域留在内存里。

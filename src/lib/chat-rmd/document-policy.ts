@@ -15,7 +15,7 @@ import type { LocalDocument, LocalHtmlPolicy, LocalNode } from 'reactive-md';
 import { chatReactiveUrlPolicy } from './options';
 
 /** 文档策略身份；final 缓存键的一部分。 */
-export const CHAT_RMD_POLICY_VERSION = 'chat-rmd-policy/1';
+export const CHAT_RMD_POLICY_VERSION = 'chat-rmd-policy/2';
 
 /** 策略拒绝码：视图应显示完整源码。 */
 export const CHAT_RMD_POLICY_UNSUPPORTED = 'policy.unsupported';
@@ -25,10 +25,14 @@ export const CHAT_RMD_POLICY_UNSUPPORTED = 'policy.unsupported';
  * `emphasis`/`delete`/`thematicBreak` 分别对应 em/del/hr；`fallback` 是编译器自己的
  * 「按源码显示」节点，保留它不会获得任何能力。
  *
- * 刻意排除：image / imageReference（原生图片）、component / hostComponent（组件与
- * 作者伪造宿主节点）、interpolation（表达式求值）、html / extendedHtml / div / span /
- * htmlTable*（HTML 通道）、linkReference / footnote*（引用解析）、comment / definition
+ * 刻意排除：image / imageReference（原生图片）、hostComponent（作者伪造宿主节点）、
+ * interpolation（表达式求值）、html / extendedHtml / div / span / htmlTable*
+ * （HTML 通道）、linkReference / footnote*（引用解析）、comment / definition
  * （不渲染的元数据，保留字面量无害但无展示价值，统一转文本）。
+ *
+ * 组件只放行 minimal preset 里的**静态展示组件**（见 `CHAT_RMD_ALLOWED_COMPONENTS`）。
+ * 输入 / 条件 / 绑定类组件仍按源码文本显示：它们的运行状态与表达式求值不在聊天的
+ * 静态策略内。
  */
 const CHAT_RMD_ALLOWED_NODE_TYPES: ReadonlySet<string> = new Set([
   'root',
@@ -54,6 +58,32 @@ const CHAT_RMD_ALLOWED_NODE_TYPES: ReadonlySet<string> = new Set([
   'inlineMath',
   'fallback',
 ]);
+
+/**
+ * 允许的静态展示组件及其静态属性。只收 minimal preset 里不产生交互状态、不读取
+ * 绑定、不触发动作的容器 / 文本组件；输入控件、`if`、`jump` 等仍按源码显示。
+ * 属性值出现 `{{` 一律拒绝：动态属性意味着表达式求值，不进入聊天静态文档。
+ */
+const CHAT_RMD_ALLOWED_COMPONENTS: Readonly<Record<string, readonly string[]>> = Object.freeze({
+  alert: ['tone', 'title'],
+  badge: ['tone', 'color'],
+  panel: ['title', 'reset'],
+  card: ['title'],
+  section: ['color'],
+  grid: ['columns'],
+});
+
+function isAllowedChatComponent(node: LocalNode): boolean {
+  if (node.type !== 'component' || typeof node.name !== 'string') return false;
+  const allowedAttrs = CHAT_RMD_ALLOWED_COMPONENTS[node.name];
+  if (!allowedAttrs) return false;
+  const attrs = node.attrs ?? {};
+  for (const [key, value] of Object.entries(attrs)) {
+    if (!allowedAttrs.includes(key)) return false;
+    if (typeof value !== 'string' || value.includes('{{')) return false;
+  }
+  return true;
+}
 
 const CHAT_RMD_DISABLED_HTML_POLICY: LocalHtmlPolicy = Object.freeze({
   enableCss: false,
@@ -146,6 +176,17 @@ function rebuildAllowedNode(
   const align = readAlign(node.align);
   if (align) safe.align = align;
 
+  if (node.type === 'component' && typeof node.name === 'string') {
+    safe.name = node.name;
+    const allowedAttrs = CHAT_RMD_ALLOWED_COMPONENTS[node.name] ?? [];
+    const attrs: Record<string, string> = {};
+    for (const key of allowedAttrs) {
+      const value = node.attrs?.[key];
+      if (typeof value === 'string') attrs[key] = value;
+    }
+    safe.attrs = attrs;
+  }
+
   if (node.children && node.children.length > 0) {
     const children = transformChildren(node.children);
     if (!children) return null;
@@ -177,6 +218,17 @@ function transformNode(node: LocalNode, source: string): LocalNode[] | null {
       const literal = literalTextNode(node, source);
       return literal ? [literal] : null;
     }
+  }
+
+  if (node.type === 'component') {
+    if (!isAllowedChatComponent(node)) {
+      const literal = literalTextNode(node, source);
+      return literal ? [literal] : null;
+    }
+    const rebuilt = rebuildAllowedNode(node, source, (children) => transformNodes(children, source));
+    if (rebuilt) return [rebuilt];
+    const literal = literalTextNode(node, source);
+    return literal ? [literal] : null;
   }
 
   if (!CHAT_RMD_ALLOWED_NODE_TYPES.has(node.type)) {

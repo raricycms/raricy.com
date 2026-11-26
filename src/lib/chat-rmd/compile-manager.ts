@@ -11,7 +11,8 @@
 //   · 缓存：只缓存 final 成功文档（300 条 / 16 MiB），流式结果不缓存；
 //   · 资源：短暂离订阅时保留 Worker 会话供同 key 快照续用；dispose 才 terminate。
 //
-// 不在模块顶层访问 window / Worker；SSR import 时只注册工厂，首次 subscribe 才建 Worker。
+// 不在模块顶层访问 window / Worker；SSR import 时只注册工厂，首次 subscribe 或
+// warmup() 才建 Worker（warmup 只预创建，不改变调度 / 缓存 / 失败判定语义）。
 // ─────────────────────────────────────────────────────────────────────────────
 
 import type { LocalCompileResult, LocalDocument } from 'reactive-md';
@@ -731,7 +732,22 @@ export function createChatCompileManager(
     }
   }
 
-  return { subscribe, dispose };
+  /**
+   * 预创建 Worker，缩短首条消息的冷启动等待；不改变编译语义。
+   * `ensureWorker` 幂等：已有 Worker 直接复用，不会多建或 terminate。
+   * 不排队、不写缓存、不动 workerFailures / unavailable；失败静默吞掉，
+   * 等首次 subscribe 走 `pump()` 的既有路径重试并决定是否 unavailable。
+   */
+  function warmup(): void {
+    if (disposed) return;
+    try {
+      ensureWorker();
+    } catch {
+      // 静默：预热失败不向调用方抛，也不标记 unavailable。
+    }
+  }
+
+  return { subscribe, warmup, dispose };
 }
 
 /**

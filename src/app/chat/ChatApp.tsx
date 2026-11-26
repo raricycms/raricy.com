@@ -2121,7 +2121,7 @@ export default function ChatApp({
                 onBeforeContentChange={handleContentBeforeChange}
                 onContentChange={handleMessageContentChange}
               />
-              {/* 生成中的临时行渲染在 memo 列表之外：快照约 5 帧/秒，不能让它
+              {/* 生成中的临时行渲染在 memo 列表之外：快照约 10 帧/秒，不能让它
                   穿透 ChatMessageList 去重建最多 300 条正式消息的元素树。
                   历史视图只看过去那一段，不插入临时行（与 SSE 同一条规则）。 */}
               {!historyView &&

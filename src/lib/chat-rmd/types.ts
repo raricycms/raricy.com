@@ -40,6 +40,12 @@ export type ChatCompileListener = (snapshot: ChatCompiledSnapshot) => void;
 /** 页面级编译管理器：一个 Chat 页面一个 Worker，多文档订阅互不覆盖。 */
 export interface ChatCompileManager {
   subscribe(request: ChatCompileRequest, listener: ChatCompileListener): () => void;
+  /**
+   * 可选：空闲时预创建 Worker，缩短首条消息的冷启动等待。
+   * 只预创建 Worker，不入队、不编译；预热失败静默，不影响后续 subscribe
+   * （首次订阅仍按既有逻辑创建或重试）。
+   */
+  warmup?(): void;
   /** 释放 Worker、队列与缓存；provider 卸载时调用。 */
   dispose(): void;
 }

@@ -5,6 +5,7 @@
 // 用假 Manager 注入确定的编译快照，用真实引用适配器 + 假 reference-reader 验证
 // final 落位。覆盖：
 //   · 成功渲染、编译失败转义源码、空正文；
+//   · 聊天策略放行的静态组件（alert）渲染标题 / 正文，不回显原始源码；
 //   · streaming 不请求引用 / 媒体、链接不可导航；
 //   · final 适配后 hostData 落位，裸图类随 allowBareImage / 媒体失败开关；
 //   · 逐 slot 失败与 token 回退；
@@ -21,6 +22,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { compileLocal, type LocalDocument } from 'reactive-md';
 import ChatRmdMessage from '@/app/chat/ChatRmdMessage';
 import ChatRmdProvider from '@/app/chat/ChatRmdProvider';
+import { applyChatDocumentPolicy } from '@/lib/chat-rmd/document-policy';
 import { CHAT_RMD_COMPILE_OPTIONS } from '@/lib/chat-rmd/options';
 import type {
   ChatCompileListener,
@@ -272,6 +274,38 @@ describe('ChatRmdMessage — 编译结果与回退', () => {
     const box = rootBox();
     expect(box.classList.contains('chat-msg__md--source')).toBe(true);
     expect(box.textContent).toBe('plain *text*');
+  });
+});
+
+describe('ChatRmdMessage — 聊天策略文档', () => {
+  it('策略放行的 alert 渲染标题与正文，不出现原始源码', async () => {
+    const fake = createFakeManager();
+    const source =
+      '<alert tone="warning" title="Two checks still open">\nThe release can stage at **now**\n</alert>';
+    const policy = applyChatDocumentPolicy(compile(source));
+    expect(policy.ok, JSON.stringify(policy)).toBe(true);
+    if (!policy.ok) throw new Error('unreachable');
+
+    await render(tree(fake, { content: source, phase: 'final' }));
+    const record = fake.latest('msg:1', 'final');
+    expect(record).not.toBeNull();
+    await act(async () => {
+      fake.deliverTo(record!, policy.document);
+    });
+    await settle();
+
+    const box = rootBox();
+    expect(box.classList.contains('chat-msg__md--source')).toBe(false);
+    const alert = box.querySelector('.local-alert');
+    expect(alert).not.toBeNull();
+    expect(alert!.querySelector('.local-alert-title')?.textContent).toBe(
+      'Two checks still open'
+    );
+    expect(alert!.querySelector('.local-alert-body')?.textContent).toContain(
+      'The release can stage at'
+    );
+    expect(alert!.querySelector('strong')?.textContent).toBe('now');
+    expect(box.textContent).not.toContain('<alert');
   });
 });
 

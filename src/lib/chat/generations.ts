@@ -76,8 +76,8 @@ export const CHAT_GENERATION_RECEIPT_TTL_MS = 15 * 60 * 1000;
 export const CHAT_GENERATION_MAX_RECEIPTS = 4096;
 /** 生成路由读取请求体的字节上限（片段契约 8 KiB，其余接口同口径）。 */
 export const CHAT_GENERATION_ROUTE_MAX_BODY_BYTES = 8 * 1024;
-/** 快照广播的最小间隔（每任务最多约 5 帧/秒，合并为最新完整快照）。 */
-const SNAPSHOT_INTERVAL_MS = 200;
+/** 快照广播的最小间隔（每任务最多约 10 帧/秒，合并为最新完整快照）。 */
+const SNAPSHOT_INTERVAL_MS = 100;
 /** 过期清扫节拍；每次操作前还会同步补查一次。 */
 const SWEEP_INTERVAL_MS = 15_000;
 /** client_request_id 的宽松上限（UUID 远小于它）。 */
@@ -441,7 +441,7 @@ function broadcastSnapshot(task: GenerationTask): void {
   });
 }
 
-/** 合并计时器：最多约 5 帧/秒，只发最新完整快照。 */
+/** 合并计时器：最多约 10 帧/秒，只发最新完整快照。 */
 function scheduleSnapshot(task: GenerationTask): void {
   if (state.tasks.get(task.id) !== task) return;
   if (task.snapshotTimer) return;

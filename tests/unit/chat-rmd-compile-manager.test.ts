@@ -3,7 +3,7 @@
 //
 // 用注入的假 Worker 钉住「错了也不报错」的调度边界：300 条历史不丢、同一 key 只编译
 // 最新 revision、旧 streaming 不覆盖 final、缓存必须核对完整源码、取消不终止 Worker、
-// Worker 崩溃 / 超时回退与有限重建、dispose 清理。
+// Worker 崩溃 / 超时回退与有限重建、预热幂等且失败静默、dispose 清理。
 //
 // 文件末尾附带 Worker 侧 handler 的真实编译用例（同一 Agent 的编译基础设施）。
 // ─────────────────────────────────────────────────────────────────────────────
@@ -586,6 +586,76 @@ describe('取消与 Worker 生命周期', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe('Worker 预热', () => {
+  it('warmup 只创建一个 Worker，后续 subscribe 复用它', () => {
+    const { manager, workers, worker } = setup();
+    expect(manager.warmup).toBeTypeOf('function');
+    expect(workers).toHaveLength(0);
+
+    manager.warmup?.();
+    manager.warmup?.();
+
+    expect(workers).toHaveLength(1);
+    const fake = worker();
+    // 预热只建 Worker：不发消息、不入队、不 terminate。
+    expect(fake.posted).toEqual([]);
+    expect(fake.terminated).toBe(0);
+
+    const snapshots: ChatCompiledSnapshot[] = [];
+    manager.subscribe(request('msg:1', 1, '甲'), (snapshot) => snapshots.push(snapshot));
+
+    expect(workers).toHaveLength(1);
+    fake.respondOk(fake.compileAt(0));
+    expect(snapshots).toEqual([
+      { key: 'msg:1', revision: 1, phase: 'final', document: makeDocument('甲'), errorCode: null },
+    ]);
+  });
+
+  it('预热失败不抛给调用方，后续 subscribe 仍能创建 Worker 并编译', () => {
+    let created = 0;
+    const workers: FakeWorker[] = [];
+    const manager = createChatCompileManager(() => {
+      created += 1;
+      if (created === 1) throw new Error('warmup boom');
+      const fake = new FakeWorker();
+      workers.push(fake);
+      return fake;
+    });
+
+    expect(() => manager.warmup?.()).not.toThrow();
+    expect(workers).toHaveLength(0);
+
+    // 预热失败不把 Manager 判成 worker.unavailable：首次订阅照常建 Worker 并编译。
+    const snapshots: ChatCompiledSnapshot[] = [];
+    manager.subscribe(request('msg:1', 1, '甲'), (snapshot) => snapshots.push(snapshot));
+    expect(workers).toHaveLength(1);
+    const fake = workers[0];
+    fake.respondOk(fake.compileAt(0));
+    expect(snapshots).toEqual([
+      { key: 'msg:1', revision: 1, phase: 'final', document: makeDocument('甲'), errorCode: null },
+    ]);
+  });
+
+  it('dispose 后 warmup 为 no-op', () => {
+    const neverStarted = setup();
+    neverStarted.manager.dispose();
+    expect(() => neverStarted.manager.warmup?.()).not.toThrow();
+    expect(neverStarted.workers).toHaveLength(0);
+
+    const { manager, workers, worker } = setup();
+    manager.warmup?.();
+    expect(workers).toHaveLength(1);
+    const fake = worker();
+
+    manager.dispose();
+    expect(fake.terminated).toBe(1);
+
+    manager.warmup?.();
+    expect(workers).toHaveLength(1);
+    expect(fake.terminated).toBe(1);
   });
 });
 

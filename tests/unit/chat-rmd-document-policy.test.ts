@@ -1,9 +1,10 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // chat-rmd-document-policy.test.ts — 聊天文档策略（静态安全边界）
 //
-// 用真实 reactive-md 编译结果验证「允许 Markdown + 公式」与「其余一律收缩为源码」：
-// 原生图片、组件、表达式、HTML 通道、危险链接都不得留在 AST 里；能力开关与运行期
-// 元数据必须清空，结果仍可 JSON 序列化（Worker postMessage 可克隆）。
+// 用真实 reactive-md 编译结果验证「允许 Markdown + 公式 + 静态展示组件」与
+// 「其余一律收缩为源码」：原生图片、交互 / 未知组件、表达式、HTML 通道、危险链接
+// 都不得留在 AST 里；能力开关与运行期元数据必须清空，结果仍可 JSON 序列化
+// （Worker postMessage 可克隆）。
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { describe, expect, it } from 'vitest';
@@ -64,6 +65,10 @@ function collectText(nodes: readonly LocalNode[]): string {
   };
   walk(nodes);
   return parts.join('');
+}
+
+function collectComponents(nodes: readonly LocalNode[], name: string): LocalNode[] {
+  return collectNodes(nodes, 'component').filter((node) => node.name === name);
 }
 
 describe('允许的 Markdown 结构与公式', () => {
@@ -164,7 +169,7 @@ describe('未批准节点转回字面量源码', () => {
     expect(text).toContain('<img src="https://evil.example/y.png">');
   });
 
-  it('移除作者组件与表达式，并保留可读源码', () => {
+  it('移除交互组件与表达式，并保留可读源码', () => {
     const document = compiledPolicy('<number label="数量"/> 与 {{ 1 + 1 }}');
 
     expect(collectNodes(document.nodes, 'component')).toEqual([]);
@@ -209,6 +214,188 @@ describe('未批准节点转回字面量源码', () => {
     expect(text).toContain('<iframe src="https://evil.example"></iframe>');
     expect(document.capabilities?.styles).toEqual([]);
     expect(document.capabilities?.scripts).toEqual([]);
+  });
+});
+
+describe('允许的静态展示组件', () => {
+  it('保留单行 alert 的节点、白名单属性与内部 Markdown', () => {
+    const document = compiledPolicy(
+      '<alert tone="warning" title="Two checks still open"> The release can stage at </alert>'
+    );
+
+    const [alert] = collectComponents(document.nodes, 'alert');
+    expect(alert).toBeDefined();
+    expect(alert.attrs).toEqual({
+      tone: 'warning',
+      title: 'Two checks still open',
+    });
+    expect(collectText(alert.children ?? [])).toBe('The release can stage at');
+    expect(collectText(document.nodes)).not.toContain('<alert');
+
+    const bold = compiledPolicy(
+      '<alert tone="warning" title="Two checks still open">The release can stage at **now**</alert>'
+    );
+    expect(collectComponents(bold.nodes, 'alert')).toHaveLength(1);
+    expect(
+      collectNodes(bold.nodes, 'strong').map((node) => collectText(node.children ?? []))
+    ).toEqual(['now']);
+  });
+
+  it('保留多行 alert 的段落与列表', () => {
+    const document = compiledPolicy(
+      [
+        '<alert tone="warning" title="Two checks still open">',
+        'The release can stage at **now**',
+        '',
+        '- one',
+        '- two',
+        '</alert>',
+      ].join('\n')
+    );
+
+    const [alert] = collectComponents(document.nodes, 'alert');
+    expect(alert).toBeDefined();
+    expect(alert.attrs).toEqual({ tone: 'warning', title: 'Two checks still open' });
+
+    const types = collectTypes(alert.children ?? []);
+    for (const expected of ['paragraph', 'strong', 'list', 'listItem']) {
+      expect(types, `缺少 ${expected}`).toContain(expected);
+    }
+    const text = collectText(alert.children ?? []);
+    expect(text).toContain('The release can stage at');
+    expect(text).toContain('now');
+    expect(text).toContain('one');
+    expect(text).toContain('two');
+    expect(collectText(document.nodes)).not.toContain('<alert');
+  });
+
+  it('保留行内 badge 及其所在段落', () => {
+    const document = compiledPolicy('报名 <badge tone="success">报名中</badge> 结束');
+
+    const [paragraph] = collectNodes(document.nodes, 'paragraph');
+    expect(paragraph).toBeDefined();
+    const [badge] = collectComponents(paragraph.children ?? [], 'badge');
+    expect(badge).toBeDefined();
+    expect(badge.attrs).toEqual({ tone: 'success' });
+    expect(collectText(badge.children ?? [])).toBe('报名中');
+    expect(collectText(document.nodes)).toContain('报名中');
+  });
+
+  it('alert 内部的图片仍收缩为源码，不获得图片通道', () => {
+    const document = compiledPolicy(
+      '<alert tone="info" title="T">[x](https://example.com) ![img](https://evil.example/x.png)</alert>'
+    );
+
+    expect(collectComponents(document.nodes, 'alert')).toHaveLength(1);
+    expect(collectNodes(document.nodes, 'image')).toEqual([]);
+    expect(collectNodes(document.nodes, 'link').map((node) => node.url)).toEqual([
+      'https://example.com',
+    ]);
+    expect(collectText(document.nodes)).toContain('![img](https://evil.example/x.png)');
+  });
+
+  it('保留 panel / card / grid / section 且只带白名单属性', () => {
+    const document = compiledPolicy(
+      [
+        '<panel title="表单" reset="true">panel body</panel>',
+        '',
+        '<grid columns="2">',
+        '<card title="A">a</card>',
+        '<card title="B">b</card>',
+        '</grid>',
+        '',
+        '<section color="#336699">section body</section>',
+      ].join('\n')
+    );
+
+    const components = collectNodes(document.nodes, 'component');
+    expect(components.map((node) => node.name)).toEqual([
+      'panel',
+      'grid',
+      'card',
+      'card',
+      'section',
+    ]);
+    expect(components.map((node) => node.attrs)).toEqual([
+      { title: '表单', reset: 'true' },
+      { columns: '2' },
+      { title: 'A' },
+      { title: 'B' },
+      { color: '#336699' },
+    ]);
+
+    // 每个允许组件只允许白名单键：多一个属性就整体按源码显示（见下方手写 AST 用例）。
+    const whitelist: Readonly<Record<string, readonly string[]>> = {
+      panel: ['title', 'reset'],
+      card: ['title'],
+      grid: ['columns'],
+      section: ['color'],
+    };
+    for (const node of components) {
+      const allowed = whitelist[node.name ?? ''] ?? [];
+      for (const key of Object.keys(node.attrs ?? {})) {
+        expect(allowed, `${node.name} 不应保留属性 ${key}`).toContain(key);
+      }
+    }
+    const text = collectText(document.nodes);
+    for (const expected of ['panel body', 'a', 'b', 'section body']) {
+      expect(text).toContain(expected);
+    }
+  });
+
+  it('未知组件、交互组件与动态属性仍按源码文本显示', () => {
+    const sources = {
+      unknown: '<callout>hi</callout>',
+      number: '<number label="数量"/>',
+      conditional: '<if when="{{ true }}">body</if>',
+      dynamicTone: `<alert tone="{{ 'warning' }}" title="动态">body</alert>`,
+      dynamicTitle: `<alert tone="warning" title="{{ '动态' }}">body</alert>`,
+    };
+    const document = compiledPolicy(Object.values(sources).join('\n\n'));
+
+    expect(collectNodes(document.nodes, 'component')).toEqual([]);
+    expect(collectTypes(document.nodes)).not.toContain('interpolation');
+
+    const text = collectText(document.nodes);
+    for (const [label, source] of Object.entries(sources)) {
+      expect(text, `${label} 应按源码显示`).toContain(source);
+    }
+  });
+
+  it('允许组件携带非白名单属性时按源码文本显示', () => {
+    // 真实源码在编译期就会拒绝未知属性（local.attribute.unknown），这里用手写 AST
+    // 守住策略层的第二道过滤：来自其他编译配置的文档也不能带旁路属性。
+    const source = '<alert tone="info" data-x="1">body</alert>';
+    const bodyStart = source.indexOf('body');
+    const document: LocalDocument = {
+      syntax: 'local',
+      source,
+      nodes: [
+        {
+          type: 'component',
+          id: 'local-0',
+          range: { start: 0, end: source.length },
+          name: 'alert',
+          attrs: { tone: 'info', 'data-x': '1' },
+          children: [
+            {
+              type: 'text',
+              id: 'local-1',
+              range: { start: bodyStart, end: bodyStart + 'body'.length },
+              value: 'body',
+            },
+          ],
+        },
+      ],
+      initialState: {},
+      bindings: {},
+    };
+
+    const policy = applyChatDocumentPolicy(document);
+    expect(policy.ok).toBe(true);
+    if (!policy.ok) throw new Error('unreachable');
+    expect(collectNodes(policy.document.nodes, 'component')).toEqual([]);
+    expect(collectText(policy.document.nodes)).toBe(source);
   });
 });
 
@@ -334,6 +521,6 @@ describe('策略失败与可序列化', () => {
   });
 
   it('导出稳定的策略版本', () => {
-    expect(CHAT_RMD_POLICY_VERSION).toBe('chat-rmd-policy/1');
+    expect(CHAT_RMD_POLICY_VERSION).toBe('chat-rmd-policy/2');
   });
 });
