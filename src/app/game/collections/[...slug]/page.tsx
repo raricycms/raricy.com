@@ -11,6 +11,7 @@ import {
 } from '@/lib/game-catalog';
 import GameCard from '../../GameCard';
 import GameCollectionCard from '../../GameCollectionCard';
+import { gamesVisibleToViewer } from '../../game-viewer';
 
 type Props = { params: Promise<{ slug: string[] }> };
 
@@ -36,7 +37,7 @@ export default async function GameCollectionPage({ params }: Props) {
   if (!found.canonical) permanentRedirect(collectionHref(found.collection.id));
   const { collection, path } = found;
   const children = childCollections(collection.id);
-  const games = GAMES.filter((game) => game.collectionId === collection.id);
+  const games = await gamesVisibleToViewer(GAMES.filter((game) => game.collectionId === collection.id));
   return (
     <div className="container game-menu">
       <nav className="game-breadcrumb" aria-label="合集路径">

@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { Activity, Clapperboard, ExternalLink, Flag, Grid2X2, Sparkles, Swords, Trees, Wand2 } from 'lucide-react';
+import { Activity, ChartCandlestick, Clapperboard, ExternalLink, Flag, Grid2X2, Sparkles, Swords, Trees, TrendingUp, Wand2 } from 'lucide-react';
 import { AtamasRingIcon } from '@/games/atamas/icons';
 import { TwinShadeIcon } from '@/games/twinshade/icons';
 import { LumenIcon } from '@/games/lumen/icons';
@@ -25,6 +25,8 @@ function GameIcon({ icon }: { icon: GameEntry['icon'] }) {
   if (icon === 'rariroom') return <Clapperboard />;
   if (icon === 'ling') return <Sparkles />;
   if (icon === 'reality') return <Trees />;
+  if (icon === 'fish-trade') return <TrendingUp />;
+  if (icon === 'fish-trade-sim') return <ChartCandlestick />;
   return <Wand2 />;
 }
 
