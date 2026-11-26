@@ -4,14 +4,19 @@
 // ChatRmdProvider.tsx — 聊天页面的 RMD 编译上下文（一条页面一个 Manager / Worker）
 //
 // 责任只有四件：
-//   · 每页创建并持有一个 `ChatCompileManager`，挂载后立即预热 Worker，卸载时 dispose；
+//   · 跨页面持有一个 `ChatCompileManager`，挂载后立即预热 Worker；
 //   · 把当前查看者作用域与子编译入口传给消息视图；
 //   · 订阅页面滚动活动信号，快速滚动期间让 Manager 暂停派发新编译任务；
-//   · 提供一个可注入 Manager 的测试缝（默认走 createChatCompileManager）。
+//   · 提供一个可注入 Manager 的测试缝（默认走 Manager 池）。
 //
 // 【为什么子编译不另建 Manager】剪贴板子文档与父正文共用同一 Worker 队列：
 // manager 自己排队，子编译键（`child:<hash>:<seq>`）与消息键（`msg:<id>` /
 // `gen:<id>`）不同，不会互相顶掉，也不会占住父文档的执行槽。
+//
+// 【跨页面复用】Manager 与 Worker 住在 `chat-rmd-manager-pool`：客户端路由离开
+// 聊天页后保留 10 分钟，最后一个租约释放才开始计时，期间回来直接复用 Worker 与
+// final 文档 LRU。池按 viewerScope 隔离；换账号或收到 `raricy:auth-changed`
+// （登出）立即 dispose，避免把上一个查看者的编译结果和私聊内容留给下一个人。
 //
 // 【预热】挂载后的下一个任务（setTimeout(0)）调用一次 `manager.warmup?.()`，让
 // Worker 的下载与求值和 hydration、频道 / 消息请求并行，而不是等页面空闲。长列表
@@ -19,12 +24,12 @@
 // 只预创建 Worker，不订阅、不编译；卸载 / 重挂时取消。
 //
 // 【SSR】模块顶层不访问 window / Worker；服务端渲染时 manager 为 null，消息视图
-// 直接显示源码（转义文本）。Worker 在首次 subscribe 或挂载预热时才创建，
-// 所以即使客户端首帧就建 Manager 也不产生网络 / 子进程资源。
+// 直接显示源码（转义文本）。Manager 在客户端 effect 中从池里取租约，Worker 在首次
+// subscribe 或挂载预热时才创建。
 //
-// 【StrictMode】Manager 的预热幂等（已有 Worker 直接复用），不订阅、不编译；
-// 卸载 dispose 用微任务 + 共享 mounted 标记与 CompiledDocumentView 同构：开发态
-// 「卸载后立即重挂」不会把仍在使用的 Manager 关掉。
+// 【StrictMode】Manager 的预热幂等（已有 Worker 直接复用），不订阅、不编译；池的
+// 租约 cleanup 先释放、重挂再取租，只有计数归零才启动 10 分钟回收。测试注入的
+// Manager 仍用微任务 + mounted 标记确认真正卸载后再 dispose。
 // ─────────────────────────────────────────────────────────────────────────────
 
 import {
@@ -38,13 +43,17 @@ import {
   type ReactNode,
 } from 'react';
 import type { LocalDocument } from 'reactive-md';
-import { createChatCompileManager } from '@/lib/chat-rmd/compile-manager';
 import { clearChatReferenceCache } from '@/lib/chat-rmd/reference-reader';
 import type {
   ChatCompiledSnapshot,
   ChatCompileManager,
   ChatCompileRequest,
 } from '@/lib/chat-rmd/types';
+import {
+  acquireChatRmdManager,
+  clearChatRmdManager,
+  peekChatRmdManager,
+} from './chat-rmd-manager-pool';
 import { subscribeChatScrollActivity } from './scroll-activity';
 
 /** 子编译的缺省上限；B 的适配器只负责发起，超时由本层兜底。 */
@@ -122,22 +131,66 @@ export default function ChatRmdProvider({
   manager: injectedManager,
   childCompileTimeoutMs = CHAT_RMD_CHILD_COMPILE_TIMEOUT_MS,
 }: ChatRmdProviderProps) {
-  const [manager] = useState<ChatCompileManager | null>(() =>
-    injectedManager ?? (canStartCompileManager() ? createChatCompileManager() : null)
-  );
+  const [slot, setSlot] = useState<{ manager: ChatCompileManager | null; scope: string }>(() => ({
+    manager:
+      injectedManager ??
+      (canStartCompileManager() ? peekChatRmdManager(viewerScope) : null),
+    scope: viewerScope,
+  }));
   const lifecycle = useMemo<Lifecycle>(() => ({ mounted: false }), []);
 
+  // 生产走池租约；测试注入的 Manager 不进入共享池，保持原来的卸载 dispose 语义。
   useEffect(() => {
+    if (injectedManager) {
+      setSlot((previous) =>
+        previous.manager === injectedManager && previous.scope === viewerScope
+          ? previous
+          : { manager: injectedManager, scope: viewerScope }
+      );
+      return;
+    }
+    if (!canStartCompileManager()) {
+      setSlot((previous) =>
+        previous.manager === null && previous.scope === viewerScope
+          ? previous
+          : { manager: null, scope: viewerScope }
+      );
+      return;
+    }
+
+    const lease = acquireChatRmdManager(viewerScope);
+    setSlot((previous) =>
+      previous.manager === lease.manager && previous.scope === viewerScope
+        ? previous
+        : { manager: lease.manager, scope: viewerScope }
+    );
+    return () => lease.release();
+  }, [viewerScope, injectedManager]);
+
+  const manager = slot.scope === viewerScope ? slot.manager : null;
+
+  // 登出等登录状态变化：池和页面级名片缓存都不留给下一次会话。
+  useEffect(() => {
+    const onAuthChanged = (): void => {
+      clearChatRmdManager();
+      clearChatReferenceCache();
+    };
+    window.addEventListener('raricy:auth-changed', onAuthChanged);
+    return () => window.removeEventListener('raricy:auth-changed', onAuthChanged);
+  }, []);
+
+  useEffect(() => {
+    if (!injectedManager) return;
     lifecycle.mounted = true;
     return () => {
       lifecycle.mounted = false;
       queueMicrotask(() => {
         // StrictMode 会在同一个任务里先 cleanup 再重跑 effect；共享标记能区分
         // 「真的卸载」和「开发态重挂」。
-        if (!lifecycle.mounted) manager?.dispose();
+        if (!lifecycle.mounted) injectedManager.dispose();
       });
     };
-  }, [lifecycle, manager]);
+  }, [injectedManager, lifecycle]);
 
   // 预热：挂载后立即预创建 Worker，让下载 / 求值与页面首轮请求并行，缩短首条
   // 消息从源码升级为渲染视图的等待。只预创建，不订阅、不编译；StrictMode 重挂时
