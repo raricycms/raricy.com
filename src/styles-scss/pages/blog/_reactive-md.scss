@@ -338,48 +338,6 @@
   color: var(--color-text-secondary);
 }
 
-.site-embed-clipboard {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 0.75rem;
-  margin: 1.25rem 0;
-  padding: 0.9rem 1.1rem;
-  border-radius: 12px;
-  background: var(--color-background-content);
-  color: var(--color-text-primary);
-  text-decoration: none;
-
-  &:hover {
-    color: var(--color-text-primary);
-    text-decoration: none;
-    box-shadow: var(--shadow-card-brand);
-  }
-}
-
-.site-embed-clipboard__title {
-  min-width: 0;
-  font-weight: 600;
-  overflow-wrap: anywhere;
-}
-
-.site-embed-clipboard__meta {
-  display: flex;
-  flex-shrink: 0;
-  align-items: baseline;
-  gap: 0.5rem;
-  color: var(--color-text-secondary);
-  font-size: 0.85rem;
-}
-
-.site-embed-clipboard__format {
-  padding: 0.1rem 0.45rem;
-  border-radius: 0.25rem;
-  background: var(--color-brand-secondary);
-  color: var(--color-brand-primary);
-  font-size: 0.75rem;
-}
-
 // ── 窄屏 ────────────────────────────────────────────────────────────────────
 @media (max-width: 375px) {
   .reactive-document .md-document {
@@ -477,17 +435,4 @@
   color: var(--color-text-secondary);
   font-size: 0.85rem;
   line-height: 1.6;
-}
-
-// Markdown 剪贴板的一层内联（成员视图 / 预览 / 导出）。内容是同版本静态子文档，
-// 不再经过旧 Markdown 管线；Reactive 子剪贴板与 external 快照仍是链接卡片。
-.site-embed-clipboard-inline {
-  margin: 1.25rem 0;
-  padding: 1rem 1.1rem;
-  border-radius: 12px;
-  background: var(--color-background-content);
-
-  > .blog-content-container-container > .blog-content-container {
-    margin: 0;
-  }
 }

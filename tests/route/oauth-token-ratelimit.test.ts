@@ -164,7 +164,7 @@ describe('OAuth token 密码计算前限频', () => {
     // 【为什么用低 N 的 scrypt 哈希】生产参数 scrypt:32768:8:1 已被
     // `tests/unit/password.test.ts` 钉住；这条要验的是「限频在密码计算之前生效」，
     // 走的是同一段 verifyPassword 代码路径，单次 ~4ms（若用生产参数 ~123ms，
-    // 60 次在并发全量下会撞 20s 超时，见 `docs/plan/test-suite-audit.md` §4.2）。
+    // 60 次在并发全量下会撞 20s 超时，见 `docs/testing.md` §1.1）。
     const salt = 'test-salt-000000';
     const derived = await new Promise<Buffer>((resolve, reject) => {
       _scrypt(SECRET, salt, 64, { N: 1024, r: 8, p: 1, maxmem: 132 * 1024 * 1024 }, (err, key) =>

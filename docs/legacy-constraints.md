@@ -97,7 +97,7 @@ git ls-tree -r 7d7be1c^ --name-only app/ # 列出旧 app/ 全树
 消失，但**格式本身仍是对外契约**（存量账目与站外机器人按它写），所以留契约、注历史。
 做法是**去出处、留契约**（`// 对齐 Flask @authenticated_required：需核心用户` → `// 需核心用户（core+）`）。
 
-**刻意保留的**：`docs/architecture.md` 开篇边界声明与 §9「迁移史速查」、`docs/cli.md` 里
+**刻意保留的**：`docs/architecture.md` §9「迁移史速查」、`docs/cli.md` 里
 `~~flask fish compensate~~` 那种对旧命令名的删除线标注 —— 那是**历史记录**，不是参照系，
 改掉反而认不出旧命令；§1.1 的技术事实（werkzeug / SQLAlchemy / Alembic / itsdangerous）
 留给运维排障；指**本仓现行代码**的「对齐」照旧写（如「对齐 `src/lib/guard.ts` 的现行语义」）。
@@ -137,8 +137,7 @@ git ls-tree -r 7d7be1c^ --name-only app/ # 列出旧 app/ 全树
 
 ## 7. 待决事项去向与已解决记录
 
-2026-10-12 校对：翻译跳转入口的取舍移入 `docs/plan/maintenance-plan.md` §2。
-该路由仍在，写死 IP 的使用理由保留；缺少工具箱入口不等于可以直接退役。
+翻译跳转路由于 2026-11 随 `1eb6513e` 退役。
 
 原列出的 `tests/e2e/fish-layout.spec.ts` 类型错误**已于 2026-09-19 修复**（`65de7568`）：
 `evaluateAll` 中选中的 HTML 元素断言为 `HTMLElement[]`，不再对联合类型直接读

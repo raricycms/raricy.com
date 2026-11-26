@@ -23,7 +23,7 @@ const AUDIO_ID = 'Ab12Cd34Ef';
 const VOTE_ID = 'Ab12Cd34E';
 const CLIP_ID = 'Ab12Cd34';
 
-/** 内联剪贴板的新契约：hostData 只带同版本编译产物，不再带原始 content。 */
+/** 内联剪贴板的契约：hostData 只带编译产物，不带原始 content。 */
 function inlineClipboardDocument() {
   const compiled = compileLocal('可内联的正文', REACTIVE_COMPILE_OPTIONS);
   if (!compiled.ok) throw new Error('fixture compile failed');
@@ -241,49 +241,30 @@ describe('校验与伪造', () => {
     expect(box.querySelector('a')).toBeNull();
   });
 
-  it('静态快照的剪贴板忽略 payload href，只按 ref 拼站内地址，且不内联 content', () => {
+  it('剪贴板只认编译产物：没有子文档就给失败占位，原始 content 不上屏', () => {
     const box = mount(
       node('clipboard', CLIP_ID),
-      embed('clipboard', CLIP_ID, 'ready', {
-        title: '一段剪贴板',
-        format: 'markdown',
-        content: '正文不该出现',
-        payload: { href: 'javascript:alert(1)', title: '伪造标题' },
-      }),
-      ctx('static')
+      embed('clipboard', CLIP_ID, 'ready', { content: '正文不该出现' })
     );
-    const link = box.querySelector('a.site-embed-clipboard');
-    expect(link?.getAttribute('href')).toBe(`/clipboard/${CLIP_ID}`);
-    expect(box.querySelector('.site-embed-clipboard-inline')).toBeNull();
+    expect(box.querySelector('.site-embed__status--error')).not.toBeNull();
+    expect(box.querySelector('a')).toBeNull();
+    expect(box.textContent).not.toContain('正文不该出现');
   });
 
-  it('成员阅读的 Markdown 剪贴板走一层静态子文档外壳（不渲染成链接卡片）', () => {
+  it('成员阅读的剪贴板直接渲染子文档正文：没有卡片，也没有额外外壳', () => {
     const box = mount(
       node('clipboard', CLIP_ID),
       embed('clipboard', CLIP_ID, 'ready', {
-        title: '一段剪贴板',
-        format: 'markdown',
-        payload: { href: 'javascript:alert(1)', title: '伪造标题' },
+        content: '正文不该出现',
         ...inlineClipboardDocument(),
       })
     );
-    expect(box.querySelector('.site-embed-clipboard-inline')).not.toBeNull();
-    expect(box.querySelector('a.site-embed-clipboard')).toBeNull();
     expect(box.textContent).toContain('可内联的正文');
-  });
-
-  it('只有 content 没有编译产物时退回链接卡片（不把原始正文交给旧引擎）', () => {
-    const box = mount(
-      node('clipboard', CLIP_ID),
-      embed('clipboard', CLIP_ID, 'ready', {
-        title: '一段剪贴板',
-        format: 'markdown',
-        content: '不该内联的正文',
-      })
-    );
-    expect(box.querySelector('.site-embed-clipboard-inline')).toBeNull();
-    expect(box.querySelector(`a.site-embed-clipboard[href="/clipboard/${CLIP_ID}"]`)).not.toBeNull();
-    expect(box.textContent).not.toContain('不该内联的正文');
+    expect(box.textContent).not.toContain('正文不该出现');
+    expect(box.querySelector('a')).toBeNull();
+    expect(box.querySelector('.site-embed__status')).toBeNull();
+    // 子正文直接挂在容器的文档根上：中间没有多包一层壳。
+    expect(box.firstElementChild?.className).toContain('md-document');
   });
 
   it('收藏夹条目里的 javascript: id 只作为文本，不成链接', () => {

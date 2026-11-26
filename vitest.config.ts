@@ -1,6 +1,6 @@
 // `npm test` —— 日常门禁。只含「改了代码跑一遍」的用例；
 // 静态守卫、迁移验收、启动生命周期走各自入口（见 package.json 的 guards / test:migrations /
-// test:slow，口径见 `docs/plan/test-suite-audit.md` §2/§5）。
+// test:slow，口径见 `docs/testing.md` §1.1）。
 import { defineConfig } from 'vitest/config';
 import { sharedTestOptions, sharedResolve, sharedEsbuild, MAX_WORKERS } from './vitest.shared';
 

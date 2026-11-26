@@ -1,8 +1,10 @@
 # ReactiveMD 全量应用与编辑器重整计划
 
+> 历史归档。下文保留设计或验收当时的记录。现行说明见 `docs/content-rendering.md`。后续事项见 `docs/plan/README.md`。
+
 > 状态：本地实现与验收完成（2026-11-01，最终 commit `a7b1e963`）。产品目标已达成；
 > 持久快照、回填与「正文 / 快照同事务」的要求已由
-> `docs/plan/reactive-md-simplification-plan.md` 撤销。远端 PR #20 合并、生产发布与发布
+> `docs/archive/reactive-md-simplification-plan.md` 撤销。远端 PR #20 合并、生产发布与发布
 > 范围确认尚未执行，仓库内无法核实。逐阶段过程记录（P0–P6 各轮收口、终审）见 Git 历史。
 >
 > **2026-11 校订（R3-703）**：§1 把 effective format 的推导归给 `format-mode.ts` 不成立 ——
@@ -50,7 +52,7 @@
 - 兼容历史 HTML 时对齐旧管线的允许标签、属性、URL 与净化后语义：未知属性可剥离、保留可读
   子节点，危险能力继续拒绝；优先用上游修复或公共扩展点，不改 `node_modules`。
 - 不启用会把整篇分流到原生 HTML iframe 的 capability flags；iframe 嵌入与安全边界见
-  `docs/plan/reactive-md-migration-plan.md` §10 与 `docs/architecture.md`。
+  `docs/archive/reactive-md-migration-plan.md` §10 与 `docs/architecture.md`。
 
 ### 3.3 故障与回退
 
@@ -73,5 +75,5 @@
 
 未完成：远端 PR #20 合并、生产部署与备份 / 迁移 / 搜索重建的真实执行，等 root / 站长
 确认范围。剩余事项（渲染决策、编辑器与转换器验收、生产发布核对）集中在
-`docs/plan/reactive-md-migration-plan.md` §12；现行渲染规则见
-`docs/plan/reactive-md-simplification-plan.md`。
+`docs/archive/reactive-md-migration-plan.md` §12；现行渲染规则见
+`docs/content-rendering.md`。

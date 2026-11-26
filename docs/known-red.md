@@ -107,7 +107,7 @@ npx playwright test tests/e2e/<失败spec> --project=desktop   # 或 --project=m
 ## 12. 全量测试的入口拆分（2026-11-13）
 
 全量不再是一条命令跑到底：`npm test` 只含行为测试，另外四个入口在 `package.json` 与
-`vitest*.config.ts`（口径与取舍见 `docs/testing.md` §1.1 与 `docs/plan/test-suite-audit.md`）。
+`vitest*.config.ts`（口径与取舍见 `docs/testing.md` §1.1）。
 
 | 命令 | 内容 | 何时跑 |
 |---|---|---|

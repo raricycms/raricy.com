@@ -40,7 +40,7 @@ export interface GameEntry {
   /** 站外游戏：卡片渲染成普通 `<a>`，新窗口打开。 */
   external?: boolean;
   collectionId: GameCollectionId | null;
-  icon: 'atamas' | 'wand' | 'public-space' | 'quandi' | 'twinshade' | 'lumen' | 'yiwen' | 'hinge' | 'loom' | 'papercut' | 'marbling' | 'motion' | 'rarica';
+  icon: 'atamas' | 'wand' | 'public-space' | 'quandi' | 'twinshade' | 'lumen' | 'yiwen' | 'hinge' | 'loom' | 'papercut' | 'marbling' | 'motion' | 'rarica' | 'rariroom' | 'ling' | 'reality';
 }
 
 export const GAMES = [
@@ -214,6 +214,39 @@ export const GAMES = [
     external: true,
     collectionId: null,
     icon: 'rarica',
+  },
+  {
+    id: 'rariroom',
+    title: '放映厅',
+    description: '一起看同一块屏幕：屏幕共享与影院模式，多人同步播放。',
+    category: 'social',
+    modes: ['online'],
+    href: 'https://rariroom.raricy.com',
+    external: true,
+    collectionId: null,
+    icon: 'rariroom',
+  },
+  {
+    id: 'ling',
+    title: '灵性实验室',
+    description: '跟着 Neko 做四个小实验：隐藏信息感知、未来事件预知、双人感应与日常体验记录。',
+    category: 'social',
+    modes: ['solo', 'local'],
+    href: 'https://ling.raricy.com',
+    external: true,
+    collectionId: null,
+    icon: 'ling',
+  },
+  {
+    id: 'reality',
+    title: '灵感菇树林',
+    description: '午后的秋日林子：灵摆与硬币占卜、纸人替身，还能给板块调频。',
+    category: 'social',
+    modes: ['solo'],
+    href: 'https://reality.raricy.com',
+    external: true,
+    collectionId: null,
+    icon: 'reality',
   },
 ] as const satisfies readonly GameEntry[];
 

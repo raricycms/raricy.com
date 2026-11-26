@@ -822,7 +822,7 @@ export const fishCommands: CommandSpec[] = [
       '与 `fish webhook-retry` 同一个位置 —— 定时器之外的那只手。',
       '',
       '它走的是与引擎**同一个判断**（现价穿过了那一行上存着的爆仓价 —— 多头 ≤、空头 ≥），所以：',
-      '  · 结算价是**爆仓价**而不是现价 —— 用户亏光投入、不会亏穿（见架构 §6.13）。',
+      '  · 结算价是**爆仓价**而不是现价 —— 用户亏光投入、不会亏穿（见 `docs/agent-domain-rules.md` §2.7）。',
       '  · **不写鱼干流水**（实发恒为 0，没有钱动过），只把仓位置成 liquidated。',
       '  · 多条仓位各自一条条件 UPDATE，与定时器同时跑也不会重复结清。',
       '',
@@ -880,7 +880,7 @@ export const fishCommands: CommandSpec[] = [
         ms > 0
           ? `  定时器每 ${ms}ms 自己扫一轮，本命令不影响它。`
           : '  ⚠️ MARKET_LIQUIDATE_MS=0：定时器是关的，**杠杆开仓此刻也被拒**' +
-            '（这是刻意的 —— 卖一个兑现不了的产品比不卖更糟，见架构 §6.13）。',
+            '（这是刻意的 —— 卖一个兑现不了的产品比不卖更糟，见 `docs/agent-domain-rules.md` §2.7）。',
       ];
       return { lines, json: { liquidated: n, interval_ms: ms } };
     },

@@ -1,12 +1,14 @@
 # 格式转换器长期规划（能力版图与转换路线）
 
+> 历史归档。下文保留设计或验收当时的记录。现行说明见 `docs/guide/格式转换器使用指南.md`。后续事项见 `docs/plan/README.md`。
+
 > 状态：**长期规划未完成；八个能力区已交付首轮功能**（2026-10-09）。
 > 编写日期：2026-10-08；校对日期：2026-10-12（Asia/Shanghai）。当前进度与待办见 §16。
 > 本文回答「最后可以变成什么样、包含哪些格式、每类具体怎么转换」。
-> 首轮交付、原始实施建议与验收缺口另见 `docs/format-converter-implementation.md`。
+> 首轮交付、原始实施建议与验收缺口另见 `docs/archive/format-converter-implementation.md`。
 > ⚠️ **本文仍是路线图，不是支持清单**：已实施的范围以**能力登记表**为准
 > （`src/lib/file-converter/` 的边，`status: 'live'` 才出现在页面菜单里；
-> 见 `docs/architecture.md` §6.17）。登记表当前只有两条 `planned` 边：
+> 见 `docs/agent-domain-rules.md` §2.23）。登记表当前只有两条 `planned` 边：
 > `office:html-print-pdf` / `office:docx-to-pdf`，**不进菜单**；其他长期候选未必已登记。
 > 判断「现在到底能不能转 X」，看工具页面，不要照本文推。
 
@@ -554,7 +556,7 @@ R4 / R5 按本站资源与真实使用需求建设，避免为了格式数量堆
 后续可以在用户主动选择时，将合格转换结果交给本站图床 / 音频床，或生成适合
 博客编辑器插入的文件；上传仍调用既有接口、按角色与配额执行。转换器能生成
 某个格式，不代表图床 / 音频床就必须接受该格式。相关契约见
-`docs/architecture.md` §6.6/§6.15。
+`docs/architecture.md` §6.6、`docs/agent-domain-rules.md` §2.16。
 
 站内编辑器导出、图片 / 音频资源选择和普通文件转换共用底层能力，但保留用途
 边界。后台重任务的引入要遵循 SQLite 事务和单部署单元约束，不能为本规划恢复
@@ -584,14 +586,14 @@ R4 / R5 按本站资源与真实使用需求建设，避免为了格式数量堆
 §13 的 R1–R5 表保留为建设顺序，**不是当前验收状态**：R1 的功能已经交付，但原计划
 真机与性能验收未完成；R2 / R3 / R5 均已有部分能力，不能按编号认为整阶段已完成。
 R4 服务器转换尚未实施。原始范围、历史验证与偏差见
-`docs/format-converter-implementation.md` §12.1/§12.2/§12.3。
+`docs/archive/format-converter-implementation.md` §12.1/§12.2/§12.3。
 
 ### 16.2 未完成验收与已知功能缺口
 
 | 事项 | 状态 | 完成依据 |
 |------|------|----------|
-| 真实浏览器 / 设备 / iframe 矩阵 | 未完成 | 按 `docs/format-converter-implementation.md` §10.2 补 Chrome / Edge、Firefox、macOS Safari、真实 iPhone / Android 及两类 iframe 记录 |
-| 资源与上限附近样本测量 | 未完成 | 按 `docs/format-converter-implementation.md` §10.3 补冷 / 热加载、连续转换、取消重试、时长 / 像素上限附近样本及设备观察；保护性限额不冒充实测能力 |
+| 真实浏览器 / 设备 / iframe 矩阵 | 未完成 | 按 `docs/archive/format-converter-implementation.md` §10.2 补 Chrome / Edge、Firefox、macOS Safari、真实 iPhone / Android 及两类 iframe 记录 |
+| 资源与上限附近样本测量 | 未完成 | 按 `docs/archive/format-converter-implementation.md` §10.3 补冷 / 热加载、连续转换、取消重试、时长 / 像素上限附近样本及设备观察；保护性限额不冒充实测能力 |
 | 首版完整音频矩阵与输出验证 | 原验收证据不足 | 2026-10-09 记录的真转换是 PNG→JPG、WAV→FLAC→WAV；仍需逐项核对 OGG Vorbis / Opus、AAC 等方向的独立解码、时长、声道、采样率与非静音证据 |
 | 中文可搜索 PDF 的文字层 | 功能缺口 | 当前标准字体不能覆盖中文；先明确可再分发字体与嵌入方案，再验证中文能选取、复制与搜索，不能以图像层或 OCR TXT 代替 |
 | HTML 排版导出 PDF | `office:html-print-pdf` 为 `planned` | 需要独立设计排版引擎 / 执行环境并验收；未实现前不进菜单 |

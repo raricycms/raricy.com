@@ -36,7 +36,7 @@ describe('createClientReferenceReader', () => {
     const first = await reader({ kind: 'clipboard', ref: CLIP_ID, token: '', start: 0, end: 0 });
     const second = await reader({ kind: 'clipboard', ref: CLIP_ID, token: '', start: 0, end: 0 });
 
-    expect(first).toMatchObject({ status: 'ready', format: 'markdown', version: 'v1' });
+    expect(first).toMatchObject({ status: 'ready', content: '正文', version: 'v1' });
     expect(second).toBe(first);
     expect(fetchImpl).toHaveBeenCalledTimes(1);
     const [, init] = fetchImpl.mock.calls[0] as unknown as [

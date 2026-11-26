@@ -3,7 +3,7 @@
 // 【为什么单独入口】每条迁移都 spawn 一次 `prisma db execute`（43 次，单次冷启动实测
 // 4.1s），空库全量 up 在空闲机上约 124s，并发跑全量时会被打穿 300s 上限。它属于
 // 部署验收（改了 prisma/schema 或 migrations 时跑），不该占日常门禁。
-// 详见 `docs/plan/test-suite-audit.md` §4.2。
+// 详见 `docs/testing.md` §1.1。
 import { defineConfig } from 'vitest/config';
 import { sharedTestOptions, sharedResolve, sharedEsbuild } from './vitest.shared';
 

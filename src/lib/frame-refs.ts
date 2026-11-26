@@ -32,7 +32,7 @@
  *
  * ⚠️ **退役一个框时把 `FRAMES[k].retired` 置 true，不要从这里删掉 key。**
  *   删了之后：`parseFrameKey` 认不出它 → 设置面板没法显示那一行 → 用户**卸不掉**
- *   一个已经退役的框（见 `docs/architecture.md` §6.14 的风险节）。
+ *   一个已经退役的框（见 `docs/agent-domain-rules.md` §2.22 的风险节）。
  *   保留 key 的代价只是一行数组元素。
  */
 export const FRAME_KEYS = [

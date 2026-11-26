@@ -27,7 +27,7 @@ import type { Direction } from './market-leverage';
 
 /**
  * 「已结清」的**白名单**。加终态时先改这里，再改 `market-stats-service.ts` 的 where
- * 与 `docs/architecture.md` §6.13 —— 用例会先红，报错会提醒这三处。
+ * 与 `docs/agent-domain-rules.md` §2.7 —— 用例会先红，报错会提醒这三处。
  */
 export const SETTLED_STATUSES = ['closed', 'liquidated'] as const;
 export type SettledStatus = (typeof SETTLED_STATUSES)[number];

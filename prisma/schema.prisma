@@ -387,10 +387,7 @@ model Blog {
   /// 序号本身存在 blog_anon_identities，这里只是发号器。
   anonIdentityCount      Int     @default(0) @map("anon_identity_count")
 
-  /// 渲染路径的逐篇覆盖：NULL（跟随全局开关）/ 'legacy' / 'reactive'。
-  /// **它不改变内容格式**（那在 blog_contents.format）。reactive 内容禁止设 legacy；
-  /// 存量脏值只能报警并按静态降级，绝不交给旧解析器。读写入口见
-  /// docs/plan/reactive-md-migration-plan.md §3 D2。
+  /// 历史接口兼容字段。正文按当前源码统一编译，详见 docs/content-rendering.md。
   rendererOverride String? @map("renderer_override")
 
   author   User          @relation("BlogAuthor", fields: [authorId], references: [id])
@@ -1291,7 +1288,7 @@ model FavoriteItem {
 ///
 /// 【两层，别混】持有（本表）与装备（users 上那两个冗余列）是两层：
 ///   · 持有 = 「我有没有资格戴」—— 站长发放（`npm run cli -- frame grant`），
-///     或用户用鱼干租（租框走 src/lib/frame-shop-service.ts，见 architecture §6.14）
+///     或用户用鱼干租（租框走 src/lib/frame-shop-service.ts，见 docs/agent-domain-rules.md §2.22）
 ///   · 装备 = 「我现在戴哪个」—— 用户自己的事（/settings 的面板）
 /// 一个用户可以同时持有多个框、只戴一个；也可以持有一个却不戴。
 ///
@@ -1398,4 +1395,3 @@ model ReactiveSourceMigration {
 
   @@map("reactive_source_migrations")
 }
-

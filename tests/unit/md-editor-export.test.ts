@@ -204,7 +204,7 @@ describe('ReactiveMD 静态导出', () => {
       arrayBuffer: async () => new Uint8Array([0x89, 0x50, 0x4e, 0x47]).buffer,
     }) as unknown as Response;
 
-  function stubReactiveFetch(clipContent = '不应内联的正文') {
+  function stubReactiveFetch(clipContent = '子剪贴板正文') {
     const fetchMock = vi.fn(async (input: string | URL | Request) => {
       const url = String(input);
       if (url.includes('/api/clipboard/')) {
@@ -263,11 +263,9 @@ describe('ReactiveMD 静态导出', () => {
     expect(html).not.toContain('<panel');
     expect(html).not.toContain('[@');
 
-    // 四类宿主按只读形态出现；Markdown 子剪贴板（P1-3 起）内联静态子文档，
-    // 不再退回链接卡片。
-    expect(html).toContain('site-embed-clipboard-inline');
+    // 四类宿主按只读形态出现；剪贴板一律内联正文（没有链接卡片）。
     expect(html).not.toContain('href="/clipboard/AbCd1234"');
-    expect(html).toContain('不应内联的正文');
+    expect(html).toContain('子剪贴板正文');
     expect(html).toContain('vote-embed');
     expect(html).toContain('favorite-embed');
     expect(html).toContain('site-embed--audio');
@@ -281,15 +279,14 @@ describe('ReactiveMD 静态导出', () => {
     const fetchMock = stubReactiveFetch();
     const source = '剪贴板 [@AbCd1234]';
 
-    // 成员 / expand：按既有口径取数；Markdown 子剪贴板内联静态子文档。
+    // 成员 / expand：按既有口径取数；剪贴板正文内联。
     const expanded = await renderStaticMarkup({
       source,
       referenceMode: 'expand',
       base: ORIGIN,
     });
     expect(fetchMock.mock.calls.some(([url]) => String(url).includes('/api/clipboard/'))).toBe(true);
-    expect(expanded).toContain('site-embed-clipboard-inline');
-    expect(expanded).toContain('不应内联的正文');
+    expect(expanded).toContain('子剪贴板正文');
 
     // 访客 / external：一个业务请求都不发，token 原样保留，也不生成子文档。
     fetchMock.mockClear();
@@ -300,8 +297,7 @@ describe('ReactiveMD 静态导出', () => {
     });
     expect(fetchMock).not.toHaveBeenCalled();
     expect(external).toContain('[@AbCd1234]');
-    expect(external).not.toContain('site-embed-clipboard');
-    expect(external).not.toContain('不应内联的正文');
+    expect(external).not.toContain('子剪贴板正文');
   });
 
   it('P1-3：父图与一层内联子图都预取成 data URL；子公式不走栅格；不递归私有引用', async () => {
@@ -321,7 +317,6 @@ describe('ReactiveMD 静态导出', () => {
       base: ORIGIN,
     });
 
-    expect(html).toContain('site-embed-clipboard-inline');
     expect(html).toContain('子正文');
     const dataImages = (html.match(/data:image\/png;base64,/g) ?? []).length;
     expect(dataImages, '父图与内联子图都应转成 data URL').toBeGreaterThanOrEqual(2);

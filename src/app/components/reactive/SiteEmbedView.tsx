@@ -92,10 +92,9 @@ function InteractiveVote({ voteId, initial }: InteractiveVoteProps): ReactNode {
  * 宿主渲染入口。签名保持「位置参数」是因为它由 `hostRenderer` 直接调用；
  * 本函数自身不持有 hooks，交互态在 `<InteractiveVote>` 里 —— 直接调用也安全。
  *
- * 剪贴板**没有**交互分支：Markdown 子剪贴板在 expand 视图里携带同版本静态产物，
- * 由 `renderSiteEmbedStatic` 用 `LocalDocumentView mode="static"` 渲染；其余情况
- * （Reactive 子剪贴板 / external 快照 / 子编译失败）是链接卡片。旧 Markdown 引擎
- * 不再出现在这条路径上 —— 同一份子正文在内联与详情页必须过同一套 compat / 编译配置。
+ * 剪贴板**没有**交互分支：能读到的剪贴板在 expand 视图里一律携带静态子文档，
+ * 由 `renderSiteEmbedStatic` 直接交给文档渲染器（没有外壳、没有链接卡片）；
+ * external 快照与子编译失败不产生宿主节点或有失败占位。
  */
 export function SiteEmbedView(
   node: LocalNode,
