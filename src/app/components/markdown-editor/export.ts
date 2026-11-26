@@ -287,7 +287,7 @@ export function collectDocumentImageUrls(document: Pick<LocalDocument, 'nodes'>)
  * 父文档 hostData 里**一层**内联剪贴板子文档。
  *
  * 子剪贴板由 ref-adapter 以 `external` 适配并单独编译，`document` 与它的 `hostData`
- * 原子成对；缺一个就不会内联（渲染器退回链接卡片），这里也一并跳过。
+ * 原子成对；缺一个就渲染失败占位（不会退回链接），这里也一并跳过。
  *
  * ⚠️ **只取一层**：子文档自身的嵌套剪贴板 / 投票 / 收藏夹在 external 适配下已是
  * 字面量；这里绝不递归读取任何私有引用，导出件不得越过访客预览的边界。
@@ -552,9 +552,8 @@ export async function renderStaticMarkup(input: ReactiveStaticMarkupInput): Prom
           hostData,
           hostRenderer: (node, data, ctx) => {
             const record = data as Partial<SiteEmbedData> | undefined;
-            // 内联的 Markdown 子剪贴板：用同一份静态渲染表面，但把导出的图片
-            // 解析器传下去 —— 子图 URL 保持原样（策略可校验），预取的 data URL
-            // 只在渲染那一刻替换。
+            // 内联的子剪贴板：用同一份静态渲染表面，但把导出的图片解析器传下去 ——
+            // 子图 URL 保持原样（策略可校验），预取的 data URL 只在渲染那一刻替换。
             if (
               record?.kind === 'clipboard' &&
               record.document &&
@@ -576,7 +575,7 @@ export async function renderStaticMarkup(input: ReactiveStaticMarkupInput): Prom
       mounted = true;
     });
 
-    // 相对地址补成站点绝对地址（音频、链接卡片）；`#锚点` 就地跳。
+    // 相对地址补成站点绝对地址（音频、站内链接）；`#锚点` 就地跳。
     absolutizeSiteUrls(container, input.base);
     localizeFragmentLinks(container);
     stripInteractiveShells(container);

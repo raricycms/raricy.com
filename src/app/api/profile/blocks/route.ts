@@ -14,7 +14,7 @@ import { getProfilePageData, saveProfileBlocks } from '@/lib/profile-service';
 // 【刻意不判禁言】改的是**自己的展示数据**，与剪贴板 / 投票同族（`clipboard-bot.md`
 // 与 `vote-bot.md` 写明理由：禁言是「不能说话」，不是「不能收拾自己的东西」）。
 // 别按「其余 core+ 写口都判禁言」的直觉在这里补一行 `isCurrentlyBanned` —— 那样被禁言
-// 用户连自己主页都改不了，且没有任何测试会变红。口径见 docs/architecture.md §6.21。
+// 用户连自己主页都改不了，且没有任何测试会变红。口径见 docs/guide/个人主页使用指南.md。
 //
 // 【客户端校验不是防线】请求可以被手工构造，saveProfileBlocks 内部会再跑一遍
 // normalizeBlocks + 归属/可见性校验。

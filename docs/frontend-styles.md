@@ -807,6 +807,11 @@ ReactiveMD 正文由上游 `reactive-md/screen.css` 提供基础版式，站点�
 `.md-document`，也不该被博客的排版口径污染。**不改上游 CSS，不写全局
 `.md-document` 规则。**
 
+> 聊天正文是另一条受限路径：用 `reactive-md/react/minimal` 与
+> `reactive-md/styles/minimal.css`（无图表 / 控件样式，聊天策略本来也不允许这些节点），
+> 站点规则限定在 `src/styles-scss/pages/chat/_chat-rmd.scss` 的 `.chat-msg__md` 下。
+> 两边的覆写互不共享，别把博客的 `.reactive-document` 口径套到聊天上（反之亦然）。
+
 - **令牌映射**：上游的 `--ink` / `--surface` / `--accent` 等在根上映射到站点
   `--color-*` 令牌，`--document-bg` 设为透明（正文卡由页面提供底色）。颜色因此
   自动跟随主题，不另写一套明暗配方。
@@ -820,10 +825,11 @@ ReactiveMD 正文由上游 `reactive-md/screen.css` 提供基础版式，站点�
 - **打印**：上游 `screen.css` **不含 `@page`**，`print.css` 含；`ReactiveDocument.tsx`
   只引 `screen.css`，打印规则住站点 SCSS（避免全局 `@page` 连坐整站打印）。
   打印隐藏交互控件（`.vote-embed-submit`、`.vote-embed-link`），保留静态正文与投票结果。
-- **引用外壳**：`.site-embed--image`（历史 data 位图的宿主 `<img>`）与
-  `.site-embed-clipboard-inline`（Markdown 子剪贴板的一层内联）都只做宽度 / 圆角 /
-  外壳间距；内部正文仍由 `.reactive-document` 或子剪贴板自己的 Markdown 外壳负责。
-  不要把 `.blog-content-container` 的卡片底色 / 内距复制到这两个选择器上。
+- **引用外壳**：`.site-embed--image`（历史 data 位图的宿主 `<img>`）与 `.site-embed__status`
+  （引用取不到时的占位块）只做宽度 / 圆角 / 外壳间距。**剪贴板引用没有自己的外壳**：
+  子剪贴板直接交给文档渲染器，版式由 `.reactive-document .md-document` 那条统一接管，
+  和父正文连续 —— 不要再给它引入卡片底色或内距。不要把 `.blog-content-container` 的卡片
+  底色 / 内距复制到这些选择器上。
 
 ## 8. 实现约定与验收
 

@@ -117,7 +117,19 @@ function liftInlineDocuments(
   return changed ? result : nodes;
 }
 
-/** 修正宿主节点调用形态并拆开块级子文档；无相关节点时原样返回同一份文档。 */
+/**
+ * 修正宿主节点调用形态并拆开块级子文档；无相关节点、且配置身份已清时原样返回同一份文档。
+ *
+ * 【为什么抹掉 `componentConfigKey`】聊天文档由**标准配置**的 `compileLocal` 编译，
+ * 而这里用 `react/minimal` 渲染，两端配置键必然不同；上游 `LocalDocumentView` 会在
+ * 键不一致时报 `local.extension.config-mismatch` 并降级。聊天的能力收缩由
+ * `document-policy` 在编译后完成（只留 Markdown / 公式 / 适配器生成的宿主节点），
+ * 所以渲染器装了哪些组件与文档无关，这个身份对聊天没有校验价值。
+ *
+ * ⚠️ 这等于**主动跳过**上游的「编译配置 / 渲染配置一致」护栏：若将来 policy 放开
+ * 组件节点，必须改回携带真实配置身份（或让编译侧改用同一套 config），否则组件
+ * 会按错误配置静默降级。
+ */
 export function normalizeChatRmdDocument(
   document: LocalDocument,
   hostData?: LocalHostData
@@ -128,8 +140,9 @@ export function normalizeChatRmdDocument(
     part += 1;
     return part;
   });
-  // Chat policy keeps Markdown and the host-rendered chat-ref nodes. Clearing the
-  // compiler preset identity lets the minimal React package render that subset.
+  // 无变化时保持输入身份：ChatRmdDocument 按文档身份重建 runtime，多造一个对象
+  // 会在 hostData 换新引用时白重建一次。
+  if (liftedNodes === document.nodes && document.componentConfigKey === undefined) return document;
   return { ...document, componentConfigKey: undefined, nodes: liftedNodes };
 }
 

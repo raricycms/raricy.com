@@ -1,4 +1,4 @@
-﻿MathJax font files
+MathJax font files
 ==================
 
 The WOFF files in this directory are MathJax fonts distributed under the Apache License, Version 2.0. The upstream project is MathJax (https://github.com/mathjax/MathJax).

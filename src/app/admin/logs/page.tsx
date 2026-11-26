@@ -32,7 +32,7 @@ import {
 //                    也**不设时间窗** —— 排查陈年问题要能翻到任意久之前。
 //
 // ⚠️ 【刻意不抹当事人】本页**不**套 /audit 那套 hideTarget 脱敏：匿名评论的处置日志
-// 在这里照常显示真实当事人。这正是本页要 admin 档的原因（见 docs/architecture.md §6.16
+// 在这里照常显示真实当事人。这正是本页要 admin 档的原因（见 docs/agent-domain-rules.md §2.20
 // 与 audit-service.ts 头部：CLI/运维看真身，公示面不看）。别「为了统一」把脱敏搬过来。
 //
 // 档位：父 /admin 母版只把 core 门，这一页自己 requireAdmin()（admin + owner）。

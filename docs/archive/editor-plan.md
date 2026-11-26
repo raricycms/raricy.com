@@ -1,7 +1,9 @@
 # 编辑器换代方案（Vditor → CodeMirror 6）
 
+> 历史归档。下文保留设计或验收当时的记录。现行说明见 `docs/guide/编辑器使用指南.md`。后续事项见 `docs/plan/README.md`。
+
 > **后续目标更新（2026-11-01）：** 共用编辑器的统一预览、自动格式标注及
-> Insert / Components / 上传图片 / 插入引用四入口重整，见 `docs/plan/reactive-md-unification-plan.md`。
+> Insert / Components / 上传图片 / 插入引用四入口重整，见 `docs/archive/reactive-md-unification-plan.md`。
 > 本文保留 CodeMirror 6 迁移记录；就地装饰、表格辅助和大纲仍是独立后续候选。
 
 > **状态：M0 / M1 / M2 已实施（2026-10）；M3 未实施；M4 只交付了导出**

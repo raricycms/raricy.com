@@ -1161,7 +1161,7 @@ export async function chatGenerationAuthFailure(res: Response): Promise<Response
 }
 
 /**
- * 读体窗口的二次鉴权（complete / chunks / cancel 共用；GET 无 body 不需要）。
+ * 读体窗口的二次鉴权（create / complete / chunks / cancel 共用；GET 无 body 不需要）。
  *
  * 首次 requireChatUser 之后到读完请求体之间，会话可能失效，或账号被禁言 / 降权 /
  * 屏蔽大区。读体完成后必须复核，不能拿首次的 user 快照继续操作任务：

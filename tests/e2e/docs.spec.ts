@@ -21,7 +21,7 @@ import { DOC_ENTRIES, DOC_GROUPS, GUIDE_CANONICAL_ROUTES, docHref } from '../../
 const ZH = DOC_ENTRIES.find((e) => /[一-龥]/.test(e.slug))!;
 const ASCII = DOC_ENTRIES.find((e) => !/[一-龥]/.test(e.slug) && !GUIDE_CANONICAL_ROUTES[e.slug])!;
 
-test('索引页列出全部登记文档，并按三组分区', async ({ page }) => {
+test('索引页列出全部登记文档，并按受众与用途分组', async ({ page }) => {
   await page.goto('/docs');
 
   await expect(page.locator('.docs-item')).toHaveCount(DOC_ENTRIES.length);
@@ -36,6 +36,18 @@ test('中文 slug 的文档打得开（URL 转义往返）', async ({ page }) =>
 
   expect(resp?.status()).toBe(200);
   await expect(page.locator('.docs-content h1')).toHaveText(ZH.title);
+});
+
+test('旧计划书签保留章节并进入归档，旧架构专题锚点提供现行入口', async ({ page }) => {
+  await page.goto('/docs/plan/test-suite-audit#sec-8');
+  await expect(page).toHaveURL(/\/docs\/archive\/test-suite-audit#sec-8$/);
+  await expect(page.locator('[id="sec-8"]')).toBeVisible();
+
+  await page.goto('/docs/architecture#sec-6.17');
+  const topic = page.locator('tr').filter({ has: page.locator('[id="sec-6.17"]') });
+  await topic.getByRole('link').click();
+  await expect(page).toHaveURL(/\/docs\/agent-domain-rules#sec-2\.23$/);
+  await expect(page.locator('[id="sec-2.23"]')).toBeVisible();
 });
 
 test('六份功能指南的旧文档地址跳转至规范页，正文和返回上下文保留', async ({ page }) => {

@@ -3,7 +3,6 @@ import { getClip } from '../clipboard-query';
 import { getVoteDetail } from '../vote-service';
 import { getPublicFavorite } from '../favorite-service';
 import { MAX_CARD_ITEMS, isFavoriteId } from '../favorite-refs';
-import { parseContentFormat } from '../content-format';
 import { rateLimit, RULES } from '../rate-limit';
 import type { ReferenceMode, ReferenceReader, ResolvedReference } from './ref-types';
 
@@ -35,23 +34,16 @@ export function createServiceReferenceReader(
         if (!result.ok) {
           return { status: result.reason === 'forbidden' ? 'forbidden' : 'error' };
         }
-        const clip = result.clip as typeof result.clip & { format?: unknown };
-        const format = parseContentFormat(clip.format);
-        if (!format) return { status: 'error' };
-        return {
-          status: 'ready', title: clip.title, format, content: clip.content,
-          version: clip.version,
-          // payload 只放渲染方真读的字段（标题另由 title 带，链接按 ref 现拼）：
-          // 原先的 `href` 全仓零读者（R3-140）。
-          payload: { title: clip.title },
-        };
+        const clip = result.clip;
+        // 只交正文：渲染方一律内联内容，没有「格式不支持就退化」的分支可走。
+        return { status: 'ready', content: clip.content, version: clip.version };
       }
       if (slot.kind === 'vote') {
         if (slot.ref.length !== 9) return undefined;
         const vote = await getVoteDetail(slot.ref, viewer!.id);
         if (!vote) return { status: 'error' };
         return {
-          status: 'ready', title: vote.title,
+          status: 'ready',
           payload: {
             // 不写 `id`：parseVoteData 只读下面这些展示字段，投票 id 由宿主 ref 决定（R3-140）。
             title: vote.title, is_locked: vote.isLocked,
@@ -68,7 +60,7 @@ export function createServiceReferenceReader(
       const result = await getPublicFavorite(slot.ref);
       if (!result.ok) return { status: 'error' };
       return {
-        status: 'ready', title: result.favorite.title,
+        status: 'ready',
         payload: {
           title: result.favorite.title, authorName: result.favorite.authorName,
           count: result.favorite.items.length,

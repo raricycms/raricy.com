@@ -155,9 +155,11 @@ export async function expandDocumentReferences(document: LocalDocument, options:
   const nodes = document.nodes.flatMap((node) => rewrite(node));
   await Promise.all(Object.values(hostData).map(async (data) => {
     const content = data.content;
+    // 源码不随 hostData 下发：子文档是唯一产物，正文只以编译结果的形式出现。
     delete data.content;
-    if (data.kind !== 'clipboard' || data.status !== 'ready' || data.format !== 'markdown' || !content) return;
-    const inline = await prepareInlineMarkdownDocument(content);
+    // 正文行缺失（undefined）才没有可显示的东西；空正文照常编成空文档。
+    if (data.kind !== 'clipboard' || data.status !== 'ready' || typeof content !== 'string') return;
+    const inline = await prepareInlineClipboardDocument(content);
     if (inline) Object.assign(data, inline);
   }));
   return { document: { ...document, nodes }, hostData };
@@ -169,7 +171,13 @@ const inlineCache = new BoundedLruCache<ReferenceDocument | null>({
   sizeOf: (value) => JSON.stringify(value).length,
 });
 
-export async function prepareInlineMarkdownDocument(content: string): Promise<ReferenceDocument | null> {
+/**
+ * 把一条剪贴板正文编成**内联子文档**（正文按原样显示，不走链接卡片）。
+ *
+ * 子文档独立编译、按 `external` 适配：它自己再写的 `[@8位]`（以及投票、收藏夹）
+ * 保持字面量，图床与音频仍按地址渲染 —— 与「引用不递归」同一条边界。
+ */
+export async function prepareInlineClipboardDocument(content: string): Promise<ReferenceDocument | null> {
   const cached = inlineCache.get(content);
   if (cached !== undefined) return cached;
   let artifact: ReferenceDocument | null = null;
@@ -177,7 +185,7 @@ export async function prepareInlineMarkdownDocument(content: string): Promise<Re
     const result = compileSource(content);
     if (result.ok) artifact = await expandDocumentReferences(result.document, { mode: 'external' });
   } catch {
-    // An unreadable child still has a link card in the parent document.
+    // 编译抛错只影响这一条引用：渲染方给失败占位，不影响父正文。
   }
   inlineCache.set(content, artifact);
   return artifact;

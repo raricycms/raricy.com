@@ -137,7 +137,7 @@ export async function restoreImage(
     // /api/images/<id>/raw），而这里把 targetUserId 写成了图片作者的真身。**一旦将来给
     // 图片恢复开一条网页端（public）写路径，公开详情页就会同屏印出「图片 id + 作者真名」，
     // 把那条匿名评论对回作者。** 那天必须给这条日志补 hideTarget（或给 /audit 的渲染
-    // 加 image 类的匿名判据）。见 docs/architecture.md §6.16。
+    // 加 image 类的匿名判据）。见 docs/agent-domain-rules.md §2.20。
     await logAdminAction({
       action: 'restore_image',
       adminId: actor.id,

@@ -5,7 +5,7 @@
 范围：`src/lib` 根目录下全部 `*.ts`，不含 `md-editor/`、`reactive/` 等子目录。
 
 - 文件数：150
-- 合计行数：32650（含空行）
+- 合计行数：32766（含空行）
 
 | 文件 | 行数 | 导出数 | 一句话职责 |
 | --- | ---: | ---: | --- |
@@ -46,7 +46,7 @@
 | `chat-bus.ts` | 173 | 8 | 讨论 SSE 的进程内订阅注册表（服务端专用） |
 | `chat-generation-reducer.ts` | 353 | 13 | 讨论流「生成中临时预览」的纯状态机（零 React / 零 DOM） |
 | `chat-generation-shared.ts` | 136 | 12 | 机器人生成任务的跨端协议（零运行时依赖） |
-| `chat-markdown.ts` | 44 | 1 | 讨论正文的 Markdown → 安全 HTML |
+| `chat-markdown.ts` | 48 | 1 | 讨论正文的 Markdown → 安全 HTML（R1 回退路径） |
 | `chat-message-interaction.ts` | 144 | 9 | 讨论消息的指针交互判据（零依赖） |
 | `chat-presence.ts` | 78 | 4 | 「谁正在看哪个会话」（服务端专用，进程内） |
 | `chat-service.ts` | 75 | 6 | 讨论域对外 API 聚合层（纯 barrel，实现在 src/lib/chat/） |
@@ -67,7 +67,7 @@
 | `daily-quote.ts` | 154 | 20 | 客户端与服务端共用的每日一言词表、长度与展示契约；不引入数据库或 Node 模块。 |
 | `db-time.ts` | 83 | 6 | 写库时间戳的统一约定 |
 | `db.ts` | 43 | 1 | （文件头未注明职责） |
-| `docs-catalog.ts` | 665 | 14 | 站内文档页（/docs）的**登记表**与 URL 口径 |
+| `docs-catalog.ts` | 693 | 14 | 站内文档页（/docs）的**登记表**与 URL 口径 |
 | `docs-service.ts` | 218 | 4 | 把一份登记在案的文档读出来、渲染成 HTML（服务端专用） |
 | `emoji-faces.ts` | 90 | 9 | 内置「黄脸表情」合集的清单与地址 |
 | `favorite-refs.ts` | 92 | 8 | 收藏夹引用语法 `[@<六位收藏夹ID>]` 的**纯逻辑**（id 词汇 + 盖码） |
@@ -90,7 +90,7 @@
 | `frame-refs.ts` | 263 | 15 | 头像框的**词汇表**（白名单、解析、人话标签、到期判定） |
 | `frame-service.ts` | 707 | 22 | 头像框素材域（扫盘 / 缓存 / 查表）+ 持有与装备 + 判定唯一出口（server-only） |
 | `frame-shop-service.ts` | 313 | 5 | 鱼干商城：用鱼干**租**头像框（server-only） |
-| `game-catalog.ts` | 282 | 14 | 玩具清单只描述陈列方式（标题 / 简介 / 分类 / 模式 / 图标 / 归属合集）；引擎按页面加载， |
+| `game-catalog.ts` | 366 | 16 | 玩具清单只描述陈列方式（标题 / 简介 / 分类 / 模式 / 图标 / 归属合集）；引擎按页面加载， |
 | `guard.ts` | 76 | 4 | （文件头未注明职责） |
 | `http-cache.ts` | 87 | 4 | 原始字节路由（图床 / 音频床）共用的**条件请求**词汇 |
 | `https-guard.ts` | 204 | 9 | 「练手盘与玩具区只走 https」的判据（零 import，Edge 中间件可直接吃） |

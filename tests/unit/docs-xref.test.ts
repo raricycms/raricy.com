@@ -165,10 +165,12 @@ function collectDocs(): string[] {
 function candidates(raw: string, fromFile: string): { path: string | null; ambiguous: boolean } {
   const sibling = path.resolve(path.dirname(fromFile), raw);
   const fallback = path.resolve(ROOT, raw);
-  if (fs.existsSync(sibling)) {
-    return { path: sibling, ambiguous: fallback !== sibling && fs.existsSync(fallback) };
+  // 只认本仓文件。独立 worktree 的上级也可能恰好有同名 README。
+  const inRepo = (candidate: string) => candidate.startsWith(ROOT + path.sep) && fs.existsSync(candidate);
+  if (inRepo(sibling)) {
+    return { path: sibling, ambiguous: fallback !== sibling && inRepo(fallback) };
   }
-  if (fs.existsSync(fallback)) return { path: fallback, ambiguous: false };
+  if (inRepo(fallback)) return { path: fallback, ambiguous: false };
   return { path: null, ambiguous: false };
 }
 
@@ -288,19 +290,21 @@ describe('文档交叉引用', () => {
     expect(ANCHORS.length).toBeGreaterThan(10);
   });
 
-  it('每个引用的路径都解析得到真实文件', () => {
-    // 语料报告是**构建产物**（gitignored，见迁移计划 M1），仓库里本来就没有文件；
-    // 它出现在文档里是「跑完命令会得到什么」，不是指向仓库中的现成文件。
-    const GENERATED_REPORTS = new Set([
-      'reports/reactive-corpus.md',
-      'reports/reactive-corpus.json',
-    ]);
-    const broken = REFS.filter(
-      (r) => r.abs === null && !GENERATED_REPORTS.has(r.raw.replace(/\\/g, '/'))
-    ).map(
-      (r) => `${path.relative(ROOT, r.from)}:${r.line} → \`${r.raw}\``
-    );
-    expect(broken, `这些文档引用了不存在的文件：\n  ${broken.join('\n  ')}`).toEqual([]);
+  it('文档引用指向仓库材料或已知的生成物', () => {
+    const generated = new Set(['reports/reactive-corpus.md', 'reports/reactive-corpus.json']);
+    const broken = REFS.filter(({ raw, abs }) => {
+      if (generated.has(raw)) return false;
+      // 开发机上的本地调研文件也可能存在，干净检出和站内读者却拿不到。
+      return !abs || path.relative(ROOT, abs).split(path.sep)[0] === 'reports';
+    }).map((ref) => path.relative(ROOT, ref.from) + ':' + ref.line + ' → ' + ref.raw);
+    expect(broken).toEqual([]);
+  });
+
+  it('架构总览引用长期维护的说明', () => {
+    const architecture = path.join(DOCS_DIR, 'architecture.md');
+    const plans = path.join(DOCS_DIR, 'plan') + path.sep;
+    const refs = REFS.filter((ref) => ref.from === architecture && ref.abs?.startsWith(plans));
+    expect(refs.map((ref) => ref.raw)).toEqual([]);
   });
 
   it('裸名引用没有歧义（同目录与根下都有同名文件时必须写明路径）', () => {

@@ -5,7 +5,7 @@
 先按功能名、路径或符号搜索，读取相关边界与小节，再按需要查看链接的源码和文档。
 业务约束变更时更新对应小节，不把单次故障经过重新追加到根指引。
 
-## 跨模块边界
+## 1. 跨模块边界
 
 以下规则按所改功能适用；涉及权限、净化、账户或推送时查看对应条目。
 
@@ -29,7 +29,7 @@
   **K 线同样是展示**：`GET /api/fish/trade/candles`、图上的蜡烛、以及页面自己把
   展示价「并进最后一根」的那点算术，一律不得作为成交价 —— 它们只是另一份渲染数据。
   （e2e 里有一条把两者刻意拆开再下一单。）
-  展开见 `docs/architecture.md` §6.13。
+  交易与结算见本文 §2.7。
 - **K 线的 `openTime` 是第三把钟**：交易所给的真实 UTC 毫秒，与 `Date.now()` 同一把尺子，
   但**不是**库内那套「UTC+8 墙上时间贴 Z」——两者绝不能相减。按本站钟面显示走
   「加 `SITE_TZ_OFFSET_MS` 再 `getUTC*`」。db-time-guard 抓不到这条（它只匹配
@@ -52,6 +52,8 @@
 - **OAuth 三条限频不在 `RULES` 里**（内联在 `oauth/*/route.ts`）—— 做全站限频审计时最容易漏。
 - **档位阶梯：页面与接口必须同档（每层都自己判），但入口不跟着藏。** 顶栏「讨论」与首页讨论卡
   对所有人渲染是**站长明确要的**，别当「自相矛盾」顺手藏回去；签到是正例（三处判定位见 §8）。
+  **唯一例外**是玩具首页的「鱼干练手盘」卡：站长明确要求仅 core+ 可见（清单里的
+  `gate: 'fish-trade'`，判据是 `src/lib/game-catalog.ts` 的 `gameVisibleTo()`），别按本条把它放回去。
   **⚠️ 这条只管「档位」—— 专注模式是例外，它用不了的东西整段不渲染。** 判据是
   「他还能不能自己把这一块打开」：档位不够是「你现在不配用」（core 点签到撞 403 是就地
   403，不是功能下线），所以入口照给；专注模式是**本人一键可关的账号偏好**（设置页就在
@@ -104,36 +106,36 @@
   对接），其中每一份都复述了限频 / 配额数值；`docs/guide/` 的图床 / 收藏夹 / 每日一言 /
   聊天气泡 / 表情包指南同样复述。清单与口径见 `docs/README.md`「bot/」节，不同步就是下一次 drift。
 
-## 关键约定
+## 2. 子系统修改入口
 
 修改某个子系统时，只读对应小节及需要的源码说明；不要求通读本文或链接的整份文档。
 
-### 数据与时间
+### 2.1 数据与时间
 
 `src/lib/db-time.ts` 头部（「UTC+8 墙上时间贴 Z 标签」的来龙去脉、反推证据、混钟后果）。
 密码哈希与历史 werkzeug **双向互通**（用户无需重设密码）见 `docs/architecture.md` §1/§6.1。
 
-### 认证与角色
+### 2.2 认证与角色
 
 公开注册必须提供有效一次性邀请码，直接创建 core 并登录；历史 user 可补码认证。
 取消成员资格不撤销账号安全、余额/流水、转出与既有仓位平仓能力，不能新开仓或租商品。
 
-`docs/architecture.md` §8（角色阶梯、四个 guard、`/admin/*` 的分档）与 §6.1（会话 cookie、
+`docs/access-control.md` §2（角色阶梯、页面鉴权入口、`/admin/*` 的分档）与 `docs/architecture.md` §6.1（会话 cookie、
 登出只有 `POST /api/auth/logout`）。申诉闸门见 `src/lib/admin-appeal-service.ts` 头部。
 
-### CSRF / 中间件
+### 2.3 CSRF / 中间件
 
-`docs/architecture.md` §6.4（三源并集、只校验写方法；外加练手盘与玩具区的协议闸 ——
-它排在 GET 早退**之前**，所以别以为「中间件只管写请求」）+ `docs/deploy.md` §6/§13（nginx 的
+`src/middleware.ts` 校验写方法的来源。练手盘与玩具区另有协议闸，
+它排在 GET 早退**之前**。反代设置见 `docs/deploy.md` §6/§13（nginx 的
 `Host` 与 `X-Forwarded-Host` 都没透传就会全站 POST 403）。鱼干市场的双门见
 `src/app/api/fish/market/_auth.ts` 与 `docs/bot/fish-bot.md`。
 
-### iframe 嵌入
+### 2.4 iframe 嵌入
 
 `src/app/components/FrameBuster.tsx` 头部（同站/跨站判定、两段跳出与那个 500ms 的含义、
 为什么两段都失效时不再找「更狠的跳法」、为什么故意不记忆）。
 
-### 数据库迁移
+### 2.5 数据库迁移
 
 `docs/deploy.md`「修改 schema 后」节 + `prisma/migrations/3_fish_integer_units/migration.sql`
 头部。不用 `prisma migrate`（`schema.prisma` 头禁了），走 `npm run migrate`
@@ -144,9 +146,9 @@
 缓存，不读写数据库快照。旧源码修订升级与公开索引修复由独立命令执行，不能再次绑回
 SQL 入口。`status` / `verify` 仍只读。
 
-### 鱼干写路径
+### 2.6 鱼干写路径
 
-`docs/architecture.md` §6.3 是主副本（**§6.3.1 是「这里曾经跨进程」的历史注记** ——
+`docs/architecture.md` §6.3 说明事务边界（
 账户微服务已于 2026-09 搬进站内，别再照「远端 / 补偿 / 账本」的旧形状写新代码）。
 各文件头分别讲自己那一段：**`fish-service.ts` 的 `postEntry`（唯一记账内核）**、
 `fish-idempotency.ts`（**哪些操作才登记幂等**的判据）、`fish-transfer-service.ts`
@@ -160,9 +162,9 @@ SQL 入口。`status` / `verify` 仍只读。
 **新增任何鱼干写路径时，在它的用例末尾调一次**。别自己写 `update` + `create` 绕过
 `postEntry`。
 
-### 鱼干练手盘
+### 2.7 鱼干练手盘
 
-`docs/architecture.md` §6.13 是主副本；各文件头讲自己那一段：`src/lib/market-service.ts`
+行情背景见 `docs/market-design-notes.md`。实现入口为 `src/lib/market-service.ts`
 （**一个事务、没有补偿**、开仓的幂等靠 `open_key` 唯一约束而非独立幂等记录、
 平仓为何不需要幂等键、最小投入为何是 1 条）、
 `src/lib/market-math.ts`（**结算公式的唯一实现** —— 服务端真结算与页面「预计到手 / 涨跌 /
@@ -262,22 +264,22 @@ SQL 入口。`status` / `verify` 仍只读。
     收益着色要乘方向（`changePercent` 是**行情**涨跌、不含方向，空头它为正时是在亏）。
     写反的话，一个刚开的健康空头会被下一轮**立刻强平**，而日志只有一行正常强平。
 
-### 软删除
+### 2.8 软删除
 
-`docs/architecture.md` §8（七张表的字段清单、软删即抹掉原文与附件）；
+`docs/access-control.md` §1；
 「已删除且无回复的评论从楼中楼隐藏」在 `docs/bot/comment-bot.md` §6.1。
 
-### 顶栏两个指示器（铃铛数字 + 讨论红点）
+### 2.9 顶栏两个指示器（铃铛数字 + 讨论红点）
 
 `src/lib/topbar-bus.ts` 头部（投递语义、单进程前提、调用方纪律）。
 客户端侧在 `public/static/js/core/base.js`：`applyTopbar` 的 merge 语义与两档兜底轮询
 （流连着 60s、没连上 20s —— **改间隔等于改 SSE 失效时的最坏表现**）。已知缺口（由兜底
 收敛）：`softDeleteMessage` 减少未读时不推、`/notifications` 列表页本身不实时。
 
-### 讨论与通知的关系
+### 2.10 讨论与通知的关系
 
 `src/lib/chat-service.ts` 头部（讨论未读口径、红点三道闸门、依赖方向）。
-`/admin/*` 的分档见 `docs/architecture.md` §8；角色的权限分档（**涉及 admin / owner 的
+`/admin/*` 的分档见 `docs/access-control.md` §2；角色的权限分档（**涉及 admin / owner 的
 任何方向仅站长**）见 `src/lib/admin-user-service.ts` 的 `setRole`；@ 提及的逐条闸门见
 `chat-service.notifyChannelMentions`。
 
@@ -286,14 +288,14 @@ SQL 入口。`status` / `verify` 仍只读。
 `src/lib/chat-presence.ts`（客户端报到 + 讨论流连接 + TTL，判不出就照常发）。这不是「讨论未读
 混进铃铛」—— 铃铛有数 = 有 @ 且他还没看那个会话。
 
-### 限频
+### 2.11 限频
 
 `docs/architecture.md` §6.5 + `src/lib/rate-limit.ts` 的 `RULES`（多数配额的唯一权威）。
 对外复述清单见 `docs/README.md` 的「bot/」节。单进程语义，多实例需换 Redis。
 
-### 文件落盘
+### 2.12 文件落盘
 
-`docs/architecture.md` §6.6（六个存储域 + env 覆盖 + 读取入口 + 内容判定那条）+
+`docs/deploy.md` §2（部署目录及环境覆盖）+
 `src/lib/image-sniff.ts` 头部（**零依赖**：magic bytes / SVG 文本头 / HEIC·AVIF·MOV 的
 ftyp 品牌 / 声明归一化 / `planImageUpload` —— 服务端与浏览器共用同一份）+
 `src/lib/image-upload.ts` 头部（`sanitizeFilename` 的白名单防线、配额常量的来由）。
@@ -304,15 +306,15 @@ ftyp 品牌 / 声明归一化 / `planImageUpload` —— 服务端与浏览器�
 `src/lib/audio-refs.ts` 头部是 `[@音频/<ID>]` 的全部口径。
 ⚠️ `/api/audio/[id]/raw` 的 **Range 是硬需求不是优化**：Safari 会先发
 `Range: bytes=0-1` 探测，拿不到 `206` 直接不播；而仓库里那两处流是无界 SSE、
-刻意没有 `Content-Length`，形状正好相反，**不可复用**。见 §6.15。
+刻意没有 `Content-Length`，形状正好相反，**不可复用**。见本文 §2.16。
 
-### Markdown / 内容渲染
+### 2.13 Markdown / 内容渲染
 
-`docs/architecture.md` §6.7（各条管线的分工、五道防线）+ `docs/guide/内容引用语法指南.md`
-（`[@8位/9位/10位]` 与「博客/讨论走 ReactiveMD、评论走 rich-text」的差别）。故事是**服务端**
-渲染（`story-service.ts`，按可信输入处理）——见 `docs/guide/story-module.md`。
+`docs/content-rendering.md`+ `docs/guide/内容引用语法指南.md`
+（`[@8位/9位/10位]` 及博客、评论、讨论各自的引用规则）。故事是**服务端**渲染
+（`story-service.ts`，按可信输入处理）——见 `docs/guide/story-module.md`。
 
-**ReactiveMD 渲染器（2026-10）**：主副本是 `docs/architecture.md` §6.23，文件头在
+**ReactiveMD 渲染器（2026-10）**：主副本是 `docs/content-rendering.md` §1，文件头在
 `src/lib/reactive/`（`read-render.ts` 决策、`diagnostics.ts` 回退、`ref-adapter.ts`
 引用、`compile.ts` 缓存）。三条不能破：reactive 源码**永不**交给旧 Markdown 解析器
 （认不出或编译失败 → `unavailable`；可读正文由本次请求编译）；`<site-embed>` 标签与
@@ -322,20 +324,17 @@ ftyp 品牌 / 声明归一化 / `planImageUpload` —— 服务端与浏览器�
 编译失败/认不出 → `unavailable`），旧 Markdown 回退管线已整条退役（`REACTIVE_MD_MODE`
 不再被读取）；别在页面里另判模式或恢复第二套渲染器。
 
-**讨论正文（2026-11）**复用同一引擎但有独立边界：`chat-rmd/options`（关闭 CSS/JS/扩展
-HTML + 节点/解析/深度预算）、`chat-rmd/document-policy`（Markdown + 公式 + 静态展示组件
-白名单 alert/badge/panel/card/section/grid/text + `div align`；交互组件/图片/表达式/其余 HTML 降级源码，表达式在编译前按字面文本掩码，final 组件属性错误用 streaming 局部恢复）、`chat-rmd/compile-manager`（每页一个 Worker、多文档队列、
-同 key 最新 revision、离屏不排队、只缓存 final；Manager/Worker 按 viewerScope 跨页面复用，最后租约
-释放 10 分钟后回收，切账号/登出立即清空）、`chat-rmd/references`（AST → `chat-ref`
-唯一 slot + hostData，宿主二次校验字段）。**不要把博客的 URL 策略、`site-embed` 或
-`read-render.ts` 直接接到聊天**：聊天链接只允许站内/http(s)/mailto（外链 nofollow +
-新标签），图片只允许受控本站前缀，宿主节点只信适配器登记的 slot。R1 回退路径是恢复
-`ChatMarkdown` 调用；`chat-markdown.ts` 的单测同时保护评论旧管线，不要整份删除。
+讨论渲染在 `src/lib/chat-rmd/`：`options.ts` 限制解析预算与能力，
+`document-policy.ts` 保留 Markdown、公式与静态展示组件白名单，未支持组件局部回退源码；
+`compile-manager.ts` 调度每页 Worker，Manager/Worker 按 viewerScope 跨页面复用，最后租约释放
+10 分钟后回收，切账号/登出立即清空；`references.ts` 生成 `chat-ref` 槽位，8 位剪贴板最多内联
+一条（Markdown 与 ReactiveMD 都内联），音频媒体解码错误保留播放器。维持聊天自己的 URL、
+图片和宿主数据策略。正文读取失败时保留源文。发布回退可恢复 `ChatMarkdown` 调用；评论继续沿用 `rich-text.ts`。
 
-### 表情包
+### 2.14 表情包
 
 `src/lib/sticker-refs.ts` 头部（正则纪律与分隔符选择）+ `sticker-service.ts` 头部
-（扫盘缓存三层）+ `docs/architecture.md` §6.6（raw 路由按字节复核、拒绝 SVG）。
+（扫盘缓存三层）+ 字节路由读取前再次复核格式，拒绝 SVG。
 其机制（`sendWith(token, { keepDraft: true })`，以及为什么正文必须从参数来而不是读 state）
 在 `src/app/chat/ChatApp.tsx` 的 `sendWith` 上方。
 
@@ -364,7 +363,7 @@ HTML + 节点/解析/深度预算）、`chat-rmd/document-policy`（Markdown + �
   无上游校验的运行时目录；黄脸是构建期从锁版本 npm 包生成、且只以 `<img src>` 引用。
   复制脚本里有安全哨兵（脚本 / 事件属性 / 外链 → 构建失败）盯着，理由写在它文件头。
 
-### 用户名片
+### 2.15 用户名片
 
 `[@用户/<用户名>]` —— 讨论区与评论区里的一枚行内名片（带头像框的头像 + 用户名，
 点进 `/u/<id>`）。`src/lib/user-refs.ts` 头部是全部口径，`docs/architecture.md` §6.7
@@ -387,9 +386,9 @@ HTML + 节点/解析/深度预算）、`chat-rmd/document-policy`（Markdown + �
 （名字可枚举，id 不可）。句柄是 id 还是名字由**实际命中了哪一列**决定，
 别改成拿 UUID 正则去认 —— id 不保证是 UUID。
 
-### 音频床
+### 2.16 音频床
 
-`docs/architecture.md` §6.15 是主副本；各文件头讲自己那一段：`audio-upload.ts`
+使用与配额见 `docs/guide/音频床使用指南.md`。实现入口为 `audio-upload.ts`
 （嗅探与别名归一化）、`audio-service.ts`（**独立配额聚合**）、`audio-refs.ts`
 （`[@音频/<ID>]`，**零 import** —— 要被 chat-shared 拉进客户端包）。
 
@@ -398,19 +397,15 @@ HTML + 节点/解析/深度预算）、`chat-rmd/document-policy`（Markdown + �
 让开它，`sticker-service.ts` 的扫盘跳过同名目录。只改一端 = 「面板里挑得出、
 一渲染却变成播放器」。加第三个保留名时照这个走。
 
-**各管线的接入方式不同，别互相照抄**：评论在**净化后**建 DOM（那边白名单里没有 audio，
-与没有 img 同理）；讨论在编译后的 AST 上登记 hostData（不建 DOM、不拼标签串）；博客在
-**源文**上拼标签串（那边白名单本来就允许 audio），
-但**必须配 `maskMarkdownCode`** —— 源文阶段没有 DOM、跳过不了 `CODE`/`PRE`，
-漏了就会在代码块里嵌出一个真播放器。这是博客侧最可能的静默错误。
+评论在净化后的 DOM 中挂载音频；讨论在编译后的 AST 中登记 hostData；博客由引用适配和授权读口准备媒体。
 
 **展开发开上限是 3，不是图片的 50**：单文件 10MB × 配额 50MB ⇒ 一个 core 用户最多
 5 个满额文件；图片每个引用是一次小文件读，音频是 MB 级传输。上限仍是正文长度的
 确定性函数，所以不破坏渲染缓存。
 
-### 画报与鱼干收款码
+### 2.17 画报与鱼干收款码
 
-`docs/architecture.md` §6.8（管线与四条约束）+ `src/lib/poster.ts` 头部（二维码必须矢量、
+`docs/source-design-notes.md` §11+ `src/lib/poster.ts` 头部（二维码必须矢量、
 纠错 H、静默区 ≥4 模块 —— `tests/unit/poster.test.ts` 会真解码）。收银台与收款页共用
 `src/app/fish/PayForm.tsx` 的 `variant` 分支，别另抄一个。
 
@@ -420,7 +415,7 @@ public / link，获赞只累加这些文章，签到为累计天数）。**签�
 才画**（公开布局里有 stats / checkin 块，见 `isProfileCheckinPublic`）；默认布局不展示
 签到，画报就只有文章 / 获赞两格。画报别再自己写一套 count。
 
-### 前端样式
+### 2.18 前端样式
 
 **产品文案只写必要信息**：不要主动添加抒情、装饰性或凑气氛的副标题与“小话”，
 例如“一些思考，一点日常。慢慢写，也慢慢读。”。功能名称、操作提示与状态说明照常保留。
@@ -441,9 +436,9 @@ public / link，获赞只累加这些文章，签到为累计天数）。**签�
   `background` / `cursor` —— 漏一条就静默坏一处：2026-09 名片的框贴图带上不透明底色，
   **连头像一起盖住**。
 
-### 文章对外可见性
+### 2.19 文章对外可见性
 
-`docs/architecture.md` §6.11 / §6.12 + `src/lib/blog-service.ts` 头部（**六条不变量**）。
+公开目录与 sitemap 只枚举 public，link 仅供直达。发文省略可见性时默认为 internal。具体判据见 `src/lib/blog-service.ts` 头部（**六条不变量**）。
 三档 `internal` / `link` / `public`，**只对非 core 的查看者生效** —— core+ 在博客域
 是全读的，所以这一列对任何站内入口都是零行为变化，管理员也**不需要豁免**（那是结构性
 豁免，服务层里没有也不该有 `if (isAdmin)`）。
@@ -477,8 +472,7 @@ public / link，获赞只累加这些文章，签到为累计天数）。**签�
 - **不给 `listBlogs` 加可见性过滤**（它是**站内**列表，调用方都是 core+）。对外列表
   **已经另起了入口**（`listPublicBlogs`）—— 已有一条钉现状的用例，谁加了过滤会当场红。
 - **对外正文仅经公开索引检索**（`public-blog-search.ts`）：不往匿名查询添加原始正文
-  LIKE。FTS 候选、计数、分页与片段都受当前 public 白名单约束。原文/正文语言
-  （`syntax_version`）/可见性/软删除
+  LIKE。FTS 候选、计数、分页与片段都受当前 public 白名单约束。原文、`syntax_version`、可见性与软删除
   改动先由 SQL 触发器撤旧索引，服务写入后重建；历史数据的索引回填与修复使用 `npm run search:rebuild`，
   不把正文编译或索引回填绑回 SQL 迁移入口。
   索引不完整时明确降级为元数据查询，绝不索引引用资源、隐藏数据或失败的 Reactive 源码。
@@ -494,9 +488,9 @@ public / link，获赞只累加这些文章，签到为累计天数）。**签�
 - 分享卡片走 sharp 复用 `poster.ts`，**别改用 `next/og` 的 Satori**（它不读系统字体栈，
   中文要自带字体二进制 = 第二条字体管线）。改版式几何前先跑 `tests/unit/og-card.test.ts`。
 
-### 匿名评论（只做评论区，讨论区不做）
+### 2.20 匿名评论（只做评论区，讨论区不做）
 
-`docs/architecture.md` §6.16 是主副本；`src/lib/anon-identity.ts` 头部是名字表与发号
+`src/lib/anon-identity.ts` 头部是名字表与发号
 （27×26=702，第 703 个是 `You Win #703` —— 前缀表 = 空串 + A–Z，末位 `Zealous Zach`
 正好是字面的 ZZ；**别删掉 Z 那一项**，删了总数掉到 676、边界提前且不再字面成立）。
 
@@ -528,9 +522,9 @@ public / link，获赞只累加这些文章，签到为累计天数）。**签�
   `PUT /api/blogs/:id` 对**缺键**是「这一列不动」—— 否则旧客户端一次普通保存就会把
   作者关掉的匿名**悄悄打开**。同理 `ValidatedBlogData.allowAnonymousComments` 可选 ≠ 必填。
 
-### 收藏夹
+### 2.21 收藏夹
 
-`docs/architecture.md` §6.10 + `src/lib/favorite-service.ts` 头部（**六条不变量**，
+`docs/guide/收藏夹使用指南.md` 和 `src/lib/favorite-service.ts` 头部（**六条不变量**，
 尤其是「private 的 `public_id` 恒为 NULL —— 没有句柄而不是藏起来」、
 「判对外可见永远用 `isPublic` 而非 `publicId != null`」、「不继承站长的越权读」）。
 `[@六位]` 的纯逻辑在 `src/lib/favorite-refs.ts` 头部（为什么卡片是成品 HTML 而不是
@@ -552,9 +546,9 @@ public / link，获赞只累加这些文章，签到为累计天数）。**签�
 管理向右展开，窄屏只滚动操作区，不撑宽整页。选择器里**名称独占一行、两颗创建按钮并排**。
 尺寸与理由见 `docs/frontend-styles.md` §7.2。
 
-### 头像框
+### 2.22 头像框
 
-`docs/architecture.md` §6.14 是主副本；`src/lib/frame-service.ts` 头部是五条不变量
+租用与装备流程见 `docs/guide/头像框使用指南.md`。`src/lib/frame-service.ts` 头部是五条不变量
 （F1–F5），`src/lib/frame-refs.ts` 头部是词汇与到期判定。玩家向见
 `docs/guide/头像框使用指南.md`，**画师向**（站外受托画素材的人）见
 `docs/guide/头像框出图规范.md` —— 那份是**自包含**的，可以整份转发，改几何 / 尺寸口径时
@@ -596,9 +590,11 @@ public / link，获赞只累加这些文章，签到为累计天数）。**签�
 - **`frame list --keys` 是运维唯一能发现「登记了框但忘了传素材」的地方** ——
   那时全站静默不显示框，页面没有任何报错。它同时报租金（`—` = 不零售）。
 
-### 格式转换器（`/tool/convert`）
+### 2.23 格式转换器（`/tool/convert`）
 
-展开见 `docs/architecture.md` §6.17；文件写路径说明在 `src/lib/file-converter/` 各文件头。
+玩家操作与公布的限额见 `docs/guide/格式转换器使用指南.md`。转换方向由 `categories/` 登记，`registry.ts` 依据输入和运行时能力过滤。队列、识别与预算实现位于 `src/lib/file-converter/`。
+
+实现注释中的 roadmap 和 format-converter-implementation 段号对应归档中的历史设计。维护当前行为查下面的实现入口。
 
 **地基：文件字节绝不出站。** 八个能力区（图片 / 音频 / 视频 / 文档 PDF / 表格 / 文本字幕 /
 电子书 / 压缩包）全在浏览器本地转换 —— 没有服务端路由、没有库表、没有限频、没有审计。
@@ -612,11 +608,11 @@ public / link，获赞只累加这些文章，签到为累计天数）。**签�
 - **契约层 `types.ts` 零 import、零运行时代码** —— 它要被 node 单测直接 import。
   共享的运行时常量住 `formats.ts`；词汇（格式表 / 限额）也只有那一份，
   **页面提示与校验读同一个数**。
-- **`LIMITS` 是硬上限，改它要同步页面文案**（与 `RULES` 的纪律同源）。
+- **`LIMITS` 是硬上限，改它要核对玩家指南和页面提示**（与 `RULES` 的纪律同源）。
 - **`planned` 的边不许有 `run`，`live` 的不许缺 `run`** —— `registryProblems()` 静态拦。
   **菜单里看不到 = 那件事现在做不到**，别用「给个能点的入口、点了报错」代替。
 - **`notices[]` 是必填的诚实说明**（有损重编码 / 透明压平 / 元数据不保留 / 动画丢失 /
-  公式只求值 / 文字层被栅格化…）。写不出「这次丢了什么」= 这条边没写完（roadmap §15）。
+  公式只求值 / 文字层被栅格化…）。写不出「这次丢了什么」= 这条边没写完。
 - **引擎资产不入库**（`public/static/converter/`，约 65MB）—— `postinstall` 与 `build`
   经 `scripts/copy-converter-assets.mjs` 生成；少了它音视频 / PDF / OCR **报「引擎加载失败」**。
 - **串输出必须展开再回读**：抽帧类边传的是模式（`frame-%04d.png`）而 exec 按字面名回读，
@@ -626,3 +622,11 @@ public / link，获赞只累加这些文章，签到为累计天数）。**签�
   别把它当便宜操作。
 - **e2e 输出一律按字节魔数断言**（不是「有下载按钮就算过」）：转换出一条空文件 / 错格式，
   按钮照样能点。样本自举（内嵌 1×1 PNG + 现算 WAV），**不往仓库放二进制样本**。
+
+### 2.24 私聊消息保存
+
+`src/lib/saved-message-service.ts` 只保存私聊消息指针。读取时重新检查会话成员身份和消息是否已删除，失去资格后只返回占位。保存箱只对本人开放，独立于可以分享和导出的收藏夹。
+
+### 2.25 浏览器开发工具
+
+`src/lib/dev-tools/` 提供本地编解码和格式处理，页面入口在 `src/app/tool/dev/`。输入数据留在浏览器，界面调用对应工具函数处理，新增功能时核对这个边界。

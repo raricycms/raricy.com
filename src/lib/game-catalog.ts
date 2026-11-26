@@ -40,7 +40,14 @@ export interface GameEntry {
   /** 站外游戏：卡片渲染成普通 `<a>`，新窗口打开。 */
   external?: boolean;
   collectionId: GameCollectionId | null;
-  icon: 'atamas' | 'wand' | 'public-space' | 'quandi' | 'twinshade' | 'lumen' | 'yiwen' | 'hinge' | 'loom' | 'papercut' | 'marbling' | 'motion' | 'rarica';
+  icon: 'atamas' | 'wand' | 'public-space' | 'quandi' | 'twinshade' | 'lumen' | 'yiwen' | 'hinge' | 'loom' | 'papercut' | 'marbling' | 'motion' | 'rarica' | 'rariroom' | 'ling' | 'reality' | 'fish-trade' | 'fish-trade-sim';
+  /**
+   * 可见门槛（缺省 = 含匿名在内所有人都看得到）。取值是**被链接页面自己的可用性口径**：
+   * `'fish-trade'` = 只有能进 `/fish/trade` 的人才看得到（core+ 且未被「屏蔽鱼干练手盘」）。
+   * 清单是编译期数据、不知道看的人是谁，所以这里只写门槛，由页面用 `gameVisibleTo()`
+   * 按会话过滤。这是站长明确要求的「入口跟着档位藏」例外（站规默认是入口不藏、点了 403）。
+   */
+  gate?: 'fish-trade';
 }
 
 export const GAMES = [
@@ -215,7 +222,84 @@ export const GAMES = [
     collectionId: null,
     icon: 'rarica',
   },
+  {
+    id: 'rariroom',
+    title: '放映厅',
+    description: '一起看同一块屏幕：屏幕共享与影院模式，多人同步播放。',
+    category: 'social',
+    modes: ['online'],
+    href: 'https://rariroom.raricy.com',
+    external: true,
+    collectionId: null,
+    icon: 'rariroom',
+  },
+  {
+    id: 'ling',
+    title: '灵性实验室',
+    description: '跟着 Neko 做四个小实验：隐藏信息感知、未来事件预知、双人感应与日常体验记录。',
+    category: 'social',
+    modes: ['solo', 'local'],
+    href: 'https://ling.raricy.com',
+    external: true,
+    collectionId: null,
+    icon: 'ling',
+  },
+  {
+    id: 'reality',
+    title: '灵感菇树林',
+    description: '午后的秋日林子：灵摆与硬币占卜、纸人替身，还能给板块调频。',
+    category: 'social',
+    modes: ['solo'],
+    href: 'https://reality.raricy.com',
+    external: true,
+    collectionId: null,
+    icon: 'reality',
+  },
+  {
+    id: 'fish-trade',
+    title: '鱼干练手盘',
+    description: '用站内小鱼干做多或做空真实行情，开仓、平仓与结算都在站内完成。',
+    category: 'puzzle',
+    modes: ['solo'],
+    href: '/fish/trade',
+    collectionId: null,
+    icon: 'fish-trade',
+    gate: 'fish-trade',
+  },
+  {
+    id: 'fish-trade-sim',
+    title: '鱼干练手盘（模拟版）',
+    description: '站外模拟交易台：1 万小鱼干起步，1–100 倍杠杆，行情每秒刷新。',
+    category: 'puzzle',
+    modes: ['solo'],
+    href: 'https://fish.raricy.com',
+    external: true,
+    collectionId: null,
+    icon: 'fish-trade-sim',
+  },
 ] as const satisfies readonly GameEntry[];
+
+/** 可见性判定所需的最小字段：由页面从会话算好，本模块不 import auth / prisma。 */
+export interface GameViewer {
+  /** 当前查看者是否 core+（匿名一律 false）。 */
+  core: boolean;
+  /** 当前查看者的「屏蔽鱼干练手盘」是否生效。 */
+  fishTradeBlocked: boolean;
+}
+
+/**
+ * 清单里的门卡片对当前查看者是否可见（见 `GameEntry.gate`）。
+ *
+ * 单独一个纯函数是为了让两个陈列页与将来其它入口用**同一套**判据：把 `gate` 直接写进
+ * JSX 的条件里，第二个页面就会漏掉其中一半（core 或专注屏蔽），而且不报错。
+ */
+export function gameVisibleTo(
+  game: Pick<GameEntry, 'gate'>,
+  viewer: GameViewer,
+): boolean {
+  if (game.gate === 'fish-trade') return viewer.core && !viewer.fishTradeBlocked;
+  return true;
+}
 
 /** 按 id 找合集；找不到回 undefined（调用方自己决定 404 还是抛错）。 */
 export function gameCollection(id: string): GameCollection | undefined {

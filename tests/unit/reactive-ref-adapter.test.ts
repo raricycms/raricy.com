@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { LocalNode } from 'reactive-md';
 import { compileSource } from '@/lib/reactive/compile-source';
-import { expandDocumentReferences, prepareInlineMarkdownDocument } from '@/lib/reactive/ref-adapter';
+import { expandDocumentReferences, prepareInlineClipboardDocument } from '@/lib/reactive/ref-adapter';
 import type { ReferenceSlot } from '@/lib/reactive/ref-types';
 
 function compile(source: string) {
@@ -16,7 +16,7 @@ describe('编译后展开站内引用', () => {
   it('展开五种引用，块卡片与正文分开，并保留原 AST', async () => {
     const original = compile('前文 **[@AbCd1234] 后文** [@1234567890]\n\n[@AbCdEf123] [@123456] [@音频/abcdefghij]');
     const before = JSON.stringify(original);
-    const resolve = vi.fn(async () => ({ status: 'ready' as const, title: '站内资源' }));
+    const resolve = vi.fn(async () => ({ status: 'ready' as const }));
     const { document, hostData } = await expandDocumentReferences(original, { mode: 'expand', resolve });
     expect(JSON.stringify(original)).toBe(before);
     expect(document.nodes.slice(0, 3).map(({ type }) => type)).toEqual(['paragraph', 'hostComponent', 'paragraph']);
@@ -38,10 +38,10 @@ describe('编译后展开站内引用', () => {
     expect(resolve).not.toHaveBeenCalled();
   });
 
-  it('同一成员引用只取一次，Markdown 子剪贴板只内联一层', async () => {
+  it('同一成员引用只取一次，剪贴板只内联一层', async () => {
     const original = compile('[@AbCd1234] [@AbCd1234]');
     const resolve = vi.fn(async () => ({
-      status: 'ready' as const, format: 'markdown' as const, content: '子正文 [@AbCd5678] [@1234567890]',
+      status: 'ready' as const, content: '子正文 [@AbCd5678] [@1234567890]',
     }));
     const { document, hostData } = await expandDocumentReferences(original, { mode: 'expand', resolve });
     expect(document.nodes.filter(({ type }) => type === 'hostComponent')).toHaveLength(2);
@@ -51,6 +51,18 @@ describe('编译后展开站内引用', () => {
     expect(clip.hostData).toEqual({});
     expect(JSON.stringify(clip.document?.nodes)).toContain('[@AbCd5678]');
     expect(JSON.stringify(clip.document?.nodes)).toContain('/api/images/1234567890/raw');
+  });
+
+  it('带增强语法的剪贴板同样内联正文（不按格式分流）', async () => {
+    const original = compile('前文 [@AbCd1234]');
+    const resolve = vi.fn(async () => ({
+      status: 'ready' as const, content: '## 子标题\n\n数值 {{ 1 + 1 }}',
+    }));
+    const { document, hostData } = await expandDocumentReferences(original, { mode: 'expand', resolve });
+    expect(document.nodes.filter(({ type }) => type === 'hostComponent')).toHaveLength(1);
+    const clip = hostData['clipboard:AbCd1234'];
+    expect(clip.content).toBeUndefined();
+    expect(JSON.stringify(clip.document?.nodes)).toContain('子标题');
   });
 
   it('资源缺失时保留字面量，声音和收藏夹分别限制展开数', async () => {
@@ -63,10 +75,10 @@ describe('编译后展开站内引用', () => {
     expect(JSON.stringify(document.nodes)).toContain('[@AbCd1234]');
   });
 
-  it('无效子正文回退卡片，成功的子文档可复用', async () => {
-    expect(await prepareInlineMarkdownDocument('{{ missing }}')).toBeNull();
-    const first = await prepareInlineMarkdownDocument('子正文');
+  it('子正文编不出来时返回 null，成功的子文档可复用', async () => {
+    expect(await prepareInlineClipboardDocument('{{ missing }}')).toBeNull();
+    const first = await prepareInlineClipboardDocument('子正文');
     expect(first?.document.nodes.length).toBeGreaterThan(0);
-    expect(await prepareInlineMarkdownDocument('子正文')).toBe(first);
+    expect(await prepareInlineClipboardDocument('子正文')).toBe(first);
   });
 });
