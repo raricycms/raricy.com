@@ -9,7 +9,7 @@
 //   · 调度：visible final → 生成中的最新快照 → nearby，流式与历史轮转防饥饿；
 //   · 顺序：Manager 层按 revision / phase 丢弃过期结果，final 不被旧 streaming 覆盖；
 //   · 缓存：只缓存 final 成功文档（300 条 / 16 MiB），流式结果不缓存；
-//   · 资源：只撤销订阅与队列项，不因单个取消终止共享 Worker；dispose 才 terminate。
+//   · 资源：短暂离订阅时保留 Worker 会话供同 key 快照续用；dispose 才 terminate。
 //
 // 不在模块顶层访问 window / Worker；SSR import 时只注册工厂，首次 subscribe 才建 Worker。
 // ─────────────────────────────────────────────────────────────────────────────
@@ -37,6 +37,7 @@ const CHAT_RMD_MAX_WORKER_RESTARTS = 1;
 
 const CHAT_RMD_FINAL_CACHE_MAX_ENTRIES = 300;
 const CHAT_RMD_FINAL_CACHE_MAX_BYTES = 16 * 1024 * 1024;
+const CHAT_RMD_SESSION_RELEASE_GRACE_MS = 1_000;
 
 // ── Worker 协议（自定义；不包上游 startLocalCompileWorker）────────────────────
 
@@ -184,7 +185,6 @@ interface KeyState {
   queued: QueueEntry | null;
   inFlight: InFlight | null;
   delivered: { revision: number; phase: ChatSourcePhase } | null;
-  releaseAfterFlight: boolean;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -278,6 +278,7 @@ export function createChatCompileManager(
   workerFactory: ChatCompileWorkerFactory = defaultWorkerFactory
 ): ChatCompileManager {
   const keys = new Map<string, KeyState>();
+  const releaseTimers = new Map<string, ReturnType<typeof setTimeout>>();
   const queue: Record<QueueBucket, QueueEntry[]> = {
     'visible-final': [],
     streaming: [],
@@ -294,6 +295,11 @@ export function createChatCompileManager(
   let roundRobinStreaming = true;
 
   function getKeyState(key: string): KeyState {
+    const releaseTimer = releaseTimers.get(key);
+    if (releaseTimer !== undefined) {
+      clearTimeout(releaseTimer);
+      releaseTimers.delete(key);
+    }
     let state = keys.get(key);
     if (!state) {
       state = {
@@ -303,7 +309,6 @@ export function createChatCompileManager(
         queued: null,
         inFlight: null,
         delivered: null,
-        releaseAfterFlight: false,
       };
       keys.set(key, state);
     }
@@ -476,13 +481,9 @@ export function createChatCompileManager(
       }
     }
 
-    const finishedFinal = message.phase === 'final';
-    if (finishedFinal && !state.queued) {
-      // Worker 在 final 后已自行释放会话；这里保持与 worker 的显式约定一致。
-      sendRelease(state.key);
-    } else if (state.releaseAfterFlight && !state.queued && !state.inFlight) {
-      sendRelease(state.key);
-    }
+    // final 由 worker 自己释放会话，这里保持与 worker 的显式约定一致；
+    // streaming 的会话留给 unsubscribe 的宽限期决定是否释放。
+    if (message.phase === 'final' && !state.queued) sendRelease(state.key);
 
     pump();
   }
@@ -629,12 +630,18 @@ export function createChatCompileManager(
 
     if (state.subs.size === 0) {
       removeQueueEntry(state);
-      if (state.inFlight) {
-        state.releaseAfterFlight = true;
-      } else {
-        sendRelease(state.key);
-      }
       keys.delete(state.key);
+      // 流式快照常因短暂离屏（滚动、频道切换）先取消再订阅同一 key：留 1s 会话，
+      // 重订阅时 getKeyState 撤销这个定时器；到期仍无人回来才真正释放。
+      const previousTimer = releaseTimers.get(state.key);
+      if (previousTimer !== undefined) clearTimeout(previousTimer);
+      releaseTimers.set(
+        state.key,
+        setTimeout(() => {
+          releaseTimers.delete(state.key);
+          if (!disposed && !keys.has(state.key)) sendRelease(state.key);
+        }, CHAT_RMD_SESSION_RELEASE_GRACE_MS)
+      );
       return;
     }
 
@@ -693,6 +700,8 @@ export function createChatCompileManager(
       if (record.timer !== null) clearTimeout(record.timer);
     }
     inFlight.clear();
+    for (const timer of releaseTimers.values()) clearTimeout(timer);
+    releaseTimers.clear();
     for (const state of keys.values()) {
       state.inFlight = null;
       state.queued = null;

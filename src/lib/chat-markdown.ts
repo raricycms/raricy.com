@@ -1,5 +1,9 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// chat-markdown.ts — 讨论正文的 Markdown → 安全 HTML
+// chat-markdown.ts — 讨论正文的 Markdown → 安全 HTML（R1 回退路径）
+//
+// 当前聊天正文走 `ChatRmdMessage` → ReactiveMD 编译渲染，本文件只在回退 R1
+// （恢复 `ChatMarkdown` 调用）时重新接入；评论正文仍走 rich-text 的同一套管线，
+// 所以这里的单测同时保护两个入口，不要整份删除。
 //
 // 【本文件现在很薄，这是有意的】管线（marked → DOMPurify → 后处理）、五道防线与
 // **标签 / 属性白名单**全在 src/lib/rich-text.ts —— 与评论正文共用同一套（R3-151）。

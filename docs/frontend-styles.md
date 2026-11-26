@@ -809,6 +809,11 @@ ReactiveMD 正文由上游 `reactive-md/screen.css` 提供基础版式，站点�
 `.md-document`，也不该被博客的排版口径污染。**不改上游 CSS，不写全局
 `.md-document` 规则。**
 
+> 聊天正文是另一条受限路径：用 `reactive-md/react/minimal` 与
+> `reactive-md/styles/minimal.css`（无图表 / 控件样式，聊天策略本来也不允许这些节点），
+> 站点规则限定在 `src/styles-scss/pages/chat/_chat-rmd.scss` 的 `.chat-msg__md` 下。
+> 两边的覆写互不共享，别把博客的 `.reactive-document` 口径套到聊天上（反之亦然）。
+
 - **令牌映射**：上游的 `--ink` / `--surface` / `--accent` 等在根上映射到站点
   `--color-*` 令牌，`--document-bg` 设为透明（正文卡由页面提供底色）。颜色因此
   自动跟随主题，不另写一套明暗配方。

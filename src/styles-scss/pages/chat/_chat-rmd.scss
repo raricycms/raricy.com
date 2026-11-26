@@ -11,9 +11,10 @@
 // 本文件只写旧规则覆盖不到的三类：RMD 新增的包裹层、上游文档根的内外留白、
 // 以及聊天气泡特有的单图 / 源码回退 / 子剪贴板 / 生成占位。
 //
-// 【作用域】全部规则限定在 .chat-msg__md 之下。上游 screen.css 由客户端组件
-// import，与 main.scss 的加载顺序不保证；多一层 .chat-msg__md 既让胜负不靠
-// 顺序，也避免影响博客（.reactive-document）与别处将来的 .md-document。
+// 【作用域】全部规则限定在 .chat-msg__md 之下。上游 styles/minimal.css 由客户端
+// 组件 import（聊天只用 minimal 入口与 minimal 样式），与 main.scss 的加载顺序不保证；
+// 多一层 .chat-msg__md 既让胜负不靠顺序，也避免影响博客（.reactive-document）与
+// 别处将来的 .md-document。
 // 上游规则都在 @layer 里，站点未分层规则本来就能压过它们 —— 这里的复合选择器
 // 是为了压过本仓 _chat.scss 里同名的旧规则。
 //
@@ -179,7 +180,7 @@
 
   // ── 公式 ──────────────────────────────────────────────────────────────────
   // RMD 公式渲染成 KaTeX 的 span.local-math（块级再包 .local-math-display /
-  // .local-math-block）。这里把块级几何写全，不单靠上游 screen.css：
+  // .local-math-block）。这里把块级几何写全，不单靠上游 minimal.css：
   // 块级公式过宽时在自己的横轴滚动，不把气泡顶宽。
   .chat-msg__md .md-document .local-math-display {
     display: block;

@@ -10,6 +10,7 @@ import {
   chatGenerationAuthFailure,
   createGeneration,
   readJsonBodyLimited,
+  revalidateGenerationAuthor,
 } from '@/lib/chat/generations';
 import { apiErr, apiOk } from '@/lib/format';
 import { isFocusLobbyBlocked } from '@/lib/focus-mode';
@@ -35,10 +36,13 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   }
   const payload = (raw ?? {}) as Partial<ChatGenerationCreateInput>;
 
+  const currentUser = await revalidateGenerationAuthor(user.id, requireChatUser);
+  if (currentUser instanceof Response) return currentUser;
+
   const outcome = await createGeneration({
-    authorId: user.id,
+    authorId: currentUser.id,
     channelId,
-    lobbyBlocked: isFocusLobbyBlocked(user),
+    lobbyBlocked: isFocusLobbyBlocked(currentUser),
     clientRequestId: payload.client_request_id,
     replyTo: payload.reply_to,
   });

@@ -5,7 +5,7 @@
 范围：`src/lib` 根目录下全部 `*.ts`，不含 `md-editor/`、`reactive/` 等子目录。
 
 - 文件数：150
-- 合计行数：32710（含空行）
+- 合计行数：32714（含空行）
 
 | 文件 | 行数 | 导出数 | 一句话职责 |
 | --- | ---: | ---: | --- |
@@ -46,7 +46,7 @@
 | `chat-bus.ts` | 173 | 8 | 讨论 SSE 的进程内订阅注册表（服务端专用） |
 | `chat-generation-reducer.ts` | 353 | 13 | 讨论流「生成中临时预览」的纯状态机（零 React / 零 DOM） |
 | `chat-generation-shared.ts` | 136 | 12 | 机器人生成任务的跨端协议（零运行时依赖） |
-| `chat-markdown.ts` | 44 | 1 | 讨论正文的 Markdown → 安全 HTML |
+| `chat-markdown.ts` | 48 | 1 | 讨论正文的 Markdown → 安全 HTML（R1 回退路径） |
 | `chat-message-interaction.ts` | 144 | 9 | 讨论消息的指针交互判据（零依赖） |
 | `chat-presence.ts` | 78 | 4 | 「谁正在看哪个会话」（服务端专用，进程内） |
 | `chat-service.ts` | 75 | 6 | 讨论域对外 API 聚合层（纯 barrel，实现在 src/lib/chat/） |

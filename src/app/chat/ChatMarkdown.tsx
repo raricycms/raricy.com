@@ -1,8 +1,10 @@
 'use client';
 
 // ─────────────────────────────────────────────────────────────────────────────
-// ChatMarkdown.tsx — 消息正文的渲染壳（薄壳，与 CommentMarkdown 同构）
+// ChatMarkdown.tsx — R1 回退路径的消息正文渲染壳
 //
+// 正常消息入口使用 ChatRmdMessage；恢复 R1 回退时由它重新接入本组件。
+// 本组件保留旧管线，renderChatMarkdown 的行为由 chat-markdown 单测覆盖。
 // 真正干活的全在别处：
 //   · marked → DOMPurify → 后处理：@/lib/chat-markdown（白名单 + 五道防线）
 //   · `[@<8位剪贴板ID>]` 的异步展开、内联图片的点击放大：@/app/components/RichContentBody

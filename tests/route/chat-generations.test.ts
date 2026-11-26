@@ -45,12 +45,16 @@ vi.mock('@/app/api/chat/_auth', async (importOriginal) => {
 });
 
 // ── 生成服务调用计数（证明读体后复核失败时没有落进业务层）─────────────────────
-const generationCalls = vi.hoisted(() => ({ complete: 0, chunk: 0, cancel: 0 }));
+const generationCalls = vi.hoisted(() => ({ create: 0, complete: 0, chunk: 0, cancel: 0 }));
 
 vi.mock('@/lib/chat/generations', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/chat/generations')>();
   return {
     ...actual,
+    createGeneration: (...args: Parameters<typeof actual.createGeneration>) => {
+      generationCalls.create += 1;
+      return actual.createGeneration(...args);
+    },
     completeGeneration: (...args: Parameters<typeof actual.completeGeneration>) => {
       generationCalls.complete += 1;
       return actual.completeGeneration(...args);
@@ -92,6 +96,7 @@ beforeEach(async () => {
   __setChatGenerationClockForTest(() => fakeNow);
   authGate.queue = [];
   authGate.calls = 0;
+  generationCalls.create = 0;
   generationCalls.complete = 0;
   generationCalls.chunk = 0;
   generationCalls.cancel = 0;
@@ -391,12 +396,55 @@ describe('生成接口：权限与副作用', () => {
   });
 });
 
-describe('读体窗口的二次鉴权（complete / chunks / cancel）', () => {
+describe('读体窗口的二次鉴权（create / complete / chunks / cancel）', () => {
   async function safeUserOf(userId: string) {
     const row = await prisma.user.findUnique({ where: { id: userId }, select: PUBLIC_USER_SELECT });
     if (!row) throw new Error('user missing');
     return row;
   }
+
+  it('create：读体期间会话失效 → 401，不创建任务', async () => {
+    const author = await makeUser({ role: 'core' });
+    await login(author.id);
+
+    const authBefore = authGate.calls;
+    const createBefore = generationCalls.create;
+    authGate.queue = ['real', 'unauthorized'];
+    const res = await createCall(CHAT_LOBBY_ID, { client_request_id: 'auth-create-401' });
+
+    // 首次鉴权 + 读体后复核都要发生；复核失败时不得落进 createGeneration。
+    expect(authGate.calls - authBefore).toBe(2);
+    expect(res.status).toBe(401);
+    expect(await json(res)).toMatchObject({ code: 401, error: 'unauthorized' });
+    expect(generationCalls.create).toBe(createBefore);
+  });
+
+  it('create：读体期间被禁言 → 403 forbidden（重包出稳定 error 字段）', async () => {
+    const author = await makeUser({ role: 'core' });
+    await login(author.id);
+
+    const createBefore = generationCalls.create;
+    authGate.queue = ['real', 'forbidden'];
+    const res = await createCall(CHAT_LOBBY_ID, { client_request_id: 'auth-create-403' });
+
+    expect(res.status).toBe(403);
+    expect(await json(res)).toMatchObject({ code: 403, error: 'forbidden' });
+    expect(generationCalls.create).toBe(createBefore);
+  });
+
+  it('create：读体期间换号 → 403，不创建任务', async () => {
+    const author = await makeUser({ role: 'core' });
+    const other = await makeUser({ role: 'core' });
+    await login(author.id);
+
+    const createBefore = generationCalls.create;
+    authGate.queue = ['real', { user: await safeUserOf(other.id) }];
+    const res = await createCall(CHAT_LOBBY_ID, { client_request_id: 'auth-create-swap' });
+
+    expect(res.status).toBe(403);
+    expect(await json(res)).toMatchObject({ code: 403, error: 'forbidden' });
+    expect(generationCalls.create).toBe(createBefore);
+  });
 
   it('complete：读体期间会话失效 → 401，不进入生成服务，任务保持 active', async () => {
     const author = await makeUser({ role: 'core' });

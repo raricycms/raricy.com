@@ -585,11 +585,17 @@ function ChatMessageItemInner({
 
   // 表头行：作者名 / 时间 / 已读回执。
   // grouped（同人连续发言的后继）上，整行由 _chat.scss 接管成绝对定位的浮层。
+  // 归档作者的消息仍会常驻列表（正文已换成删除占位），此时 author.id 是空串：
+  // 仍画用户名，但不生成指向 /u/ 的无效链接。
   const metaRow = (
     <div className="chat-msg__meta">
-      <Link className="chat-msg__name" href={`/u/${msg.author.id}`}>
-        {msg.author.username}
-      </Link>
+      {msg.author.id ? (
+        <Link className="chat-msg__name" href={`/u/${msg.author.id}`}>
+          {msg.author.username}
+        </Link>
+      ) : (
+        <span className="chat-msg__name">{msg.author.username}</span>
+      )}
       <span className="chat-msg__time numeric">{fmtTime(msg.created_at)}</span>
       {isMine && receipt && (
         <span className={`chat-msg__receipt${receipt === 'read' ? ' is-read' : ''}`}>
