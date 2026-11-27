@@ -213,17 +213,24 @@ function ChatRefBody({
     case 'image': {
       const src = imageSource(payload.imageId);
       if (!src) return payload.token;
+      // 外面这层不是装饰：气泡宽度按 fit-content 计算，img 上带百分比的
+      // max-width 在内在宽度这一步解析不到容器宽度，浏览器会按图片原始宽度
+      // 计入气泡宽度（「文字 + 图片引用」的气泡因此被撑宽、图右侧留白）。
+      // 包一层确定 max-width 的盒子后，内在贡献落回 260px；窄屏仍由 img
+      // 自己的 min(260px, 100%) 收到可用宽度。理由与尺寸见 _chat-rmd.scss。
       return (
-        <img
-          className="rich-image-ref"
-          src={src}
-          alt={payload.imageId}
-          loading="lazy"
-          draggable={false}
-          onClick={env.onImageClick ? () => env.onImageClick?.(src) : undefined}
-          onLoad={() => env.onMediaSettled?.(slot, false)}
-          onError={() => env.onMediaSettled?.(slot, true)}
-        />
+        <span className="chat-rmd-image-wrap">
+          <img
+            className="rich-image-ref"
+            src={src}
+            alt={payload.imageId}
+            loading="lazy"
+            draggable={false}
+            onClick={env.onImageClick ? () => env.onImageClick?.(src) : undefined}
+            onLoad={() => env.onMediaSettled?.(slot, false)}
+            onError={() => env.onMediaSettled?.(slot, true)}
+          />
+        </span>
       );
     }
     case 'audio': {
