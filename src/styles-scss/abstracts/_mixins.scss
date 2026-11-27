@@ -279,9 +279,14 @@
 ///
 /// 这一类外壳随组件挂载与卸载，没有退场可播，所以入场用 `@keyframes` 而不是切换类：
 /// 元素插入文档那一帧就开播，不依赖「先挂上、下一帧再加类」的两帧时序。
-/// 卡片选择器由调用方给 —— 各家的卡片类名不同（`.modal-dialog`、`.oauth-modal`、
+/// 卡片选择器由调用方给 —— 各家的卡片类名不同（`.modal-content`、`.oauth-modal`、
 /// `.bento-modal__box`、`.frame-buster__dialog`）。常驻外壳 `.modal` 有自己的
 /// transition 时间线（能播退场），不要套这一条。
+///
+/// ⚠️ 卡片选择器要是**滚动容器里那一格**，且中间不能再套会让位移撑大可滚区域的元素。
+/// `.modal-overlay` 的用户因此把位移放在 `.modal-content` 上、由 `.modal-dialog`
+/// 用 `overflow: clip` 裁掉 —— 位移撑出的可滚区域会让挂载时的自动聚焦把整层滚到底，
+/// 详见 components/_modal.scss。
 ///
 /// 遮罩动的是容器自己的 `background-color`（`modal-scrim-in`），不是 opacity ——
 /// 给容器设 opacity 会把卡片一起变淡。减少动态效果下两条都关掉。

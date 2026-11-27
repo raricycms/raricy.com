@@ -26,11 +26,21 @@
 
 .modal-overlay.show {
   display: flex;
-  @include m.modal-enter('.modal-dialog');
+  // 入场位移挂在卡片（.modal-content）上，不挂 .modal-dialog —— 见下面 `.modal-dialog`
+  // 的 overflow: clip 说明。
+  @include m.modal-enter('.modal-content');
 }
 
 .modal-dialog {
   @include m.modal-frame;
+  // 裁掉卡片入场时那 80vh 的位移：`.modal-overlay` 是整层可滚的滚动容器，而位移后的
+  // 卡片盒子会算进它的可滚区域（scrollHeight 从视口高变成 视口高 + 80vh）。于是弹窗
+  // 挂载时那次自动聚焦（搜索框等）会让浏览器把整层滚到底 —— 动画结束卡片回到居中位，
+  // 滚动偏移却停在最大值，卡片整块移到视口上方（表现为「弹窗顶出屏幕最上面」）。
+  // 裁切这一层后位移不再产生可滚区域，聚焦不再滚，卡片照旧从底部升入、整层照旧可滚
+  // （内容超高时滚动发生在动画结束后，卡片盒子与裁切框同高，什么都不会被裁掉）。
+  // 必须是 clip 而不是 hidden：hidden 会让这一层自己变成滚动容器，聚焦改滚它，同样跑偏。
+  overflow: clip;
 }
 
 // ── 出现与离开 ──────────────────────────────────────────────────────────────
@@ -44,6 +54,8 @@
 // `.modal-overlay` 那一批由组件在关闭时直接卸载，摘掉 `.show` 与移除节点是同一帧，
 // 没有可播退场的时刻；入场用 `@keyframes`（`modal-enter` mixin）—— 元素插入文档的
 // 那一帧就开播。入场与 `.modal` 完全同参：卡片从视口底部飞入 720ms、遮罩淡入 240ms。
+// 位移落在 `.modal-content` 而不是 `.modal-dialog`：后者是整层滚动容器里的一格，
+// 位移会撑大它的可滚区域（见 `.modal-dialog` 的 overflow: clip）。
 //
 // 卡片：入场从视口底部飞入，离场飞出底部，曲线用全站形变档（720ms）。
 // 遮罩：标准反馈档（透明度，240ms ease-out）。`.modal` 把它画在 ::before 上 ——
