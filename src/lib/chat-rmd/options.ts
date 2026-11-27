@@ -2,37 +2,48 @@
 // chat-rmd/options.ts — 聊天 ReactiveMD 的编译配置与 URL 策略（零 DOM 依赖）
 //
 // 聊天与博客共用 `compileSource` / reactive-md，但**能力与预算独立**：
-// 不启用作者 CSS / JavaScript / 扩展 HTML，也不注册 hostComponents 或 config
-// （引用适配在编译完成后由 references 层做）。所有版本身份集中在这里，缓存键、
-// Worker 与视图都从这里取值，避免各自写死字面量后悄悄漂移。
+// 不启用作者 CSS / JavaScript / 扩展 HTML；组件只装 `compiler-config` 里的
+// minimal preset（与 `react/minimal` 渲染宿主同键）。引用适配在编译完成后由
+// references 层做，不经过编译配置。
+//
+// 0.9.3 的 `embedding` 档位承担聊天静态化：
+//   · expressions: 'literal' —— `{{ … }}` 按字面文本编译，未声明标识符不再把
+//     所在表格 / 段落整块降级为源码；
+//   · onUnsupported: 'fallback' —— 受限节点与属性 / 结构错误就地降级为转义原文，
+//     合法兄弟节点照常保留；
+//   · allowImages: false —— 原生图片不进入编译结果（document-policy 再兜底一次）。
+//
+// 刻意不加 `allowInteractive: false`：它按组件能力整体回退，粒度过粗；聊天需要
+// 保留静态组件、再由 `document-policy` 按允许列表收缩交互组件与动态属性。
+//
+// 缓存身份由上游 `localCompileCacheKey`（源码 + 选项 + 配置 + 阶段 + 策略版本）承担，
+// 本文件不再维护手写版本常量。
 //
 // 这里只放纯数据与纯函数：可以安全地进 Worker，也可以被服务端 import 而不碰 window。
 // ─────────────────────────────────────────────────────────────────────────────
 
 import type { LocalCompileOptions } from 'reactive-md';
 import type { LocalUrlPolicy } from 'reactive-md/react';
+import { CHAT_RMD_COMPILE_CONFIG } from './compiler-config';
 
 /**
- * 编译依赖的身份。升级 `reactive-md` 时必须同步改这里，否则 final 缓存会跨版本复用。
- * 当前由 `package.json` 精确锁定 `reactive-md@0.9.2`。
- */
-export const CHAT_RMD_COMPILER_VERSION = 'reactive-md/0.9.2';
-
-/** Chat 编译参数身份；调整 `CHAT_RMD_COMPILE_OPTIONS` 的任何数值都要换版本。 */
-export const CHAT_RMD_OPTIONS_VERSION = 'chat-rmd/1';
-
-/**
- * 聊天专用编译配置（设计 §3.1 / M0 冻结）。
+ * 聊天专用编译配置。
  *
  * 预算是首版初值：`maxSyntaxNodes` 按单条消息 5000 字符封顶，足够 Markdown 与公式；
  * 收紧后畸形输入更早落到源码回退，而不是在共享 Worker 里长时间占用唯一执行槽。
  */
 export const CHAT_RMD_COMPILE_OPTIONS: LocalCompileOptions = Object.freeze({
+  config: CHAT_RMD_COMPILE_CONFIG,
   strict: false,
   markdownBreaks: true,
   enableCss: false,
   enableJavaScript: false,
   enableExtendedHtml: false,
+  embedding: Object.freeze({
+    expressions: 'literal',
+    onUnsupported: 'fallback',
+    allowImages: false,
+  }),
   limits: Object.freeze({
     maxSyntaxNodes: 10_000,
     maxParseWork: 1_000_000,

@@ -5,7 +5,7 @@
 范围：`src/lib` 根目录下全部 `*.ts`，不含 `md-editor/`、`reactive/` 等子目录。
 
 - 文件数：150
-- 合计行数：32766（含空行）
+- 合计行数：32767（含空行）
 
 | 文件 | 行数 | 导出数 | 一句话职责 |
 | --- | ---: | ---: | --- |
@@ -129,7 +129,7 @@
 | `profile-blocks.ts` | 713 | 49 | 个人主页「积木」的词汇表与校验（零依赖） |
 | `profile-service.ts` | 533 | 7 | 个人主页「积木」的读写 |
 | `public-blog-search.ts` | 128 | 9 | 公开正文检索：写入时编译并提取自身静态可见文字，读取时仅查 FTS 候选。 |
-| `rate-limit.ts` | 444 | 9 | 限频（进程内 limiter + 快照持久化） |
+| `rate-limit.ts` | 445 | 9 | 限频（进程内 limiter + 快照持久化） |
 | `realtime-auth.ts` | 15 | 2 | （文件头未注明职责） |
 | `realtime-ticket-service.ts` | 62 | 5 | （文件头未注明职责） |
 | `realtime-url.ts` | 22 | 1 | （文件头未注明职责） |

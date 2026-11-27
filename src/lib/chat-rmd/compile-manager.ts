@@ -1,29 +1,45 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// chat-rmd/compile-manager.ts — 聊天页面的多文档编译管理器
+// chat-rmd/compile-manager.ts — 聊天页面的多文档编译管理器（上游 Worker 池）
 //
-// 一个页面一个 Manager / 一个 Worker（Worker 串行执行）。与上游
-// `LocalCompileScheduler` 的 latest-wins 不同，这里按 key（消息 / 生成任务）保存
-// 独立队列：300 条历史不会互相顶掉，同一 key 只保留最新待编译 revision。
+// 一个页面一个 Manager / 一个 `LocalCompilePool`（默认 1 个 Worker）。池已经按
+// documentId 维护 revision 链、增量会话、超时与失败回退；这里只保留聊天语义：
+//   · 订阅：按 key 保存 subs / latest / delivered / attempted；final 命中本地缓存
+//     时同步投递；
+//   · 调度：把每个 key 的最新请求交给池；visible final=10、streaming=5、
+//     nearby final=0，其余轮转与老化交给池的优先级队列；
+//   · 顺序：旧 revision 丢弃；streaming 不覆盖已投递的 final；同一文档不重复通知；
+//   · 收缩：池返回的文档先过 `applyChatDocumentPolicy`，失败投递
+//     `policy.unsupported` 并显示源码；
+//   · 缓存：只缓存 final 成功文档（300 条 / 16 MiB），身份由上游
+//     `localCompileCacheKey`（源码 + 选项 + 配置 + 阶段 + 策略版本）承担；
+//   · 滚动：`setScrolling(active)` 映射到池的 hold / resume（不取消在途编译）；
+//   · 资源：最后一个订阅者离开后保留 1s 再 `pool.release(key)`，dispose 立即清。
 //
-// 职责边界：
-//   · 调度：visible final → 生成中的最新快照 → nearby，流式与历史轮转防饥饿；
-//   · 顺序：Manager 层按 revision / phase 丢弃过期结果，final 不被旧 streaming 覆盖；
-//   · 缓存：只缓存 final 成功文档（300 条 / 16 MiB），流式结果不缓存；
-//   · 滚动抑制：`setScrolling(true)` 期间不派发新任务（在途编译与结果投递不变），
-//     `setScrolling(false)` 立即恢复排队任务的派发；
-//   · 资源：短暂离订阅时保留 Worker 会话供同 key 快照续用；dispose 才 terminate。
+// 【scheduleRevision】聊天请求的 revision 由视图给出，组件重挂后会从 1 重新开始；
+// 上游池却要求同一 documentId 的 revision 单调递增。因此这里为每个 key 另外发一套
+// 只增不减的 `scheduleRevision`（1 起步），只有 `pool.release(key)` 清空池内
+// revision 链时才一起重置。
 //
-// 不在模块顶层访问 window / Worker；SSR import 时只注册工厂，首次 subscribe 或
-// warmup() 才建 Worker（warmup 只预创建，不改变调度 / 缓存 / 失败判定语义）。
+// 池只在首次 subscribe / warmup 时懒创建；模块顶层不访问 window / Worker，
+// SSR import 时只注册工厂，没有副作用。
 // ─────────────────────────────────────────────────────────────────────────────
 
-import type { LocalCompileResult, LocalDocument } from 'reactive-md';
-import { BoundedLruCache } from '../reactive/bounded-cache';
+import type { LocalCompileResult, LocalCompileWorker, LocalDocument } from 'reactive-md';
+import { localCompileCacheKey } from 'reactive-md/compiler/session';
 import {
-  CHAT_RMD_COMPILER_VERSION,
-  CHAT_RMD_OPTIONS_VERSION,
-} from './options';
-import { CHAT_RMD_POLICY_VERSION } from './document-policy';
+  LocalCompilePoolTaskError,
+  createLocalCompilePool,
+  type LocalCompilePool,
+  type LocalCompilePoolOutcome,
+  type LocalCompilePoolTaskErrorKind,
+} from 'reactive-md/worker-pool';
+import { BoundedLruCache } from '../reactive/bounded-cache';
+import { CHAT_RMD_COMPILE_OPTIONS } from './options';
+import {
+  CHAT_RMD_POLICY_UNSUPPORTED,
+  CHAT_RMD_POLICY_VERSION,
+  applyChatDocumentPolicy,
+} from './document-policy';
 import type {
   ChatCompileListener,
   ChatCompileManager,
@@ -32,58 +48,20 @@ import type {
   ChatSourcePhase,
 } from './types';
 
-/** Worker 内编译超时；超时视为 Worker 卡死，终止并按有限次数重建。 */
+/** 池内单次编译超时；超时由池终止 Worker 并转本地回退。 */
 export const CHAT_RMD_COMPILE_TIMEOUT_MS = 10_000;
 
-/** Worker 运行时崩溃后的最大重建次数（不含首次创建）。 */
-const CHAT_RMD_MAX_WORKER_RESTARTS = 1;
+/** 池的待处理任务上限；聊天页面一次可挂 300 条历史，留足突发余量。 */
+const CHAT_RMD_MAX_PENDING = 512;
 
 const CHAT_RMD_FINAL_CACHE_MAX_ENTRIES = 300;
 const CHAT_RMD_FINAL_CACHE_MAX_BYTES = 16 * 1024 * 1024;
 const CHAT_RMD_SESSION_RELEASE_GRACE_MS = 1_000;
 
-// ── Worker 协议（自定义；不包上游 startLocalCompileWorker）────────────────────
-
-export interface ChatCompileWorkerLike {
-  postMessage(message: ChatWorkerRequest): void;
-  terminate(): void;
-  onmessage: ((event: { data: unknown }) => void) | null;
-  onerror?: ((event: unknown) => void) | null;
-  onmessageerror?: ((event: unknown) => void) | null;
-}
-
-export type ChatCompileWorkerFactory = () => ChatCompileWorkerLike;
-
-export type ChatWorkerRequest =
-  | {
-      type: 'compile';
-      id: number;
-      key: string;
-      revision: number;
-      source: string;
-      phase: ChatSourcePhase;
-    }
-  | { type: 'release'; key: string }
-  | { type: 'dispose' };
-
-export type ChatWorkerResponse =
-  | {
-      type: 'result';
-      id: number;
-      key: string;
-      revision: number;
-      phase: ChatSourcePhase;
-      result: LocalCompileResult;
-    }
-  | {
-      type: 'error';
-      id: number;
-      key: string;
-      revision: number;
-      phase: ChatSourcePhase;
-      code: string;
-      message: string;
-    };
+/** 池优先级：可见 final 最先，生成中的快照次之，离屏历史最后。 */
+const CHAT_RMD_PRIORITY_VISIBLE_FINAL = 10;
+const CHAT_RMD_PRIORITY_STREAMING = 5;
+const CHAT_RMD_PRIORITY_NEARBY_FINAL = 0;
 
 // ── final 缓存 ────────────────────────────────────────────────────────────────
 
@@ -96,28 +74,17 @@ function estimateDocumentBytes(document: LocalDocument): number | null {
   }
 }
 
-function fnv1a32(text: string): number {
-  let hash = 0x811c9dc5;
-  for (let index = 0; index < text.length; index += 1) {
-    hash ^= text.charCodeAt(index);
-    hash = Math.imul(hash, 0x01000193) >>> 0;
-  }
-  return hash >>> 0;
-}
-
 /**
- * final 缓存键：源码身份（长度 + 32 位哈希）+ RMD / Chat 配置 / 文档策略版本。
- * 哈希只用于定位；命中后仍必须核对完整源码（见 `ChatFinalCache.lookup`）。
+ * final 缓存键：上游 `localCompileCacheKey` 组合精确源码、已验证选项、组件配置、
+ * 生效阶段与聊天文档策略版本。键只用于定位；命中后仍必须核对完整源码
+ * （见 `ChatFinalCache.lookup`）。
  */
 export function chatCompileIdentity(source: string): string {
-  const hash = fnv1a32(source).toString(16).padStart(8, '0');
-  return [
-    'chat-rmd',
-    CHAT_RMD_COMPILER_VERSION,
-    CHAT_RMD_OPTIONS_VERSION,
-    CHAT_RMD_POLICY_VERSION,
-    `${source.length}:${hash}`,
-  ].join('|');
+  return localCompileCacheKey(source, CHAT_RMD_COMPILE_OPTIONS, {
+    entry: 'session',
+    sourcePhase: 'final',
+    policyVersion: CHAT_RMD_POLICY_VERSION,
+  });
 }
 
 interface ChatFinalCacheEntry {
@@ -125,7 +92,7 @@ interface ChatFinalCacheEntry {
   document: LocalDocument;
 }
 
-/** 有界 final 文档缓存；`identity` 参数用于测试「哈希撞车后核对源码」。 */
+/** 有界 final 文档缓存；`identity` 参数用于测试「键撞车后核对源码」。 */
 export class ChatFinalCache {
   private readonly cache: BoundedLruCache<ChatFinalCacheEntry>;
 
@@ -144,7 +111,7 @@ export class ChatFinalCache {
   lookup(source: string, identity = chatCompileIdentity(source)): LocalDocument | undefined {
     const entry = this.cache.get(identity);
     if (!entry) return undefined;
-    // 哈希命中不代表源码一致：碰撞或版本键构造错误时宁可重编译。
+    // 键命中不代表源码一致：碰撞或键构造错误时宁可重编译。
     if (entry.source !== source) return undefined;
     return entry.document;
   }
@@ -160,13 +127,8 @@ export class ChatFinalCache {
 
 // ── Manager ──────────────────────────────────────────────────────────────────
 
-type QueueBucket = 'visible-final' | 'streaming' | 'nearby';
-
-interface QueueEntry {
-  key: string;
-  request: ChatCompileRequest;
-  bucket: QueueBucket;
-}
+/** 一次编译请求的身份（不含 key / priority）。 */
+type CompileStamp = Pick<ChatCompileRequest, 'revision' | 'phase' | 'source'>;
 
 interface Subscription {
   id: number;
@@ -174,20 +136,22 @@ interface Subscription {
   listener: ChatCompileListener;
 }
 
-interface InFlight {
-  id: number;
-  request: ChatCompileRequest;
-  state: KeyState;
-  timer: ReturnType<typeof setTimeout> | null;
+/** 已交给池的任务；`scheduleRevision` 是发给池的单调 revision。 */
+interface ScheduledTask extends CompileStamp {
+  scheduleRevision: number;
 }
 
 interface KeyState {
   key: string;
   subs: Map<number, Subscription>;
+  /** 所有订阅者里最大（revision → phase → priority）的请求。 */
   latest: ChatCompileRequest | null;
-  queued: QueueEntry | null;
-  inFlight: InFlight | null;
-  delivered: { revision: number; phase: ChatSourcePhase } | null;
+  /** 最近一次真正投递（含错误投递）过的编译身份。 */
+  delivered: CompileStamp | null;
+  /** 最近一次编译结束的身份（可能因顺序规则未投递）；避免对同一身份反复入池。 */
+  attempted: CompileStamp | null;
+  /** 已交给池、尚未 settle 的任务；同一身份不重复排队。 */
+  scheduled: ScheduledTask | null;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -216,11 +180,6 @@ function normalizeRequest(request: ChatCompileRequest): ChatCompileRequest {
   };
 }
 
-function bucketOf(request: ChatCompileRequest): QueueBucket {
-  if (request.phase !== 'final') return 'streaming';
-  return request.priority === 'visible' ? 'visible-final' : 'nearby';
-}
-
 function phaseRank(phase: ChatSourcePhase): number {
   return phase === 'final' ? 2 : 1;
 }
@@ -236,10 +195,7 @@ function compareRequests(a: ChatCompileRequest, b: ChatCompileRequest): number {
   return priorityRank(a.priority) - priorityRank(b.priority);
 }
 
-function sameCompile(
-  a: Pick<ChatCompileRequest, 'revision' | 'phase' | 'source'>,
-  b: Pick<ChatCompileRequest, 'revision' | 'phase' | 'source'>
-): boolean {
+function sameCompile(a: CompileStamp, b: CompileStamp): boolean {
   return a.revision === b.revision && a.phase === b.phase && a.source === b.source;
 }
 
@@ -249,24 +205,18 @@ function compileErrorCode(result: Extract<LocalCompileResult, { ok: false }>): s
   return diagnostic?.code ?? 'local.compile';
 }
 
-function parseWorkerResponse(data: unknown): ChatWorkerResponse | null {
-  if (!isRecord(data)) return null;
-  if (data.type !== 'result' && data.type !== 'error') return null;
-  if (
-    typeof data.id !== 'number' ||
-    typeof data.key !== 'string' ||
-    typeof data.revision !== 'number' ||
-    (data.phase !== 'streaming' && data.phase !== 'final')
-  ) {
-    return null;
+/** 池任务失败的稳定错误码；只用于投递，不展示给用户。 */
+function poolTaskErrorCode(kind: LocalCompilePoolTaskErrorKind | null): string {
+  switch (kind) {
+    case 'worker-failed':
+      return 'worker.unavailable';
+    case 'invalid-request':
+      return 'request.invalid';
+    case 'source-too-large':
+      return 'local.budget';
+    default:
+      return 'local.compile';
   }
-  if (data.type === 'error') {
-    if (typeof data.code !== 'string' || data.code.length === 0) return null;
-    if (typeof data.message !== 'string') return null;
-  } else if (!isRecord(data.result) || typeof data.result.ok !== 'boolean') {
-    return null;
-  }
-  return data as unknown as ChatWorkerResponse;
 }
 
 function notify(listener: ChatCompileListener, snapshot: ChatCompiledSnapshot): void {
@@ -277,27 +227,41 @@ function notify(listener: ChatCompileListener, snapshot: ChatCompiledSnapshot): 
   }
 }
 
+export interface ChatCompileManagerOptions {
+  /** 测试缝：替换默认 Worker 池工厂；生产不传，首次订阅时才创建。 */
+  createPool?: () => LocalCompilePool;
+}
+
 export function createChatCompileManager(
-  workerFactory: ChatCompileWorkerFactory = defaultWorkerFactory
+  options: ChatCompileManagerOptions = {}
 ): ChatCompileManager {
+  const createPool = options.createPool ?? defaultPoolFactory;
   const keys = new Map<string, KeyState>();
   const releaseTimers = new Map<string, ReturnType<typeof setTimeout>>();
-  const queue: Record<QueueBucket, QueueEntry[]> = {
-    'visible-final': [],
-    streaming: [],
-    nearby: [],
-  };
-  const inFlight = new Map<number, InFlight>();
+  /** 每 key 发给池的单调 revision，跨订阅状态重建保留，直到 pool.release。 */
+  const scheduleRevisions = new Map<string, number>();
   const cache = new ChatFinalCache();
 
-  let worker: ChatCompileWorkerLike | null = null;
-  let workerFailures = 0;
-  let unavailable = false;
+  let pool: LocalCompilePool | null = null;
   let disposed = false;
-  let nextId = 1;
-  let roundRobinStreaming = true;
-  /** 滚动期暂停新任务派发；在途任务与结果投递不受影响。 */
-  let scrollingPaused = false;
+  /** 滚动期暂停池派发；池尚未创建时记下来，创建后补 hold。 */
+  let scrollingActive = false;
+  let nextSubscriptionId = 1;
+
+  function ensurePool(): LocalCompilePool | null {
+    if (disposed) return null;
+    if (pool) return pool;
+    let created: LocalCompilePool;
+    try {
+      created = createPool();
+    } catch {
+      return null;
+    }
+    // 上游池创建即 spawn Worker；滚动期内创建也要先 hold，避免立即派发。
+    if (scrollingActive) created.hold();
+    pool = created;
+    return created;
+  }
 
   function getKeyState(key: string): KeyState {
     const releaseTimer = releaseTimers.get(key);
@@ -311,9 +275,9 @@ export function createChatCompileManager(
         key,
         subs: new Map(),
         latest: null,
-        queued: null,
-        inFlight: null,
         delivered: null,
+        attempted: null,
+        scheduled: null,
       };
       keys.set(key, state);
     }
@@ -328,188 +292,83 @@ export function createChatCompileManager(
     state.latest = latest;
   }
 
-  function removeQueueEntry(state: KeyState): void {
-    const entry = state.queued;
-    if (!entry) return;
-    state.queued = null;
-    const bucket = queue[entry.bucket];
-    const index = bucket.indexOf(entry);
-    if (index >= 0) bucket.splice(index, 1);
+  function nextScheduleRevision(key: string): number {
+    const next = (scheduleRevisions.get(key) ?? 0) + 1;
+    scheduleRevisions.set(key, next);
+    return next;
   }
 
-  function enqueueLatest(state: KeyState): void {
+  function poolPriority(request: ChatCompileRequest): number {
+    if (request.phase === 'streaming') return CHAT_RMD_PRIORITY_STREAMING;
+    return request.priority === 'visible'
+      ? CHAT_RMD_PRIORITY_VISIBLE_FINAL
+      : CHAT_RMD_PRIORITY_NEARBY_FINAL;
+  }
+
+  /** 只有能通过投递检查的结果才值得占用池任务。 */
+  function isSettled(state: KeyState, request: CompileStamp): boolean {
+    if (state.delivered !== null && sameCompile(state.delivered, request)) return true;
+    return state.attempted !== null && sameCompile(state.attempted, request);
+  }
+
+  function scheduleLatest(state: KeyState): void {
+    if (disposed) return;
     const latest = state.latest;
     if (!latest) return;
-    if (state.inFlight && sameCompile(state.inFlight.request, latest)) return;
-    if (state.queued) {
-      state.queued.request = latest;
-      const bucket = bucketOf(latest);
-      if (state.queued.bucket !== bucket) {
-        const previous = queue[state.queued.bucket];
-        const index = previous.indexOf(state.queued);
-        if (index >= 0) previous.splice(index, 1);
-        state.queued.bucket = bucket;
-        queue[bucket].push(state.queued);
-      }
+    if (state.scheduled && sameCompile(state.scheduled, latest)) return;
+    if (isSettled(state, latest)) return;
+    // 比已投递结果更旧的 revision 会被投递检查丢弃，不再浪费池槽位。
+    if (state.delivered && latest.revision < state.delivered.revision) return;
+
+    const activePool = ensurePool();
+    if (!activePool) {
+      publish(state, latest, null, 'worker.unavailable');
       return;
     }
-    const entry: QueueEntry = { key: state.key, request: latest, bucket: bucketOf(latest) };
-    state.queued = entry;
-    queue[entry.bucket].push(entry);
-  }
 
-  function takeNextEntry(): QueueEntry | null {
-    const visibleFinal = queue['visible-final'].shift();
-    if (visibleFinal) return visibleFinal;
-
-    const streaming = queue.streaming;
-    const nearby = queue.nearby;
-    if (streaming.length > 0 && nearby.length > 0) {
-      const pickStreaming = roundRobinStreaming;
-      roundRobinStreaming = !roundRobinStreaming;
-      return pickStreaming ? streaming.shift()! : nearby.shift()!;
-    }
-    return streaming.shift() ?? nearby.shift() ?? null;
-  }
-
-  function postToWorker(message: ChatWorkerRequest): void {
-    if (!worker) return;
-    try {
-      worker.postMessage(message);
-    } catch {
-      handleWorkerFailure('worker.error');
-    }
-  }
-
-  function sendRelease(key: string): void {
-    if (!worker) return;
-    postToWorker({ type: 'release', key });
-  }
-
-  function failRequest(state: KeyState, request: ChatCompileRequest, code: string): void {
-    const latest = state.latest;
-    if (!latest || latest.revision !== request.revision || latest.source !== request.source) {
-      return;
-    }
-    const snapshot: ChatCompiledSnapshot = {
-      key: request.key,
-      revision: request.revision,
-      phase: request.phase,
-      document: null,
-      errorCode: code,
+    const task: ScheduledTask = {
+      revision: latest.revision,
+      phase: latest.phase,
+      source: latest.source,
+      scheduleRevision: nextScheduleRevision(state.key),
     };
-    for (const sub of state.subs.values()) {
-      if (sub.request.revision > request.revision) continue;
-      notify(sub.listener, snapshot);
-    }
-  }
+    state.scheduled = task;
 
-  function drainUnavailable(): void {
-    for (const bucketName of ['visible-final', 'streaming', 'nearby'] as const) {
-      const entries = queue[bucketName];
-      while (entries.length > 0) {
-        const entry = entries.shift()!;
-        const state = keys.get(entry.key);
-        if (!state || state.queued !== entry) continue;
-        state.queued = null;
-        failRequest(state, entry.request, 'worker.unavailable');
-      }
-    }
-  }
-
-  function ensureWorker(): ChatCompileWorkerLike {
-    if (worker) return worker;
-    const created = workerFactory();
-    if (
-      !created ||
-      typeof created.postMessage !== 'function' ||
-      typeof created.terminate !== 'function'
-    ) {
-      throw new Error('chat-rmd: invalid worker');
-    }
-    created.onmessage = (event) => onWorkerMessage(event?.data);
-    created.onerror = () => handleWorkerFailure('worker.error');
-    created.onmessageerror = () => handleWorkerFailure('worker.error');
-    worker = created;
-    return created;
-  }
-
-  function onWorkerMessage(data: unknown): void {
-    if (disposed) return;
-    const message = parseWorkerResponse(data);
-    if (!message) return;
-
-    const record = inFlight.get(message.id);
-    if (!record) return;
-
-    if (
-      message.key !== record.request.key ||
-      message.revision !== record.request.revision ||
-      message.phase !== record.request.phase
-    ) {
-      handleWorkerFailure('worker.error');
+    let pending: Promise<LocalCompilePoolOutcome>;
+    try {
+      pending = activePool.schedule({
+        documentId: state.key,
+        revision: task.scheduleRevision,
+        source: task.source,
+        options: CHAT_RMD_COMPILE_OPTIONS,
+        sourcePhase: task.phase,
+        priority: poolPriority(latest),
+      });
+    } catch {
+      settleFailure(state.key, task, 'local.compile');
       return;
     }
-
-    if (record.timer !== null) clearTimeout(record.timer);
-    inFlight.delete(message.id);
-    record.state.inFlight = null;
-
-    const state = record.state;
-    if (canDeliver(state, message, record.request)) {
-      const snapshot: ChatCompiledSnapshot =
-        message.type === 'result'
-          ? {
-              key: message.key,
-              revision: message.revision,
-              phase: message.phase,
-              document: message.result.ok ? message.result.document : null,
-              errorCode: message.result.ok ? null : compileErrorCode(message.result),
-            }
-          : {
-              key: message.key,
-              revision: message.revision,
-              phase: message.phase,
-              document: null,
-              errorCode: message.code,
-            };
-
-      if (message.type === 'result' && message.result.ok && message.phase === 'final') {
-        cache.store(record.request.source, message.result.document);
-      }
-
-      markDelivered(state, message.revision, message.phase);
-      for (const sub of state.subs.values()) {
-        if (sub.request.revision > message.revision) continue;
-        if (message.phase === 'streaming' && sub.request.phase === 'final') continue;
-        notify(sub.listener, snapshot);
-      }
-    }
-
-    // final 由 worker 自己释放会话，这里保持与 worker 的显式约定一致；
-    // streaming 的会话留给 unsubscribe 的宽限期决定是否释放。
-    if (message.phase === 'final' && !state.queued) sendRelease(state.key);
-
-    pump();
+    pending.then(
+      (outcome) => settleOutcome(state.key, task, outcome),
+      (error: unknown) => settleRejection(state.key, task, error)
+    );
   }
 
-  function canDeliver(
-    state: KeyState,
-    message: ChatWorkerResponse,
-    request: ChatCompileRequest
-  ): boolean {
+  function canDeliver(state: KeyState, stamp: CompileStamp): boolean {
     if (state.subs.size === 0) return false;
     const latest = state.latest;
     if (!latest) return false;
-    if (latest.revision !== message.revision || latest.source !== request.source) return false;
-    if (message.phase === 'streaming' && latest.phase === 'final') return false;
+    if (latest.revision !== stamp.revision || latest.source !== stamp.source) return false;
+    // 已有 final 订阅时，streaming 快照不再投递。
+    if (stamp.phase === 'streaming' && latest.phase === 'final') return false;
+
     const delivered = state.delivered;
     if (delivered) {
-      if (message.phase === 'streaming' && delivered.phase === 'final') return false;
-      if (message.revision < delivered.revision) return false;
+      if (stamp.phase === 'streaming' && delivered.phase === 'final') return false;
+      if (stamp.revision < delivered.revision) return false;
       if (
-        message.revision === delivered.revision &&
-        !(message.phase === 'final' && delivered.phase === 'streaming')
+        stamp.revision === delivered.revision &&
+        !(stamp.phase === 'final' && delivered.phase === 'streaming')
       ) {
         return false;
       }
@@ -517,118 +376,126 @@ export function createChatCompileManager(
     return true;
   }
 
-  function markDelivered(state: KeyState, revision: number, phase: ChatSourcePhase): void {
+  function markDelivered(state: KeyState, stamp: CompileStamp): void {
     const delivered = state.delivered;
-    if (!delivered) {
-      state.delivered = { revision, phase };
+    if (!delivered || stamp.revision > delivered.revision) {
+      state.delivered = stamp;
       return;
     }
-    if (revision > delivered.revision) {
-      state.delivered = { revision, phase };
-      return;
-    }
-    if (revision === delivered.revision && phase === 'final' && delivered.phase === 'streaming') {
-      state.delivered = { revision, phase };
-    }
-  }
-
-  function takeInFlightRecord(): InFlight | null {
-    const iterator = inFlight.values().next();
-    if (iterator.done) return null;
-    const record = iterator.value;
-    inFlight.delete(record.id);
-    if (record.timer !== null) clearTimeout(record.timer);
-    record.state.inFlight = null;
-    return record;
-  }
-
-  function handleWorkerFailure(code: 'worker.error' | 'timeout'): void {
-    if (disposed) return;
-    const current = worker;
-    worker = null;
-    if (current) {
-      try {
-        current.onmessage = null;
-        current.onerror = null;
-        current.onmessageerror = null;
-        current.terminate();
-      } catch {
-        // terminate 失败不再放大。
-      }
-    }
-    workerFailures += 1;
-    const record = takeInFlightRecord();
-    if (record) failRequest(record.state, record.request, code);
-    if (workerFailures > CHAT_RMD_MAX_WORKER_RESTARTS) {
-      unavailable = true;
-      drainUnavailable();
-      return;
-    }
-    pump();
-  }
-
-  function handleTimeout(id: number): void {
-    if (disposed) return;
-    const record = inFlight.get(id);
-    if (!record) return;
-    handleWorkerFailure('timeout');
-  }
-
-  function pump(): void {
-    if (disposed || inFlight.size > 0) return;
-    if (unavailable) {
-      drainUnavailable();
-      return;
-    }
-    // 滚动期不取新任务：队列原样保留，恢复后按既有优先级继续；在途结果已由
-    // onWorkerMessage 照常投递，提交层负责降低滚动期间的渲染优先级。
-    if (scrollingPaused) return;
-
-    const entry = takeNextEntry();
-    if (!entry) return;
-
-    const state = keys.get(entry.key);
     if (
-      !state ||
-      state.queued !== entry ||
-      !state.latest ||
-      state.latest.revision !== entry.request.revision ||
-      state.latest.source !== entry.request.source
+      stamp.revision === delivered.revision &&
+      stamp.phase === 'final' &&
+      delivered.phase === 'streaming'
     ) {
-      pump();
+      state.delivered = stamp;
+    }
+  }
+
+  /** 投递成功结果或错误快照；final 成功文档同时写入缓存。 */
+  function publish(
+    state: KeyState,
+    stamp: CompileStamp,
+    document: LocalDocument | null,
+    errorCode: string | null
+  ): void {
+    if (!canDeliver(state, stamp)) return;
+    if (document && stamp.phase === 'final' && errorCode === null) {
+      cache.store(stamp.source, document);
+    }
+    markDelivered(state, stamp);
+
+    const snapshot: ChatCompiledSnapshot = {
+      key: state.key,
+      revision: stamp.revision,
+      phase: stamp.phase,
+      document,
+      errorCode,
+    };
+    for (const sub of state.subs.values()) {
+      if (sub.request.revision > stamp.revision) continue;
+      if (stamp.phase === 'streaming' && sub.request.phase === 'final') continue;
+      notify(sub.listener, snapshot);
+    }
+  }
+
+  function publishFailure(state: KeyState, stamp: CompileStamp, code: string): void {
+    publish(state, stamp, null, code);
+  }
+
+  function settleFailure(key: string, task: ScheduledTask, code: string): void {
+    const state = keys.get(key);
+    if (!state || state.scheduled !== task) return;
+    state.scheduled = null;
+    state.attempted = task;
+    publishFailure(state, task, code);
+    scheduleLatest(state);
+  }
+
+  function settleOutcome(
+    key: string,
+    task: ScheduledTask,
+    outcome: LocalCompilePoolOutcome
+  ): void {
+    if (disposed) return;
+    const state = keys.get(key);
+    if (!state || state.scheduled !== task) return;
+    state.scheduled = null;
+    state.attempted = task;
+
+    const result = outcome.result;
+    if (!result.ok) {
+      publishFailure(state, task, compileErrorCode(result));
+      scheduleLatest(state);
       return;
     }
-    state.queued = null;
 
-    let activeWorker: ChatCompileWorkerLike;
+    let sanitized: LocalDocument | null = null;
     try {
-      activeWorker = ensureWorker();
+      const policy = applyChatDocumentPolicy(result.document);
+      if (policy.ok) sanitized = policy.document;
     } catch {
-      unavailable = true;
-      failRequest(state, entry.request, 'worker.unavailable');
-      drainUnavailable();
+      sanitized = null;
+    }
+    if (!sanitized) {
+      publishFailure(state, task, CHAT_RMD_POLICY_UNSUPPORTED);
+      scheduleLatest(state);
       return;
     }
 
-    const id = nextId;
-    nextId += 1;
-    const timer = setTimeout(() => handleTimeout(id), CHAT_RMD_COMPILE_TIMEOUT_MS);
-    const record: InFlight = { id, request: entry.request, state, timer };
-    state.inFlight = record;
-    inFlight.set(id, record);
+    publish(state, task, sanitized, null);
+    scheduleLatest(state);
+  }
 
-    try {
-      activeWorker.postMessage({
-        type: 'compile',
-        id,
-        key: entry.request.key,
-        revision: entry.request.revision,
-        source: entry.request.source,
-        phase: entry.request.phase,
-      });
-    } catch {
-      handleWorkerFailure('worker.error');
+  function settleRejection(key: string, task: ScheduledTask, error: unknown): void {
+    if (disposed) return;
+    const state = keys.get(key);
+    if (!state || state.scheduled !== task) return;
+    state.scheduled = null;
+
+    const kind = error instanceof LocalCompilePoolTaskError ? error.kind : null;
+    if (kind === 'superseded' || kind === 'cancelled' || kind === 'disposed') {
+      // 池内被更新请求顶掉 / 文档释放 / 池销毁：没有可投递的失败。
+      return;
     }
+    state.attempted = task;
+    publishFailure(state, task, poolTaskErrorCode(kind));
+    scheduleLatest(state);
+  }
+
+  function scheduleRelease(key: string): void {
+    const previousTimer = releaseTimers.get(key);
+    if (previousTimer !== undefined) clearTimeout(previousTimer);
+    releaseTimers.set(
+      key,
+      setTimeout(() => {
+        releaseTimers.delete(key);
+        if (disposed || keys.has(key)) return;
+        // release 会清空池内 revision 链；本地的 scheduleRevision 同时归零，
+        // 下次订阅从 1 重新开始，两边再次对齐。
+        scheduleRevisions.delete(key);
+        pool?.release(key);
+      }, CHAT_RMD_SESSION_RELEASE_GRACE_MS)
+    );
   }
 
   function unsubscribe(state: KeyState, subscription: Subscription): void {
@@ -636,25 +503,15 @@ export function createChatCompileManager(
     if (!state.subs.delete(subscription.id)) return;
     updateLatest(state);
 
-    if (state.subs.size === 0) {
-      removeQueueEntry(state);
-      keys.delete(state.key);
-      // 流式快照常因短暂离屏（滚动、频道切换）先取消再订阅同一 key：留 1s 会话，
-      // 重订阅时 getKeyState 撤销这个定时器；到期仍无人回来才真正释放。
-      const previousTimer = releaseTimers.get(state.key);
-      if (previousTimer !== undefined) clearTimeout(previousTimer);
-      releaseTimers.set(
-        state.key,
-        setTimeout(() => {
-          releaseTimers.delete(state.key);
-          if (!disposed && !keys.has(state.key)) sendRelease(state.key);
-        }, CHAT_RMD_SESSION_RELEASE_GRACE_MS)
-      );
+    if (state.subs.size > 0) {
+      scheduleLatest(state);
       return;
     }
 
-    enqueueLatest(state);
-    pump();
+    keys.delete(state.key);
+    // 流式快照常因短暂离屏（滚动、频道切换）先取消再订阅同一 key：留 1s 宽限，
+    // 重订阅时 getKeyState 撤销这个定时器；到期仍无人回来才真正释放池文档。
+    scheduleRelease(state.key);
   }
 
   function subscribe(request: ChatCompileRequest, listener: ChatCompileListener): () => void {
@@ -674,17 +531,19 @@ export function createChatCompileManager(
 
     const normalized = normalizeRequest(request);
     const state = getKeyState(normalized.key);
-    const subscription: Subscription = { id: nextId, request: normalized, listener };
-    nextId += 1;
+    const subscription: Subscription = {
+      id: nextSubscriptionId,
+      request: normalized,
+      listener,
+    };
+    nextSubscriptionId += 1;
     state.subs.set(subscription.id, subscription);
     updateLatest(state);
 
     if (normalized.phase === 'final') {
       const cached = cache.lookup(normalized.source);
       if (cached) {
-        const latest = state.latest;
-        if (latest && sameCompile(latest, normalized)) removeQueueEntry(state);
-        markDelivered(state, normalized.revision, 'final');
+        markDelivered(state, normalized);
         notify(listener, {
           key: normalized.key,
           revision: normalized.revision,
@@ -692,85 +551,73 @@ export function createChatCompileManager(
           document: cached,
           errorCode: null,
         });
+        // 同一 key 的其他订阅者可能仍在等更新的 revision。
+        scheduleLatest(state);
         return () => unsubscribe(state, subscription);
       }
     }
 
-    enqueueLatest(state);
-    pump();
+    scheduleLatest(state);
     return () => unsubscribe(state, subscription);
   }
 
   function dispose(): void {
     if (disposed) return;
     disposed = true;
-    for (const record of inFlight.values()) {
-      if (record.timer !== null) clearTimeout(record.timer);
-    }
-    inFlight.clear();
     for (const timer of releaseTimers.values()) clearTimeout(timer);
     releaseTimers.clear();
     for (const state of keys.values()) {
-      state.inFlight = null;
-      state.queued = null;
       state.subs.clear();
+      state.scheduled = null;
     }
     keys.clear();
-    queue['visible-final'].length = 0;
-    queue.streaming.length = 0;
-    queue.nearby.length = 0;
+    scheduleRevisions.clear();
     cache.clear();
-    const current = worker;
-    worker = null;
+    const current = pool;
+    pool = null;
     if (current) {
       try {
-        current.onmessage = null;
-        current.onerror = null;
-        current.onmessageerror = null;
-        current.terminate();
+        current.dispose();
       } catch {
-        // 重复调用 dispose 或已崩溃的 Worker 不再抛。
+        // 重复 dispose 或已销毁的池不再抛。
       }
     }
   }
 
-  /**
-   * 预创建 Worker，缩短首条消息的冷启动等待；不改变编译语义。
-   * `ensureWorker` 幂等：已有 Worker 直接复用，不会多建或 terminate。
-   * 不排队、不写缓存、不动 workerFailures / unavailable；失败静默吞掉，
-   * 等首次 subscribe 走 `pump()` 的既有路径重试并决定是否 unavailable。
-   */
+  /** 预创建池（上游池创建即 spawn Worker），缩短首条消息的冷启动等待。 */
   function warmup(): void {
     if (disposed) return;
-    try {
-      ensureWorker();
-    } catch {
-      // 静默：预热失败不向调用方抛，也不标记 unavailable。
-    }
+    ensurePool();
   }
 
-  /**
-   * 滚动期暂停 / 恢复**新任务**派发：置位后 `pump()` 不再取新任务，`false` 时
-   * 立即 `pump()` 恢复。不取消在途 Worker 编译，结果照常投递；不改优先级 /
-   * 缓存 / 失败预算语义。dispose 后为 no-op（订阅清理竞态下仍可能被调用）。
-   */
+  /** 滚动期暂停 / 恢复池的文档派发；不取消在途编译，dispose 后为 no-op。 */
   function setScrolling(active: boolean): void {
     if (disposed) return;
-    if (scrollingPaused === active) return;
-    scrollingPaused = active;
-    if (!active) pump();
+    if (scrollingActive === active) return;
+    scrollingActive = active;
+    if (!pool) return;
+    if (active) pool.hold();
+    else pool.resume();
   }
 
   return { subscribe, warmup, dispose, setScrolling };
 }
 
 /**
- * 默认 Worker 工厂。`new URL('./compile.worker.ts', …)` 必须保持字面量相对路径，
- * webpack 靠它静态打包 Worker 入口。
+ * 默认池工厂。`new URL('./compile.worker.ts', …)` 必须保持字面量相对路径，
+ * webpack 靠它静态打包 Worker 入口。不提供 `fallbackCompile`：池的默认回退
+ * 会在 Worker 不可用时于主线程用同一套选项编译。
  */
-function defaultWorkerFactory(): ChatCompileWorkerLike {
+function defaultPoolFactory(): LocalCompilePool {
   if (typeof Worker === 'undefined') throw new Error('chat-rmd: Worker unavailable');
-  return new Worker(new URL('./compile.worker.ts', import.meta.url), {
-    type: 'module',
-  }) as unknown as ChatCompileWorkerLike;
+  return createLocalCompilePool({
+    workers: 1,
+    timeoutMs: CHAT_RMD_COMPILE_TIMEOUT_MS,
+    maxPending: CHAT_RMD_MAX_PENDING,
+    snapshotPolicy: 'latest',
+    createWorker: () =>
+      new Worker(new URL('./compile.worker.ts', import.meta.url), {
+        type: 'module',
+      }) as unknown as LocalCompileWorker,
+  });
 }

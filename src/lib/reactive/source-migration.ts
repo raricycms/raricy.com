@@ -30,7 +30,6 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import {
-  analyzeLocalSource,
   compileLocal,
   LOCAL_SYNTAX_VERSION,
   migrateLocalSource,
@@ -39,6 +38,7 @@ import {
   type LocalMigrationResult,
   type SourceRange,
 } from 'reactive-md';
+import { analyzeLocalSource } from 'reactive-md/scan';
 import { REACTIVE_COMPILE_OPTIONS } from './host-components';
 import { currentDeclaration, findLeadingVersionDirective, findVersionDirectives, type LeadingDeclaration } from './version-directive';
 

@@ -1,9 +1,9 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // reactive-preparation.test.ts —— ReactiveMD 预适配（P6/P7/P8）的纯行为用例
 //
-// 覆盖三块契约：
+// 覆盖图片策略 + LRU，以及语料输入的校验与报告隐私边界：
 //   · 图片加载策略；
-//   · 编译缓存键 + 按字节容量 LRU；
+//   · 按字节容量 LRU（缓存键由上游 localCompileCacheKey 负责，不在这里测）；
 //   · 语料输入的校验与报告隐私边界（逐字段报告统计见 R4 报告，已清退）。
 //
 // 这里刻意全部用行为断言，不读源码字符串 —— 改实现时测试应该仍能表达「行为没变」。
@@ -15,8 +15,6 @@ import { isAllowedReactiveImage } from '@/lib/reactive/url-policy';
 import {
   ReactiveLruCache,
   estimateReactiveCacheBytes,
-  reactiveCompileCacheKey,
-  sha256Hex,
 } from '@/lib/reactive/cache';
 import {
   scanCorpusDocuments,
@@ -76,45 +74,8 @@ describe('图片加载策略', () => {
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
-// 二、缓存键与按字节 LRU
+// 二、按字节 LRU
 // ═══════════════════════════════════════════════════════════════════════════
-
-describe('编译缓存键', () => {
-  const base = {
-    adaptedSource: 'hello',
-    syntaxVersion: 'local-draft-2',
-    compilerVersion: '0.5.2',
-    adapterVersion: '1',
-    optionsKey: 'opts',
-  };
-
-  it('键由源码摘要与四段版本组成，且完全确定', () => {
-    const expected = `${sha256Hex('hello')}:local-draft-2:0.5.2:1:opts`;
-    expect(reactiveCompileCacheKey(base)).toBe(expected);
-    expect(reactiveCompileCacheKey({ ...base })).toBe(expected);
-  });
-
-  it('任一输入变化都会换键', () => {
-    const keys = new Set([
-      reactiveCompileCacheKey(base),
-      reactiveCompileCacheKey({ ...base, adaptedSource: 'hello ' }),
-      reactiveCompileCacheKey({ ...base, syntaxVersion: 'local-draft-3' }),
-      reactiveCompileCacheKey({ ...base, compilerVersion: '0.5.3' }),
-      reactiveCompileCacheKey({ ...base, adapterVersion: '2' }),
-      reactiveCompileCacheKey({ ...base, optionsKey: 'opts2' }),
-    ]);
-    expect(keys.size).toBe(6);
-  });
-
-  it('版本段不得含冒号；optionsKey 可以（它固定在最后一段）', () => {
-    expect(() => reactiveCompileCacheKey({ ...base, syntaxVersion: '' })).toThrow();
-    expect(() => reactiveCompileCacheKey({ ...base, compilerVersion: 'a:b' })).toThrow();
-    expect(() => reactiveCompileCacheKey({ ...base, optionsKey: '' })).toThrow();
-    expect(reactiveCompileCacheKey({ ...base, optionsKey: '{"a":1}' })).toContain(
-      '{"a":1}'
-    );
-  });
-});
 
 describe('容量估算与 LRU', () => {
   it('只接受 JSON 安全值（NaN / undefined / 类实例 / 环都不算）', () => {

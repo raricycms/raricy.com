@@ -1,21 +1,27 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // chat-rmd-document-policy.test.ts — 聊天文档策略（静态安全边界）
 //
-// 用真实 reactive-md 编译结果验证「允许 Markdown + 公式 + 静态展示组件」与
+// 用真实 reactive-md 0.9.3 编译结果验证「允许 Markdown + 公式 + 静态展示组件」与
 // 「其余一律收缩为源码」：原生图片、交互 / 未知组件、表达式、HTML 通道、危险链接
-// 都不得留在 AST 里；能力开关与运行期元数据必须清空，结果仍可 JSON 序列化
-// （Worker postMessage 可克隆）。
+// 都不得留在 AST 里；输出还要满足静态视图的前提（`requiresRuntime: false`、
+// 与 minimal reactConfig 同键的 `componentConfigKey`、存活组件清单），能力开关与
+// 运行期元数据必须清空，结果仍可 JSON 序列化（Worker postMessage 可克隆）。
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { describe, expect, it } from 'vitest';
 import type { LocalDocument, LocalNode } from 'reactive-md';
+import { createReactHost } from 'reactive-md/react/minimal';
 import {
   CHAT_RMD_POLICY_UNSUPPORTED,
   CHAT_RMD_POLICY_VERSION,
   applyChatDocumentPolicy,
 } from '@/lib/chat-rmd/document-policy';
 import { CHAT_RMD_COMPILE_OPTIONS } from '@/lib/chat-rmd/options';
+import { CHAT_RMD_COMPILE_CONFIG_KEY } from '@/lib/chat-rmd/compiler-config';
 import { compileSource } from '@/lib/reactive/compile-source';
+
+/** 与 ChatRmdDocument 静态视图共用同一套 minimal react 宿主配置。 */
+const CHAT_RMD_REACT_CONFIG_KEY = createReactHost().reactConfig.config.key;
 
 function compileFinal(source: string): LocalDocument {
   const result = compileSource(source, CHAT_RMD_COMPILE_OPTIONS, 'final');
@@ -71,6 +77,42 @@ function collectComponents(nodes: readonly LocalNode[], name: string): LocalNode
   return collectNodes(nodes, 'component').filter((node) => node.name === name);
 }
 
+describe('静态视图前提', () => {
+  it('编译配置与 minimal react 宿主使用同一个 config.key', () => {
+    expect(CHAT_RMD_REACT_CONFIG_KEY).toBe(CHAT_RMD_COMPILE_CONFIG_KEY);
+  });
+
+  it('文档声明 requiresRuntime:false，并保留配置身份', () => {
+    const document = compiledPolicy('# 标题');
+
+    expect(document.requiresRuntime).toBe(false);
+    expect(document.syntaxVersion).toBe('local-draft-3');
+    expect(document.componentConfigKey).toBe(CHAT_RMD_REACT_CONFIG_KEY);
+    expect(document.usedComponents).toEqual([]);
+    expect(document.componentDefinitions).toBeUndefined();
+    // legacy 整篇 HTML 字段会让静态视图判定「需要运行期」并拒绝渲染。
+    expect(document.html).toBeUndefined();
+  });
+
+  it('按剩余节点重算 usedComponents，并保留存活组件的清单', () => {
+    const document = compiledPolicy(
+      ['<alert tone="info" title="T">正文</alert>', '', '报名 <badge tone="success">报名中</badge> 结束'].join(
+        '\n'
+      )
+    );
+
+    expect(document.usedComponents).toEqual(['alert', 'badge']);
+    expect(document.componentDefinitions?.map((definition) => definition.name)).toEqual([
+      'alert',
+      'badge',
+    ]);
+    // 清单是 plain data，随文档一起可克隆。
+    expect(JSON.parse(JSON.stringify(document.componentDefinitions))).toEqual(
+      document.componentDefinitions
+    );
+  });
+});
+
 describe('允许的 Markdown 结构与公式', () => {
   it('保留标题、强调、代码、引用、列表、表格与公式', () => {
     const document = compiledPolicy(
@@ -125,6 +167,10 @@ describe('允许的 Markdown 结构与公式', () => {
 
   it('清空能力开关与运行期元数据', () => {
     const document = compiledPolicy('<number label="数量"/> 与 {{ 1 + 1 }}');
+    expect(document.requiresRuntime).toBe(false);
+    expect(document.componentConfigKey).toBe(CHAT_RMD_REACT_CONFIG_KEY);
+    expect(document.usedComponents).toEqual([]);
+    expect(document.componentDefinitions).toBeUndefined();
     expect(document.capabilities).toEqual({
       policy: { enableCss: false, enableJavaScript: false, enableExtendedHtml: false },
       styles: [],
@@ -140,15 +186,10 @@ describe('允许的 Markdown 结构与公式', () => {
     expect(document.dynamicConstraints).toBeUndefined();
     expect(document.dependencies).toBeUndefined();
     expect(document.tableShapes).toBeUndefined();
-    expect(document.componentDefinitions).toBeUndefined();
     expect(document.extensions).toBeUndefined();
     expect(document.kernel).toBeUndefined();
     expect(document.bindingSlots).toBeUndefined();
-    expect(document.html).toEqual({
-      enableCss: false,
-      enableJavaScript: false,
-      enableExtendedHtml: false,
-    });
+    expect(document.html).toBeUndefined();
   });
 });
 
@@ -178,6 +219,25 @@ describe('未批准节点转回字面量源码', () => {
     const text = collectText(document.nodes);
     expect(text).toContain('<number label="数量"/>');
     expect(text).toContain('{{ 1 + 1 }}');
+  });
+
+  it('坏 alert / 动态 if / jump 都不进入能力通道', () => {
+    const sources = {
+      badAlert: '<alert tone="nope">坏</alert>',
+      dynamicIf: '<if when="{{ true }}">条件</if>',
+      jump: '<jump to="/chat/1">跳转</jump>',
+    };
+    const document = compiledPolicy(Object.values(sources).join('\n\n'));
+
+    expect(collectNodes(document.nodes, 'component')).toEqual([]);
+    expect(collectTypes(document.nodes)).not.toContain('interpolation');
+    expect(document.usedComponents).toEqual([]);
+    expect(document.componentDefinitions).toBeUndefined();
+
+    const text = collectText(document.nodes);
+    for (const [label, source] of Object.entries(sources)) {
+      expect(text, `${label} 应按源码显示`).toContain(source);
+    }
   });
 
   it('移除 HTML 原生节点与 attrs，按源码显示', () => {
@@ -217,6 +277,36 @@ describe('未批准节点转回字面量源码', () => {
   });
 });
 
+describe('表达式按字面文本编译（0.9.3 embedding）', () => {
+  it('表格保留结构，未声明插值按字面文本渲染', () => {
+    const document = compiledPolicy(
+      [
+        '| Item | Cost |',
+        '| --- | ---: |',
+        '| Venue | {{ venueCost }} |',
+        '| Materials | {{ materialsCost }} |',
+      ].join('\n')
+    );
+
+    expect(collectNodes(document.nodes, 'table')).toHaveLength(1);
+    // 表达式的降级停在单元格文本，不再把整张表换成 fallback 源码。
+    expect(collectTypes(document.nodes)).not.toContain('fallback');
+    const text = collectText(document.nodes);
+    expect(text).toContain('{{ venueCost }}');
+    expect(text).toContain('{{ materialsCost }}');
+  });
+
+  it('正文与标题里的未声明插值同样是可见文字', () => {
+    const document = compiledPolicy('## {{ headingText }}\n\n费用是 {{ venueCost }} 元');
+
+    expect(collectTypes(document.nodes)).not.toContain('interpolation');
+    expect(collectTypes(document.nodes)).not.toContain('fallback');
+    const text = collectText(document.nodes);
+    expect(text).toContain('{{ headingText }}');
+    expect(text).toContain('{{ venueCost }}');
+  });
+});
+
 describe('允许的静态展示组件', () => {
   it('保留单行 alert 的节点、白名单属性与内部 Markdown', () => {
     const document = compiledPolicy(
@@ -231,6 +321,8 @@ describe('允许的静态展示组件', () => {
     });
     expect(collectText(alert.children ?? [])).toBe('The release can stage at');
     expect(collectText(document.nodes)).not.toContain('<alert');
+    expect(document.usedComponents).toEqual(['alert']);
+    expect(document.componentDefinitions?.map((definition) => definition.name)).toEqual(['alert']);
 
     const bold = compiledPolicy(
       '<alert tone="warning" title="Two checks still open">The release can stage at **now**</alert>'
@@ -349,6 +441,7 @@ describe('允许的静态展示组件', () => {
       { title: 'B' },
       { color: '#336699' },
     ]);
+    expect(document.usedComponents).toEqual(['panel', 'grid', 'card', 'section']);
 
     // 每个允许组件只允许白名单键：多一个属性就整体按源码显示（见下方手写 AST 用例）。
     const whitelist: Readonly<Record<string, readonly string[]>> = {
@@ -422,6 +515,9 @@ describe('允许的静态展示组件', () => {
     if (!policy.ok) throw new Error('unreachable');
     expect(collectNodes(policy.document.nodes, 'component')).toEqual([]);
     expect(collectText(policy.document.nodes)).toBe(source);
+    // 不保留被拒绝组件的配置身份来源：清单跟着剩余节点走。
+    expect(policy.document.usedComponents).toEqual([]);
+    expect(policy.document.componentDefinitions).toBeUndefined();
   });
 });
 
@@ -527,6 +623,9 @@ describe('策略失败与可序列化', () => {
         children: [{ type: 'text', id: 'local-0', range: { start: 0, end: 2 }, value: '正文' }],
       },
     ]);
+    expect(sanitized.requiresRuntime).toBe(false);
+    expect(sanitized.componentConfigKey).toBeUndefined();
+    expect(sanitized.usedComponents).toEqual([]);
     expect(sanitized.capabilities?.policy).toEqual({
       enableCss: false,
       enableJavaScript: false,
@@ -535,6 +634,7 @@ describe('策略失败与可序列化', () => {
     expect(sanitized.capabilities?.styles).toEqual([]);
     expect(sanitized.initialState).toEqual({});
     expect(sanitized.bindings).toEqual({});
+    expect(sanitized.componentDefinitions).toBeUndefined();
     expect(sanitized.theme).toBeUndefined();
     expect(sanitized.syntaxVersion).toBe('local-draft-3');
   });
@@ -547,6 +647,6 @@ describe('策略失败与可序列化', () => {
   });
 
   it('导出稳定的策略版本', () => {
-    expect(CHAT_RMD_POLICY_VERSION).toBe('chat-rmd-policy/5');
+    expect(CHAT_RMD_POLICY_VERSION).toBe('chat-rmd-policy/6');
   });
 });

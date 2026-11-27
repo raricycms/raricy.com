@@ -3,38 +3,55 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // ChatRmdDocument.tsx — 聊天静态 RMD 文档的内层渲染器（正文与子剪贴板共用）
 //
-// 只做三件事：为文档创建/替换 runtime、把聊天静态能力契约钉死、把宿主组件
-// 形状修正到上游能调用 hostRenderer 的形态。
+// 聊天文档只交给上游 `LocalStaticDocumentView` 渲染：不创建 runtime、不持有编译
+// 状态。文档必须带 `requiresRuntime: false`（`document-policy` 在编译结果上设置），
+// 否则静态视图拒绝渲染并把整篇换成错误提示。
 //
-// 【为什么在这里把 chat-ref 的 hostForm 改成 inline】引用适配器生成的宿主节点是
-// `leaf` + 只有一个 `slot` 属性；上游 `LocalDocumentView` 对「没有 kind/ref 且不是
-// inline/container」的节点会直接渲染 `local-host-unavailable` 占位、**不调用**
-// hostRenderer。聊天视图按 slot 从 hostData 取数据，本来就不走上游的 kind:ref
-// 查表，因此这里把 chat-ref 统一成 inline —— 只影响调用路径，不改节点数据或预算。
-// （适配器侧若改成 inline，这个归一化就退化为 no-op。）
+// 【配置身份必须对齐】聊天编译用 minimal preset 的 `config`（见 chat-rmd/options），
+// 这里的 `createReactHost()` 也以 minimal preset 为基底，两端 `config.key` 相同；
+// 静态视图会拿文档的 `componentConfigKey` 对账，不一致就报
+// `local.extension.config-mismatch`。这是护栏：不要在视图层抹掉该字段来绕过。
 //
-// 【runtime 生命周期】与 `components/reactive/CompiledDocumentView.tsx` 同一套
-// StrictMode 安全写法：文档身份变化时新建 runtime，卸载后用一个微任务确认没有
-// 被开发态立即重挂，再 dispose。
+// 【为什么在这里把 chat-ref 的 hostForm 改成 inline】引用适配器生成的是 inline
+// 宿主节点 + 只有一个 `slot` 属性，更早的文档可能没有 `hostForm`；上游静态视图对
+// 「没有 kind/ref 且不是 inline/container」的节点会直接渲染 `local-host-unavailable`
+// 占位、**不调用** hostRenderer。聊天视图按 slot 从 hostData 取数据，本来就不走上游
+// 的 kind:ref 查表，因此这里把 chat-ref 统一成 inline —— 只影响调用路径，不改节点
+// 数据或预算。（适配器已生成 inline 时，这个归一化就是 no-op。）
+//
+// 【块级子文档】剪贴板子文档是 `<article>`（块级），留在 `<p>` 里是非法嵌套
+// （React 会报 hydration 警告，浏览器解析与客户端 DOM 也会分叉）；`liftInlineDocuments`
+// 只调整宿主节点的挂载层级，不改文字与顺序。
 // ─────────────────────────────────────────────────────────────────────────────
 
 import 'reactive-md/styles/minimal.css';
 
-import { useEffect, useMemo, useState } from 'react';
-import { createLocalRuntime, type LocalDocument, type LocalRuntime } from 'reactive-md';
+import { useMemo } from 'react';
+import type { LocalDocument } from 'reactive-md';
 import {
-  LocalDocumentView,
-  type LocalUrlPolicy,
-} from 'reactive-md/react/minimal';
-import type { LocalHostData, LocalHostRenderer } from 'reactive-md/react/unstyled';
+  LocalStaticDocumentView,
+  type LocalHostData,
+  type LocalHostRenderer,
+} from 'reactive-md/react/static';
+import { createReactHost, type LocalUrlPolicy } from 'reactive-md/react/minimal';
 import { CHAT_REF_HOST_TAG, CHAT_REF_SLOT_ATTR, isChatHostData } from '@/lib/chat-rmd/reference-types';
 
-/** 聊天静态挂载的能力上限：三项全关（编译期策略之外的运行时第二道闸）。 */
+/** 聊天静态挂载的能力上限：三项全关（编译期策略之外的挂载侧第二道闸）。 */
 export const CHAT_RMD_CAPABILITY_GRANTS = Object.freeze({
   enableCss: false,
   enableJavaScript: false,
   enableExtendedHtml: false,
 });
+
+/**
+ * 模块级单例：宿主实现与 reactConfig 只组装一次。
+ *
+ * `createReactHost()` 以 minimal React preset 为基底，与聊天编译的
+ * `createLocalConfig({ presets: [minimalPreset] })` 得到同一个 `config.key`；
+ * 静态视图用它校验文档的 `componentConfigKey`。
+ */
+const CHAT_RMD_REACT_HOST = createReactHost();
+const CHAT_RMD_REACT_CONFIG = CHAT_RMD_REACT_HOST.reactConfig;
 
 function normalizeHostForms(nodes: LocalDocument['nodes']): LocalDocument['nodes'] {
   let changed = false;
@@ -118,17 +135,11 @@ function liftInlineDocuments(
 }
 
 /**
- * 修正宿主节点调用形态并拆开块级子文档；无相关节点、且配置身份已清时原样返回同一份文档。
+ * 修正宿主节点调用形态并拆开块级子文档；无相关节点时原样返回同一份文档。
  *
- * 【为什么抹掉 `componentConfigKey`】聊天文档由**标准配置**的 `compileLocal` 编译，
- * 而这里用 `react/minimal` 渲染，两端配置键必然不同；上游 `LocalDocumentView` 会在
- * 键不一致时报 `local.extension.config-mismatch` 并降级。聊天的能力收缩由
- * `document-policy` 在编译后完成（只留 Markdown / 公式 / 适配器生成的宿主节点），
- * 所以渲染器装了哪些组件与文档无关，这个身份对聊天没有校验价值。
- *
- * ⚠️ 这等于**主动跳过**上游的「编译配置 / 渲染配置一致」护栏：若将来 policy 放开
- * 组件节点，必须改回携带真实配置身份（或让编译侧改用同一套 config），否则组件
- * 会按错误配置静默降级。
+ * 不在这里改写 `componentConfigKey`：编译配置与静态视图的 `reactConfig` 使用同一套
+ * minimal preset，配置身份必须留给上游做一致性校验 —— 不匹配要暴露成诊断，而不是
+ * 跳过护栏后按错误配置静默降级。
  */
 export function normalizeChatRmdDocument(
   document: LocalDocument,
@@ -140,10 +151,9 @@ export function normalizeChatRmdDocument(
     part += 1;
     return part;
   });
-  // 无变化时保持输入身份：ChatRmdDocument 按文档身份重建 runtime，多造一个对象
-  // 会在 hostData 换新引用时白重建一次。
-  if (liftedNodes === document.nodes && document.componentConfigKey === undefined) return document;
-  return { ...document, componentConfigKey: undefined, nodes: liftedNodes };
+  // 无变化时保持输入身份：静态视图按文档身份记忆渲染结果，多造对象只会白算一次。
+  if (liftedNodes === document.nodes) return document;
+  return { ...document, nodes: liftedNodes };
 }
 
 export interface ChatRmdDocumentProps {
@@ -151,16 +161,6 @@ export interface ChatRmdDocumentProps {
   hostData?: LocalHostData;
   hostRenderer?: LocalHostRenderer;
   urlPolicy?: LocalUrlPolicy;
-}
-
-interface RuntimeSlot {
-  document: LocalDocument;
-  runtime: LocalRuntime;
-  mounted: boolean;
-}
-
-function createRuntimeSlot(document: LocalDocument): RuntimeSlot {
-  return { document, runtime: createLocalRuntime(document), mounted: false };
 }
 
 export default function ChatRmdDocument({
@@ -174,29 +174,10 @@ export default function ChatRmdDocument({
     [document, hostData]
   );
 
-  const [current, setCurrent] = useState(() => createRuntimeSlot(viewDocument));
-  let active = current;
-  if (current.document !== viewDocument) {
-    active = createRuntimeSlot(viewDocument);
-    setCurrent(active);
-  }
-
-  useEffect(() => {
-    active.mounted = true;
-    return () => {
-      active.mounted = false;
-      // StrictMode 会立即用同一个 runtime 重挂；先让微任务确认真的没人要了。
-      queueMicrotask(() => {
-        if (!active.mounted) active.runtime.dispose();
-      });
-    };
-  }, [active]);
-
   return (
-    <LocalDocumentView
+    <LocalStaticDocumentView
       document={viewDocument}
-      runtime={active.runtime}
-      mode="static"
+      reactConfig={CHAT_RMD_REACT_CONFIG}
       capabilityGrants={CHAT_RMD_CAPABILITY_GRANTS}
       urlPolicy={urlPolicy}
       hostData={hostData}

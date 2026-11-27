@@ -1,39 +1,135 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// chat-rmd-options.test.ts — 聊天编译配置与 URL 策略
+// chat-rmd-options.test.ts — 聊天编译配置、0.9.3 嵌入档位与 URL 策略
 //
-// 钉住 M0 冻结的数值与「不跟着博客放宽」的边界：聊天不启用作者 CSS / JS / 扩展
-// HTML；链接只放行站内路径、http(s)、mailto；图片只放行同源受控前缀。
+// 钉住聊天的能力边界：不启用作者 CSS / JS / 扩展 HTML；表达式按字面文本编译，
+// 未支持组件就地降级（onUnsupported: 'fallback'），合法兄弟节点保留；配置与
+// `reactive-md/react/minimal` 的默认宿主同键。链接只放行站内路径、http(s)、
+// mailto；图片只放行同源受控前缀。
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { describe, expect, it } from 'vitest';
+import { compileLocal, type LocalNode } from 'reactive-md';
+import { createReactHost } from 'reactive-md/react/minimal';
+import { createLocalConfig } from 'reactive-md/sdk';
+import { minimalPreset } from 'reactive-md/presets/minimal';
 import {
-  CHAT_RMD_COMPILE_OPTIONS,
-  CHAT_RMD_COMPILER_VERSION,
-  CHAT_RMD_OPTIONS_VERSION,
-  chatReactiveUrlPolicy,
-} from '@/lib/chat-rmd/options';
+  CHAT_RMD_COMPILE_CONFIG,
+  CHAT_RMD_COMPILE_CONFIG_KEY,
+} from '@/lib/chat-rmd/compiler-config';
+import { CHAT_RMD_COMPILE_OPTIONS, chatReactiveUrlPolicy } from '@/lib/chat-rmd/options';
+
+function collectNodes(nodes: readonly LocalNode[], type: string): LocalNode[] {
+  const found: LocalNode[] = [];
+  const walk = (list: readonly LocalNode[]) => {
+    for (const node of list) {
+      if (node.type === type) found.push(node);
+      if (node.children) walk(node.children);
+    }
+  };
+  walk(nodes);
+  return found;
+}
+
+function collectTypes(nodes: readonly LocalNode[]): Set<string> {
+  const types = new Set<string>();
+  const walk = (list: readonly LocalNode[]) => {
+    for (const node of list) {
+      types.add(node.type);
+      if (node.children) walk(node.children);
+    }
+  };
+  walk(nodes);
+  return types;
+}
+
+function collectText(nodes: readonly LocalNode[]): string {
+  const parts: string[] = [];
+  const walk = (list: readonly LocalNode[]) => {
+    for (const node of list) {
+      if (typeof node.value === 'string') parts.push(node.value);
+      if (node.children) walk(node.children);
+    }
+  };
+  walk(nodes);
+  return parts.join('');
+}
 
 describe('CHAT_RMD_COMPILE_OPTIONS', () => {
   it('冻结聊天专用配置与预算', () => {
-    expect(CHAT_RMD_COMPILE_OPTIONS).toEqual({
-      strict: false,
-      markdownBreaks: true,
-      enableCss: false,
-      enableJavaScript: false,
-      enableExtendedHtml: false,
-      limits: {
-        maxSyntaxNodes: 10_000,
-        maxParseWork: 1_000_000,
-        maxMarkdownDepth: 64,
-      },
-    });
+    expect(CHAT_RMD_COMPILE_OPTIONS.config).toBe(CHAT_RMD_COMPILE_CONFIG);
+    expect(CHAT_RMD_COMPILE_OPTIONS.strict).toBe(false);
+    expect(CHAT_RMD_COMPILE_OPTIONS.markdownBreaks).toBe(true);
+    expect(CHAT_RMD_COMPILE_OPTIONS.enableCss).toBe(false);
+    expect(CHAT_RMD_COMPILE_OPTIONS.enableJavaScript).toBe(false);
+    expect(CHAT_RMD_COMPILE_OPTIONS.enableExtendedHtml).toBe(false);
     expect(CHAT_RMD_COMPILE_OPTIONS.hostComponents).toBeUndefined();
-    expect(CHAT_RMD_COMPILE_OPTIONS.config).toBeUndefined();
+    expect(CHAT_RMD_COMPILE_OPTIONS.limits).toEqual({
+      maxSyntaxNodes: 10_000,
+      maxParseWork: 1_000_000,
+      maxMarkdownDepth: 64,
+    });
   });
 
-  it('导出稳定的版本身份', () => {
-    expect(CHAT_RMD_COMPILER_VERSION).toBe('reactive-md/0.9.2');
-    expect(CHAT_RMD_OPTIONS_VERSION).toBe('chat-rmd/1');
+  it('嵌入档位：字面表达式 + 局部降级，不整体关闭交互组件', () => {
+    expect(CHAT_RMD_COMPILE_OPTIONS.embedding).toEqual({
+      expressions: 'literal',
+      onUnsupported: 'fallback',
+      allowImages: false,
+    });
+    // allowInteractive 不在编译档位整体关闭：静态组件要保留，交互组件的收缩
+    // 交给 document-policy 的允许列表。
+    expect(CHAT_RMD_COMPILE_OPTIONS.embedding?.allowInteractive).toBeUndefined();
+  });
+
+  it('配置键稳定，且与 react/minimal 默认宿主一致', () => {
+    expect(CHAT_RMD_COMPILE_CONFIG.key).toBe(CHAT_RMD_COMPILE_CONFIG_KEY);
+    expect(createLocalConfig({ presets: [minimalPreset] }).key).toBe(CHAT_RMD_COMPILE_CONFIG_KEY);
+    expect(createReactHost().reactConfig.config.key).toBe(CHAT_RMD_COMPILE_CONFIG_KEY);
+  });
+});
+
+describe('0.9.3 嵌入档位的编译行为', () => {
+  it('表达式按字面文本编译，表格不再整段回退源码', () => {
+    const source = [
+      '| Item | Cost |',
+      '| --- | ---: |',
+      '| Venue | {{ venueCost }} |',
+      '| Materials | {{ materialsCost }} |',
+    ].join('\n');
+    const result = compileLocal(source, CHAT_RMD_COMPILE_OPTIONS);
+    expect(result.ok, JSON.stringify(result)).toBe(true);
+    if (!result.ok) throw new Error('unreachable');
+
+    const types = collectTypes(result.document.nodes);
+    expect(types.has('table')).toBe(true);
+    expect(types.has('fallback')).toBe(false);
+    expect(collectText(result.document.nodes)).toContain('{{ venueCost }}');
+    expect(collectText(result.document.nodes)).toContain('{{ materialsCost }}');
+    expect(result.document.requiresRuntime).toBe(false);
+  });
+
+  it('坏属性的 alert 局部降级，合法 alert 仍是组件', () => {
+    const source = '前文\n\n<alert tone="nope">坏</alert> <alert>好</alert>\n\n后文';
+    const result = compileLocal(source, CHAT_RMD_COMPILE_OPTIONS);
+    expect(result.ok, JSON.stringify(result)).toBe(true);
+    if (!result.ok) throw new Error('unreachable');
+
+    const document = result.document;
+    const alerts = collectNodes(document.nodes, 'component').filter(
+      (node) => node.name === 'alert'
+    );
+    expect(alerts).toHaveLength(1);
+    expect(collectText(alerts[0].children ?? [])).toBe('好');
+    expect(collectNodes(document.nodes, 'fallback').map((node) => node.value)).toEqual([
+      '<alert tone="nope">坏</alert>',
+    ]);
+    // 不存在包裹整条消息的 fallback，前后文照常渲染。
+    expect(collectNodes(document.nodes, 'fallback').some((node) => node.value === source)).toBe(
+      false
+    );
+    expect(collectText(document.nodes)).toContain('前文');
+    expect(collectText(document.nodes)).toContain('后文');
+    expect(document.requiresRuntime).toBe(false);
   });
 });
 

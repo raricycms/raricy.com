@@ -294,6 +294,11 @@ export default function ChatApp({
   const overlayOpenRef = useRef(false);
   overlayOpenRef.current =
     messageMenu !== null || messageDetail !== null || avatarMenu !== null;
+  // 打开浮层的回调里还要同步置 true：异步编译可能抢在菜单 commit 前触发
+  // 「贴底跟随」，滚动事件随后到达会把刚挂上的菜单收掉（右键后闪一下就没）。
+  const markOverlayOpen = useCallback(() => {
+    overlayOpenRef.current = true;
+  }, []);
   /**
    * 用户主动滚动（滚轮 / 触摸）后的保护窗。
    *
@@ -1605,6 +1610,7 @@ export default function ChatApp({
    */
   const openAvatarMenu = useCallback(
     (m: ChatMessageDTO, el: HTMLButtonElement) => {
+      markOverlayOpen();
       setAvatarMenu((prev) => {
         if (prev && prev.author.id === m.author.id) return null;
         return {
@@ -1620,7 +1626,7 @@ export default function ChatApp({
         };
       });
     },
-    [currentUserId]
+    [currentUserId, markOverlayOpen]
   );
 
   /**
@@ -1628,14 +1634,16 @@ export default function ChatApp({
    * 回调必须是稳定引用：ChatMessageItem 包了 memo，换引用等于整列表白 memo。
    */
   const openMessageMenu = useCallback((m: ChatMessageDTO, anchor: MessageMenuAnchor) => {
+    markOverlayOpen();
     setMessageMenu({ msg: m, anchor });
-  }, []);
+  }, [markOverlayOpen]);
 
   /** 单击正文 → 消息详情浮层（移动端与桌面共用；详情里可原生选字 / 复制）。 */
   const openMessageDetail = useCallback((m: ChatMessageDTO) => {
+    markOverlayOpen();
     setMessageMenu(null);
     setMessageDetail(m);
-  }, []);
+  }, [markOverlayOpen]);
 
   const closeMessageDetail = useCallback(() => setMessageDetail(null), []);
 
@@ -2123,9 +2131,10 @@ export default function ChatApp({
                 onBeforeContentChange={handleContentBeforeChange}
                 onContentChange={handleMessageContentChange}
               />
-              {/* 生成中的临时行渲染在 memo 列表之外：快照约 10 帧/秒，不能让它
-                  穿透 ChatMessageList 去重建最多 300 条正式消息的元素树。
-                  历史视图只看过去那一段，不插入临时行（与 SSE 同一条规则）。 */}
+              {/* 生成中的临时行渲染在 memo 列表之外：快照 5 帧/秒，前端每帧分两步
+                  显示（约 10 帧/秒），不能让它穿透 ChatMessageList 去重建最多
+                  300 条正式消息的元素树。历史视图只看过去那一段，不插入临时行
+                  （与 SSE 同一条规则）。 */}
               {!historyView &&
                 activeGenerations.map((generation) => (
                   <ChatGenerationItem

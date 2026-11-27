@@ -821,7 +821,7 @@ describe('取消与竞争', () => {
     const stream = connect(author.id);
     const created = await createGen(author.id);
 
-    // 第一片立即广播；第二片落在 100ms 节流窗口里，登记了合并计时器
+    // 第一片立即广播；第二片落在 200ms 节流窗口里，登记了合并计时器
     await chunk(author.id, created.generation_id, 1, '一');
     await chunk(author.id, created.generation_id, 2, '二');
     await cancel(author.id, created.generation_id);

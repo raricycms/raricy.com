@@ -8,7 +8,7 @@
 | --- | --- |
 | 存储 | 保留 `chat_messages.content` 及既有附件字段，不增加 `format`、`syntax_version`、生成任务表或 AST 快照 |
 | 解析 | 正式消息在前端统一按 Markdown 与 RMD 混合源码编译，不对内容猜测格式 |
-| 编译器 | 复用 `src/lib/reactive/compile-source.ts` 与 `reactive-md@0.9.2`；聊天使用独立配置 |
+| 编译器 | 复用 `src/lib/reactive/compile-source.ts` 与 `reactive-md@0.9.3`；聊天使用独立配置 |
 | 渲染 | 首版 `LocalDocumentView` 采用静态模式；展示公式和允许的静态组件，控件只读 |
 | 引用 | 保留聊天现有图床、剪贴板、音频、表情、黄脸和名片语义，由聊天适配器处理 |
 | 机器人 | 站外机器人继续使用自己的 core+ 账号和会话 cookie；本站接收文本，不负责请求模型 |

@@ -1,10 +1,10 @@
 import {
   compileLocal,
-  createLocalCompileSession,
   type LocalCompileOptions,
   type LocalCompileResult,
   type LocalSourcePhase,
 } from 'reactive-md';
+import { createLocalCompileSession } from 'reactive-md/compiler/session';
 import { maskMarkdownCode } from '../favorite-refs';
 import { REACTIVE_COMPILE_OPTIONS } from './host-components';
 

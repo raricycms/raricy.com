@@ -5,7 +5,7 @@
 //
 // 一条消息的生命周期：
 //   源码 → ChatCompileManager 订阅（key / revision 单调）→ 编译文档
-//   → final 阶段再做一次引用适配（hostData 按 slot 落位）→ static LocalDocumentView
+//   → final 阶段再做一次引用适配（hostData 按 slot 落位）→ LocalStaticDocumentView
 //   → ChatRmdHostView 渲染受控媒体
 //
 // 关键纪律：
