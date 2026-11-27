@@ -1398,3 +1398,10 @@
   font-size: 0.8rem;
   color: var(--color-text-secondary);
 }
+
+/* 交易记录页的「返回账户」。分页只有 >1 页时才渲染，只有一页时这颗按钮
+   会直接贴住上面的记录卡；给它固定的上外边距，两种情形下都与记录区分开。
+   `.read-btn` 是博客详情页的通用样式，只在这里追加间距，不改那一份。 */
+.trade-history-back {
+  margin-top: $space-6;
+}

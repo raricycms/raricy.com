@@ -33,6 +33,6 @@ export default async function TradeHistory({searchParams}:{searchParams:Promise<
       </li>)}</ul>:<p>还没有已结清的交易。</p>}
     </section>
     <SitePager page={page} pages={Math.max(1,Math.ceil(total/20))} href={p=>'/fish/trade/history?page='+p}/>
-    <Link href="/fish" className="read-btn">返回账户</Link>
+    <Link href="/fish" className="read-btn trade-history-back">返回账户</Link>
   </div>;
 }

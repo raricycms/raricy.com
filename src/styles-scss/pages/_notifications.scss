@@ -17,6 +17,10 @@ body {
     margin-right: auto;
     @include m.container-padding;
     @include m.site-width-ladder;
+    /* 页面最后一块内容与页脚之间的留白。内容长短都会把页脚顶到文档末尾，
+       没有这层下内距时，末块（分页 / 「最近结清」/ 返回按钮）会直接贴住页脚。
+       与 .fish-page 的下内距同档（docs/frontend-styles.md §4.2：分页与页脚之间保留足够空间）。 */
+    padding-bottom: $space-8;
 }
 
 .page-title {
