@@ -305,6 +305,19 @@ describe('表达式按字面文本编译（0.9.3 embedding）', () => {
     expect(text).toContain('{{ headingText }}');
     expect(text).toContain('{{ venueCost }}');
   });
+
+  it('未闭合、嵌套与代码块内的 {{ 不吞掉外层正文', () => {
+    const unclosed = compiledPolicy('前 {{ 100 后');
+    expect(collectNodes(unclosed.nodes, 'paragraph')).toHaveLength(1);
+    expect(collectText(unclosed.nodes)).toBe('前 {{ 100 后');
+
+    const nested = compiledPolicy('前 {{ {{ x }} }} 后');
+    expect(collectNodes(nested.nodes, 'paragraph')).toHaveLength(1);
+    expect(collectText(nested.nodes)).toBe('前 {{ {{ x }} }} 后');
+
+    const fenced = compiledPolicy('```\n{{ x }}\n```');
+    expect(collectNodes(fenced.nodes, 'code').map((node) => node.value)).toEqual(['{{ x }}']);
+  });
 });
 
 describe('允许的静态展示组件', () => {
@@ -442,6 +455,13 @@ describe('允许的静态展示组件', () => {
       { color: '#336699' },
     ]);
     expect(document.usedComponents).toEqual(['panel', 'grid', 'card', 'section']);
+    // 存活组件的定义随输出保留，静态视图才不会把整篇判为 runtime-required。
+    expect(document.componentDefinitions?.map((definition) => definition.name)).toEqual(
+      document.usedComponents
+    );
+    expect(
+      document.componentDefinitions?.every((definition) => definition.capabilities.static)
+    ).toBe(true);
 
     // 每个允许组件只允许白名单键：多一个属性就整体按源码显示（见下方手写 AST 用例）。
     const whitelist: Readonly<Record<string, readonly string[]>> = {
@@ -479,6 +499,12 @@ describe('允许的静态展示组件', () => {
     for (const [label, source] of Object.entries(sources)) {
       expect(text, `${label} 应按源码显示`).toContain(source);
     }
+
+    // 动态属性在编译期或策略层就地降级：tone 由编译器产出 fallback，title 编译成
+    // component 后因属性值含 {{ 被策略拒绝，最终都按源码显示。
+    expect(collectNodes(document.nodes, 'fallback').map((node) => node.value)).toContain(
+      sources.dynamicTone
+    );
   });
 
   it('允许组件携带非白名单属性时按源码文本显示', () => {
@@ -516,6 +542,43 @@ describe('允许的静态展示组件', () => {
     expect(collectNodes(policy.document.nodes, 'component')).toEqual([]);
     expect(collectText(policy.document.nodes)).toBe(source);
     // 不保留被拒绝组件的配置身份来源：清单跟着剩余节点走。
+    expect(policy.document.usedComponents).toEqual([]);
+    expect(policy.document.componentDefinitions).toBeUndefined();
+  });
+});
+
+describe('白名单原型链边界', () => {
+  it('component 名为 constructor / __proto__ 时不抛错并按字面量源码显示', () => {
+    const source = '<constructor>hi</constructor>\n<__proto__>hi</__proto__>';
+    const firstEnd = source.indexOf('\n');
+    const document: LocalDocument = {
+      syntax: 'local',
+      source,
+      nodes: [
+        {
+          type: 'component',
+          id: 'local-0',
+          range: { start: 0, end: firstEnd },
+          name: 'constructor',
+        },
+        {
+          type: 'component',
+          id: 'local-1',
+          range: { start: firstEnd + 1, end: source.length },
+          name: '__proto__',
+        },
+      ],
+      initialState: {},
+      bindings: {},
+    };
+
+    const policy = applyChatDocumentPolicy(document);
+    expect(policy.ok).toBe(true);
+    if (!policy.ok) throw new Error('unreachable');
+    expect(collectNodes(policy.document.nodes, 'component')).toEqual([]);
+    const text = collectText(policy.document.nodes);
+    expect(text).toContain('<constructor>hi</constructor>');
+    expect(text).toContain('<__proto__>hi</__proto__>');
     expect(policy.document.usedComponents).toEqual([]);
     expect(policy.document.componentDefinitions).toBeUndefined();
   });
@@ -569,6 +632,49 @@ describe('策略失败与可序列化', () => {
     };
 
     expect(applyChatDocumentPolicy(document)).toEqual({
+      ok: false,
+      code: CHAT_RMD_POLICY_UNSUPPORTED,
+    });
+  });
+
+  it('存活组件缺少可渲染定义时整篇失败（视图回退到源码）', () => {
+    const original = compileFinal('<alert tone="info" title="T">正文</alert>');
+    expect(original.usedComponents).toEqual(['alert']);
+    expect(applyChatDocumentPolicy(original).ok).toBe(true);
+
+    // 定义整体缺失。
+    const withoutDefinitions: LocalDocument = { ...original, componentDefinitions: undefined };
+    expect(applyChatDocumentPolicy(withoutDefinitions)).toEqual({
+      ok: false,
+      code: CHAT_RMD_POLICY_UNSUPPORTED,
+    });
+
+    // 定义存在但不是静态能力。
+    const nonStatic: LocalDocument = {
+      ...original,
+      componentDefinitions: original.componentDefinitions?.map((definition) => ({
+        ...definition,
+        capabilities: { ...definition.capabilities, static: false },
+      })),
+    };
+    expect(applyChatDocumentPolicy(nonStatic)).toEqual({
+      ok: false,
+      code: CHAT_RMD_POLICY_UNSUPPORTED,
+    });
+
+    // 多组件只缺其中一个的定义，同样整篇失败。
+    const mixed = compileFinal(
+      ['<alert tone="info" title="T">正文</alert>', '', '<badge tone="success">中</badge>'].join(
+        '\n'
+      )
+    );
+    const withoutBadge: LocalDocument = {
+      ...mixed,
+      componentDefinitions: mixed.componentDefinitions?.filter(
+        (definition) => definition.name !== 'badge'
+      ),
+    };
+    expect(applyChatDocumentPolicy(withoutBadge)).toEqual({
       ok: false,
       code: CHAT_RMD_POLICY_UNSUPPORTED,
     });
@@ -647,6 +753,6 @@ describe('策略失败与可序列化', () => {
   });
 
   it('导出稳定的策略版本', () => {
-    expect(CHAT_RMD_POLICY_VERSION).toBe('chat-rmd-policy/6');
+    expect(CHAT_RMD_POLICY_VERSION).toBe('chat-rmd-policy/7');
   });
 });

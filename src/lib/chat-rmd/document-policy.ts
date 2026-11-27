@@ -12,7 +12,8 @@
 //
 // 输出保留 `componentConfigKey`（静态视图要与 minimal reactConfig 对账）与存活组件
 // 的 `componentDefinitions`（静态视图据此判定 `component` 节点不需要 runtime），
-// 其余运行期元数据一律清空；`requiresRuntime` 固定为 false。
+// 其余运行期元数据一律清空；`requiresRuntime` 固定为 false。存活组件缺少可渲染
+// 定义时整篇失败（视图显示源码），不产出会触发 `runtime-required` 的组件节点。
 //
 // 输出只含 plain object / array / 原始值，可直接 structuredClone 回主线程。
 // 无法从源码取回字面量的未批准节点整体失败（`policy.unsupported`），视图显示源码。
@@ -29,8 +30,9 @@ import { chatReactiveUrlPolicy } from './options';
  * v5：final 编译失败时改用 streaming 恢复，未支持组件降级为局部 fallback。
  * v6：reactive-md 0.9.3；literal + fallback 在编译期完成局部降级，策略只做
  *     最终能力收缩与 URL / 字段清洗，并输出静态视图所需的配置身份。
+ * v7：存活组件必须带可渲染的定义，否则整篇失败（显示源码）。
  */
-export const CHAT_RMD_POLICY_VERSION = 'chat-rmd-policy/6';
+export const CHAT_RMD_POLICY_VERSION = 'chat-rmd-policy/7';
 
 /** 策略拒绝码：视图应显示完整源码。 */
 export const CHAT_RMD_POLICY_UNSUPPORTED = 'policy.unsupported';
@@ -98,6 +100,16 @@ const CHAT_RMD_ALLOWED_DIV_ALIGN: ReadonlySet<string> = new Set([
   'justify',
 ]);
 
+/**
+ * 白名单按 own property 查找：`constructor` / `__proto__` 这类名字会命中原型链，
+ * 直接下标取到的是函数或原型对象，不是组件配置。
+ */
+function readAllowedComponentAttrs(name: string): readonly string[] | undefined {
+  return Object.hasOwn(CHAT_RMD_ALLOWED_COMPONENTS, name)
+    ? CHAT_RMD_ALLOWED_COMPONENTS[name]
+    : undefined;
+}
+
 function isAllowedChatDiv(node: LocalNode): boolean {
   if (node.type !== 'div') return false;
   const attrs = node.attrs ?? {};
@@ -109,7 +121,7 @@ function isAllowedChatDiv(node: LocalNode): boolean {
 
 function isAllowedChatComponent(node: LocalNode): boolean {
   if (node.type !== 'component' || typeof node.name !== 'string') return false;
-  const allowedAttrs = CHAT_RMD_ALLOWED_COMPONENTS[node.name];
+  const allowedAttrs = readAllowedComponentAttrs(node.name);
   if (!allowedAttrs) return false;
   const attrs = node.attrs ?? {};
   for (const [key, value] of Object.entries(attrs)) {
@@ -212,7 +224,7 @@ function rebuildAllowedNode(
 
   if (node.type === 'component' && typeof node.name === 'string') {
     safe.name = node.name;
-    const allowedAttrs = CHAT_RMD_ALLOWED_COMPONENTS[node.name] ?? [];
+    const allowedAttrs = readAllowedComponentAttrs(node.name) ?? [];
     const attrs: Record<string, string> = {};
     for (const key of allowedAttrs) {
       const value = node.attrs?.[key];
@@ -324,7 +336,7 @@ function isRenderableComponentDefinition(value: unknown): value is ChatComponent
   if (typeof definition.id !== 'string' || typeof definition.version !== 'string') return false;
   if (
     typeof definition.name !== 'string' ||
-    CHAT_RMD_ALLOWED_COMPONENTS[definition.name] === undefined
+    readAllowedComponentAttrs(definition.name) === undefined
   ) {
     return false;
   }
@@ -368,6 +380,13 @@ export function applyChatDocumentPolicy(document: LocalDocument): ChatDocumentPo
     document.componentDefinitions,
     usedComponents
   );
+
+  // 静态视图要求每个 component 都有 `capabilities.static === true` 的定义，缺一个就会
+  // 把整篇判为 runtime-required。这里先整篇失败，让视图显示完整源码而非错误段落。
+  const definedNames = new Set((componentDefinitions ?? []).map((definition) => definition.name));
+  if (usedComponents.some((name) => !definedNames.has(name))) {
+    return { ok: false, code: CHAT_RMD_POLICY_UNSUPPORTED };
+  }
 
   const sanitized: LocalDocument = {
     syntax: 'local',
