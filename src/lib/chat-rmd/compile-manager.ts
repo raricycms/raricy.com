@@ -1,7 +1,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // chat-rmd/compile-manager.ts — 聊天页面的多文档编译管理器（上游 Worker 池）
 //
-// 一个页面一个 Manager / 一个 `LocalCompilePool`（默认 1 个 Worker）。池已经按
+// 一个 viewerScope 一个 Manager / 一个 `LocalCompilePool`（默认 1 个 Worker，跨路由复用）。池已经按
 // documentId 维护 revision 链、增量会话、超时与失败回退；这里只保留聊天语义：
 //   · 订阅：按 key 保存 subs / latest / delivered / attempted；final 命中本地缓存
 //     时同步投递；
@@ -12,6 +12,11 @@
 //     `policy.unsupported` 并显示源码；
 //   · 缓存：只缓存 final 成功文档（300 条 / 16 MiB），身份由上游
 //     `localCompileCacheKey`（源码 + 选项 + 配置 + 阶段 + 策略版本）承担；
+//   · 降级：Worker 失败后上游池不会自愈，同一池的后续任务都会在主线程同步编译；
+//     管理器先投递本次 fallback 结果，再重建一次池，重建用尽后投递
+//     `worker.unavailable` 并停止派发（视图显示源码）；
+//   · 压力：池队列回满（backpressure）是瞬时状态，不记为失败，退避重试，
+//     用尽才投递 `pool.backpressure`；
 //   · 滚动：`setScrolling(active)` 映射到池的 hold / resume（不取消在途编译）；
 //   · 资源：最后一个订阅者离开后保留 1s 再 `pool.release(key)`，dispose 立即清。
 //
@@ -57,6 +62,29 @@ const CHAT_RMD_MAX_PENDING = 512;
 const CHAT_RMD_FINAL_CACHE_MAX_ENTRIES = 300;
 const CHAT_RMD_FINAL_CACHE_MAX_BYTES = 16 * 1024 * 1024;
 const CHAT_RMD_SESSION_RELEASE_GRACE_MS = 1_000;
+
+/**
+ * Worker 全部失败后自动重建池的次数。上游池把失败 Worker 永久标记为 failed，
+ * 同池后续任务都会在主线程同步编译；Worker 正常完成一次编译后预算恢复，
+ * 持续 fallback 则不恢复，避免故障时无限重建。
+ */
+const CHAT_RMD_POOL_MAX_REBUILDS = 1;
+
+/** backpressure 退避：从 200ms 起指数翻倍，最多重试 5 次（约 6.2s 窗口）。 */
+const CHAT_RMD_BACKPRESSURE_RETRY_BASE_MS = 200;
+const CHAT_RMD_BACKPRESSURE_MAX_RETRIES = 5;
+
+/**
+ * 重建预算用尽后的冷却：到点重新武装预算并重试订阅中的文档。Manager 会被
+ * 跨路由复用 10 分钟，若用尽即永久停用，两次 Worker 超时就能让整段会话只剩源码。
+ */
+export const CHAT_RMD_POOL_RETRY_COOLDOWN_MS = 60_000;
+
+/** Worker / 池不可用的稳定错误码；视图据此显示源码。 */
+const CHAT_RMD_WORKER_UNAVAILABLE = 'worker.unavailable';
+
+/** backpressure 重试用尽后的稳定错误码。 */
+const CHAT_RMD_BACKPRESSURE_EXHAUSTED = 'pool.backpressure';
 
 /** 池优先级：可见 final 最先，生成中的快照次之，离屏历史最后。 */
 const CHAT_RMD_PRIORITY_VISIBLE_FINAL = 10;
@@ -141,6 +169,15 @@ interface ScheduledTask extends CompileStamp {
   scheduleRevision: number;
 }
 
+/** backpressure 退避重试；等待期间不写 attempted，内容变化或编译结束即作废。 */
+interface BackpressureRetry {
+  stamp: CompileStamp;
+  /** 已安排的退避次数；跨重试派发保留，指数延迟按它计算。 */
+  attempts: number;
+  /** 待触发的退避计时器；`null` 表示计时器已触发、正在重新派发。 */
+  timer: ReturnType<typeof setTimeout> | null;
+}
+
 interface KeyState {
   key: string;
   subs: Map<number, Subscription>;
@@ -152,6 +189,8 @@ interface KeyState {
   attempted: CompileStamp | null;
   /** 已交给池、尚未 settle 的任务；同一身份不重复排队。 */
   scheduled: ScheduledTask | null;
+  /** 正在等待退避的 backpressure 重试；同一 key 同时至多一个。 */
+  backpressureRetry: BackpressureRetry | null;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -209,7 +248,7 @@ function compileErrorCode(result: Extract<LocalCompileResult, { ok: false }>): s
 function poolTaskErrorCode(kind: LocalCompilePoolTaskErrorKind | null): string {
   switch (kind) {
     case 'worker-failed':
-      return 'worker.unavailable';
+      return CHAT_RMD_WORKER_UNAVAILABLE;
     case 'invalid-request':
       return 'request.invalid';
     case 'source-too-large':
@@ -244,12 +283,17 @@ export function createChatCompileManager(
 
   let pool: LocalCompilePool | null = null;
   let disposed = false;
+  /** 重建预算用尽后不再创建池：上游对失败 Worker 的兜底是主线程同步编译。 */
+  let poolUnavailable = false;
+  let poolRebuildsRemaining = CHAT_RMD_POOL_MAX_REBUILDS;
+  /** 预算用尽后的冷却计时器；到点重新允许建池并重试订阅中的文档。 */
+  let poolRetryTimer: ReturnType<typeof setTimeout> | null = null;
   /** 滚动期暂停池派发；池尚未创建时记下来，创建后补 hold。 */
   let scrollingActive = false;
   let nextSubscriptionId = 1;
 
   function ensurePool(): LocalCompilePool | null {
-    if (disposed) return null;
+    if (disposed || poolUnavailable) return null;
     if (pool) return pool;
     let created: LocalCompilePool;
     try {
@@ -260,6 +304,21 @@ export function createChatCompileManager(
     // 上游池创建即 spawn Worker；滚动期内创建也要先 hold，避免立即派发。
     if (scrollingActive) created.hold();
     pool = created;
+    // ready 只解析一次且不随之后的重建更新：初始 degraded 说明首个 Worker 已失败，
+    // 同池任务都会退到主线程同步编译。上游先 resolve ready、任务随后才走 fallback：
+    // 仍有 scheduled 时先不重建，等 `settleOutcome` 投递该结果时再恢复，否则
+    // `retirePool` 会丢弃已同步编译的 fallback 结果；没有在途任务（如仅 warmup）
+    // 才立即重建。
+    created.ready.then(
+      (event) => {
+        if (event.status !== 'degraded' || pool !== created) return;
+        for (const state of keys.values()) {
+          if (state.scheduled !== null) return;
+        }
+        recoverFromWorkerFailure();
+      },
+      () => {}
+    );
     return created;
   }
 
@@ -278,6 +337,7 @@ export function createChatCompileManager(
         delivered: null,
         attempted: null,
         scheduled: null,
+        backpressureRetry: null,
       };
       keys.set(key, state);
     }
@@ -316,13 +376,35 @@ export function createChatCompileManager(
     const latest = state.latest;
     if (!latest) return;
     if (state.scheduled && sameCompile(state.scheduled, latest)) return;
+
+    const retry = state.backpressureRetry;
+    if (retry) {
+      if (!sameCompile(retry.stamp, latest)) {
+        // 内容已经变化：作废旧重试，立即按新内容调度。
+        clearBackpressureRetry(state);
+      } else if (isSettled(state, latest)) {
+        // 同一内容已通过其他路径（如 final 缓存）投递：重试作废。
+        clearBackpressureRetry(state);
+        return;
+      } else if (retry.timer !== null) {
+        // 同一内容仍在退避等待：计时器触发后才会派发，不绕过 backpressure。
+        return;
+      }
+    }
+
     if (isSettled(state, latest)) return;
     // 比已投递结果更旧的 revision 会被投递检查丢弃，不再浪费池槽位。
     if (state.delivered && latest.revision < state.delivered.revision) return;
 
     const activePool = ensurePool();
     if (!activePool) {
-      publish(state, latest, null, 'worker.unavailable');
+      if (!disposed && !poolUnavailable) {
+        // 这里只可能是 createPool 抛错（warmup 的失败不落状态）：按不可用处理并冷却，
+        // 本次失败不能写 delivered，冷却后同一内容还会再试。
+        poolUnavailable = true;
+        schedulePoolRetryCooldown();
+      }
+      publishFailure(state, latest, CHAT_RMD_WORKER_UNAVAILABLE, poolUnavailable);
       return;
     }
 
@@ -391,18 +473,22 @@ export function createChatCompileManager(
     }
   }
 
-  /** 投递成功结果或错误快照；final 成功文档同时写入缓存。 */
+  /** 投递成功结果或错误快照；final 成功文档同时写入缓存。transient 不写 delivered。 */
   function publish(
     state: KeyState,
     stamp: CompileStamp,
     document: LocalDocument | null,
-    errorCode: string | null
+    errorCode: string | null,
+    transient = false
   ): void {
     if (!canDeliver(state, stamp)) return;
+    // 这一身份已经投递（可能是池不可用时的失败兜底）：backpressure 重试不再需要。
+    const retry = state.backpressureRetry;
+    if (retry && sameCompile(retry.stamp, stamp)) clearBackpressureRetry(state);
     if (document && stamp.phase === 'final' && errorCode === null) {
       cache.store(stamp.source, document);
     }
-    markDelivered(state, stamp);
+    if (!transient) markDelivered(state, stamp);
 
     const snapshot: ChatCompiledSnapshot = {
       key: state.key,
@@ -418,8 +504,13 @@ export function createChatCompileManager(
     }
   }
 
-  function publishFailure(state: KeyState, stamp: CompileStamp, code: string): void {
-    publish(state, stamp, null, code);
+  function publishFailure(
+    state: KeyState,
+    stamp: CompileStamp,
+    code: string,
+    transient = false
+  ): void {
+    publish(state, stamp, null, code, transient);
   }
 
   function settleFailure(key: string, task: ScheduledTask, code: string): void {
@@ -427,6 +518,7 @@ export function createChatCompileManager(
     if (!state || state.scheduled !== task) return;
     state.scheduled = null;
     state.attempted = task;
+    clearBackpressureRetry(state);
     publishFailure(state, task, code);
     scheduleLatest(state);
   }
@@ -441,28 +533,32 @@ export function createChatCompileManager(
     if (!state || state.scheduled !== task) return;
     state.scheduled = null;
     state.attempted = task;
+    clearBackpressureRetry(state);
 
     const result = outcome.result;
     if (!result.ok) {
       publishFailure(state, task, compileErrorCode(result));
-      scheduleLatest(state);
-      return;
+    } else {
+      let sanitized: LocalDocument | null = null;
+      try {
+        const policy = applyChatDocumentPolicy(result.document);
+        if (policy.ok) sanitized = policy.document;
+      } catch {
+        sanitized = null;
+      }
+      if (sanitized) publish(state, task, sanitized, null);
+      else publishFailure(state, task, CHAT_RMD_POLICY_UNSUPPORTED);
     }
 
-    let sanitized: LocalDocument | null = null;
-    try {
-      const policy = applyChatDocumentPolicy(result.document);
-      if (policy.ok) sanitized = policy.document;
-    } catch {
-      sanitized = null;
-    }
-    if (!sanitized) {
-      publishFailure(state, task, CHAT_RMD_POLICY_UNSUPPORTED);
-      scheduleLatest(state);
+    // `mode === 'fallback'` 说明 Worker 已失败：先投递本次结果，再重建池；
+    // 重建会清空各 key 的 scheduled，提前处理会丢掉这一次投递。
+    if (outcome.mode === 'fallback') {
+      recoverFromWorkerFailure();
       return;
     }
-
-    publish(state, task, sanitized, null);
+    // Worker 正常完成一次编译（无论结果成败）说明池仍可用：重建预算恢复到
+    // 上限，避免长期复用后第二次故障就永久停用；持续 fallback 不会走到这里。
+    poolRebuildsRemaining = CHAT_RMD_POOL_MAX_REBUILDS;
     scheduleLatest(state);
   }
 
@@ -477,9 +573,131 @@ export function createChatCompileManager(
       // 池内被更新请求顶掉 / 文档释放 / 池销毁：没有可投递的失败。
       return;
     }
+    if (kind === 'backpressure') {
+      // 队列回满只是瞬时压力：不写 attempted，退避后重试同一内容。
+      scheduleBackpressureRetry(state, task);
+      return;
+    }
+
     state.attempted = task;
+    clearBackpressureRetry(state);
     publishFailure(state, task, poolTaskErrorCode(kind));
+    // 回退编译本身失败（worker-failed）同样说明 Worker 已不可用，与 fallback
+    // 结果同等处理，避免后续任务继续在主线程同步编译。
+    if (kind === 'worker-failed') {
+      recoverFromWorkerFailure();
+      return;
+    }
     scheduleLatest(state);
+  }
+
+  /** 清掉未触发的 backpressure 重试；成功、换内容或卸载时调用。 */
+  function clearBackpressureRetry(state: KeyState): void {
+    const retry = state.backpressureRetry;
+    if (!retry) return;
+    if (retry.timer !== null) clearTimeout(retry.timer);
+    state.backpressureRetry = null;
+  }
+
+  /**
+   * backpressure 退避重试：只对仍是 latest 的内容生效。超过上限才把这次编译
+   * 记为 attempted 并投递失败码，避免同一内容无休止重排。
+   */
+  function scheduleBackpressureRetry(state: KeyState, task: ScheduledTask): void {
+    const latest = state.latest;
+    if (!latest) return;
+    if (!sameCompile(task, latest)) {
+      // 内容已经更新：旧内容不必再试，直接按最新内容调度。
+      scheduleLatest(state);
+      return;
+    }
+
+    const previous = state.backpressureRetry;
+    const attempts = previous && sameCompile(previous.stamp, task) ? previous.attempts + 1 : 1;
+    if (previous && previous.timer !== null) clearTimeout(previous.timer);
+
+    if (attempts > CHAT_RMD_BACKPRESSURE_MAX_RETRIES) {
+      clearBackpressureRetry(state);
+      state.attempted = task;
+      publishFailure(state, task, CHAT_RMD_BACKPRESSURE_EXHAUSTED);
+      return;
+    }
+
+    const record: BackpressureRetry = { stamp: task, attempts, timer: null };
+    record.timer = setTimeout(() => {
+      if (disposed) return;
+      const current = keys.get(state.key);
+      if (current !== state || state.backpressureRetry !== record) return;
+      // 保留 attempts 跨重试累计；重新派发失败时 scheduleBackpressureRetry 继续加。
+      record.timer = null;
+      scheduleLatest(state);
+    }, CHAT_RMD_BACKPRESSURE_RETRY_BASE_MS * 2 ** (attempts - 1));
+    state.backpressureRetry = record;
+  }
+
+  /**
+   * Worker 已失败（fallback 结果或 ready=degraded）。上游池不会自愈，同池的
+   * 后续任务都会在主线程同步编译；因此先丢开旧池：清 scheduled 让迟到结果在
+   * 身份检查处被忽略，再在预算内重建。预算用尽则停止派发并投递
+   * `worker.unavailable`，让视图显示源码而不是整页同步编译。
+   */
+  function recoverFromWorkerFailure(): void {
+    if (disposed || poolUnavailable) return;
+    if (keys.size === 0) {
+      // 只有 warmup 建过池、还没人订阅：直接丢弃失败池，不消耗重建预算，
+      // 下一次订阅会按 `ensurePool` 常规路径新建。
+      retirePool();
+      return;
+    }
+    if (poolRebuildsRemaining <= 0) {
+      poolUnavailable = true;
+      retirePool();
+      // 投递可能同步触发订阅者回调，先固定待通知的 key 集合。
+      // 这是冷却前的临时失败：不写 delivered，冷却后同一内容还会再试。
+      for (const state of [...keys.values()]) {
+        if (state.latest) {
+          publishFailure(state, state.latest, CHAT_RMD_WORKER_UNAVAILABLE, true);
+        }
+      }
+      schedulePoolRetryCooldown();
+      return;
+    }
+    poolRebuildsRemaining -= 1;
+    retirePool();
+    for (const state of keys.values()) {
+      if (state.subs.size > 0) scheduleLatest(state);
+    }
+  }
+
+  /** 冷却后重新武装预算，并重试仍订阅的内容；无订阅时只恢复标志。 */
+  function schedulePoolRetryCooldown(): void {
+    if (disposed || poolRetryTimer !== null) return;
+    poolRetryTimer = setTimeout(() => {
+      poolRetryTimer = null;
+      if (disposed) return;
+      poolUnavailable = false;
+      poolRebuildsRemaining = CHAT_RMD_POOL_MAX_REBUILDS;
+      for (const state of keys.values()) {
+        if (state.subs.size > 0 && state.latest) scheduleLatest(state);
+      }
+    }, CHAT_RMD_POOL_RETRY_COOLDOWN_MS);
+    (poolRetryTimer as unknown as { unref?: () => void }).unref?.();
+  }
+
+  /** 丢弃当前池；先清本地派发身份，旧池排队任务的 resolve / reject 都被忽略。 */
+  function retirePool(): void {
+    for (const state of keys.values()) {
+      state.scheduled = null;
+      clearBackpressureRetry(state);
+    }
+    const current = pool;
+    pool = null;
+    if (!current) return;
+    try {
+      current.dispose();
+    } catch {
+      // 池可能已被上游销毁；重复 dispose 不应影响重建。
+    }
   }
 
   function scheduleRelease(key: string): void {
@@ -509,6 +727,7 @@ export function createChatCompileManager(
     }
 
     keys.delete(state.key);
+    clearBackpressureRetry(state);
     // 流式快照常因短暂离屏（滚动、频道切换）先取消再订阅同一 key：留 1s 宽限，
     // 重订阅时 getKeyState 撤销这个定时器；到期仍无人回来才真正释放池文档。
     scheduleRelease(state.key);
@@ -564,11 +783,16 @@ export function createChatCompileManager(
   function dispose(): void {
     if (disposed) return;
     disposed = true;
+    if (poolRetryTimer !== null) {
+      clearTimeout(poolRetryTimer);
+      poolRetryTimer = null;
+    }
     for (const timer of releaseTimers.values()) clearTimeout(timer);
     releaseTimers.clear();
     for (const state of keys.values()) {
       state.subs.clear();
       state.scheduled = null;
+      clearBackpressureRetry(state);
     }
     keys.clear();
     scheduleRevisions.clear();

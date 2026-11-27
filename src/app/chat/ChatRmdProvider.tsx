@@ -1,7 +1,7 @@
 'use client';
 
 // ─────────────────────────────────────────────────────────────────────────────
-// ChatRmdProvider.tsx — 聊天页面的 RMD 编译上下文（一条页面一个 Manager / Worker）
+// ChatRmdProvider.tsx — 聊天页面的 RMD 编译上下文（按 viewerScope 跨页面复用的 Manager / Worker）
 //
 // 责任只有四件：
 //   · 跨页面持有一个 `ChatCompileManager`，挂载后立即预热 Worker；
@@ -55,6 +55,9 @@ import {
   peekChatRmdManager,
 } from './chat-rmd-manager-pool';
 import { subscribeChatScrollActivity } from './scroll-activity';
+
+/** 池暂时不可用的错误码：子编译继续等冷却/重建后的成功快照，超时再降级。 */
+const TRANSIENT_CHILD_COMPILE_ERRORS = new Set(['worker.unavailable', 'pool.backpressure']);
 
 /** 子编译的缺省上限；B 的适配器只负责发起，超时由本层兜底。 */
 export const CHAT_RMD_CHILD_COMPILE_TIMEOUT_MS = 15_000;
@@ -256,6 +259,10 @@ export default function ChatRmdProvider({
         const onSnapshot = (snapshot: ChatCompiledSnapshot): void => {
           // 子编译每 key 独立 revision；只接受自己的那一条，旧结果直接丢弃。
           if (snapshot.key !== key || snapshot.revision !== revision || snapshot.phase !== 'final') {
+            return;
+          }
+          // 池暂时不可用不是最终结果：继续等冷却/重建后的成功快照，超时兜底。
+          if (snapshot.errorCode !== null && TRANSIENT_CHILD_COMPILE_ERRORS.has(snapshot.errorCode)) {
             return;
           }
           finish(snapshot.document);

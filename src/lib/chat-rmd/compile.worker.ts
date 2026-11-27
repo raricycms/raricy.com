@@ -11,6 +11,11 @@
 // onmessage，不要在视图或服务端模块里引用它。
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { startLocalCompileWorker } from 'reactive-md';
+import {
+  startLocalCompileWorker,
+  type LocalCompileWorkerScope,
+} from 'reactive-md';
 
-startLocalCompileWorker();
+// 显式传入 Worker 作用域，与 `src/lib/reactive/compile.worker.ts` 一致：
+// 不依赖上游对 globalThis 的默认取值，模块 Worker 里始终是 self。
+startLocalCompileWorker(self as unknown as LocalCompileWorkerScope);

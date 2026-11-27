@@ -5,6 +5,8 @@
 // final 缓存同步命中、旧 revision 不覆盖新 revision、streaming 不覆盖 final、
 // 策略失败与池失败的稳定错误码、unsubscribe 宽限后 release、hold/resume、
 // dispose 清理，以及发给池的 documentId / 单调 scheduleRevision / priority。
+// Worker 失败（fallback / ready=degraded）的有限重建与 backpressure 退避重试
+// 也在这里覆盖。
 //
 // 真实编译行为（字面表达式、fallback、表格）在 chat-rmd-options.test.ts 覆盖。
 // ─────────────────────────────────────────────────────────────────────────────
@@ -21,6 +23,7 @@ import {
   type LocalCompilePoolTaskErrorKind,
 } from 'reactive-md/worker-pool';
 import {
+  CHAT_RMD_POOL_RETRY_COOLDOWN_MS,
   ChatFinalCache,
   chatCompileIdentity,
   createChatCompileManager,
@@ -86,17 +89,14 @@ function failedResult(code: string): LocalCompileResult {
 
 interface FakePoolTask {
   request: LocalCompilePoolRequest;
+  settled: boolean;
   resolve(outcome: LocalCompilePoolOutcome): void;
   reject(error: unknown): void;
 }
 
 /** 最小 `LocalCompilePool`：任务挂起由测试手动 settle，记录 hold / resume / release。 */
 class FakePool implements LocalCompilePool {
-  readonly ready: Promise<LocalCompilePoolReadyEvent> = Promise.resolve({
-    status: 'ready',
-    availableWorkers: 1,
-    failedWorkers: 0,
-  });
+  readonly ready: Promise<LocalCompilePoolReadyEvent>;
   readonly tasks: FakePoolTask[] = [];
   readonly released: string[] = [];
   readonly cancelled: string[] = [];
@@ -104,10 +104,32 @@ class FakePool implements LocalCompilePool {
   holdCalls = 0;
   resumeCalls = 0;
   disposeCalls = 0;
+  /** 与上游一致：dispose 拒绝仍挂起的任务；置 false 可模拟退役池的迟到结果。 */
+  rejectPendingOnDispose = true;
+
+  constructor(readyStatus: LocalCompilePoolReadyEvent['status'] = 'ready') {
+    this.ready = Promise.resolve({
+      status: readyStatus,
+      availableWorkers: readyStatus === 'ready' ? 1 : 0,
+      failedWorkers: readyStatus === 'ready' ? 0 : 1,
+    });
+  }
 
   schedule(request: LocalCompilePoolRequest): Promise<LocalCompilePoolOutcome> {
     return new Promise((resolve, reject) => {
-      this.tasks.push({ request, resolve, reject });
+      const task: FakePoolTask = {
+        request,
+        settled: false,
+        resolve: (outcome) => {
+          task.settled = true;
+          resolve(outcome);
+        },
+        reject: (error) => {
+          task.settled = true;
+          reject(error);
+        },
+      };
+      this.tasks.push(task);
     });
   }
 
@@ -141,8 +163,14 @@ class FakePool implements LocalCompilePool {
     };
   }
 
+  /** 与上游一致：dispose 拒绝仍挂起的任务，用于验证旧池迟到拒绝被静默忽略。 */
   dispose(): void {
     this.disposeCalls += 1;
+    if (!this.rejectPendingOnDispose) return;
+    for (const task of this.tasks) {
+      if (task.settled) continue;
+      task.reject(new LocalCompilePoolTaskError('disposed'));
+    }
   }
 
   taskAt(index: number): FakePoolTask {
@@ -151,7 +179,11 @@ class FakePool implements LocalCompilePool {
     return task;
   }
 
-  settle(index: number, result?: LocalCompileResult): void {
+  settle(
+    index: number,
+    result?: LocalCompileResult,
+    mode: 'worker' | 'fallback' = 'worker'
+  ): void {
     const task = this.taskAt(index);
     task.resolve({
       documentId: task.request.documentId,
@@ -159,7 +191,7 @@ class FakePool implements LocalCompilePool {
       source: task.request.source,
       result: result ?? okResult(task.request.source),
       duration: 1,
-      mode: 'worker',
+      mode,
       sourcePhase: task.request.sourcePhase ?? 'final',
     });
   }
@@ -176,6 +208,24 @@ function setup(createPool?: () => LocalCompilePool): {
   const pool = new FakePool();
   const manager = createChatCompileManager({ createPool: createPool ?? (() => pool) });
   return { manager, pool };
+}
+
+/** 按创建顺序记录池；`readyStatus` 用来模拟初始 degraded。 */
+function setupSequence(
+  readyStatus: (index: number) => LocalCompilePoolReadyEvent['status'] = () => 'ready'
+): {
+  manager: ReturnType<typeof createChatCompileManager>;
+  pools: FakePool[];
+} {
+  const pools: FakePool[] = [];
+  const manager = createChatCompileManager({
+    createPool: () => {
+      const pool = new FakePool(readyStatus(pools.length));
+      pools.push(pool);
+      return pool;
+    },
+  });
+  return { manager, pools };
 }
 
 function request(
@@ -508,6 +558,471 @@ describe('失败与策略', () => {
     pool.fail(0, 'superseded');
     await tick();
     expect(snapshots).toEqual([]);
+  });
+});
+
+describe('Worker 降级与重建', () => {
+  it('fallback 结果先投递，再重建一次池；其他 key 进入新池，旧池拒绝被忽略', async () => {
+    const { manager, pools } = setupSequence();
+    const first: ChatCompiledSnapshot[] = [];
+    const second: ChatCompiledSnapshot[] = [];
+
+    manager.subscribe(request('msg:1', 1, '甲'), (snapshot) => first.push(snapshot));
+    manager.subscribe(request('msg:2', 1, '乙'), (snapshot) => second.push(snapshot));
+    expect(pools).toHaveLength(1);
+    expect(pools[0]?.tasks).toHaveLength(2);
+
+    pools[0]?.settle(0, okResult('甲'), 'fallback');
+    await tick();
+    // 本次 fallback 结果是有效文档，先正常投递。
+    expect(first).toHaveLength(1);
+    expect(first[0]).toMatchObject({ key: 'msg:1', revision: 1, errorCode: null });
+    // 旧池被丢弃，仍在订阅且未投递的 key 重新进入新池。
+    expect(pools).toHaveLength(2);
+    expect(pools[0]?.disposeCalls).toBe(1);
+    expect(pools[1]?.tasks.map((task) => task.request.documentId)).toEqual(['msg:2']);
+
+    // 旧池 dispose 的拒绝与新池结果之间不产生重复投递。
+    await tick();
+    expect(pools[0]?.tasks[1]?.settled).toBe(true);
+    expect(second).toEqual([]);
+    pools[1]?.settle(0, okResult('乙'));
+    await tick();
+    expect(second).toHaveLength(1);
+    expect(second[0]?.document?.source).toBe('乙');
+  });
+
+  it('重建预算用尽后再 fallback：投递 worker.unavailable 且不再创建新池', async () => {
+    const { manager, pools } = setupSequence();
+    const first: ChatCompiledSnapshot[] = [];
+    const second: ChatCompiledSnapshot[] = [];
+    const third: ChatCompiledSnapshot[] = [];
+    manager.subscribe(request('msg:1', 1, '甲'), (snapshot) => first.push(snapshot));
+    manager.subscribe(request('msg:2', 1, '乙'), (snapshot) => second.push(snapshot));
+    manager.subscribe(request('msg:3', 1, '丙'), (snapshot) => third.push(snapshot));
+
+    // 第一次 fallback 消耗重建预算：未投递的 key 进入第二个池。
+    pools[0]?.settle(0, okResult('甲'), 'fallback');
+    await tick();
+    expect(pools).toHaveLength(2);
+    expect(pools[1]?.tasks.map((task) => task.request.documentId)).toEqual(['msg:2', 'msg:3']);
+
+    // 第二个池再次 fallback：当前结果照常投递，其余 key 收到稳定失败码。
+    pools[1]?.settle(0, okResult('乙'), 'fallback');
+    await tick();
+    expect(pools).toHaveLength(2);
+    expect(pools[1]?.disposeCalls).toBe(1);
+    expect(second).toHaveLength(1);
+    expect(second[0]).toMatchObject({ key: 'msg:2', errorCode: null });
+    expect(second[0]?.document?.source).toBe('乙');
+    expect(third).toEqual([
+      {
+        key: 'msg:3',
+        revision: 1,
+        phase: 'final',
+        document: null,
+        errorCode: 'worker.unavailable',
+      },
+    ]);
+
+    // 之后的新订阅不再建池，直接投递失败码让视图显示源码。
+    const late = vi.fn();
+    manager.subscribe(request('msg:4', 1, '丁'), late);
+    expect(pools).toHaveLength(2);
+    expect(late).toHaveBeenCalledTimes(1);
+    expect(late.mock.calls[0]?.[0]).toMatchObject({
+      key: 'msg:4',
+      document: null,
+      errorCode: 'worker.unavailable',
+    });
+  });
+
+  it('池初始 ready=degraded：先投递同步 fallback 结果，只编译一次，随后才重建', async () => {
+    const { manager, pools } = setupSequence((index) => (index === 0 ? 'degraded' : 'ready'));
+    const first: ChatCompiledSnapshot[] = [];
+    const second: ChatCompiledSnapshot[] = [];
+    manager.subscribe(request('msg:1', 1, '甲'), (snapshot) => first.push(snapshot));
+    manager.subscribe(request('msg:2', 1, '乙'), (snapshot) => second.push(snapshot));
+    expect(pools).toHaveLength(1);
+    expect(pools[0]?.tasks).toHaveLength(2);
+
+    // ready 先解析为 degraded，但仍有在途任务：先不重建，等它走 fallback 投递。
+    await tick();
+    expect(pools).toHaveLength(1);
+    expect(pools[0]?.disposeCalls).toBe(0);
+    expect(first).toEqual([]);
+
+    // 任务随后以 fallback 结束：结果先投递，然后才丢弃旧池并重建。
+    pools[0]?.settle(0, okResult('甲'), 'fallback');
+    await tick();
+    expect(first).toHaveLength(1);
+    expect(first[0]?.document?.source).toBe('甲');
+    expect(pools).toHaveLength(2);
+    expect(pools[0]?.disposeCalls).toBe(1);
+    // 已投递的 msg:1 不再进新池：整条消息只编译一次。
+    expect(pools[0]?.tasks).toHaveLength(2);
+    expect(pools[1]?.tasks.map((task) => task.request.documentId)).toEqual(['msg:2']);
+
+    pools[1]?.settle(0, okResult('乙'));
+    await tick();
+    expect(second).toHaveLength(1);
+    expect(second[0]?.document?.source).toBe('乙');
+  });
+
+  it('warmup 建池 ready=degraded：无在途任务时直接丢弃，不消耗重建预算', async () => {
+    const { manager, pools } = setupSequence((index) => (index === 0 ? 'degraded' : 'ready'));
+    manager.warmup?.();
+    expect(pools).toHaveLength(1);
+
+    await tick();
+    expect(pools[0]?.disposeCalls).toBe(1);
+
+    const first: ChatCompiledSnapshot[] = [];
+    const second: ChatCompiledSnapshot[] = [];
+    manager.subscribe(request('msg:1', 1, '甲'), (snapshot) => first.push(snapshot));
+    manager.subscribe(request('msg:2', 1, '乙'), (snapshot) => second.push(snapshot));
+    expect(pools).toHaveLength(2);
+    expect(pools[1]?.tasks).toHaveLength(2);
+
+    // 首次 fallback 仍能消费完整预算：msg:2 进入第三个池，而不是直接停用。
+    pools[1]?.settle(0, okResult('甲'), 'fallback');
+    await tick();
+    expect(first).toHaveLength(1);
+    expect(pools).toHaveLength(3);
+    expect(pools[1]?.disposeCalls).toBe(1);
+    expect(pools[2]?.tasks.map((task) => task.request.documentId)).toEqual(['msg:2']);
+    expect(second).toEqual([]);
+
+    pools[2]?.settle(0, okResult('乙'));
+    await tick();
+    expect(second).toHaveLength(1);
+  });
+
+  it('Worker 正常完成一次编译后重建预算恢复：再次 fallback 仍能重建', async () => {
+    const { manager, pools } = setupSequence();
+    const snapshots: ChatCompiledSnapshot[] = [];
+    const record = (snapshot: ChatCompiledSnapshot): void => {
+      snapshots.push(snapshot);
+    };
+
+    manager.subscribe(request('msg:1', 1, '甲'), record);
+    manager.subscribe(request('msg:2', 1, '乙'), record);
+    pools[0]?.settle(0, okResult('甲'), 'fallback');
+    await tick();
+    expect(pools).toHaveLength(2);
+    expect(pools[1]?.tasks.map((task) => task.request.documentId)).toEqual(['msg:2']);
+
+    // 新池成功编译一次：预算恢复到上限。
+    pools[1]?.settle(0, okResult('乙'));
+    await tick();
+    expect(snapshots.map((snapshot) => snapshot.key)).toEqual(['msg:1', 'msg:2']);
+
+    manager.subscribe(request('msg:3', 1, '丙'), record);
+    manager.subscribe(request('msg:4', 1, '丁'), record);
+    expect(pools[1]?.tasks.map((task) => task.request.documentId)).toEqual([
+      'msg:2',
+      'msg:3',
+      'msg:4',
+    ]);
+
+    // 再次 fallback 仍能重建，而不是直接投递 worker.unavailable。
+    pools[1]?.settle(1, okResult('丙'), 'fallback');
+    await tick();
+    expect(snapshots.map((snapshot) => snapshot.key)).toEqual(['msg:1', 'msg:2', 'msg:3']);
+    expect(snapshots.every((snapshot) => snapshot.errorCode === null)).toBe(true);
+    expect(pools).toHaveLength(3);
+    expect(pools[1]?.disposeCalls).toBe(1);
+    expect(pools[2]?.tasks.map((task) => task.request.documentId)).toEqual(['msg:4']);
+  });
+
+  it('worker-failed 拒绝同样触发重建：当前 key 显示源码，其他 key 进新池', async () => {
+    const { manager, pools } = setupSequence();
+    const first: ChatCompiledSnapshot[] = [];
+    const second: ChatCompiledSnapshot[] = [];
+    manager.subscribe(request('msg:1', 1, '甲'), (snapshot) => first.push(snapshot));
+    manager.subscribe(request('msg:2', 1, '乙'), (snapshot) => second.push(snapshot));
+
+    pools[0]?.fail(0, 'worker-failed');
+    await tick();
+    expect(first).toEqual([
+      {
+        key: 'msg:1',
+        revision: 1,
+        phase: 'final',
+        document: null,
+        errorCode: 'worker.unavailable',
+      },
+    ]);
+    expect(pools).toHaveLength(2);
+    expect(pools[0]?.disposeCalls).toBe(1);
+    expect(pools[1]?.tasks.map((task) => task.request.documentId)).toEqual(['msg:2']);
+
+    pools[1]?.settle(0, okResult('乙'));
+    await tick();
+    expect(second).toHaveLength(1);
+    expect(second[0]?.document?.source).toBe('乙');
+  });
+
+  it('重建预算用尽后冷却到点重新武装并重试仍订阅的内容', async () => {
+    vi.useFakeTimers();
+    try {
+      const { manager, pools } = setupSequence();
+      const third: ChatCompiledSnapshot[] = [];
+      manager.subscribe(request('msg:1', 1, '甲'), () => {});
+      manager.subscribe(request('msg:2', 1, '乙'), () => {});
+      manager.subscribe(request('msg:3', 1, '丙'), (snapshot) => third.push(snapshot));
+
+      pools[0]?.settle(0, okResult('甲'), 'fallback');
+      await tick();
+      pools[1]?.settle(0, okResult('乙'), 'fallback');
+      await tick();
+      expect(pools).toHaveLength(2);
+      expect(third[0]?.errorCode).toBe('worker.unavailable');
+
+      vi.advanceTimersByTime(CHAT_RMD_POOL_RETRY_COOLDOWN_MS - 1);
+      expect(pools).toHaveLength(2);
+      vi.advanceTimersByTime(1);
+      expect(pools).toHaveLength(3);
+      expect(pools[2]?.tasks.map((task) => task.request.documentId)).toEqual(['msg:3']);
+
+      pools[2]?.settle(0, okResult('丙'));
+      await tick();
+      expect(third.at(-1)?.document?.source).toBe('丙');
+      expect(third.at(-1)?.errorCode).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('dispose 清理冷却计时器：到点不再建池', async () => {
+    vi.useFakeTimers();
+    try {
+      const { manager, pools } = setupSequence();
+      manager.subscribe(request('msg:1', 1, '甲'), () => {});
+      manager.subscribe(request('msg:2', 1, '乙'), () => {});
+      manager.subscribe(request('msg:3', 1, '丙'), () => {});
+
+      pools[0]?.settle(0, okResult('甲'), 'fallback');
+      await tick();
+      pools[1]?.settle(0, okResult('乙'), 'fallback');
+      await tick();
+      expect(pools).toHaveLength(2);
+
+      manager.dispose();
+      vi.advanceTimersByTime(CHAT_RMD_POOL_RETRY_COOLDOWN_MS);
+      expect(pools).toHaveLength(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('createPool 抛错按冷却重试：首次失败不写 delivered', async () => {
+    vi.useFakeTimers();
+    try {
+      let attempts = 0;
+      const pool = new FakePool();
+      const manager = createChatCompileManager({
+        createPool: () => {
+          attempts += 1;
+          if (attempts === 1) throw new Error('spawn failed');
+          return pool;
+        },
+      });
+      const snapshots: ChatCompiledSnapshot[] = [];
+      manager.subscribe(request('msg:1', 1, '甲'), (snapshot) => snapshots.push(snapshot));
+
+      expect(attempts).toBe(1);
+      expect(snapshots).toEqual([
+        {
+          key: 'msg:1',
+          revision: 1,
+          phase: 'final',
+          document: null,
+          errorCode: 'worker.unavailable',
+        },
+      ]);
+
+      vi.advanceTimersByTime(CHAT_RMD_POOL_RETRY_COOLDOWN_MS);
+      expect(attempts).toBe(2);
+      expect(pool.tasks).toHaveLength(1);
+
+      pool.settle(0, okResult('甲'));
+      await tick();
+      expect(snapshots.at(-1)?.document?.source).toBe('甲');
+      expect(snapshots.at(-1)?.errorCode).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('退役池的迟到 reject 被忽略：不投递失败也不额外重建', async () => {
+    const { manager, pools } = setupSequence();
+    const second: ChatCompiledSnapshot[] = [];
+    manager.subscribe(request('msg:1', 1, '甲'), () => {});
+    manager.subscribe(request('msg:2', 1, '乙'), (snapshot) => second.push(snapshot));
+
+    (pools[0] as FakePool).rejectPendingOnDispose = false;
+    pools[0]?.settle(0, okResult('甲'), 'fallback');
+    await tick();
+    expect(pools).toHaveLength(2);
+    expect(pools[1]?.tasks).toHaveLength(1);
+
+    pools[0]?.fail(1, 'worker-failed');
+    await tick();
+    expect(second).toEqual([]);
+    expect(pools).toHaveLength(2);
+
+    pools[1]?.settle(0, okResult('乙'));
+    await tick();
+    expect(second).toHaveLength(1);
+    expect(second[0]?.document?.source).toBe('乙');
+  });
+
+  it('退役池的迟到 resolve 被忽略：不重复投递', async () => {
+    const { manager, pools } = setupSequence();
+    const second: ChatCompiledSnapshot[] = [];
+    manager.subscribe(request('msg:1', 1, '甲'), () => {});
+    manager.subscribe(request('msg:2', 1, '乙'), (snapshot) => second.push(snapshot));
+
+    (pools[0] as FakePool).rejectPendingOnDispose = false;
+    pools[0]?.settle(0, okResult('甲'), 'fallback');
+    await tick();
+    expect(pools[1]?.tasks.map((task) => task.request.documentId)).toEqual(['msg:2']);
+
+    // 旧池 msg:2 的迟到成功结果：本地 scheduled 已是新池任务，旧结果被忽略。
+    pools[0]?.settle(1, okResult('乙'));
+    await tick();
+    expect(second).toEqual([]);
+    expect(pools[1]?.tasks).toHaveLength(1);
+
+    pools[1]?.settle(0, okResult('乙'));
+    await tick();
+    expect(second).toHaveLength(1);
+    expect(second[0]?.document?.source).toBe('乙');
+  });
+});
+
+describe('backpressure 退避', () => {
+  it('不永久失败：退避 200ms 后重试同一内容并成功', async () => {
+    vi.useFakeTimers();
+    try {
+      const { manager, pool } = setup();
+      const snapshots: ChatCompiledSnapshot[] = [];
+      manager.subscribe(request('msg:1', 1, '甲'), (snapshot) => snapshots.push(snapshot));
+
+      pool.fail(0, 'backpressure');
+      await tick();
+      expect(snapshots).toEqual([]);
+      expect(pool.tasks).toHaveLength(1);
+
+      vi.advanceTimersByTime(199);
+      expect(pool.tasks).toHaveLength(1);
+      vi.advanceTimersByTime(1);
+      expect(pool.tasks).toHaveLength(2);
+      expect(pool.taskAt(1).request).toMatchObject({ documentId: 'msg:1', source: '甲' });
+
+      pool.settle(1, okResult('甲'));
+      await tick();
+      expect(snapshots).toHaveLength(1);
+      expect(snapshots[0]?.document?.source).toBe('甲');
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('超过重试上限投递 pool.backpressure，且不再自动重试', async () => {
+    vi.useFakeTimers();
+    try {
+      const { manager, pool } = setup();
+      const snapshots: ChatCompiledSnapshot[] = [];
+      manager.subscribe(request('msg:1', 1, '甲'), (snapshot) => snapshots.push(snapshot));
+
+      pool.fail(0, 'backpressure');
+      await tick();
+      for (let attempt = 0; attempt < 5; attempt += 1) {
+        vi.advanceTimersByTime(200 * 2 ** attempt);
+        await tick();
+        pool.fail(pool.tasks.length - 1, 'backpressure');
+        await tick();
+      }
+
+      expect(pool.tasks).toHaveLength(6);
+      expect(snapshots).toEqual([
+        {
+          key: 'msg:1',
+          revision: 1,
+          phase: 'final',
+          document: null,
+          errorCode: 'pool.backpressure',
+        },
+      ]);
+      expect(vi.getTimerCount()).toBe(0);
+
+      vi.advanceTimersByTime(60_000);
+      expect(pool.tasks).toHaveLength(6);
+      expect(snapshots).toHaveLength(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('等待重试期间内容更新：取消旧重试，按新内容立即调度', async () => {
+    vi.useFakeTimers();
+    try {
+      const { manager, pool } = setup();
+      manager.subscribe(request('gen:1', 1, '一', 'streaming'), () => {});
+      pool.fail(0, 'backpressure');
+      await tick();
+      expect(vi.getTimerCount()).toBe(1);
+
+      manager.subscribe(request('gen:1', 2, '一二', 'streaming'), () => {});
+      expect(pool.tasks).toHaveLength(2);
+      expect(pool.taskAt(1).request).toMatchObject({ source: '一二', sourcePhase: 'streaming' });
+      expect(vi.getTimerCount()).toBe(0);
+
+      vi.advanceTimersByTime(5_000);
+      expect(pool.tasks).toHaveLength(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('unsubscribe 清理退避计时器：推进计时器不再派发任务', async () => {
+    vi.useFakeTimers();
+    try {
+      const { manager, pool } = setup();
+      const unsubscribe = manager.subscribe(request('gen:1', 1, '一', 'streaming'), () => {});
+      pool.fail(0, 'backpressure');
+      await tick();
+      expect(vi.getTimerCount()).toBe(1);
+
+      unsubscribe();
+      vi.advanceTimersByTime(60_000);
+      expect(pool.tasks).toHaveLength(1);
+      expect(pool.released).toEqual(['gen:1']);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('dispose 清理退避计时器：推进计时器不再派发任务', async () => {
+    vi.useFakeTimers();
+    try {
+      const { manager, pool } = setup();
+      manager.subscribe(request('msg:1', 1, '甲'), () => {});
+      pool.fail(0, 'backpressure');
+      await tick();
+      expect(vi.getTimerCount()).toBe(1);
+
+      manager.dispose();
+      expect(vi.getTimerCount()).toBe(0);
+      vi.advanceTimersByTime(60_000);
+      expect(pool.tasks).toHaveLength(1);
+      expect(pool.disposeCalls).toBe(1);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 
