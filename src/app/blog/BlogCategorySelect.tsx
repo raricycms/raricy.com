@@ -2,11 +2,14 @@
 
 // 博客目录的栏目下拉：站内 /blog、对外 /explore 与文章管理（/admin/blogs）共用。
 //
-// 组件只负责「展示栏目树 + 把选中的筛选值写进 URL」，值的含义由调用方定：
-// 两个目录页用栏目 slug，文章管理用栏目 id（它按 id 筛选）。选中后删掉
-// page / category / featured 再写 category，其余查询参数（搜索词、scope……）原样保留。
+// 两种用法：
+//   • 目录筛选（默认）—— 把选中的筛选值写进 URL：两个目录页用栏目 slug，
+//     文章管理用栏目 id（它按 id 筛选）。选中后删掉 page / category / featured
+//     再写 category，其余查询参数（搜索词、scope……）原样保留。
+//   • 行内改栏目（传 onSelect）—— 选中值交给调用方（文章管理逐行 PATCH），
+//     不写 URL；此时 featured 与 showFeatured 都不参与。
 
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { ChevronDown } from 'lucide-react';
 
@@ -26,19 +29,31 @@ export interface BlogCategoryExtraOption {
   label: string;
 }
 
-export default function BlogCategorySelect({ categories, currentValue, featured, basePath = '/blog', showFeatured = true, extraOptions = [] }: {
+export default function BlogCategorySelect({ categories, currentValue, featured, basePath = '/blog', showFeatured = true, showAll = true, keepFeatured = false, align = 'end', disabled = false, extraOptions = [], onSelect }: {
   categories: BlogCategoryOption[];
   /** 当前筛选值；null 表示「全部栏目」。 */
   currentValue: string | null;
   featured?: string;
   /** 提交到哪个列表页。`/explore`（对外公开列表）与 `/admin/blogs` 复用本组件，传它自己的路径。 */
   basePath?: string;
-  /** 是否提供「精选文章」。精选是站内的编辑口径，对外列表与文章管理不提供。 */
+  /** 是否提供「精选文章」。精选是站内的编辑口径，对外列表不提供。 */
   showFeatured?: boolean;
+  /** 是否提供「全部栏目」。行内改栏目不需要这个选项（用 extraOptions 的「未分类」）。 */
+  showAll?: boolean;
+  /** 切换栏目时保留 URL 里的 featured —— 精选是独立复选框的页面（文章管理）用。 */
+  keepFeatured?: boolean;
+  /** 展开面板的锚定边：end=贴控件右端向左生长（筛选条），start=贴左端向右生长（行内）。 */
+  align?: 'end' | 'start';
+  disabled?: boolean;
   /** 追加在栏目树之前的固定选项。 */
   extraOptions?: BlogCategoryExtraOption[];
+  /** 接管选中：给了它就不再写 URL，由调用方处理值（行内改栏目）。 */
+  onSelect?: (value: string | null) => void;
 }) {
   const [open, setOpen] = useState(false);
+  // 同一页可能同时挂多个下拉（文章管理每行一个），aria-controls / 子栏目 id 必须唯一。
+  const generatedId = useId();
+  const optionsId = `${generatedId}-options`;
   // 首帧服务端渲染只能给出 `--category-closed-width` 的 120px 兜底值，水合后
   // useLayoutEffect 才量出真实文字宽度。若宽度过渡从首帧就开着，那次「120px → 实际
   // 宽度」会以 420ms 的缩短动画演一遍 —— 页面刚进来时按钮会莫名缩一下。
@@ -55,7 +70,6 @@ export default function BlogCategorySelect({ categories, currentValue, featured,
     ?? extraOptions.find((option) => option.value === currentValue)?.label;
   const label = selectedLabel
     ?? (currentValue ? '所选栏目' : featured === '1' ? '精选文章' : featured === '0' ? '非精选文章' : '全部栏目');
-
   useLayoutEffect(() => {
     const element = host.current!;
     const options = element.querySelector<HTMLDivElement>('.blog-category-select__options')!;
@@ -93,8 +107,11 @@ export default function BlogCategorySelect({ categories, currentValue, featured,
       });
       const narrow = window.matchMedia('(max-width: 992px)').matches;
       const rect = element.getBoundingClientRect();
-      // 桌面菜单始终固定右端，向左生长；窄屏则从左端向右展开。
-      const available = narrow ? document.documentElement.clientWidth - rect.left - 16 : rect.right - 16;
+      // 面板固定在控件右侧时向左生长（筛选条），左对齐时向右生长（行内动作区）；
+      // 窄屏一律向右，留出视口边缘 16px。
+      const available = narrow || align === 'start'
+        ? document.documentElement.clientWidth - rect.left - 16
+        : rect.right - 16;
       element.style.setProperty('--category-closed-width', `${closedWidth}px`);
       element.style.setProperty('--category-open-width', `${Math.ceil(Math.min(width, available))}px`);
     }
@@ -106,7 +123,7 @@ export default function BlogCategorySelect({ categories, currentValue, featured,
     void document.fonts.ready.then(measure);
     measure();
     return () => { active = false; observer.disconnect(); window.removeEventListener('resize', measure); };
-  }, [categories, expanded, label]);
+  }, [categories, expanded, label, align]);
 
   useEffect(() => {
     function outside(event: PointerEvent) {
@@ -127,21 +144,25 @@ export default function BlogCategorySelect({ categories, currentValue, featured,
   }, [open]);
 
   function choose(value: string | null, nextFeatured?: string) {
+    setOpen(false);
+    toggle.current?.focus();
+    if (onSelect) {
+      onSelect(value);
+      return;
+    }
     const p = new URLSearchParams(params.toString());
     p.delete('page');
     p.delete('category');
-    p.delete('featured');
+    if (!keepFeatured) p.delete('featured');
     if (value) p.set('category', value);
     if (nextFeatured) p.set('featured', nextFeatured);
-    setOpen(false);
-    toggle.current?.focus();
     router.push(p.size ? `${basePath}?${p}` : basePath, { scroll: false });
   }
 
   return (
     <div
       ref={host}
-      className={`blog-category-select${open ? ' is-open' : ''}${ready ? ' is-ready' : ''}`}
+      className={`blog-category-select${align === 'start' ? ' blog-category-select--start' : ''}${open ? ' is-open' : ''}${ready ? ' is-ready' : ''}`}
       onBlur={(event) => {
         if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setOpen(false);
       }}
@@ -153,7 +174,8 @@ export default function BlogCategorySelect({ categories, currentValue, featured,
           className="blog-category-select__toggle"
           aria-label={`栏目：${label}`}
           aria-expanded={open}
-          aria-controls="blog-category-options"
+          aria-controls={optionsId}
+          disabled={disabled}
           onClick={() => {
             setReady(true);
             setOpen((value) => !value);
@@ -161,10 +183,12 @@ export default function BlogCategorySelect({ categories, currentValue, featured,
         >
           <span>{label}</span><ChevronDown aria-hidden="true" />
         </button>
-        <div className="blog-category-select__panel" id="blog-category-options" inert={!open}>
+        <div className="blog-category-select__panel" id={optionsId} inert={!open}>
           <div className="blog-category-select__clip">
             <div className="blog-category-select__options" aria-label="栏目选择">
-              <button type="button" className={`blog-category-select__option${!currentValue && !featured ? ' is-active' : ''}`} onClick={() => choose(null)}><span>全部栏目</span></button>
+              {showAll && (
+                <button type="button" className={`blog-category-select__option${!currentValue && !featured ? ' is-active' : ''}`} onClick={() => choose(null)}><span>全部栏目</span></button>
+              )}
               {showFeatured && (
                 <button type="button" className={`blog-category-select__option${featured === '1' && !currentValue ? ' is-active' : ''}`} onClick={() => choose(null, '1')}><span>精选文章</span></button>
               )}
@@ -181,7 +205,7 @@ export default function BlogCategorySelect({ categories, currentValue, featured,
                         className="blog-category-select__expand"
                         aria-label={`${expanded.has(category.value) ? '收起' : '展开'}${category.name}的二级栏目`}
                         aria-expanded={expanded.has(category.value)}
-                        aria-controls={`blog-category-children-${category.value}`}
+                        aria-controls={`${optionsId}-children-${category.value}`}
                         onClick={() => setExpanded((previous) => {
                           const next = new Set(previous);
                           if (next.has(category.value)) next.delete(category.value);
@@ -192,7 +216,7 @@ export default function BlogCategorySelect({ categories, currentValue, featured,
                     )}
                   </div>
                   {category.children.length > 0 && (
-                    <div className={`blog-category-select__children${expanded.has(category.value) ? ' is-expanded' : ''}`} id={`blog-category-children-${category.value}`} inert={!open || !expanded.has(category.value)}>
+                    <div className={`blog-category-select__children${expanded.has(category.value) ? ' is-expanded' : ''}`} id={`${optionsId}-children-${category.value}`} inert={!open || !expanded.has(category.value)}>
                       <div className="blog-category-select__clip">
                         {category.children.map((child) => (
                           <button key={child.value} type="button" className={`blog-category-select__option blog-category-select__option--child${currentValue === child.value ? ' is-active' : ''}`} onClick={() => choose(child.value)}><span>{child.name}</span></button>

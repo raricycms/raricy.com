@@ -5,13 +5,13 @@
 范围：`src/lib` 根目录下全部 `*.ts`，不含 `md-editor/`、`reactive/` 等子目录。
 
 - 文件数：150
-- 合计行数：32767（含空行）
+- 合计行数：32775（含空行）
 
 | 文件 | 行数 | 导出数 | 一句话职责 |
 | --- | ---: | ---: | --- |
 | `account-service.ts` | 446 | 16 | 账号 / 凭据事实：注册建号、邀请码核销与升级、改密。 |
 | `admin-appeal-service.ts` | 317 | 6 | 申诉列表 + 裁决 |
-| `admin-blog-service.ts` | 254 | 7 | 文章管理业务逻辑 |
+| `admin-blog-service.ts` | 262 | 7 | 文章管理业务逻辑 |
 | `admin-category-service.ts` | 223 | 8 | 栏目管理业务逻辑 |
 | `admin-clipboard-service.ts` | 177 | 6 | 云剪贴板的管理端检索与恢复（**含已软删 / 已隐藏**） |
 | `admin-comment-service.ts` | 109 | 3 | 评论的管理端检索（**含已软删**） |

@@ -6,38 +6,44 @@
 //   改栏目 / 切精选走 PATCH /api/admin/blogs/:id，成功后 router.refresh() 让服务端
 //   重渲染，效果与就地更新分类徽标 / 精选标记相同。
 //
-// ⚠️ 栏目下拉的「未分类」用 'none' 作值：旧实现里「选择栏目」与「设为未分类」
-//   都是 value=""，受控 select 永远匹配第一条，第二项等于点不到。
+// 栏目下拉直接复用筛选条的 <BlogCategorySelect>（传 onSelect，不写 URL）：
+// 两处的栏目树、图标前缀与展开方式因此始终一致。行内用它「改这篇的栏目」，
+// 所以去掉「全部栏目」、把「未分类」作为固定选项。
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Eye, Pencil, Star, StarOff } from 'lucide-react';
+import BlogCategorySelect, { type BlogCategoryExtraOption, type BlogCategoryOption } from '@/app/blog/BlogCategorySelect';
 
 export interface CategoryOpt {
   id: number;
   label: string; // 含图标前缀；子栏目形如「　└ 图标 名称」
 }
 
-// 栏目下拉数据：按父栏目分组的 <optgroup>。
+// 栏目下拉数据：按父栏目分组的 <optgroup>（批量底座仍用原生 select）。
 export interface CategoryGroup {
   label: string;
   options: CategoryOpt[];
 }
 
+const UNCATEGORIZED_OPTION: BlogCategoryExtraOption[] = [
+  { value: 'none', label: '未分类' },
+];
+
 interface Props {
   blogId: string;
   initialFeatured: boolean;
   initialCategoryId: number | null;
-  categoryGroups: CategoryGroup[];
+  categoryOptions: BlogCategoryOption[];
 }
 
 export default function AdminBlogActions({
   blogId,
   initialFeatured,
   initialCategoryId,
-  categoryGroups,
+  categoryOptions,
 }: Props) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
@@ -72,33 +78,21 @@ export default function AdminBlogActions({
 
   return (
     <div className="admin-blog-actions">
-      {/* 卡片底部一行：左边改栏目、右边行内动作。可见的「栏目」标签替代旧版
-          由分类徽标承担的「这个下拉是干什么的」提示。 */}
-      <label className="admin-blog-actions__field" htmlFor={`admin-blog-category-${blogId}`}>
+      {/* 卡片底部一行：左边改栏目、右边行内动作。可见的「栏目」标签说明这个下拉
+          改的是当前这篇的归属，而不是页面筛选。 */}
+      <div className="admin-blog-actions__field">
         <span className="admin-blog-actions__label">栏目</span>
-        <select
-          id={`admin-blog-category-${blogId}`}
-          className="form-select admin-blog-actions__select"
-          data-article-id={blogId}
-          value={initialCategoryId ?? 'none'}
+        <BlogCategorySelect
+          align="start"
+          showAll={false}
+          showFeatured={false}
           disabled={busy}
-          onChange={(e) => {
-            const v = e.target.value;
-            patch({ categoryId: v === 'none' ? null : Number(v) });
-          }}
-        >
-          <option value="none">未分类</option>
-          {categoryGroups.map((g) => (
-            <optgroup key={g.label} label={g.label}>
-              {g.options.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.label}
-                </option>
-              ))}
-            </optgroup>
-          ))}
-        </select>
-      </label>
+          categories={categoryOptions}
+          currentValue={initialCategoryId == null ? 'none' : String(initialCategoryId)}
+          extraOptions={UNCATEGORIZED_OPTION}
+          onSelect={(value) => patch({ categoryId: value && value !== 'none' ? Number(value) : null })}
+        />
+      </div>
 
       <div className="admin-blog-actions__buttons">
         <Link

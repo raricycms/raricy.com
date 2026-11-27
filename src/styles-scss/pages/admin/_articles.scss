@@ -17,9 +17,12 @@
   width: 100%;
 }
 
+// 行卡底部的「栏目」下拉复用筛选条的 <BlogCategorySelect>，所以尺寸也读同一套
+// 变量：这里把控件高度压到 34px 与右侧行内按钮齐平，宽度由组件水合后量出。
 .admin-blog-actions__field {
+  --filter-control-height: 34px;
   display: flex;
-  flex: 0 1 300px;
+  flex: 0 1 320px;
   align-items: center;
   gap: 8px;
   min-width: 0;
@@ -33,14 +36,15 @@
   letter-spacing: 0.02em;
 }
 
-.admin-blog-actions__select {
-  flex: 1 1 auto;
-  width: auto;
-  min-width: 0;
-  min-height: 34px;
-  padding-top: 0;
-  padding-bottom: 0;
-  font-size: 0.8rem;
+.admin-blog-actions__field .blog-category-select {
+  flex: none;
+  min-width: 150px;
+  max-width: 100%;
+
+  .blog-category-select__toggle {
+    padding: 0 12px;
+    font-size: 0.8rem;
+  }
 }
 
 .admin-blog-actions__buttons {

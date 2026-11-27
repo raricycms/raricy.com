@@ -204,6 +204,51 @@
   padding-inline: 22px;
 }
 
+// 精选复选框：原生 checkbox（键盘可达、语义与表单一致）用 appearance:none
+// 画成圆形指示器，与 /audit 的 .admin-filter-check 同一视觉口径；几何按工具栏
+// 44px 控件对齐，保持整条筛选胶囊的高度一致。
+.admin-toolbar__check {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+  min-height: var(--admin-control-height);
+  padding: 4px 14px 4px 10px;
+  border-radius: 999px;
+  background: var(--color-background-page);
+  color: var(--color-text-secondary);
+  font-size: 0.85rem;
+  white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+  transition: background-color v.$feedback-duration v.$feedback-easing;
+
+  &:hover {
+    background: var(--color-background-subtle);
+  }
+
+  input[type='checkbox'] {
+    appearance: none;
+    flex: none;
+    width: 18px;
+    height: 18px;
+    margin: 0;
+    border-radius: 50%;
+    background: var(--color-background-content);
+    cursor: pointer;
+    transition: background-color v.$feedback-duration v.$feedback-easing, box-shadow v.$feedback-duration v.$feedback-easing;
+
+    &:checked {
+      background: var(--color-brand-primary);
+    }
+
+    &:focus-visible {
+      outline: none;
+      box-shadow: var(--shadow-focus-brand);
+    }
+  }
+}
+
 .admin-toolbar__hint {
   margin-left: auto;
   padding-inline: 8px;

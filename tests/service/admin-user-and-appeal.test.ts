@@ -2225,7 +2225,7 @@ describe('listAdminLogs', () => {
 // ── 文章搜索范围 ─────────────────────────────────────────────────────────────
 
 describe('listAdminBlogs 的 searchScope', () => {
-  it('★ 默认（title）搜不到只出现在正文里的词 —— 网页后台行为不变', async () => {
+  it('★ 默认（title）搜不到只出现在正文里的词 —— 内部 GET 接口行为不变', async () => {
     const author = await makeUser();
     await makeBlog({ authorId: author.id, title: '标题里没有那个词', content: '正文里有恐龙化石' });
 
@@ -2253,5 +2253,22 @@ describe('listAdminBlogs 的 searchScope', () => {
 
     expect((await listAdminBlogs({ search: '报错' })).total).toBe(1);
     expect((await listAdminBlogs({ search: '报错', searchScope: 'all' })).total).toBe(1);
+  });
+});
+
+describe('listAdminBlogs 的 featured 筛选', () => {
+  it('featured=true / false 各筛一档，undefined 不筛（false 不能被当成“不筛”）', async () => {
+    const author = await makeUser();
+    const featured = await makeBlog({ authorId: author.id, title: '精选文' });
+    const normal = await makeBlog({ authorId: author.id, title: '普通文' });
+    await prisma.blog.update({ where: { id: featured.id }, data: { isFeatured: true } });
+
+    const onlyFeatured = await listAdminBlogs({ featured: true });
+    expect(onlyFeatured.blogs.map((b) => b.id)).toEqual([featured.id]);
+
+    const onlyNormal = await listAdminBlogs({ featured: false });
+    expect(onlyNormal.blogs.map((b) => b.id)).toEqual([normal.id]);
+
+    expect((await listAdminBlogs({})).total).toBe(2);
   });
 });

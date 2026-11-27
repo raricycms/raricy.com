@@ -36,7 +36,7 @@ export default function SearchForm({
    * 而带词搜索却正常 —— 一个只在清空时才现形、且看起来像「偶发」的 bug。
    */
   basePath?: string;
-  /** 搜索范围因页而异（目录页含正文，文章管理只搜标题），占位提示随调用方给。 */
+  /** 搜索范围因页而异（目录页与文章管理都含正文），占位提示随调用方给。 */
   placeholder?: string;
 }) {
   const router = useRouter();

@@ -88,6 +88,12 @@
     transition: width v.$motion-duration v.$motion-easing, box-shadow v.$feedback-duration v.$feedback-easing;
   }
 
+  // 行内动作区的下拉贴左展开（面板向右生长）；筛选条仍贴右，向左生长。
+  &--start .blog-category-select__shell {
+    right: auto;
+    left: 0;
+  }
+
   &__toggle {
     @include m.btn-secondary;
     display: flex;

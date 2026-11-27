@@ -25,10 +25,15 @@ export interface AdminListParams {
   search?: string | null;
   status?: 'all' | 'active' | 'deleted'; // active=未软删, deleted=已软删
   /**
-   * 搜索范围。**默认 'title'** —— /admin/blogs 页面的现有行为因此不受影响。
-   * 'all' 才加上描述、正文（BlogContent）、作者用户名与精确 id，
-   * 运维 CLI 用这个（「我记得正文里写过某个词，但不记得标题」）。
-   * ★ 做成 opt-in 而不是直接放宽：那会悄悄改变网页后台的搜索结果集。
+   * 精选筛选：true=只看精选，false=只看非精选，undefined=不筛。
+   * 网页上的复选框只传 true；保留 false 分支与 listBlogs 同语义。
+   */
+  featured?: boolean;
+  /**
+   * 搜索范围。**默认 'title'** —— 内部 GET /api/admin/blogs 保持既有行为。
+   * 'all' 才加上描述、正文（BlogContent）、作者用户名与精确 id；
+   * 文章管理页面与运维 CLI 都用这个（两边都要「记得正文里写过某个词」的场景）。
+   * ★ 做成 opt-in 而不是直接放宽：那会悄悄改变内部接口的搜索结果集。
    */
   searchScope?: 'title' | 'all';
 }
@@ -47,6 +52,9 @@ export async function listAdminBlogs(params: AdminListParams) {
 
   if (params.categoryId === -1) where.categoryId = null;
   else if (params.categoryId != null) where.categoryId = params.categoryId;
+
+  // false 也是有效筛选（只看非精选），不能写成 `if (params.featured)`。
+  if (params.featured !== undefined) where.isFeatured = params.featured;
 
   if (params.search && params.search.trim()) {
     const q = params.search.trim();

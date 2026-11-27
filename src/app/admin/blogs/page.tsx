@@ -14,6 +14,7 @@ interface SearchParams {
   page?: string;
   category?: string;
   search?: string;
+  featured?: string;
 }
 
 type CategoryTreeNode = {
@@ -51,6 +52,7 @@ export default async function AdminBlogsPage({
   const parsed = parseInt(currentCategoryId, 10);
   const categoryId =
     currentCategoryId === '' || Number.isNaN(parsed) ? null : parsed;
+  const featured = sp.featured === '1';
 
   const [result, tree] = await Promise.all([
     listAdminBlogs({
@@ -58,6 +60,10 @@ export default async function AdminBlogsPage({
       categoryId,
       search: sp.search ?? null,
       status: 'active',
+      // 搜索口径与 /blog 目录一致：标题、简介、作者名与正文（外加精确 id，
+      // 方便粘贴完整 id 找回）。管理端要求管理员会话，不走目录页的正文限频。
+      searchScope: 'all',
+      featured: featured ? true : undefined,
     }),
     listCategoriesTree(),
   ]);
@@ -122,6 +128,7 @@ export default async function AdminBlogsPage({
         categoryOptions={categoryOptions}
         currentCategoryId={currentCategoryId}
         search={sp.search ?? ''}
+        featured={featured}
         pagination={{
           page: result.page,
           pages: result.pages,

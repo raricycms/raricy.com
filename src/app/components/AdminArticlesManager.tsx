@@ -7,7 +7,8 @@
 //   • 每行动作簇委托给 <AdminBlogActions>（栏目下拉 + 查看 / 编辑 / 精选）
 // 没有批量更新端点，这里对所选文章逐条 PATCH，可见结果等价（toast + 列表刷新）。
 // 顶部筛选与博客目录（/blog）共用同一套控件：<SearchForm> + <BlogCategorySelect>。
-// 搜索走 GET 表单由服务端重渲染，栏目下拉选中即跳转（两处都会丢掉 page）。
+// 搜索走 GET 表单由服务端重渲染，栏目下拉选中即跳转（两处都会丢掉 page）；
+// 精选是独立复选框，切换即写 URL（不丢搜索词与栏目）。
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useState, type CSSProperties } from 'react';
@@ -58,6 +59,8 @@ interface Props {
   categoryOptions: BlogCategoryOption[];
   currentCategoryId: string; // 原样回填筛选下拉（'' / '-1' / 数字）
   search: string;
+  /** 只看精选（URL 带 featured=1）。 */
+  featured: boolean;
   pagination: Pagination;
 }
 
@@ -73,6 +76,7 @@ export default function AdminArticlesManager({
   categoryOptions,
   currentCategoryId,
   search,
+  featured,
   pagination,
 }: Props) {
   const router = useRouter();
@@ -83,12 +87,13 @@ export default function AdminArticlesManager({
   const pageIds = articles.map((a) => a.id);
   const selectedOnPage = pageIds.filter((id) => selected.has(id));
   const allSelected = pageIds.length > 0 && selectedOnPage.length === pageIds.length;
-  const hasFilter = Boolean(currentCategoryId || search);
+  const hasFilter = Boolean(currentCategoryId || search || featured);
 
-  // 搜索框的「清除」只去掉搜索词，栏目筛选保留（与 /blog 目录一致）。
+  // 搜索框的「清除」只去掉搜索词，栏目筛选与精选复选框保留（与 /blog 目录一致）。
   const clearHref = (() => {
     const p = new URLSearchParams();
     if (currentCategoryId) p.set('category', currentCategoryId);
+    if (featured) p.set('featured', '1');
     const s = p.toString();
     return s ? `/admin/blogs?${s}` : '/admin/blogs';
   })();
@@ -192,34 +197,55 @@ export default function AdminArticlesManager({
   const qs = (page: number) => {
     const p = new URLSearchParams();
     if (currentCategoryId) p.set('category', currentCategoryId);
+    if (featured) p.set('featured', '1');
     if (search) p.set('search', search);
     p.set('page', String(page));
     return `?${p.toString()}`;
   };
 
+  // 精选复选框：切换后重新取数（丢掉 page），搜索词与栏目原样保留。
+  const toggleFeatured = (next: boolean) => {
+    const p = new URLSearchParams();
+    if (currentCategoryId) p.set('category', currentCategoryId);
+    if (search) p.set('search', search);
+    if (next) p.set('featured', '1');
+    const s = p.toString();
+    router.push(s ? `/admin/blogs?${s}` : '/admin/blogs');
+  };
+
   return (
     <div className="admin-container">
       {/* 筛选和搜索栏 —— 胶囊底座，吸在顶栏下方。搜索框与栏目下拉直接复用
-          博客目录的组件：搜索内嵌「搜索 / 清除」，栏目下拉选中即跳转。 */}
+          博客目录的组件：搜索内嵌「搜索 / 清除」，栏目下拉选中即跳转。
+          精选复选框是管理端多出来的一档，切换即写 URL。 */}
       <div className="admin-toolbar">
         <SearchForm
-          key={`${currentCategoryId}:${search}`}
+          key={`${currentCategoryId}:${featured ? '1' : '0'}:${search}`}
           basePath="/admin/blogs"
           category={currentCategoryId || null}
-          featured={false}
+          featured={featured}
           search={search}
           clearHref={clearHref}
           sort={null}
-          placeholder="搜索文章标题…"
         />
 
         <BlogCategorySelect
           basePath="/admin/blogs"
           showFeatured={false}
+          keepFeatured
           categories={categoryOptions}
           currentValue={currentCategoryId || null}
           extraOptions={ADMIN_CATEGORY_EXTRA_OPTIONS}
         />
+
+        <label className="admin-toolbar__check">
+          <input
+            type="checkbox"
+            checked={featured}
+            onChange={(e) => toggleFeatured(e.target.checked)}
+          />
+          只看精选
+        </label>
 
         <span className="admin-toolbar__hint numeric">共 {total} 篇</span>
       </div>
@@ -292,7 +318,7 @@ export default function AdminArticlesManager({
                   blogId={a.id}
                   initialFeatured={a.isFeatured}
                   initialCategoryId={a.categoryId}
-                  categoryGroups={categoryGroups}
+                  categoryOptions={categoryOptions}
                 />
               </div>
             </div>
