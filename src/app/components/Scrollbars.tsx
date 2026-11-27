@@ -87,6 +87,11 @@ function mount(el: HTMLElement): Port | null {
 
   const sync = () => {
     if (disposed) return;
+    // 容器已经离开文档时不能再补滑块：`isConnected` 会一直是 false，appendChild
+    // 每次都会产生一条 childList 记录，同步回调自己把自己重新排队 —— 全局的
+    // `prune()` 排在下一帧，等不到执行，整个页面就卡在这一条微任务里。
+    // 这一步由全局 `prune()` 统一回收，期间什么都不用做。
+    if (!el.isConnected) return;
     // 内容被整体替换（innerHTML、按 key 重建）时滑块会被一起删掉：补回来。
     if (!thumb.isConnected) el.appendChild(thumb);
     ensureClasses();

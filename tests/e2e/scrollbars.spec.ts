@@ -80,6 +80,35 @@ test.describe('页内滚动条', () => {
     await page.evaluate(() => document.getElementById('scroll-probe')?.remove());
   });
 
+  test('容器移出文档后，内部变更不会卡死页面', async ({ page }) => {
+    await page.goto('/explore', { waitUntil: 'domcontentloaded' });
+
+    await page.evaluate(() => {
+      const box = document.createElement('div');
+      box.id = 'scroll-probe';
+      box.style.cssText = 'position: fixed; top: 0; left: 0; width: 300px; height: 200px; overflow-y: auto;';
+      box.innerHTML = '<div style="height: 900px;"></div>';
+      document.body.appendChild(box);
+    });
+
+    const port = page.locator('#scroll-probe');
+    await expect(port).toHaveClass(/scroll-port/, { timeout: 5000 });
+    await expect(port.locator('.scroll-port__thumb')).toHaveCount(1);
+
+    // 容器被 React 从文档摘掉后，排队的 ResizeObserver / MutationObserver 仍会进 sync()。
+    // 修复前：sync() 看到滑块 isConnected=false 就 appendChild，而这次补挂本身又触发
+    // MutationObserver，回调把自己无限排队，主线程卡死（故事阅读器退出全屏即复现）。
+    await page.evaluate(() => {
+      const box = document.getElementById('scroll-probe')!;
+      box.remove();
+      box.appendChild(document.createElement('span'));
+    });
+
+    // 主线程还能执行新任务，就说明上面那条回调没有把事件循环堵死。
+    await page.waitForTimeout(50);
+    expect(await page.evaluate(() => document.title)).not.toBe('');
+  });
+
   test('横向溢出的盒子仍能横向滚动', async ({ page }) => {
     await page.goto('/explore', { waitUntil: 'domcontentloaded' });
 
