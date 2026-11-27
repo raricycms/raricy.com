@@ -27,7 +27,7 @@
 //   · 单图 / 单表情的零内距必须连同 RMD 根一起清零；图片自身的尺寸与描边
 //     仍归 _markdown-body 的 img 规则，别在这里重抄（两处定义必然漂开）。
 //   · 不写 contain / 固定高度：图片与引用异步落位后的高度变化由 ChatApp 的
-//     贴底规则处理（docs/plan/chat-reactive-streaming-design.md §7）。
+//     贴底规则处理（docs/archive/chat-reactive-streaming-design.md §7）。
 // ─────────────────────────────────────────────────────────────────────────────
 
 @mixin chat-rmd {

@@ -9,7 +9,7 @@
 | 存储 | 保留 `chat_messages.content` 及既有附件字段，不增加 `format`、`syntax_version`、生成任务表或 AST 快照 |
 | 解析 | 正式消息在前端统一按 Markdown 与 RMD 混合源码编译，不对内容猜测格式 |
 | 编译器 | 复用 `src/lib/reactive/compile-source.ts` 与 `reactive-md@0.9.3`；聊天使用独立配置 |
-| 渲染 | 首版 `LocalDocumentView` 采用静态模式；展示公式和允许的静态组件，控件只读 |
+| 渲染 | 首版 `LocalStaticDocumentView` 采用静态模式；展示公式和允许的静态组件，控件只读 |
 | 引用 | 保留聊天现有图床、剪贴板、音频、表情、黄脸和名片语义，由聊天适配器处理 |
 | 机器人 | 站外机器人继续使用自己的 core+ 账号和会话 cookie；本站接收文本，不负责请求模型 |
 | 实时投递 | 扩展主站 `/api/chat/stream`，临时事件不占用消息游标 |
@@ -47,7 +47,7 @@
   → 检查并收缩文档能力
   → Chat AST 引用适配
   → 按当前查看者取引用数据
-  → LocalDocumentView(mode="static") + ChatHostView
+  → LocalStaticDocumentView + ChatHostView
   → 原有气泡、附件、消息菜单与详情外壳
 ```
 
@@ -82,7 +82,7 @@ const CHAT_RMD_COMPILE_OPTIONS = {
 
 ### 3.2 历史消息与 Worker 队列
 
-一个 Chat 页面使用一个编译管理器和一个 Worker，列表中每条消息订阅自己的结果。管理器由客户端路由级池按 `viewerScope` 跨页面复用：最后租约释放后保留 10 分钟，期间回到聊天页直接复用 Worker 与 final 文档 LRU；切换账号或登出立即清空。独立保存页面同样通过页面级 provider 共享管理器，列表与详情共用。历史消息使用独立的 final 编译任务，按 `request_id` 回收结果；生成任务按 `generation_id` 管理会话。Worker 内的会话数量有上限，终态、频道离开或过期时释放。
+一个 viewerScope 使用一个编译管理器和一个 Worker，列表中每条消息订阅自己的结果。管理器由客户端路由级池按 `viewerScope` 跨页面复用：最后租约释放后保留 10 分钟，期间回到聊天页直接复用 Worker 与 final 文档 LRU；切换账号或登出立即清空。独立保存页面同样通过页面级 provider 共享管理器，列表与详情共用。历史消息使用独立的 final 编译任务，按 `request_id` 回收结果；生成任务按 `generation_id` 管理会话。Worker 内的会话数量有上限，终态、频道离开或过期时释放。
 
 `LocalCompileScheduler` 是单文档 latest-wins 调度器，不能把 300 条历史消息逐个传给同一 scheduler，否则会丢掉尚未编译的消息。聊天管理器维护多文档队列，同一 generation 只保留最新待编译快照；可复用上游编译会话和基础 Worker 协议，但不复用跨文档增量 baseline。
 
@@ -156,10 +156,10 @@ const CHAT_RMD_COMPILE_OPTIONS = {
 | 每任务片段 | 最多 512 个 | 内存状态 |
 | 空闲 / 总时长 | 120 秒 / 10 分钟 | 单调经过时间；不使用库内墙上时钟相减 |
 | 创建速率 | 每作者 12 次/分钟，另限制 HTTP 请求洪泛 | 新 `RULES` 项，实施时同步对外文档 |
-| 临时广播 | 每任务最多约 10 帧/秒，合并为最新完整快照 | 生成状态服务 |
+| 临时广播 | 每任务最多 5 帧/秒，合并为最新完整快照 | 生成状态服务 |
 | 终态回执 | 最长 15 分钟，全站最多 4096 条 | 有界回执缓存 |
 
-这些数值是方案初值，未修改当前 `RULES`。回执超容量会提前淘汰，接口文档必须说明保留期是上限。generation 完成后释放正文与片段缓冲，仅保留元数据、序号指纹与正式消息 id。总时长限制开始 complete 的截止时刻；finalizing 中的超时不能释放唯一提交权或将任务恢复为 active。
+这些数值已落为实现：创建与分块使用 `RULES` 新增的 `chatGenerationCreateMinute`（每作者 12 次/分）与 `chatGenerationChunkMinute`（每作者 600 次/分）。回执超容量会提前淘汰，接口文档必须说明保留期是上限。generation 完成后释放正文与片段缓冲，仅保留元数据、序号指纹与正式消息 id。总时长限制开始 complete 的截止时刻；finalizing 中的超时不能释放唯一提交权或将任务恢复为 active。
 
 正式 `chatMinute`/`chatDaily` 配额只在 complete 调用现有发送逻辑时扣一次。create/chunks 使用独立的流量和并发预算。生成完成仍可能遇到正式发言 429，此时终止任务并给明确错误；首版不预留发言名额，不引入外部可传的 `skipRateLimit`。机器人若希望重新发送，必须先处理这个已知失败，不能对所有错误盲目重试。
 

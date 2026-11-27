@@ -37,7 +37,7 @@ export interface ChatCompiledSnapshot {
 
 export type ChatCompileListener = (snapshot: ChatCompiledSnapshot) => void;
 
-/** 页面级编译管理器：一个 Chat 页面一个 Worker，多文档订阅互不覆盖。 */
+/** 聊天编译管理器：按 viewerScope 跨页面复用的 Manager / Worker 池，多文档订阅互不覆盖。 */
 export interface ChatCompileManager {
   subscribe(request: ChatCompileRequest, listener: ChatCompileListener): () => void;
   /**
@@ -51,7 +51,7 @@ export interface ChatCompileManager {
    * 不取消在途编译，结果照常投递（结果提交层的降优先级由视图另行处理）。
    */
   setScrolling?(active: boolean): void;
-  /** 释放 Worker、队列与缓存；provider 卸载时调用。 */
+  /** 释放 Worker、队列与缓存；由路由级租约池在空闲回收、换账号或显式清理时调用。 */
   dispose(): void;
 }
 

@@ -5,7 +5,7 @@
 // 这里只放类型、稳定字符串与纯判定函数；任务对象、计时器与广播都留在主站服务端
 // （src/lib/chat/generations.ts），不要从这里 import 任何有副作用的模块。
 //
-// 状态机（docs/plan/chat-reactive-streaming-design.md §6）：
+// 状态机（docs/archive/chat-reactive-streaming-design.md §6）：
 //   active → finalizing → completed
 //      │          ├────→ failed
 //      │          └────→ commit_unknown

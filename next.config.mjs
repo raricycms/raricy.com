@@ -93,8 +93,8 @@ const nextConfig = {
     // controls bundle contains Radix's optional lookup, so keep the text rewrite scoped there.
     //
     // 升级 reactive-md 时先核对：`grep -l useEffectEvent node_modules/reactive-md/dist-library/*.js`
-    // 的输出必须只剩 `controls-*.js`。若上游改了 chunk 名，这条规则会**静默失效**，
-    // 症状是运行时报「不是函数」而不是构建失败。
+    // 的输出必须只剩 `controls-*.js`。若上游改了 chunk 名，这条规则会**静默失效**；
+    // 0.9.3 的 Radix 对缺失 API 有 typeof 兜底，运行期不会以「不是函数」暴露，升级时只能靠这条核对。
     config.module.rules.push({
       test: /[\\/]reactive-md[\\/]dist-library[\\/]controls-[^\\/]+\.js$/,
       loader: path.join(import.meta.dirname, 'scripts/reactive-md-react-fallback.cjs'),
