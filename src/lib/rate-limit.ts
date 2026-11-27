@@ -254,8 +254,10 @@ export const RULES = {
    *
    * 【为什么与 chatMinute 分开】生成中的片段不是发言：它们不写库、只广播临时快照，
    * 而正式 `chatMinute` / `chatDaily` **只在 complete 调用发送内核时**扣一次
-   * （docs/plan/chat-reactive-streaming-design.md §5.1）。分块档挡的是脚本洪泛，
-   * 正常客户端约 5 帧/秒（服务端快照节流），600/分留了突发余量。
+   * （docs/archive/chat-reactive-streaming-design.md §5.1）。分块档挡的是脚本洪泛；
+   * 服务端快照节流为 5 帧/秒，机器人按每 200ms 一包提交时稳态约 300 片/分，
+   * 600/分留出 2 倍余量。不要把每个模型 token 或每个上游网络帧都当成一次 chunk；
+   * 一次重试或网络抖动仍可能吃掉少量余量，所以仍要合并后再提交。
    * 桶键必须带独立前缀（`chatgen:create:` / `chatgen:chunk:`）—— rule 不参与分桶，
    * 复用别的前缀会与那边共用计数桶、互相吃额度。
    */

@@ -231,7 +231,7 @@ export const MAX_IMAGE_REFS = 50;
  */
 export const CLIP_EXPAND_MAX = 2000;
 
-/** 剪贴板取不到时的占位文案。评论 / 讨论的取数层（useResolvedContent.ts）用的就是本函数。 */
+/** 剪贴板取不到时的占位文案。评论的取数层（useResolvedContent.ts）用的就是本函数。 */
 export function clipboardFailureText(id: string): string {
   return `[剪贴板 ${id} 加载失败]`;
 }
@@ -239,7 +239,7 @@ export function clipboardFailureText(id: string): string {
 /**
  * reactive 剪贴板在 **Markdown 文本**里的唯一合法形态：一个站内链接。
  *
- * 评论 / 讨论那条管线读不懂 reactive 语法，内联源码的结果是整段源码被当成
+ * 评论那条管线读不懂 reactive 语法，内联源码的结果是整段源码被当成
  * Markdown/HTML 重新解释（静默坏内容）。文案不掺标题等用户输入，id 再过滤一遍
  * 非字母数字字符 —— 这个字符串会被拼进 Markdown 再交给富文本管线。
  *

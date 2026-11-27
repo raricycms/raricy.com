@@ -1,12 +1,12 @@
 import { compileSource } from './compile-source';
 import {
-  analyzeLocalSource,
   LOCAL_SYNTAX_VERSION,
   type AuthorAnalysis,
   type Diagnostic,
   type LocalCompileOptions,
   type LocalCompileResult,
 } from 'reactive-md';
+import { analyzeLocalSource } from 'reactive-md/scan';
 import { LOCAL_COMPONENT_NAMES } from 'reactive-md/authoring';
 import { REACTIVE_COMPILE_OPTIONS } from './host-components';
 

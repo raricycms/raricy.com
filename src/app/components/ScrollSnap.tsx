@@ -12,7 +12,7 @@ import { useEffect } from 'react';
 // 停靠点的位置全部由 CSS 表达式与元素自身的版面位置决定，脚本不指定任何像素值：
 // 旋转、翻页、侧栏展开之后位置自然是对的，不需要再算一遍。
 
-/** 只在窄屏 + 触摸上吸附：桌面滚轮已经有 SmoothWheelScroll 的缓动，再叠一层会变成一跳一跳。
+/** 只在窄屏 + 触摸上吸附：桌面滚轮使用浏览器原生滚动，再叠一层吸附会让一格滚轮变成一次跳转。
  *  减少动态效果时也不吸附 —— 吸附会把一次手势的惯性强行收在停靠点上，属于用户手势
  *  触发的运动（见 docs/frontend-styles.md §6）。 */
 const SCOPE = '(max-width: 767px) and (pointer: coarse) and (prefers-reduced-motion: no-preference)';

@@ -1,6 +1,7 @@
 import { compileSource } from './compile-source';
-import { LOCAL_SYNTAX_VERSION, localCompileOptionsKey, type LocalCompileResult } from 'reactive-md';
-import { ReactiveLruCache, reactiveCompileCacheKey } from './cache';
+import { LOCAL_SYNTAX_VERSION, type LocalCompileResult } from 'reactive-md';
+import { localCompileCacheKey } from 'reactive-md/compiler/session';
+import { ReactiveLruCache } from './cache';
 import { REACTIVE_COMPILER_VERSION, REACTIVE_COMPILE_OPTIONS } from './host-components';
 import { ADAPTER_VERSION, expandDocumentReferences } from './ref-adapter';
 import { createServiceReferenceReader } from './ref-reader';
@@ -44,12 +45,11 @@ export function stats() {
 
 export async function compileReactiveSource(input: ReactiveCompileInput): Promise<ReactiveCompileOutcome> {
   const started = performance.now();
-  const cacheKey = reactiveCompileCacheKey({
-    adaptedSource: input.source,
-    syntaxVersion: LOCAL_SYNTAX_VERSION,
-    compilerVersion: REACTIVE_COMPILER_VERSION,
-    adapterVersion: ADAPTER_VERSION,
-    optionsKey: localCompileOptionsKey(REACTIVE_COMPILE_OPTIONS),
+  // Upstream owns the key layout: compile build, syntax version, options and the
+  // source itself. The site only adds its own adapter version as policy identity.
+  const cacheKey = localCompileCacheKey(input.source, REACTIVE_COMPILE_OPTIONS, {
+    entry: 'local',
+    policyVersion: ADAPTER_VERSION,
   });
   const cache = getCache();
   const cached = cache.get(cacheKey);

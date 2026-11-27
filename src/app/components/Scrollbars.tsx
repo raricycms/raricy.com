@@ -88,7 +88,17 @@ function mount(el: HTMLElement): Port | null {
     thumb.style.transform = `translateY(${(el.scrollTop + offset).toFixed(1)}px)`;
   };
 
-  const onScroll = () => sync();
+  // scroll 事件按帧合并：惯性滚动一帧能发多次 scroll，逐个 sync 等于每帧多次读布局。
+  // 同一帧只排一次同步，滑块位置在下一帧画出来；指针拖动写 scrollTop 也走这里，
+  // 视觉上仍跟手。
+  let scrollFrame = 0;
+  const onScroll = () => {
+    if (scrollFrame) return;
+    scrollFrame = requestAnimationFrame(() => {
+      scrollFrame = 0;
+      sync();
+    });
+  };
 
   const onPointerDown = (event: PointerEvent) => {
     const scrollH = el.scrollHeight;
@@ -144,6 +154,7 @@ function mount(el: HTMLElement): Port | null {
     classObserver,
     cleanup: () => {
       el.removeEventListener('scroll', onScroll);
+      if (scrollFrame) cancelAnimationFrame(scrollFrame);
       observer.disconnect();
       mutation.disconnect();
       classObserver.disconnect();

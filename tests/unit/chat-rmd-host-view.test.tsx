@@ -4,8 +4,9 @@
 //
 // 覆盖：
 //   · 图床 / 音频 / 表情 / 黄脸 / 名片的受控渲染与逐 slot 失败回退；
+//     音频解码错误（含 0 秒 / 坏文件）保留播放器结构，不缩回 token；
 //   · 非法 id 与伪造 hostData 不获得能力（URL 一律由校验后的字段重拼）；
-//   · 剪贴板 Markdown 子文档内层 static 渲染、不递归展开、reactive 只给回链；
+//   · 剪贴板 Markdown / ReactiveMD 子文档内层 static 渲染、不递归展开、未知格式只给回链；
 //   · 未知 kind 仍显示原文 token。
 //
 // 用真实适配器 + 假的 reference-reader 生成 hostData，保证视图消费的就是 B 的
@@ -192,19 +193,62 @@ describe('ChatRmdHostView — 图床与音频', () => {
     expect(container.textContent).toContain('[@AbCdEf1234]');
   });
 
-  it('音频用原生控件、preload=none，失败回 token', async () => {
+  it('音频用原生控件、preload=none，解码错误仍保留播放器结构', async () => {
     const reference = await adapt('[@音频/AbCdEf1234]');
     await render(<Harness reference={reference} />);
 
     const audio = container.querySelector('audio.rich-audio-ref');
     expect(audio).not.toBeNull();
+    expect(audio!.classList.contains('chat-rmd-audio')).toBe(true);
     expect(audio!.getAttribute('src')).toBe('/api/audio/AbCdEf1234/raw');
     expect(audio!.getAttribute('preload')).toBe('none');
     expect(audio!.hasAttribute('controls')).toBe(true);
 
     dispatch(audio!, 'error');
-    expect(container.querySelector('audio')).toBeNull();
-    expect(container.textContent).toContain('[@音频/AbCdEf1234]');
+    expect(container.querySelector('audio.rich-audio-ref')).not.toBeNull();
+    expect(container.textContent).not.toContain('[@音频/AbCdEf1234]');
+  });
+
+  it('duration=0 的 loadedmetadata 与后续 error 都不会把音频换回 token', async () => {
+    const reference = await adapt('[@音频/AbCdEf1234] [@音频/ZzYyXx9876]');
+    await render(<Harness reference={reference} />);
+
+    const audios = [...container.querySelectorAll('audio.rich-audio-ref')];
+    expect(audios).toHaveLength(2);
+    for (const audio of audios) {
+      // 0 秒录音仍会正常触发 loadedmetadata；时长不参与失败判定。
+      Object.defineProperty(audio, 'duration', { configurable: true, value: 0 });
+      dispatch(audio, 'loadedmetadata');
+    }
+    expect(container.querySelectorAll('audio.rich-audio-ref')).toHaveLength(2);
+    expect(container.textContent).not.toContain('[@音频/');
+
+    // 只有 ID3 头的 0 秒文件会报解码错误；引用本身仍保留播放器。
+    Object.defineProperty(audios[1], 'error', { configurable: true, value: { code: 4 } });
+    dispatch(audios[1], 'error');
+    expect(container.querySelectorAll('audio.rich-audio-ref')).toHaveLength(2);
+    expect(container.textContent).not.toContain('[@音频/ZzYyXx9876]');
+  });
+
+  it('非法音频 URL / 缺失 url 的载荷都回 token，不建 audio', async () => {
+    const payloads = [
+      { url: 'https://example.com/evil.mp3' },
+      { url: '/api/audio/AbCdEf1234/raw?x=1' },
+      {},
+    ];
+    for (const payload of payloads) {
+      const reference = await adapt('[@音频/AbCdEf1234]');
+      const slot = Object.keys(reference.hostData)[0];
+      reference.hostData[slot] = {
+        kind: 'audio',
+        slot,
+        token: '[@音频/AbCdEf1234]',
+        ...payload,
+      };
+      await render(<Harness reference={reference} />);
+      expect(container.querySelector('audio')).toBeNull();
+      expect(container.textContent).toContain('[@音频/AbCdEf1234]');
+    }
   });
 });
 
@@ -281,19 +325,32 @@ describe('ChatRmdHostView — 剪贴板', () => {
     expect(inner.querySelectorAll('button, input, textarea, select')).toHaveLength(0);
   });
 
-  it('reactive / 未知格式只给站内回链', async () => {
+  it('ReactiveMD 子文档同样内联渲染，未知格式只给站内回链', async () => {
     readerStore.clipboard.set('AbCdEf12', {
       status: 'ready',
       format: 'reactive',
-      content: '无副作用',
+      content: 'RMD 子文档',
     });
     const reference = await adapt('[@AbCdEf12]');
     await render(<Harness reference={reference} />);
 
+    expect(container.querySelectorAll('.md-document')).toHaveLength(2);
+    expect(container.textContent).toContain('RMD 子文档');
+    expect(container.querySelector('a.chat-rmd-clipboard-link')).toBeNull();
+
+    readerStore.clipboard.set('ZzYyXx99', {
+      status: 'ready',
+      format: 'unknown',
+      content: '库内认不出的正文',
+    });
+    const unknown = await adapt('[@ZzYyXx99]');
+    await render(<Harness reference={unknown} />);
+
     const link = container.querySelector('a.chat-rmd-clipboard-link');
     expect(link).not.toBeNull();
-    expect(link!.getAttribute('href')).toBe('/clipboard/AbCdEf12');
+    expect(link!.getAttribute('href')).toBe('/clipboard/ZzYyXx99');
     expect(container.querySelectorAll('.md-document')).toHaveLength(1);
+    expect(container.textContent).not.toContain('库内认不出的正文');
   });
 
   it('超长剪贴板内联截断正文并给回链', async () => {

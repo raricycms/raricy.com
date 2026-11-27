@@ -114,10 +114,11 @@ test.describe('讨论功能：链接 / 跳转 / 搜索 / 日期分隔', () => {
     const origRow = msgRow(page, orig);
     await expect(origRow).toBeVisible();
     await origRow.locator('.chat-msg__content').click({ button: 'right' });
-    await page
-      .locator('.chat-menu')
-      .getByRole('menuitem', { name: '回复', exact: true })
-      .click();
+    const menu = page.locator('.chat-menu');
+    await expect(menu).toBeVisible();
+    // 菜单是 fixed portal，按「滚动即收起」关闭；浮层打开期间 ChatApp 已禁止
+    // 自动贴底（overlayOpenRef），这里走普通 click 的真实路径，不用 force 绕过。
+    await menu.getByRole('menuitem', { name: '回复', exact: true }).click();
 
     // 前置断言：真的进了回复态。这一步挂 = 按钮没接上，与「reply_to 没发出去」分开定位
     await expect(page.locator('.chat-composer__reply')).toContainText(peer.username);

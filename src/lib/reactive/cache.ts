@@ -1,14 +1,13 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // cache.ts — ReactiveMD 服务端编译缓存的**纯数据层**（Node only）
 //
-// 两件事：
-//   1. 编译缓存的**完整版本键**。相同的键必须意味着「完全相同的一次编译」，
-//      所以键里包含：适配后源码的 sha256、语法版本、编译器精确版本、适配器版本、
-//      以及上游公开的 `localCompileOptionsKey(options)`。
-//      ⚠️ 本文件**不实现** optionsKey —— 它是上游的公共签名；在这里重写一份等于
-//      造了第二种「选项相等」的判断，上游一改就会静默命中错误的缓存。
-//   2. 一个按**估算字节数**计容量的 LRU。容量要算进源码、AST、诊断与键本身，
-//      不能只按条数 —— 一篇长文的编译产物可能抵得上几十篇短文。
+// 只做一件事：按**估算字节数**计容量的 LRU。缓存键由上游
+// `localCompileCacheKey`（`reactive-md/compiler/session`）负责：它把编译入口、
+// 编译器构建、语法版本、选项与源码本身编进同一个键。本文件不再自建版本拼键，
+// 避免上游改布局时静默命中旧结果。
+//
+// 容量要算进键、源码、AST 与诊断，不能只按条数 —— 一篇长文的编译产物可能抵得上
+// 几十篇短文。
 //
 // 只放**可序列化的不可变编译数据**：runtime、renderer 闭包、会话数据与
 // `hostData` 都不进这里（它们随请求/视图变化，缓存它们等于把两名用户串在一起）。
@@ -17,7 +16,6 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { Buffer } from 'node:buffer';
-import { createHash } from 'node:crypto';
 
 /** 可安全跨请求复用的 JSON 值。 */
 export type ReactiveJsonValue =
@@ -27,62 +25,6 @@ export type ReactiveJsonValue =
   | null
   | readonly ReactiveJsonValue[]
   | { readonly [key: string]: ReactiveJsonValue };
-
-export interface ReactiveCacheKeyInput {
-  /** 引用适配器处理后的源码（阅读页在服务端适配，编辑器在客户端适配）。 */
-  adaptedSource: string;
-  /** `LOCAL_SYNTAX_VERSION`（例如 `local-draft-2`）。 */
-  syntaxVersion: string;
-  /** 编译器包的精确版本（不是 semver 范围）。 */
-  compilerVersion: string;
-  /** 站点适配层自己的版本号 / 摘要。 */
-  adapterVersion: string;
-  /** 上游 `localCompileOptionsKey(options)` 的结果，由调用方传入。 */
-  optionsKey: string;
-}
-
-/** 版本号字段必须无歧义：不含冒号/空白，键的各段才能稳定切分。 */
-const VERSION_TOKEN = /^[A-Za-z0-9._+/-]+$/;
-
-export function sha256Hex(text: string): string {
-  return createHash('sha256').update(text, 'utf8').digest('hex');
-}
-
-function requireVersionToken(name: string, value: unknown): string {
-  if (typeof value !== 'string' || value.length === 0) {
-    throw new TypeError(`${name} 必须是非空字符串`);
-  }
-  if (!VERSION_TOKEN.test(value)) {
-    throw new TypeError(`${name} 只能包含字母、数字、点、下划线、加号、斜杠与连字符`);
-  }
-  return value;
-}
-
-/**
- * 完整编译缓存键（格式与计划 §5.3 一致）。
- *
- * 各版本字段先收紧成无冒号 token，optionsKey 放在**最后一段**（它可能含冒号），
- * 于是键可以被唯一还原。不要为了「顺手」把 optionsKey 换成 JSON.stringify：
- * 上游签名变了，这里的键就没变，缓存会静默命中旧结果。
- */
-export function reactiveCompileCacheKey(input: ReactiveCacheKeyInput): string {
-  if (typeof input?.adaptedSource !== 'string') {
-    throw new TypeError('adaptedSource 必须是字符串');
-  }
-  const syntaxVersion = requireVersionToken('syntaxVersion', input.syntaxVersion);
-  const compilerVersion = requireVersionToken('compilerVersion', input.compilerVersion);
-  const adapterVersion = requireVersionToken('adapterVersion', input.adapterVersion);
-  if (typeof input.optionsKey !== 'string' || input.optionsKey.length === 0) {
-    throw new TypeError('optionsKey 必须是非空字符串（由上游 localCompileOptionsKey 生成）');
-  }
-  return [
-    sha256Hex(input.adaptedSource),
-    syntaxVersion,
-    compilerVersion,
-    adapterVersion,
-    input.optionsKey,
-  ].join(':');
-}
 
 /** UTF-8 字节数（与容量单位一致）。 */
 export function utf8ByteLength(text: string): number {

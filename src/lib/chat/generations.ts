@@ -1,7 +1,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // generations.ts — 机器人生成任务（R2）：内存状态、分块校验、完成发布与终态回执
 //
-// 【职责】参考 docs/plan/chat-reactive-streaming-design.md §5/§6：
+// 【职责】参考 docs/archive/chat-reactive-streaming-design.md §5/§6：
 //   • 活动任务与终态回执**只在内存**（挂 globalThis，重启即失效；不写库、不加表）；
 //   • 分块只做序号/预算校验与快照广播，不产生任何消息副作用；
 //   • 唯一正式发送出口是 ./messages 的 sendMessage（complete 时调用一次）；
@@ -76,7 +76,11 @@ export const CHAT_GENERATION_RECEIPT_TTL_MS = 15 * 60 * 1000;
 export const CHAT_GENERATION_MAX_RECEIPTS = 4096;
 /** 生成路由读取请求体的字节上限（片段契约 8 KiB，其余接口同口径）。 */
 export const CHAT_GENERATION_ROUTE_MAX_BODY_BYTES = 8 * 1024;
-/** 快照广播的最小间隔（每任务最多约 5 帧/秒，合并为最新完整快照）。 */
+/**
+ * 快照广播的最小间隔（每任务最多 5 帧/秒，合并为最新完整快照）。
+ * 分块限频为 600/分；机器人按每 200ms 合包提交时稳态约 300 片/分，
+ * 留出 2 倍余量 —— 按 token / 上游网络帧逐条提交则没有这个余量。
+ */
 const SNAPSHOT_INTERVAL_MS = 200;
 /** 过期清扫节拍；每次操作前还会同步补查一次。 */
 const SWEEP_INTERVAL_MS = 15_000;
@@ -441,7 +445,7 @@ function broadcastSnapshot(task: GenerationTask): void {
   });
 }
 
-/** 合并计时器：最多约 5 帧/秒，只发最新完整快照。 */
+/** 合并计时器：最多 5 帧/秒，只发最新完整快照。 */
 function scheduleSnapshot(task: GenerationTask): void {
   if (state.tasks.get(task.id) !== task) return;
   if (task.snapshotTimer) return;

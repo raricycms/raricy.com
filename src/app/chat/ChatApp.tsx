@@ -32,7 +32,6 @@ import AvatarMenu, { type AvatarMenuAnchor } from './AvatarMenu';
 import ChatMessageMenu, { type MessageMenuAnchor } from './ChatMessageMenu';
 import ChatMessageDetail from './ChatMessageDetail';
 import ImageLightbox from '../components/ImageLightbox';
-import { releaseSmoothWheelScroll } from '../components/SmoothWheelScroll';
 import { isMentioned, markGroupedMessages } from './ChatMessageItem';
 import ChatMessageList from './ChatMessageList';
 import ChatSidebar from './ChatSidebar';
@@ -43,6 +42,7 @@ import ChatSearchModal, { SearchButton } from './ChatSearchModal';
 import ChatGenerationItem from './ChatGenerationItem';
 import ChatRmdProvider from './ChatRmdProvider';
 import { useChatGenerations } from './useChatGenerations';
+import { useChatScrollActivity } from './useChatScrollActivity';
 import { useChatViewport } from './useChatViewport';
 
 declare global {
@@ -291,9 +291,21 @@ export default function ChatApp({
    * 会触发列表滚动，菜单按既有规则收起 —— 表现为「右键后菜单闪一下就没」。
    * 浮层状态用 ref 镜像，避免回调引用变化穿透 ChatMessageList 的 memo。
    */
-  const overlayOpenRef = useRef(false);
-  overlayOpenRef.current =
+  const overlayOpen =
     messageMenu !== null || messageDetail !== null || avatarMenu !== null;
+  const overlayOpenRef = useRef(false);
+  overlayOpenRef.current = overlayOpen;
+  // 打开浮层的回调里还要同步置 true：异步编译可能抢在菜单 commit 前触发
+  // 「贴底跟随」，滚动事件随后到达会把刚挂上的菜单收掉（右键后闪一下就没）。
+  const markOverlayOpen = useCallback(() => {
+    overlayOpenRef.current = true;
+  }, []);
+  /** 切频道时收起旧频道的菜单 / 详情，避免它们挂在新频道上。 */
+  const closeMessageOverlays = useCallback(() => {
+    setMessageMenu(null);
+    setMessageDetail(null);
+    setAvatarMenu(null);
+  }, []);
   /**
    * 用户主动滚动（滚轮 / 触摸）后的保护窗。
    *
@@ -396,6 +408,13 @@ export default function ChatApp({
    */
   const pageRef = useRef<HTMLDivElement>(null);
   useChatViewport(pageRef);
+
+  /**
+   * 列表滚动活跃度：wheel / touchmove / 高速 scroll 期间暂停 RMD 编译派发，
+   * 减速或停止 180ms 后恢复（见 useChatScrollActivity.ts）。document 捕获按
+   * target 过滤，不产生 state，也不依赖列表元素的挂载时机。
+   */
+  useChatScrollActivity(activeId);
 
   const activeChannel = useMemo(
     () => channels.find((c) => c.id === activeId) ?? null,
@@ -577,9 +596,6 @@ export default function ChatApp({
   const scrollToBottom = useCallback((behavior: ScrollBehavior = 'auto') => {
     const el = listRef.current;
     if (!el) return;
-    // 滚轮缓动逐帧写 scrollTop，会把这次平滑滚动中止在第一帧之前（见 SmoothWheelScroll
-    // 的 releaseSmoothWheelScroll）。「回到最新」与自动到底都走这里，必须先让位。
-    releaseSmoothWheelScroll(el);
     el.scrollTo({ top: el.scrollHeight, behavior });
   }, []);
 
@@ -648,7 +664,6 @@ export default function ChatApp({
       const row = el.getBoundingClientRect();
       const box = list.getBoundingClientRect();
       if (row.top >= box.top && row.bottom <= box.bottom) return; // 落位了
-      releaseSmoothWheelScroll();
       el.scrollIntoView({ block: 'center' });
     }, 400);
   }, []);
@@ -664,7 +679,6 @@ export default function ChatApp({
         `[data-message-id="${jump.messageId}"]`
       );
       if (el) {
-        releaseSmoothWheelScroll();
         el.scrollIntoView({ block: 'center', behavior: 'smooth' });
         flashHighlight(jump.messageId);
         ensureJumpLands(el);
@@ -673,6 +687,9 @@ export default function ChatApp({
     }
     const behavior = scrollAfterCommitRef.current;
     if (behavior === null) return;
+    // 浮层打开时先不滚：滚动会收起菜单 / 详情。待办保留，等浮层关闭后由
+    // 后面同名的 layout effect 消费；切频道会先 closeMessageOverlays。
+    if (overlayOpenRef.current) return;
     scrollAfterCommitRef.current = null;
     scrollToBottom(behavior);
   }, [messages, scrollToBottom, flashHighlight, ensureJumpLands]);
@@ -682,6 +699,42 @@ export default function ChatApp({
     if (!el) return true;
     return el.scrollHeight - el.scrollTop - el.clientHeight < 140;
   }, []);
+
+  // 浮层关闭后再消费被延后的「滚到底」：发送 / 切频道 / resync 挂在浮层打开期间的
+  // 待办不能永远丢掉，也不能在菜单还开着时滚（滚动会把它收起）。
+  useLayoutEffect(() => {
+    if (overlayOpen) return;
+    const behavior = scrollAfterCommitRef.current;
+    if (behavior === null) return;
+    scrollAfterCommitRef.current = null;
+    // 与正文跟随同一套否决：用户刚开始滚动 / 历史视图 / 跳转中都不抢滚动权。
+    if (Date.now() < userScrollUntilRef.current) return;
+    if (historyViewRef.current) return;
+    if (pendingJumpRef.current !== null || jumpSettleTimerRef.current !== null) return;
+    scrollToBottom(behavior);
+  }, [overlayOpen, scrollToBottom]);
+
+  // 浮层打开期间新消息按未读计数；关掉浮层时若仍贴底，先滚到底让那段内容真正
+  // 进入视口，再按 handleListScroll 的「到底即已读」清浮标并推进读游标。
+  const wasOverlayOpenRef = useRef(false);
+  useEffect(() => {
+    if (overlayOpen) {
+      wasOverlayOpenRef.current = true;
+      return;
+    }
+    if (!wasOverlayOpenRef.current) return;
+    wasOverlayOpenRef.current = false;
+    if (newCountRef.current === 0) return;
+    // 用户通过滚动 / 历史视图 / 跳转离开底部时保留浮标，不能借关浮层把未读吃掉。
+    if (Date.now() < userScrollUntilRef.current) return;
+    if (historyViewRef.current) return;
+    if (pendingJumpRef.current !== null || jumpSettleTimerRef.current !== null) return;
+    if (!isNearBottom()) return;
+    scrollToBottom();
+    setNewCount(0);
+    const aid = activeRef.current;
+    if (aid && lastIdRef.current) void markRead(aid, lastIdRef.current);
+  }, [overlayOpen, isNearBottom, markRead, scrollToBottom]);
 
   /**
    * 正文即将增高前记录的「是否贴底」。
@@ -946,12 +999,14 @@ export default function ChatApp({
         // 自己发的也会被推回来；发送响应可能已经先到 → 按 id 去重（见 appendMessage）
         if (!appendMessage(m)) return;
         lastIdRef.current = Math.max(lastIdRef.current, m.id);
-        if (isNearBottom()) {
+        // 浮层打开时即使贴底也不跟随：滚动会收起菜单 / 详情。这条消息此时仍可能
+        // 在视口下方，按未读处理，关闭浮层后用「N 条新消息」浮标带回。
+        if (isNearBottom() && !overlayOpenRef.current) {
           scrollAfterCommit();
           if (document.hasFocus()) void markRead(aid, m.id);
         } else {
           setNewCount((n) => n + 1);
-          // 没读掉（不在底部 / 窗口失焦）→ 顶栏红点也要亮，20s 心跳兜底太慢
+          // 没读掉（不在底部 / 窗口失焦 / 浮层挡着）→ 顶栏红点也要亮，20s 心跳兜底太慢
           refreshTopbarBadge();
         }
         return;
@@ -1134,7 +1189,14 @@ export default function ChatApp({
   const scrollGenerationsAfterCommitRef = useRef(false);
   useLayoutEffect(() => {
     if (!scrollGenerationsAfterCommitRef.current) return;
+    // 标志置位到本 effect 执行之间，浮层可能已打开 / 用户已开始滚动 / 进入历史视图
+    // 或跳转：此时滚动会触发列表 scroll，菜单与详情按「滚动即收起」关闭。与正文
+    // 跟随（handleMessageContentChange）同一套否决条件，任一命中就丢弃这次跟随。
     scrollGenerationsAfterCommitRef.current = false;
+    if (overlayOpenRef.current) return;
+    if (Date.now() < userScrollUntilRef.current) return;
+    if (historyViewRef.current) return;
+    if (pendingJumpRef.current !== null || jumpSettleTimerRef.current !== null) return;
     scrollToBottom();
   }, [generations.generations, scrollToBottom]);
 
@@ -1190,13 +1252,15 @@ export default function ChatApp({
           return;
         }
         // 生成事件不写 SSE id、不推进正式游标：交给临时状态机；只有快照可能改变
-        // 列表高度，按「更新前贴底才跟随」的规则滚一次。
+        // 列表高度，按「更新前贴底才跟随」的规则滚一次。浮层打开时不置位 ——
+        // 滚动会把菜单 / 详情收起，交给 layout effect 里的同一套复查。
         if (ev.type === 'generation_snapshot' || ev.type === 'generation_terminal') {
           const accepted = generationsRef.current.applyEvent(ev);
           if (
             accepted &&
             ev.type === 'generation_snapshot' &&
             ev.channel_id === activeRef.current &&
+            !overlayOpenRef.current &&
             !historyViewRef.current &&
             Date.now() >= userScrollUntilRef.current &&
             isNearBottom()
@@ -1397,6 +1461,7 @@ export default function ChatApp({
           // 临时预览是逐频道的：离开旧频道时清掉它的行与墓碑，避免切回来时
           // 复活一个早已结束的任务（新的生成仍会从下一帧快照重新出现）。
           if (activeRef.current) generationsRef.current.clearChannel(activeRef.current);
+          closeMessageOverlays();
           setActiveId(id);
           activeRef.current = id;
           setMessages([]);
@@ -1420,7 +1485,7 @@ export default function ChatApp({
         }
       );
     },
-    [loadMessages, restoreDraft, router, stashDraft, switchWithFade]
+    [loadMessages, restoreDraft, router, stashDraft, switchWithFade, closeMessageOverlays]
   );
 
   // ── 防御：poll 拉回的频道行若带 disabled（例如另一标签页把专注模式打开了，
@@ -1444,11 +1509,12 @@ export default function ChatApp({
     setReplyTarget(null);
     setBlogQuote(null);
     generationsRef.current.clearAll();
+    closeMessageOverlays();
     setActiveId(null);
     activeRef.current = null;
     viewTokenRef.current++;
     router.replace('/chat', { scroll: false });
-  }, [channels, activeId, router, selectChannel]);
+  }, [channels, activeId, router, selectChannel, closeMessageOverlays]);
 
   // ── 发送 ───────────────────────────────────────────────────────────────
   const sendWith = useCallback(async (raw: string, opts?: { keepDraft?: boolean }) => {
@@ -1603,6 +1669,7 @@ export default function ChatApp({
    */
   const openAvatarMenu = useCallback(
     (m: ChatMessageDTO, el: HTMLButtonElement) => {
+      markOverlayOpen();
       setAvatarMenu((prev) => {
         if (prev && prev.author.id === m.author.id) return null;
         return {
@@ -1618,7 +1685,7 @@ export default function ChatApp({
         };
       });
     },
-    [currentUserId]
+    [currentUserId, markOverlayOpen]
   );
 
   /**
@@ -1626,14 +1693,16 @@ export default function ChatApp({
    * 回调必须是稳定引用：ChatMessageItem 包了 memo，换引用等于整列表白 memo。
    */
   const openMessageMenu = useCallback((m: ChatMessageDTO, anchor: MessageMenuAnchor) => {
+    markOverlayOpen();
     setMessageMenu({ msg: m, anchor });
-  }, []);
+  }, [markOverlayOpen]);
 
   /** 单击正文 → 消息详情浮层（移动端与桌面共用；详情里可原生选字 / 复制）。 */
   const openMessageDetail = useCallback((m: ChatMessageDTO) => {
+    markOverlayOpen();
     setMessageMenu(null);
     setMessageDetail(m);
-  }, []);
+  }, [markOverlayOpen]);
 
   const closeMessageDetail = useCallback(() => setMessageDetail(null), []);
 
@@ -1758,7 +1827,6 @@ export default function ChatApp({
     (messageId: number) => {
       const hit = listRef.current?.querySelector<HTMLElement>(`[data-message-id="${messageId}"]`);
       if (hit) {
-        releaseSmoothWheelScroll();
         hit.scrollIntoView({ block: 'center', behavior: 'smooth' });
         flashHighlight(messageId);
         return;
@@ -1986,6 +2054,7 @@ export default function ChatApp({
           setModalOpen(false);
           stashDraft(activeRef.current);
           if (activeRef.current) generationsRef.current.clearChannel(activeRef.current);
+          closeMessageOverlays();
           setActiveId(ch.id);
           activeRef.current = ch.id;
           setMessages([]);
@@ -2004,12 +2073,13 @@ export default function ChatApp({
         }
       );
     },
-    [loadMessages, restoreDraft, router, stashDraft, switchWithFade]
+    [loadMessages, restoreDraft, router, stashDraft, switchWithFade, closeMessageOverlays]
   );
 
   return (
-    // 页面级 RMD 编译上下文：一个 Chat 页面一个 Manager/Worker，列表、详情与临时行
-    // 共用（详情虽是 portal，React context 仍会穿过）。Worker 在首个正文订阅时才创建。
+    // 页面级 RMD 编译上下文：Manager/Worker 按 viewerScope 跨页面复用，列表、详情与临时行
+    // 共用（详情虽是 portal，React context 仍会穿过）。Worker 由 provider 在挂载后
+    // 立即预热；Manager 在客户端路由间按查看者复用，离页 10 分钟后才回收。
     <ChatRmdProvider viewerScope={currentUserId}>
       <div
         ref={pageRef}
@@ -2080,7 +2150,8 @@ export default function ChatApp({
               className="chat-list"
               ref={listRef}
               onScroll={handleListScroll}
-              onWheel={() => {
+              onWheel={(event) => {
+                if (event.ctrlKey) return; // Ctrl + wheel 是浏览器缩放，不滚列表
                 // 只登记用户主动滚动；程序化 scrollTo 不触发 wheel / touchmove。
                 userScrollUntilRef.current = Date.now() + 300;
                 nearBottomSyncUntilRef.current = Date.now() + 700;
@@ -2121,9 +2192,10 @@ export default function ChatApp({
                 onBeforeContentChange={handleContentBeforeChange}
                 onContentChange={handleMessageContentChange}
               />
-              {/* 生成中的临时行渲染在 memo 列表之外：快照约 5 帧/秒，不能让它
-                  穿透 ChatMessageList 去重建最多 300 条正式消息的元素树。
-                  历史视图只看过去那一段，不插入临时行（与 SSE 同一条规则）。 */}
+              {/* 生成中的临时行渲染在 memo 列表之外：快照 5 帧/秒，前端每帧分两步
+                  显示（约 10 帧/秒），不能让它穿透 ChatMessageList 去重建最多
+                  300 条正式消息的元素树。历史视图只看过去那一段，不插入临时行
+                  （与 SSE 同一条规则）。 */}
               {!historyView &&
                 activeGenerations.map((generation) => (
                   <ChatGenerationItem

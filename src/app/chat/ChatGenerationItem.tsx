@@ -7,14 +7,25 @@
 // 保存、已读回执与未读计数（state 在 ChatApp 的 useChatGenerations 里，按 SSE
 // generation_snapshot 逐帧替换完整正文）。正式消息到达后由 ChatApp 移除本行。
 //
+// 【为什么还要分步显示】服务端快照是 200ms 一帧（5 帧/秒），直接渲染会让视觉节奏
+// 比原来的 10 帧/秒顿一半。这里把每帧新增的后缀切成两个进度点：快照到达先显示
+// 前半段，100ms 后补上后半段；新快照若提前到达，立即从当前已显示位置重新规划，
+// 不播放过时中间态。计划逻辑在 generation-reveal.ts，便于单测。
+// 用户声明 prefers-reduced-motion 时不做分步追赶，每个快照一步显示到目标。
+//
 // 渲染只复用聊天正文壳（ChatRmdMessage，streaming 阶段不取引用/媒体）与气泡/头像
 // 语义；样式在 _chat.scss 的 chat-msg--generating 段（G 负责）。
 // ─────────────────────────────────────────────────────────────────────────────
 
+import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import Avatar from '@/app/components/Avatar';
 import ChatBubble from '@/app/components/ChatBubble';
 import type { ChatGenerationPreview } from './useChatGenerations';
+import {
+  GENERATION_REVEAL_INTERVAL_MS,
+  planGenerationReveal,
+} from './generation-reveal';
 import ChatRmdMessage from './ChatRmdMessage';
 
 export default function ChatGenerationItem({
@@ -32,6 +43,49 @@ export default function ChatGenerationItem({
   /** 编译/渲染高度变化后通知 ChatApp 按「贴底才跟随」规则滚动。 */
   onContentChange?: () => void;
 }) {
+  // 初始快照直接显示；之后每个快照的新增后缀分两步追赶。
+  const [displayedSource, setDisplayedSource] = useState(() => generation.source);
+  const displayedRef = useRef(displayedSource);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    // 用户要求减少动态效果时不做两步追赶：直接显示目标。matchMedia 不是所有
+    // 环境都有（SSR / 测试），可选链兜底后按「未命中」处理。
+    const reducedMotion =
+      typeof window !== 'undefined' &&
+      window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches === true;
+    const steps = planGenerationReveal(
+      displayedRef.current,
+      generation.source,
+      reducedMotion ? 1 : undefined
+    );
+    if (steps.length === 0) return;
+
+    if (timerRef.current !== null) {
+      clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
+
+    let index = 0;
+    const showNext = (): void => {
+      const next = steps[index];
+      index += 1;
+      displayedRef.current = next;
+      setDisplayedSource(next);
+      timerRef.current = index < steps.length
+        ? setTimeout(showNext, GENERATION_REVEAL_INTERVAL_MS)
+        : null;
+    };
+    showNext();
+
+    return () => {
+      if (timerRef.current !== null) {
+        clearTimeout(timerRef.current);
+        timerRef.current = null;
+      }
+    };
+  }, [generation.source]);
+
   return (
     <div
       className={`chat-msg chat-msg--generating${isMine ? ' chat-msg--mine' : ''}`}
@@ -58,10 +112,10 @@ export default function ChatGenerationItem({
         </div>
         <div className="chat-msg__own-blocks">
           <ChatBubble bubbleKey={generation.author.bubble_key}>
-            {generation.source.trim() ? (
+            {displayedSource.trim() ? (
               <ChatRmdMessage
                 messageKey={`gen:${generation.generationId}`}
-                content={generation.source}
+                content={displayedSource}
                 phase="streaming"
                 allowBareImage={false}
                 onImageClick={onImageClick}

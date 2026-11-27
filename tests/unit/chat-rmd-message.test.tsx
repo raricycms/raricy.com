@@ -5,6 +5,7 @@
 // 用假 Manager 注入确定的编译快照，用真实引用适配器 + 假 reference-reader 验证
 // final 落位。覆盖：
 //   · 成功渲染、编译失败转义源码、空正文；
+//   · 聊天策略放行的静态组件（alert）渲染标题 / 正文，不回显原始源码；
 //   · streaming 不请求引用 / 媒体、链接不可导航；
 //   · final 适配后 hostData 落位，裸图类随 allowBareImage / 媒体失败开关；
 //   · 逐 slot 失败与 token 回退；
@@ -15,12 +16,13 @@
 // 不写纯样式或文案断言；这里只认结构、类名契约与资源请求。
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { act, type ReactElement } from 'react';
+import { act, useEffect, type ReactElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { compileLocal, type LocalDocument } from 'reactive-md';
 import ChatRmdMessage from '@/app/chat/ChatRmdMessage';
-import ChatRmdProvider from '@/app/chat/ChatRmdProvider';
+import ChatRmdProvider, { useChatRmd } from '@/app/chat/ChatRmdProvider';
+import { applyChatDocumentPolicy } from '@/lib/chat-rmd/document-policy';
 import { CHAT_RMD_COMPILE_OPTIONS } from '@/lib/chat-rmd/options';
 import type {
   ChatCompileListener,
@@ -72,9 +74,11 @@ function createFakeManager() {
   const history: FakeRecord[] = [];
   const requests: ChatCompileRequest[] = [];
   const unsubscribed: string[] = [];
+  const warmupCalls = vi.fn();
   let disposed = 0;
 
   const manager: ChatCompileManager = {
+    warmup: warmupCalls,
     subscribe(request, listener) {
       const record: FakeRecord = { request, listener, active: true };
       records.push(record);
@@ -125,6 +129,7 @@ function createFakeManager() {
     requests,
     history,
     unsubscribed,
+    warmupCalls,
     get disposed() {
       return disposed;
     },
@@ -225,6 +230,99 @@ function dispatch(target: Element, type: 'error' | 'load' | 'click'): void {
   });
 }
 
+describe('ChatRmdProvider — Worker 预热', () => {
+  it('挂载后的下一个任务就预热，不等 requestIdleCallback', async () => {
+    const idle = vi.fn();
+    const originalIdle = (window as unknown as Record<string, unknown>).requestIdleCallback;
+    (window as unknown as Record<string, unknown>).requestIdleCallback = idle;
+    try {
+      const fake = createFakeManager();
+      await render(tree(fake, { content: '预热', phase: 'final' }));
+
+      // effect 只排了 setTimeout(0)，本轮 act 还没有让定时器跑。
+      expect(fake.warmupCalls).not.toHaveBeenCalled();
+      await settle(1);
+      expect(fake.warmupCalls).toHaveBeenCalledTimes(1);
+      expect(idle).not.toHaveBeenCalled();
+    } finally {
+      if (originalIdle === undefined) {
+        delete (window as unknown as Record<string, unknown>).requestIdleCallback;
+      } else {
+        (window as unknown as Record<string, unknown>).requestIdleCallback = originalIdle;
+      }
+    }
+  });
+});
+
+function ChildCompileProbe({
+  onDone,
+}: {
+  onDone: (document: LocalDocument | null) => void;
+}) {
+  const context = useChatRmd();
+  useEffect(() => {
+    if (!context) return;
+    const controller = new AbortController();
+    void context.compileChild('child-source', controller.signal).then(onDone);
+    return () => controller.abort();
+  }, [context, onDone]);
+  return null;
+}
+
+describe('ChatRmdProvider — 子编译瞬时失败', () => {
+  it('worker.unavailable 不结束子编译，等成功快照后再返回', async () => {
+    const compiled = compileLocal('child-source', CHAT_RMD_COMPILE_OPTIONS);
+    expect(compiled.ok).toBe(true);
+    if (!compiled.ok) throw new Error('unreachable');
+
+    let request: ChatCompileRequest | null = null;
+    let listener: ChatCompileListener | null = null;
+    const manager: ChatCompileManager = {
+      subscribe(nextRequest, nextListener) {
+        request = nextRequest;
+        listener = nextListener;
+        queueMicrotask(() => {
+          nextListener({
+            key: nextRequest.key,
+            revision: nextRequest.revision,
+            phase: 'final',
+            document: null,
+            errorCode: 'worker.unavailable',
+            retryable: true,
+          });
+        });
+        return () => {
+          listener = null;
+        };
+      },
+      dispose() {},
+    };
+    const onDone = vi.fn();
+
+    await render(
+      <ChatRmdProvider viewerScope="viewer-1" manager={manager}>
+        <ChildCompileProbe onDone={onDone} />
+      </ChatRmdProvider>
+    );
+    await settle(1);
+    expect(onDone).not.toHaveBeenCalled();
+    expect(request).not.toBeNull();
+    expect(listener).not.toBeNull();
+
+    await act(async () => {
+      listener!({
+        key: request!.key,
+        revision: request!.revision,
+        phase: 'final',
+        document: compiled.document,
+        errorCode: null,
+      });
+      await Promise.resolve();
+    });
+    expect(onDone).toHaveBeenCalledWith(compiled.document);
+  });
+});
+
 describe('ChatRmdMessage — 编译结果与回退', () => {
   it('final 编译成功后渲染文档，引用落位为受控图片', async () => {
     const fake = createFakeManager();
@@ -272,6 +370,70 @@ describe('ChatRmdMessage — 编译结果与回退', () => {
     const box = rootBox();
     expect(box.classList.contains('chat-msg__md--source')).toBe(true);
     expect(box.textContent).toBe('plain *text*');
+  });
+});
+
+describe('ChatRmdMessage — 聊天策略文档', () => {
+  it('策略放行的 alert 渲染标题与正文，不出现原始源码', async () => {
+    const fake = createFakeManager();
+    const source =
+      '<alert tone="warning" title="Two checks still open">\nThe release can stage at **now**\n</alert>';
+    const policy = applyChatDocumentPolicy(compile(source));
+    expect(policy.ok, JSON.stringify(policy)).toBe(true);
+    if (!policy.ok) throw new Error('unreachable');
+
+    await render(tree(fake, { content: source, phase: 'final' }));
+    const record = fake.latest('msg:1', 'final');
+    expect(record).not.toBeNull();
+    await act(async () => {
+      fake.deliverTo(record!, policy.document);
+    });
+    await settle();
+
+    const box = rootBox();
+    expect(box.classList.contains('chat-msg__md--source')).toBe(false);
+    const alert = box.querySelector('.local-alert');
+    expect(alert).not.toBeNull();
+    expect(alert!.querySelector('.local-alert-title')?.textContent).toBe(
+      'Two checks still open'
+    );
+    expect(alert!.querySelector('.local-alert-body')?.textContent).toContain(
+      'The release can stage at'
+    );
+    expect(alert!.querySelector('strong')?.textContent).toBe('now');
+    expect(box.textContent).not.toContain('<alert');
+  });
+
+  it('策略放行的 text 颜色与 div align 渲染', async () => {
+    const fake = createFakeManager();
+    const source =
+      '<text color="blue">蓝色 **文字**</text>\n\n<div align="right">\n## 第一幕：碎裂的回响\n</div>';
+    const policy = applyChatDocumentPolicy(compile(source));
+    expect(policy.ok, JSON.stringify(policy)).toBe(true);
+    if (!policy.ok) throw new Error('unreachable');
+
+    await render(tree(fake, { content: source, phase: 'final' }));
+    const record = fake.latest('msg:1', 'final');
+    expect(record).not.toBeNull();
+    await act(async () => {
+      fake.deliverTo(record!, policy.document);
+    });
+    await settle();
+
+    const box = rootBox();
+    const text = box.querySelector('.local-text');
+    expect(text).not.toBeNull();
+    expect(text!.textContent).toContain('蓝色');
+    expect(text!.querySelector('strong')?.textContent).toBe('文字');
+    expect(box.textContent).not.toContain('<text');
+
+    const heading = [...box.querySelectorAll('h2')].find((node) =>
+      node.textContent?.includes('第一幕')
+    );
+    expect(heading).toBeDefined();
+    const div = heading!.parentElement;
+    expect(div?.tagName).toBe('DIV');
+    expect(div?.getAttribute('align') === 'right' || (div as HTMLElement).style.textAlign === 'right').toBe(true);
   });
 });
 
@@ -340,6 +502,27 @@ describe('ChatRmdMessage — final 引用与裸图', () => {
     await settle();
     box = rootBox();
     expect(box.classList.contains('chat-msg__md--single-image')).toBe(false);
+  });
+
+  it('单图带首尾空白 / 换行或包在强调里时仍是裸图，正文只剩图片', async () => {
+    const fake = createFakeManager();
+    const cases = [
+      { key: 'msg:bare-1', source: '[@AbCdEf1234]\n' },
+      { key: 'msg:bare-2', source: '  [@AbCdEf1234]  ' },
+      { key: 'msg:bare-3', source: '**[@AbCdEf1234]**' },
+    ];
+    for (const { key, source } of cases) {
+      await render(tree(fake, { messageKey: key, content: source, phase: 'final' }));
+      fake.deliverLatest(key, compile(source));
+      await settle();
+
+      const box = rootBox();
+      // 气泡收缩到图片宽度全靠这个类（_chat.scss 的单图段）；残留 token 文本
+      // 或漏类都会让图片重新被撑到气泡一侧、另一侧留空白。
+      expect(box.classList.contains('chat-msg__md--single-image')).toBe(true);
+      expect(box.querySelectorAll('img.rich-image-ref')).toHaveLength(1);
+      expect(box.textContent?.trim()).toBe('');
+    }
   });
 
   it('正文带其他内容时不是裸图', async () => {

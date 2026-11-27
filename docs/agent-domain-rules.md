@@ -325,9 +325,11 @@ ftyp 品牌 / 声明归一化 / `planImageUpload` —— 服务端与浏览器�
 不再被读取）；别在页面里另判模式或恢复第二套渲染器。
 
 讨论渲染在 `src/lib/chat-rmd/`：`options.ts` 限制解析预算与能力，
-`document-policy.ts` 保留 Markdown 与公式，`compile-manager.ts` 调度每页 Worker，
-`references.ts` 生成 `chat-ref` 槽位。维持聊天自己的 URL、图片和宿主数据策略。正文读取失败时保留源文。
-发布回退可恢复 `ChatMarkdown` 调用；评论继续沿用 `rich-text.ts`。
+`document-policy.ts` 保留 Markdown、公式与静态展示组件白名单，未支持组件局部回退源码；
+`compile-manager.ts` 通过按 viewerScope 跨页面复用的 Manager/Worker 池调度编译，最后租约释放
+10 分钟后回收，切账号/登出立即清空；`references.ts` 生成 `chat-ref` 槽位，8 位剪贴板最多内联
+一条（Markdown 与 ReactiveMD 都内联），音频媒体解码错误保留播放器。维持聊天自己的 URL、
+图片和宿主数据策略。正文读取失败时保留源文。发布回退可恢复 `ChatMarkdown` 调用；评论继续沿用 `rich-text.ts`。
 
 ### 2.14 表情包
 

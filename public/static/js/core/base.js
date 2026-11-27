@@ -63,6 +63,9 @@ function logout() {
             if (data.code === 200) {
                 // 显示成功消息
                 showToast('已成功退出登录', 'success');
+                // 通知页面级缓存（如聊天 RMD Worker）立即清空，不把上一个会话的
+                // 编译结果留到下一次登录。
+                window.dispatchEvent(new Event('raricy:auth-changed'));
                 // 刷新页面
                 setTimeout(() => {
                     window.location.href = '/';

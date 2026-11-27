@@ -33,14 +33,27 @@ export interface ChatCompiledSnapshot {
   document: LocalDocument | null;
   /** 稳定诊断码（如 `local.budget`、`worker.error`），不展示给用户。 */
   errorCode: string | null;
+  /** 池暂时不可用、之后可能重试成功；持有者应继续等待而不是按终态收尾。 */
+  retryable?: boolean;
 }
 
 export type ChatCompileListener = (snapshot: ChatCompiledSnapshot) => void;
 
-/** 页面级编译管理器：一个 Chat 页面一个 Worker，多文档订阅互不覆盖。 */
+/** 聊天编译管理器：按 viewerScope 跨页面复用的 Manager / Worker 池，多文档订阅互不覆盖。 */
 export interface ChatCompileManager {
   subscribe(request: ChatCompileRequest, listener: ChatCompileListener): () => void;
-  /** 释放 Worker、队列与缓存；provider 卸载时调用。 */
+  /**
+   * 可选：空闲时预创建 Worker，缩短首条消息的冷启动等待。
+   * 只预创建 Worker，不入队、不编译；预热失败静默，不影响后续 subscribe
+   * （首次订阅仍按既有逻辑创建或重试）。
+   */
+  warmup?(): void;
+  /**
+   * 可选：滚动期暂停 / 恢复**新任务**的派发。只影响排队任务何时交给 Worker，
+   * 不取消在途编译，结果照常投递（结果提交层的降优先级由视图另行处理）。
+   */
+  setScrolling?(active: boolean): void;
+  /** 释放 Worker、队列与缓存；由路由级租约池在空闲回收、换账号或显式清理时调用。 */
   dispose(): void;
 }
 

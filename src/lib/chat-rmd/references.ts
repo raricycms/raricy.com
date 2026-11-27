@@ -20,6 +20,7 @@
 import type { LocalDocument, LocalNode } from 'reactive-md';
 import { AUDIO_REF_RE, audioUrl } from '../audio-refs';
 import { avatarUrl } from '../avatar-refs';
+import type { ContentFormat } from '../content-format';
 import {
   CLIPBOARD_REF_PROBE,
   CLIP_EXPAND_MAX,
@@ -379,7 +380,16 @@ function applyAccepted(
   replaceTextNodes(root.nodes, replacements);
 }
 
-// ── 剪贴板（首条、Markdown 内联一层、截断 + 回链）────────────────────────────
+// ── 剪贴板（首条、子文档内联一层、截断 + 回链）────────────────────────────────
+
+/**
+ * 可以展开进聊天的剪贴板格式（`ContentFormat` 的全部取值）。两者都是 RMD 源码，
+ * 由同一个 `compileChild` 入口编译；库内认不出的 `unknown` 不在此列，只给回链。
+ */
+const INLINE_CLIPBOARD_FORMATS: ReadonlySet<string> = new Set<ContentFormat>([
+  'markdown',
+  'reactive',
+]);
 
 function buildClipboardData(
   match: ClipboardMatch,
@@ -403,8 +413,8 @@ function buildClipboardData(
       data: allocate(state, (slot) => ({ kind: 'fallback', slot, token })),
     });
   }
-  if (read.format !== 'markdown') {
-    // reactive / 未知格式：整篇 RMD 不进聊天，只给站内回链。
+  if (!INLINE_CLIPBOARD_FORMATS.has(read.format)) {
+    // 库内认不出的格式：整篇正文不进聊天，只给站内回链。
     return Promise.resolve({ data: make({ error: 'format' }) });
   }
 

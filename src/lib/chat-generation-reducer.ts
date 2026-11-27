@@ -19,7 +19,7 @@
 // 【改动注意】事件形状以 src/lib/chat-shared.ts 为准（冻结协议），状态 / 错误标识见
 // chat-generation-shared.ts，服务端发布在 src/lib/chat/generations.ts。改这里同步
 // tests/unit/chat-generation-reducer.test.ts 与 useChatGenerations.ts。
-// 设计背景：docs/plan/chat-reactive-streaming-design.md §7。
+// 设计背景：docs/archive/chat-reactive-streaming-design.md §7。
 // ─────────────────────────────────────────────────────────────────────────────
 
 import {

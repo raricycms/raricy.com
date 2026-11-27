@@ -158,7 +158,11 @@ test.describe('ReactiveMD 发布与阅读', () => {
     await page.getByRole('option', { name: '实验' }).click();
     await expect(container).toContainText('当前课程 lab。');
     await expect(container.getByRole('list', { name: '曲线图例' }).getByRole('listitem')).toHaveCount(2);
-    expect(await container.locator('svg .local-visual-plot-line').count()).toBeGreaterThanOrEqual(2);
+    // 交互模式下 plot 由 Mafs 的 <polyline> 绘制；静态 SSR 仍输出带类名的 SVG path。
+    // 两种形态都算「曲线已渲染」，不要只认其中一个实现。
+    const plotCurves = container.locator('.local-visual-plot-line, .local-mafs-plot svg polyline');
+    // Mafs 水合完成前可能一次都取不到 → 用轮询等曲线出现，别把水合时序算进断言。
+    await expect.poll(() => plotCurves.count()).toBeGreaterThanOrEqual(2);
 
     // 站点统一软换行规则：Markdown 与 Reactive 都把单换行渲染成 <br>，
     // 这样 Markdown 追加组件、format 自动升级后排版不变。

@@ -1,6 +1,6 @@
 // POST /api/chat/channels/:id/generations — 创建机器人生成任务（R2）
 //
-// 协议见 docs/plan/chat-reactive-streaming-design.md §5。author 只从会话取，
+// 协议见 docs/archive/chat-reactive-streaming-design.md §5。author 只从会话取，
 // 客户端不能指定；generation id 不是授权凭据（所有生产者接口仅任务作者可用）。
 // 响应用全站 JSON 信封 {code, message, ...data}，message 固定为提示字符串。
 
