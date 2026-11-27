@@ -6,9 +6,11 @@
 // 把消息列表上的滚动输入翻译成 `setChatScrollActive` 的 true / false
 // （外部 store 见 ./scroll-activity）：
 //   · wheel / touchmove：一有输入就置 true，并重置 180ms 空闲计时；
+//     Ctrl + wheel 是浏览器缩放，不滚动列表，不算活跃；
 //   · scroll：用 scrollTop + performance.now() 估算速度，|v| > 0.6 px/ms
 //     （约 600px/s）也置 true 并重置计时 —— 程序化滚动（自动到底 / 跳转）同样
-//     会派发 scroll，速度命中就暂停编译，不在事件来源上做区分；
+//     会派发 scroll，速度命中就暂停编译，不在事件来源上做区分；列表节点更换或
+//     resetKey（切频道）变化时旧基线作废，第一次采样只重建基线、不判速度；
 //   · 180ms 内既没有新输入、也没有快速滚动 → 置 false，恢复编译派发。
 //
 // 【为什么走 document 捕获而不是拿 listRef 挂监听】`.chat-list` 只在选中会话后
@@ -35,16 +37,17 @@ function insideChatList(target: EventTarget | null): boolean {
 }
 
 /**
- * 维护聊天页「正在滚动」的外部信号。没有参数、不产生 React state；
- * 列表元素按会话条件渲染，由事件 target 过滤，不依赖 ref 生命周期。
+ * 维护聊天页「正在滚动」的外部信号。`resetKey`（当前会话 id）变化时重置采样
+ * 基线；不产生 React state，列表元素按事件 target 过滤。
  */
-export function useChatScrollActivity(): void {
+export function useChatScrollActivity(resetKey: string | null): void {
   useEffect(() => {
     let idleTimer: ReturnType<typeof setTimeout> | null = null;
     let active = false;
-    /** 上一次 scroll 采样：估速基线。 */
+    /** 上一次 scroll 采样：估速基线；lastTarget 用于识别 hook 内列表节点更换。 */
     let lastTop = 0;
     let lastAt = 0;
+    let lastTarget: HTMLElement | null = null;
 
     const clearIdle = () => {
       if (idleTimer !== null) {
@@ -67,7 +70,13 @@ export function useChatScrollActivity(): void {
       }, IDLE_MS);
     };
 
-    const onUserInput = (event: Event) => {
+    const onWheel = (event: WheelEvent) => {
+      // Ctrl + wheel 是浏览器缩放（浏览器会发 wheel 但不滚列表），不算滚动活跃。
+      if (event.ctrlKey) return;
+      if (insideChatList(event.target)) markActive();
+    };
+
+    const onTouchMove = (event: Event) => {
       if (insideChatList(event.target)) markActive();
     };
 
@@ -75,28 +84,38 @@ export function useChatScrollActivity(): void {
      * 速度估的是相邻两次 scroll 事件之间：既覆盖轨道惯性，也覆盖自动到底 /
      * 平滑跳转这类程序化滚动。间隔过大时平均速度自然变小，不会把一次孤立的
      * 跳变误报成持续快速滚动。
+     *
+     * 列表节点更换（或 resetKey 变化重建 effect）时旧基线不可比：新列表第一次
+     * scroll 往往就是贴底 / 恢复位置的大跳变，沿用旧 scrollTop 会被误判成
+     * 持续快速滚动。此时只重建基线并跳过本次速度判断。
      */
     const onScroll = (event: Event) => {
       const target = event.target;
       if (!(target instanceof HTMLElement) || !target.classList.contains(LIST_CLASS)) return;
       const now = performance.now();
       const top = target.scrollTop;
+      if (target !== lastTarget) {
+        lastTarget = target;
+        lastTop = top;
+        lastAt = now;
+        return;
+      }
       const dt = now - lastAt;
       if (dt > 0 && Math.abs(top - lastTop) / dt > FAST_SCROLL_VELOCITY) markActive();
       lastTop = top;
       lastAt = now;
     };
 
-    document.addEventListener('wheel', onUserInput, { passive: true, capture: true });
-    document.addEventListener('touchmove', onUserInput, { passive: true, capture: true });
+    document.addEventListener('wheel', onWheel, { passive: true, capture: true });
+    document.addEventListener('touchmove', onTouchMove, { passive: true, capture: true });
     document.addEventListener('scroll', onScroll, { passive: true, capture: true });
 
     return () => {
-      document.removeEventListener('wheel', onUserInput, { capture: true });
-      document.removeEventListener('touchmove', onUserInput, { capture: true });
+      document.removeEventListener('wheel', onWheel, { capture: true });
+      document.removeEventListener('touchmove', onTouchMove, { capture: true });
       document.removeEventListener('scroll', onScroll, { capture: true });
       clearIdle();
       setChatScrollActive(false);
     };
-  }, []);
+  }, [resetKey]);
 }

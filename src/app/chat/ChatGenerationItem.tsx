@@ -11,6 +11,7 @@
 // 比原来的 10 帧/秒顿一半。这里把每帧新增的后缀切成两个进度点：快照到达先显示
 // 前半段，100ms 后补上后半段；新快照若提前到达，立即从当前已显示位置重新规划，
 // 不播放过时中间态。计划逻辑在 generation-reveal.ts，便于单测。
+// 用户声明 prefers-reduced-motion 时不做分步追赶，每个快照一步显示到目标。
 //
 // 渲染只复用聊天正文壳（ChatRmdMessage，streaming 阶段不取引用/媒体）与气泡/头像
 // 语义；样式在 _chat.scss 的 chat-msg--generating 段（G 负责）。
@@ -48,7 +49,16 @@ export default function ChatGenerationItem({
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    const steps = planGenerationReveal(displayedRef.current, generation.source);
+    // 用户要求减少动态效果时不做两步追赶：直接显示目标。matchMedia 不是所有
+    // 环境都有（SSR / 测试），可选链兜底后按「未命中」处理。
+    const reducedMotion =
+      typeof window !== 'undefined' &&
+      window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches === true;
+    const steps = planGenerationReveal(
+      displayedRef.current,
+      generation.source,
+      reducedMotion ? 1 : undefined
+    );
     if (steps.length === 0) return;
 
     if (timerRef.current !== null) {

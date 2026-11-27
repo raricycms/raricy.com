@@ -16,12 +16,12 @@
 // 不写纯样式或文案断言；这里只认结构、类名契约与资源请求。
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { act, type ReactElement } from 'react';
+import { act, useEffect, type ReactElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { compileLocal, type LocalDocument } from 'reactive-md';
 import ChatRmdMessage from '@/app/chat/ChatRmdMessage';
-import ChatRmdProvider from '@/app/chat/ChatRmdProvider';
+import ChatRmdProvider, { useChatRmd } from '@/app/chat/ChatRmdProvider';
 import { applyChatDocumentPolicy } from '@/lib/chat-rmd/document-policy';
 import { CHAT_RMD_COMPILE_OPTIONS } from '@/lib/chat-rmd/options';
 import type {
@@ -251,6 +251,74 @@ describe('ChatRmdProvider — Worker 预热', () => {
         (window as unknown as Record<string, unknown>).requestIdleCallback = originalIdle;
       }
     }
+  });
+});
+
+function ChildCompileProbe({
+  onDone,
+}: {
+  onDone: (document: LocalDocument | null) => void;
+}) {
+  const context = useChatRmd();
+  useEffect(() => {
+    if (!context) return;
+    const controller = new AbortController();
+    void context.compileChild('child-source', controller.signal).then(onDone);
+    return () => controller.abort();
+  }, [context, onDone]);
+  return null;
+}
+
+describe('ChatRmdProvider — 子编译瞬时失败', () => {
+  it('worker.unavailable 不结束子编译，等成功快照后再返回', async () => {
+    const compiled = compileLocal('child-source', CHAT_RMD_COMPILE_OPTIONS);
+    expect(compiled.ok).toBe(true);
+    if (!compiled.ok) throw new Error('unreachable');
+
+    let request: ChatCompileRequest | null = null;
+    let listener: ChatCompileListener | null = null;
+    const manager: ChatCompileManager = {
+      subscribe(nextRequest, nextListener) {
+        request = nextRequest;
+        listener = nextListener;
+        queueMicrotask(() => {
+          nextListener({
+            key: nextRequest.key,
+            revision: nextRequest.revision,
+            phase: 'final',
+            document: null,
+            errorCode: 'worker.unavailable',
+          });
+        });
+        return () => {
+          listener = null;
+        };
+      },
+      dispose() {},
+    };
+    const onDone = vi.fn();
+
+    await render(
+      <ChatRmdProvider viewerScope="viewer-1" manager={manager}>
+        <ChildCompileProbe onDone={onDone} />
+      </ChatRmdProvider>
+    );
+    await settle(1);
+    expect(onDone).not.toHaveBeenCalled();
+    expect(request).not.toBeNull();
+    expect(listener).not.toBeNull();
+
+    await act(async () => {
+      listener!({
+        key: request!.key,
+        revision: request!.revision,
+        phase: 'final',
+        document: compiled.document,
+        errorCode: null,
+      });
+      await Promise.resolve();
+    });
+    expect(onDone).toHaveBeenCalledWith(compiled.document);
   });
 });
 

@@ -2,7 +2,8 @@
 // generation-reveal.test.ts — 生成预览的分步显示计划
 //
 // 服务端快照 200ms 一帧，前端按两个累计进度点显示，视觉维持约 10 帧/秒。
-// 这里只钉住纯计划的边界：追加、源码被替换、无变化、以及不拆代理对/组合表情。
+// 这里只钉住纯计划的边界：追加、源码被替换、无变化、单步显示（减少动态效果）、
+// 以及不拆代理对/组合表情。
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { describe, expect, it } from 'vitest';
@@ -24,6 +25,10 @@ describe('planGenerationReveal', () => {
 
   it('已经是最新版时不需要更新', () => {
     expect(planGenerationReveal('abc', 'abc')).toEqual([]);
+  });
+
+  it('steps=1（减少动态效果）时一步显示到目标', () => {
+    expect(planGenerationReveal('a', 'abc', 1)).toEqual(['abc']);
   });
 
   it('不拆代理对或组合表情', () => {

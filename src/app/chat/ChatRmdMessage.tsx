@@ -243,6 +243,9 @@ export default function ChatRmdMessage({
       // 而放进 updater 会在 StrictMode 下被重复调用、也不能保证早于提交。
       notifyBeforeRef.current?.();
       const commit = (): void => {
+        // transition 是异步调度：排队期间订阅可能已被 cleanup 撤销（换 key / 换源码 /
+        // 离屏 / 卸载），这份旧文档不能再写回。revision 与 active 都在本闭包内。
+        if (!active || revisionRef.current !== revision) return;
         setCompiled((previous) => {
           if (
             previous &&
