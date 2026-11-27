@@ -150,7 +150,7 @@ export default function HomeStage({ blogHref, gamesBlocked }: Props) {
                     <div className="card-body home-text-center">
                       <Gamepad2 className="feature-game-icon" aria-hidden="true" />
                       <h4 className="card-title">玩具</h4>
-                      <p className="card-text">ATÅMAS 浏览器小游戏。</p>
+                      <p className="card-text">ATÅMAS、卡牌对战、放映厅，还有几处小实验与占卜。</p>
                       <span className="home-btn">打开玩具</span>
                     </div>
                   </Link>
