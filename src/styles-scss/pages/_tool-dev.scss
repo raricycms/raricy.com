@@ -193,10 +193,14 @@
 }
 
 // 可滚动表格外壳 + 数据表（状态码、MIME、DNS 记录、响应头）。
+//
+// 外壳**不能带圆角**：滑块是脚本注入的绝对定位子节点（.scroll-port__thumb，贴 right: 0），
+// 而 overflow: auto 会按 border-radius 裁剪容器内容 —— 圆角正好啃掉滑块上下两端的圆帽，
+// 看起来像被一层「透明但有圆角」的外壳盖住一截。这块底色本来就等于页面底色，
+// 圆角在视觉上没有贡献，去掉只影响滑块的完整性。
 .devtool-table-wrap {
   max-height: 480px;
   overflow: auto;
-  border-radius: v.$radius-field;
   background: var(--color-background-page);
 }
 
