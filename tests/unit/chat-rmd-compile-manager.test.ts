@@ -622,6 +622,7 @@ describe('Worker 降级与重建', () => {
         phase: 'final',
         document: null,
         errorCode: 'worker.unavailable',
+        retryable: true,
       },
     ]);
 
@@ -634,6 +635,7 @@ describe('Worker 降级与重建', () => {
       key: 'msg:4',
       document: null,
       errorCode: 'worker.unavailable',
+      retryable: true,
     });
   });
 
@@ -839,6 +841,7 @@ describe('Worker 降级与重建', () => {
           phase: 'final',
           document: null,
           errorCode: 'worker.unavailable',
+          retryable: true,
         },
       ]);
 

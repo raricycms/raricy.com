@@ -33,6 +33,8 @@ export interface ChatCompiledSnapshot {
   document: LocalDocument | null;
   /** 稳定诊断码（如 `local.budget`、`worker.error`），不展示给用户。 */
   errorCode: string | null;
+  /** 池暂时不可用、之后可能重试成功；持有者应继续等待而不是按终态收尾。 */
+  retryable?: boolean;
 }
 
 export type ChatCompileListener = (snapshot: ChatCompiledSnapshot) => void;

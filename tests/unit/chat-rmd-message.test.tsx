@@ -288,6 +288,7 @@ describe('ChatRmdProvider — 子编译瞬时失败', () => {
             phase: 'final',
             document: null,
             errorCode: 'worker.unavailable',
+            retryable: true,
           });
         });
         return () => {

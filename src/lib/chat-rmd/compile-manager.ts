@@ -496,6 +496,7 @@ export function createChatCompileManager(
       phase: stamp.phase,
       document,
       errorCode,
+      ...(transient ? { retryable: true } : {}),
     };
     for (const sub of state.subs.values()) {
       if (sub.request.revision > stamp.revision) continue;

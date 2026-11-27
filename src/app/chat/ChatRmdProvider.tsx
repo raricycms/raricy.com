@@ -56,9 +56,6 @@ import {
 } from './chat-rmd-manager-pool';
 import { subscribeChatScrollActivity } from './scroll-activity';
 
-/** 池暂时不可用的错误码：子编译继续等冷却/重建后的成功快照，超时再降级。 */
-const TRANSIENT_CHILD_COMPILE_ERRORS = new Set(['worker.unavailable', 'pool.backpressure']);
-
 /** 子编译的缺省上限；B 的适配器只负责发起，超时由本层兜底。 */
 export const CHAT_RMD_CHILD_COMPILE_TIMEOUT_MS = 15_000;
 
@@ -262,9 +259,7 @@ export default function ChatRmdProvider({
             return;
           }
           // 池暂时不可用不是最终结果：继续等冷却/重建后的成功快照，超时兜底。
-          if (snapshot.errorCode !== null && TRANSIENT_CHILD_COMPILE_ERRORS.has(snapshot.errorCode)) {
-            return;
-          }
+          if (snapshot.retryable === true) return;
           finish(snapshot.document);
         };
 
