@@ -122,6 +122,15 @@
   &__option {
     @include m.btn-tab;
     display: block;
+    // ⚠️ flex: none 不能省。列表是 `flex-direction: column` + `overflow-y: auto` 的
+    // 滚动容器，而选项同时带 `overflow: hidden`（单行省略号所需）：overflow 不为
+    // visible 的元素，其自动最小尺寸是 **0**，于是 flex 默认的 `flex-shrink: 1` 会把它
+    // 压成「只剩上下内距」的一条 —— 选项多到需要滚动时，列表里**不在分组内**的那几项
+    // （`全部动作` / `全部对象`）就被压扁，文字只剩半截（截图上正是 20px 高）。
+    // 分组包着的选项看不出来，是因为 `<div role=group>` 没有 overflow: hidden，
+    // 最小尺寸仍按内容算、压不动，只有裸选项替所有溢出买了单。
+    // 列表本来就要滚，不该由条目让出高度：一行永远保留自己的行高。
+    flex: none;
     width: 100%;
     overflow: hidden;
     padding: 10px 12px;
