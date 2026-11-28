@@ -374,7 +374,7 @@ npx prisma generate
 | 目录 | 来源包 | 少了会怎样 |
 |---|---|---|
 | `public/static/emoji/` | `@twemoji/svg` | 正文里的 `[@黄脸/…]` **静默降级成字面量**（不是裂图） |
-| `public/static/converter/` | `@ffmpeg/core`、`pdfjs-dist`、`tesseract.js` 等 | 格式转换器（`/tool/convert`）的音视频 / PDF / OCR 功能报「引擎加载失败」（约 65MB，含 ffmpeg 核心与 OCR 语言包） |
+| `public/static/converter/` | `@ffmpeg/core`、`pdfjs-dist`、`tesseract.js` 等 | 格式转换器（`/tool/convert`）的音视频 / PDF / OCR 功能报「引擎加载失败」（约 68MB，含 ffmpeg 核心、OCR 语言包与 PDF.js 的 CMap / 标准字体） |
 
 > **`public/static/frames/`（头像框素材）不在上表里** —— 它是我们自己画的、
 > **随代码入库**的，`git pull` 就有，不需要任何生成步骤。少了它会**静默不显示

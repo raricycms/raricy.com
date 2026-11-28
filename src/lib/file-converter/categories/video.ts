@@ -256,19 +256,33 @@ export const CATEGORY: CategoryDef = {
     },
     {
       id: 'video:remux-to-mkv',
-      label: 'MKV（原编码换容器，保留全部轨道）',
+      label: 'MKV（原编码换容器，保留音视频与字幕）',
       from: [...VIDEO_KINDS],
       to: 'mkv',
       method: 'remux',
-      notices: ['不重编码，零损失（全部轨道原样带入）', '元数据不保留'],
+      notices: [
+        '音视频不重编码，零损失',
+        '字幕轨带入输出，但统一转为 SRT 文本：原有字体、颜色、定位与特效不保留',
+        '数据轨 / 附件轨（如相机 MOV 的时间码）不进 MKV；元数据不保留',
+      ],
       params: [],
       requires: ['worker', 'ffmpeg'],
       estimateOutput: (info) => info.size,
       run: async (ctx) => {
-        const { eng, bytes, ext } = await prepareMedia(ctx, { requireVideo: true });
+        const { eng, bytes, ext, probe } = await prepareMedia(ctx, { requireVideo: true });
         const io: IoNames = { inputName: `input.${ext}`, outputName: 'output.mkv' };
         const out = await execToSingleOutput(ctx, eng, buildVideoRemuxMkv(io), io, bytes);
-        return videoResult(ctx, out, 'mkv', ['不重编码，零损失（含字幕在内的全部轨道原样带入）', '元数据不保留']);
+        const subs = probe.streams.filter((s) => s.type === 'subtitle');
+        const others = probe.streams.filter((s) => s.type === 'other');
+        const notices = ['音视频不重编码，零损失'];
+        if (subs.length > 0) {
+          notices.push(`字幕轨带入输出（${subs.length} 条），但统一转为 SRT 文本：原有字体、颜色、定位与特效不保留`);
+        }
+        if (others.length > 0) {
+          notices.push(`MKV 容器不收数据轨 / 附件轨，${others.length} 条已略去（如相机 MOV 的时间码）`);
+        }
+        notices.push('元数据不保留');
+        return videoResult(ctx, out, 'mkv', notices);
       },
       status: 'live',
       group: '换封装与兼容',

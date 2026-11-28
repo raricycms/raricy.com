@@ -19,6 +19,9 @@
 //     ffmpeg/worker.js + const.js + errors.js        —— @ffmpeg/ffmpeg 的类 worker 及其两个叶子依赖
 //                                                        （worker 是 ES module，少一个就起不来）
 //     pdfjs/pdf.worker.min.mjs                        —— pdfjs-dist 渲染 worker
+//     pdfjs/cmaps/*.bcmap                             —— 预定义 CMap（CJK 等 CID 字体，
+//                                                        缺了整页文字都渲染不出来）
+//     pdfjs/standard_fonts/*                          —— 标准 14 字体与各自的 LICENSE
 //     tesseract/worker.min.js                         —— tesseract.js worker 入口
 //     tesseract/tesseract-core-simd-lstm.js           —— LSTM 引擎（SIMD 版）
 //     tesseract/tesseract-core-simd-lstm.wasm
@@ -156,6 +159,32 @@ const FILES = [
   [`7z-wasm/7zz.wasm`, `7z/7zz.wasm`, '7Z 解包组件（7z-wasm）'],
 ];
 
+// 目录整份拷：[源目录（相对 node_modules），目标目录（相对 DEST），说明]
+//
+// ⚠️ pdfjs 的 CMap 与标准字体**不能省**：用预定义 CMap 编码的 PDF（简体中文、
+// 日文、韩文最常见）在缺 cmaps/ 时会**整页文字都不渲染**，而图片与线条照常出现 ——
+// 症状就是用户报的「PDF 转图片，字全没了」，且不报任何错、任务还显示成功。
+// standard_fonts/ 缺了则退化成访客系统字体（换台机器排版就变，符号常变豆腐块）。
+// 这两个目录都带各自 LICENSE（LICENSE_FOXIT / LICENSE_LIBERATION），随目录一起拷。
+const DIRS = [
+  [`pdfjs-dist/cmaps`, `pdfjs/cmaps`, 'pdf.js 预定义 CMap（CJK 等 CID 字体编码表）'],
+  [`pdfjs-dist/standard_fonts`, `pdfjs/standard_fonts`, 'pdf.js 标准 14 字体及其 LICENSE'],
+];
+
+/** 递归列出目录下所有文件（返回相对路径），用于自检与拷贝。 */
+function listFiles(dir) {
+  const out = [];
+  const walk = (rel) => {
+    for (const entry of fs.readdirSync(path.join(dir, rel), { withFileTypes: true })) {
+      const relPath = rel ? path.join(rel, entry.name) : entry.name;
+      if (entry.isDirectory()) walk(relPath);
+      else out.push(relPath);
+    }
+  };
+  walk('');
+  return out;
+}
+
 // tesseract.js-core 是 tesseract.js 的**传递依赖**：哪天上游改了依赖结构，
 // 这里会以「源文件缺失」当场炸，而不是静默拷出一个缺引擎的目录。
 const missing = FILES.filter(
@@ -167,17 +196,38 @@ if (missing.length > 0) {
   console.error('[copy-converter-assets] 依赖没装全（先 npm ci）或上游包结构变了。');
   process.exit(1);
 }
+const missingDirs = DIRS.filter(([src]) => !fs.existsSync(path.join(ROOT, 'node_modules', src)));
+if (missingDirs.length > 0) {
+  console.error(`[copy-converter-assets] ${missingDirs.length} 个源目录不存在：`);
+  for (const [src] of missingDirs) console.error(`  ✗ node_modules/${src}`);
+  console.error('[copy-converter-assets] 依赖没装全（先 npm ci）或上游包结构变了。');
+  process.exit(1);
+}
+// CMap 少一个文件就是某一门语言整页画不出来 —— 用数量兜底，别静默拷出一个残缺目录。
+const cmapCount = fs.readdirSync(path.join(ROOT, 'node_modules/pdfjs-dist/cmaps')).length;
+if (cmapCount < 100) {
+  console.error(`[copy-converter-assets] pdfjs-dist/cmaps 只有 ${cmapCount} 个文件，明显不完整。`);
+  process.exit(1);
+}
 
 // ─── 自检模式：CI / 升级依赖后验证产物齐全 ────────────────────────────────────
 if (process.argv.includes('--check')) {
   const absent = FILES.filter(([, dest]) => !fs.existsSync(path.join(DEST, dest)));
-  if (absent.length > 0) {
-    console.error(`[check] 缺 ${absent.length} 个产物：`);
-    for (const [, dest] of absent) console.error('  ✗', dest);
+  const absentDirs = [];
+  for (const [src, dest] of DIRS) {
+    for (const rel of listFiles(path.join(ROOT, 'node_modules', src))) {
+      if (!fs.existsSync(path.join(DEST, dest, rel))) absentDirs.push(path.join(dest, rel));
+    }
+  }
+  const absentAll = [...absent.map(([, dest]) => dest), ...absentDirs];
+  if (absentAll.length > 0) {
+    console.error(`[check] 缺 ${absentAll.length} 个产物：`);
+    for (const dest of absentAll.slice(0, 20)) console.error('  ✗', dest);
+    if (absentAll.length > 20) console.error(`  …… 另有 ${absentAll.length - 20} 个`);
     console.error('[check] 请先 npm run prepare:converter');
     process.exit(1);
   }
-  console.log(`[check] OK，${FILES.length} 个转换器引擎文件齐全。`);
+  console.log(`[check] OK，${FILES.length} 个转换器引擎文件 + ${DIRS.length} 个资产目录齐全。`);
   process.exit(0);
 }
 
@@ -197,6 +247,20 @@ for (const [src, dest] of FILES) {
   console.log(`  ✓ ${dest}`);
 }
 
+let dirCount = 0;
+for (const [src, dest] of DIRS) {
+  const fromDir = path.join(ROOT, 'node_modules', src);
+  for (const rel of listFiles(fromDir)) {
+    const from = path.join(fromDir, rel);
+    const to = path.join(DEST, dest, rel);
+    fs.mkdirSync(path.dirname(to), { recursive: true });
+    fs.copyFileSync(from, to);
+    bytes += fs.statSync(from).size;
+    dirCount++;
+  }
+  console.log(`  ✓ ${dest}/（${dirCount} 个文件累计）`);
+}
+
 console.log(
-  `[copy-converter-assets] 完成。${FILES.length} 个文件，约 ${(bytes / 1024 / 1024).toFixed(1)}MB → public/static/converter/`
+  `[copy-converter-assets] 完成。${FILES.length + dirCount} 个文件，约 ${(bytes / 1024 / 1024).toFixed(1)}MB → public/static/converter/`
 );

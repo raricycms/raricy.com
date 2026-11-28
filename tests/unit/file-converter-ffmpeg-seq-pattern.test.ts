@@ -96,4 +96,30 @@ describe('expandOutputNames —— 对 MEMFS 列目录的包装', () => {
       'f-001.png',
     ]);
   });
+
+  it('★ 根目录模式串必须列 "/"，不能列空串 ★', async () => {
+    // 另一个真实事故：根目录模式（`frame-%04d.png`，抽帧类边全走这条）算出
+    // dir = ''，于是 listDir('')。MEMFS 的 PATH_FS.resolve('') 返回 ''，
+    // FS.lookupPath('') 拿到 { node: null }，readdir 读 null.node_ops 抛 TypeError，
+    // 被 catch 吞成「没产出」→ **每次抽帧都报「未产生任何图片」**，而帧其实已写出。
+    // 这里让 listDir 对空串抛错（真实现的行为），只接受 '/'。
+    const listDir = vi.fn(async (dir: string) => {
+      if (dir === '') throw new TypeError("Cannot read properties of null (reading 'node_ops')");
+      if (dir === '/') {
+        return [
+          { name: '.', isDir: true },
+          { name: '..', isDir: true },
+          { name: 'frame-0002.png', isDir: false },
+          { name: 'frame-0001.png', isDir: false },
+        ];
+      }
+      return [];
+    });
+    await expect(expandOutputNames({ listDir }, ['frame-%04d.png'])).resolves.toEqual([
+      'frame-0001.png',
+      'frame-0002.png',
+    ]);
+    expect(listDir).toHaveBeenCalledWith('/');
+    expect(listDir).not.toHaveBeenCalledWith('');
+  });
 });

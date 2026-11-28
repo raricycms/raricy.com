@@ -30,7 +30,6 @@ import {
   type PageImage,
 } from '../engines/office';
 
-const PDF_WORKER = '/static/converter/pdfjs/pdf.worker.min.mjs';
 // PDF 页面图渲染分辨率。144 上下是「放大看得清 + 体积可接受」的折中。
 const PDF_RENDER_DPI = 144;
 
@@ -237,52 +236,30 @@ async function renderPdfPages(ctx: RunContext): Promise<PageImage[]> {
   throwIfAborted(ctx.signal);
   const bytes = await readBytes(ctx);
   ctx.onPhase('loading-engine');
-  // pdfjs 一律动态 import（静态引入会把渲染器卷进主包）。
-  const pdfjs = await import('pdfjs-dist');
-  pdfjs.GlobalWorkerOptions.workerSrc = PDF_WORKER;
-  ctx.onPhase('probing');
-
-  // 复制一份给 pdfjs：它会 transfer / detach 传入的 buffer。
-  const task = pdfjs.getDocument({ data: bytes.slice() });
-  const doc = await task.promise;
+  // 统一走 engines/pdf.ts 的打开/渲染实现：那里配好了同源 CMap 与标准字体。
+  // 本文件早期自己起过一份 pdfjs 调用，**漏了 cMapUrl** —— 用预定义 CMap 编码的
+  // 中文 / 日文 / 韩文 PDF 会整页文字都渲染不出来（图片与线条照常），
+  // 而任务仍然「成功」，用户拿到一份没有字的图片型 DOCX/PPTX。
+  const { openPdfDocument } = await import('../engines/pdf');
+  ctx.onPhase('converting');
+  const doc = await openPdfDocument(bytes, ctx.signal);
+  const pageCount = doc.numPages;
   try {
-    const pageCount = doc.numPages;
     if (pageCount > LIMITS.document.maxPages) {
       throw oversize(`PDF 共 ${pageCount} 页，超过 ${LIMITS.document.maxPages} 页上限，请先拆分后再转`);
     }
-    const scale = PDF_RENDER_DPI / 72;
     const images: PageImage[] = [];
-    ctx.onPhase('converting');
     for (let p = 1; p <= pageCount; p++) {
       throwIfAborted(ctx.signal);
-      const page = await doc.getPage(p);
-      const viewport = page.getViewport({ scale });
-      const canvas = document.createElement('canvas');
-      canvas.width = Math.max(1, Math.ceil(viewport.width));
-      canvas.height = Math.max(1, Math.ceil(viewport.height));
-      const c2d = canvas.getContext('2d');
-      if (!c2d) throw { kind: 'capability', message: '当前环境不支持 Canvas，无法渲染 PDF 页面' } satisfies ConvertError;
-      await page.render({ canvasContext: c2d, viewport }).promise;
-      const blob = await canvasToPngBlob(canvas);
-      const data = new Uint8Array(await blob.arrayBuffer()) as Uint8Array<ArrayBuffer>;
-      images.push({ data, mime: 'image/png', width: canvas.width, height: canvas.height });
-      page.cleanup();
+      const r = await doc.renderPage(p, { dpi: PDF_RENDER_DPI, mime: 'image/png', signal: ctx.signal });
+      const data = new Uint8Array(await r.blob.arrayBuffer()) as Uint8Array<ArrayBuffer>;
+      images.push({ data, mime: 'image/png', width: r.width, height: r.height });
       ctx.onProgress(p / pageCount, `渲染第 ${p}/${pageCount} 页`);
     }
     return images;
-  } catch (e) {
-    const err = e as Partial<ConvertError>;
-    if (err?.kind && err?.message) throw err;
-    throw { kind: 'corrupt', message: '无法渲染 PDF 页面，文件可能损坏或受密码保护', detail: String(e).slice(0, 1500) } satisfies ConvertError;
   } finally {
-    await doc.destroy().catch(() => undefined);
+    await doc.destroy();
   }
-}
-
-function canvasToPngBlob(canvas: HTMLCanvasElement): Promise<Blob> {
-  return new Promise<Blob>((resolve, reject) => {
-    canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('canvas.toBlob 返回空'))), 'image/png');
-  });
 }
 
 async function runPdfToDocxImage(ctx: RunContext): Promise<ConvertResultData> {

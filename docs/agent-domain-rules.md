@@ -615,9 +615,16 @@ public / link，获赞只累加这些文章，签到为累计天数）。**签�
   公式只求值 / 文字层被栅格化…）。写不出「这次丢了什么」= 这条边没写完。
 - **引擎资产不入库**（`public/static/converter/`，约 65MB）—— `postinstall` 与 `build`
   经 `scripts/copy-converter-assets.mjs` 生成；少了它音视频 / PDF / OCR **报「引擎加载失败」**。
+- **PDF.js 必须配齐同源 CMap 与标准字体**（`openPdfDocument` 已经配好，别在别处另起一份
+  `getDocument`）：缺 `cmaps/` 时，用预定义 CMap 编码的中文 / 日文 / 韩文 PDF **整页文字都
+  渲染不出来**（图片与线条照常），任务还显示成功 —— 用户看到的就是「PDF 转图片，字全没了」。
+  缺 `standard_fonts/` 则退化成访客系统字体。`copy-converter-assets.mjs` 负责拷这两个目录
+  （约 169 + 17 个文件），`converter:check` 会逐个核对。
 - **串输出必须展开再回读**：抽帧类边传的是模式（`frame-%04d.png`）而 exec 按字面名回读，
   不展开就永远拿到空 Map —— 症状是「退出码 0、结果区空着」，不报错。
   `ffmpeg.ts` 的 `expandSeqPattern` 干这件事，单测钉住**宽度是硬判据**。
+  **列根目录必须传 `'/'`**：MEMFS 的 `readdir('')` 抛 `node.node_ops` TypeError，
+  被 catch 吞成「没产出」，而抽帧的模式串全在根目录 —— 每次抽帧都会空。
 - **取消 / 超时要杀掉整个 ffmpeg 核心**（0.12 没有软中断），下次要重新加载 ——
   别把它当便宜操作。
 - **e2e 输出一律按字节魔数断言**（不是「有下载按钮就算过」）：转换出一条空文件 / 错格式，

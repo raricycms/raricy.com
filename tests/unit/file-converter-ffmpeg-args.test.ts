@@ -125,6 +125,16 @@ describe('AUDIO_COPY_OK / canCopyAudio', () => {
     expect(canCopyAudio('aac', 'wav')).toBe(false);
   });
 
+  it('WAV 不收大端 PCM：copy 会在 muxer 处整条失败，必须重编码', () => {
+    // 实测 ffmpeg 6.x：`Codec pcm_s16be not supported in WAVE format`，rc=218。
+    // QuickTime / MOV 的未压缩音频默认就是大端，所以这条很容易踩到。
+    for (const be of ['pcm_s16be', 'pcm_s24be', 'pcm_s32be', 'pcm_f32be']) {
+      expect(canCopyAudio(be, 'wav')).toBe(false);
+    }
+    // 排除后走 audioEncodeArgsFor('wav') → pcm_s16le 重编码，输出正常。
+    expect(audioEncodeArgsFor('wav', '192')).toEqual(['-c:a', 'pcm_s16le']);
+  });
+
   it('白名单与格式表形状固定', () => {
     expect(EXTRACT_AUDIO_FORMATS).toEqual(['mp3', 'm4a', 'ogg', 'flac', 'wav']);
     expect(Object.keys(AUDIO_COPY_OK).sort()).toEqual([...EXTRACT_AUDIO_FORMATS].sort());
@@ -230,16 +240,23 @@ describe('视频边 argv', () => {
     ]);
   });
 
-  it('buildVideoRemuxMkv（整容器 copy）', () => {
+  it('buildVideoRemuxMkv（按类型映射 copy，字幕转 SRT）', () => {
+    // ✗ `-map 0`：mov_text 字幕与 tmcd 数据流都会让 matroska muxer 整条失败
+    //   （`Subtitle codec 94213 is not supported.` / `Only audio, video, and
+    //   subtitles are supported for Matroska.`）。所以按类型映射 + `-c:s srt`。
     expect(buildVideoRemuxMkv({ inputName: 'input.mp4', outputName: 'output.mkv' })).toEqual([
-      ...HEAD, '-i', 'input.mp4', '-map', '0', '-map_metadata', '-1',
-      '-c', 'copy', '-y', 'output.mkv',
+      ...HEAD, '-i', 'input.mp4',
+      '-map', '0:v?', '-map', '0:a?', '-map', '0:s?',
+      '-map_metadata', '-1', '-c', 'copy', '-c:s', 'srt', '-y', 'output.mkv',
     ]);
+    expect(buildVideoRemuxMkv({ inputName: 'a.mp4', outputName: 'b.mkv' })).not.toContain('0');
   });
 
   it('buildVideoReencodeMp4（libx264 + aac，yuv420p 兜底 10bit / HDR 源）', () => {
     expect(buildVideoReencodeMp4({ inputName: 'input.mkv', outputName: 'output.mp4', crf: 28, preset: 'veryfast' })).toEqual([
       ...HEAD, '-i', 'input.mkv', '-map', '0:v:0', '-map', '0:a:0?', '-map_metadata', '-1',
+      // ✗ 缺 scale 时 libx264 对奇数尺寸直接打不开编码器（`width not divisible by 2`）
+      '-vf', 'scale=trunc(iw/2)*2:trunc(ih/2)*2',
       '-c:v', 'libx264', '-crf', '28', '-preset', 'veryfast', '-pix_fmt', 'yuv420p',
       '-c:a', 'aac', '-b:a', '128k', '-movflags', '+faststart', '-y', 'output.mp4',
     ]);

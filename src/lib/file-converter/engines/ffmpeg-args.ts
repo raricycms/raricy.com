@@ -85,13 +85,18 @@ export const EXTRACT_AUDIO_FORMATS: readonly ExtractAudioFormat[] = ['mp3', 'm4a
 /**
  * 「能 copy 就 copy」矩阵：目标格式 → 源编码白名单。
  * 命中即可 `-c:a copy`（零损失抽取）；不在表内必须重编码（**不许偷偷转码却宣称换封装**）。
+ *
+ * ⚠️ wav 只列**小端** PCM：WAV 容器不收大端（实测 pcm_s16be / s24be / s32be / f32be
+ * 全部 `Codec … not supported in WAVE format`，整条任务失败），而 QuickTime / MOV 里的
+ * 未压缩音频默认就是大端。放进白名单 = 用户选「WAV」时在 MOV 源上必失败；
+ * 排除后走 pcm_s16le 重编码，输出正常。
  */
 export const AUDIO_COPY_OK: Record<ExtractAudioFormat, readonly string[]> = {
   mp3: ['mp3'],
   m4a: ['aac'],
   ogg: ['vorbis', 'opus'],
   flac: ['flac'],
-  wav: ['pcm_s16le', 'pcm_s16be', 'pcm_s24le', 'pcm_s32le', 'pcm_u8', 'pcm_f32le', 'pcm_f64le'],
+  wav: ['pcm_s16le', 'pcm_s24le', 'pcm_s32le', 'pcm_u8', 'pcm_f32le', 'pcm_f64le'],
 };
 
 export function canCopyAudio(sourceCodec: string, target: ExtractAudioFormat): boolean {
@@ -180,15 +185,41 @@ export function buildVideoRemuxMp4(io: IoNames): string[] {
   return [...HEAD, '-i', io.inputName, '-map', '0:v:0', '-map', '0:a:0?', '-map_metadata', '-1', '-c', 'copy', '-movflags', '+faststart', '-y', io.outputName];
 }
 
-/** 换封装进 MKV：整容器所有轨道原样复制。 */
+/**
+ * 换封装进 MKV：视频 / 音频 / 字幕全带，但**不能用 `-map 0`**。
+ *
+ * `-map 0` 会把 Data / Attachment 流也带进去，而 matroska 只收 A/V/S：
+ *   · 带 `mov_text` 字幕的 MP4 → `Subtitle codec 94213 is not supported.`
+ *   · 相机 / 录屏 MOV 常见的 tmcd 时间码 data 流 → `Only audio, video, and
+ *     subtitles are supported for Matroska.`
+ * 两者都是**整条任务失败**（不是丢一条轨），而这条边的承诺恰恰是「全部轨道原样带入」。
+ * 所以按类型映射（`?` = 没有该类流也不报错），并给字幕单独指定编码：
+ * mov_text 进不了 MKV，`-c:s srt` 让它转成文本字幕（样式丢失，调用方出 notice）；
+ * 本来就是文本字幕的格式（srt / ass / webvtt）转 srt 也是等价或更通用的选择。
+ *
+ * ⚠️ 字幕在这里**必然重编码**（`-c:s srt`），所以调用方不能再说「零损失」，
+ * notices 必须同时写明音视频零损失、字幕转成 SRT。
+ */
 export function buildVideoRemuxMkv(io: IoNames): string[] {
-  return [...HEAD, '-i', io.inputName, '-map', '0', '-map_metadata', '-1', '-c', 'copy', '-y', io.outputName];
+  return [
+    ...HEAD, '-i', io.inputName,
+    '-map', '0:v?', '-map', '0:a?', '-map', '0:s?',
+    '-map_metadata', '-1', '-c', 'copy', '-c:s', 'srt', '-y', io.outputName,
+  ];
 }
 
-/** 显式重编码 H.264 + AAC（pix_fmt yuv420p：10bit / HDR 源落到通用 8bit，保证可播）。 */
+/**
+ * 显式重编码 H.264 + AAC（pix_fmt yuv420p：10bit / HDR 源落到通用 8bit，保证可播）。
+ *
+ * ⚠️ yuv420p 要求宽高都是偶数，而 libx264 对奇数尺寸是**直接打不开编码器**
+ * （`width not divisible by 2` → 输出 0 字节、任务失败），不是自动补边。裁切过的
+ * 视频 / 部分录屏就是 321×241 这种尺寸。所以和 buildFramesToVideo 一样先归一：
+ * 奇数边向下裁 1px（`trunc(iw/2)*2`），不支持缩放滤镜的源也不受影响。
+ */
 export function buildVideoReencodeMp4(io: IoNames & { crf: number; preset: string }): string[] {
   return [
     ...HEAD, '-i', io.inputName, '-map', '0:v:0', '-map', '0:a:0?', '-map_metadata', '-1',
+    '-vf', 'scale=trunc(iw/2)*2:trunc(ih/2)*2',
     '-c:v', 'libx264', '-crf', String(io.crf), '-preset', io.preset, '-pix_fmt', 'yuv420p',
     '-c:a', 'aac', '-b:a', '128k', '-movflags', '+faststart', '-y', io.outputName,
   ];

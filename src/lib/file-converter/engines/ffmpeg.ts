@@ -339,7 +339,13 @@ export async function expandOutputNames(
     const base = dir ? name.slice(dir.length + 1) : name;
     let entries: { name: string; isDir: boolean }[] = [];
     try {
-      entries = await instance.listDir(dir);
+      // ★ 根目录必须传 '/'，不能传空串。★ MEMFS 的 PATH_FS.resolve('') 返回 ''，
+      // FS.lookupPath('') 拿到 { node: null }，readdir 于是读 null.node_ops 抛 TypeError，
+      // 被下面的 catch 吞成「没产出」。而抽帧类边的模式串恰恰都在根目录
+      // （frame-%04d.png），于是**每一次抽帧都返回空** —— 症状是退出码 0、
+      // 帧文件其实已经写进 MEMFS，调用方却报「未产生任何图片」；
+      // 那些帧还会因为 realNames 为空而在 finally 里漏掉清理，MEMFS 一路涨。
+      entries = await instance.listDir(dir || '/');
     } catch {
       continue; // 模式串且目录都列不出来 = 没产出，交调用方判
     }

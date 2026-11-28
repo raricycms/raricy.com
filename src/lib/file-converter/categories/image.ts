@@ -26,7 +26,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { FORMATS, IMAGE_QUALITY, LIMITS, formatBytes } from '../formats';
-import { sniffBytes } from '../inspect';
+import { imageHeaderInfo, sniffBytes } from '../inspect';
 import type {
   CategoryDef,
   ConvertError,
@@ -602,10 +602,17 @@ async function runFramesToAnim(ctx: RunContext): Promise<ConvertResultData> {
   const eng = await loadEngine(ctx);
   ctx.onPhase('converting');
 
-  // 第一遍：只读头部字节 —— 逐张复核「真的是静态 PNG / JPG」并取尺寸，定统一画布
+  // 第一遍：只读头部字节 —— 逐张复核「真的是静态 PNG / JPG」并**先定好统一画布**。
+  //
+  // ★ 画布必须在这一遍算完，不能边合成边长大。★ 早先的写法把
+  //   `canvasW = max(canvasW, d.width)` 放在合成的同一个循环里，于是「先小图、后大图」
+  //   的序列里**前面的帧用的是偏小的画布**，同一批帧尺寸不一致：ffmpeg 的 image2 只按
+  //   第一帧定尺寸，其余帧被拉伸（而 notices 说的是「居中、空余透明」）。
+  //   尺寸从 header 读（imageHeaderInfo），不必为此解码一遍。
   ctx.onProgress(0.02, '校验图片序列');
   let canvasW = 0;
   let canvasH = 0;
+  const kinds: ('png' | 'jpeg')[] = [];
   for (const f of files) {
     throwIfAborted(ctx.signal);
     const head = new Uint8Array(await f.slice(0, 64 * 1024).arrayBuffer());
@@ -613,20 +620,37 @@ async function runFramesToAnim(ctx: RunContext): Promise<ConvertResultData> {
     if (sniff.kind !== 'png' && sniff.kind !== 'jpeg') {
       throw unsupported(`「${f.name}」不是 PNG / JPG 图片（识别为 ${sniff.kind}）`);
     }
+    const hdr = imageHeaderInfo(sniff.kind, head);
+    if (hdr.width && hdr.height) {
+      if (hdr.width > LIMITS.image.maxSide || hdr.height > LIMITS.image.maxSide) {
+        throw oversize(`「${f.name}」尺寸 ${hdr.width}×${hdr.height} 超过边长 ${LIMITS.image.maxSide}px 上限`);
+      }
+      canvasW = Math.max(canvasW, hdr.width);
+      canvasH = Math.max(canvasH, hdr.height);
+    }
+    kinds.push(sniff.kind);
+  }
+  if (canvasW * canvasH > LIMITS.image.maxPixels) {
+    throw oversize(`统一画布超过 ${LIMITS.image.maxPixels / 1e6} 百万像素上限（序列尺寸不一致时按最大宽 × 最大高对齐）`);
   }
 
-  // 第二遍：逐张解码 → 居中画到统一画布 → PNG 字节（对齐画布，roadmap I13）。
+  // 第二遍：逐张解码 → 居中画到**已经定下来的**统一画布 → PNG 字节（roadmap I13）。
   // 流式处理：同一时刻只持有一张解码结果，不为 200 张图同时占内存。
   const pngInputs: { name: string; data: Uint8Array }[] = [];
-  const decodedDims: { w: number; h: number }[] = [];
   for (let i = 0; i < files.length; i++) {
     throwIfAborted(ctx.signal);
-    const d = await decodeStaticImage(files[i], sniffBytes(new Uint8Array(await files[i].slice(0, 64 * 1024).arrayBuffer())).kind, ctx.signal);
+    const d = await decodeStaticImage(files[i], kinds[i], ctx.signal);
     if (ctx.signal.aborted) throwIfAborted(ctx.signal);
     if (d.width > LIMITS.image.maxSide || d.height > LIMITS.image.maxSide) {
       throw oversize(`「${files[i].name}」尺寸 ${d.width}×${d.height} 超过边长 ${LIMITS.image.maxSide}px 上限`);
     }
-    decodedDims.push({ w: d.width, h: d.height });
+    // 头部读不出尺寸的极端情况（header 残缺）：解码值只能就地并入画布。
+    // 但那时前面的帧已经按更小的画布写好了 —— 宁可明确报错，也不交出一批尺寸不一的帧。
+    if ((d.width > canvasW || d.height > canvasH) && canvasW > 0 && canvasH > 0) {
+      throw unsupported(
+        `「${files[i].name}」的实际尺寸 ${d.width}×${d.height} 比同批其它图片大，但文件头里读不出尺寸；请先用「图片」标签页统一尺寸后再合成`
+      );
+    }
     canvasW = Math.max(canvasW, d.width);
     canvasH = Math.max(canvasH, d.height);
     if (canvasW * canvasH > LIMITS.image.maxPixels) {
@@ -637,7 +661,6 @@ async function runFramesToAnim(ctx: RunContext): Promise<ConvertResultData> {
     pngInputs.push({ name: `img-${String(i).padStart(4, '0')}.png`, data: new Uint8Array(await pngBlob.arrayBuffer()) });
     ctx.onProgress(0.05 + (0.45 * (i + 1)) / files.length, `处理第 ${i + 1} / ${files.length} 张`);
   }
-  void decodedDims;
 
   const pattern = 'img-%04d.png';
   const outputName = `output.${format}`;

@@ -10,9 +10,10 @@
 // 【纪律】
 //   · 重依赖（pdfjs-dist / pdf-lib）一律函数体内 `await import(...)` —— 静态引入会把
 //     两个大库卷进每个页面的主包。
-//   · 用户文件字节绝不出站：本文件**没有任何网络请求**。pdfjs 的 worker 从同源
-//     /static/converter/pdfjs/ 加载；不设 cMapUrl / standardFontDataUrl（没有对应资产，
-//     设了反而会去取一个不存在的路径）。
+//   · 用户文件字节绝不出站：本文件**没有任何网络请求**。pdfjs 的 worker 与它按需
+//     取用的 CMap / 标准字体都从同源 /static/converter/pdfjs/ 加载（见
+//     scripts/copy-converter-assets.mjs）；缺了 CMap，用预定义 CMap 编码的中文等
+//     PDF 会**整页文字都画不出来**，而页面其它图形照常，很容易误判成「文件没字」。
 //   · 资源必须释放：page.cleanup()、doc.destroy()、canvas 用完置宽高 0。
 //   · 渲染用 dpi 换算：scale = dpi / 72（pdf-lib 与 PDF 坐标都是 pt，1pt = 1/72in）。
 //
@@ -27,7 +28,12 @@ import type { ConvertError } from '../types';
 import { classifyError, withTimeout } from '../utils';
 import { fitContain, marginPoints, resolvePageBox, type PageBox } from './pdf-layout';
 
-const PDFJS_WORKER_SRC = '/static/converter/pdfjs/pdf.worker.min.mjs';
+const PDFJS_BASE_URL = '/static/converter/pdfjs/';
+const PDFJS_WORKER_SRC = `${PDFJS_BASE_URL}pdf.worker.min.mjs`;
+/** 预定义 CMap（*.bcmap）：CJK 等 CID 字体靠它把字节码映射成字形。 */
+const PDFJS_CMAP_URL = `${PDFJS_BASE_URL}cmaps/`;
+/** PDF.js 自带的标准 14 字体：不能依赖访客系统里恰好装了 Helvetica / Times。 */
+const PDFJS_STANDARD_FONT_URL = `${PDFJS_BASE_URL}standard_fonts/`;
 
 /** 单页渲染超时（渲染是本地 CPU，正常几百毫秒；给宽裕值免得大图误杀）。 */
 const RENDER_TIMEOUT_MS = LIMITS.timeouts.pdfRenderMs;
@@ -110,8 +116,12 @@ export async function openPdfDocument(bytes: Uint8Array, signal?: AbortSignal): 
   const loadingTask = pdfjs.getDocument({
     data: new Uint8Array(bytes),
     isEvalSupported: false,
-    // 不设 cMapUrl / standardFontDataUrl：/static/converter/ 下没有这些资产，
-    // 设了反而会去取一个 404 的路径（离线 / 内网必须可跑）。
+    // 必须指到同源资产：缺 CMap 时 PDF.js 会静默跳过整页文字（图形仍在），
+    // 症状就是「PDF 转图片后一个字都没有」；缺标准字体则退化成访客系统字体，
+    // 排版/符号随机器而变。两者都由 copy-converter-assets.mjs 生成。
+    cMapUrl: PDFJS_CMAP_URL,
+    cMapPacked: true,
+    standardFontDataUrl: PDFJS_STANDARD_FONT_URL,
     verbosity: 0,
   });
   let doc: import('pdfjs-dist').PDFDocumentProxy;
