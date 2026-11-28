@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { Suspense, use, useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { X } from 'lucide-react';
 import Avatar from '@/app/components/Avatar';
@@ -16,6 +16,28 @@ export interface BlogPersonalSummary {
   fishReceived: number;
 }
 
+export interface BlogPersonalSidebarProps {
+  user: { id: string; username: string; frameUrl: string | null } | null;
+  /**
+   * 侧栏数字的 promise（服务端 getBlogDirectorySummary）。**不 await 它** ——
+   * 组件内部用 <Suspense> + use() 只把这组数字挂在边上，外壳与其他内容照常先出。
+   *
+   * 传 promise 而不是值，是让页面在首帧就能吐出侧栏（外壳、昵称、范围入口），
+   * 数字随后流式补上；`null` = 这张卡没有要等的数字（/explore 的访客）。
+   *
+   * ⚠️ 不要改回「页面 await 后传值」：那会让整页等这组计数（目录页最慢的一段），
+   * 首字节被它卡住。
+   */
+  summary?: Promise<BlogPersonalSummary | null> | null;
+  scope?: BlogScope;
+  /** 文章范围的链接指向哪个目录页；默认站内目录 `/blog`。 */
+  basePath?: string;
+  /** 是否显示「我发布的」等文章范围（只有写路径在 /blog 的 core+ 需要）。 */
+  showRanges?: boolean;
+  /** 是否显示「创建」入口（指向 /blog/upload，core+ 才能用）。 */
+  showCreate?: boolean;
+}
+
 /**
  * 目录页左侧的信息侧栏。两个列表共用这一副外壳，内容按登录状态分两种：
  *   · 登录用户 —— 头像、昵称、获得统计、五个文章范围、创建入口
@@ -28,18 +50,18 @@ export interface BlogPersonalSummary {
  *
  * 「文章范围」与「创建」只对能进站内目录（core+）的人有意义：/explore 复用本卡时
  * 传 showRanges={false} / showCreate={false}，避免链到进不去的 /blog。
+ *
+ * 统计与范围计数由 `summary` promise 单独流式补上（见 BlogPersonalSidebarProps.summary
+ * 与 SidebarCounts 的注释）：外壳、昵称、创建入口不等这组数据。
  */
-export default function BlogPersonalSidebar({ user, summary = null, scope = 'all', basePath = '/blog', showRanges = true, showCreate = true }: {
-  user: { id: string; username: string; frameUrl: string | null } | null;
-  summary?: BlogPersonalSummary | null;
-  scope?: BlogScope;
-  /** 文章范围的链接指向哪个目录页；默认站内目录 `/blog`。 */
-  basePath?: string;
-  /** 是否显示「我发布的」等文章范围（只有写路径在 /blog 的 core+ 需要）。 */
-  showRanges?: boolean;
-  /** 是否显示「创建」入口（指向 /blog/upload，core+ 才能用）。 */
-  showCreate?: boolean;
-}) {
+export default function BlogPersonalSidebar({
+  user,
+  summary = null,
+  scope = 'all',
+  basePath = '/blog',
+  showRanges = true,
+  showCreate = true,
+}: BlogPersonalSidebarProps) {
   const [open, setOpen] = useState(false);
   const [narrow, setNarrow] = useState(false);
   const [settled, setSettled] = useState(false);
@@ -130,6 +152,9 @@ export default function BlogPersonalSidebar({ user, summary = null, scope = 'all
     return p.size ? `${basePath}?${p}` : basePath;
   }
 
+  /** 点范围链接即收起窄屏面板（桌面没有展开态，setOpen 无害）。 */
+  const closePanel = () => setOpen(false);
+
   const toggleLabel = user
     ? (open ? '收起我的博客' : '展开我的博客')
     : (open ? '收起访客信息' : '展开访客信息');
@@ -194,29 +219,18 @@ export default function BlogPersonalSidebar({ user, summary = null, scope = 'all
                 <Link className="blog-personal__identity" href={`/u/${user.id}`}>
                   <span>{user.username}</span>
                 </Link>
-                <dl className="blog-personal__stats">
-                  <div className="blog-likes" title="获赞"><dt><span className="icon icon-heart-fill" aria-hidden="true" /><span className="visually-hidden">获赞</span></dt><dd className="numeric">+{summary?.likesReceived ?? 0}</dd></div>
-                  <div className="blog-comments" title="收到评论"><dt><span className="icon icon-chat-dots_new" aria-hidden="true" /><span className="visually-hidden">收到评论</span></dt><dd className="numeric">+{summary?.commentsReceived ?? 0}</dd></div>
-                  <div className="blog-fish" title="收获鱼干"><dt><span className="icon icon-fish" aria-hidden="true" /><span className="visually-hidden">收获鱼干</span></dt><dd className="numeric">+{summary?.fishReceived ?? 0}</dd></div>
-                </dl>
-                {showRanges && (
-                <nav className="blog-personal__ranges" aria-label="文章范围">
-                  {BLOG_SCOPES.map((item) => (
-                    <Link
-                      key={item.value}
-                      href={scopeHref(item.value)}
-                      className={`blog-personal__range${scope === item.value ? ' is-active' : ''}`}
-                      aria-current={scope === item.value ? 'page' : undefined}
-                      onClick={() => setOpen(false)}
-                      scroll={false}
-                      prefetch={false}
-                    >
-                      <span className={`icon ${item.icon}`} aria-hidden="true" />
-                      <span>{item.label}</span>
-                      <span className="numeric">{summary?.counts[item.value] ?? 0}</span>
-                    </Link>
-                  ))}
-                </nav>
+                {/* 只把「统计 + 范围计数」挂起：昵称、外壳、创建入口都已在上方，数字
+                    未到时用占位条顶着（见文件和 SidebarCounts 的注释）。 */}
+                {summary ? (
+                  <Suspense
+                    fallback={
+                      <SidebarCounts summary={null} loading showRanges={showRanges} scope={scope} scopeHref={scopeHref} onNavigate={closePanel} />
+                    }
+                  >
+                    <SidebarCountsAsync summary={summary} showRanges={showRanges} scope={scope} scopeHref={scopeHref} onNavigate={closePanel} />
+                  </Suspense>
+                ) : (
+                  <SidebarCounts summary={null} loading={false} showRanges={showRanges} scope={scope} scopeHref={scopeHref} onNavigate={closePanel} />
                 )}
               </>
             ) : (
@@ -251,5 +265,86 @@ export default function BlogPersonalSidebar({ user, summary = null, scope = 'all
         )}
       </div>
     </aside>
+  );
+}
+
+/**
+ * 「统计 + 五个范围计数」这一块。fallback（loading）与真值共用它，结构完全一致 ——
+ * 换入时行高和对齐不跳；数量位由 SidebarValue 决定画占位条还是数字。
+ *
+ * ⚠️ boundary 必须落在这里、**不能**包住整个 aside：外壳 `overflow-y: auto`，
+ * Scrollbars 会在首个 effect 里给它加 `.scroll-port` / 注入滑块。若整个 aside 还在
+ * 未水合的 Suspense 边界里，那次 DOM 注入就会与随后水合的 className 冲突
+ * （hydration mismatch，整张卡被客户端重画）。只挂数字这一小块就不碰外壳。
+ */
+function SidebarCounts({
+  summary,
+  loading,
+  showRanges,
+  scope,
+  scopeHref,
+  onNavigate,
+}: {
+  summary: BlogPersonalSummary | null;
+  loading: boolean;
+  showRanges: boolean;
+  scope: BlogScope;
+  scopeHref: (next: BlogScope) => string;
+  onNavigate: () => void;
+}) {
+  return (
+    <>
+      <dl className="blog-personal__stats" aria-busy={loading || undefined}>
+        <div className="blog-likes" title="获赞"><dt><span className="icon icon-heart-fill" aria-hidden="true" /><span className="visually-hidden">获赞</span></dt><dd className="numeric"><SidebarValue loading={loading}>+{summary?.likesReceived ?? 0}</SidebarValue></dd></div>
+        <div className="blog-comments" title="收到评论"><dt><span className="icon icon-chat-dots_new" aria-hidden="true" /><span className="visually-hidden">收到评论</span></dt><dd className="numeric"><SidebarValue loading={loading}>+{summary?.commentsReceived ?? 0}</SidebarValue></dd></div>
+        <div className="blog-fish" title="收获鱼干"><dt><span className="icon icon-fish" aria-hidden="true" /><span className="visually-hidden">收获鱼干</span></dt><dd className="numeric"><SidebarValue loading={loading}>+{summary?.fishReceived ?? 0}</SidebarValue></dd></div>
+      </dl>
+      {showRanges && (
+        <nav className="blog-personal__ranges" aria-label="文章范围" aria-busy={loading || undefined}>
+          {BLOG_SCOPES.map((item) => (
+            <Link
+              key={item.value}
+              href={scopeHref(item.value)}
+              className={`blog-personal__range${scope === item.value ? ' is-active' : ''}`}
+              aria-current={scope === item.value ? 'page' : undefined}
+              onClick={onNavigate}
+              scroll={false}
+              prefetch={false}
+            >
+              <span className={`icon ${item.icon}`} aria-hidden="true" />
+              <span>{item.label}</span>
+              <span className="numeric"><SidebarValue loading={loading}>{summary?.counts[item.value] ?? 0}</SidebarValue></span>
+            </Link>
+          ))}
+        </nav>
+      )}
+    </>
+  );
+}
+
+/** 数字的读取口：use() 挂起在这一个边界里，其余侧栏内容不受影响。 */
+function SidebarCountsAsync({
+  summary,
+  ...rest
+}: {
+  summary: Promise<BlogPersonalSummary | null>;
+  showRanges: boolean;
+  scope: BlogScope;
+  scopeHref: (next: BlogScope) => string;
+  onNavigate: () => void;
+}) {
+  return <SidebarCounts {...rest} loading={false} summary={use(summary)} />;
+}
+
+/**
+ * 数字位的等待态。loading 时换成一条脉冲占位，**不写 0**（0 会被读成真实值），
+ * 否则原样渲染数值。两种状态共用同一个 <dd>/<span>，尺寸由 _directory.scss 的
+ * `.blog-personal__pending` 定 —— 换入时行高与对齐不跳。
+ */
+function SidebarValue({ loading, children }: { loading: boolean; children: ReactNode }) {
+  return loading ? (
+    <span className="blog-skeleton-line blog-personal__pending" aria-hidden="true" />
+  ) : (
+    <>{children}</>
   );
 }

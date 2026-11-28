@@ -238,6 +238,15 @@
     dt { display: flex; align-items: center; gap: 6px; font-weight: 400; }
     dd { margin: 0; font-weight: 700; }
   }
+  // 数字位的等待态（组件里的 SidebarValue）。数据由组件内部的 Suspense 在侧栏
+  // 外壳之后补上，这里只把宽度先占住、避免换入时标签位移；
+  // 颜色与脉冲复用 _menu.scss 的 .blog-skeleton-line（含 prefers-reduced-motion 那条）。
+  &__pending {
+    display: inline-block;
+    width: 2.4em;
+    height: .8em;
+    border-radius: 4px;
+  }
   &__ranges { display: grid; gap: 6px; }
   // 访客卡片的一行说明（登录后可见哪些范围）。卡片里不放按钮，入口在顶栏。
   &__note {

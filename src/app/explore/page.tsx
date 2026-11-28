@@ -113,6 +113,9 @@ export default async function ExplorePage({
   // 侧栏的「文章范围」计数指回 /blog，口径必须与 /blog 一致：专注模式屏蔽的栏目
   // 在那边不计入。不传这份集合的话，开了专注模式的 core+ 在两个页面看到的数字不同。
   const focusHiddenCategoryIds = viewer ? await resolveFocusHiddenCategoryIds(viewer) : null;
+  // 侧栏数字**不 await**：组件内部的 <Suspense> + use() 会在外壳之后补上。
+  // 在这里创建 promise 是为了与下面的栏目/公开集合查询并行；访客没有统计，恒为 null。
+  const summary = viewer ? getBlogDirectorySummary(viewer.id, focusHiddenCategoryIds) : null;
 
   // ── 搜索限频 ────────────────────────────────────────────────────────────────
   // 只对**真的带搜索词**的请求计数。写成无条件计数的话，光是翻页 / 换栏目就把额度
@@ -205,7 +208,7 @@ export default async function ExplorePage({
               /explore 本身不实现 scope 参数，指到本页会变成点不动的死链。 */}
           <BlogPersonalSidebar
             user={viewer ? { id: viewer.id, username: viewer.username, frameUrl: frameUrlFor(viewer) } : null}
-            summary={viewer ? await getBlogDirectorySummary(viewer.id, focusHiddenCategoryIds) : null}
+            summary={summary}
             basePath="/blog"
             showRanges={viewerCanOpenDirectory}
             showCreate={viewerCanOpenDirectory}

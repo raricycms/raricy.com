@@ -66,6 +66,9 @@ export default async function BlogListPage({
   // 别在这里直接读 categories.focusHidden。
   const focusOn = !!viewer.focusMode;
   const focusHiddenCategoryIds = await resolveFocusHiddenCategoryIds(viewer);
+  // 侧栏数字**不 await**：组件内部的 <Suspense> + use() 会在侧栏外壳画出之后补上。
+  // 在这里创建 promise 是为了让它与下面的栏目查询并行 —— 推迟到组件里才开始查就
+  // 少掉这段重叠。侧栏数据只影响那张卡里的数字，不阻塞首字节。
   const summary = getBlogDirectorySummary(viewer.id, focusHiddenCategoryIds);
 
   // ── 正文搜索限频 ──────────────────────────────────────────────────────────
@@ -182,9 +185,11 @@ export default async function BlogListPage({
 
       <div className="container">
         <div className="blog-layout blog-directory">
+          {/* 侧栏的数字由组件内部自己的 <Suspense> + use() 流式补上 —— 页面首帧只等
+              身份与栏目，不等那五组计数。summary 传的是 promise，别在这里 await。 */}
           <BlogPersonalSidebar
             user={{ id: viewer.id, username: viewer.username, frameUrl: frameUrlFor(viewer) }}
-            summary={await summary}
+            summary={summary}
             scope={scope}
           />
 
